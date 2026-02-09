@@ -93,14 +93,15 @@ const fallbackKpiSparkData = {
   expenses: [8, 9, 7, 8, 7, 7, 7, 7],
 };
 
-function formatCurrency(cents: number): string {
-  const abs = Math.abs(cents);
+function formatCurrency(cents: number | null | undefined): string {
+  const safe = cents ?? 0;
+  const abs = Math.abs(safe);
   if (abs >= 100000) return `$${(abs / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   return `$${(abs / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function formatShortCurrency(cents: number): string {
-  const val = Math.abs(cents) / 100;
+function formatShortCurrency(cents: number | null | undefined): string {
+  const val = Math.abs(cents ?? 0) / 100;
   if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
   return `$${val.toFixed(0)}`;
 }
@@ -938,7 +939,7 @@ function FinanceHubContent() {
         </>
       )}
 
-      {lifecycleSteps.length > 0 && lifecycleSteps.some((st: any) => st.status !== 'pending') && (
+      {isConnected && lifecycleSteps.length > 0 && lifecycleSteps.some((st: any) => st.status !== 'pending') && (
         <>
           <SectionLabel icon="git-branch" label="MONEY LIFECYCLE" color="#999" />
           <LifecycleChain
@@ -1052,7 +1053,6 @@ function FinanceHubContent() {
               <TimelineRow
                 key={evt.eventId}
                 event={evt}
-                isLast={i === timeline.length - 1}
               />
             ))}
           </GlassCard>

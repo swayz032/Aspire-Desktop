@@ -216,7 +216,7 @@ export default function LifecycleChain({ steps, title, onExplainStep }: Lifecycl
                 <Text style={styles.timestamp}>{formatTimestamp(step.timestamp)}</Text>
               )}
 
-              {step.amount !== undefined && (
+              {step.amount != null && (
                 <Text style={styles.amount}>
                   ${step.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </Text>

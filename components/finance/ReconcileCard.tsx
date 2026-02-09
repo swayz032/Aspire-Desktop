@@ -39,8 +39,8 @@ const SEVERITY_LABELS: Record<string, string> = {
   critical: 'Critical',
 };
 
-function formatCurrency(amount: number): string {
-  const abs = Math.abs(amount);
+function formatCurrency(amount: number | null | undefined): string {
+  const abs = Math.abs(amount ?? 0);
   return `$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
