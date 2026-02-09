@@ -21,6 +21,7 @@ export interface OfficeItem extends InboxItem {
   type: 'office';
   department: string;
   requestType: string;
+  body?: string;
 }
 
 export interface TimelineMessage {
