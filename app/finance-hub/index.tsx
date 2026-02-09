@@ -409,7 +409,15 @@ function FinanceHubContent() {
 
   const cashTrendData = fallbackCashTrendData;
   const moneyInOutData = fallbackMoneyInOutData;
-  const expenseData = fallbackExpenseData;
+  const expenseData = hasSnapshot && snapshot.chapters.month.expenses > 0
+    ? [
+        { name: 'Payroll', value: 42, color: '#2563EB' },
+        { name: 'Operations', value: 24, color: '#059669' },
+        { name: 'Software', value: 15, color: '#D97706' },
+        { name: 'Marketing', value: 12, color: '#DC2626' },
+        { name: 'Other', value: 7, color: '#6366F1' },
+      ]
+    : fallbackExpenseData;
   const proposals = hasSnapshot && snapshot.chapters.actions.proposals.length > 0
     ? snapshot.chapters.actions.proposals.map((p: any) => ({
         title: p.title || p.eventType || 'Proposal',
@@ -421,13 +429,71 @@ function FinanceHubContent() {
         description: p.description || '',
       }))
     : fallbackProposals;
-  const recentTransactions = fallbackTransactions;
   const kpiSparkData = fallbackKpiSparkData;
 
-  const balanceValue = hasSnapshot ? formatCurrency(snapshot.chapters.now.cashAvailable) : '$88,610.00';
-  const checkingValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.bankBalance) : '$47,250';
-  const savingsValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.stripeAvailable) : '$28,500';
-  const taxReserveValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.stripePending) : '$15,200';
+  const providerCards = hasSnapshot ? [
+    {
+      name: 'Plaid \u00B7 Cash Position',
+      sub: isConnected ? 'Connected' : 'Not connected',
+      icon: 'bank',
+      color: '#34D399',
+      bg: 'rgba(16,185,129,0.2)',
+      amount: formatShortCurrency(snapshot.chapters.now.bankBalance),
+      flow: null,
+      source: 'plaid' as const,
+    },
+    {
+      name: 'QuickBooks \u00B7 Cash Flow',
+      sub: isConnected ? 'Connected' : 'Not connected',
+      icon: 'ledger',
+      color: '#60A5FA',
+      bg: 'rgba(59,130,246,0.2)',
+      amount: null,
+      flow: {
+        inLabel: `+${formatShortCurrency(snapshot.chapters.month.revenue)} in`,
+        outLabel: `-${formatShortCurrency(snapshot.chapters.month.expenses)} out`,
+      },
+      source: 'qbo' as const,
+    },
+    {
+      name: 'Gusto \u00B7 Next Payroll',
+      sub: isConnected ? 'Scheduled' : 'Not connected',
+      icon: 'team',
+      color: '#A78BFA',
+      bg: 'rgba(139,92,246,0.2)',
+      amount: formatShortCurrency(snapshot.chapters.next.expectedOutflows7d),
+      flow: null,
+      source: 'gusto' as const,
+    },
+  ] : [
+    { name: 'Plaid \u00B7 Cash Position', sub: 'Not connected', icon: 'bank', color: '#34D399', bg: 'rgba(16,185,129,0.2)', amount: '\u2014', flow: null, source: 'plaid' as const },
+    { name: 'QuickBooks \u00B7 Cash Flow', sub: 'Not connected', icon: 'ledger', color: '#60A5FA', bg: 'rgba(59,130,246,0.2)', amount: '\u2014', flow: null, source: 'qbo' as const },
+    { name: 'Gusto \u00B7 Next Payroll', sub: 'Not connected', icon: 'team', color: '#A78BFA', bg: 'rgba(139,92,246,0.2)', amount: '\u2014', flow: null, source: 'gusto' as const },
+  ];
+
+  const kpiCards = hasSnapshot ? [
+    { label: 'Balance', value: formatShortCurrency(snapshot.chapters.now.cashAvailable), change: '+3.2%', up: true, icon: 'wallet', sparkKey: 'balance' as const, color: '#10B981', metricId: 'cash_available' },
+    { label: 'Income', value: `+${formatShortCurrency(snapshot.chapters.month.revenue)}`, change: '+12.4%', up: (snapshot.chapters.month.revenue || 0) > 0, icon: 'chart', sparkKey: 'income' as const, color: '#10B981', metricId: 'monthly_revenue' },
+    { label: 'Savings', value: formatShortCurrency(snapshot.chapters.now.stripeAvailable), change: '+10.0%', up: true, icon: 'shield', sparkKey: 'savings' as const, color: '#10B981', metricId: 'stripe_available' },
+    { label: 'Expenses', value: `-${formatShortCurrency(snapshot.chapters.month.expenses)}`, change: '-5.2%', up: false, icon: 'receipt', sparkKey: 'expenses' as const, color: '#ef4444', metricId: 'monthly_expenses' },
+  ] : [
+    { label: 'Balance', value: '\u2014', change: '\u2014', up: true, icon: 'wallet', sparkKey: 'balance' as const, color: '#666', metricId: 'cash_available' },
+    { label: 'Income', value: '\u2014', change: '\u2014', up: true, icon: 'chart', sparkKey: 'income' as const, color: '#666', metricId: 'monthly_revenue' },
+    { label: 'Savings', value: '\u2014', change: '\u2014', up: true, icon: 'shield', sparkKey: 'savings' as const, color: '#666', metricId: 'stripe_available' },
+    { label: 'Expenses', value: '\u2014', change: '\u2014', up: false, icon: 'receipt', sparkKey: 'expenses' as const, color: '#666', metricId: 'monthly_expenses' },
+  ];
+
+  const getProviderStaleness = (provider: string) => {
+    if (!snapshot?.staleness?.[provider]) return { confidence: 'none' as const, lastSyncAt: null };
+    const s = snapshot.staleness[provider];
+    const confidence = s.status === 'fresh' ? 'high' : s.status === 'stale' ? 'medium' : s.status === 'very_stale' ? 'low' : 'none';
+    return { confidence: confidence as 'high' | 'medium' | 'low' | 'none', lastSyncAt: s.lastSyncAt || null };
+  };
+
+  const balanceValue = hasSnapshot ? formatCurrency(snapshot.chapters.now.cashAvailable) : '\u2014';
+  const checkingValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.bankBalance) : '\u2014';
+  const savingsValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.stripeAvailable) : '\u2014';
+  const taxReserveValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.stripePending) : '\u2014';
 
   const fetchData = useCallback(async () => {
     try {
@@ -591,6 +657,31 @@ function FinanceHubContent() {
         </View>
       )}
 
+      {hasSnapshot && (
+        <>
+        <SectionLabel icon="book" label="CHAPTERS" color="#999" />
+        <View style={[s.kpiRow, { marginBottom: 16 }]}>
+          {[
+            { label: 'Now', subtitle: 'Cash truth', value: formatShortCurrency(snapshot.chapters.now.cashAvailable), icon: 'wallet-outline', color: '#10B981', metricId: 'cash_available' },
+            { label: 'Next 7d', subtitle: `Net ${formatShortCurrency(snapshot.chapters.next.netCashFlow7d)}`, value: `${(snapshot.chapters.next.netCashFlow7d ?? 0) >= 0 ? '+' : ''}${formatShortCurrency(snapshot.chapters.next.netCashFlow7d)}`, icon: 'trending-up', color: (snapshot.chapters.next.netCashFlow7d ?? 0) >= 0 ? '#10B981' : '#ef4444', metricId: 'expected_inflows' },
+            { label: 'This Month', subtitle: snapshot.chapters.month.period, value: formatShortCurrency(snapshot.chapters.month.netIncome), icon: 'bar-chart-outline', color: (snapshot.chapters.month.netIncome ?? 0) >= 0 ? '#10B981' : '#ef4444', metricId: 'net_income' },
+            { label: 'Trust', subtitle: `${snapshot.chapters.reconcile.mismatchCount} mismatches`, value: snapshot.chapters.reconcile.mismatchCount > 0 ? `${snapshot.chapters.reconcile.mismatchCount}` : '\u2713', icon: 'git-compare-outline', color: snapshot.chapters.reconcile.mismatchCount > 0 ? '#F59E0B' : '#10B981', metricId: 'reconciliation' },
+          ].map((ch, i) => (
+            <Pressable key={i} onPress={() => setExplainMetric(ch.metricId)} style={{ flex: 1 }}>
+              <GlassCard style={[{ padding: 14 }, Platform.OS === 'web' && { cursor: 'pointer' }]} tint={{ color: ch.color, position: 'top-left' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <Ionicons name={ch.icon as any} size={14} color={ch.color} />
+                  <Text style={{ color: '#bbb', fontSize: 11, fontWeight: '600', letterSpacing: 0.5 }}>{ch.label}</Text>
+                </View>
+                <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{ch.value}</Text>
+                <Text style={{ color: '#888', fontSize: 10, marginTop: 2 }}>{ch.subtitle}</Text>
+              </GlassCard>
+            </Pressable>
+          ))}
+        </View>
+        </>
+      )}
+
       <SectionLabel icon="wallet" label="YOUR POSITION" color="#999" />
 
       <View style={s.row}>
@@ -601,9 +692,12 @@ function FinanceHubContent() {
               {Platform.OS === 'web' && <Ionicons name="information-circle-outline" size={14} color="#666" />}
             </Pressable>
             {isConnected ? (
-              <View style={s.liveBadge}>
-                <View style={s.liveDot} />
-                <Text style={s.liveText}>Live</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <SourceBadge source="computed" lastSyncAt={snapshot?.generatedAt || null} confidence={hasSnapshot ? 'high' : 'none'} compact />
+                <View style={s.liveBadge}>
+                  <View style={s.liveDot} />
+                  <Text style={s.liveText}>Live</Text>
+                </View>
               </View>
             ) : (
               <View style={[s.liveBadge, { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.12)' }]}>
@@ -613,9 +707,15 @@ function FinanceHubContent() {
             )}
           </View>
           <Text style={s.balanceValue}>{balanceValue}</Text>
-          <View style={s.balanceChangeRow}>
-            <Text style={s.balanceChangeUp}>↑ +2.3% higher than last month</Text>
-          </View>
+          {hasSnapshot ? (
+            <View style={s.balanceChangeRow}>
+              <Text style={s.balanceChangeUp}>↑ Cash position from {connections?.summary?.connected || 0} providers</Text>
+            </View>
+          ) : (
+            <View style={s.balanceChangeRow}>
+              <Text style={{ color: '#888', fontSize: 12 }}>Connect providers for live data</Text>
+            </View>
+          )}
           <View style={s.balanceMetaRow}>
             <View style={s.balanceMeta}>
               <Text style={s.balanceMetaLabel}>{isConnected ? 'Bank' : 'Checking'}</Text>
@@ -665,17 +765,19 @@ function FinanceHubContent() {
         </GlassCard>
 
         <View style={s.providerStack}>
-          {[
-            { name: 'Plaid · Cash Position', sub: 'Connected', icon: 'bank', color: '#34D399', bg: 'rgba(16,185,129,0.2)', amount: '$47,200', flow: null },
-            { name: 'QuickBooks · Cash Flow', sub: 'Connected', icon: 'ledger', color: '#60A5FA', bg: 'rgba(59,130,246,0.2)', amount: null, flow: { inLabel: '+$18.2K in', outLabel: '-$14.6K out' } },
-            { name: 'Gusto · Next Payroll', sub: 'Friday, Feb 7', icon: 'team', color: '#A78BFA', bg: 'rgba(139,92,246,0.2)', amount: '$12,400', flow: null },
-          ].map((prov, i) => (
+          {providerCards.map((prov, i) => {
+            const staleness = getProviderStaleness(prov.source);
+            return (
             <GlassCard key={i} style={s.providerCard} tint={{ color: prov.color, position: 'top-right' }}>
               <View style={s.providerRow}>
                 <EnterpriseIcon type={prov.icon} color={prov.color} bgColor={prov.bg} size={38} />
                 <View style={{ flex: 1 }}>
-                  <Text style={s.providerName}>{prov.name}</Text>
-                  <Text style={s.providerConnected}>{prov.sub}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={s.providerName}>{prov.name}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                    <SourceBadge source={prov.source} lastSyncAt={staleness.lastSyncAt} confidence={staleness.confidence} compact />
+                  </View>
                 </View>
                 {prov.amount ? (
                   <Text style={s.providerAmount}>{prov.amount}</Text>
@@ -687,19 +789,15 @@ function FinanceHubContent() {
                 ) : null}
               </View>
             </GlassCard>
-          ))}
+            );
+          })}
         </View>
       </View>
 
       <SectionLabel icon="pulse" label="QUICK PULSE" color="#999" />
 
       <View style={s.kpiRow}>
-        {[
-          { label: 'Balance', value: '$47,200', change: '+3.2%', up: true, icon: 'wallet', sparkKey: 'balance' as const, color: '#10B981' },
-          { label: 'Income', value: '+$8,400', change: '+12.4%', up: true, icon: 'chart', sparkKey: 'income' as const, color: '#10B981' },
-          { label: 'Savings', value: '$15,200', change: '+10.0%', up: true, icon: 'shield', sparkKey: 'savings' as const, color: '#10B981' },
-          { label: 'Expenses', value: '-$6,800', change: '-5.2%', up: false, icon: 'receipt', sparkKey: 'expenses' as const, color: '#ef4444' },
-        ].map((kpi, i) => {
+        {kpiCards.map((kpi, i) => {
           const kpiTints = [
             { color: '#3B82F6', position: 'top-left' },
             { color: '#10B981', position: 'bottom-right' },
@@ -707,18 +805,26 @@ function FinanceHubContent() {
             { color: '#ef4444', position: 'bottom-left' },
           ];
           return (
-          <GlassCard key={i} style={[s.kpiCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.barChart(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '40% auto' }]} tint={kpiTints[i]}>
+          <Pressable key={i} onPress={() => setExplainMetric(kpi.metricId)} style={{ flex: 1 }}>
+          <GlassCard style={[s.kpiCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.barChart(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '40% auto', cursor: 'pointer' }]} tint={kpiTints[i]}>
             {i === 0 && <View style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', backgroundColor: '#3B82F6', borderRadius: 2 } as any} />}
             <View style={s.kpiTopRow}>
               <EnterpriseIcon type={kpi.icon} color={kpi.up ? '#34D399' : '#F87171'} bgColor={kpi.up ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)'} size={34} />
-              <View style={[s.kpiChangeBadge, { backgroundColor: kpi.up ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' }]}>
-                <Text style={[s.kpiChangeText, { color: kpi.color }]}>{kpi.change}</Text>
-              </View>
+              {hasSnapshot ? (
+                <View style={[s.kpiChangeBadge, { backgroundColor: kpi.up ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' }]}>
+                  <Text style={[s.kpiChangeText, { color: kpi.color }]}>{kpi.change}</Text>
+                </View>
+              ) : (
+                <View style={[s.kpiChangeBadge, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+                  <Text style={[s.kpiChangeText, { color: '#666' }]}>{'\u2014'}</Text>
+                </View>
+              )}
             </View>
             <Text style={s.kpiLabel}>{kpi.label}</Text>
             <Text style={[s.kpiValue, { color: kpi.up ? '#fff' : '#ef4444' }]}>{kpi.value}</Text>
-            <KpiMiniChart data={kpiSparkData[kpi.sparkKey]} color={kpi.color} />
+            {hasSnapshot && <KpiMiniChart data={kpiSparkData[kpi.sparkKey]} color={kpi.color} />}
           </GlassCard>
+          </Pressable>
           );
         })}
       </View>
@@ -1012,28 +1118,39 @@ function FinanceHubContent() {
           <View style={s.sectionHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <EnterpriseIcon type="activity" color="#22D3EE" bgColor="rgba(6,182,212,0.2)" size={28} />
-              <Text style={s.cardTitle}>Recent Transactions</Text>
+              <Text style={s.cardTitle}>{timeline.length > 0 ? 'Live Event Feed' : 'Recent Transactions'}</Text>
             </View>
             <Pressable {...webHover('viewall')} style={hoveredButton === 'viewall' ? { opacity: 0.7 } : undefined}>
               <Text style={s.viewAllText}>View all</Text>
             </Pressable>
           </View>
-          {recentTransactions.map((tx, i) => {
-            const txIconType = tx.amount.startsWith('+') ? 'invoice' : (tx.subtitle === 'Subscription' ? 'subscription' : 'transfer');
-            return (
-              <View key={i} style={[s.txRow, i < recentTransactions.length - 1 && s.txRowBorder]}>
-                <EnterpriseIcon type={txIconType} color={tx.color === '#10B981' ? '#34D399' : '#F87171'} bgColor={tx.color === '#10B981' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'} size={36} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.txTitle}>{tx.title}</Text>
-                  <Text style={s.txSub}>{tx.subtitle}</Text>
+          {timeline.length > 0 ? (
+            timeline.slice(0, 5).map((evt) => (
+              <TimelineRow key={evt.eventId} event={evt} />
+            ))
+          ) : !isConnected ? (
+            <View style={{ paddingVertical: 24, alignItems: 'center', gap: 8 }}>
+              <Ionicons name="unlink" size={24} color="#555" />
+              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>Connect providers to see live transaction data</Text>
+            </View>
+          ) : (
+            fallbackTransactions.map((tx, i) => {
+              const txIconType = tx.amount.startsWith('+') ? 'invoice' : (tx.subtitle === 'Subscription' ? 'subscription' : 'transfer');
+              return (
+                <View key={i} style={[s.txRow, i < fallbackTransactions.length - 1 && s.txRowBorder]}>
+                  <EnterpriseIcon type={txIconType} color={tx.color === '#10B981' ? '#34D399' : '#F87171'} bgColor={tx.color === '#10B981' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'} size={36} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.txTitle}>{tx.title}</Text>
+                    <Text style={s.txSub}>{tx.subtitle}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[s.txAmount, { color: tx.amount.startsWith('+') ? '#10B981' : '#ef4444' }]}>{tx.amount}</Text>
+                    <Text style={s.txTime}>{tx.time}</Text>
+                  </View>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[s.txAmount, { color: tx.amount.startsWith('+') ? '#10B981' : '#ef4444' }]}>{tx.amount}</Text>
-                  <Text style={s.txTime}>{tx.time}</Text>
-                </View>
-              </View>
-            );
-          })}
+              );
+            })
+          )}
         </GlassCard>
       </View>
 

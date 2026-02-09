@@ -123,3 +123,9 @@ Aggregates finance_events into 5 chaptered story sections:
 - Memoized SDK load promise to prevent duplicate script injection
 - Proper cleanup of intervals/timeouts in SDK loader to avoid unhandled rejections
 - Loading state now clears correctly on Plaid success, exit, or error
+- Created server/initialSync.ts: registers finance_connections and pulls initial data from all 4 providers into finance_events table with idempotency
+- Updated Finance Hub overview UX: added Chapters section (Now/Next/Month/Trust), provider cards show real snapshot data with SourceBadges, KPI cards tappable for ExplainDrawer, live TimelineRow feed replaces static transactions
+- Connection-aware empty states implemented: no fake numbers shown when providers disconnected (all fallbacks use em-dash "—")
+- All KPI cards now open ExplainDrawer on tap with metricId mapping
+- SourceBadge added to Total Balance card (shows "Computed" + staleness), and to each provider card (Plaid/QuickBooks/Gusto)
+- Timeline section shows TimelineRow components when real events exist, otherwise shows connection-aware empty state

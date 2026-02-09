@@ -165,7 +165,7 @@ async function initDatabase() {
   `);
 
   await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS idx_finance_connections_suite_office_provider
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_connections_suite_office_provider
     ON finance_connections (suite_id, office_id, provider)
   `);
 
@@ -511,6 +511,13 @@ async function loadOAuthTokens() {
     console.warn('Failed to load QuickBooks tokens:', e.message);
   }
   console.log('OAuth tokens loaded from database');
+
+  try {
+    const { runInitialSync } = require('./initialSync');
+    runInitialSync('default', 'default').catch((err: any) => console.warn('Initial sync error:', err));
+  } catch (e: any) {
+    console.warn('Initial sync module not available:', e.message);
+  }
 }
 
 async function start() {
