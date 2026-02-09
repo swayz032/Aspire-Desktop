@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, boolean, jsonb, uuid } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, boolean, jsonb, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -120,3 +120,108 @@ export const oauthTokens = pgTable('oauth_tokens', {
 
 export type OAuthToken = typeof oauthTokens.$inferSelect;
 export type InsertOAuthToken = typeof oauthTokens.$inferInsert;
+
+export const financeConnections = pgTable('finance_connections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  suiteId: text('suite_id').notNull(),
+  officeId: text('office_id').notNull(),
+  provider: text('provider').notNull(),
+  externalAccountId: text('external_account_id'),
+  status: text('status').default('connected').notNull(),
+  scopes: jsonb('scopes'),
+  lastSyncAt: timestamp('last_sync_at'),
+  lastWebhookAt: timestamp('last_webhook_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type FinanceConnection = typeof financeConnections.$inferSelect;
+export type InsertFinanceConnection = typeof financeConnections.$inferInsert;
+
+export const financeTokens = pgTable('finance_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  connectionId: uuid('connection_id').references(() => financeConnections.id).notNull(),
+  accessTokenEnc: text('access_token_enc').notNull(),
+  refreshTokenEnc: text('refresh_token_enc'),
+  expiresAt: timestamp('expires_at'),
+  rotationVersion: integer('rotation_version').default(1).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type FinanceToken = typeof financeTokens.$inferSelect;
+export type InsertFinanceToken = typeof financeTokens.$inferInsert;
+
+export const financeEvents = pgTable('finance_events', {
+  eventId: uuid('event_id').primaryKey().defaultRandom(),
+  suiteId: text('suite_id').notNull(),
+  officeId: text('office_id').notNull(),
+  connectionId: uuid('connection_id').references(() => financeConnections.id),
+  provider: text('provider').notNull(),
+  providerEventId: text('provider_event_id').notNull(),
+  eventType: text('event_type').notNull(),
+  occurredAt: timestamp('occurred_at').notNull(),
+  amount: integer('amount'),
+  currency: text('currency').default('usd'),
+  status: text('status').default('posted'),
+  entityRefs: jsonb('entity_refs'),
+  rawHash: text('raw_hash'),
+  receiptId: uuid('receipt_id'),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  idempotencyIdx: uniqueIndex('finance_events_idempotency_idx').on(table.suiteId, table.officeId, table.provider, table.providerEventId),
+}));
+
+export type FinanceEvent = typeof financeEvents.$inferSelect;
+export type InsertFinanceEvent = typeof financeEvents.$inferInsert;
+
+export const financeEntities = pgTable('finance_entities', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  suiteId: text('suite_id').notNull(),
+  officeId: text('office_id').notNull(),
+  connectionId: uuid('connection_id').references(() => financeConnections.id),
+  provider: text('provider').notNull(),
+  entityType: text('entity_type').notNull(),
+  entityId: text('entity_id').notNull(),
+  data: jsonb('data').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type FinanceEntity = typeof financeEntities.$inferSelect;
+export type InsertFinanceEntity = typeof financeEntities.$inferInsert;
+
+export const financeSnapshots = pgTable('finance_snapshots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  suiteId: text('suite_id').notNull(),
+  officeId: text('office_id').notNull(),
+  generatedAt: timestamp('generated_at').notNull(),
+  chapterNow: jsonb('chapter_now'),
+  chapterNext: jsonb('chapter_next'),
+  chapterMonth: jsonb('chapter_month'),
+  chapterReconcile: jsonb('chapter_reconcile'),
+  chapterActions: jsonb('chapter_actions'),
+  sources: jsonb('sources'),
+  staleness: jsonb('staleness'),
+  receiptId: uuid('receipt_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type FinanceSnapshot = typeof financeSnapshots.$inferSelect;
+export type InsertFinanceSnapshot = typeof financeSnapshots.$inferInsert;
+
+export const receipts = pgTable('receipts', {
+  receiptId: uuid('receipt_id').primaryKey().defaultRandom(),
+  suiteId: text('suite_id').notNull(),
+  officeId: text('office_id').notNull(),
+  actionType: text('action_type').notNull(),
+  inputsHash: text('inputs_hash'),
+  outputsHash: text('outputs_hash'),
+  policyDecisionId: text('policy_decision_id'),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type Receipt = typeof receipts.$inferSelect;
+export type InsertReceipt = typeof receipts.$inferInsert;

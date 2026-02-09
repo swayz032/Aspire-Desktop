@@ -1,16 +1,50 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { ProposalReviewSheet, Proposal } from '@/components/finance/ProposalReviewSheet';
+import SourceBadge from '@/components/finance/SourceBadge';
+import ExplainDrawer from '@/components/finance/ExplainDrawer';
+import TimelineRow from '@/components/finance/TimelineRow';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern, heroCardBg } from '@/constants/cardPatterns';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 
+interface SnapshotData {
+  chapters: {
+    now: { cashAvailable: number; bankBalance: number; stripeAvailable: number; stripePending: number; lastUpdated: string | null };
+    next: { expectedInflows7d: number; expectedOutflows7d: number; netCashFlow7d: number; items: any[] };
+    month: { revenue: number; expenses: number; netIncome: number; period: string };
+    reconcile: { mismatches: any[]; mismatchCount: number };
+    actions: { proposals: any[]; proposalCount: number };
+  };
+  provenance: Record<string, any>;
+  staleness: Record<string, any>;
+  generatedAt: string | null;
+  connected: boolean;
+}
 
-const cashTrendData = [
+interface ConnectionStatus {
+  connections: Array<{ id: string; provider: string; status: string; lastSyncAt: string | null; nextStep: string | null }>;
+  summary: { total: number; connected: number; needsAttention: number };
+}
+
+interface TimelineEvent {
+  eventId: string;
+  provider: string;
+  eventType: string;
+  occurredAt: string;
+  amount: number | null;
+  currency: string;
+  status: string;
+  entityRefs: any;
+  metadata?: any;
+  receiptId?: string;
+}
+
+const fallbackCashTrendData = [
   { day: 'Jan 25', value: 42000 }, { day: 'Jan 26', value: 41200 }, { day: 'Jan 27', value: 43800 },
   { day: 'Jan 28', value: 44500 }, { day: 'Jan 29', value: 39200 }, { day: 'Jan 30', value: 40100 },
   { day: 'Jan 31', value: 41800 }, { day: 'Feb 1', value: 43200 }, { day: 'Feb 2', value: 44900 },
@@ -18,7 +52,7 @@ const cashTrendData = [
   { day: 'Feb 6', value: 46800 }, { day: 'Feb 7', value: 47200 },
 ];
 
-const moneyInOutData = [
+const fallbackMoneyInOutData = [
   { day: 'Mon', inflow: 6200, outflow: 3100 },
   { day: 'Tue', inflow: 4800, outflow: 5200 },
   { day: 'Wed', inflow: 7100, outflow: 2800 },
@@ -28,7 +62,7 @@ const moneyInOutData = [
   { day: 'Sun', inflow: 800, outflow: 200 },
 ];
 
-const expenseData = [
+const fallbackExpenseData = [
   { name: 'Payroll', value: 42, color: '#2563EB' },
   { name: 'Operations', value: 24, color: '#059669' },
   { name: 'Software', value: 15, color: '#D97706' },
@@ -36,13 +70,13 @@ const expenseData = [
   { name: 'Other', value: 7, color: '#6366F1' },
 ];
 
-const proposals = [
+const fallbackProposals = [
   { title: 'Fund payroll buffer', chips: ['Payroll Fri', 'Projected balance'], risk: 'MED', riskColor: '#f59e0b', riskBg: 'rgba(245, 158, 11, 0.15)', accentColor: '#f59e0b', description: 'Buffer will drop below $5K after Friday payroll. Recommend moving $4,200 from reserves.' },
   { title: 'Collect overdue AR', chips: ['2 invoices', '$6,800 total'], risk: 'HIGH', riskColor: '#ef4444', riskBg: 'rgba(239, 68, 68, 0.15)', accentColor: '#ef4444', description: 'Two invoices are 14+ days past due. Automated reminder sequence recommended.' },
   { title: 'Increase tax reserve', chips: ['Q4 estimates', 'Current: 18%'], risk: 'LOW', riskColor: '#10B981', riskBg: 'rgba(16, 185, 129, 0.15)', accentColor: '#10B981', description: 'Current reserve rate is below recommended 22% for Q4. Consider increasing allocation.' },
 ];
 
-const recentTransactions = [
+const fallbackTransactions = [
   { icon: 'arrow-down-circle' as const, title: 'Apex Corp', subtitle: 'Invoice #1847', amount: '+$4,200', time: '2h ago', color: '#10B981', status: 'Completed' },
   { icon: 'arrow-up-circle' as const, title: 'Figma Pro Plan', subtitle: 'Subscription', amount: '-$299', time: '5h ago', color: '#ef4444', status: 'Completed' },
   { icon: 'arrow-down-circle' as const, title: 'Beta Industries', subtitle: 'Invoice #1832', amount: '+$3,400', time: 'Yesterday', color: '#10B981', status: 'Pending' },
@@ -50,12 +84,24 @@ const recentTransactions = [
   { icon: 'arrow-down-circle' as const, title: 'Gamma LLC', subtitle: 'Invoice #1828', amount: '+$2,100', time: '2 days ago', color: '#10B981', status: 'Completed' },
 ];
 
-const kpiSparkData = {
+const fallbackKpiSparkData = {
   balance: [38, 40, 42, 41, 43, 44, 45, 47],
   income: [3, 5, 4, 7, 6, 8, 7, 8],
   savings: [12, 13, 13, 14, 14, 14, 15, 15],
   expenses: [8, 9, 7, 8, 7, 7, 7, 7],
 };
+
+function formatCurrency(cents: number): string {
+  const abs = Math.abs(cents);
+  if (abs >= 100000) return `$${(abs / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `$${(abs / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatShortCurrency(cents: number): string {
+  const val = Math.abs(cents) / 100;
+  if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
+  return `$${val.toFixed(0)}`;
+}
 
 const webOnly = (webStyles: any) => Platform.OS === 'web' ? webStyles : {};
 
@@ -124,7 +170,7 @@ function EnterpriseIcon({ type, color, bgColor, size = 36 }: { type: string; col
   }
 
   const iconSize = size * 0.44;
-  const svgIcons: Record<string, JSX.Element> = {
+  const svgIcons: Record<string, React.ReactNode> = {
     bank: (
       <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none">
         <path d="M3 21h18v-2H3v2zm0-4h2v-4H3v4zm4 0h2v-4H7v4zm4 0h2v-4h-2v4zm4 0h2v-4h-2v4zm4 0h2v-4h-2v4zM2 11l10-6 10 6H2z" fill={color} />
@@ -331,8 +377,57 @@ export default function FinanceHubIndex() {
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
   const [showProposal, setShowProposal] = useState(false);
+  const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
+  const [connections, setConnections] = useState<ConnectionStatus | null>(null);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [explainMetric, setExplainMetric] = useState<string | null>(null);
 
-  const handleReviewProposal = (p: typeof proposals[0]) => {
+  const isConnected = connections?.summary?.connected ? connections.summary.connected > 0 : false;
+  const hasSnapshot = snapshot?.connected && snapshot?.generatedAt;
+
+  const cashTrendData = fallbackCashTrendData;
+  const moneyInOutData = fallbackMoneyInOutData;
+  const expenseData = fallbackExpenseData;
+  const proposals = hasSnapshot && snapshot.chapters.actions.proposals.length > 0
+    ? snapshot.chapters.actions.proposals.map((p: any) => ({
+        title: p.title || p.eventType || 'Proposal',
+        chips: p.chips || p.evidence || [],
+        risk: p.risk || 'LOW',
+        riskColor: p.risk === 'HIGH' ? '#ef4444' : p.risk === 'MED' ? '#f59e0b' : '#10B981',
+        riskBg: p.risk === 'HIGH' ? 'rgba(239, 68, 68, 0.15)' : p.risk === 'MED' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+        accentColor: p.risk === 'HIGH' ? '#ef4444' : p.risk === 'MED' ? '#f59e0b' : '#10B981',
+        description: p.description || '',
+      }))
+    : fallbackProposals;
+  const recentTransactions = fallbackTransactions;
+  const kpiSparkData = fallbackKpiSparkData;
+
+  const balanceValue = hasSnapshot ? formatCurrency(snapshot.chapters.now.cashAvailable) : '$88,610.00';
+  const checkingValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.bankBalance) : '$47,250';
+  const savingsValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.stripeAvailable) : '$28,500';
+  const taxReserveValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.stripePending) : '$15,200';
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [snapRes, connRes, timeRes] = await Promise.all([
+        fetch('/api/finance/snapshot').then(r => r.json()).catch(() => null),
+        fetch('/api/connections/status').then(r => r.json()).catch(() => null),
+        fetch('/api/finance/timeline?limit=10').then(r => r.json()).catch(() => null),
+      ]);
+      if (snapRes) setSnapshot(snapRes);
+      if (connRes) setConnections(connRes);
+      if (timeRes?.events) setTimeline(timeRes.events);
+    } catch (e) {
+      console.warn('Failed to fetch finance data:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleReviewProposal = (p: typeof fallbackProposals[0]) => {
     setSelectedProposal({
       id: p.title.toLowerCase().replace(/\s+/g, '-'),
       title: p.title,
@@ -478,30 +573,46 @@ export default function FinanceHubIndex() {
       <View style={s.row}>
         <GlassCard style={[s.balanceCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.trendLine(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '50% auto' }]} tint={{ color: '#3B82F6', position: 'top-right' }}>
           <View style={s.balanceHeader}>
-            <Text style={s.balanceLabel}>Total Balance</Text>
-            <View style={s.liveBadge}>
-              <View style={s.liveDot} />
-              <Text style={s.liveText}>Live</Text>
-            </View>
+            <Pressable onPress={() => setExplainMetric('cash_available')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={s.balanceLabel}>Total Balance</Text>
+              {Platform.OS === 'web' && <Ionicons name="information-circle-outline" size={14} color="#666" />}
+            </Pressable>
+            {isConnected ? (
+              <View style={s.liveBadge}>
+                <View style={s.liveDot} />
+                <Text style={s.liveText}>Live</Text>
+              </View>
+            ) : (
+              <View style={[s.liveBadge, { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.12)' }]}>
+                <Ionicons name="unlink" size={10} color="#888" />
+                <Text style={[s.liveText, { color: '#888' }]}>Demo</Text>
+              </View>
+            )}
           </View>
-          <Text style={s.balanceValue}>$88,610.00</Text>
+          <Text style={s.balanceValue}>{balanceValue}</Text>
           <View style={s.balanceChangeRow}>
             <Text style={s.balanceChangeUp}>↑ +2.3% higher than last month</Text>
           </View>
           <View style={s.balanceMetaRow}>
             <View style={s.balanceMeta}>
-              <Text style={s.balanceMetaLabel}>Checking</Text>
-              <Text style={s.balanceMetaValue}>$47,250</Text>
+              <Text style={s.balanceMetaLabel}>{isConnected ? 'Bank' : 'Checking'}</Text>
+              <Text style={s.balanceMetaValue}>{checkingValue}</Text>
             </View>
             <View style={[s.balanceMeta, { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)', paddingLeft: 16 }]}>
-              <Text style={s.balanceMetaLabel}>Savings</Text>
-              <Text style={s.balanceMetaValue}>$28,500</Text>
+              <Text style={s.balanceMetaLabel}>{isConnected ? 'Stripe' : 'Savings'}</Text>
+              <Text style={s.balanceMetaValue}>{savingsValue}</Text>
             </View>
             <View style={[s.balanceMeta, { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)', paddingLeft: 16 }]}>
-              <Text style={s.balanceMetaLabel}>Tax Reserve</Text>
-              <Text style={s.balanceMetaValue}>$15,200</Text>
+              <Text style={s.balanceMetaLabel}>{isConnected ? 'Pending' : 'Tax Reserve'}</Text>
+              <Text style={s.balanceMetaValue}>{taxReserveValue}</Text>
             </View>
           </View>
+          {!isConnected && (
+            <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.6 }}>
+              <Ionicons name="information-circle-outline" size={12} color="#888" />
+              <Text style={{ color: '#888', fontSize: 11 }}>Connect providers in Finance Hub → Connections for live data</Text>
+            </View>
+          )}
           {Platform.OS === 'web' && (
             <div style={{
               marginTop: 16, marginLeft: -4, marginRight: -4,
@@ -807,7 +918,7 @@ export default function FinanceHubIndex() {
                 </View>
                 <Text style={s.proposalDesc}>{p.description}</Text>
                 <View style={s.proposalChips}>
-                  {p.chips.map((c, ci) => (
+                  {p.chips.map((c: string, ci: number) => (
                     <View key={ci} style={s.chip}>
                       <Text style={s.chipText}>{c}</Text>
                     </View>
@@ -856,6 +967,11 @@ export default function FinanceHubIndex() {
       </View>
 
     </FinanceHubShell>
+    <ExplainDrawer
+      visible={!!explainMetric}
+      onClose={() => setExplainMetric(null)}
+      metricId={explainMetric || ''}
+    />
     <ProposalReviewSheet
       visible={showProposal}
       proposal={selectedProposal}

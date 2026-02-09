@@ -148,6 +148,128 @@ async function initDatabase() {
     )
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS finance_connections (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      suite_id TEXT NOT NULL,
+      office_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      external_account_id TEXT,
+      status TEXT DEFAULT 'connected' NOT NULL,
+      scopes JSONB,
+      last_sync_at TIMESTAMP,
+      last_webhook_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_finance_connections_suite_office_provider
+    ON finance_connections (suite_id, office_id, provider)
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS finance_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      connection_id UUID REFERENCES finance_connections(id) NOT NULL,
+      access_token_enc TEXT NOT NULL,
+      refresh_token_enc TEXT,
+      expires_at TIMESTAMP,
+      rotation_version INTEGER DEFAULT 1 NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS finance_events (
+      event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      suite_id TEXT NOT NULL,
+      office_id TEXT NOT NULL,
+      connection_id UUID REFERENCES finance_connections(id),
+      provider TEXT NOT NULL,
+      provider_event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      occurred_at TIMESTAMP NOT NULL,
+      amount INTEGER,
+      currency TEXT DEFAULT 'usd',
+      status TEXT DEFAULT 'posted',
+      entity_refs JSONB,
+      raw_hash TEXT,
+      receipt_id UUID,
+      metadata JSONB,
+      created_at TIMESTAMP DEFAULT NOW() NOT NULL
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS finance_events_idempotency_idx
+    ON finance_events (suite_id, office_id, provider, provider_event_id)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_finance_events_suite_office_occurred
+    ON finance_events (suite_id, office_id, occurred_at)
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS finance_entities (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      suite_id TEXT NOT NULL,
+      office_id TEXT NOT NULL,
+      connection_id UUID REFERENCES finance_connections(id),
+      provider TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      data JSONB NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS finance_snapshots (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      suite_id TEXT NOT NULL,
+      office_id TEXT NOT NULL,
+      generated_at TIMESTAMP NOT NULL,
+      chapter_now JSONB,
+      chapter_next JSONB,
+      chapter_month JSONB,
+      chapter_reconcile JSONB,
+      chapter_actions JSONB,
+      sources JSONB,
+      staleness JSONB,
+      receipt_id UUID,
+      created_at TIMESTAMP DEFAULT NOW() NOT NULL
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_finance_snapshots_suite_office
+    ON finance_snapshots (suite_id, office_id)
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS receipts (
+      receipt_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      suite_id TEXT NOT NULL,
+      office_id TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      inputs_hash TEXT,
+      outputs_hash TEXT,
+      policy_decision_id TEXT,
+      metadata JSONB,
+      created_at TIMESTAMP DEFAULT NOW() NOT NULL
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_receipts_suite_office
+    ON receipts (suite_id, office_id)
+  `);
+
   console.log('Database tables ready');
 }
 
@@ -213,6 +335,14 @@ if (WebhookHandlers) {
   );
 }
 
+try {
+  const stripeFinanceWebhook = require('./stripeFinanceWebhook').default;
+  app.use(stripeFinanceWebhook);
+  console.log('Stripe finance webhook handler registered');
+} catch (e) {
+  console.warn('Stripe finance webhook handler not available, skipping');
+}
+
 app.use(cors({ origin: '*' }));
 app.use((req, res, next) => {
   res.removeHeader('X-Frame-Options');
@@ -244,6 +374,14 @@ try {
 }
 
 try {
+  const plaidWebhookHandler = require('./plaidWebhookHandler').default;
+  app.use(plaidWebhookHandler);
+  console.log('Plaid webhook handler registered');
+} catch (e) {
+  console.warn('Plaid webhook handler not available, skipping');
+}
+
+try {
   const quickbooksRoutes = require('./quickbooksRoutes').default;
   app.use(quickbooksRoutes);
   console.log('QuickBooks routes registered');
@@ -252,11 +390,35 @@ try {
 }
 
 try {
+  const qboWebhookHandler = require('./qboWebhookHandler').default;
+  app.use(qboWebhookHandler);
+  console.log('QuickBooks webhook handler registered');
+} catch (e) {
+  console.warn('QuickBooks webhook handler not available, skipping');
+}
+
+try {
+  const gustoWebhookHandler = require('./gustoWebhookHandler').default;
+  app.use(gustoWebhookHandler);
+  console.log('Gusto webhook handler registered');
+} catch (e) {
+  console.warn('Gusto webhook handler not available, skipping');
+}
+
+try {
   const stripeConnectRoutes = require('./stripeConnectRoutes').default;
   app.use(stripeConnectRoutes);
   console.log('Stripe Connect routes registered');
 } catch (e) {
   console.warn('Stripe Connect routes not available, skipping');
+}
+
+try {
+  const financeRoutes = require('./financeRoutes').default;
+  app.use(financeRoutes);
+  console.log('Finance storyline routes registered');
+} catch (e) {
+  console.warn('Finance routes not available, skipping');
 }
 
 if (registerObjectStorageRoutes) {
