@@ -119,3 +119,7 @@ Aggregates finance_events into 5 chaptered story sections:
 - Added null safety to all currency formatting functions (formatCurrency, formatShortCurrency, ReconcileCard)
 - Gated lifecycle and timeline sections behind isConnected check (connection-aware UI)
 - Added error boundary wrapper to Finance Hub to prevent future blank screens
+- Fixed Plaid white screen hang: dynamically loads Plaid Link SDK (link-initialize.js) instead of broken popup fallback
+- Memoized SDK load promise to prevent duplicate script injection
+- Proper cleanup of intervals/timeouts in SDK loader to avoid unhandled rejections
+- Loading state now clears correctly on Plaid success, exit, or error

@@ -188,35 +188,63 @@ export default function ConnectionsScreen() {
     }
   };
 
+  const plaidSdkPromiseRef = React.useRef<Promise<void> | null>(null);
+  const loadPlaidSdk = useCallback((): Promise<void> => {
+    if (plaidSdkPromiseRef.current) return plaidSdkPromiseRef.current;
+    const p = new Promise<void>((resolve, reject) => {
+      if (typeof window === 'undefined') return reject(new Error('No window'));
+      if ((window as any).Plaid) return resolve();
+      const waitForPlaid = () => {
+        let resolved = false;
+        const check = setInterval(() => {
+          if ((window as any).Plaid && !resolved) { resolved = true; clearInterval(check); clearTimeout(timeout); resolve(); }
+        }, 100);
+        const timeout = setTimeout(() => { if (!resolved) { resolved = true; clearInterval(check); plaidSdkPromiseRef.current = null; reject(new Error('Plaid SDK load timeout')); } }, 10000);
+      };
+      const existing = document.getElementById('plaid-link-sdk');
+      if (existing) { waitForPlaid(); return; }
+      const script = document.createElement('script');
+      script.id = 'plaid-link-sdk';
+      script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+      script.onload = () => waitForPlaid();
+      script.onerror = () => { plaidSdkPromiseRef.current = null; reject(new Error('Failed to load Plaid SDK')); };
+      document.head.appendChild(script);
+    });
+    plaidSdkPromiseRef.current = p;
+    return p;
+  }, []);
+
   const openPlaidLink = async () => {
     setActionLoading('plaid');
     try {
+      await loadPlaidSdk();
       const res = await fetch('/api/plaid/create-link-token', { method: 'POST' });
       const data = await res.json();
-      if (data.link_token && typeof window !== 'undefined') {
-        const handler = (window as any).Plaid?.create({
+      if (data.link_token && typeof window !== 'undefined' && (window as any).Plaid) {
+        const handler = (window as any).Plaid.create({
           token: data.link_token,
           onSuccess: async (publicToken: string) => {
-            await fetch('/api/plaid/exchange-token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ public_token: publicToken }),
-            });
+            try {
+              await fetch('/api/plaid/exchange-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ public_token: publicToken }),
+              });
+            } catch (e) {
+              console.error('Plaid token exchange error:', e);
+            }
+            setActionLoading(null);
             checkAllStatuses();
           },
           onExit: () => setActionLoading(null),
         });
-        if (handler) {
-          handler.open();
-        } else {
-          const linkUrl = `https://cdn.plaid.com/link/v2/stable/link.html?token=${data.link_token}`;
-          window.open(linkUrl, '_blank', 'width=400,height=700');
-          setTimeout(() => checkAllStatuses(), 5000);
-        }
+        handler.open();
+      } else {
+        console.error('Plaid SDK not available after load');
+        setActionLoading(null);
       }
     } catch (err) {
       console.error('Plaid connect error:', err);
-    } finally {
       setActionLoading(null);
     }
   };
@@ -533,9 +561,6 @@ export default function ConnectionsScreen() {
 
   return (
     <FinanceHubShell>
-      {Platform.OS === 'web' && (
-        <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js" />
-      )}
       <View style={[s.heroBanner, premiumCardBase as any, Platform.OS === 'web' && { background: `radial-gradient(ellipse at top right, rgba(59,130,246,0.08) 0%, transparent 50%), ${CARD_BG}` } as any]}>
         <View style={s.heroContent}>
           <View style={s.heroLeft}>
