@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern } from '@/constants/cardPatterns';
-import { getPlaidConsent } from '@/lib/security/plaidConsent';
-import { getMfaStatus, isMfaVerifiedRecently } from '@/lib/security/mfa';
+import { getPlaidConsent, setPlaidConsent } from '@/lib/security/plaidConsent';
+import { getMfaStatus, isMfaVerifiedRecently, verifyMfaCode, generateMfaSecret, storeMfaSecret, updateMfaStatus, getQrCodeDataUrl } from '@/lib/security/mfa';
 
 const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -51,6 +51,17 @@ export default function ConnectionsScreen() {
   const [crossLinking, setCrossLinking] = useState<string | null>(null);
   const [crossLinkSuccess, setCrossLinkSuccess] = useState<Record<string, boolean>>({});
   const plaidRouter = useRouter();
+
+  const [consentModalVisible, setConsentModalVisible] = useState(false);
+  const [mfaModalVisible, setMfaModalVisible] = useState(false);
+  const [mfaMode, setMfaMode] = useState<'setup' | 'verify'>('verify');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaQrUrl, setMfaQrUrl] = useState<string | null>(null);
+  const [mfaSecret, setMfaSecretState] = useState<string | null>(null);
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [pendingPlaidConnect, setPendingPlaidConnect] = useState(false);
 
   const checkAllStatuses = useCallback(async () => {
     try {
@@ -177,34 +188,9 @@ export default function ConnectionsScreen() {
     }
   };
 
-  const connectPlaid = async () => {
+  const openPlaidLink = async () => {
     setActionLoading('plaid');
     try {
-      const hasConsent = await getPlaidConsent();
-      if (!hasConsent) {
-        setActionLoading(null);
-        plaidRouter.push('/more/plaid-consent' as any);
-        return;
-      }
-
-      const mfaStatus = await getMfaStatus();
-      if (!mfaStatus.enabled) {
-        setActionLoading(null);
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert('MFA is required before connecting Plaid. Please enable MFA in More → Security first.');
-        }
-        return;
-      }
-
-      const recentlyVerified = await isMfaVerifiedRecently();
-      if (!recentlyVerified) {
-        setActionLoading(null);
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert('Please verify your MFA code before connecting Plaid. Your last verification has expired.');
-        }
-        return;
-      }
-
       const res = await fetch('/api/plaid/create-link-token', { method: 'POST' });
       const data = await res.json();
       if (data.link_token && typeof window !== 'undefined') {
@@ -234,6 +220,90 @@ export default function ConnectionsScreen() {
       setActionLoading(null);
     }
   };
+
+  const connectPlaid = async () => {
+    setActionLoading('plaid');
+    try {
+      const hasConsent = await getPlaidConsent();
+      if (!hasConsent) {
+        setActionLoading(null);
+        setConsentAccepted(false);
+        setConsentModalVisible(true);
+        return;
+      }
+
+      const mfaStatus = await getMfaStatus();
+      if (!mfaStatus.enabled) {
+        setActionLoading(null);
+        setMfaMode('setup');
+        setMfaCode('');
+        setMfaError(null);
+        setMfaQrUrl(null);
+        setMfaSecretState(null);
+        const secret = generateMfaSecret();
+        setMfaSecretState(secret);
+        try {
+          const qr = await getQrCodeDataUrl({ issuer: 'Aspire Desktop', accountName: 'finance@aspire', secret });
+          setMfaQrUrl(qr);
+        } catch {}
+        setMfaModalVisible(true);
+        return;
+      }
+
+      const recentlyVerified = await isMfaVerifiedRecently();
+      if (!recentlyVerified) {
+        setActionLoading(null);
+        setMfaMode('verify');
+        setMfaCode('');
+        setMfaError(null);
+        setMfaModalVisible(true);
+        return;
+      }
+
+      await openPlaidLink();
+    } catch (err) {
+      console.error('Plaid connect error:', err);
+      setActionLoading(null);
+    }
+  };
+
+  const handleMfaSubmit = async () => {
+    setMfaLoading(true);
+    setMfaError(null);
+    try {
+      if (mfaMode === 'setup' && mfaSecret) {
+        await storeMfaSecret(mfaSecret);
+      }
+      const valid = await verifyMfaCode(mfaCode);
+      if (!valid) {
+        setMfaError('Invalid code. Please check your authenticator app and try again.');
+        setMfaLoading(false);
+        return;
+      }
+      await updateMfaStatus({ enabled: true, lastVerifiedAt: new Date().toISOString(), method: 'TOTP' });
+      setMfaModalVisible(false);
+      setMfaCode('');
+      setPendingPlaidConnect(true);
+    } catch (err: any) {
+      setMfaError(err.message || 'Verification failed.');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleConsentAccept = async () => {
+    await setPlaidConsent(true);
+    setConsentAccepted(true);
+    setConsentModalVisible(false);
+    setPendingPlaidConnect(true);
+  };
+
+  useEffect(() => {
+    if (pendingPlaidConnect) {
+      setPendingPlaidConnect(false);
+      connectPlaid();
+    }
+  }, [pendingPlaidConnect]);
 
   const connectQuickBooks = async () => {
     setActionLoading('quickbooks');
@@ -912,6 +982,169 @@ export default function ConnectionsScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={consentModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConsentModalVisible(false)}
+      >
+        <View style={s.modalOverlay}>
+          <View style={[s.modalContainer, premiumCardBase as any]}>
+            <View style={s.modalHeader}>
+              <View style={s.modalTitleRow}>
+                <View style={[s.modalIconWrap, { backgroundColor: 'rgba(0, 208, 156, 0.15)' }]}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color="#00D09C" />
+                </View>
+                <Text style={s.modalTitle}>Data Consent</Text>
+              </View>
+              <Pressable onPress={() => setConsentModalVisible(false)} style={s.modalClose}>
+                <Ionicons name="close" size={20} color={Colors.text.tertiary} />
+              </Pressable>
+            </View>
+            <Text style={s.modalSubtitle}>Authorize Aspire to securely access your bank data via Plaid.</Text>
+
+            <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+              <View style={s.consentSection}>
+                <View style={s.consentIconRow}>
+                  <Ionicons name="eye-outline" size={16} color="#60A5FA" />
+                  <Text style={s.consentSectionTitle}>What we access (read-only)</Text>
+                </View>
+                <Text style={s.consentDetail}>Account identifiers (institution + last 4)</Text>
+                <Text style={s.consentDetail}>Balances</Text>
+                <Text style={s.consentDetail}>Transactions (if you enable transaction feed)</Text>
+              </View>
+
+              <View style={s.consentSection}>
+                <View style={s.consentIconRow}>
+                  <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
+                  <Text style={s.consentSectionTitle}>What we do NOT do</Text>
+                </View>
+                <Text style={s.consentDetail}>We do not initiate bank transfers</Text>
+                <Text style={s.consentDetail}>We do not store your bank login credentials</Text>
+              </View>
+
+              <View style={s.consentSection}>
+                <View style={s.consentIconRow}>
+                  <Ionicons name="settings-outline" size={16} color="#A78BFA" />
+                  <Text style={s.consentSectionTitle}>Your controls</Text>
+                </View>
+                <Text style={s.consentDetail}>Disconnect Plaid anytime from Connections</Text>
+                <Text style={s.consentDetail}>Request data deletion from Data Retention</Text>
+              </View>
+            </ScrollView>
+
+            <Text style={s.consentLegal}>By accepting, you authorize Aspire to access and process your Plaid data according to our Privacy Policy.</Text>
+
+            <View style={s.consentBtnRow}>
+              <Pressable
+                onPress={() => setConsentModalVisible(false)}
+                style={({ hovered }: any) => [s.consentCancelBtn, hovered && { backgroundColor: 'rgba(255,255,255,0.08)' }]}
+              >
+                <Text style={s.consentCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConsentAccept}
+                style={({ hovered }: any) => [s.consentAcceptBtn, hovered && { opacity: 0.9 }]}
+              >
+                <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                <Text style={s.consentAcceptText}>Accept & Continue</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={mfaModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMfaModalVisible(false)}
+      >
+        <View style={s.modalOverlay}>
+          <View style={[s.modalContainer, premiumCardBase as any]}>
+            <View style={s.modalHeader}>
+              <View style={s.modalTitleRow}>
+                <View style={[s.modalIconWrap, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
+                  <Ionicons name="lock-closed-outline" size={20} color="#3B82F6" />
+                </View>
+                <Text style={s.modalTitle}>{mfaMode === 'setup' ? 'Set Up MFA' : 'Verify MFA'}</Text>
+              </View>
+              <Pressable onPress={() => setMfaModalVisible(false)} style={s.modalClose}>
+                <Ionicons name="close" size={20} color={Colors.text.tertiary} />
+              </Pressable>
+            </View>
+
+            {mfaMode === 'setup' ? (
+              <>
+                <Text style={s.modalSubtitle}>Multi-factor authentication is required to connect banking services. Scan the QR code below with your authenticator app.</Text>
+                {mfaQrUrl && Platform.OS === 'web' ? (
+                  <View style={s.qrContainer}>
+                    <img src={mfaQrUrl} style={{ width: 180, height: 180, borderRadius: 12 }} alt="MFA QR Code" />
+                  </View>
+                ) : (
+                  <View style={s.qrContainer}>
+                    <View style={s.qrPlaceholder}>
+                      <Ionicons name="qr-code-outline" size={48} color={Colors.text.muted} />
+                      <Text style={{ color: Colors.text.muted, fontSize: 12, marginTop: 8 }}>Loading QR...</Text>
+                    </View>
+                  </View>
+                )}
+                {mfaSecret && (
+                  <View style={s.secretKeyBox}>
+                    <Text style={s.secretKeyLabel}>Manual entry key</Text>
+                    <Text style={s.secretKeyValue} selectable>{mfaSecret}</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <Text style={s.modalSubtitle}>Enter the 6-digit code from your authenticator app to verify your identity and connect Plaid.</Text>
+            )}
+
+            <View style={s.formGroup}>
+              <Text style={s.formLabel}>Verification Code</Text>
+              <TextInput
+                style={[s.formInput, s.mfaCodeInput]}
+                value={mfaCode}
+                onChangeText={setMfaCode}
+                placeholder="000000"
+                placeholderTextColor={Colors.text.muted}
+                keyboardType="number-pad"
+                maxLength={6}
+                autoFocus
+              />
+            </View>
+
+            {mfaError && (
+              <View style={s.errorBanner}>
+                <Ionicons name="alert-circle" size={16} color="#EF4444" />
+                <Text style={s.errorText}>{mfaError}</Text>
+              </View>
+            )}
+
+            <Pressable
+              onPress={handleMfaSubmit}
+              disabled={mfaLoading || mfaCode.length < 6}
+              style={({ hovered }: any) => [
+                s.modalSubmitBtn,
+                { backgroundColor: '#3B82F6' },
+                Platform.OS === 'web' && { boxShadow: '0 4px 16px rgba(59, 130, 246, 0.3)' } as any,
+                hovered && { opacity: 0.9 },
+                (mfaLoading || mfaCode.length < 6) && { opacity: 0.5 },
+              ]}
+            >
+              {mfaLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="shield-checkmark" size={16} color="#fff" />
+                  <Text style={s.modalSubmitText}>{mfaMode === 'setup' ? 'Enable & Verify' : 'Verify & Connect'}</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </FinanceHubShell>
   );
 }
@@ -1337,5 +1570,122 @@ const s = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  consentSection: {
+    marginBottom: 16,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
+  },
+  consentIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  consentSectionTitle: {
+    color: Colors.text.primary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  consentDetail: {
+    color: Colors.text.tertiary,
+    fontSize: 13,
+    lineHeight: 20,
+    paddingLeft: 24,
+  },
+  consentLegal: {
+    color: Colors.text.muted,
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  consentBtnRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  consentCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease' } : {}),
+  },
+  consentCancelText: {
+    color: Colors.text.secondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  consentAcceptBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#00D09C',
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 4px 16px rgba(0, 208, 156, 0.3)' } as any : {}),
+  },
+  consentAcceptText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  qrContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  qrPlaceholder: {
+    width: 180,
+    height: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 12,
+  },
+  secretKeyBox: {
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.15)',
+  },
+  secretKeyLabel: {
+    color: Colors.text.muted,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  secretKeyValue: {
+    color: '#60A5FA',
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
+    letterSpacing: 1.5,
+  },
+  mfaCodeInput: {
+    fontSize: 24,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 8,
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
+    paddingVertical: 16,
   },
 });

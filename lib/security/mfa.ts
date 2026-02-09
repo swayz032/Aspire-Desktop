@@ -1,4 +1,4 @@
-import { authenticator } from 'otplib';
+import { generateSecret as otpGenerateSecret, verify as otpVerify } from 'otplib';
 import QRCode from 'qrcode';
 import { getItem, setItem, removeItem } from './storage';
 
@@ -12,7 +12,7 @@ export type MfaStatus = {
 };
 
 export function generateMfaSecret(): string {
-  return authenticator.generateSecret();
+  return otpGenerateSecret();
 }
 
 export async function storeMfaSecret(secret: string): Promise<void> {
@@ -48,7 +48,12 @@ export async function verifyMfaCode(code: string): Promise<boolean> {
   const secret = await getStoredMfaSecret();
   if (!secret) return false;
   const cleaned = (code || '').replace(/\s+/g, '');
-  return authenticator.check(cleaned, secret);
+  try {
+    const result = await otpVerify({ secret, token: cleaned });
+    return result?.valid === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function getQrCodeDataUrl(params: {
@@ -57,7 +62,7 @@ export async function getQrCodeDataUrl(params: {
   secret: string;
 }): Promise<string> {
   const { issuer, accountName, secret } = params;
-  const otpauth = authenticator.keyuri(accountName, issuer, secret);
+  const otpauth = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}`;
   return await QRCode.toDataURL(otpauth);
 }
 
