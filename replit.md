@@ -137,3 +137,11 @@ Aggregates finance_events into 5 chaptered story sections:
 - Expanded Add Employee form with job title, pay type (Hourly/Salary toggle), rate, and department fields — wires job + compensation creation via Gusto API
 - Added always-available Print Paystub button (window.open + window.print) with professional styled HTML paystub layout
 - Deep scanned all 7 payroll subpages — no critical runtime errors found
+- Fixed Add Employee to match Gusto SDK: fetches location_id, sends hire_date, UPDATES auto-created $0/hr compensation (PUT /compensations/:id with version) instead of creating duplicate
+- Rewrote Run Payroll to match Gusto's official API: fetches unprocessed payrolls, uses PUT /prepare for tax calculation (not separate /calculate), validates each step before advancing
+- Added PUT /api/gusto/payrolls/:uuid/prepare server route for real tax calculation
+- Added PUT /api/gusto/federal-tax-details server route for W-4 editing
+- Integrated real Gusto PDF paystubs: direct PDF download button when payroll submitted, fallback to enhanced HTML
+- Removed all silent catch(e){} blocks, replaced with proper error surfacing and user-facing messages
+- Added validation gates: blocks step advancement if previous step incomplete (employees required, hours required, calculation required before submit)
+- Dynamic payroll dates from activePayroll (check_date, payroll_deadline) replace hardcoded dates
