@@ -23,6 +23,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@google-cloud/storage": "^7.18.0",
     "@gusto/embedded-react-sdk": "^0.26.0",
+    "@octokit/rest": "^22.0.1",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.6",
