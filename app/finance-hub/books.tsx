@@ -5,6 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern } from '@/constants/cardPatterns';
+import { StoryCard, StoryExplainDrawer, StoryTimeline, StoryWizard, categorizeToDepartments, groupEventsByTimeline } from '@/components/finance/story';
+import type { FinanceEvent, ExplainItem, DepartmentShelf } from '@/components/finance/story';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 type TabKey = 'overview' | 'reports' | 'accounts' | 'journal' | 'ledger';
@@ -12,9 +14,9 @@ type TabKey = 'overview' | 'reports' | 'accounts' | 'journal' | 'ledger';
 const TABS: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'overview', label: 'Overview', icon: 'grid' },
   { key: 'reports', label: 'Reports', icon: 'bar-chart' },
-  { key: 'accounts', label: 'Chart of Accounts', icon: 'wallet' },
-  { key: 'journal', label: 'Journal Entries', icon: 'document-text' },
-  { key: 'ledger', label: 'General Ledger', icon: 'list' },
+  { key: 'accounts', label: 'Money Shelves', icon: 'wallet' },
+  { key: 'journal', label: 'Money Moves', icon: 'document-text' },
+  { key: 'ledger', label: 'Money Trail', icon: 'list' },
 ];
 
 const isWeb = Platform.OS === 'web';
@@ -1103,11 +1105,280 @@ function GeneralLedgerTab({ initialData }: { initialData: any }) {
   );
 }
 
+function MoneyShelvesOwner({ accounts }: { accounts: any[] }) {
+  const [expandedDept, setExpandedDept] = useState<string | null>(null);
+  const [explainDept, setExplainDept] = useState<DepartmentShelf | null>(null);
+  const departments = categorizeToDepartments(accounts);
+
+  const DEPT_NAMES: Record<string, string> = {
+    Asset: 'Assets', Liability: 'Liabilities', Income: 'Income', Expense: 'Expenses', Equity: 'Equity',
+  };
+
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <Ionicons name="layers-outline" size={18} color={Colors.text.tertiary} />
+        <Text style={[Typography.caption, { color: Colors.text.tertiary }]}>Your money organized by department</Text>
+      </View>
+      {departments.map(dept => {
+        const isExpanded = expandedDept === dept.id;
+        return (
+          <View key={dept.id}>
+            <StoryCard
+              title={DEPT_NAMES[dept.name] || dept.name}
+              value={fmt(dept.totalBalance)}
+              valueColor={dept.color}
+              icon={dept.icon as keyof typeof Ionicons.glyphMap}
+              iconColor={dept.color}
+              iconBg={dept.color + '20'}
+              trend={dept.trend}
+              trendColor={dept.color}
+              badge={`${dept.accounts.length} accounts`}
+              badgeColor={dept.color}
+              onPress={() => setExpandedDept(isExpanded ? null : dept.id)}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                <Pressable
+                  onPress={(e) => { e.stopPropagation?.(); setExplainDept(dept); }}
+                  style={[{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: dept.color + '15' }, webOnly({ cursor: 'pointer' })]}
+                >
+                  <Ionicons name="bulb-outline" size={14} color={dept.color} />
+                  <Text style={[Typography.small, { color: dept.color, fontWeight: '600' }]}>Explain</Text>
+                </Pressable>
+              </View>
+            </StoryCard>
+            {isExpanded && (
+              <View style={{ marginLeft: 16, marginBottom: 8, gap: 6 }}>
+                {dept.accounts.map(acct => (
+                  <View key={acct.id} style={[{ flexDirection: 'row', alignItems: 'center', backgroundColor: CARD_BG, borderWidth: 1, borderColor: CARD_BORDER, borderRadius: 10, padding: 12, gap: 10 }, webOnly({ background: CARD_BG, border: `1px solid ${CARD_BORDER}` })]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[Typography.captionMedium, { color: Colors.text.primary }]}>{acct.name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        {acct.subType ? (
+                          <View style={{ backgroundColor: dept.color + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={[Typography.micro, { color: dept.color }]}>{acct.subType}</Text>
+                          </View>
+                        ) : null}
+                        {acct.lastActivity ? (
+                          <Text style={[Typography.small, { color: Colors.text.muted }]}>
+                            {new Date(acct.lastActivity).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    <Text style={[Typography.captionMedium, { color: Colors.text.primary, fontWeight: '600' }]}>{fmt(acct.balance)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        );
+      })}
+      <StoryExplainDrawer
+        visible={!!explainDept}
+        title={explainDept ? (DEPT_NAMES[explainDept.name] || explainDept.name) : ''}
+        subtitle="Top contributing accounts"
+        total={explainDept?.totalBalance}
+        items={explainDept ? explainDept.accounts.slice().sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)).slice(0, 8).map(a => ({
+          label: a.name,
+          amount: a.balance,
+          percentage: explainDept.totalBalance !== 0 ? (a.balance / explainDept.totalBalance) * 100 : 0,
+          provider: 'quickbooks' as const,
+        })) : []}
+        onClose={() => setExplainDept(null)}
+        sourceLabel="QuickBooks"
+      />
+    </View>
+  );
+}
+
+function MoneyMovesOwner({ accounts }: { accounts: any[] }) {
+  const handleWizardSubmit = async (journalEntry: { date: string; memo: string; lines: { accountId: string; accountName: string; type: 'Debit' | 'Credit'; amount: string; description: string }[] }) => {
+    const res = await fetch('/api/quickbooks/journal-entries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        txnDate: journalEntry.date,
+        privateNote: journalEntry.memo,
+        lines: journalEntry.lines.map(l => ({
+          accountId: l.accountId,
+          accountName: l.accountName,
+          type: l.type,
+          amount: parseFloat(l.amount) || 0,
+          description: l.description,
+        })),
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to create journal entry');
+    }
+  };
+
+  return <StoryWizard accounts={accounts} onSubmit={handleWizardSubmit} />;
+}
+
+function convertGLToEvents(glData: any): FinanceEvent[] {
+  if (!glData?.Rows?.Row) return [];
+  const events: FinanceEvent[] = [];
+  let eventIdx = 0;
+
+  const colNames: string[] = (glData.Columns?.Column || []).map((c: any) => (c.ColTitle || c.ColType || '').toLowerCase());
+
+  const findColIndex = (keyword: string) => colNames.findIndex(c => c.includes(keyword));
+  const dateIdx = findColIndex('date');
+  const nameIdx = findColIndex('name');
+  const memoIdx = findColIndex('memo');
+  const debitIdx = findColIndex('debit');
+  const creditIdx = findColIndex('credit');
+  const amountIdx = findColIndex('amount');
+
+  const startPeriod = glData.Header?.StartPeriod;
+  const endPeriod = glData.Header?.EndPeriod;
+
+  const processRows = (rows: any, parentAccount?: string) => {
+    if (!rows?.Row) return;
+    for (const row of rows.Row) {
+      const headerLabel = row.Header?.ColData?.[0]?.value || parentAccount || '';
+      if (row.Rows) {
+        processRows(row.Rows, headerLabel);
+      }
+      if (row.ColData && !row.Header) {
+        const cols = row.ColData;
+
+        let dateStr = dateIdx >= 0 ? cols[dateIdx]?.value : null;
+        if (!dateStr && cols.length > 0) {
+          for (const c of cols) {
+            if (c?.value && /^\d{4}-\d{2}-\d{2}$/.test(c.value)) { dateStr = c.value; break; }
+          }
+        }
+        const parsedDate = dateStr ? new Date(dateStr) : null;
+        const timeStr = parsedDate && !isNaN(parsedDate.getTime())
+          ? parsedDate.toISOString()
+          : (startPeriod ? new Date(startPeriod).toISOString() : new Date().toISOString());
+
+        const debitAmt = debitIdx >= 0 ? parseFloat(cols[debitIdx]?.value) || 0 : 0;
+        const creditAmt = creditIdx >= 0 ? parseFloat(cols[creditIdx]?.value) || 0 : 0;
+        let amt = debitAmt - creditAmt;
+        if (amt === 0 && amountIdx >= 0) {
+          amt = parseFloat(cols[amountIdx]?.value) || 0;
+        }
+        if (amt === 0) {
+          const fallbackAmt = parseFloat(cols[1]?.value) || 0;
+          amt = fallbackAmt;
+        }
+
+        const label = (nameIdx >= 0 ? cols[nameIdx]?.value : null) || (memoIdx >= 0 ? cols[memoIdx]?.value : null) || cols[0]?.value || '';
+
+        if (amt !== 0 && label) {
+          eventIdx++;
+          events.push({
+            id: `gl-${eventIdx}`,
+            type: 'ledger-entry',
+            time: timeStr,
+            amount: Math.abs(amt),
+            direction: amt >= 0 ? 'inflow' : 'outflow',
+            counterparty: parentAccount || 'Unknown',
+            provider: 'quickbooks',
+            sourceIds: [],
+            links: [],
+            description: label,
+            category: parentAccount,
+            account: parentAccount,
+          });
+        }
+      }
+    }
+  };
+
+  processRows(glData.Rows);
+  return events;
+}
+
+function MoneyTrailOwner({ ledgerData }: { ledgerData: any }) {
+  const [period, setPeriod] = useState<'day' | 'week' | 'month'>('month');
+  const [explainEvent, setExplainEvent] = useState<FinanceEvent | null>(null);
+
+  const events = convertGLToEvents(ledgerData);
+  const groups = groupEventsByTimeline(events, period);
+
+  const PERIOD_OPTIONS: { key: 'day' | 'week' | 'month'; label: string }[] = [
+    { key: 'day', label: 'Day' },
+    { key: 'week', label: 'Week' },
+    { key: 'month', label: 'Month' },
+  ];
+
+  return (
+    <View style={{ gap: 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Ionicons name="time-outline" size={18} color={Colors.text.tertiary} />
+        <Text style={[Typography.caption, { color: Colors.text.tertiary, flex: 1 }]}>Activity timeline</Text>
+        <View style={{ flexDirection: 'row', backgroundColor: CARD_BG, borderRadius: 10, borderWidth: 1, borderColor: CARD_BORDER, padding: 3, gap: 2 }}>
+          {PERIOD_OPTIONS.map(opt => (
+            <Pressable
+              key={opt.key}
+              onPress={() => setPeriod(opt.key)}
+              style={[webOnly({ cursor: 'pointer' })]}
+            >
+              {period === opt.key ? (
+                <LinearGradient
+                  colors={['#3B82F6', '#2563EB']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 }}
+                >
+                  <Text style={[Typography.small, { color: '#fff', fontWeight: '600' }]}>{opt.label}</Text>
+                </LinearGradient>
+              ) : (
+                <View style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 }}>
+                  <Text style={[Typography.small, { color: Colors.text.muted }]}>{opt.label}</Text>
+                </View>
+              )}
+            </Pressable>
+          ))}
+        </View>
+      </View>
+      <StoryTimeline
+        groups={groups}
+        onExplain={(event) => setExplainEvent(event)}
+        emptyMessage="No ledger activity found. Try refreshing the general ledger data."
+      />
+      <StoryExplainDrawer
+        visible={!!explainEvent}
+        title={explainEvent?.description || explainEvent?.type || ''}
+        subtitle={explainEvent?.counterparty}
+        total={explainEvent?.amount}
+        items={explainEvent ? [{
+          label: explainEvent.account || explainEvent.counterparty,
+          amount: explainEvent.amount,
+          percentage: 100,
+          provider: explainEvent.provider,
+        }] : []}
+        onClose={() => setExplainEvent(null)}
+        sourceLabel={explainEvent ? `${explainEvent.provider.charAt(0).toUpperCase() + explainEvent.provider.slice(1)}` : undefined}
+      />
+    </View>
+  );
+}
+
 export default function BooksScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [qbConnected, setQbConnected] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'owner' | 'accountant'>(() => {
+    if (isWeb) {
+      try { return (localStorage.getItem('books_view_mode') as 'owner' | 'accountant') || 'owner'; } catch { return 'owner'; }
+    }
+    return 'owner';
+  });
+
+  const toggleViewMode = (mode: 'owner' | 'accountant') => {
+    setViewMode(mode);
+    if (isWeb) { try { localStorage.setItem('books_view_mode', mode); } catch {} }
+  };
+
+  const showViewToggle = activeTab === 'accounts' || activeTab === 'journal' || activeTab === 'ledger';
 
   const [reports, setReports] = useState<any>(null);
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -1238,22 +1509,54 @@ export default function BooksScreen() {
                 <Text style={[Typography.small, { color: Colors.text.tertiary, marginTop: 2 }]}>QuickBooks accounting data & reports</Text>
               </View>
             </View>
-            {loading ? (
-              <View style={[styles.statusBadge, { backgroundColor: 'rgba(110,110,115,0.15)' }]}>
-                <ActivityIndicator size="small" color={Colors.text.muted} />
-                <Text style={[Typography.small, { color: Colors.text.muted }]}>Checking...</Text>
-              </View>
-            ) : qbConnected ? (
-              <View style={styles.statusBadge}>
-                <View style={[styles.dot, { backgroundColor: Colors.semantic.success }]} />
-                <Text style={[Typography.small, { color: Colors.semantic.success, fontWeight: '600' }]}>QuickBooks Connected</Text>
-              </View>
-            ) : (
-              <View style={[styles.statusBadge, { backgroundColor: 'rgba(255,59,48,0.12)' }]}>
-                <View style={[styles.dot, { backgroundColor: '#ff3b30' }]} />
-                <Text style={[Typography.small, { color: '#ff3b30', fontWeight: '600' }]}>Not Connected</Text>
-              </View>
-            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              {loading ? (
+                <View style={[styles.statusBadge, { backgroundColor: 'rgba(110,110,115,0.15)' }]}>
+                  <ActivityIndicator size="small" color={Colors.text.muted} />
+                  <Text style={[Typography.small, { color: Colors.text.muted }]}>Checking...</Text>
+                </View>
+              ) : qbConnected ? (
+                <View style={styles.statusBadge}>
+                  <View style={[styles.dot, { backgroundColor: Colors.semantic.success }]} />
+                  <Text style={[Typography.small, { color: Colors.semantic.success, fontWeight: '600' }]}>QuickBooks Connected</Text>
+                </View>
+              ) : (
+                <View style={[styles.statusBadge, { backgroundColor: 'rgba(255,59,48,0.12)' }]}>
+                  <View style={[styles.dot, { backgroundColor: '#ff3b30' }]} />
+                  <Text style={[Typography.small, { color: '#ff3b30', fontWeight: '600' }]}>Not Connected</Text>
+                </View>
+              )}
+              {showViewToggle && (
+                <View style={{ flexDirection: 'row', borderRadius: 10, padding: 3, gap: 2, backgroundColor: CARD_BG, borderWidth: 1, borderColor: CARD_BORDER }}>
+                  <Pressable onPress={() => toggleViewMode('owner')} style={webOnly({ cursor: 'pointer' })}>
+                    {viewMode === 'owner' ? (
+                      <LinearGradient colors={['#3B82F6', '#2563EB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="person" size={13} color="#fff" />
+                        <Text style={[Typography.small, { color: '#fff', fontWeight: '600' }]}>Owner</Text>
+                      </LinearGradient>
+                    ) : (
+                      <View style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="person-outline" size={13} color={Colors.text.muted} />
+                        <Text style={[Typography.small, { color: Colors.text.muted }]}>Owner</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                  <Pressable onPress={() => toggleViewMode('accountant')} style={webOnly({ cursor: 'pointer' })}>
+                    {viewMode === 'accountant' ? (
+                      <LinearGradient colors={['#3B82F6', '#2563EB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="calculator" size={13} color="#fff" />
+                        <Text style={[Typography.small, { color: '#fff', fontWeight: '600' }]}>Accountant</Text>
+                      </LinearGradient>
+                    ) : (
+                      <View style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="calculator-outline" size={13} color={Colors.text.muted} />
+                        <Text style={[Typography.small, { color: Colors.text.muted }]}>Accountant</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                </View>
+              )}
+            </View>
           </View>
         </div>
       ) : (
@@ -1355,9 +1658,9 @@ export default function BooksScreen() {
 
           {activeTab === 'overview' && reports && <OverviewTab data={reports} />}
           {activeTab === 'reports' && reports && <ReportsTab data={reports} />}
-          {activeTab === 'accounts' && <AccountsTab accounts={accounts} />}
-          {activeTab === 'journal' && <JournalEntriesTab entries={journalEntries} accounts={accounts} />}
-          {activeTab === 'ledger' && <GeneralLedgerTab initialData={generalLedger} />}
+          {activeTab === 'accounts' && (viewMode === 'owner' ? <MoneyShelvesOwner accounts={accounts} /> : <AccountsTab accounts={accounts} />)}
+          {activeTab === 'journal' && (viewMode === 'owner' ? <MoneyMovesOwner accounts={accounts} /> : <JournalEntriesTab entries={journalEntries} accounts={accounts} />)}
+          {activeTab === 'ledger' && (viewMode === 'owner' ? <MoneyTrailOwner ledgerData={generalLedger} /> : <GeneralLedgerTab initialData={generalLedger} />)}
         </>
       )}
     </FinanceHubShell>

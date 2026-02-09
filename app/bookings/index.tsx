@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { Colors, Typography, BorderRadius, Spacing } from '@/constants/tokens';
+import { CARD_BG } from '@/constants/cardPatterns';
 import { useRouter } from 'expo-router';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
@@ -451,6 +452,88 @@ export default function BookingsPage() {
           <>
             {activeTab === 'upcoming' && (
               <View style={styles.section}>
+                <View style={{
+                  backgroundColor: CARD_BG || '#1C1C1E',
+                  borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+                  padding: 20, marginBottom: 20,
+                  ...(Platform.OS === 'web' ? { boxShadow: '0 4px 24px rgba(0,0,0,0.4)' } as any : {}),
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(16, 185, 129, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="wallet-outline" size={18} color="#10B981" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#f2f2f2', fontSize: 15, fontWeight: '700' }}>Booking Revenue</Text>
+                      <Text style={{ color: '#8e8e93', fontSize: 12, marginTop: 1 }}>Financial overview of your bookings</Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                    {(() => {
+                      const paidBookings = bookings.filter(b => b.paymentStatus === 'paid');
+                      const unpaidBookings = bookings.filter(b => b.paymentStatus !== 'paid');
+                      const paidTotal = paidBookings.reduce((s, b) => s + b.amount, 0);
+                      const unpaidTotal = unpaidBookings.reduce((s, b) => s + b.amount, 0);
+                      const totalAll = paidTotal + unpaidTotal;
+                      const reconciledPct = totalAll > 0 ? Math.round((paidTotal / totalAll) * 100) : 0;
+                      const nextPayout = new Date();
+                      nextPayout.setDate(nextPayout.getDate() + ((5 - nextPayout.getDay() + 7) % 7 || 7));
+
+                      return (
+                        <>
+                          <View style={{ flex: 1, backgroundColor: 'rgba(16, 185, 129, 0.06)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.12)' }}>
+                            <Ionicons name="checkmark-circle-outline" size={16} color="#10B981" />
+                            <Text style={{ color: '#10B981', fontSize: 18, fontWeight: '800', marginTop: 6 }}>{formatCurrency(paidTotal)}</Text>
+                            <Text style={{ color: '#8e8e93', fontSize: 11, marginTop: 2 }}>Paid ({paidBookings.length})</Text>
+                          </View>
+                          <View style={{ flex: 1, backgroundColor: 'rgba(245, 158, 11, 0.06)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.12)' }}>
+                            <Ionicons name="time-outline" size={16} color="#F59E0B" />
+                            <Text style={{ color: '#F59E0B', fontSize: 18, fontWeight: '800', marginTop: 6 }}>{formatCurrency(unpaidTotal)}</Text>
+                            <Text style={{ color: '#8e8e93', fontSize: 11, marginTop: 2 }}>Unpaid ({unpaidBookings.length})</Text>
+                          </View>
+                          <View style={{ flex: 1, backgroundColor: 'rgba(59, 130, 246, 0.06)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.12)' }}>
+                            <Ionicons name="sync-outline" size={16} color="#3B82F6" />
+                            <Text style={{ color: '#3B82F6', fontSize: 18, fontWeight: '800', marginTop: 6 }}>{reconciledPct}%</Text>
+                            <Text style={{ color: '#8e8e93', fontSize: 11, marginTop: 2 }}>Reconciled</Text>
+                          </View>
+                        </>
+                      );
+                    })()}
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.04)' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="calendar-outline" size={14} color="#8e8e93" />
+                      <Text style={{ color: '#8e8e93', fontSize: 12 }}>
+                        Next payout: {(() => { const d = new Date(); d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); })()}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <Pressable
+                        onPress={() => { if (Platform.OS === 'web') window.location.href = '/finance-hub/invoices'; }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                      >
+                        <Text style={{ color: '#3B82F6', fontSize: 12, fontWeight: '600' }}>Invoices</Text>
+                        <Ionicons name="arrow-forward" size={12} color="#3B82F6" />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => { if (Platform.OS === 'web') window.location.href = '/finance-hub/cash'; }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                      >
+                        <Text style={{ color: '#3B82F6', fontSize: 12, fontWeight: '600' }}>Payouts</Text>
+                        <Ionicons name="arrow-forward" size={12} color="#3B82F6" />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => { if (Platform.OS === 'web') window.location.href = '/finance-hub/books'; }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                      >
+                        <Text style={{ color: '#3B82F6', fontSize: 12, fontWeight: '600' }}>Books</Text>
+                        <Ionicons name="arrow-forward" size={12} color="#3B82F6" />
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+
                 {upcomingBookings.length === 0 ? (
                   <View style={styles.emptyState}>
                     <Ionicons name="calendar-outline" size={48} color={Colors.text.muted} />

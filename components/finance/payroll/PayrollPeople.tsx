@@ -57,6 +57,11 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState<string | null>(null);
+  const [showTerminateConfirm, setShowTerminateConfirm] = useState(false);
+  const [terminateDate, setTerminateDate] = useState(new Date().toISOString().split('T')[0]);
+  const [terminateRunPayroll, setTerminateRunPayroll] = useState(true);
+  const [terminating, setTerminating] = useState(false);
+  const [terminateError, setTerminateError] = useState<string | null>(null);
 
   const allEmployees = useMemo(() => {
     const combined = [...(gustoEmployees || [])];
@@ -205,6 +210,49 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
       setMessage({ type: 'error', text: errorText });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleTerminate = async () => {
+    if (!selected) return;
+    const empId = selected.uuid || selected.id;
+    setTerminating(true);
+    setTerminateError(null);
+
+    const isOnboarding = (selected.onboarding_status || '').toLowerCase().includes('onboarding') ||
+      (selected.current_employment_status || '').toLowerCase() === 'inactive';
+
+    try {
+      if (isOnboarding) {
+        const res = await fetch(`/api/gusto/employees/${empId}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to remove employee');
+        }
+      } else {
+        const res = await fetch(`/api/gusto/employees/${empId}/terminations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            effective_date: terminateDate,
+            run_termination_payroll: terminateRunPayroll,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to terminate employee');
+        }
+      }
+
+      setLocalEmployees(prev => prev.filter(e => (e.uuid || e.id) !== empId));
+      setSelectedId(null);
+      setShowTerminateConfirm(false);
+      setEditMode(false);
+      setMessage({ type: 'success', text: isOnboarding ? 'Employee removed successfully.' : 'Employee terminated successfully.' });
+    } catch (e: any) {
+      setTerminateError(e.message || 'Failed to process request');
+    } finally {
+      setTerminating(false);
     }
   };
 
@@ -729,6 +777,101 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
                   ))}
                 </View>
               )}
+
+              <View style={[styles.detailSection, { marginTop: 8 }]}>
+                {!showTerminateConfirm ? (
+                  <Pressable
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      paddingVertical: 12, borderRadius: 10,
+                      backgroundColor: 'rgba(255, 59, 48, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 59, 48, 0.2)',
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    }}
+                    onPress={() => { setShowTerminateConfirm(true); setTerminateError(null); }}
+                  >
+                    <Ionicons name="person-remove-outline" size={16} color="#FF6B6B" />
+                    <Text style={{ color: '#FF6B6B', fontSize: 13, fontWeight: '600' }}>
+                      {(selected.current_employment_status || '').toLowerCase() === 'active' ? 'Terminate Employee' : 'Remove Employee'}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <View style={{ backgroundColor: 'rgba(255, 59, 48, 0.06)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255, 59, 48, 0.15)', padding: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <Ionicons name="warning-outline" size={20} color="#FF6B6B" />
+                      <Text style={{ color: '#FF6B6B', fontSize: 14, fontWeight: '700' }}>
+                        {(selected.current_employment_status || '').toLowerCase() === 'active' ? 'Confirm Termination' : 'Confirm Removal'}
+                      </Text>
+                    </View>
+                    <Text style={{ color: '#d1d1d6', fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
+                      {(selected.current_employment_status || '').toLowerCase() === 'active'
+                        ? `This will terminate ${selected.first_name} ${selected.last_name}. This action is processed through Gusto and cannot be undone.`
+                        : `This will permanently remove ${selected.first_name} ${selected.last_name} from the system.`}
+                    </Text>
+
+                    {(selected.current_employment_status || '').toLowerCase() === 'active' && (
+                      <>
+                        <View style={{ marginBottom: 12 }}>
+                          <Text style={{ color: '#8e8e93', fontSize: 12, marginBottom: 4 }}>Last Day of Work</Text>
+                          <TextInput
+                            style={[styles.editInput, { borderColor: 'rgba(255, 59, 48, 0.2)' }]}
+                            value={terminateDate}
+                            onChangeText={setTerminateDate}
+                            placeholder="YYYY-MM-DD"
+                            placeholderTextColor="#6e6e73"
+                          />
+                        </View>
+                        <Pressable
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                          onPress={() => setTerminateRunPayroll(!terminateRunPayroll)}
+                        >
+                          <Ionicons
+                            name={terminateRunPayroll ? 'checkbox' : 'square-outline'}
+                            size={20}
+                            color={terminateRunPayroll ? '#3B82F6' : '#6e6e73'}
+                          />
+                          <Text style={{ color: '#d1d1d6', fontSize: 13 }}>Run termination payroll for final wages</Text>
+                        </Pressable>
+                      </>
+                    )}
+
+                    {terminateError && (
+                      <View style={{ backgroundColor: 'rgba(255, 59, 48, 0.12)', borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                        <Text style={{ color: '#ff3b30', fontSize: 12, fontWeight: '500' }}>{terminateError}</Text>
+                      </View>
+                    )}
+
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <Pressable
+                        style={{
+                          flex: 1, backgroundColor: 'rgba(255, 59, 48, 0.15)', borderRadius: 10,
+                          paddingVertical: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6,
+                          borderWidth: 1, borderColor: 'rgba(255, 59, 48, 0.3)',
+                          opacity: terminating ? 0.7 : 1,
+                        }}
+                        onPress={handleTerminate}
+                        disabled={terminating}
+                      >
+                        {terminating ? (
+                          <ActivityIndicator size="small" color="#FF6B6B" />
+                        ) : (
+                          <>
+                            <Ionicons name="trash-outline" size={15} color="#FF6B6B" />
+                            <Text style={{ color: '#FF6B6B', fontSize: 13, fontWeight: '700' }}>
+                              {(selected.current_employment_status || '').toLowerCase() === 'active' ? 'Terminate' : 'Remove'}
+                            </Text>
+                          </>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: CARD_BORDER, alignItems: 'center' }}
+                        onPress={() => { setShowTerminateConfirm(false); setTerminateError(null); }}
+                      >
+                        <Text style={{ color: '#d1d1d6', fontSize: 13 }}>Cancel</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+              </View>
             </ScrollView>
           </View>
         )}

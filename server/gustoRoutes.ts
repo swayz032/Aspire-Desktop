@@ -1005,6 +1005,37 @@ router.put('/api/gusto/locations/:uuid', async (req: Request, res: Response) => 
   }
 });
 
+router.post('/api/gusto/employees/:uuid/terminations', async (req: Request, res: Response) => {
+  try {
+    const data = await gustoMutate(
+      `${GUSTO_API_BASE}/v1/employees/${req.params.uuid}/terminations`,
+      'POST',
+      req.body
+    );
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto terminate employee error:', error.message);
+    res.status(500).json({ error: error.message || 'Failed to terminate employee' });
+  }
+});
+
+router.delete('/api/gusto/employees/:uuid', async (req: Request, res: Response) => {
+  try {
+    const response = await fetch(`${GUSTO_API_BASE}/v1/employees/${req.params.uuid}`, {
+      method: 'DELETE',
+      headers: getGustoHeaders(currentAccessToken),
+    });
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(errBody || `Gusto API error: ${response.status}`);
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Gusto delete employee error:', error.message);
+    res.status(500).json({ error: error.message || 'Failed to delete employee' });
+  }
+});
+
 export function getCurrentAccessToken(): string {
   return currentAccessToken;
 }

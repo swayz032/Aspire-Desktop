@@ -1,0 +1,48 @@
+Goal: Upgrade Finance Hub to be owner-first “financial story” UX without changing theme/colors.
+Repo context: Expo (desktop/web). Do NOT change design tokens. Only restructure layouts and add components.
+
+1) Books page redesign (app/finance-hub/books.tsx)
+- Keep routing + tabs, but change presentation:
+  A) Rename labels in UI (not routes):
+     - “Money Shelves” (Chart of Accounts)
+     - “Money Moves” (Journal Entries)
+     - “Money Trail” (General Ledger)
+  B) Add an “Accountant view” toggle (persist in localStorage / zustand):
+     - Owner view: cards + guided flows + timeline
+     - Accountant view: existing tables/forms (debits/credits visible)
+
+2) Money Shelves (COA)
+- Replace accounts table-first layout with:
+  - Department tiles (Assets/Liabilities/Income/Expenses/Equity)
+  - Inside each: shelf cards (account cards) with balance, trend, last activity.
+- Keep existing data fetch from /api/quickbooks/accounts.
+- Add “Explain” drawer per department total: list top contributing accounts.
+
+3) Money Moves (Journal)
+- Owner flow:
+  - A guided wizard (“What happened?”) that generates JE lines behind the scenes.
+  - Only show debit/credit lines in Accountant view (reuse current form).
+- Keep POST endpoint behavior unchanged; wrap it.
+
+4) Money Trail (GL)
+- Replace report rows-first layout with a timeline grouping (day/week/month).
+- Each timeline item expands to show:
+  - Source (QB report row)
+  - Links to related objects (if available)
+  - “Explain” list of contributing rows
+
+5) Storyline foundation (new)
+- Add a normalized client model for finance events (local-only first):
+  - type, time, amount, direction, counterparty, provider, source ids, links.
+- Use it to render the new timeline views.
+- Later we’ll back it with a real finance_event table, but implement the UI contract now.
+
+6) Booking page (app/bookings/index.tsx)
+- Add a “Booking → Money” panel:
+  - Paid vs unpaid, next payout date, reconciled %, drill links to invoices/payouts/books.
+- Placeholder data allowed, but UI must support drill + explain hooks.
+
+Deliverables:
+- New components: components/finance/story/* (cards, timeline, explain drawer, wizard)
+- Updated books.tsx + bookings/index.tsx
+- No theme changes. No new dependencies unless absolutely required.

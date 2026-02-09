@@ -145,3 +145,12 @@ Aggregates finance_events into 5 chaptered story sections:
 - Removed all silent catch(e){} blocks, replaced with proper error surfacing and user-facing messages
 - Added validation gates: blocks step advancement if previous step incomplete (employees required, hours required, calculation required before submit)
 - Dynamic payroll dates from activePayroll (check_date, payroll_deadline) replace hardcoded dates
+- Employee delete/terminate: PayrollPeople detail panel now has Terminate/Remove button with confirmation dialog, Gusto API termination (POST /employees/:uuid/terminations) or delete (DELETE /employees/:uuid) for onboarding employees
+- Tax compliance 3-state: verified (green checkmark), default (blue info icon + Review), pending (amber + Configure) — Gusto defaults no longer show premature green checks
+- $0 pay rate validation: blocks "Proceed to Calculate" button with error message directing to People page
+- Finance Hub Books page "Financial Story" UX: renamed tabs (Money Shelves, Money Moves, Money Trail), Owner/Accountant view toggle (localStorage persisted)
+- Money Shelves (Owner view): department tiles (Assets/Liabilities/Income/Expenses/Equity) with expandable shelf cards, balance, trend sparklines, Explain drawer per department
+- Money Moves (Owner view): guided "What happened?" wizard with 6 scenarios, generates journal entry lines behind the scenes, submits to QuickBooks
+- Money Trail (Owner view): timeline-grouped layout (day/week/month) with period selector, converts GL data to normalized FinanceEvents with date parsing
+- Story foundation components: components/finance/story/ — StoryCard, StoryTimeline, StoryExplainDrawer, StoryWizard, types with FinanceEvent model and grouping functions
+- Booking → Money panel: added to bookings page with paid/unpaid breakdown, reconciled %, next payout date, drill links to Invoices/Payouts/Books
