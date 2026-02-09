@@ -564,6 +564,19 @@ router.get('/api/gusto/federal-tax-details', async (_req: Request, res: Response
   }
 });
 
+router.put('/api/gusto/federal-tax-details', async (req: Request, res: Response) => {
+  const companyUuid = getCompanyUuid();
+  if (!companyUuid) return res.status(503).json({ error: 'Gusto credentials not configured' });
+
+  try {
+    const data = await gustoMutate(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/federal_tax_details`, 'PUT', req.body);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto update federal tax details error:', error.message);
+    res.status(500).json({ error: 'Failed to update federal tax details' });
+  }
+});
+
 router.get('/api/gusto/contractor-payments', async (_req: Request, res: Response) => {
   const companyUuid = getCompanyUuid();
   if (!companyUuid) return res.status(503).json({ error: 'Gusto credentials not configured' });
@@ -747,11 +760,24 @@ router.get('/api/gusto/payrolls/:uuid/prepare', async (req: Request, res: Respon
   if (!companyUuid) return res.status(503).json({ error: 'Gusto credentials not configured' });
 
   try {
-    const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/payrolls/${req.params.uuid}/prepare`);
+    const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/payrolls/${req.params.uuid}`);
     res.json(data);
   } catch (error: any) {
     console.error('Gusto prepare payroll error:', error.message);
     res.status(500).json({ error: 'Failed to prepare payroll' });
+  }
+});
+
+router.put('/api/gusto/payrolls/:uuid/prepare', async (req: Request, res: Response) => {
+  const companyUuid = getCompanyUuid();
+  if (!companyUuid) return res.status(503).json({ error: 'Gusto credentials not configured' });
+
+  try {
+    const data = await gustoMutate(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/payrolls/${req.params.uuid}/prepare`, 'PUT', req.body || {});
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto prepare payroll error:', error.message);
+    res.status(500).json({ error: error.message || 'Failed to prepare/calculate payroll' });
   }
 });
 

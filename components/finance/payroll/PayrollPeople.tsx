@@ -103,38 +103,98 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
       }
 
       const newEmp = await response.json();
+      let partialWarning: string | null = null;
 
       if (newEmp.uuid && formData.job_title.trim()) {
+        let locationId: string | null = null;
         try {
+          const locRes = await fetch('/api/gusto/locations');
+          if (locRes.ok) {
+            const locations = await locRes.json();
+            if (Array.isArray(locations) && locations.length > 0) {
+              locationId = locations[0].id || locations[0].uuid;
+            }
+          }
+        } catch (_) {}
+
+        const todayISO = new Date().toISOString().split('T')[0];
+
+        try {
+          const jobBody: Record<string, string> = {
+            title: formData.job_title.trim(),
+            hire_date: todayISO,
+          };
+          if (locationId) {
+            jobBody.location_id = locationId;
+          }
+
           const jobRes = await fetch(`/api/gusto/employees/${newEmp.uuid}/jobs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: formData.job_title.trim() }),
+            body: JSON.stringify(jobBody),
           });
-          if (jobRes.ok) {
-            const job = await jobRes.json();
-            if (job.uuid && formData.rate.trim()) {
-              await fetch(`/api/gusto/jobs/${job.uuid}/compensations`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  rate: formData.rate.trim(),
-                  payment_unit: formData.pay_type,
-                  flsa_status: formData.pay_type === 'Year' ? 'Exempt' : 'Nonexempt',
-                }),
-              });
-            }
-            newEmp.jobs = [{ ...job, compensations: formData.rate ? [{ rate: formData.rate, payment_unit: formData.pay_type }] : [] }];
+
+          if (!jobRes.ok) {
+            const jobErr = await jobRes.json().catch(() => ({}));
+            throw new Error(jobErr.message || 'Job creation failed');
           }
-        } catch (e) {}
+
+          const job = await jobRes.json();
+
+          if (job.uuid && formData.rate.trim()) {
+            const defaultComp = job.compensations?.[0];
+
+            if (defaultComp?.uuid && defaultComp?.version) {
+              try {
+                const compRes = await fetch(`/api/gusto/compensations/${defaultComp.uuid}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    version: defaultComp.version,
+                    rate: formData.rate.trim(),
+                    payment_unit: formData.pay_type,
+                    flsa_status: formData.pay_type === 'Year' ? 'Exempt' : 'Nonexempt',
+                  }),
+                });
+
+                if (!compRes.ok) {
+                  const compErr = await compRes.json().catch(() => ({}));
+                  throw new Error(compErr.message || 'Compensation update failed');
+                }
+
+                const updatedComp = await compRes.json();
+                newEmp.jobs = [{ ...job, compensations: [updatedComp] }];
+              } catch (compError) {
+                const compErrText = compError instanceof Error ? compError.message : 'Unknown error';
+                partialWarning = `Employee created but pay rate setup failed: ${compErrText}`;
+                newEmp.jobs = [{ ...job, compensations: job.compensations || [] }];
+              }
+            } else {
+              newEmp.jobs = [{ ...job, compensations: job.compensations || [] }];
+            }
+          } else {
+            newEmp.jobs = [{ ...job, compensations: job.compensations || [] }];
+          }
+        } catch (jobError) {
+          if (!partialWarning) {
+            const jobErrText = jobError instanceof Error ? jobError.message : 'Unknown error';
+            partialWarning = `Employee created but job setup failed: ${jobErrText}`;
+          }
+        }
       }
 
       setLocalEmployees(prev => [...prev, newEmp]);
-      setMessage({ type: 'success', text: 'Employee added successfully' });
+
+      if (partialWarning) {
+        setMessage({ type: 'error', text: partialWarning });
+      } else {
+        setMessage({ type: 'success', text: 'Employee added successfully' });
+      }
+
       setFormData({ first_name: '', last_name: '', email: '', job_title: '', pay_type: 'Hour', rate: '', department: '' });
       setShowAddForm(false);
 
-      setTimeout(() => setMessage(null), 3000);
+      setTimeout(() => setMessage(null), 5000);
     } catch (err) {
       const errorText = err instanceof Error ? err.message : 'Failed to add employee';
       setMessage({ type: 'error', text: errorText });

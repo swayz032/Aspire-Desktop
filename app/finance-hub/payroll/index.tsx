@@ -147,39 +147,67 @@ export default function RunPayrollScreen() {
     ? gustoPaySchedules[0].frequency?.replace(/_/g, ' ')?.replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Bi-weekly'
     : 'Bi-weekly (1st and 15th)';
 
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const handleCreatePayroll = async () => {
+    setCreateError(null);
+    if (!gustoConnected) {
+      setCreateError('Payroll provider not connected. Go to Connections to set up Gusto.');
+      return;
+    }
+    if (gustoEmployees.length === 0) {
+      setCreateError('No employees found. Add employees in the People tab before creating a payroll run.');
+      return;
+    }
     setRetrieving(true);
     try {
       if (activePayroll?.uuid) {
-        const res = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}/prepare`);
+        const res = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}`);
         if (res.ok) {
           const data = await res.json();
           setActivePayroll(data);
           setRetrieved(true);
-        }
-      } else if (gustoConnected && gustoEmployees.length > 0) {
-        const today = new Date();
-        const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 14);
-        const res = await fetch('/api/gusto/payrolls', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            off_cycle: true,
-            off_cycle_reason: 'Bonus',
-            start_date: today.toISOString().split('T')[0],
-            end_date: endDate.toISOString().split('T')[0],
-          }),
-        });
-        if (res.ok) {
-          const newPayroll = await res.json();
-          setActivePayroll(newPayroll);
-          setRetrieved(true);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setCreateError(err.error || 'Failed to fetch payroll details from Gusto');
         }
       } else {
-        setRetrieved(true);
+        const payrollsRes = await fetch('/api/gusto/payrolls?processing_statuses=unprocessed');
+        if (payrollsRes.ok) {
+          const payrolls = await payrollsRes.json();
+          const unprocessedList = Array.isArray(payrolls) ? payrolls : [];
+          const unprocessed = unprocessedList.find((p: any) => !p.processed);
+          if (unprocessed) {
+            setActivePayroll(unprocessed);
+            setRetrieved(true);
+          } else {
+            const today = new Date();
+            const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 14);
+            const res = await fetch('/api/gusto/payrolls', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                off_cycle: true,
+                off_cycle_reason: 'Bonus',
+                start_date: today.toISOString().split('T')[0],
+                end_date: endDate.toISOString().split('T')[0],
+              }),
+            });
+            if (res.ok) {
+              const newPayroll = await res.json();
+              setActivePayroll(newPayroll);
+              setRetrieved(true);
+            } else {
+              const err = await res.json().catch(() => ({}));
+              setCreateError(err.error || 'Failed to create payroll run via Gusto API');
+            }
+          }
+        } else {
+          setCreateError('Failed to fetch payrolls from Gusto');
+        }
       }
     } catch (e) {
-      setRetrieved(true);
+      setCreateError('Failed to connect to payroll service. Check your connection.');
     } finally {
       setRetrieving(false);
     }
@@ -189,50 +217,67 @@ export default function RunPayrollScreen() {
     setCalculating(true);
     setCalcError(null);
     try {
-      if (activePayroll?.uuid) {
-        const updateRes = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            version: activePayroll.version,
-            employee_compensations: employees.map(emp => ({
-              employee_uuid: emp.id,
-              fixed_compensations: parseFloat(emp.bonus || '0') > 0 ? [{
-                name: 'Bonus',
-                amount: emp.bonus,
-                job_uuid: gustoEmployees.find((g: any) => g.uuid === emp.id)?.jobs?.[0]?.uuid,
-              }] : [],
-              hourly_compensations: [{
-                name: 'Regular Hours',
-                hours: emp.hours,
-                job_uuid: gustoEmployees.find((g: any) => g.uuid === emp.id)?.jobs?.[0]?.uuid,
-              }],
-            })),
-          }),
-        });
-        if (updateRes.ok) {
-          const updated = await updateRes.json();
-          setActivePayroll(updated);
-        }
-        const calcRes = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}/calculate`, {
-          method: 'PUT',
-        });
-        if (calcRes.ok) {
-          const result = await calcRes.json();
-          setCalcResult(result);
-          setCalculated(true);
-        } else {
-          const err = await calcRes.json().catch(() => ({}));
-          setCalcError(err.message || 'Calculation failed — payroll may require employee setup first');
-          setCalculated(true);
-        }
-      } else {
-        await new Promise(r => setTimeout(r, 2000));
+      if (!activePayroll?.uuid) {
+        setCalcError('No active payroll found. Go back to Step 1 and create a payroll run first.');
+        setCalculating(false);
+        return;
+      }
+      if (employees.length === 0) {
+        setCalcError('No employees in this payroll. Add employees in the People tab first.');
+        setCalculating(false);
+        return;
+      }
+      const hasValidHours = employees.some(emp => parseFloat(emp.hours || '0') > 0 || emp.type === 'Salary');
+      if (!hasValidHours) {
+        setCalcError('Enter hours for at least one employee before calculating.');
+        setCalculating(false);
+        return;
+      }
+
+      const updateRes = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version: activePayroll.version,
+          employee_compensations: employees.map(emp => ({
+            employee_uuid: emp.id,
+            fixed_compensations: parseFloat(emp.bonus || '0') > 0 ? [{
+              name: 'Bonus',
+              amount: emp.bonus,
+              job_uuid: gustoEmployees.find((g: any) => g.uuid === emp.id)?.jobs?.[0]?.uuid,
+            }] : [],
+            hourly_compensations: [{
+              name: 'Regular Hours',
+              hours: emp.hours,
+              job_uuid: gustoEmployees.find((g: any) => g.uuid === emp.id)?.jobs?.[0]?.uuid,
+            }],
+          })),
+        }),
+      });
+      if (!updateRes.ok) {
+        const err = await updateRes.json().catch(() => ({}));
+        setCalcError(err.error || 'Failed to update payroll hours via Gusto API. Check employee data and try again.');
+        setCalculating(false);
+        return;
+      }
+      const updated = await updateRes.json();
+      setActivePayroll(updated);
+
+      const prepareRes = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}/prepare`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (prepareRes.ok) {
+        const result = await prepareRes.json();
+        setCalcResult(result);
+        setActivePayroll((prev: any) => ({ ...prev, ...result }));
         setCalculated(true);
+      } else {
+        const err = await prepareRes.json().catch(() => ({}));
+        setCalcError(err.error || err.message || 'Tax calculation failed — Gusto may require additional employee setup (SSN, address, tax forms). Check the People and Tax & Compliance tabs.');
       }
     } catch (e) {
-      setCalcError('Failed to connect to payroll service');
-      setCalculated(true);
+      setCalcError('Failed to connect to payroll service. Check your internet connection.');
     } finally {
       setCalculating(false);
     }
@@ -246,7 +291,9 @@ export default function RunPayrollScreen() {
           const data = await res.json();
           setReceiptData(data);
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Failed to fetch payroll receipt:', e);
+      }
     }
   };
 
@@ -254,25 +301,36 @@ export default function RunPayrollScreen() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      if (activePayroll?.uuid && gustoConnected) {
-        const res = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}/submit`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ version: activePayroll.version }),
-        });
-        if (res.ok) {
-          const result = await res.json();
-          setActivePayroll(result);
-          setSubmitted(true);
-        } else {
-          const err = await res.json().catch(() => ({}));
-          setSubmitError(err.error || err.message || 'Failed to submit payroll to provider');
-        }
-      } else {
+      if (!activePayroll?.uuid) {
+        setSubmitError('No active payroll to submit. Complete the previous steps first.');
+        setSubmitting(false);
+        return;
+      }
+      if (!calculated) {
+        setSubmitError('Payroll must be calculated before submitting. Go back to Calculate step.');
+        setSubmitting(false);
+        return;
+      }
+      if (!gustoConnected) {
+        setSubmitError('Payroll provider not connected. Cannot submit without an active connection.');
+        setSubmitting(false);
+        return;
+      }
+      const res = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}/submit`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: activePayroll.version }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setActivePayroll(result);
         setSubmitted(true);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setSubmitError(err.error || err.message || 'Failed to submit payroll to Gusto. The payroll may have already been submitted or the deadline may have passed.');
       }
     } catch (e) {
-      setSubmitError('Failed to connect to payroll service');
+      setSubmitError('Failed to connect to payroll service. Check your connection.');
     } finally {
       setSubmitting(false);
     }
@@ -306,19 +364,30 @@ export default function RunPayrollScreen() {
           }
           return { ...e, jobs };
         }));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error('Failed to update compensation:', err.error || err.message);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Compensation update failed:', e);
+    }
   };
 
   const handleViewPaystub = async (emp: Employee) => {
     setSelectedPaystub(emp);
-    if (!demoMode && gustoPaystubs[emp.id] === undefined) {
+    if (gustoConnected && gustoPaystubs[emp.id] === undefined) {
       setPaystubLoading(true);
       try {
         const res = await fetch(`/api/gusto/employees/${emp.id}/pay-stubs`);
         if (res.ok) {
           const stubs = await res.json();
-          setGustoPaystubs(prev => ({ ...prev, [emp.id]: Array.isArray(stubs) ? stubs : [] }));
+          const stubList = Array.isArray(stubs) ? stubs : [];
+          if (activePayroll?.uuid) {
+            stubList.forEach((s: any) => {
+              if (!s.payroll_uuid) s.payroll_uuid = activePayroll.uuid;
+            });
+          }
+          setGustoPaystubs(prev => ({ ...prev, [emp.id]: stubList }));
         } else {
           setGustoPaystubs(prev => ({ ...prev, [emp.id]: [] }));
         }
@@ -406,9 +475,15 @@ export default function RunPayrollScreen() {
           </View>
         ))}
       </View>
+      {createError && (
+        <View style={styles.demoBanner}>
+          <Ionicons name="alert-circle-outline" size={16} color="#ef4444" />
+          <Text style={[styles.demoBannerText, { color: '#ef4444' }]}>{createError}</Text>
+        </View>
+      )}
       {!retrieved ? (
         <Pressable
-          style={[styles.primaryBtn, retrieving && styles.primaryBtnDisabled, hoveredBtn === 'create' && styles.primaryBtnHover]}
+          style={[styles.primaryBtn, (retrieving || (!gustoConnected || gustoEmployees.length === 0)) && styles.primaryBtnDisabled, hoveredBtn === 'create' && styles.primaryBtnHover]}
           onPress={handleCreatePayroll}
           disabled={retrieving}
           {...webHover('create')}
@@ -416,7 +491,7 @@ export default function RunPayrollScreen() {
           {retrieving ? (
             <View style={styles.btnRow}>
               <ActivityIndicator size="small" color="#fff" />
-              <Text style={styles.primaryBtnText}>Creating payroll run...</Text>
+              <Text style={styles.primaryBtnText}>Fetching payroll from Gusto...</Text>
             </View>
           ) : (
             <View style={styles.btnRow}>
@@ -426,14 +501,26 @@ export default function RunPayrollScreen() {
           )}
         </Pressable>
       ) : (
-        <View style={styles.retrieveStatus}>
-          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-          <Text style={styles.retrieveStatusText}>
-            {activePayroll
-              ? `Payroll created — Period: ${payPeriodStart} to ${payPeriodEnd}`
-              : 'Payroll created successfully. Proceed to Prepare.'}
-          </Text>
-        </View>
+        <>
+          <View style={styles.retrieveStatus}>
+            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+            <Text style={styles.retrieveStatusText}>
+              {activePayroll
+                ? `Payroll created — Period: ${payPeriodStart} to ${payPeriodEnd}`
+                : 'Payroll created successfully. Proceed to Prepare.'}
+            </Text>
+          </View>
+          <Pressable
+            style={[styles.primaryBtn, { marginTop: 12, backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)' }, hoveredBtn === 'next-create' && { backgroundColor: 'rgba(16, 185, 129, 0.25)' }]}
+            onPress={() => setCurrentStep(1)}
+            {...webHover('next-create')}
+          >
+            <View style={styles.btnRow}>
+              <Ionicons name="arrow-forward" size={18} color="#10B981" />
+              <Text style={[styles.primaryBtnText, { color: '#10B981' }]}>Proceed to Prepare Payroll</Text>
+            </View>
+          </Pressable>
+        </>
       )}
     </View>
   );
@@ -546,6 +633,20 @@ export default function RunPayrollScreen() {
           </View>
         </View>
       </ScrollView>
+      <Pressable
+        style={[styles.primaryBtn, { marginTop: 16 }, employees.length === 0 && styles.primaryBtnDisabled, hoveredBtn === 'next-prep' && styles.primaryBtnHover]}
+        onPress={() => {
+          if (employees.length === 0) return;
+          setCurrentStep(2);
+        }}
+        disabled={employees.length === 0}
+        {...webHover('next-prep')}
+      >
+        <View style={styles.btnRow}>
+          <Ionicons name="arrow-forward" size={18} color="#fff" />
+          <Text style={styles.primaryBtnText}>Proceed to Calculate</Text>
+        </View>
+      </Pressable>
     </View>
   );
 
@@ -636,16 +737,28 @@ export default function RunPayrollScreen() {
         </Pressable>
       ) : calcError ? (
         <View style={styles.demoBanner}>
-          <Ionicons name="warning-outline" size={20} color="#f59e0b" />
-          <Text style={styles.demoBannerText}>{calcError}</Text>
+          <Ionicons name="alert-circle-outline" size={20} color="#ef4444" />
+          <Text style={[styles.demoBannerText, { color: '#ef4444' }]}>{calcError}</Text>
         </View>
       ) : (
-        <View style={styles.successBanner}>
-          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-          <Text style={styles.successBannerText}>
-            {calcResult ? 'Payroll calculated via API. Proceed to Submit.' : 'Payroll calculated successfully. Proceed to Submit.'}
-          </Text>
-        </View>
+        <>
+          <View style={styles.successBanner}>
+            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+            <Text style={styles.successBannerText}>
+              {calcResult ? 'Payroll calculated via Gusto API — taxes computed. Proceed to Submit.' : 'Payroll calculated successfully. Proceed to Submit.'}
+            </Text>
+          </View>
+          <Pressable
+            style={[styles.primaryBtn, { marginTop: 12, backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)' }, hoveredBtn === 'next-calc' && { backgroundColor: 'rgba(16, 185, 129, 0.25)' }]}
+            onPress={() => setCurrentStep(3)}
+            {...webHover('next-calc')}
+          >
+            <View style={styles.btnRow}>
+              <Ionicons name="arrow-forward" size={18} color="#10B981" />
+              <Text style={[styles.primaryBtnText, { color: '#10B981' }]}>Proceed to Submit Payroll</Text>
+            </View>
+          </Pressable>
+        </>
       )}
     </View>
   );
@@ -824,14 +937,28 @@ export default function RunPayrollScreen() {
             <Text style={styles.paystubGross}>Gross: {fmt(calcGross(emp))}</Text>
             <Text style={styles.paystubNet}>Net: {fmt(calcNet(emp))}</Text>
           </View>
-          <Pressable
-            style={[styles.paystubBtn, hoveredBtn === `stub-${emp.id}` && styles.paystubBtnHover]}
-            onPress={() => handleViewPaystub(emp)}
-            {...webHover(`stub-${emp.id}`)}
-          >
-            <Ionicons name="document-text-outline" size={14} color="#3B82F6" />
-            <Text style={styles.paystubBtnText}>View</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {submitted && activePayroll?.uuid && Platform.OS === 'web' && (
+              <Pressable
+                style={[styles.paystubBtn, { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' }, hoveredBtn === `pdf-${emp.id}` && { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}
+                onPress={() => {
+                  window.open(`/api/gusto/payrolls/${activePayroll.uuid}/employees/${emp.id}/pay-stub`, '_blank');
+                }}
+                {...webHover(`pdf-${emp.id}`)}
+              >
+                <Ionicons name="document-attach-outline" size={14} color="#10B981" />
+                <Text style={[styles.paystubBtnText, { color: '#10B981' }]}>PDF</Text>
+              </Pressable>
+            )}
+            <Pressable
+              style={[styles.paystubBtn, hoveredBtn === `stub-${emp.id}` && styles.paystubBtnHover]}
+              onPress={() => handleViewPaystub(emp)}
+              {...webHover(`stub-${emp.id}`)}
+            >
+              <Ionicons name="document-text-outline" size={14} color="#3B82F6" />
+              <Text style={styles.paystubBtnText}>View</Text>
+            </Pressable>
+          </View>
         </View>
       ))}
       {!receiptStored ? (
@@ -878,19 +1005,19 @@ export default function RunPayrollScreen() {
           <View style={styles.metaItem}>
             <Ionicons name="calendar-outline" size={14} color={Colors.text.muted} />
             <Text style={styles.metaLabel}>Next Payroll</Text>
-            <Text style={styles.metaValue}>Feb 14, 2026</Text>
+            <Text style={styles.metaValue}>{checkDate}</Text>
           </View>
           <View style={styles.metaDivider} />
           <View style={styles.metaItem}>
             <Ionicons name="alert-circle-outline" size={14} color="#f59e0b" />
             <Text style={styles.metaLabel}>Deadline</Text>
-            <Text style={[styles.metaValue, { color: '#f59e0b' }]}>Feb 12, 2026</Text>
+            <Text style={[styles.metaValue, { color: '#f59e0b' }]}>{payrollDeadline}</Text>
           </View>
           <View style={styles.metaDivider} />
           <View style={styles.metaItem}>
             <Ionicons name="checkmark-circle-outline" size={14} color={Colors.text.muted} />
             <Text style={styles.metaLabel}>Debit Date</Text>
-            <Text style={styles.metaValue}>Feb 14, 2026</Text>
+            <Text style={styles.metaValue}>{checkDate}</Text>
           </View>
         </View>
       </View>
@@ -970,7 +1097,12 @@ export default function RunPayrollScreen() {
             <React.Fragment key={step.key}>
               <Pressable
                 style={[styles.stepItem, isCurrent && styles.stepItemCurrent]}
-                onPress={() => setCurrentStep(idx)}
+                onPress={() => {
+                  if (idx > 0 && !retrieved) return;
+                  if (idx > 2 && !calculated) return;
+                  if (idx > 3 && !submitted) return;
+                  setCurrentStep(idx);
+                }}
                 {...webHover(`step-${idx}`)}
               >
                 <View style={[
