@@ -374,7 +374,24 @@ function RocketDecoration() {
   );
 }
 
-export default function FinanceHubIndex() {
+class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean; error: any}> {
+  constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
+  componentDidCatch(error: any, info: any) { console.error('FinanceHub crash:', error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, backgroundColor: '#0A0A0F', padding: 40, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#ef4444', fontSize: 18, fontWeight: '700', marginBottom: 12 }}>Finance Hub Error</Text>
+          <Text style={{ color: '#ccc', fontSize: 14 }}>{String(this.state.error)}</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function FinanceHubContent() {
   const router = useRouter();
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
@@ -1055,6 +1072,14 @@ export default function FinanceHubIndex() {
       onSendToQueue={(p) => { setShowProposal(false); }}
     />
     </>
+  );
+}
+
+export default function FinanceHubIndex() {
+  return (
+    <FinanceHubErrorBoundary>
+      <FinanceHubContent />
+    </FinanceHubErrorBoundary>
   );
 }
 
