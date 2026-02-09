@@ -33,7 +33,8 @@ function getStripeClient() {
 }
 
 function computeRawHash(data: any): string {
-  return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
+  const raw = Buffer.isBuffer(data) ? data : Buffer.from(typeof data === 'string' ? data : JSON.stringify(data));
+  return crypto.createHash('sha256').update(raw).digest('hex');
 }
 
 function extractAmount(eventType: string, dataObject: any): number | null {

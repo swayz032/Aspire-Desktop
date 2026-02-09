@@ -13,7 +13,8 @@ Aspire Desktop is a full-featured virtual office platform built with Expo (React
 ## Key Directories
 - `app/` - Expo Router pages (tabs, finance-hub, office-store, session, founder-hub, etc.)
 - `components/` - Reusable React components
-- `server/` - Express backend (API routes, database, integrations)
+- `components/finance/` - Finance Hub UI components (SourceBadge, ExplainDrawer, TimelineRow, ReconcileCard, LifecycleChain)
+- `server/` - Express backend (API routes, database, integrations, webhook handlers)
 - `data/` - Mock data and static data files
 - `assets/` - Images, avatars, fonts, AI staff videos
 - `public/` - Static files served directly (videos, HTML)
@@ -24,12 +25,53 @@ Aspire Desktop is a full-featured virtual office platform built with Expo (React
 
 ## Key Features
 - **Ava Desk**: AI assistant with voice and video modes (3D orb video at `/ava-orb.mp4`)
-- **Finance Hub**: Finn Desk (AI finance assistant), invoices, cash position, payroll, books, etc.
+- **Finance Hub**: Enterprise-grade event-sourced finance tracking with webhook ingestion, snapshot computation, reconciliation, lifecycle chain, and governed actions
 - **Office Store**: AI staff members (Clara, Eli, Nora, Quinn, Sarah) with intro videos
 - **Session**: Voice sessions, video calls, conference rooms
 - **Founder Hub**: Daily brief, education, library, notes, etc.
 - **Bookings**: Service scheduling system
 - **Inbox**: Business email/message management
+
+## Finance Hub Architecture (Enterprise)
+
+### Database Tables (Drizzle ORM, tenant-scoped)
+- `finance_connections` - Provider connections (Plaid, Stripe, QBO, Gusto) with status tracking
+- `finance_tokens` - Encrypted OAuth tokens with rotation versioning
+- `finance_events` - Append-only event store, normalized across providers, idempotent via unique constraint (suite_id, office_id, provider, provider_event_id)
+- `finance_entities` - Entity metadata and CDC cursors
+- `finance_snapshots` - Computed snapshot cache with chaptered story
+- `receipts` - Trust Spine audit trail for all operations
+
+### Webhook Handlers (Signature-Verified)
+- `server/plaidWebhookHandler.ts` - Plaid JWT verification, transactions/sync pull, balance fetch
+- `server/stripeFinanceWebhook.ts` - Stripe signature verification (raw body), payout reconciliation, settlement tracking, fee extraction
+- `server/qboWebhookHandler.ts` - QuickBooks HMAC-SHA256, CDC polling fallback, report fetching
+- `server/gustoWebhookHandler.ts` - Gusto HMAC verification, company token refresh (2hr expiry), payroll data fetch
+
+### Snapshot Engine (`server/snapshotEngine.ts`)
+Aggregates finance_events into 5 chaptered story sections:
+- **NOW** - Cash truth (bank + Stripe balances)
+- **NEXT** - 7-14 day cash flow projection
+- **MONTH** - Revenue/expense performance
+- **RECONCILE** - Mismatch detection (settlement timing, payout matching, cash vs books, missing entries)
+- **ACTIONS** - AI-generated proposals with risk assessment
+
+### API Endpoints
+- `GET /api/finance/snapshot` - Chaptered story with auto-refresh (5min staleness)
+- `GET /api/finance/timeline` - Paginated event feed
+- `GET /api/finance/explain` - Per-metric provenance explanation
+- `GET /api/finance/lifecycle` - Money flow chain (Booked→Invoiced→Paid→Deposited→Posted)
+- `GET /api/connections/status` - Provider connection health
+- `POST /api/finance/compute-snapshot` - Force snapshot recomputation
+- `POST /api/finance/proposals` - Create governed action proposals
+- `POST /api/finance/actions/execute` - Execute with Trust Spine policy evaluation
+
+### Finance UI Components
+- `SourceBadge` - Provider attribution with confidence indicator
+- `ExplainDrawer` - Bottom sheet with metric provenance details
+- `TimelineRow` - Event feed row with provider icons and amounts
+- `ReconcileCard` - Mismatch card with severity, amounts, next steps
+- `LifecycleChain` - Horizontal stepper showing money flow stages
 
 ## Build & Run
 - `npm run web` - Full build and serve (builds expo web + starts Express server)
@@ -56,14 +98,15 @@ Aspire Desktop is a full-featured virtual office platform built with Expo (React
 - **Contact Email**: security@aspireos.app (standardized across all pages)
 
 ## Recent Changes (Feb 9, 2026)
-- Upgraded all legal pages to enterprise-grade with full provider disclosures (Plaid, Stripe, QuickBooks, Gusto)
-- Added per-provider retention schedules, user rights, cross-border disclosures, incident response
-- Removed blue overlay from policy/security page icons
-- Standardized all contact email references to security@aspireos.app
-- Implemented Plaid compliance patch (consent gating, security practices)
-- Imported full Aspire-Desktop project from zip
-- Placed 3D object video (ava-orb.mp4) for Ava voice session and Finn desk
-- Added AI staff intro videos (Clara, Eli, Nora, Quinn, Sarah) to office store
-- Configured for desktop web mode on port 5000
-- Set up PostgreSQL database
-- Fixed dependency issues (expo-modules-core, react-native-gesture-handler)
+- Built enterprise Finance Hub backend with event-sourced architecture
+- Created 6 tenant-scoped finance database tables with idempotency constraints
+- Implemented webhook ingestion for all 4 providers (Plaid JWT, Stripe signature, QBO HMAC, Gusto HMAC)
+- Built snapshot computation engine with 5 chaptered story sections and provenance tracking
+- Created ReconcileCard rendering with mismatch detection (settlement timing, payout matching, cash vs books)
+- Built LifecycleChain component showing money flow (Booked→Invoiced→Paid→Deposited→Posted)
+- Added event timeline rendering with TimelineRow component
+- Implemented governed actions (proposals + execute) with Trust Spine policy evaluation
+- Added auto-refresh snapshot (5min staleness threshold)
+- Created lifecycle API with entity-scoped filtering
+- All webhook handlers use idempotent event writes (ON CONFLICT DO NOTHING)
+- Trust Spine receipts created for all operations (ingest, compute, propose, execute)

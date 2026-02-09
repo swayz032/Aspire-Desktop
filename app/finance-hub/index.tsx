@@ -8,6 +8,8 @@ import { ProposalReviewSheet, Proposal } from '@/components/finance/ProposalRevi
 import SourceBadge from '@/components/finance/SourceBadge';
 import ExplainDrawer from '@/components/finance/ExplainDrawer';
 import TimelineRow from '@/components/finance/TimelineRow';
+import ReconcileCard from '@/components/finance/ReconcileCard';
+import LifecycleChain from '@/components/finance/LifecycleChain';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern, heroCardBg } from '@/constants/cardPatterns';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
@@ -380,6 +382,7 @@ export default function FinanceHubIndex() {
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [lifecycleSteps, setLifecycleSteps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [explainMetric, setExplainMetric] = useState<string | null>(null);
 
@@ -410,14 +413,16 @@ export default function FinanceHubIndex() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [snapRes, connRes, timeRes] = await Promise.all([
+      const [snapRes, connRes, timeRes, lcRes] = await Promise.all([
         fetch('/api/finance/snapshot').then(r => r.json()).catch(() => null),
         fetch('/api/connections/status').then(r => r.json()).catch(() => null),
         fetch('/api/finance/timeline?limit=10').then(r => r.json()).catch(() => null),
+        fetch('/api/finance/lifecycle').then(r => r.json()).catch(() => null),
       ]);
       if (snapRes) setSnapshot(snapRes);
       if (connRes) setConnections(connRes);
       if (timeRes?.events) setTimeline(timeRes.events);
+      if (lcRes?.steps) setLifecycleSteps(lcRes.steps);
     } catch (e) {
       console.warn('Failed to fetch finance data:', e);
     } finally {
@@ -889,6 +894,54 @@ export default function FinanceHubIndex() {
         )}
       </GlassCard>
 
+      {hasSnapshot && snapshot.chapters.reconcile.mismatchCount > 0 && (
+        <>
+          <SectionLabel icon="git-compare" label="RECONCILIATION" color="#999" />
+          <View style={{ gap: 10, marginBottom: 4 }}>
+            <View style={s.sectionHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="git-compare" size={14} color="#F59E0B" />
+                </View>
+                <Text style={s.sectionTitle}>Items to Reconcile</Text>
+              </View>
+              <View style={[s.proposalCount, { backgroundColor: 'rgba(245,158,11,0.2)' }]}>
+                <Text style={[s.proposalCountText, { color: '#F59E0B' }]}>{snapshot.chapters.reconcile.mismatchCount}</Text>
+              </View>
+            </View>
+            {snapshot.chapters.reconcile.mismatches.map((m: any) => (
+              <ReconcileCard
+                key={m.id}
+                mismatch={m}
+                onAction={() => {}}
+                onDismiss={() => {}}
+              />
+            ))}
+          </View>
+        </>
+      )}
+
+      {lifecycleSteps.length > 0 && lifecycleSteps.some((st: any) => st.status !== 'pending') && (
+        <>
+          <SectionLabel icon="git-branch" label="MONEY LIFECYCLE" color="#999" />
+          <LifecycleChain
+            steps={lifecycleSteps}
+            title="Revenue Flow"
+            onExplainStep={(step) => {
+              const stageToMetric: Record<string, string> = {
+                'Booked': 'expected_inflows',
+                'Invoiced': 'expected_inflows',
+                'Paid': 'monthly_revenue',
+                'Deposited': 'cash_available',
+                'Posted': 'net_income',
+              };
+              const metricId = stageToMetric[step.label];
+              if (metricId) setExplainMetric(metricId);
+            }}
+          />
+        </>
+      )}
+
       <SectionLabel icon="activity" label="PROPOSALS & RECENT ACTIVITY" color="#999" />
 
       <View style={s.row}>
@@ -965,6 +1018,29 @@ export default function FinanceHubIndex() {
           })}
         </GlassCard>
       </View>
+
+      {timeline.length > 0 && (
+        <>
+          <SectionLabel icon="time" label="EVENT TIMELINE" color="#999" />
+          <GlassCard style={{ padding: 0 }} tint={{ color: '#8B5CF6', position: 'top-left' }}>
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: CARD_BORDER }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(139,92,246,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="time" size={14} color="#A78BFA" />
+                </View>
+                <Text style={s.cardTitle}>Live Event Feed</Text>
+              </View>
+            </View>
+            {timeline.map((evt, i) => (
+              <TimelineRow
+                key={evt.eventId}
+                event={evt}
+                isLast={i === timeline.length - 1}
+              />
+            ))}
+          </GlassCard>
+        </>
+      )}
 
     </FinanceHubShell>
     <ExplainDrawer

@@ -261,6 +261,90 @@ router.get('/api/connections/status', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
+  try {
+    const suiteId = getQueryParam(req.query.suiteId as string, 'default');
+    const officeId = getQueryParam(req.query.officeId as string, 'default');
+    const entityId = getQueryParam(req.query.entityId as string, '');
+
+    let result;
+    if (entityId) {
+      result = await db.execute(sql`
+        SELECT event_id, provider, event_type, occurred_at, amount, currency, status, entity_refs
+        FROM finance_events
+        WHERE suite_id = ${suiteId} AND office_id = ${officeId}
+          AND (entity_refs->>'invoice_id' = ${entityId}
+            OR entity_refs->>'payment_intent_id' = ${entityId}
+            OR entity_refs->>'payout_id' = ${entityId}
+            OR entity_refs->>'bank_tx_id' = ${entityId}
+            OR entity_refs->>'booking_id' = ${entityId})
+        ORDER BY occurred_at ASC
+        LIMIT 50
+      `);
+    } else {
+      result = await db.execute(sql`
+        SELECT event_id, provider, event_type, occurred_at, amount, currency, status, entity_refs
+        FROM finance_events
+        WHERE suite_id = ${suiteId} AND office_id = ${officeId}
+        ORDER BY occurred_at DESC
+        LIMIT 20
+      `);
+    }
+
+    const rows = (result.rows || result) as any[];
+
+    const LIFECYCLE_STAGES = ['booked', 'invoiced', 'paid', 'deposited', 'posted'];
+    const EVENT_TO_STAGE: Record<string, string> = {
+      'booking_created': 'booked',
+      'qbo_invoice_changed': 'invoiced',
+      'invoice_sent': 'invoiced',
+      'invoice_paid': 'paid',
+      'payment_succeeded': 'paid',
+      'payout_created': 'deposited',
+      'payout_paid': 'deposited',
+      'bank_tx_posted': 'deposited',
+      'qbo_journal_posted': 'posted',
+      'qbo_payment_changed': 'posted',
+    };
+
+    const completedStages = new Set<string>();
+    const stageDetails: Record<string, any> = {};
+
+    for (const row of rows) {
+      const stage = EVENT_TO_STAGE[row.event_type];
+      if (stage && !stageDetails[stage]) {
+        completedStages.add(stage);
+        stageDetails[stage] = {
+          provider: row.provider,
+          timestamp: row.occurred_at,
+          eventId: row.event_id,
+          amount: row.amount,
+        };
+      }
+    }
+
+    const steps = LIFECYCLE_STAGES.map((stage, i) => {
+      const detail = stageDetails[stage];
+      const isCompleted = completedStages.has(stage);
+      const allPreviousCompleted = LIFECYCLE_STAGES.slice(0, i).every(s => completedStages.has(s));
+      const isCurrent = !isCompleted && allPreviousCompleted;
+      return {
+        label: stage.charAt(0).toUpperCase() + stage.slice(1),
+        status: isCompleted ? 'completed' : (isCurrent ? 'current' : 'pending'),
+        provider: detail?.provider || null,
+        timestamp: detail?.timestamp || null,
+        eventId: detail?.eventId || null,
+        amount: detail?.amount || null,
+      };
+    });
+
+    res.json({ steps, entityId: entityId || null });
+  } catch (error: any) {
+    console.error('Finance lifecycle error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/api/finance/compute-snapshot', async (req: Request, res: Response) => {
   try {
     const { suiteId = 'default', officeId = 'default' } = req.body;
