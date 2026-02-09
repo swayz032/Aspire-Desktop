@@ -141,30 +141,30 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
   const companyName = gustoCompany?.name || gustoCompany?.trade_name || '—';
   const einVerified = taxDetails?.ein_verified === true;
 
-  const complianceChecks = [
+  const complianceChecks: { label: string; status: 'verified' | 'default' | 'pending'; description: string; icon: keyof typeof Ionicons.glyphMap }[] = [
     {
       label: 'EIN Verification',
-      status: einVerified,
+      status: einVerified ? 'verified' : 'pending',
       description: einVerified ? 'Employer Identification Number verified with the IRS' : 'EIN verification pending',
-      icon: 'shield-checkmark-outline' as const,
+      icon: 'shield-checkmark-outline',
     },
     {
       label: 'Federal Tax Filing',
-      status: !!taxDetails?.filing_form,
-      description: taxDetails?.filing_form ? `Filing form: ${taxDetails.filing_form}` : 'Filing form not configured',
-      icon: 'document-text-outline' as const,
+      status: taxDetails?.filing_form ? 'default' : 'pending',
+      description: taxDetails?.filing_form ? `Filing form: ${taxDetails.filing_form} (Review recommended)` : 'Filing form not configured',
+      icon: 'document-text-outline',
     },
     {
       label: 'Tax Deposit Schedule',
-      status: !!taxDetails?.deposit_schedule,
-      description: taxDetails?.deposit_schedule ? `Schedule: ${formatStatusLabel(taxDetails.deposit_schedule)}` : 'Deposit schedule not set',
-      icon: 'calendar-outline' as const,
+      status: taxDetails?.deposit_schedule ? 'default' : 'pending',
+      description: taxDetails?.deposit_schedule ? `Schedule: ${formatStatusLabel(taxDetails.deposit_schedule)} (Review recommended)` : 'Deposit schedule not set',
+      icon: 'calendar-outline',
     },
     {
       label: 'Taxpayer Type',
-      status: !!taxDetails?.tax_payer_type,
+      status: taxDetails?.tax_payer_type ? 'verified' : 'pending',
       description: taxDetails?.tax_payer_type ? `Type: ${formatStatusLabel(taxDetails.tax_payer_type)}` : 'Taxpayer type not configured',
-      icon: 'business-outline' as const,
+      icon: 'business-outline',
     },
   ];
 
@@ -356,32 +356,41 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
 
       <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Compliance Checklist</Text>
 
-      {complianceChecks.map((check, idx) => (
-        <View key={idx} style={styles.checkCard}>
-          <View style={[styles.checkIcon, { backgroundColor: check.status ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)' }]}>
-            <Ionicons name={check.icon} size={18} color={check.status ? '#10B981' : '#f59e0b'} />
+      {complianceChecks.map((check, idx) => {
+        const statusColors = {
+          verified: { bg: 'rgba(16, 185, 129, 0.12)', icon: '#10B981' },
+          default: { bg: 'rgba(59, 130, 246, 0.12)', icon: '#3B82F6' },
+          pending: { bg: 'rgba(245, 158, 11, 0.12)', icon: '#f59e0b' },
+        };
+        const sc = statusColors[check.status];
+        const statusIcon = check.status === 'verified' ? 'checkmark-circle' : check.status === 'default' ? 'information-circle' : 'ellipse-outline';
+        return (
+          <View key={idx} style={styles.checkCard}>
+            <View style={[styles.checkIcon, { backgroundColor: sc.bg }]}>
+              <Ionicons name={check.icon} size={18} color={sc.icon} />
+            </View>
+            <View style={styles.checkInfo}>
+              <Text style={styles.checkLabel}>{check.label}</Text>
+              <Text style={styles.checkDescription}>{check.description}</Text>
+            </View>
+            <View style={styles.checkActions}>
+              {check.status !== 'verified' && (
+                <Pressable
+                  style={[styles.configureButton, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}
+                  onPress={() => setIsEditing(true)}
+                >
+                  <Text style={styles.configureButtonText}>{check.status === 'default' ? 'Review' : 'Configure'}</Text>
+                </Pressable>
+              )}
+              <Ionicons
+                name={statusIcon}
+                size={20}
+                color={sc.icon}
+              />
+            </View>
           </View>
-          <View style={styles.checkInfo}>
-            <Text style={styles.checkLabel}>{check.label}</Text>
-            <Text style={styles.checkDescription}>{check.description}</Text>
-          </View>
-          <View style={styles.checkActions}>
-            {!check.status && (
-              <Pressable
-                style={[styles.configureButton, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}
-                onPress={() => setIsEditing(true)}
-              >
-                <Text style={styles.configureButtonText}>Configure</Text>
-              </Pressable>
-            )}
-            <Ionicons
-              name={check.status ? 'checkmark-circle' : 'ellipse-outline'}
-              size={20}
-              color={check.status ? '#10B981' : '#6e6e73'}
-            />
-          </View>
-        </View>
-      ))}
+        );
+      })}
 
       <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Employee Tax Overview</Text>
 

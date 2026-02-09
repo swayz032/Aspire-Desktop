@@ -326,178 +326,303 @@ function EmptyState({ filter }: { filter: string }) {
 
 function OfficePreview({ item }: { item: OfficeItem }) {
   const priorityPill = PRIORITY_PILL[item.priority];
+  const timelineSteps = ['Received', 'In Review', 'Resolved'];
+  const currentStep = item.status === 'resolved' ? 2 : item.status === 'in_progress' ? 1 : 0;
   return (
-    <>
-      <View style={styles.previewHeader}>
-        <View style={styles.previewHeaderTop}>
-          {priorityPill && (
-            <View style={[styles.previewPriorityPill, { backgroundColor: priorityPill.bg }]}>
-              <Text style={[styles.previewPriorityText, { color: priorityPill.text }]}>{item.priority} Priority</Text>
-            </View>
-          )}
-          <Text style={styles.previewTime}>{formatRelativeTime(item.timestamp)}</Text>
+    <View style={fp.section}>
+      <View style={fp.headerRow}>
+        <View style={{ flex: 1 }}>
+          <View style={fp.badgeRow}>
+            {priorityPill && (
+              <View style={[fp.badge, { backgroundColor: priorityPill.bg }]}>
+                <Ionicons name="flag" size={11} color={priorityPill.text} />
+                <Text style={[fp.badgeText, { color: priorityPill.text }]}>{item.priority} Priority</Text>
+              </View>
+            )}
+            {item.unread && (
+              <View style={[fp.badge, { backgroundColor: Colors.accent.cyanLight }]}>
+                <Text style={[fp.badgeText, { color: Colors.accent.cyan }]}>Unread</Text>
+              </View>
+            )}
+          </View>
+          <Text style={fp.pageTitle}>{item.title}</Text>
+          <Text style={fp.timestamp}>{formatRelativeTime(item.timestamp)}</Text>
         </View>
-        <Text style={styles.previewHeadline}>{item.title}</Text>
-        <View style={styles.previewChipRow}>
-          <View style={styles.previewChip}>
-            <Ionicons name="business" size={12} color={Colors.text.tertiary} />
-            <Text style={styles.previewChipText}>{item.department}</Text>
+      </View>
+      <View style={fp.divider} />
+      <View style={fp.chipRow}>
+        <View style={fp.contextChip}>
+          <Ionicons name="business" size={14} color={Colors.accent.cyan} />
+          <View>
+            <Text style={fp.chipLabel}>Department</Text>
+            <Text style={fp.chipValue}>{item.department}</Text>
           </View>
-          <View style={styles.previewChip}>
-            <Ionicons name="document-text" size={12} color={Colors.text.tertiary} />
-            <Text style={styles.previewChipText}>{item.requestType}</Text>
+        </View>
+        <View style={fp.contextChip}>
+          <Ionicons name="document-text" size={14} color={Colors.accent.amber} />
+          <View>
+            <Text style={fp.chipLabel}>Request Type</Text>
+            <Text style={fp.chipValue}>{item.requestType}</Text>
           </View>
-          <View style={styles.previewChip}>
-            <Ionicons name="person" size={12} color={Colors.text.tertiary} />
-            <Text style={styles.previewChipText}>{item.assignedTo}</Text>
+        </View>
+        <View style={fp.contextChip}>
+          <Ionicons name="person" size={14} color={Colors.semantic.success} />
+          <View>
+            <Text style={fp.chipLabel}>Assigned To</Text>
+            <Text style={fp.chipValue}>{item.assignedTo}</Text>
           </View>
         </View>
       </View>
-      <View style={styles.previewDivider} />
-      <Text style={styles.previewSectionTitle}>Message</Text>
-      <Text style={styles.previewBody}>{item.preview}</Text>
-      <View style={styles.previewTagsRow}>
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Message</Text>
+      <View style={fp.bodyCard}>
+        <Text style={fp.bodyText}>{item.preview}</Text>
+      </View>
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Tags</Text>
+      <View style={fp.tagsRow}>
         {item.tags.map((tag) => (
           <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
             <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
           </View>
         ))}
       </View>
-      <View style={styles.previewDivider} />
-      <View style={styles.previewActionsRow}>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Status Timeline</Text>
+      <View style={fp.timelineRow}>
+        {timelineSteps.map((step, idx) => {
+          const isActive = idx <= currentStep;
+          const isCurrent = idx === currentStep;
+          return (
+            <React.Fragment key={step}>
+              {idx > 0 && <View style={[fp.timelineConnector, isActive && { backgroundColor: Colors.accent.cyan }]} />}
+              <View style={fp.timelineStep}>
+                <View style={[fp.timelineDot, isActive && { backgroundColor: Colors.accent.cyan, borderColor: Colors.accent.cyan }, isCurrent && { ...Shadows.glow(Colors.accent.cyan) }]}>
+                  {isActive && <Ionicons name="checkmark" size={10} color="#fff" />}
+                </View>
+                <Text style={[fp.timelineLabel, isActive && { color: Colors.text.primary }]}>{step}</Text>
+              </View>
+            </React.Fragment>
+          );
+        })}
+      </View>
+      <View style={fp.divider} />
+      <View style={fp.actionBar}>
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.semantic.successLight, borderColor: Colors.semantic.success + '44' }]} activeOpacity={0.7}>
           <Ionicons name="checkmark-circle" size={16} color={Colors.semantic.success} />
-          <Text style={[styles.previewActionText, { color: Colors.semantic.success }]}>Approve</Text>
+          <Text style={[fp.actionBtnText, { color: Colors.semantic.success }]}>Approve</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7}>
           <Ionicons name="chatbubble" size={16} color={Colors.accent.cyan} />
-          <Text style={[styles.previewActionText, { color: Colors.accent.cyan }]}>Reply</Text>
+          <Text style={[fp.actionBtnText, { color: Colors.accent.cyan }]}>Reply</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
           <Ionicons name="arrow-redo" size={16} color={Colors.text.tertiary} />
-          <Text style={styles.previewActionText}>Forward</Text>
+          <Text style={fp.actionBtnText}>Forward</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+          <Ionicons name="trending-up" size={16} color={Colors.semantic.warning} />
+          <Text style={[fp.actionBtnText, { color: Colors.semantic.warning }]}>Escalate</Text>
         </TouchableOpacity>
       </View>
-    </>
+    </View>
   );
 }
 
 function CallPreview({ item }: { item: CallItem }) {
   const outcomeColor = item.outcome === 'Completed' ? Colors.semantic.success : item.outcome === 'Missed' || item.outcome === 'Blocked' ? Colors.semantic.error : Colors.accent.amber;
+  const typeColor = item.callType === 'missed' || item.callType === 'blocked' ? Colors.semantic.error : item.callType === 'voicemail' ? Colors.semantic.warning : Colors.semantic.success;
+  const typeLabel = item.callType.charAt(0).toUpperCase() + item.callType.slice(1);
   const typeIcon: keyof typeof Ionicons.glyphMap = item.callType === 'inbound' ? 'arrow-down' : item.callType === 'outbound' ? 'arrow-up' : item.callType === 'missed' ? 'close' : item.callType === 'voicemail' ? 'recording' : 'close-circle';
   return (
-    <>
-      <View style={styles.previewHeader}>
-        <View style={styles.previewHeaderTop}>
-          <View style={[styles.previewPriorityPill, { backgroundColor: outcomeColor + '22' }]}>
-            <Ionicons name={typeIcon} size={12} color={outcomeColor} />
-            <Text style={[styles.previewPriorityText, { color: outcomeColor, marginLeft: 4 }]}>{item.callType.charAt(0).toUpperCase() + item.callType.slice(1)}</Text>
-          </View>
-          <Text style={styles.previewTime}>{formatRelativeTime(item.timestamp)}</Text>
+    <View style={fp.section}>
+      <View style={fp.headerRow}>
+        <View style={[fp.callerAvatar, { backgroundColor: typeColor + '22', borderColor: typeColor + '44' }]}>
+          <Ionicons name="call" size={28} color={typeColor} />
         </View>
-        <Text style={styles.previewHeadline}>{item.callerName}</Text>
-        <Text style={styles.previewSubhead}>{formatMaskedPhone(item.callerNumber)}</Text>
-        <View style={styles.previewChipRow}>
-          <View style={styles.previewChip}>
-            <Ionicons name="time" size={12} color={Colors.text.tertiary} />
-            <Text style={styles.previewChipText}>{item.duration}</Text>
+        <View style={{ flex: 1, marginLeft: Spacing.lg }}>
+          <Text style={fp.pageTitle}>{item.callerName}</Text>
+          <Text style={fp.subtitleText}>{formatMaskedPhone(item.callerNumber)}</Text>
+          <View style={[fp.badge, { backgroundColor: typeColor + '22', alignSelf: 'flex-start', marginTop: Spacing.xs }]}>
+            <Ionicons name={typeIcon} size={11} color={typeColor} />
+            <Text style={[fp.badgeText, { color: typeColor }]}>{typeLabel}</Text>
           </View>
-          <View style={[styles.previewChip, { borderColor: outcomeColor + '44' }]}>
-            <View style={[styles.previewChipDot, { backgroundColor: outcomeColor }]} />
-            <Text style={[styles.previewChipText, { color: outcomeColor }]}>{item.outcome}</Text>
-          </View>
+        </View>
+        <Text style={fp.timestamp}>{formatRelativeTime(item.timestamp)}</Text>
+      </View>
+      <View style={fp.divider} />
+      <View style={fp.metricGrid}>
+        <View style={fp.metricCard}>
+          <Ionicons name="time-outline" size={20} color={Colors.accent.cyan} />
+          <Text style={fp.metricLabel}>Duration</Text>
+          <Text style={fp.metricValue}>{item.duration}</Text>
+        </View>
+        <View style={fp.metricCard}>
+          <View style={[fp.metricDot, { backgroundColor: outcomeColor }]} />
+          <Text style={fp.metricLabel}>Outcome</Text>
+          <Text style={[fp.metricValue, { color: outcomeColor }]}>{item.outcome}</Text>
+        </View>
+        <View style={fp.metricCard}>
+          <Ionicons name="calendar-outline" size={20} color={Colors.text.muted} />
+          <Text style={fp.metricLabel}>Time</Text>
+          <Text style={fp.metricValue}>{formatRelativeTime(item.timestamp)}</Text>
         </View>
       </View>
-      <View style={styles.previewDivider} />
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Recording</Text>
+      <View style={fp.recordingCard}>
+        <TouchableOpacity style={fp.playBtn} activeOpacity={0.7}>
+          <Ionicons name="play" size={20} color="#fff" />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: Spacing.md }}>
+          <View style={fp.waveformBar}>
+            {Array.from({ length: 24 }).map((_, i) => (
+              <View key={i} style={[fp.waveformLine, { height: 4 + Math.random() * 16, opacity: 0.4 + Math.random() * 0.6 }]} />
+            ))}
+          </View>
+        </View>
+        <Text style={fp.recordingDuration}>{item.duration}</Text>
+      </View>
       {item.hasSummary && (
         <>
-          <View style={styles.previewAiSection}>
-            <View style={styles.previewAiBadge}>
-              <Ionicons name="sparkles" size={14} color={Colors.accent.cyan} />
-              <Text style={styles.previewAiLabel}>Sarah AI Summary</Text>
+          <View style={fp.divider} />
+          <Text style={fp.sectionLabel}>AI Summary</Text>
+          <View style={fp.aiSummaryCard}>
+            <View style={fp.aiSummaryHeader}>
+              <Ionicons name="sparkles" size={16} color={Colors.accent.cyan} />
+              <Text style={fp.aiSummaryLabel}>Sarah AI Summary</Text>
             </View>
-            <Text style={styles.previewBody}>Call with {item.callerName} regarding {item.tags.join(' & ').toLowerCase()} matters. Duration: {item.duration}. Outcome: {item.outcome}. Follow-up actions may be required based on discussion points.</Text>
+            <Text style={fp.bodyText}>Call with {item.callerName} regarding {item.tags.join(' & ').toLowerCase()} matters. Duration: {item.duration}. Outcome: {item.outcome}. Follow-up actions may be required based on discussion points.</Text>
           </View>
-          <View style={styles.previewDivider} />
         </>
       )}
-      <View style={styles.previewTagsRow}>
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Tags</Text>
+      <View style={fp.tagsRow}>
         {item.tags.map((tag) => (
           <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
             <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
           </View>
         ))}
       </View>
-      <View style={styles.previewDivider} />
-      <View style={styles.previewActionsRow}>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+      <View style={fp.divider} />
+      <View style={fp.actionBar}>
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.semantic.successLight, borderColor: Colors.semantic.success + '44' }]} activeOpacity={0.7}>
           <Ionicons name="call" size={16} color={Colors.semantic.success} />
-          <Text style={[styles.previewActionText, { color: Colors.semantic.success }]}>Call Back</Text>
+          <Text style={[fp.actionBtnText, { color: Colors.semantic.success }]}>Call Back</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7}>
           <Ionicons name="chatbubble" size={16} color={Colors.accent.cyan} />
-          <Text style={[styles.previewActionText, { color: Colors.accent.cyan }]}>Message</Text>
+          <Text style={[fp.actionBtnText, { color: Colors.accent.cyan }]}>Message</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+          <Ionicons name="ban" size={16} color={Colors.semantic.error} />
+          <Text style={[fp.actionBtnText, { color: Colors.semantic.error }]}>Block</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+          <Ionicons name="person-add" size={16} color={Colors.text.tertiary} />
+          <Text style={fp.actionBtnText}>Add to Contacts</Text>
         </TouchableOpacity>
       </View>
-    </>
+    </View>
   );
 }
 
 function MailPreview({ item }: { item: MailThread }) {
   return (
-    <>
-      <View style={styles.previewHeader}>
-        <View style={styles.previewHeaderTop}>
-          <View style={styles.previewChipRow}>
-            {item.unread && <View style={styles.previewUnreadBadge}><Text style={styles.previewUnreadText}>Unread</Text></View>}
-            {item.hasAttachments && (
-              <View style={styles.previewChip}>
-                <Ionicons name="attach" size={12} color={Colors.text.tertiary} />
-                <Text style={styles.previewChipText}>Attachments</Text>
-              </View>
-            )}
+    <View style={fp.section}>
+      <View style={fp.badgeRow}>
+        {item.unread && (
+          <View style={[fp.badge, { backgroundColor: Colors.accent.cyanLight }]}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accent.cyan }} />
+            <Text style={[fp.badgeText, { color: Colors.accent.cyan }]}>Unread</Text>
           </View>
-          <Text style={styles.previewTime}>{formatRelativeTime(item.timestamp)}</Text>
-        </View>
-        <Text style={styles.previewHeadline}>{item.subject}</Text>
-        <View style={styles.previewMailMeta}>
-          <View style={styles.previewMailAvatar}>
-            <Text style={styles.previewMailAvatarText}>{item.senderName.charAt(0)}</Text>
+        )}
+        {item.hasAttachments && (
+          <View style={[fp.badge, { backgroundColor: Colors.background.tertiary }]}>
+            <Ionicons name="attach" size={11} color={Colors.text.tertiary} />
+            <Text style={[fp.badgeText, { color: Colors.text.tertiary }]}>Attachments</Text>
           </View>
-          <View style={{ flex: 1, marginLeft: Spacing.sm }}>
-            <Text style={styles.previewMailSender}>{item.senderName}</Text>
-            <Text style={styles.previewMailEmail}>{item.senderEmail}</Text>
-          </View>
-        </View>
-        <Text style={styles.previewMailTo}>To: {item.recipients.join(', ')}</Text>
+        )}
       </View>
-      <View style={styles.previewDivider} />
-      <Text style={styles.previewBody}>{item.preview}</Text>
-      <View style={styles.previewTagsRow}>
+      <Text style={fp.mailSubject}>{item.subject}</Text>
+      <View style={fp.divider} />
+      <View style={fp.mailSenderRow}>
+        <View style={fp.mailAvatarLg}>
+          <Text style={fp.mailAvatarLgText}>{item.senderName.charAt(0)}</Text>
+        </View>
+        <View style={{ flex: 1, marginLeft: Spacing.md }}>
+          <Text style={fp.mailSenderName}>{item.senderName}</Text>
+          <Text style={fp.mailSenderEmail}>{item.senderEmail}</Text>
+        </View>
+        <Text style={fp.timestamp}>{formatRelativeTime(item.timestamp)}</Text>
+      </View>
+      <View style={fp.mailRecipientsBar}>
+        <Text style={fp.mailRecipientsLabel}>To:</Text>
+        <Text style={fp.mailRecipientsValue}>{item.recipients.join(', ')}</Text>
+      </View>
+      <View style={fp.divider} />
+      <View style={fp.mailBodyArea}>
+        <Text style={fp.mailBodyText}>{item.preview}</Text>
+      </View>
+      {item.hasAttachments && (
+        <>
+          <View style={fp.divider} />
+          <Text style={fp.sectionLabel}>Attachments</Text>
+          <View style={fp.attachmentsRow}>
+            <View style={fp.attachmentItem}>
+              <Ionicons name="document" size={20} color={Colors.accent.cyan} />
+              <Text style={fp.attachmentName}>Document.pdf</Text>
+              <Text style={fp.attachmentSize}>2.4 MB</Text>
+            </View>
+            <View style={fp.attachmentItem}>
+              <Ionicons name="image" size={20} color={Colors.semantic.success} />
+              <Text style={fp.attachmentName}>Screenshot.png</Text>
+              <Text style={fp.attachmentSize}>1.1 MB</Text>
+            </View>
+          </View>
+        </>
+      )}
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Tags</Text>
+      <View style={fp.tagsRow}>
         {item.tags.map((tag) => (
           <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
             <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
           </View>
         ))}
+        {item.tags.length > 0 && (
+          <View style={[fp.badge, { backgroundColor: Colors.accent.cyanLight }]}>
+            <Ionicons name="sparkles" size={10} color={Colors.accent.cyan} />
+            <Text style={[fp.badgeText, { color: Colors.accent.cyan }]}>Eli reviewed</Text>
+          </View>
+        )}
       </View>
-      <View style={styles.previewDivider} />
-      <Text style={styles.previewSectionTitle}>Quick Actions</Text>
-      <View style={styles.previewActionsRow}>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+      <View style={fp.divider} />
+      <View style={fp.actionBar}>
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7}>
           <Ionicons name="arrow-undo" size={16} color={Colors.accent.cyan} />
-          <Text style={[styles.previewActionText, { color: Colors.accent.cyan }]}>Reply</Text>
+          <Text style={[fp.actionBtnText, { color: Colors.accent.cyan }]}>Reply</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+          <Ionicons name="arrow-undo" size={16} color={Colors.text.tertiary} />
+          <Text style={fp.actionBtnText}>Reply All</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
           <Ionicons name="arrow-redo" size={16} color={Colors.text.tertiary} />
-          <Text style={styles.previewActionText}>Forward</Text>
+          <Text style={fp.actionBtnText}>Forward</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
           <Ionicons name="archive" size={16} color={Colors.text.tertiary} />
-          <Text style={styles.previewActionText}>Archive</Text>
+          <Text style={fp.actionBtnText}>Archive</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+          <Ionicons name="star-outline" size={16} color={Colors.accent.amber} />
+          <Text style={[fp.actionBtnText, { color: Colors.accent.amber }]}>Star</Text>
         </TouchableOpacity>
       </View>
-      <View style={styles.previewDivider} />
-      <Text style={styles.previewSectionTitle}>Smart Replies</Text>
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Smart Replies</Text>
       <View style={styles.smartReplyRow}>
         {['Thanks, received!', "I'll review and respond shortly", 'Forward to team for review'].map((reply) => (
           <TouchableOpacity key={reply} style={styles.smartReplyPill} activeOpacity={0.7}>
@@ -505,70 +630,105 @@ function MailPreview({ item }: { item: MailThread }) {
           </TouchableOpacity>
         ))}
       </View>
-    </>
+    </View>
   );
 }
 
 function ContactPreview({ item }: { item: Contact }) {
   const roleColor = ROLE_COLORS[item.role] || Colors.text.secondary;
+  const activityHistory = [
+    { type: 'call' as const, icon: 'call' as keyof typeof Ionicons.glyphMap, desc: 'Phone call — 5 min', time: '2 days ago', color: Colors.semantic.success },
+    { type: 'email' as const, icon: 'mail' as keyof typeof Ionicons.glyphMap, desc: `Email thread — RE: ${item.organization} update`, time: '5 days ago', color: Colors.accent.cyan },
+    { type: 'meeting' as const, icon: 'videocam' as keyof typeof Ionicons.glyphMap, desc: 'Video meeting — Quarterly review', time: '2 weeks ago', color: '#A78BFA' },
+  ];
   return (
-    <>
-      <View style={styles.contactPreviewHeader}>
-        <View style={styles.contactPreviewAvatar}>
-          <Text style={styles.contactPreviewAvatarText}>{item.name.charAt(0)}</Text>
+    <View style={fp.section}>
+      <View style={fp.headerRow}>
+        <View style={fp.profileAvatarLg}>
+          <Text style={fp.profileAvatarLgText}>{item.name.charAt(0)}</Text>
         </View>
-        <View style={{ marginLeft: Spacing.lg, flex: 1 }}>
-          <Text style={styles.previewHeadline}>{item.name}</Text>
-          <Text style={styles.contactPreviewTitle}>{item.title}</Text>
-          <View style={[styles.previewPriorityPill, { backgroundColor: roleColor + '22', alignSelf: 'flex-start', marginTop: 6 }]}>
-            <Text style={[styles.previewPriorityText, { color: roleColor }]}>{item.role}</Text>
+        <View style={{ flex: 1, marginLeft: Spacing.xl }}>
+          <Text style={fp.pageTitle}>{item.name}</Text>
+          <Text style={fp.subtitleText}>{item.title}</Text>
+          <Text style={[fp.subtitleText, { color: Colors.text.muted, marginTop: 2 }]}>{item.organization}</Text>
+          <View style={[fp.badge, { backgroundColor: roleColor + '22', alignSelf: 'flex-start', marginTop: Spacing.sm }]}>
+            <Text style={[fp.badgeText, { color: roleColor }]}>{item.role}</Text>
           </View>
         </View>
       </View>
-      <View style={styles.previewDivider} />
-      <Text style={styles.previewSectionTitle}>Contact Info</Text>
-      <View style={styles.contactInfoRow}>
-        <Ionicons name="business" size={16} color={Colors.text.muted} />
-        <Text style={styles.contactInfoText}>{item.organization}</Text>
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Contact Information</Text>
+      <View style={fp.contactGrid}>
+        <View style={fp.contactGridItem}>
+          <Ionicons name="mail-outline" size={18} color={Colors.accent.cyan} />
+          <Text style={fp.contactGridLabel}>Email</Text>
+          <Text style={fp.contactGridValue}>{item.email}</Text>
+        </View>
+        <View style={fp.contactGridItem}>
+          <Ionicons name="call-outline" size={18} color={Colors.semantic.success} />
+          <Text style={fp.contactGridLabel}>Phone</Text>
+          <Text style={fp.contactGridValue}>{formatMaskedPhone(item.phone)}</Text>
+        </View>
+        <View style={fp.contactGridItem}>
+          <Ionicons name="business-outline" size={18} color={Colors.accent.amber} />
+          <Text style={fp.contactGridLabel}>Organization</Text>
+          <Text style={fp.contactGridValue}>{item.organization}</Text>
+        </View>
+        <View style={fp.contactGridItem}>
+          <Ionicons name="time-outline" size={18} color={Colors.text.muted} />
+          <Text style={fp.contactGridLabel}>Last Contacted</Text>
+          <Text style={fp.contactGridValue}>{formatRelativeTime(item.lastContacted)}</Text>
+        </View>
       </View>
-      <View style={styles.contactInfoRow}>
-        <Ionicons name="mail" size={16} color={Colors.text.muted} />
-        <Text style={styles.contactInfoText}>{item.email}</Text>
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Notes</Text>
+      <View style={fp.bodyCard}>
+        <Text style={fp.bodyText}>{item.notes}</Text>
       </View>
-      <View style={styles.contactInfoRow}>
-        <Ionicons name="call" size={16} color={Colors.text.muted} />
-        <Text style={styles.contactInfoText}>{formatMaskedPhone(item.phone)}</Text>
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Communication History</Text>
+      <View style={fp.historyList}>
+        {activityHistory.map((act, idx) => (
+          <View key={idx} style={fp.historyItem}>
+            <View style={[fp.historyDot, { backgroundColor: act.color + '22', borderColor: act.color + '44' }]}>
+              <Ionicons name={act.icon} size={14} color={act.color} />
+            </View>
+            <View style={{ flex: 1, marginLeft: Spacing.md }}>
+              <Text style={fp.historyDesc}>{act.desc}</Text>
+              <Text style={fp.historyTime}>{act.time}</Text>
+            </View>
+          </View>
+        ))}
       </View>
-      <View style={styles.contactInfoRow}>
-        <Ionicons name="time" size={16} color={Colors.text.muted} />
-        <Text style={styles.contactInfoText}>Last contacted {formatRelativeTime(item.lastContacted)}</Text>
-      </View>
-      <View style={styles.previewDivider} />
-      <Text style={styles.previewSectionTitle}>Notes</Text>
-      <Text style={styles.previewBody}>{item.notes}</Text>
-      <View style={styles.previewTagsRow}>
+      <View style={fp.divider} />
+      <Text style={fp.sectionLabel}>Tags</Text>
+      <View style={fp.tagsRow}>
         {item.tags.map((tag) => (
           <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
             <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
           </View>
         ))}
       </View>
-      <View style={styles.previewDivider} />
-      <View style={styles.previewActionsRow}>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+      <View style={fp.divider} />
+      <View style={fp.actionBar}>
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7}>
           <Ionicons name="mail" size={16} color={Colors.accent.cyan} />
-          <Text style={[styles.previewActionText, { color: Colors.accent.cyan }]}>Email</Text>
+          <Text style={[fp.actionBtnText, { color: Colors.accent.cyan }]}>Email</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.semantic.successLight, borderColor: Colors.semantic.success + '44' }]} activeOpacity={0.7}>
           <Ionicons name="call" size={16} color={Colors.semantic.success} />
-          <Text style={[styles.previewActionText, { color: Colors.semantic.success }]}>Call</Text>
+          <Text style={[fp.actionBtnText, { color: Colors.semantic.success }]}>Call</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.previewActionBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
           <Ionicons name="calendar" size={16} color={Colors.text.tertiary} />
-          <Text style={styles.previewActionText}>Schedule</Text>
+          <Text style={fp.actionBtnText}>Schedule</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+          <Ionicons name="create" size={16} color={Colors.text.tertiary} />
+          <Text style={fp.actionBtnText}>Edit Contact</Text>
         </TouchableOpacity>
       </View>
-    </>
+    </View>
   );
 }
 
@@ -897,13 +1057,11 @@ export default function InboxScreen() {
               <Ionicons name="arrow-back" size={20} color={Colors.accent.cyan} />
               <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
-            <View style={styles.detailScrollContent}>
-              <View style={styles.detailCard}>
-                {activeTab === 'office' && <OfficePreview item={selectedItem as OfficeItem} />}
-                {activeTab === 'calls' && <CallPreview item={selectedItem as CallItem} />}
-                {activeTab === 'mail' && <MailPreview item={selectedItem as MailThread} />}
-                {activeTab === 'contacts' && <ContactPreview item={selectedItem as Contact} />}
-              </View>
+            <View style={fp.detailContent}>
+              {activeTab === 'office' && <OfficePreview item={selectedItem as OfficeItem} />}
+              {activeTab === 'calls' && <CallPreview item={selectedItem as CallItem} />}
+              {activeTab === 'mail' && <MailPreview item={selectedItem as MailThread} />}
+              {activeTab === 'contacts' && <ContactPreview item={selectedItem as Contact} />}
             </View>
           </View>
         ) : (
@@ -988,6 +1146,408 @@ export default function InboxScreen() {
 
   return content;
 }
+
+const fp = StyleSheet.create({
+  detailContent: {
+    width: '100%',
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 100,
+  },
+  section: {
+    width: '100%',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  badgeText: {
+    ...Typography.micro,
+    fontWeight: '700',
+  },
+  pageTitle: {
+    ...Typography.title,
+    color: Colors.text.primary,
+    fontWeight: '700',
+    marginBottom: Spacing.xs,
+  },
+  timestamp: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    marginTop: 2,
+  },
+  subtitleText: {
+    ...Typography.caption,
+    color: Colors.text.tertiary,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border.subtle,
+    marginVertical: Spacing.lg,
+  },
+  sectionLabel: {
+    ...Typography.smallMedium,
+    color: Colors.text.muted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: Spacing.md,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  contextChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surface.card,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    flex: 1,
+    minWidth: 140,
+  },
+  chipLabel: {
+    ...Typography.micro,
+    color: Colors.text.muted,
+    fontWeight: '500',
+  },
+  chipValue: {
+    ...Typography.caption,
+    color: Colors.text.primary,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  bodyCard: {
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+  },
+  bodyText: {
+    ...Typography.body,
+    color: Colors.text.secondary,
+    lineHeight: 24,
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  actionBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm + 2,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.background.tertiary,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+  },
+  actionBtnText: {
+    ...Typography.caption,
+    color: Colors.text.tertiary,
+    fontWeight: '500',
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+  },
+  timelineStep: {
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  timelineDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.border.default,
+    backgroundColor: Colors.background.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineConnector: {
+    flex: 1,
+    height: 2,
+    backgroundColor: Colors.border.default,
+    marginHorizontal: Spacing.xs,
+  },
+  timelineLabel: {
+    ...Typography.micro,
+    color: Colors.text.muted,
+    fontWeight: '500',
+  },
+  callerAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricGrid: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  metricDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 5,
+  },
+  metricLabel: {
+    ...Typography.micro,
+    color: Colors.text.muted,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+  },
+  metricValue: {
+    ...Typography.bodyMedium,
+    color: Colors.text.primary,
+    fontWeight: '700',
+  },
+  recordingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+  },
+  playBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.accent.cyan,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  waveformBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    height: 24,
+  },
+  waveformLine: {
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: Colors.accent.cyan,
+  },
+  recordingDuration: {
+    ...Typography.caption,
+    color: Colors.text.muted,
+    fontWeight: '600',
+    marginLeft: Spacing.md,
+  },
+  aiSummaryCard: {
+    backgroundColor: Colors.background.tertiary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.accent.cyanLight,
+  },
+  aiSummaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  aiSummaryLabel: {
+    ...Typography.captionMedium,
+    color: Colors.accent.cyan,
+    fontWeight: '600',
+  },
+  mailSubject: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.text.primary,
+    lineHeight: 32,
+    marginBottom: Spacing.sm,
+  },
+  mailSenderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mailAvatarLg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.accent.cyanDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mailAvatarLgText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  mailSenderName: {
+    ...Typography.bodyMedium,
+    color: Colors.text.primary,
+    fontWeight: '600',
+  },
+  mailSenderEmail: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    marginTop: 1,
+  },
+  mailRecipientsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.background.tertiary,
+    borderRadius: BorderRadius.md,
+  },
+  mailRecipientsLabel: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    fontWeight: '600',
+    marginRight: Spacing.xs,
+  },
+  mailRecipientsValue: {
+    ...Typography.small,
+    color: Colors.text.secondary,
+    flex: 1,
+  },
+  mailBodyArea: {
+    paddingVertical: Spacing.md,
+  },
+  mailBodyText: {
+    ...Typography.body,
+    color: Colors.text.secondary,
+    lineHeight: 26,
+  },
+  attachmentsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  attachmentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+  },
+  attachmentName: {
+    ...Typography.caption,
+    color: Colors.text.primary,
+    fontWeight: '500',
+  },
+  attachmentSize: {
+    ...Typography.small,
+    color: Colors.text.muted,
+  },
+  profileAvatarLg: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.accent.cyanDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.accent.cyan + '44',
+  },
+  profileAvatarLgText: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  contactGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  contactGridItem: {
+    width: '48%',
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    gap: Spacing.xs,
+  },
+  contactGridLabel: {
+    ...Typography.micro,
+    color: Colors.text.muted,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    marginTop: Spacing.xs,
+  },
+  contactGridValue: {
+    ...Typography.caption,
+    color: Colors.text.primary,
+    fontWeight: '600',
+  },
+  historyList: {
+    gap: Spacing.md,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  historyDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyDesc: {
+    ...Typography.caption,
+    color: Colors.text.primary,
+    fontWeight: '500',
+  },
+  historyTime: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    marginTop: 1,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {

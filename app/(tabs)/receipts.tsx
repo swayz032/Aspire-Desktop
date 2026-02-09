@@ -125,76 +125,136 @@ function ReceiptCard({ receipt, selected, onPress }: { receipt: Receipt; selecte
   );
 }
 
-function ReceiptDetailView({ receipt }: { receipt: Receipt }) {
+function DetailActionButton({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <TouchableOpacity
+      style={[styles.detailActionBtn, hovered && styles.detailActionBtnHover]}
+      activeOpacity={0.7}
+      {...(isWeb ? {
+        onMouseEnter: () => setHovered(true),
+        onMouseLeave: () => setHovered(false),
+      } as any : {})}
+    >
+      <Ionicons name={icon} size={18} color={hovered ? Colors.accent.cyan : Colors.text.secondary} />
+      <Text style={[styles.detailActionText, hovered && { color: Colors.accent.cyan }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function ReceiptDetailView({ receipt, onBack }: { receipt: Receipt; onBack: () => void }) {
   const statusColor = STATUS_COLORS[receipt.status];
   const typeColor = TYPE_COLORS[receipt.type];
 
+  const statusIcon: Record<ReceiptStatus, keyof typeof Ionicons.glyphMap> = {
+    Success: 'checkmark-circle',
+    Pending: 'time',
+    Failed: 'close-circle',
+    Blocked: 'ban',
+  };
+
   return (
-    <View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.lg }}>
-        <View style={[styles.detailIconCircle, { backgroundColor: typeColor.bg }]}>
-          {getTypeIcon(receipt.type, typeColor.icon, 28)}
-        </View>
-        <View style={{ flex: 1, marginLeft: Spacing.md }}>
-          <Text style={styles.detailTitle}>{receipt.title}</Text>
-          <Text style={styles.detailSubtitle}>{formatSuiteContext()} · {receipt.actor}</Text>
-        </View>
-        <View style={[styles.statusBadgeLg, { backgroundColor: statusColor.bg }]}>
-          <Text style={[styles.statusBadgeLgText, { color: statusColor.text }]}>{receipt.status}</Text>
+    <View style={styles.detailFullPage}>
+      <View style={styles.detailToolbar}>
+        <TouchableOpacity style={styles.detailBackBtn} onPress={onBack} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={20} color={Colors.accent.cyan} />
+          <Text style={styles.detailBackText}>Back to Receipts</Text>
+        </TouchableOpacity>
+        <View style={[styles.detailToolbarBadge, { backgroundColor: typeColor.bg, borderColor: typeColor.border }]}>
+          {getTypeIcon(receipt.type, typeColor.icon, 14)}
+          <Text style={[styles.detailToolbarBadgeText, { color: typeColor.text }]}>{receipt.type}</Text>
         </View>
       </View>
 
-      <View style={styles.detailSection}>
-        <Text style={styles.detailSectionTitle}>Intent</Text>
-        <Text style={styles.detailBody}>{receipt.intent}</Text>
-      </View>
-
-      <View style={styles.detailSection}>
-        <Text style={styles.detailSectionTitle}>Details</Text>
-        <View style={styles.detailMetaRow}>
-          <Text style={styles.detailMetaLabel}>Type</Text>
-          <View style={[styles.typeTag, { backgroundColor: typeColor.bg }]}>
-            <Text style={[styles.typeTagText, { color: typeColor.text }]}>{receipt.type}</Text>
+      <LinearGradient
+        colors={[`${typeColor.border}18`, `${typeColor.border}08`, Colors.background.primary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.detailHero}
+      >
+        <View style={styles.detailHeroInner}>
+          <View style={[styles.detailIconCircle, { backgroundColor: typeColor.bg, borderWidth: 2, borderColor: `${typeColor.border}40` }]}>
+            {getTypeIcon(receipt.type, typeColor.icon, 28)}
+          </View>
+          <View style={styles.detailHeroContent}>
+            <Text style={styles.detailTitle}>{receipt.title}</Text>
+            <Text style={styles.detailSubtitle}>{formatSuiteContext()} · {receipt.actor} · {formatRelativeTime(receipt.timestamp)}</Text>
+          </View>
+          <View style={[styles.statusPill, { backgroundColor: statusColor.bg, borderColor: `${statusColor.text}30` }]}>
+            <Ionicons name={statusIcon[receipt.status]} size={16} color={statusColor.text} />
+            <Text style={[styles.statusPillText, { color: statusColor.text }]}>{receipt.status}</Text>
           </View>
         </View>
-        <View style={styles.detailMetaRow}>
-          <Text style={styles.detailMetaLabel}>Actor</Text>
-          <Text style={styles.detailMetaValue}>{receipt.actor}</Text>
-        </View>
-        <View style={styles.detailMetaRow}>
-          <Text style={styles.detailMetaLabel}>Time</Text>
-          <Text style={styles.detailMetaValue}>{formatRelativeTime(receipt.timestamp)}</Text>
-        </View>
-        <View style={styles.detailMetaRow}>
-          <Text style={styles.detailMetaLabel}>Suite</Text>
-          <Text style={styles.detailMetaValue}>{formatSuiteContext()}</Text>
-        </View>
-      </View>
+      </LinearGradient>
 
-      <View style={styles.detailSection}>
-        <Text style={styles.detailSectionTitle}>Tags</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
-          {receipt.tags.map((tag) => (
-            <View key={tag} style={styles.detailTag}>
-              <Text style={styles.detailTagText}>{tag}</Text>
+      <View style={styles.detailContentBody}>
+        <View style={styles.detailIntentSection}>
+          <View style={styles.detailSectionHeader}>
+            <Ionicons name="document-text-outline" size={16} color={Colors.text.muted} />
+            <Text style={styles.detailSectionTitle}>Intent</Text>
+          </View>
+          <Text style={styles.detailBody}>{receipt.intent}</Text>
+        </View>
+
+        <View style={styles.detailMetaSection}>
+          <View style={styles.detailSectionHeader}>
+            <Ionicons name="information-circle-outline" size={16} color={Colors.text.muted} />
+            <Text style={styles.detailSectionTitle}>Details</Text>
+          </View>
+          <View style={styles.metaGrid}>
+            <View style={styles.metaCell}>
+              <View style={styles.metaCellIconWrap}>
+                <Ionicons name="pricetag-outline" size={16} color={typeColor.icon} />
+              </View>
+              <Text style={styles.metaCellLabel}>Type</Text>
+              <View style={[styles.typeTag, { backgroundColor: typeColor.bg }]}>
+                <Text style={[styles.typeTagText, { color: typeColor.text }]}>{receipt.type}</Text>
+              </View>
             </View>
-          ))}
+            <View style={styles.metaCell}>
+              <View style={styles.metaCellIconWrap}>
+                <Ionicons name="person-outline" size={16} color={Colors.accent.cyan} />
+              </View>
+              <Text style={styles.metaCellLabel}>Actor</Text>
+              <Text style={styles.metaCellValue}>{receipt.actor}</Text>
+            </View>
+            <View style={styles.metaCell}>
+              <View style={styles.metaCellIconWrap}>
+                <Ionicons name="time-outline" size={16} color={Colors.accent.amber} />
+              </View>
+              <Text style={styles.metaCellLabel}>Time</Text>
+              <Text style={styles.metaCellValue}>{formatRelativeTime(receipt.timestamp)}</Text>
+            </View>
+            <View style={styles.metaCell}>
+              <View style={styles.metaCellIconWrap}>
+                <Ionicons name="briefcase-outline" size={16} color={Colors.semantic.info} />
+              </View>
+              <Text style={styles.metaCellLabel}>Suite</Text>
+              <Text style={styles.metaCellValue}>{formatSuiteContext()}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.detailTagsSection}>
+          <View style={styles.detailSectionHeader}>
+            <Ionicons name="pricetags-outline" size={16} color={Colors.text.muted} />
+            <Text style={styles.detailSectionTitle}>Tags</Text>
+          </View>
+          <View style={styles.detailTagsRow}>
+            {receipt.tags.map((tag) => (
+              <View key={tag} style={styles.detailTag}>
+                <Text style={styles.detailTagText}>{tag}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       </View>
 
-      <View style={styles.detailActions}>
-        <TouchableOpacity style={styles.detailActionBtn} activeOpacity={0.7}>
-          <Ionicons name="share-outline" size={18} color={Colors.text.secondary} />
-          <Text style={styles.detailActionText}>Share</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.detailActionBtn} activeOpacity={0.7}>
-          <Ionicons name="download-outline" size={18} color={Colors.text.secondary} />
-          <Text style={styles.detailActionText}>Export</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.detailActionBtn} activeOpacity={0.7}>
-          <Ionicons name="flag-outline" size={18} color={Colors.text.secondary} />
-          <Text style={styles.detailActionText}>Flag</Text>
-        </TouchableOpacity>
+      <View style={styles.detailActionBar}>
+        <DetailActionButton icon="share-outline" label="Share" />
+        <DetailActionButton icon="download-outline" label="Export" />
+        <DetailActionButton icon="flag-outline" label="Flag" />
+        <DetailActionButton icon="print-outline" label="Print" />
       </View>
     </View>
   );
@@ -329,17 +389,7 @@ export default function ReceiptsScreen() {
         </View>
 
         {selectedReceipt ? (
-          <View>
-            <TouchableOpacity style={styles.backButton} onPress={() => setSelectedId(null)} activeOpacity={0.7}>
-              <Ionicons name="arrow-back" size={20} color={Colors.accent.cyan} />
-              <Text style={styles.backButtonText}>Back</Text>
-            </TouchableOpacity>
-            <View style={styles.detailScrollContent}>
-              <View style={styles.detailCard}>
-                <ReceiptDetailView receipt={selectedReceipt} />
-              </View>
-            </View>
-          </View>
+          <ReceiptDetailView receipt={selectedReceipt} onBack={() => setSelectedId(null)} />
         ) : (
           <View style={styles.listContent}>
             {loading ? (
@@ -531,31 +581,59 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginRight: Spacing.xs,
   },
-  backButton: {
+  detailFullPage: {
+    flex: 1,
+    width: '100%',
+  },
+  detailToolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xxl,
     paddingVertical: Spacing.md,
-    gap: Spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+    backgroundColor: Colors.background.secondary,
   },
-  backButtonText: {
+  detailBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    paddingRight: Spacing.md,
+  },
+  detailBackText: {
     ...Typography.caption,
     color: Colors.accent.cyan,
     fontWeight: '600',
   },
-  detailScrollContent: {
+  detailToolbarBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: 100,
-  },
-  detailCard: {
-    width: '100%',
-    maxWidth: 800,
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.xl,
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: BorderRadius.full,
     borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,
-    padding: Spacing.xl,
+  },
+  detailToolbarBadgeText: {
+    ...Typography.small,
+    fontWeight: '600',
+  },
+  detailHero: {
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.xxl,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
+  detailHeroInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  detailHeroContent: {
+    flex: 1,
+    marginLeft: Spacing.lg,
+    marginRight: Spacing.lg,
   },
   detailIconCircle: {
     width: 52,
@@ -565,89 +643,142 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   detailTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     color: Colors.text.primary,
+    letterSpacing: -0.3,
   },
   detailSubtitle: {
-    ...Typography.small,
+    ...Typography.caption,
     color: Colors.text.tertiary,
-    marginTop: 2,
+    marginTop: 4,
   },
-  statusBadgeLg: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.md,
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
   },
-  statusBadgeLgText: {
+  statusPillText: {
     ...Typography.caption,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
-  detailSection: {
-    marginTop: Spacing.lg,
-    paddingTop: Spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border.subtle,
+  detailContentBody: {
+    paddingHorizontal: Spacing.xxl,
+    paddingTop: Spacing.xxl,
+    paddingBottom: Spacing.lg,
+  },
+  detailIntentSection: {
+    marginBottom: Spacing.xxl,
+  },
+  detailSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   detailSectionTitle: {
-    ...Typography.caption,
+    ...Typography.small,
     color: Colors.text.muted,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: Spacing.sm,
+    letterSpacing: 1.2,
   },
   detailBody: {
     ...Typography.body,
     color: Colors.text.secondary,
-    lineHeight: 22,
+    lineHeight: 26,
+    paddingLeft: Spacing.xs,
   },
-  detailMetaRow: {
+  detailMetaSection: {
+    marginBottom: Spacing.xxl,
+  },
+  metaGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+  },
+  metaCell: {
+    width: '48%',
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.surface.cardBorder,
+    padding: Spacing.lg,
+    gap: Spacing.xs,
+  },
+  metaCellIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.background.tertiary,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.sm,
+    justifyContent: 'center',
+    marginBottom: Spacing.xs,
   },
-  detailMetaLabel: {
-    ...Typography.caption,
-    color: Colors.text.tertiary,
+  metaCellLabel: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
-  detailMetaValue: {
+  metaCellValue: {
     ...Typography.caption,
     color: Colors.text.primary,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  detailTagsSection: {
+    marginBottom: Spacing.lg,
+  },
+  detailTagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
   },
   detailTag: {
-    backgroundColor: Colors.background.tertiary,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
+    backgroundColor: Colors.surface.card,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.surface.cardBorder,
   },
   detailTagText: {
     ...Typography.small,
     color: Colors.text.secondary,
+    fontWeight: '500',
   },
-  detailActions: {
+  detailActionBar: {
     flexDirection: 'row',
     gap: Spacing.md,
-    marginTop: Spacing.xl,
-    paddingTop: Spacing.lg,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.lg,
     borderTopWidth: 1,
     borderTopColor: Colors.border.subtle,
+    backgroundColor: Colors.background.secondary,
   },
   detailActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm + 2,
     borderRadius: BorderRadius.md,
-    backgroundColor: Colors.background.tertiary,
+    backgroundColor: Colors.surface.card,
     borderWidth: 1,
-    borderColor: Colors.border.default,
+    borderColor: Colors.surface.cardBorder,
+  },
+  detailActionBtnHover: {
+    backgroundColor: Colors.surface.cardHover,
+    borderColor: Colors.accent.cyan,
   },
   detailActionText: {
-    ...Typography.small,
+    ...Typography.caption,
     color: Colors.text.secondary,
     fontWeight: '500',
   },

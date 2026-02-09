@@ -52,6 +52,11 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [localEmployees, setLocalEmployees] = useState<any[]>([]);
+  const [editMode, setEditMode] = useState(false);
+  const [editData, setEditData] = useState({ rate: '', pay_type: 'Hour' as 'Hour' | 'Year', job_title: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState<string | null>(null);
 
   const allEmployees = useMemo(() => {
     const combined = [...(gustoEmployees || [])];
@@ -200,6 +205,87 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
       setMessage({ type: 'error', text: errorText });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const startEditMode = (emp: any) => {
+    const job = emp.jobs?.[0];
+    const comp = job?.compensations?.[0];
+    setEditData({
+      rate: comp?.rate?.toString() || '0',
+      pay_type: (comp?.payment_unit === 'Year' ? 'Year' : 'Hour') as 'Hour' | 'Year',
+      job_title: job?.title || '',
+    });
+    setEditMode(true);
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selected) return;
+    const job = selected.jobs?.[0];
+    const comp = job?.compensations?.[0];
+    if (!comp?.uuid || !comp?.version) {
+      setEditError('No compensation record found to update. The employee may need a job assigned first.');
+      return;
+    }
+
+    const newRate = editData.rate.trim();
+    if (!newRate || parseFloat(newRate) <= 0) {
+      setEditError('Please enter a valid pay rate greater than $0.');
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/gusto/compensations/${comp.uuid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version: comp.version,
+          rate: newRate,
+          payment_unit: editData.pay_type,
+          flsa_status: editData.pay_type === 'Year' ? 'Exempt' : 'Nonexempt',
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || err.message || 'Failed to update compensation');
+      }
+
+      const updated = await res.json();
+      setLocalEmployees(prev => {
+        const existing = prev.find((e: any) => (e.uuid || e.id) === (selected.uuid || selected.id));
+        if (existing) {
+          return prev.map((e: any) => {
+            if ((e.uuid || e.id) !== (selected.uuid || selected.id)) return e;
+            const jobs = [...(e.jobs || [])];
+            if (jobs[0]) {
+              jobs[0] = { ...jobs[0], title: editData.job_title || jobs[0].title, compensations: [{ ...updated }] };
+            }
+            return { ...e, jobs };
+          });
+        } else {
+          const copy = { ...selected };
+          const jobs = [...(copy.jobs || [])];
+          if (jobs[0]) {
+            jobs[0] = { ...jobs[0], title: editData.job_title || jobs[0].title, compensations: [{ ...updated }] };
+          }
+          copy.jobs = jobs;
+          return [...prev, copy];
+        }
+      });
+
+      setEditSuccess('Compensation updated successfully');
+      setEditMode(false);
+      setTimeout(() => setEditSuccess(null), 3000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Update failed';
+      setEditError(msg);
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -499,10 +585,16 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
                 <Text style={styles.detailName}>{selected.first_name} {selected.last_name}</Text>
                 <Text style={styles.detailRole}>{selected.jobs?.[0]?.title || '—'}</Text>
               </View>
-              <Pressable onPress={() => setSelectedId(null)} style={styles.closeBtn}>
+              <Pressable onPress={() => { setSelectedId(null); setEditMode(false); }} style={styles.closeBtn}>
                 <Ionicons name="close" size={20} color="#d1d1d6" />
               </Pressable>
             </View>
+
+            {editSuccess && (
+              <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', borderRadius: 10, padding: 10, marginTop: 8, marginHorizontal: 4 }}>
+                <Text style={{ color: '#10B981', fontSize: 13, fontWeight: '600' }}>{editSuccess}</Text>
+              </View>
+            )}
 
             <ScrollView style={styles.detailScroll} showsVerticalScrollIndicator={false}>
               <View style={styles.detailSection}>
@@ -519,21 +611,112 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
                 <DetailRow label="Payment Method" value={formatStatusLabel(selected.payment_method || '—')} />
               </View>
 
-              {selected.jobs?.[0] && (
-                <View style={styles.detailSection}>
+              <View style={styles.detailSection}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={styles.detailSectionTitle}>Compensation</Text>
-                  <DetailRow label="Title" value={selected.jobs[0].title || '—'} />
-                  {selected.jobs[0].compensations?.[0] && (
-                    <>
-                      <DetailRow
-                        label="Rate"
-                        value={formatRate(selected.jobs[0].compensations[0].rate, selected.jobs[0].compensations[0].payment_unit)}
-                      />
-                      <DetailRow label="FLSA Status" value={formatStatusLabel(selected.jobs[0].compensations[0].flsa_status || '—')} />
-                    </>
+                  {!editMode && (
+                    <Pressable onPress={() => startEditMode(selected)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, backgroundColor: 'rgba(59, 130, 246, 0.1)' }}>
+                      <Ionicons name="pencil-outline" size={13} color="#3B82F6" />
+                      <Text style={{ color: '#3B82F6', fontSize: 12, fontWeight: '600' }}>Edit</Text>
+                    </Pressable>
                   )}
                 </View>
-              )}
+
+                {editMode ? (
+                  <View style={{ marginTop: 8 }}>
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={{ color: '#8e8e93', fontSize: 12, marginBottom: 4 }}>Job Title</Text>
+                      <TextInput
+                        style={styles.editInput}
+                        value={editData.job_title}
+                        onChangeText={(t) => setEditData({ ...editData, job_title: t })}
+                        placeholder="Job title"
+                        placeholderTextColor="#6e6e73"
+                      />
+                    </View>
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={{ color: '#8e8e93', fontSize: 12, marginBottom: 4 }}>Pay Type</Text>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {(['Hour', 'Year'] as const).map(pt => (
+                          <Pressable
+                            key={pt}
+                            onPress={() => setEditData({ ...editData, pay_type: pt })}
+                            style={{
+                              flex: 1, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8,
+                              backgroundColor: editData.pay_type === pt ? 'rgba(59,130,246,0.15)' : 'rgba(30,30,35,0.6)',
+                              borderWidth: 1, borderColor: editData.pay_type === pt ? 'rgba(59,130,246,0.4)' : CARD_BORDER,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text style={{ color: editData.pay_type === pt ? '#60A5FA' : '#d1d1d6', fontSize: 13, fontWeight: editData.pay_type === pt ? '600' : '400' }}>
+                              {pt === 'Hour' ? 'Hourly' : 'Salary'}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={{ color: '#8e8e93', fontSize: 12, marginBottom: 4 }}>
+                        {editData.pay_type === 'Hour' ? 'Hourly Rate ($)' : 'Annual Salary ($)'}
+                      </Text>
+                      <TextInput
+                        style={styles.editInput}
+                        value={editData.rate}
+                        onChangeText={(t) => setEditData({ ...editData, rate: t })}
+                        placeholder={editData.pay_type === 'Hour' ? '18.00' : '85000.00'}
+                        placeholderTextColor="#6e6e73"
+                        keyboardType="numeric"
+                      />
+                    </View>
+
+                    {editError && (
+                      <View style={{ backgroundColor: 'rgba(255, 59, 48, 0.12)', borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                        <Text style={{ color: '#ff3b30', fontSize: 12, fontWeight: '500' }}>{editError}</Text>
+                      </View>
+                    )}
+
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <Pressable
+                        style={{ flex: 1, backgroundColor: '#3B82F6', borderRadius: 10, paddingVertical: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, opacity: editSaving ? 0.7 : 1 }}
+                        onPress={handleSaveEdit}
+                        disabled={editSaving}
+                      >
+                        {editSaving ? (
+                          <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                          <>
+                            <Ionicons name="checkmark-outline" size={16} color="#ffffff" />
+                            <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '700' }}>Save Changes</Text>
+                          </>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: CARD_BORDER, alignItems: 'center' }}
+                        onPress={() => { setEditMode(false); setEditError(null); }}
+                      >
+                        <Text style={{ color: '#d1d1d6', fontSize: 13 }}>Cancel</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <DetailRow label="Title" value={selected.jobs?.[0]?.title || '—'} />
+                    {selected.jobs?.[0]?.compensations?.[0] ? (
+                      <>
+                        <DetailRow
+                          label="Rate"
+                          value={formatRate(selected.jobs[0].compensations[0].rate, selected.jobs[0].compensations[0].payment_unit)}
+                        />
+                        <DetailRow label="FLSA Status" value={formatStatusLabel(selected.jobs[0].compensations[0].flsa_status || '—')} />
+                      </>
+                    ) : (
+                      <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)', borderRadius: 8, padding: 10, marginTop: 6 }}>
+                        <Text style={{ color: '#f59e0b', fontSize: 12, fontWeight: '500' }}>No compensation set. Tap Edit to configure pay rate.</Text>
+                      </View>
+                    )}
+                  </>
+                )}
+              </View>
 
               {selected.eligible_paid_time_off?.length > 0 && (
                 <View style={styles.detailSection}>
@@ -797,6 +980,17 @@ const styles = StyleSheet.create({
   ptoBalance: {
     color: '#3B82F6',
     ...Typography.captionMedium,
+  },
+  editInput: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#ffffff',
+    fontSize: 14,
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
   },
   emptyContainer: {
     flex: 1,
