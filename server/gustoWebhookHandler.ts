@@ -281,8 +281,124 @@ export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): P
   }
 }
 
+let capturedVerificationToken: string | null = null;
+
+router.get('/api/gusto/webhook-verification-token', (_req: Request, res: Response) => {
+  if (capturedVerificationToken) {
+    res.json({ verification_token: capturedVerificationToken, message: 'Token captured from Gusto verification POST. Use this as GUSTO_WEBHOOK_SECRET.' });
+  } else {
+    res.json({ verification_token: null, message: 'No verification token captured yet. Trigger a re-request from Gusto.' });
+  }
+});
+
+router.post('/api/gusto/request-verification', async (_req: Request, res: Response) => {
+  try {
+    const token = await refreshGustoCompanyToken();
+    if (!token) {
+      return res.status(503).json({ error: 'No Gusto access token available. Complete OAuth first.' });
+    }
+
+    const subsRes = await fetch(`${GUSTO_API_BASE}/v1/webhook_subscriptions`, {
+      headers: getGustoHeaders(token.accessToken),
+    });
+
+    if (!subsRes.ok) {
+      const text = await subsRes.text();
+      return res.status(subsRes.status).json({ error: 'Failed to list webhook subscriptions', detail: text.substring(0, 500) });
+    }
+
+    const subs = await subsRes.json();
+    const subscriptions = Array.isArray(subs) ? subs : (subs.webhook_subscriptions || []);
+
+    if (subscriptions.length === 0) {
+      return res.json({ message: 'No webhook subscriptions found. Create one in the Gusto developer portal first.' });
+    }
+
+    const results = [];
+    for (const sub of subscriptions) {
+      const uuid = sub.uuid || sub.id;
+      if (!uuid) continue;
+
+      const reqTokenRes = await fetch(`${GUSTO_API_BASE}/v1/webhook_subscriptions/${uuid}/request_verification_token`, {
+        headers: getGustoHeaders(token.accessToken),
+      });
+
+      results.push({
+        subscription_uuid: uuid,
+        status: reqTokenRes.status,
+        message: reqTokenRes.ok ? 'Verification token re-requested. Check /api/gusto/webhook-verification-token for the captured token.' : 'Failed to request verification token',
+      });
+    }
+
+    res.json({ message: 'Verification token re-requested for all subscriptions', results });
+  } catch (error: any) {
+    console.error('Gusto verification re-request error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/api/gusto/verify-subscription', async (req: Request, res: Response) => {
+  try {
+    const token = await refreshGustoCompanyToken();
+    if (!token) {
+      return res.status(503).json({ error: 'No Gusto access token available.' });
+    }
+
+    const verificationToken = req.body.verification_token || capturedVerificationToken;
+    if (!verificationToken) {
+      return res.status(400).json({ error: 'No verification token available. Re-request one first.' });
+    }
+
+    const subsRes = await fetch(`${GUSTO_API_BASE}/v1/webhook_subscriptions`, {
+      headers: getGustoHeaders(token.accessToken),
+    });
+
+    if (!subsRes.ok) {
+      return res.status(subsRes.status).json({ error: 'Failed to list subscriptions' });
+    }
+
+    const subs = await subsRes.json();
+    const subscriptions = Array.isArray(subs) ? subs : (subs.webhook_subscriptions || []);
+
+    const results = [];
+    for (const sub of subscriptions) {
+      const uuid = sub.uuid || sub.id;
+      if (!uuid) continue;
+
+      const verifyRes = await fetch(`${GUSTO_API_BASE}/v1/webhook_subscriptions/${uuid}/verify`, {
+        method: 'PUT',
+        headers: getGustoHeaders(token.accessToken),
+        body: JSON.stringify({ verification_token: verificationToken }),
+      });
+
+      const verifyData = await verifyRes.text();
+      results.push({
+        subscription_uuid: uuid,
+        status: verifyRes.status,
+        verified: verifyRes.ok,
+        response: verifyData.substring(0, 500),
+      });
+    }
+
+    res.json({ message: 'Verification attempted', results, verification_token_used: verificationToken });
+  } catch (error: any) {
+    console.error('Gusto verify subscription error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) => {
   try {
+    if (req.body && req.body.verification_token && !req.body.event_type && !req.body.type) {
+      capturedVerificationToken = req.body.verification_token;
+      console.log('==========================================================');
+      console.log('GUSTO VERIFICATION TOKEN RECEIVED:', capturedVerificationToken);
+      console.log('Set this as GUSTO_WEBHOOK_SECRET in your Secrets tab.');
+      console.log('Or visit /api/gusto/webhook-verification-token to retrieve it.');
+      console.log('==========================================================');
+      return res.status(200).json({ received: true, verification_token_captured: true });
+    }
+
     const signature = req.headers['x-gusto-signature'] as string;
     const rawBody = JSON.stringify(req.body);
 
