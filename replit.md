@@ -115,3 +115,7 @@ Aggregates finance_events into 5 chaptered story sections:
 - Both modals match Finance Hub dark theme (CARD_BG, glassmorphism, same pattern as Gusto setup modal)
 - Fixed otplib v6 API usage (generateSecret/verify top-level exports instead of deprecated authenticator)
 - Plaid connect flow now chains: Consent modal → MFA modal → Plaid Link (no page navigation or browser alerts)
+- Fixed blank Finance Hub screen: null.toLocaleString() crash in LifecycleChain when amount is null
+- Added null safety to all currency formatting functions (formatCurrency, formatShortCurrency, ReconcileCard)
+- Gated lifecycle and timeline sections behind isConnected check (connection-aware UI)
+- Added error boundary wrapper to Finance Hub to prevent future blank screens
