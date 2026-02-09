@@ -97,7 +97,7 @@ Aggregates finance_events into 5 chaptered story sections:
 - **Third-Party Providers Disclosed**: Plaid, Stripe, QuickBooks (Intuit), Gusto — with data types, purposes, locations, and user controls
 - **Contact Email**: security@aspireos.app (standardized across all pages)
 
-## Recent Changes (Feb 9, 2026)
+## Recent Changes (Feb 9, 2026 - Latest)
 - Built enterprise Finance Hub backend with event-sourced architecture
 - Created 6 tenant-scoped finance database tables with idempotency constraints
 - Implemented webhook ingestion for all 4 providers (Plaid JWT, Stripe signature, QBO HMAC, Gusto HMAC)
@@ -110,3 +110,8 @@ Aggregates finance_events into 5 chaptered story sections:
 - Created lifecycle API with entity-scoped filtering
 - All webhook handlers use idempotent event writes (ON CONFLICT DO NOTHING)
 - Trust Spine receipts created for all operations (ingest, compute, propose, execute)
+- Replaced MFA window.alert() with premium-styled inline modal (setup + verify modes with TOTP code input)
+- Replaced full-page Plaid consent navigation with inline premium consent modal
+- Both modals match Finance Hub dark theme (CARD_BG, glassmorphism, same pattern as Gusto setup modal)
+- Fixed otplib v6 API usage (generateSecret/verify top-level exports instead of deprecated authenticator)
+- Plaid connect flow now chains: Consent modal → MFA modal → Plaid Link (no page navigation or browser alerts)
