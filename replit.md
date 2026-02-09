@@ -43,7 +43,18 @@ Aspire Desktop is a full-featured virtual office platform built with Expo (React
 - Gusto (payroll)
 - ElevenLabs (AI voice for Finn)
 
+## Plaid Compliance Patch
+- **Legal Pages**: Privacy Policy, Terms of Service, Data Retention & Deletion pages at `/more/privacy-policy`, `/more/terms`, `/more/data-retention`
+- **Clean Public URLs**: Top-level routes at `/privacy`, `/terms`, `/data-retention` for Plaid questionnaire links
+- **Plaid Consent**: Explicit consent screen at `/more/plaid-consent` with accept/revoke controls
+- **Security Practices**: Factual security overview at `/more/security-practices` (no overclaims)
+- **Policies Hub**: Updated `/more/policies` with links to all legal pages, consent, and security
+- **Plaid Gating**: `connectPlaid()` in connections.tsx requires consent + MFA before opening Plaid Link
+- **Security Libraries**: `lib/security/storage.ts`, `lib/security/plaidConsent.ts`, `lib/security/mfa.ts`
+- **Dependencies**: Added `otplib`, `qrcode`, `@types/qrcode`
+
 ## Recent Changes (Feb 9, 2026)
+- Implemented Plaid compliance patch (legal pages, consent gating, security practices)
 - Imported full Aspire-Desktop project from zip
 - Placed 3D object video (ava-orb.mp4) for Ava voice session and Finn desk
 - Added AI staff intro videos (Clara, Eli, Nora, Quinn, Sarah) to office store

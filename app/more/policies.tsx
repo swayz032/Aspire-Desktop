@@ -1,104 +1,106 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, Text, TouchableOpacity, Modal } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React from 'react';
+import { StyleSheet, View, ScrollView, Text, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
-import { formatDate } from '@/lib/formatters';
-import { seedDatabase } from '@/lib/mockSeed';
-import { getPolicies } from '@/lib/mockDb';
-import { Policy } from '@/types/support';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-function PolicyModal({ policy, visible, onClose }: { policy: Policy | null; visible: boolean; onClose: () => void }) {
-  if (!policy) return null;
+type PolicyLink = {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: string;
+  route: string;
+};
 
+const legalLinks: PolicyLink[] = [
+  {
+    id: 'privacy',
+    title: 'Privacy Policy',
+    subtitle: 'How we collect and use your data',
+    icon: 'shield',
+    route: '/more/privacy-policy',
+  },
+  {
+    id: 'terms',
+    title: 'Terms of Service',
+    subtitle: 'Rules governing use of Aspire',
+    icon: 'document-text',
+    route: '/more/terms',
+  },
+  {
+    id: 'data-retention',
+    title: 'Data Retention & Deletion',
+    subtitle: 'How long we keep data and how to request deletion',
+    icon: 'time',
+    route: '/more/data-retention',
+  },
+];
+
+const plaidLinks: PolicyLink[] = [
+  {
+    id: 'plaid-consent',
+    title: 'Plaid Consent',
+    subtitle: 'Authorize bank data access via Plaid',
+    icon: 'card',
+    route: '/more/plaid-consent',
+  },
+  {
+    id: 'security-practices',
+    title: 'Security Practices',
+    subtitle: 'How Aspire handles security',
+    icon: 'lock-closed',
+    route: '/more/security-practices',
+  },
+];
+
+function LinkCard({ item, onPress }: { item: PolicyLink; onPress: () => void }) {
   return (
-    <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{policy.title}</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={Colors.text.secondary} />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.modalMeta}>
-            <Text style={styles.metaText}>Version {policy.version}</Text>
-            <Text style={styles.metaSeparator}>•</Text>
-            <Text style={styles.metaText}>Effective {formatDate(policy.effectiveDate)}</Text>
-          </View>
-          <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-            <Text style={styles.policyContent}>{policy.content}</Text>
-          </ScrollView>
-        </View>
+    <TouchableOpacity style={styles.linkCard} onPress={onPress} activeOpacity={0.7}>
+      <View style={styles.linkIcon}>
+        <Ionicons name={item.icon as any} size={22} color={Colors.accent.cyan} />
       </View>
-    </Modal>
+      <View style={styles.linkInfo}>
+        <Text style={styles.linkTitle}>{item.title}</Text>
+        <Text style={styles.linkSubtitle}>{item.subtitle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={Colors.text.muted} />
+    </TouchableOpacity>
   );
 }
 
 export default function PoliciesScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
 
-  const [loading, setLoading] = useState(true);
-  const [policies, setPolicies] = useState<Policy[]>([]);
-  const [selectedPolicy, setSelectedPolicy] = useState<Policy | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-
-  useEffect(() => {
-    seedDatabase();
-    const timer = setTimeout(() => {
-      setPolicies(getPolicies());
-      setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handlePolicyPress = (policy: Policy) => {
-    setSelectedPolicy(policy);
-    setModalVisible(true);
-  };
-
   return (
     <View style={styles.container}>
-      <PageHeader title="Terms & Policies" showBackButton />
-      
-      <ScrollView style={[styles.scrollView, { paddingTop: headerHeight }]} contentContainerStyle={styles.scrollContent}>
+      <PageHeader title="Policies & Legal" showBackButton />
+
+      <ScrollView style={[styles.scroll, { paddingTop: headerHeight }]} contentContainerStyle={styles.scrollContent}>
         <Text style={styles.subtitle}>
-          Review our legal documents and policies governing your use of Aspire Founder Console.
+          Review our legal documents and policies governing your use of Aspire.
         </Text>
 
-        {policies.map((policy) => (
-          <TouchableOpacity 
-            key={policy.id} 
-            style={styles.policyCard} 
-            onPress={() => handlePolicyPress(policy)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.policyIcon}>
-              <Ionicons name="document-text" size={24} color={Colors.accent.cyan} />
-            </View>
-            <View style={styles.policyInfo}>
-              <Text style={styles.policyTitle}>{policy.title}</Text>
-              <Text style={styles.policyMeta}>Version {policy.version} • {formatDate(policy.effectiveDate)}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.text.muted} />
-          </TouchableOpacity>
+        <Text style={styles.sectionLabel}>Legal</Text>
+        {legalLinks.map((item) => (
+          <LinkCard key={item.id} item={item} onPress={() => router.push(item.route as any)} />
+        ))}
+
+        <Text style={[styles.sectionLabel, { marginTop: Spacing.lg }]}>Plaid & Security</Text>
+        {plaidLinks.map((item) => (
+          <LinkCard key={item.id} item={item} onPress={() => router.push(item.route as any)} />
         ))}
 
         <View style={styles.footerNote}>
           <Ionicons name="information-circle" size={16} color={Colors.text.muted} />
           <Text style={styles.footerText}>
-            By using Aspire Founder Console, you agree to these terms and policies. Please review them carefully.
+            These pages are also published publicly on aspireos.app for compliance and transparency.
           </Text>
         </View>
       </ScrollView>
-
-      <PolicyModal 
-        policy={selectedPolicy} 
-        visible={modalVisible} 
-        onClose={() => setModalVisible(false)} 
-      />
     </View>
   );
 }
@@ -108,7 +110,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background.primary,
   },
-  scrollView: {
+  scroll: {
     flex: 1,
   },
   scrollContent: {
@@ -118,10 +120,18 @@ const styles = StyleSheet.create({
   subtitle: {
     ...Typography.body,
     color: Colors.text.muted,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
     lineHeight: 22,
   },
-  policyCard: {
+  sectionLabel: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: Spacing.sm,
+  },
+  linkCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.background.secondary,
@@ -131,24 +141,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border.default,
   },
-  policyIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  linkIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.accent.cyanDark,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
   },
-  policyInfo: {
+  linkInfo: {
     flex: 1,
   },
-  policyTitle: {
+  linkTitle: {
     ...Typography.body,
     color: Colors.text.primary,
     fontWeight: '600',
   },
-  policyMeta: {
+  linkSubtitle: {
     ...Typography.small,
     color: Colors.text.muted,
     marginTop: 2,
@@ -167,49 +177,5 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
     flex: 1,
     lineHeight: 18,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: Colors.background.primary,
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
-    maxHeight: '90%',
-    padding: Spacing.lg,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  modalTitle: {
-    ...Typography.title,
-    color: Colors.text.primary,
-  },
-  modalMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  metaText: {
-    ...Typography.small,
-    color: Colors.text.muted,
-  },
-  metaSeparator: {
-    ...Typography.small,
-    color: Colors.text.muted,
-    marginHorizontal: Spacing.xs,
-  },
-  modalScroll: {
-    maxHeight: 500,
-  },
-  policyContent: {
-    ...Typography.body,
-    color: Colors.text.secondary,
-    lineHeight: 24,
   },
 });

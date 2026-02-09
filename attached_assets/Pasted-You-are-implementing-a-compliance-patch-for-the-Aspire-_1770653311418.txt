@@ -1,0 +1,45 @@
+You are implementing a compliance patch for the Aspire Expo Router web/desktop app to satisfy Plaid production questionnaire requirements.
+
+Repository context:
+- Project: Aspire-Desktop-lite (Expo Router)
+- Domain: https://www.aspireos.app
+- Plaid is already connected in Sandbox; do not break sandbox testing.
+
+Goal:
+Implement the files in the attached patch folder into the project, wire the screens into the existing navigation, and enforce pre-Plaid-Link gating:
+1) Add in-app legal pages:
+   - app/more/privacy-policy.tsx
+   - app/more/terms.tsx
+   - app/more/data-retention.tsx
+   - app/more/plaid-consent.tsx
+   - update app/more/policies.tsx to include links to these pages
+
+2) Implement missing security libs required by the existing MFA screens:
+   - lib/security/mfa.ts
+   - lib/security/storage.ts
+   - lib/security/plaidConsent.ts
+
+3) Wire gating into Plaid connect flow:
+   - Before calling Plaid Link / creating link_token, require:
+     (a) Plaid consent record exists (plaid-consent screen)
+     (b) MFA is enabled AND recently verified (mfa-setup + mfa-verify screens)
+   - If not satisfied, route user to:
+     - /more/plaid-consent
+     - /more/mfa-setup then /more/mfa-verify
+   - Sandbox must still work after user completes consent + MFA.
+
+4) Dependencies:
+   - Add and install: otplib, qrcode
+   - If using secure storage: expo-secure-store (or implement a safe web fallback)
+
+5) Domain publishing:
+   - Ensure privacy/terms/retention pages are reachable on web build routes so we can provide links in Plaid questionnaire:
+     https://www.aspireos.app/privacy
+     https://www.aspireos.app/terms
+     https://www.aspireos.app/data-retention
+   - If routing requires different paths, implement redirects or align route paths.
+
+Deliverables:
+- PR-style change summary
+- Confirmation of routes and gating behavior
+- Screenshots of: Policies hub, Privacy page, Consent page, MFA setup/verify, and Plaid connect blocked until gates satisfied

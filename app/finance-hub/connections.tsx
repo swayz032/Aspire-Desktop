@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern } from '@/constants/cardPatterns';
+import { getPlaidConsent } from '@/lib/security/plaidConsent';
+import { getMfaStatus, isMfaVerifiedRecently } from '@/lib/security/mfa';
 
 const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -47,6 +50,7 @@ export default function ConnectionsScreen() {
   const [linkedAccounts, setLinkedAccounts] = useState<any[]>([]);
   const [crossLinking, setCrossLinking] = useState<string | null>(null);
   const [crossLinkSuccess, setCrossLinkSuccess] = useState<Record<string, boolean>>({});
+  const plaidRouter = useRouter();
 
   const checkAllStatuses = useCallback(async () => {
     try {
@@ -176,6 +180,31 @@ export default function ConnectionsScreen() {
   const connectPlaid = async () => {
     setActionLoading('plaid');
     try {
+      const hasConsent = await getPlaidConsent();
+      if (!hasConsent) {
+        setActionLoading(null);
+        plaidRouter.push('/more/plaid-consent' as any);
+        return;
+      }
+
+      const mfaStatus = await getMfaStatus();
+      if (!mfaStatus.enabled) {
+        setActionLoading(null);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert('MFA is required before connecting Plaid. Please enable MFA in More → Security first.');
+        }
+        return;
+      }
+
+      const recentlyVerified = await isMfaVerifiedRecently();
+      if (!recentlyVerified) {
+        setActionLoading(null);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert('Please verify your MFA code before connecting Plaid. Your last verification has expired.');
+        }
+        return;
+      }
+
       const res = await fetch('/api/plaid/create-link-token', { method: 'POST' });
       const data = await res.json();
       if (data.link_token && typeof window !== 'undefined') {
