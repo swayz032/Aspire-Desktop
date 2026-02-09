@@ -1,0 +1,937 @@
+Deliver a deterministic, enterprise-grade upgrade plan (wiring + data model + sync + UX contracts + security + ops) to turn Aspire Finance Hub into a storyline-first system that non-savvy SMB owners can trust and understand—without changing your theme.
+What I verified
+
+
+Provider capabilities & “must-use” features from primary docs:
+
+
+Plaid: transaction webhooks, general webhooks, webhook verification (signed/JWT), and the /transactions/sync migration path. 
+
+
+Stripe: payout reconciliation + report types, payout objects/schedules, balance summary, pending→available settlement behavior. 
+
+
+QuickBooks: webhooks + CDC (change data capture) best practice. 
+
+
+Gusto Embedded: company access tokens vs system tokens, token expiry, recommended webhook integration. 
+
+
+
+
+Not verified in this message: your current zip’s exact file paths/implementations. The plan below is written to be implemented against your existing stack with minimal assumptions and is structured as a wiring spec Replit can follow.
+
+North Star: “Finance Storyline” contract
+Finance Hub becomes a single narrative with progressive disclosure:
+
+
+Now (Truth): what’s real today
+
+
+Next (Movement): what changes in the next 7–14 days
+
+
+This month (Performance): are you profitable, and why
+
+
+Reconcile (Trust): why numbers don’t match, with proofs
+
+
+Do Next (Actions): proposals with approvals + receipts
+
+
+The innovation isn’t “new charts.” It’s the combination of:
+
+
+Event-sourced finance timeline
+
+
+Cross-provider provenance
+
+
+Mismatch-first reconciliation
+
+
+Governed actions (Trust Spine)
+
+
+
+Architecture (enterprise-grade, production-first)
+Planes
+1) Ingestion plane (provider events → normalized events)
+
+
+Receives webhooks / CDC polling results
+
+
+Verifies signatures
+
+
+Writes normalized events (idempotent)
+
+
+Emits receipts
+
+
+2) Canonical finance store (multi-tenant, auditable)
+
+
+Normalized events + entities + snapshots
+
+
+RLS (row-level security) keyed by suite_id and office_id
+
+
+Append-only ledger behavior for high-trust artifacts
+
+
+3) Storyline engine (events → chapters → UI DTOs)
+
+
+Aggregates events into:
+
+
+Cash truth
+
+
+Inflow/outflow forecast
+
+
+Monthly performance (reports)
+
+
+Reconciliation diffs
+
+
+Next-best actions
+
+
+
+
+4) Experience plane (UI)
+
+
+Your theme stays untouched
+
+
+Adds only small primitives: SourceBadge, ExplainDrawer, TimelineRow, ReconcileCard
+
+
+
+Data model (minimal but complete)
+Tables
+finance_connections
+Tracks each connected provider per suite/office.
+
+
+id
+
+
+suite_id, office_id
+
+
+provider (plaid|stripe|qbo|gusto)
+
+
+external_account_id (e.g., Plaid item_id, Stripe connect acct, QBO realmId, Gusto company_uuid)
+
+
+status (connected|needs_reauth|degraded|disconnected)
+
+
+scopes (json)
+
+
+last_sync_at, last_webhook_at
+
+
+created_at, updated_at
+
+
+finance_tokens (encrypted at rest)
+
+
+connection_id
+
+
+access_token_enc, refresh_token_enc
+
+
+expires_at
+
+
+rotation_version
+
+
+Never log decrypted tokens
+
+
+finance_events (append-only “timeline”)
+Normalized across all providers.
+
+
+event_id (internal UUID)
+
+
+suite_id, office_id, connection_id
+
+
+provider
+
+
+provider_event_id (for idempotency)
+
+
+event_type (see below)
+
+
+occurred_at
+
+
+amount, currency
+
+
+status (pending|posted|failed|reversed)
+
+
+entity_refs (json: invoice_id, payout_id, payroll_id, bank_tx_id, journal_id, etc.)
+
+
+raw_hash (sha256 of canonical raw payload)
+
+
+receipt_id
+
+
+created_at
+
+
+finance_entities (optional, for fast joins)
+
+
+invoices, customers, payouts, payroll runs, accounts, etc.
+
+
+store minimal fields + provider IDs
+
+
+finance_snapshots (cached UI DTO)
+
+
+suite_id, office_id
+
+
+generated_at
+
+
+chapter_now, chapter_next, chapter_month, chapter_reconcile, chapter_actions (json)
+
+
+sources (per-metric provenance map)
+
+
+staleness per provider
+
+
+receipt_id
+
+
+receipts (your Trust Spine)
+
+
+receipt_id
+
+
+suite_id, office_id
+
+
+action_type (ingest_webhook, sync_pull, compute_snapshot, propose_action, execute_action)
+
+
+inputs_hash, outputs_hash
+
+
+policy_decision_id
+
+
+created_at
+
+
+
+Normalized event taxonomy (so the story never lies)
+Plaid (bank truth)
+
+
+bank_tx_posted
+
+
+bank_tx_pending
+
+
+bank_balance_updated
+
+
+bank_account_linked
+
+
+bank_item_error (needs attention)
+
+
+Use webhooks to know when transactions are ready/updated. 
+Verify webhook authenticity using Plaid’s signed JWT approach. 
+Migrate to /transactions/sync to reduce drift and simplify incremental updates. 
+Stripe (collections + deposits)
+
+
+invoice_sent
+
+
+invoice_paid
+
+
+payment_succeeded
+
+
+payment_refunded
+
+
+payout_created
+
+
+payout_paid
+
+
+balance_pending_to_available (settlement)
+
+
+fee_assessed
+
+
+Stripe payout reconciliation exists explicitly to map payouts to underlying transactions. 
+Stripe documents pending→available settlement behavior; you must reflect that in UX to avoid “paid ≠ bank.” 
+QuickBooks (books of record)
+
+
+qbo_report_refreshed (P&L, Balance Sheet)
+
+
+qbo_invoice_changed
+
+
+qbo_payment_changed
+
+
+qbo_journal_posted
+
+
+Use QBO webhooks to detect changes. 
+Use CDC to pull changed entities efficiently. 
+Gusto Embedded (payroll truth)
+
+
+payroll_calculated
+
+
+payroll_submitted
+
+
+payroll_paid
+
+
+employee_changed
+
+
+Gusto recommends integrating webhooks. 
+Model token types correctly (system vs company), and token expiry (2 hours for access tokens in embedded quickstart guidance). 
+
+API wiring (clean contracts; UI becomes deterministic)
+Read APIs (UI)
+GET /api/finance/snapshot
+Returns the cached, chaptered “story.”
+
+
+Response:
+
+
+chapters.now[]
+
+
+chapters.next[]
+
+
+chapters.month[]
+
+
+chapters.reconcile[]
+
+
+chapters.actions[]
+
+
+provenance_map (metric → {source, last_sync_at, confidence, excludes})
+
+
+staleness per provider
+
+
+
+
+GET /api/finance/timeline?range=30d
+Returns normalized events (for drilldown + explainability).
+GET /api/finance/explain?metric_id=...
+Returns:
+
+
+plain-language definition
+
+
+how computed (formula)
+
+
+sources + timestamps
+
+
+exclusions
+
+
+links to underlying events/entities (IDs)
+
+
+GET /api/connections/status
+Returns connection statuses and required next steps (reauth, missing scope, webhook down).
+Write APIs (governed)
+POST /api/finance/proposals
+Creates “Do Next” items (no execution).
+
+
+emits receipt
+
+
+includes predicted impact + dependencies
+
+
+POST /api/finance/actions/execute
+Executes a proposed action (e.g., send invoice reminder, create QBO categorization suggestion) only through Trust Spine:
+
+
+policy evaluation
+
+
+approvals (if required)
+
+
+execution
+
+
+receipt emitted
+
+
+timeline event recorded
+
+
+
+Sync strategy (production, not demo)
+Primary = event-driven
+
+
+Webhooks for Plaid/Stripe/QBO/Gusto where available. 
+
+
+Verify signatures:
+
+
+Plaid: JWT verification. 
+
+
+Stripe: use Stripe’s webhook signing (implement; do not accept unsigned)
+
+
+Intuit: validate payload + TLS; treat as untrusted input
+
+
+Gusto: validate and idempotently process events
+
+
+
+
+Secondary = pull-based backfill
+
+
+Plaid /transactions/sync incremental pull for any missed updates. 
+
+
+QuickBooks CDC polling as fallback or complement. 
+
+
+Stripe report APIs for reconciliation (balance summary / payout reconciliation). 
+
+
+Idempotency (non-negotiable)
+
+
+Every webhook handler:
+
+
+computes provider_event_id (or derives stable hash)
+
+
+checks finance_events uniqueness constraint
+
+
+writes once, safely retries
+
+
+
+
+Every compute job:
+
+
+writes snapshot with generated_at
+
+
+produces receipt with inputs/outputs hashes
+
+
+
+
+
+UX spec (theme preserved; “premium” comes from behavior)
+Core UX primitives (small, reusable)
+
+
+SourceBadge (per card/metric)
+
+
+
+
+source (Plaid/Stripe/QBO/Gusto)
+
+
+last_sync_at
+
+
+confidence (green/yellow/red)
+
+
+no visual redesign: uses existing chip/badge styles
+
+
+
+
+ExplainDrawer (right-side drawer)
+
+
+
+
+opens from any metric
+
+
+shows: definition, source, formula, exclusions, related events
+
+
+
+
+TimelineRow
+
+
+
+
+compact event row with:
+
+
+icon, label, amount, status, source badge
+
+
+expandable to show provider IDs + receipt ID
+
+
+
+
+
+
+ReconcileCard
+
+
+
+
+“Stripe paid but not in bank yet”
+
+
+“Books profit differs from cash movement”
+
+
+shows reason codes + next step
+
+
+Chapter layout (one-screen comprehension)
+Overview top section (fixed)
+
+
+Now: Cash available (bank + Stripe available) + “what’s real”
+
+
+Next 7 days: expected inflows/outflows (with confidence)
+
+
+This month: profitability summary (from QBO reports)
+
+
+Trust: mismatch count + top mismatch reason
+
+
+Details (below)
+
+
+existing charts/cards remain, but fed from snapshot + timeline
+
+
+no “fake numbers” when disconnected:
+
+
+show a clean connect-state
+
+
+
+
+Bookings storyline (must be end-to-end)
+Booking item shows:
+
+
+Booked → Invoiced → Paid → Deposited → Posted
+
+
+For Stripe:
+
+
+show settlement state (pending/available) to prevent confusion 
+
+
+show payout reconciliation mapping where possible 
+
+
+
+
+For QBO:
+
+
+show whether a corresponding invoice/payment exists (from webhooks/CDC) 
+
+
+
+
+
+Security & governance (Aspire invariants enforced)
+Tenant isolation
+
+
+All data keyed by suite_id and office_id
+
+
+Enforce RLS at DB layer
+
+
+Eliminate any global provider state (no shared connectedAccountId, no provider-wide token record)
+
+
+Capability tokens + deny-by-default
+
+
+UI never calls providers directly
+
+
+UI requests are evaluated by policy engine:
+
+
+read-only scopes vs write scopes
+
+
+action risk tier (green/yellow/red)
+
+
+
+
+Red actions require explicit approval and produce receipts
+
+
+Secrets management
+
+
+Tokens encrypted at rest (KMS/secret vault)
+
+
+Strict log redaction
+
+
+Rotate refresh tokens when possible
+
+
+Track rotation_version
+
+
+
+Observability & operations (so it stays premium under load)
+Metrics
+
+
+webhook_ingest_success_rate by provider
+
+
+webhook_lag_seconds
+
+
+snapshot_compute_latency_ms
+
+
+snapshot_staleness_seconds by provider
+
+
+reconciliation_mismatch_count
+
+
+token_refresh_failures
+
+
+Alerts
+
+
+Plaid/Stripe/QBO/Gusto webhook failures > threshold
+
+
+Snapshot staleness > 15m for connected providers
+
+
+Any cross-tenant access attempt (RLS violation) → pager
+
+
+Runbooks
+
+
+Provider outage handling: degrade UI with confidence indicators
+
+
+Token refresh failures: guide re-auth flows
+
+
+Duplicate webhook storms: idempotency + queue backpressure
+
+
+
+Phased upgrade plan (deterministic, low risk)
+Phase 0: Hardening prerequisites (blocking)
+
+
+Implement tenant-scoped token storage + connection registry
+
+
+Remove any global provider state
+
+
+Add receipts for: ingest, snapshot compute, action proposals
+
+
+Exit criteria: multi-tenant correctness tests pass (see below).
+Phase 1: Truthful Overview (no more demo-truth)
+
+
+Implement GET /api/finance/snapshot backed by cached snapshot
+
+
+Overview reads only snapshot
+
+
+Add SourceBadge + connection-aware empty states
+
+
+Exit criteria: overview never shows real-looking numbers when disconnected.
+Phase 2: Timeline foundation (story backbone)
+
+
+Implement finance_events append-only timeline
+
+
+Add Plaid webhook ingestion + /transactions/sync backfill 
+
+
+Add Stripe webhook ingestion + payout reconciliation data path 
+
+
+Exit criteria: timeline populates deterministically and survives retries.
+Phase 3: Books & payroll chapters (trust + operations)
+
+
+QuickBooks webhooks + CDC fallback 
+
+
+Gusto webhooks + correct token modeling 
+
+
+Snapshot chapter “This month” reads QBO reports
+
+
+Exit criteria: monthly performance is sourced from QBO and explainable.
+Phase 4: Reconciliation-first UX (the “owner headache killer”)
+
+
+Implement mismatch detector:
+
+
+Stripe paid vs bank deposit timing (pending/available/payout)
+
+
+Stripe payout vs bank deposit matching (reconciliation)
+
+
+Cash movement vs P&L differences (accrual vs cash basis explanation)
+
+
+
+
+Render ReconcileCard list with reason codes and next steps
+
+
+Exit criteria: user can answer “why doesn’t this match?” without leaving Finance Hub.
+Phase 5: Bookings full storyline
+
+
+Extend booking records with provider entity refs
+
+
+Render the lifecycle chain per booking
+
+
+Provide “Explain” per step with provenance + receipts
+
+
+Exit criteria: for any booking, user can trace to payout + bank posting + books posting.
+
+Test plan (enterprise-grade)
+Unit tests
+
+
+signature verification (Plaid JWT, Stripe signature)
+
+
+idempotent event writes
+
+
+snapshot aggregation math (deterministic inputs → deterministic outputs)
+
+
+Integration tests
+
+
+webhook ingest → event created → snapshot updated
+
+
+token refresh flows (Gusto access tokens expire; verify refresh path) 
+
+
+QBO CDC polling window correctness 
+
+
+Security tests
+
+
+RLS: attempt to read/write other suite’s data (must fail)
+
+
+log scanning: ensure tokens never appear
+
+
+replay attacks: duplicate webhooks produce no double-counting
+
+
+UX acceptance tests
+
+
+no layout shift (fixed skeleton heights)
+
+
+no fake numbers in disconnected state
+
+
+“Explain” drawer exists for every top-level metric
+
+
+reconcile items are actionable and understandable
+
+
+
+Replit handoff prompt (copy/paste, deterministic)
+Constraints
+
+
+Do not change theme: colors, typography, spacing scale, shadows, navigation, icons, layout structure.
+
+
+Only add: SourceBadge, ExplainDrawer, TimelineRow, ReconcileCard components using existing styling primitives.
+
+
+Build
+
+
+Add tenant-scoped connection + token storage (suite_id, office_id) and remove any global provider state.
+
+
+Add finance_events (append-only) + idempotency constraint on (suite_id,office_id,provider,provider_event_id).
+
+
+Add webhook receivers:
+
+
+Plaid: verify Plaid-Verification JWT and ingest transaction updates. 
+
+
+Stripe: ingest payment/invoice/payout events + store payout reconciliation mapping. 
+
+
+QuickBooks: ingest webhooks + CDC fallback polling. 
+
+
+Gusto: ingest webhooks; ensure company access token usage (system tokens not valid for company/employee data). 
+
+
+
+
+Add GET /api/finance/snapshot that returns chapters (Now/Next/ThisMonth/Reconcile/Actions) + provenance map.
+
+
+Update Finance Hub overview to render strictly from snapshot; show connect-aware empty states.
+
+
+Update Bookings to show lifecycle chain: Booked → Invoiced → Paid → Deposited → Posted with “Explain” per step.
+
+
+Quality gates
+
+
+Idempotent webhooks; safe retries
+
+
+RLS / tenant isolation tests
+
+
+No tokens in logs
+
+
+No UI flicker/CLS: fixed skeleton heights, cached snapshot + silent refresh
+
+
+
+“Innovative” differentiators (grounded, defensible)
+These are meaningful and testable (not marketing):
+
+
+Mismatch-first finance UX (reconciliation is a first-class chapter)
+
+
+Provenance everywhere (every number has source + freshness + exclusions)
+
+
+Event-sourced narrative (timeline is canonical; charts are derived)
+
+
+Governed actions (proposals → approvals → execution → receipts)
+
+
+If you implement the above, Finance Hub becomes “simple” not by hiding complexity, but by containing it behind explainability and receipts, which is the only sustainable path for non-savvy owners.
