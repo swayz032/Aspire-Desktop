@@ -237,7 +237,7 @@ Last Updated: January 1, 2026
 - Export data in standard formats
 
 7. CONTACT US
-For privacy inquiries: privacy@aspire.ai`,
+For privacy inquiries: security@aspireos.app`,
     version: '1.8',
     effectiveDate: daysAgo(90),
     createdAt: daysAgo(365),

@@ -44,17 +44,23 @@ Aspire Desktop is a full-featured virtual office platform built with Expo (React
 - ElevenLabs (AI voice for Finn)
 
 ## Plaid Compliance Patch
-- **Legal Pages**: Privacy Policy, Terms of Service, Data Retention & Deletion pages at `/more/privacy-policy`, `/more/terms`, `/more/data-retention`
+- **Legal Pages**: Enterprise-grade Privacy Policy, Terms of Service, Data Retention & Deletion pages at `/more/privacy-policy`, `/more/terms`, `/more/data-retention`
 - **Clean Public URLs**: Top-level routes at `/privacy`, `/terms`, `/data-retention` for Plaid questionnaire links
 - **Plaid Consent**: Explicit consent screen at `/more/plaid-consent` with accept/revoke controls
-- **Security Practices**: Factual security overview at `/more/security-practices` (no overclaims)
+- **Security Practices**: Provider-specific security details (Plaid SOC2, Stripe PCI-DSS, QuickBooks/Gusto) at `/more/security-practices`
 - **Policies Hub**: Updated `/more/policies` with links to all legal pages, consent, and security
 - **Plaid Gating**: `connectPlaid()` in connections.tsx requires consent + MFA before opening Plaid Link
 - **Security Libraries**: `lib/security/storage.ts`, `lib/security/plaidConsent.ts`, `lib/security/mfa.ts`
 - **Dependencies**: Added `otplib`, `qrcode`, `@types/qrcode`
+- **Third-Party Providers Disclosed**: Plaid, Stripe, QuickBooks (Intuit), Gusto — with data types, purposes, locations, and user controls
+- **Contact Email**: security@aspireos.app (standardized across all pages)
 
 ## Recent Changes (Feb 9, 2026)
-- Implemented Plaid compliance patch (legal pages, consent gating, security practices)
+- Upgraded all legal pages to enterprise-grade with full provider disclosures (Plaid, Stripe, QuickBooks, Gusto)
+- Added per-provider retention schedules, user rights, cross-border disclosures, incident response
+- Removed blue overlay from policy/security page icons
+- Standardized all contact email references to security@aspireos.app
+- Implemented Plaid compliance patch (consent gating, security practices)
 - Imported full Aspire-Desktop project from zip
 - Placed 3D object video (ava-orb.mp4) for Ava voice session and Finn desk
 - Added AI staff intro videos (Clara, Eli, Nora, Quinn, Sarah) to office store
