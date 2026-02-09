@@ -6,7 +6,7 @@ interface DocumentThumbnailProps {
   type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording';
   size?: 'sm' | 'md' | 'lg' | 'xl';
   variant?: number;
-  context?: 'todayplan' | 'authorityqueue' | 'conference';
+  context?: 'todayplan' | 'authorityqueue' | 'conference' | 'financehub';
 }
 
 const invoiceImage = require('@/assets/images/documents/invoice-alpha.webp');
@@ -19,6 +19,11 @@ const invoiceConfImage = require('@/assets/images/documents/invoice-conf.png');
 const ndaConfImage = require('@/assets/images/documents/nda-conf.png');
 const reportConfImage = require('@/assets/images/documents/report-q4-conf.png');
 const proposalConfImage = require('@/assets/images/documents/proposal-conf.png');
+
+const invoiceBlue1 = require('@/assets/images/documents/invoice-blue-1.png');
+const invoiceBlue2 = require('@/assets/images/documents/invoice-blue-2.png');
+const contractBlue1 = require('@/assets/images/documents/contract-blue-1.png');
+const contractBlue2 = require('@/assets/images/documents/contract-blue-2.png');
 
 export function DocumentThumbnail({ 
   type, 
@@ -35,7 +40,21 @@ export function DocumentThumbnail({
 
   let imageSource;
   
-  if (context === 'conference') {
+  if (context === 'financehub') {
+    if (type === 'invoice') {
+      imageSource = variant % 2 === 0 ? invoiceBlue1 : invoiceBlue2;
+    } else if (type === 'contract') {
+      imageSource = variant % 2 === 0 ? contractBlue1 : contractBlue2;
+    } else if (type === 'report') {
+      imageSource = invoiceBlue2;
+    } else if (type === 'recording') {
+      imageSource = recordingImage;
+    } else if (type === 'document') {
+      imageSource = contractBlue1;
+    } else {
+      imageSource = invoiceBlue1;
+    }
+  } else if (context === 'conference') {
     if (type === 'invoice') {
       imageSource = invoiceConfImage;
     } else if (type === 'contract') {

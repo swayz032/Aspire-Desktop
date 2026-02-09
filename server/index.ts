@@ -478,10 +478,11 @@ app.get('/api/ops-snapshot', async (req, res) => {
 });
 
 const publicPath = path.join(process.cwd(), 'public');
-app.use(express.static(publicPath));
+app.use(express.static(publicPath, { maxAge: 0, etag: false }));
 
 const distPath = path.join(process.cwd(), 'dist');
-app.use(express.static(distPath));
+app.use('/assets', express.static(path.join(distPath, 'assets'), { maxAge: 0, etag: false, setHeaders: (res) => { res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); } }));
+app.use(express.static(distPath, { maxAge: 0, etag: false }));
 
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api') && req.method === 'GET') {

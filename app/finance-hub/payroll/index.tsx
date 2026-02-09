@@ -269,18 +269,38 @@ export default function RunPayrollScreen() {
       const updated = await updateRes.json();
       setActivePayroll(updated);
 
-      const prepareRes = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}/prepare`, {
+      const calcRes = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}/calculate`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
       });
-      if (prepareRes.ok) {
-        const result = await prepareRes.json();
+      if (!calcRes.ok) {
+        const err = await calcRes.json().catch(() => ({}));
+        setCalcError(err.error || err.message || 'Tax calculation failed — Gusto may require additional employee setup (SSN, address, tax forms). Check the People and Tax & Compliance tabs.');
+        setCalculating(false);
+        return;
+      }
+
+      let pollAttempts = 0;
+      const maxAttempts = 15;
+      const pollPayroll = async (): Promise<any> => {
+        const pollRes = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}`);
+        if (!pollRes.ok) return null;
+        const data = await pollRes.json();
+        if (data.calculated_at || data.totals || pollAttempts >= maxAttempts) {
+          return data;
+        }
+        pollAttempts++;
+        await new Promise(r => setTimeout(r, 2000));
+        return pollPayroll();
+      };
+
+      const result = await pollPayroll();
+      if (result) {
         setCalcResult(result);
         setActivePayroll((prev: any) => ({ ...prev, ...result }));
         setCalculated(true);
       } else {
-        const err = await prepareRes.json().catch(() => ({}));
-        setCalcError(err.error || err.message || 'Tax calculation failed — Gusto may require additional employee setup (SSN, address, tax forms). Check the People and Tax & Compliance tabs.');
+        setCalcError('Payroll calculation timed out. Please try again in a moment.');
       }
     } catch (e) {
       setCalcError('Failed to connect to payroll service. Check your internet connection.');

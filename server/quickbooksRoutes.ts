@@ -507,14 +507,24 @@ router.post('/api/quickbooks/journal-entries', async (req: Request, res: Respons
       return res.status(400).json({ error: 'Journal entry requires at least 2 lines (debit and credit)' });
     }
 
+    for (const line of lines) {
+      const amt = parseFloat(line.amount);
+      if (isNaN(amt) || amt <= 0) {
+        return res.status(400).json({ error: `Invalid amount: ${line.amount}. All line amounts must be positive numbers.` });
+      }
+      if (!line.accountId) {
+        return res.status(400).json({ error: `Missing account ID for ${line.accountName || 'unknown account'}. Each line must have a valid QuickBooks account ID.` });
+      }
+    }
+
     const journalEntry: any = {
       Line: lines.map((line: any) => ({
         DetailType: 'JournalEntryLineDetail',
-        Amount: Math.abs(line.amount),
+        Amount: Math.abs(parseFloat(line.amount)),
         Description: line.description || '',
         JournalEntryLineDetail: {
           PostingType: line.type,
-          AccountRef: { value: line.accountId, name: line.accountName },
+          AccountRef: { value: String(line.accountId), name: line.accountName },
         },
       })),
     };
@@ -536,7 +546,8 @@ router.post('/api/quickbooks/journal-entries', async (req: Request, res: Respons
     res.json(data);
   } catch (error: any) {
     console.error('QuickBooks create journal entry error:', error);
-    res.status(500).json({ error: 'Failed to create journal entry' });
+    const errMsg = error?.response?.data?.Fault?.Error?.[0]?.Detail || error.message || 'Failed to create journal entry';
+    res.status(500).json({ error: errMsg });
   }
 });
 

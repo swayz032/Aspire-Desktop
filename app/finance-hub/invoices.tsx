@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
+import { DocumentThumbnail } from '@/components/DocumentThumbnail';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -351,11 +352,14 @@ export default function InvoicesPage() {
                   <Text style={[s.thCell, { flex: 1.5 }]}>Actions</Text>
                 </View>
               )}
-              {invoices.map((inv) => (
+              {invoices.map((inv, idx) => (
                 <View key={inv.id} style={[s.tableRow, webOnly({ cursor: 'default', transition: 'background 0.15s ease' })]}>
-                  <Text style={[s.tdCell, { flex: 1.2, color: '#fff', fontWeight: '600' as const }]}>
-                    {inv.number || inv.id.slice(0, 12)}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1.2, gap: 10 }}>
+                    <DocumentThumbnail type="invoice" size="md" context="financehub" variant={idx} />
+                    <Text style={[s.tdCell, { color: '#fff', fontWeight: '600' as const }]}>
+                      {inv.number || inv.id.slice(0, 12)}
+                    </Text>
+                  </View>
                   <View style={{ flex: 1.5 }}>
                     <Text style={[s.tdCell, { color: '#fff' }]} numberOfLines={1}>
                       {inv.customer_name || '—'}
