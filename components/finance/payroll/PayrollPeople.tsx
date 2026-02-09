@@ -48,7 +48,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [formData, setFormData] = useState({ first_name: '', last_name: '', email: '' });
+  const [formData, setFormData] = useState({ first_name: '', last_name: '', email: '', job_title: '', pay_type: 'Hour' as 'Hour' | 'Year', rate: '', department: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [localEmployees, setLocalEmployees] = useState<any[]>([]);
@@ -103,9 +103,35 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
       }
 
       const newEmp = await response.json();
+
+      if (newEmp.uuid && formData.job_title.trim()) {
+        try {
+          const jobRes = await fetch(`/api/gusto/employees/${newEmp.uuid}/jobs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: formData.job_title.trim() }),
+          });
+          if (jobRes.ok) {
+            const job = await jobRes.json();
+            if (job.uuid && formData.rate.trim()) {
+              await fetch(`/api/gusto/jobs/${job.uuid}/compensations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  rate: formData.rate.trim(),
+                  payment_unit: formData.pay_type,
+                  flsa_status: formData.pay_type === 'Year' ? 'Exempt' : 'Nonexempt',
+                }),
+              });
+            }
+            newEmp.jobs = [{ ...job, compensations: formData.rate ? [{ rate: formData.rate, payment_unit: formData.pay_type }] : [] }];
+          }
+        } catch (e) {}
+      }
+
       setLocalEmployees(prev => [...prev, newEmp]);
       setMessage({ type: 'success', text: 'Employee added successfully' });
-      setFormData({ first_name: '', last_name: '', email: '' });
+      setFormData({ first_name: '', last_name: '', email: '', job_title: '', pay_type: 'Hour', rate: '', department: '' });
       setShowAddForm(false);
 
       setTimeout(() => setMessage(null), 3000);
@@ -245,6 +271,68 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
             />
           </View>
 
+          <View style={{ height: 1, backgroundColor: CARD_BORDER, marginVertical: 12 }} />
+          <Text style={[styles.formLabel, { marginBottom: 8, color: '#8E8E93', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6 }]}>Job & Compensation (Optional)</Text>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Job Title</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="Software Engineer"
+              placeholderTextColor="#6e6e73"
+              value={formData.job_title}
+              onChangeText={(text) => setFormData({ ...formData, job_title: text })}
+              editable={!isSubmitting}
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Pay Type</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['Hour', 'Year'] as const).map(pt => (
+                <Pressable
+                  key={pt}
+                  onPress={() => setFormData({ ...formData, pay_type: pt })}
+                  style={{
+                    flex: 1, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 8,
+                    backgroundColor: formData.pay_type === pt ? 'rgba(59,130,246,0.15)' : 'rgba(30,30,35,0.6)',
+                    borderWidth: 1, borderColor: formData.pay_type === pt ? 'rgba(59,130,246,0.4)' : CARD_BORDER,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: formData.pay_type === pt ? '#60A5FA' : '#d1d1d6', fontSize: 14, fontWeight: formData.pay_type === pt ? '600' : '400' }}>
+                    {pt === 'Hour' ? 'Hourly' : 'Salary'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>{formData.pay_type === 'Hour' ? 'Hourly Rate ($)' : 'Annual Salary ($)'}</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder={formData.pay_type === 'Hour' ? '35.00' : '85000.00'}
+              placeholderTextColor="#6e6e73"
+              value={formData.rate}
+              onChangeText={(text) => setFormData({ ...formData, rate: text })}
+              editable={!isSubmitting}
+              keyboardType="numeric"
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Department</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="Engineering"
+              placeholderTextColor="#6e6e73"
+              value={formData.department}
+              onChangeText={(text) => setFormData({ ...formData, department: text })}
+              editable={!isSubmitting}
+            />
+          </View>
+
           <View style={styles.formActions}>
             <Pressable
               style={[styles.saveButton, isSubmitting && styles.buttonDisabled]}
@@ -268,7 +356,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
               style={styles.cancelButton}
               onPress={() => { 
                 setShowAddForm(false); 
-                setFormData({ first_name: '', last_name: '', email: '' });
+                setFormData({ first_name: '', last_name: '', email: '', job_title: '', pay_type: 'Hour', rate: '', department: '' });
                 setMessage(null);
               }}
               disabled={isSubmitting}

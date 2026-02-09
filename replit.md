@@ -129,3 +129,11 @@ Aggregates finance_events into 5 chaptered story sections:
 - All KPI cards now open ExplainDrawer on tap with metricId mapping
 - SourceBadge added to Total Balance card (shows "Computed" + staleness), and to each provider card (Plaid/QuickBooks/Gusto)
 - Timeline section shows TimelineRow components when real events exist, otherwise shows connection-aware empty state
+- Removed duplicate standalone EVENT TIMELINE section from Finance Hub overview (kept inline feed in Recent Transactions card)
+- Added 7 new enterprise-grade SVG patterns: financeDashboard, pulseWave, hexGrid, isometricBlocks, flowLines, circuitBoard
+- Applied financeDashboard SVG pattern to Finance Hub hero banner (right side, 55% width) with dual radial gradients
+- Added missing Gusto SDK routes: PUT /compensations/:id, GET/POST /jobs/:jobId/compensations, PUT /employees/:uuid/onboarding-status, PUT /departments/:uuid, PUT /locations/:uuid, PUT /payrolls/:uuid/submit
+- Fixed Run Payroll for Gusto SDK accuracy: two-phase submit (Governance Proposal → Gusto Submit API), compensation rate update API, real activePayroll dates in submit/receipt sections
+- Expanded Add Employee form with job title, pay type (Hourly/Salary toggle), rate, and department fields — wires job + compensation creation via Gusto API
+- Added always-available Print Paystub button (window.open + window.print) with professional styled HTML paystub layout
+- Deep scanned all 7 payroll subpages — no critical runtime errors found

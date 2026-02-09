@@ -900,6 +900,85 @@ router.get('/api/gusto/payrolls/:payrollUuid/employees/:employeeUuid/pay-stub', 
   }
 });
 
+router.put('/api/gusto/payrolls/:uuid/submit', async (req: Request, res: Response) => {
+  const companyUuid = getCompanyUuid();
+  if (!companyUuid) return res.status(503).json({ error: 'Gusto credentials not configured' });
+
+  try {
+    const data = await gustoMutate(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/payrolls/${req.params.uuid}/submit`, 'PUT', req.body);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto submit payroll error:', error.message);
+    res.status(500).json({ error: 'Failed to submit payroll' });
+  }
+});
+
+router.put('/api/gusto/compensations/:compensationId', async (req: Request, res: Response) => {
+  try {
+    const data = await gustoMutate(`${GUSTO_API_BASE}/v1/compensations/${req.params.compensationId}`, 'PUT', req.body);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto update compensation error:', error.message);
+    res.status(500).json({ error: 'Failed to update compensation' });
+  }
+});
+
+router.get('/api/gusto/jobs/:jobId/compensations', async (req: Request, res: Response) => {
+  try {
+    const data = await gustoFetch(`${GUSTO_API_BASE}/v1/jobs/${req.params.jobId}/compensations`);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto get job compensations error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch job compensations' });
+  }
+});
+
+router.post('/api/gusto/jobs/:jobId/compensations', async (req: Request, res: Response) => {
+  try {
+    const data = await gustoMutate(`${GUSTO_API_BASE}/v1/jobs/${req.params.jobId}/compensations`, 'POST', req.body);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto create job compensation error:', error.message);
+    res.status(500).json({ error: 'Failed to create job compensation' });
+  }
+});
+
+router.put('/api/gusto/employees/:uuid/onboarding-status', async (req: Request, res: Response) => {
+  try {
+    const data = await gustoMutate(`${GUSTO_API_BASE}/v1/employees/${req.params.uuid}/onboarding_status`, 'PUT', req.body);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto update employee onboarding status error:', error.message);
+    res.status(500).json({ error: 'Failed to update employee onboarding status' });
+  }
+});
+
+router.put('/api/gusto/departments/:uuid', async (req: Request, res: Response) => {
+  const companyUuid = getCompanyUuid();
+  if (!companyUuid) return res.status(503).json({ error: 'Gusto credentials not configured' });
+
+  try {
+    const data = await gustoMutate(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/departments/${req.params.uuid}`, 'PUT', req.body);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto update department error:', error.message);
+    res.status(500).json({ error: 'Failed to update department' });
+  }
+});
+
+router.put('/api/gusto/locations/:uuid', async (req: Request, res: Response) => {
+  const companyUuid = getCompanyUuid();
+  if (!companyUuid) return res.status(503).json({ error: 'Gusto credentials not configured' });
+
+  try {
+    const data = await gustoMutate(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/locations/${req.params.uuid}`, 'PUT', req.body);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Gusto update location error:', error.message);
+    res.status(500).json({ error: 'Failed to update location' });
+  }
+});
+
 export function getCurrentAccessToken(): string {
   return currentAccessToken;
 }

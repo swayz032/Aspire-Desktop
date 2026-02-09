@@ -110,6 +110,69 @@ export const svgPatterns = {
     `<path d="M102 95 Q102 70 130 70 Q158 70 158 95" fill="none" stroke="${accent}" stroke-width="1"/>` +
     `</svg>`
   ),
+  financeDashboard: (color = 'rgba(255,255,255,0.03)', accent = 'rgba(59,130,246,0.06)') => enc(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="200" viewBox="0 0 480 200">` +
+    `<path d="M20 160 Q60 140 100 130 T180 100 T260 70 T340 50 T420 30 L460 20" fill="none" stroke="${accent}" stroke-width="1.5" stroke-linecap="round"/>` +
+    `<path d="M20 170 Q80 155 140 145 T220 120 T300 95 T380 65 L460 45" fill="none" stroke="${color}" stroke-width="0.8"/>` +
+    `<path d="M20 180 Q90 170 160 160 T260 140 T360 110 L460 80" fill="none" stroke="${color}" stroke-width="0.5" opacity="0.6"/>` +
+    `<circle cx="100" cy="130" r="2.5" fill="${accent}" opacity="0.8"/>` +
+    `<circle cx="180" cy="100" r="2.5" fill="${accent}" opacity="0.8"/>` +
+    `<circle cx="260" cy="70" r="3" fill="${accent}" opacity="0.9"/>` +
+    `<circle cx="340" cy="50" r="2.5" fill="${accent}" opacity="0.8"/>` +
+    `<circle cx="420" cy="30" r="3" fill="${accent}"/>` +
+    `<rect x="80" y="140" width="1" height="30" fill="${color}" opacity="0.3"/>` +
+    `<rect x="160" y="110" width="1" height="60" fill="${color}" opacity="0.3"/>` +
+    `<rect x="240" y="80" width="1" height="90" fill="${color}" opacity="0.3"/>` +
+    `<rect x="320" y="60" width="1" height="110" fill="${color}" opacity="0.3"/>` +
+    `<rect x="400" y="40" width="1" height="130" fill="${color}" opacity="0.3"/>` +
+    `</svg>`
+  ),
+  pulseWave: (color = 'rgba(255,255,255,0.025)', accent = 'rgba(16,185,129,0.06)') => enc(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="120" viewBox="0 0 300 120">` +
+    `<path d="M0 60 L30 60 L45 20 L60 90 L75 40 L90 70 L105 55 L120 60 L150 60 L165 25 L180 85 L195 45 L210 65 L225 58 L240 60 L300 60" fill="none" stroke="${accent}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<path d="M0 60 L30 60 L45 20 L60 90 L75 40 L90 70 L105 55 L120 60 L150 60 L165 25 L180 85 L195 45 L210 65 L225 58 L240 60 L300 60" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" opacity="0.3"/>` +
+    `</svg>`
+  ),
+  hexGrid: (color = 'rgba(255,255,255,0.02)', accent = 'rgba(139,92,246,0.04)') => enc(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="180" viewBox="0 0 200 180">` +
+    `<polygon points="60,10 90,25 90,55 60,70 30,55 30,25" fill="none" stroke="${color}" stroke-width="0.6"/>` +
+    `<polygon points="120,10 150,25 150,55 120,70 90,55 90,25" fill="none" stroke="${accent}" stroke-width="0.6"/>` +
+    `<polygon points="60,70 90,85 90,115 60,130 30,115 30,85" fill="none" stroke="${accent}" stroke-width="0.6"/>` +
+    `<polygon points="120,70 150,85 150,115 120,130 90,115 90,85" fill="none" stroke="${color}" stroke-width="0.6"/>` +
+    `<polygon points="180,40 200,52 200,78 180,90 160,78 160,52" fill="none" stroke="${color}" stroke-width="0.4" opacity="0.5"/>` +
+    `<polygon points="0,40 20,52 20,78 0,90 -10,78 -10,52" fill="none" stroke="${color}" stroke-width="0.4" opacity="0.5"/>` +
+    `</svg>`
+  ),
+  isometricBlocks: (color = 'rgba(255,255,255,0.02)', accent = 'rgba(59,130,246,0.04)') => enc(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="180" viewBox="0 0 260 180">` +
+    `<path d="M130 20 L200 60 L130 100 L60 60 Z" fill="none" stroke="${color}" stroke-width="0.8"/>` +
+    `<path d="M130 100 L130 140 L60 100 L60 60" fill="none" stroke="${color}" stroke-width="0.6"/>` +
+    `<path d="M130 100 L130 140 L200 100 L200 60" fill="none" stroke="${accent}" stroke-width="0.6"/>` +
+    `<path d="M80 90 L130 118 L180 90" fill="none" stroke="${color}" stroke-width="0.4" opacity="0.4"/>` +
+    `<path d="M60 50 L110 78 L160 50" fill="none" stroke="${accent}" stroke-width="0.4" opacity="0.3"/>` +
+    `</svg>`
+  ),
+  flowLines: (color = 'rgba(255,255,255,0.025)', accent = 'rgba(6,182,212,0.05)') => enc(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="160" viewBox="0 0 300 160">` +
+    `<path d="M0 40 C50 40 50 80 100 80 S150 120 200 120 S250 80 300 80" fill="none" stroke="${accent}" stroke-width="1" opacity="0.8"/>` +
+    `<path d="M0 60 C50 60 50 100 100 100 S150 60 200 60 S250 100 300 100" fill="none" stroke="${color}" stroke-width="0.8" opacity="0.6"/>` +
+    `<path d="M0 80 C50 80 50 40 100 40 S150 80 200 80 S250 40 300 40" fill="none" stroke="${color}" stroke-width="0.5" opacity="0.4"/>` +
+    `<circle cx="100" cy="80" r="2" fill="${accent}" opacity="0.6"/>` +
+    `<circle cx="200" cy="120" r="2" fill="${accent}" opacity="0.6"/>` +
+    `</svg>`
+  ),
+  circuitBoard: (color = 'rgba(255,255,255,0.02)', accent = 'rgba(245,158,11,0.04)') => enc(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160" viewBox="0 0 240 160">` +
+    `<path d="M20 80 H60 V40 H100 V80 H140 V120 H180 V80 H220" fill="none" stroke="${color}" stroke-width="0.8"/>` +
+    `<path d="M40 20 V60 H80 V100 H120 V60 H160 V100 H200 V140" fill="none" stroke="${accent}" stroke-width="0.6"/>` +
+    `<circle cx="60" cy="40" r="3" fill="none" stroke="${accent}" stroke-width="0.8"/>` +
+    `<circle cx="100" cy="80" r="3" fill="none" stroke="${color}" stroke-width="0.8"/>` +
+    `<circle cx="140" cy="120" r="3" fill="none" stroke="${accent}" stroke-width="0.8"/>` +
+    `<circle cx="180" cy="80" r="3" fill="none" stroke="${color}" stroke-width="0.8"/>` +
+    `<rect cx="60" cy="40" x="58" y="38" width="4" height="4" rx="1" fill="${accent}" opacity="0.5"/>` +
+    `<rect cx="140" cy="120" x="138" y="118" width="4" height="4" rx="1" fill="${accent}" opacity="0.5"/>` +
+    `</svg>`
+  ),
 };
 
 export type PatternPosition = 'right' | 'left' | 'center' | 'top-right' | 'bottom-right' | 'bottom-left';

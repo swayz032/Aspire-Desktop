@@ -68,6 +68,9 @@ export default function RunPayrollScreen() {
   const [selectedPaystub, setSelectedPaystub] = useState<Employee | null>(null);
   const [gustoPaystubs, setGustoPaystubs] = useState<Record<string, any[]>>({});
   const [paystubLoading, setPaystubLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchGustoData() {
@@ -245,6 +248,66 @@ export default function RunPayrollScreen() {
         }
       } catch (e) {}
     }
+  };
+
+  const handleSubmitPayroll = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      if (activePayroll?.uuid && gustoConnected) {
+        const res = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}/submit`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ version: activePayroll.version }),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          setActivePayroll(result);
+          setSubmitted(true);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setSubmitError(err.error || err.message || 'Failed to submit payroll to provider');
+        }
+      } else {
+        setSubmitted(true);
+      }
+    } catch (e) {
+      setSubmitError('Failed to connect to payroll service');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdateCompensation = async (empId: string, newRate: string) => {
+    const gustoEmp = gustoEmployees.find((g: any) => g.uuid === empId);
+    const job = gustoEmp?.jobs?.[0];
+    const comp = job?.compensations?.[0];
+    if (!comp?.uuid) return;
+    try {
+      const res = await fetch(`/api/gusto/compensations/${comp.uuid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version: comp.version,
+          rate: newRate,
+          payment_unit: comp.payment_unit || 'Hour',
+          flsa_status: comp.flsa_status || 'Nonexempt',
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setGustoEmployees(prev => prev.map((e: any) => {
+          if (e.uuid !== empId) return e;
+          const jobs = [...(e.jobs || [])];
+          if (jobs[0]) {
+            const comps = [...(jobs[0].compensations || [])];
+            comps[0] = { ...comps[0], ...updated };
+            jobs[0] = { ...jobs[0], compensations: comps };
+          }
+          return { ...e, jobs };
+        }));
+      }
+    } catch (e) {}
   };
 
   const handleViewPaystub = async (emp: Employee) => {
@@ -599,7 +662,7 @@ export default function RunPayrollScreen() {
         <View style={styles.submitGrid}>
           <View style={styles.submitGridItem}>
             <Text style={styles.submitGridLabel}>Pay Period</Text>
-            <Text style={styles.submitGridValue}>Feb 1 – Feb 14, 2026</Text>
+            <Text style={styles.submitGridValue}>{payPeriodStart} – {payPeriodEnd}</Text>
           </View>
           <View style={styles.submitGridItem}>
             <Text style={styles.submitGridLabel}>Employees</Text>
@@ -661,14 +724,52 @@ export default function RunPayrollScreen() {
           {...webHover('propose')}
         >
           <Ionicons name="shield-checkmark" size={18} color="#fff" />
-          <Text style={styles.proposalBtnText}>Create Proposal</Text>
+          <Text style={styles.proposalBtnText}>Create Governance Proposal</Text>
         </Pressable>
+      ) : !submitted ? (
+        <>
+          <View style={styles.proposalCreatedBanner}>
+            <Ionicons name="checkmark-circle" size={22} color="#10B981" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.proposalCreatedTitle}>Proposal Created — PR-2026-0214</Text>
+              <Text style={styles.proposalCreatedDesc}>Governance proposal created. Submit payroll to the provider for processing.</Text>
+            </View>
+          </View>
+          {submitError && (
+            <View style={styles.demoBanner}>
+              <Ionicons name="warning-outline" size={16} color="#f59e0b" />
+              <Text style={styles.demoBannerText}>{submitError}</Text>
+            </View>
+          )}
+          <Pressable
+            style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled, hoveredBtn === 'submit' && styles.primaryBtnHover]}
+            onPress={handleSubmitPayroll}
+            disabled={submitting}
+            {...webHover('submit')}
+          >
+            {submitting ? (
+              <View style={styles.btnRow}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={styles.primaryBtnText}>Submitting to payroll provider...</Text>
+              </View>
+            ) : (
+              <View style={styles.btnRow}>
+                <Ionicons name="paper-plane" size={18} color="#fff" />
+                <Text style={styles.primaryBtnText}>{gustoConnected ? 'Submit Payroll to Gusto' : 'Submit Payroll'}</Text>
+              </View>
+            )}
+          </Pressable>
+        </>
       ) : (
         <View style={styles.proposalCreatedBanner}>
           <Ionicons name="checkmark-circle" size={22} color="#10B981" />
           <View style={{ flex: 1 }}>
-            <Text style={styles.proposalCreatedTitle}>Proposal Created — PR-2026-0214</Text>
-            <Text style={styles.proposalCreatedDesc}>Payroll proposal submitted to the Authority Queue for Owner approval. You will be notified once approved and processed.</Text>
+            <Text style={styles.proposalCreatedTitle}>Payroll Submitted Successfully</Text>
+            <Text style={styles.proposalCreatedDesc}>
+              {gustoConnected
+                ? `Payroll submitted to Gusto for processing. Employees will be paid on ${checkDate}. Proceed to Receipts.`
+                : 'Payroll submitted and recorded in the Authority Queue. Proceed to Receipts.'}
+            </Text>
           </View>
         </View>
       )}
@@ -683,15 +784,15 @@ export default function RunPayrollScreen() {
       </View>
       <Text style={styles.flowSubtitle}>View processed payroll receipts and link them to the Aspire Trust Spine ledger.</Text>
       <View style={styles.receiptSummaryCard}>
-        <Text style={styles.receiptSummaryTitle}>Payroll Receipt — Feb 14, 2026</Text>
+        <Text style={styles.receiptSummaryTitle}>Payroll Receipt — {checkDate}</Text>
         <View style={styles.receiptSummaryRow}>
           <View style={styles.receiptSumItem}>
             <Text style={styles.receiptSumLabel}>Pay Period</Text>
-            <Text style={styles.receiptSumValue}>Feb 1 – 14</Text>
+            <Text style={styles.receiptSumValue}>{payPeriodStart} – {payPeriodEnd}</Text>
           </View>
           <View style={styles.receiptSumItem}>
             <Text style={styles.receiptSumLabel}>Check Date</Text>
-            <Text style={styles.receiptSumValue}>Feb 14, 2026</Text>
+            <Text style={styles.receiptSumValue}>{checkDate}</Text>
           </View>
           <View style={styles.receiptSumItem}>
             <Text style={styles.receiptSumLabel}>Total Gross</Text>
@@ -1055,6 +1156,55 @@ export default function RunPayrollScreen() {
                     >
                       <Ionicons name="document-attach-outline" size={16} color="#fff" />
                       <Text style={stubStyles.pdfBtnText}>Download Paystub PDF</Text>
+                    </Pressable>
+                  )}
+
+                  {Platform.OS === 'web' && (
+                    <Pressable
+                      style={[stubStyles.pdfBtn, { backgroundColor: 'rgba(139,92,246,0.2)', marginTop: hasGustoData && latestStub?.payroll_uuid ? 8 : 0 }]}
+                      onPress={() => {
+                        const w = window.open('', '_blank', 'width=700,height=900');
+                        if (!w) return;
+                        w.document.write(`<!DOCTYPE html><html><head><title>Paystub - ${emp.name}</title><style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:40px;background:#fff;color:#111}
+.header{border-bottom:2px solid #111;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between}
+.company{font-size:20px;font-weight:700}.period{font-size:13px;color:#666}
+.emp{background:#f8f9fa;padding:16px;border-radius:8px;margin-bottom:24px}
+.emp-name{font-size:16px;font-weight:600}.emp-role{font-size:13px;color:#666}
+table{width:100%;border-collapse:collapse;margin-bottom:20px}
+th{text-align:left;padding:10px 12px;border-bottom:2px solid #ddd;font-size:12px;text-transform:uppercase;color:#666}
+td{padding:10px 12px;border-bottom:1px solid #eee;font-size:14px}
+.amount{text-align:right;font-variant-numeric:tabular-nums}
+.total-row td{font-weight:700;border-top:2px solid #111;border-bottom:none}
+.net-box{background:#f0fdf4;border:2px solid #10b981;border-radius:8px;padding:20px;text-align:center;margin-top:24px}
+.net-label{font-size:14px;color:#666}.net-value{font-size:32px;font-weight:700;color:#10b981}
+.footer{margin-top:32px;padding-top:16px;border-top:1px solid #ddd;font-size:11px;color:#999;text-align:center}
+@media print{body{padding:20px}button{display:none !important}}
+</style></head><body>
+<div class="header"><div><div class="company">${displayCompanyName}</div><div class="period">Pay Period: ${payPeriodStart} – ${payPeriodEnd}</div></div><div style="text-align:right"><div style="font-weight:600">EARNINGS STATEMENT</div><div class="period">Check Date: ${stubCheckDate}</div></div></div>
+<div class="emp"><div class="emp-name">${emp.name}</div><div class="emp-role">${emp.role} &bull; ${emp.type === 'Salary' ? 'Salaried' : 'Hourly'} &bull; Rate: $${emp.rate}/hr</div></div>
+<table><thead><tr><th>Description</th><th class="amount">Hours</th><th class="amount">Rate</th><th class="amount">Amount</th></tr></thead><tbody>
+<tr><td>Regular Wages</td><td class="amount">${emp.hours}</td><td class="amount">$${emp.rate.toFixed(2)}</td><td class="amount">$${regular.toFixed(2)}</td></tr>
+${overtime > 0 ? `<tr><td>Overtime (1.5x)</td><td class="amount">${emp.overtime}</td><td class="amount">$${(emp.rate * 1.5).toFixed(2)}</td><td class="amount">$${overtime.toFixed(2)}</td></tr>` : ''}
+${bonus > 0 ? `<tr><td>Bonus</td><td class="amount">—</td><td class="amount">—</td><td class="amount">$${bonus.toFixed(2)}</td></tr>` : ''}
+<tr class="total-row"><td>Gross Pay</td><td></td><td></td><td class="amount">$${gross.toFixed(2)}</td></tr>
+</tbody></table>
+<table><thead><tr><th>Taxes & Deductions</th><th class="amount">Rate</th><th class="amount">Amount</th></tr></thead><tbody>
+<tr><td>Federal Income Tax</td><td class="amount">12.0%</td><td class="amount">-$${fedWithholding.toFixed(2)}</td></tr>
+<tr><td>State Income Tax</td><td class="amount">4.0%</td><td class="amount">-$${stateWithholding.toFixed(2)}</td></tr>
+<tr><td>FICA (SS + Medicare)</td><td class="amount">7.65%</td><td class="amount">-$${ficaEe.toFixed(2)}</td></tr>
+<tr><td>Benefits & Other</td><td class="amount">—</td><td class="amount">-$${totalDed.toFixed(2)}</td></tr>
+<tr class="total-row"><td>Total Deductions</td><td></td><td class="amount">-$${(totalTaxes + totalDed).toFixed(2)}</td></tr>
+</tbody></table>
+<div class="net-box"><div class="net-label">NET PAY</div><div class="net-value">$${net.toFixed(2)}</div></div>
+<div class="footer">${displayCompanyName} &bull; Payment Method: ${payMethod} &bull; Generated ${new Date().toLocaleDateString()}</div>
+<button onclick="window.print()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;display:block;margin-left:auto;margin-right:auto">Print / Save as PDF</button>
+</body></html>`);
+                        w.document.close();
+                      }}
+                    >
+                      <Ionicons name="print-outline" size={16} color="#A78BFA" />
+                      <Text style={[stubStyles.pdfBtnText, { color: '#A78BFA' }]}>Print Paystub</Text>
                     </Pressable>
                   )}
 

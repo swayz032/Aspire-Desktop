@@ -617,8 +617,12 @@ function FinanceHubContent() {
         <div style={{
           height: 155, borderRadius: 16, overflow: 'hidden', marginBottom: 20, position: 'relative',
           display: 'flex', flexDirection: 'column',
-          background: `radial-gradient(ellipse at top right, rgba(59,130,246,0.08) 0%, transparent 50%), ${CARD_BG}`,
+          background: `radial-gradient(ellipse at top right, rgba(59,130,246,0.08) 0%, transparent 50%), radial-gradient(ellipse at bottom left, rgba(139,92,246,0.05) 0%, transparent 50%), ${CARD_BG}`,
           border: `1px solid ${CARD_BORDER}`,
+          backgroundImage: svgPatterns.financeDashboard('rgba(255,255,255,0.025)', 'rgba(59,130,246,0.05)'),
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'right center',
+          backgroundSize: '55% auto',
         }}>
           <View style={[s.heroBannerOverlay, { justifyContent: 'flex-end', paddingBottom: 20 }]}>
             <View style={s.heroBannerRow}>
@@ -1154,27 +1158,6 @@ function FinanceHubContent() {
         </GlassCard>
       </View>
 
-      {timeline.length > 0 && (
-        <>
-          <SectionLabel icon="time" label="EVENT TIMELINE" color="#999" />
-          <GlassCard style={{ padding: 0 }} tint={{ color: '#8B5CF6', position: 'top-left' }}>
-            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: CARD_BORDER }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(139,92,246,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="time" size={14} color="#A78BFA" />
-                </View>
-                <Text style={s.cardTitle}>Live Event Feed</Text>
-              </View>
-            </View>
-            {timeline.map((evt, i) => (
-              <TimelineRow
-                key={evt.eventId}
-                event={evt}
-              />
-            ))}
-          </GlassCard>
-        </>
-      )}
 
     </FinanceHubShell>
     <ExplainDrawer
