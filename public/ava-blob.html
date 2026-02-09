@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ava Glass Sphere</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #000000; 
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      width: 100vw;
+    }
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #fallback-canvas {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <canvas id="fallback-canvas"></canvas>
+  </div>
+
+  <script>
+    const stateConfigs = {
+      idle: {
+        morphSpeed: 0.003,
+        morphIntensity: 0.35,
+        rotationSpeed: 0.002,
+        glowIntensity: 0.5,
+        colorShift: 0,
+      },
+      listening: {
+        morphSpeed: 0.005,
+        morphIntensity: 0.45,
+        rotationSpeed: 0.003,
+        glowIntensity: 0.65,
+        colorShift: 0.2,
+      },
+      processing: {
+        morphSpeed: 0.008,
+        morphIntensity: 0.55,
+        rotationSpeed: 0.006,
+        glowIntensity: 0.85,
+        colorShift: 0.4,
+      },
+      responding: {
+        morphSpeed: 0.006,
+        morphIntensity: 0.5,
+        rotationSpeed: 0.004,
+        glowIntensity: 0.75,
+        colorShift: 0.3,
+      }
+    };
+
+    let currentState = 'idle';
+    let config = { ...stateConfigs[currentState] };
+    let targetConfig = stateConfigs[currentState];
+    let time = 0;
+
+    function setState(newState) {
+      if (stateConfigs[newState]) {
+        currentState = newState;
+        targetConfig = stateConfigs[newState];
+      }
+    }
+
+    window.addEventListener('message', (event) => {
+      let data = event.data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (e) {}
+      }
+      if (data && data.type === 'setState') {
+        setState(data.state);
+      }
+    });
+
+    window.setBlobState = setState;
+
+    const PERM = (function() {
+      const p = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
+      const perm = new Uint8Array(512);
+      for (let i = 0; i < 256; i++) {
+        perm[i] = p[i];
+        perm[256 + i] = p[i];
+      }
+      return perm;
+    })();
+
+    function grad(hash, x, y, z) {
+      const h = hash & 15;
+      const u = h < 8 ? x : y;
+      const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
+      return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    }
+
+    function noiseLerp(a, b, t) { return a + t * (b - a); }
+
+    function noise3D(x, y, z) {
+      const X = Math.floor(x) & 255;
+      const Y = Math.floor(y) & 255;
+      const Z = Math.floor(z) & 255;
+      
+      x -= Math.floor(x);
+      y -= Math.floor(y);
+      z -= Math.floor(z);
+      
+      const u = x * x * x * (x * (x * 6 - 15) + 10);
+      const v = y * y * y * (y * (y * 6 - 15) + 10);
+      const w = z * z * z * (z * (z * 6 - 15) + 10);
+      
+      const A = PERM[X] + Y;
+      const AA = PERM[A] + Z;
+      const AB = PERM[A + 1] + Z;
+      const B = PERM[X + 1] + Y;
+      const BA = PERM[B] + Z;
+      const BB = PERM[B + 1] + Z;
+      
+      return noiseLerp(
+        noiseLerp(
+          noiseLerp(grad(PERM[AA], x, y, z), grad(PERM[BA], x - 1, y, z), u),
+          noiseLerp(grad(PERM[AB], x, y - 1, z), grad(PERM[BB], x - 1, y - 1, z), u),
+          v
+        ),
+        noiseLerp(
+          noiseLerp(grad(PERM[AA + 1], x, y, z - 1), grad(PERM[BA + 1], x - 1, y, z - 1), u),
+          noiseLerp(grad(PERM[AB + 1], x, y - 1, z - 1), grad(PERM[BB + 1], x - 1, y - 1, z - 1), u),
+          v
+        ),
+        w
+      );
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function lerpConfig() {
+      const alpha = 0.02;
+      config.morphSpeed = lerp(config.morphSpeed, targetConfig.morphSpeed, alpha);
+      config.morphIntensity = lerp(config.morphIntensity, targetConfig.morphIntensity, alpha);
+      config.rotationSpeed = lerp(config.rotationSpeed, targetConfig.rotationSpeed, alpha);
+      config.glowIntensity = lerp(config.glowIntensity, targetConfig.glowIntensity, alpha);
+      config.colorShift = lerp(config.colorShift, targetConfig.colorShift, alpha);
+    }
+
+    async function initThreeJS() {
+      try {
+        const container = document.getElementById('canvas-container');
+        const testCanvas = document.createElement('canvas');
+        const gl = testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl');
+        if (!gl) throw new Error('WebGL not supported');
+
+        const THREE = await import('https://unpkg.com/three@0.160.0/build/three.module.js');
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+
+        const renderer = new THREE.WebGLRenderer({ 
+          antialias: true,
+          alpha: true,
+          powerPreference: "high-performance"
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.4;
+        container.appendChild(renderer.domElement);
+
+        const envMapLoader = new THREE.CubeTextureLoader();
+        const envColors = [
+          [0.05, 0.02, 0.1], [0.02, 0.05, 0.12],
+          [0.08, 0.04, 0.15], [0.03, 0.02, 0.08],
+          [0.06, 0.03, 0.12], [0.04, 0.06, 0.14]
+        ];
+        
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        const envScene = new THREE.Scene();
+        
+        const gradientSphere = new THREE.Mesh(
+          new THREE.SphereGeometry(50, 32, 32),
+          new THREE.MeshBasicMaterial({
+            side: THREE.BackSide,
+            vertexColors: true
+          })
+        );
+        
+        const colors = gradientSphere.geometry.attributes.position.array;
+        const colorAttr = new Float32Array(colors.length);
+        for (let i = 0; i < colors.length; i += 3) {
+          const y = colors[i + 1] / 50;
+          colorAttr[i] = 0.15 + y * 0.1;
+          colorAttr[i + 1] = 0.05 + Math.abs(y) * 0.15;
+          colorAttr[i + 2] = 0.25 + y * 0.1;
+        }
+        gradientSphere.geometry.setAttribute('color', new THREE.BufferAttribute(colorAttr, 3));
+        envScene.add(gradientSphere);
+        
+        const envMap = pmremGenerator.fromScene(envScene, 0.04).texture;
+        scene.environment = envMap;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        scene.add(ambientLight);
+
+        const keyLight = new THREE.DirectionalLight(0xffeedd, 1.0);
+        keyLight.position.set(5, 5, 5);
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0x9b7fdb, 0.5);
+        fillLight.position.set(-5, 2, -3);
+        scene.add(fillLight);
+
+        const rimLight = new THREE.PointLight(0x5588ff, 1.2, 15);
+        rimLight.position.set(0, 4, -4);
+        scene.add(rimLight);
+
+        const bottomLight = new THREE.PointLight(0xcc8866, 0.6, 10);
+        bottomLight.position.set(0, -4, 2);
+        scene.add(bottomLight);
+
+        const innerGroup = new THREE.Group();
+        scene.add(innerGroup);
+
+        const blobConfigs = [
+          { scale: 0.85, rotationOffset: 0, phaseOffset: 0, tiltX: 0.3, tiltZ: 0.2 },
+          { scale: 0.75, rotationOffset: Math.PI * 0.667, phaseOffset: 1.5, tiltX: -0.25, tiltZ: 0.35 },
+          { scale: 0.65, rotationOffset: Math.PI * 1.333, phaseOffset: 3.0, tiltX: 0.15, tiltZ: -0.3 },
+        ];
+
+        const blobs = [];
+
+        blobConfigs.forEach((cfg, idx) => {
+          const geometry = new THREE.IcosahedronGeometry(1.0, 5);
+          const originalPositions = geometry.attributes.position.array.slice();
+
+          const hue = (idx * 0.25 + 0.75) % 1.0;
+          const baseColor = new THREE.Color().setHSL(hue, 0.6, 0.55);
+
+          const material = new THREE.MeshPhysicalMaterial({
+            color: baseColor,
+            metalness: 0.1,
+            roughness: 0.05,
+            transmission: 0.92,
+            thickness: 2.5,
+            envMapIntensity: 2.5,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.02,
+            ior: 1.45,
+            transparent: true,
+            opacity: 0.85,
+            side: THREE.DoubleSide,
+            iridescence: 1.0,
+            iridescenceIOR: 1.4,
+            iridescenceThicknessRange: [100, 600],
+            sheen: 1.0,
+            sheenRoughness: 0.2,
+            sheenColor: new THREE.Color().setHSL((hue + 0.15) % 1.0, 0.8, 0.6),
+            attenuationDistance: 2.0,
+            attenuationColor: new THREE.Color().setHSL((hue + 0.1) % 1.0, 0.5, 0.4),
+          });
+
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.scale.setScalar(cfg.scale);
+          mesh.rotation.x = cfg.tiltX;
+          mesh.rotation.z = cfg.tiltZ;
+          
+          mesh.userData = {
+            originalPositions,
+            config: cfg,
+            baseHue: hue,
+          };
+
+          blobs.push(mesh);
+          innerGroup.add(mesh);
+        });
+
+        const outerGeometry = new THREE.SphereGeometry(1.5, 64, 64);
+        const outerMaterial = new THREE.MeshPhysicalMaterial({
+          color: 0xffffff,
+          metalness: 0.0,
+          roughness: 0.0,
+          transmission: 0.98,
+          thickness: 0.3,
+          envMapIntensity: 1.5,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.0,
+          ior: 1.1,
+          transparent: true,
+          opacity: 0.15,
+          side: THREE.DoubleSide,
+          iridescence: 0.8,
+          iridescenceIOR: 1.2,
+          iridescenceThicknessRange: [100, 400],
+        });
+        const outerSphere = new THREE.Mesh(outerGeometry, outerMaterial);
+        scene.add(outerSphere);
+
+        function morphBlobs() {
+          blobs.forEach((blob, idx) => {
+            const positions = blob.geometry.attributes.position.array;
+            const original = blob.userData.originalPositions;
+            const cfg = blob.userData.config;
+            const intensity = config.morphIntensity;
+
+            for (let i = 0; i < positions.length; i += 3) {
+              const ox = original[i];
+              const oy = original[i + 1];
+              const oz = original[i + 2];
+
+              const len = Math.sqrt(ox * ox + oy * oy + oz * oz);
+              const nx = ox / len;
+              const ny = oy / len;
+              const nz = oz / len;
+
+              const noiseScale = 1.5;
+              const timeOffset = time + cfg.phaseOffset;
+              
+              const n1 = noise3D(
+                nx * noiseScale + timeOffset * 0.5,
+                ny * noiseScale + timeOffset * 0.3,
+                nz * noiseScale + timeOffset * 0.4
+              );
+              
+              const n2 = noise3D(
+                nx * noiseScale * 2 + timeOffset * 0.8 + 100,
+                ny * noiseScale * 2 + timeOffset * 0.6,
+                nz * noiseScale * 2 + timeOffset * 0.7
+              ) * 0.5;
+
+              const displacement = 1 + (n1 + n2) * intensity * 0.4;
+
+              positions[i] = ox * displacement;
+              positions[i + 1] = oy * displacement;
+              positions[i + 2] = oz * displacement;
+            }
+
+            blob.geometry.attributes.position.needsUpdate = true;
+            blob.geometry.computeVertexNormals();
+          });
+        }
+
+        function updateMaterials() {
+          blobs.forEach((blob, idx) => {
+            const baseHue = blob.userData.baseHue;
+            const shiftedHue = (baseHue + config.colorShift * 0.3 + Math.sin(time * 0.5 + idx) * 0.05) % 1.0;
+            
+            blob.material.color.setHSL(shiftedHue, 0.5 + config.glowIntensity * 0.2, 0.5 + config.glowIntensity * 0.15);
+            blob.material.sheenColor.setHSL((shiftedHue + 0.15) % 1.0, 0.7, 0.55);
+            blob.material.iridescence = 0.8 + config.glowIntensity * 0.2;
+          });
+          
+          rimLight.intensity = 0.8 + config.glowIntensity * 0.6;
+          bottomLight.intensity = 0.4 + config.glowIntensity * 0.3;
+        }
+
+        function animate() {
+          requestAnimationFrame(animate);
+          time += config.morphSpeed;
+          lerpConfig();
+
+          morphBlobs();
+          updateMaterials();
+
+          innerGroup.rotation.y += config.rotationSpeed * 0.4;
+          innerGroup.rotation.x = Math.sin(time * 0.3) * 0.1;
+          
+          blobs.forEach((blob, idx) => {
+            const cfg = blob.userData.config;
+            blob.rotation.y += config.rotationSpeed * (0.3 + idx * 0.1);
+            blob.rotation.x = cfg.tiltX + Math.sin(time * 0.5 + cfg.phaseOffset) * 0.05;
+          });
+
+          outerSphere.rotation.y += config.rotationSpeed * 0.1;
+
+          renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+      } catch (error) {
+        console.warn('WebGL not available, using Canvas 2D fallback:', error);
+        initCanvas2D();
+      }
+    }
+
+    function initCanvas2D() {
+      const canvas = document.getElementById('fallback-canvas');
+      canvas.style.display = 'block';
+      const ctx = canvas.getContext('2d');
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      const blobColors = [
+        { h: 270, s: 60, l: 60 },
+        { h: 220, s: 70, l: 55 },
+        { h: 320, s: 55, l: 50 },
+      ];
+
+      function hslToRgba(h, s, l, a) {
+        s /= 100;
+        l /= 100;
+        const k = n => (n + h / 30) % 12;
+        const f = n => l - (s * Math.min(l, 1 - l)) * Math.max(Math.min(k(n) - 3, 9 - k(n), 1), -1);
+        return `rgba(${Math.round(f(0) * 255)}, ${Math.round(f(8) * 255)}, ${Math.round(f(4) * 255)}, ${a})`;
+      }
+
+      function drawFlowingBlob(ctx, centerX, centerY, baseRadius, colorIdx, phaseOffset, scale) {
+        const color = blobColors[colorIdx % blobColors.length];
+        const points = 64;
+        
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        
+        const rotation = time * 0.3 + phaseOffset;
+        ctx.rotate(rotation);
+
+        ctx.beginPath();
+        for (let i = 0; i <= points; i++) {
+          const angle = (i / points) * Math.PI * 2;
+          
+          const n1 = noise3D(
+            Math.cos(angle) * 1.5 + time * 0.5 + phaseOffset,
+            Math.sin(angle) * 1.5 + time * 0.3,
+            time * 0.4 + colorIdx
+          );
+          const n2 = noise3D(
+            Math.cos(angle * 2) + time * 0.8 + phaseOffset + 10,
+            Math.sin(angle * 2) + time * 0.6,
+            colorIdx * 5
+          ) * 0.5;
+          
+          const morphAmount = config.morphIntensity * 0.5;
+          const r = baseRadius * scale * (1 + (n1 + n2) * morphAmount);
+          
+          const bulge1 = Math.sin(angle * 2 + time) * 0.15;
+          const bulge2 = Math.sin(angle * 3 - time * 0.7 + phaseOffset) * 0.1;
+          const finalR = r * (1 + bulge1 + bulge2);
+          
+          const x = Math.cos(angle) * finalR;
+          const y = Math.sin(angle) * finalR * 0.9;
+
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+
+        const shiftedHue = (color.h + config.colorShift * 60) % 360;
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, baseRadius * scale);
+        gradient.addColorStop(0, hslToRgba(shiftedHue, color.s, color.l + 20, 0.7));
+        gradient.addColorStop(0.5, hslToRgba(shiftedHue, color.s, color.l, 0.5));
+        gradient.addColorStop(1, hslToRgba((shiftedHue + 30) % 360, color.s - 10, color.l - 10, 0.3));
+        
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function drawGlassSphere() {
+        const width = canvas.width;
+        const height = canvas.height;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const baseRadius = Math.min(width, height) * 0.28;
+
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+
+        const glowGradient = ctx.createRadialGradient(centerX, centerY, baseRadius * 0.3, centerX, centerY, baseRadius * 1.8);
+        const glowHue = 260 + config.colorShift * 40;
+        glowGradient.addColorStop(0, hslToRgba(glowHue, 50, 40, config.glowIntensity * 0.3));
+        glowGradient.addColorStop(0.5, hslToRgba(glowHue, 40, 30, config.glowIntensity * 0.15));
+        glowGradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = glowGradient;
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        
+        drawFlowingBlob(ctx, centerX, centerY, baseRadius, 0, 0, 0.85);
+        drawFlowingBlob(ctx, centerX, centerY, baseRadius, 1, 1.5, 0.75);
+        drawFlowingBlob(ctx, centerX, centerY, baseRadius, 2, 3.0, 0.65);
+        
+        ctx.restore();
+
+        ctx.save();
+        const glassGradient = ctx.createRadialGradient(
+          centerX - baseRadius * 0.3, centerY - baseRadius * 0.3, 0,
+          centerX, centerY, baseRadius
+        );
+        glassGradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+        glassGradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.08)');
+        glassGradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.02)');
+        glassGradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
+        
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
+        ctx.fillStyle = glassGradient;
+        ctx.fill();
+        
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        const highlightGradient = ctx.createRadialGradient(
+          centerX - baseRadius * 0.4, centerY - baseRadius * 0.4, 0,
+          centerX - baseRadius * 0.4, centerY - baseRadius * 0.4, baseRadius * 0.3
+        );
+        highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+        highlightGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.2)');
+        highlightGradient.addColorStop(1, 'transparent');
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = highlightGradient;
+        ctx.beginPath();
+        ctx.arc(centerX - baseRadius * 0.35, centerY - baseRadius * 0.35, baseRadius * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.globalAlpha = 1;
+      }
+
+      function animate() {
+        time += config.morphSpeed;
+        lerpConfig();
+        drawGlassSphere();
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    }
+
+    initThreeJS();
+  </script>
+</body>
+</html>
