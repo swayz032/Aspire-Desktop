@@ -522,9 +522,19 @@ async function loadOAuthTokens() {
 }
 
 async function start() {
-  await initDatabase();
-  await loadOAuthTokens();
-  await initStripe();
+  if (process.env.DATABASE_URL) {
+    try {
+      await initDatabase();
+      await loadOAuthTokens();
+      await initStripe();
+    } catch (err: any) {
+      console.error('Database initialization failed:', err.message);
+      console.warn('Server will continue without database features');
+    }
+  } else {
+    console.warn('DATABASE_URL not set, skipping database initialization');
+    console.warn('Server will serve static files only');
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Aspire Desktop server running on port ${PORT}`);
