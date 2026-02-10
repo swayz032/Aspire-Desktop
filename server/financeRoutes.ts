@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
 import { getConnectionsByTenant } from './financeTokenStore';
 import { computeSnapshot } from './snapshotEngine';
+import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 
 const router = Router();
@@ -59,8 +60,8 @@ const emptyChapters = () => ({
 
 router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, 'default');
-    const officeId = getQueryParam(req.query.officeId as string, 'default');
+    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
 
     const snapshotResult = await db.execute(sql`
       SELECT id, suite_id, office_id, generated_at, chapter_now, chapter_next, chapter_month,
@@ -118,8 +119,8 @@ router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
 
 router.get('/api/finance/timeline', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, 'default');
-    const officeId = getQueryParam(req.query.officeId as string, 'default');
+    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
     const range = getQueryParam(req.query.range as string, '30d');
     const limit = Math.min(parseInt(getQueryParam(req.query.limit as string, '50'), 10) || 50, 200);
     const offset = parseInt(getQueryParam(req.query.offset as string, '0'), 10) || 0;
@@ -166,8 +167,8 @@ router.get('/api/finance/timeline', async (req: Request, res: Response) => {
 
 router.get('/api/finance/explain', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, 'default');
-    const officeId = getQueryParam(req.query.officeId as string, 'default');
+    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
     const metricId = getQueryParam(req.query.metricId as string, '');
 
     if (!metricId) {
@@ -223,8 +224,8 @@ router.get('/api/finance/explain', async (req: Request, res: Response) => {
 
 router.get('/api/connections/status', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, 'default');
-    const officeId = getQueryParam(req.query.officeId as string, 'default');
+    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
 
     const connections = await getConnectionsByTenant(suiteId, officeId);
 
@@ -263,8 +264,8 @@ router.get('/api/connections/status', async (req: Request, res: Response) => {
 
 router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, 'default');
-    const officeId = getQueryParam(req.query.officeId as string, 'default');
+    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
     const entityId = getQueryParam(req.query.entityId as string, '');
 
     let result;
@@ -347,7 +348,7 @@ router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
 
 router.post('/api/finance/compute-snapshot', async (req: Request, res: Response) => {
   try {
-    const { suiteId = 'default', officeId = 'default' } = req.body;
+    const { suiteId = getDefaultSuiteId(), officeId = getDefaultOfficeId() } = req.body;
     const snapshot = await computeSnapshot(suiteId, officeId);
     res.json(snapshot);
   } catch (error: any) {
@@ -358,7 +359,7 @@ router.post('/api/finance/compute-snapshot', async (req: Request, res: Response)
 
 router.post('/api/finance/proposals', async (req: Request, res: Response) => {
   try {
-    const { suiteId = 'default', officeId = 'default', title, type, description, predictedImpact, dependencies } = req.body;
+    const { suiteId = getDefaultSuiteId(), officeId = getDefaultOfficeId(), title, type, description, predictedImpact, dependencies } = req.body;
 
     if (!title || !type) {
       return res.status(400).json({ error: 'title and type are required' });
@@ -410,7 +411,7 @@ router.post('/api/finance/proposals', async (req: Request, res: Response) => {
 
 router.post('/api/finance/actions/execute', async (req: Request, res: Response) => {
   try {
-    const { suiteId = 'default', officeId = 'default', proposalId, approvedBy } = req.body;
+    const { suiteId = getDefaultSuiteId(), officeId = getDefaultOfficeId(), proposalId, approvedBy } = req.body;
 
     if (!proposalId || !approvedBy) {
       return res.status(400).json({ error: 'proposalId and approvedBy are required' });

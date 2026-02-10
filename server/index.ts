@@ -4,6 +4,7 @@ import path from 'path';
 import routes from './routes';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
+import { setDefaultSuiteId, setDefaultOfficeId } from './suiteContext';
 
 let runMigrations: any = null;
 let getStripeSync: any = null;
@@ -27,251 +28,25 @@ try {
 const app = express();
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
-async function initDatabase() {
-  console.log('Initializing database tables...');
-  
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS users (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      email TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL,
-      business_name TEXT,
-      booking_slug TEXT UNIQUE,
-      logo_url TEXT,
-      accent_color TEXT,
-      stripe_customer_id TEXT,
-      stripe_account_id TEXT,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
+// Default suite ID — bootstrapped at startup
+let defaultSuiteId: string = '';
+let defaultOfficeId: string = '';
 
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS services (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
-      duration INTEGER NOT NULL,
-      price INTEGER NOT NULL,
-      currency TEXT DEFAULT 'usd' NOT NULL,
-      color TEXT DEFAULT '#4facfe',
-      is_active BOOLEAN DEFAULT true NOT NULL,
-      stripe_price_id TEXT,
-      stripe_product_id TEXT,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS availability (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) NOT NULL,
-      day_of_week INTEGER NOT NULL,
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
-      is_active BOOLEAN DEFAULT true NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS bookings (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) NOT NULL,
-      service_id UUID REFERENCES services(id) NOT NULL,
-      client_name TEXT NOT NULL,
-      client_email TEXT NOT NULL,
-      client_phone TEXT,
-      client_notes TEXT,
-      scheduled_at TIMESTAMP NOT NULL,
-      duration INTEGER NOT NULL,
-      status TEXT DEFAULT 'pending' NOT NULL,
-      payment_status TEXT DEFAULT 'unpaid' NOT NULL,
-      stripe_payment_intent_id TEXT,
-      stripe_checkout_session_id TEXT,
-      amount INTEGER NOT NULL,
-      currency TEXT DEFAULT 'usd' NOT NULL,
-      cancelled_at TIMESTAMP,
-      cancel_reason TEXT,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS buffer_settings (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) NOT NULL UNIQUE,
-      before_buffer INTEGER DEFAULT 0 NOT NULL,
-      after_buffer INTEGER DEFAULT 15 NOT NULL,
-      minimum_notice INTEGER DEFAULT 60 NOT NULL,
-      max_advance_booking INTEGER DEFAULT 30 NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS front_desk_setup (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) NOT NULL UNIQUE,
-      line_mode TEXT DEFAULT 'ASPIRE_NUMBER',
-      aspire_number_e164 TEXT,
-      existing_number_e164 TEXT,
-      forwarding_verified BOOLEAN DEFAULT false,
-      business_name TEXT,
-      business_hours JSONB,
-      after_hours_mode TEXT DEFAULT 'TAKE_MESSAGE',
-      pronunciation TEXT,
-      enabled_reasons JSONB DEFAULT '[]',
-      questions_by_reason JSONB DEFAULT '{}',
-      target_by_reason JSONB DEFAULT '{}',
-      busy_mode TEXT DEFAULT 'TAKE_MESSAGE',
-      team_members JSONB DEFAULT '[]',
-      setup_complete BOOLEAN DEFAULT false,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS oauth_tokens (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      provider TEXT NOT NULL UNIQUE,
-      access_token TEXT NOT NULL,
-      refresh_token TEXT,
-      realm_id TEXT,
-      company_uuid TEXT,
-      item_id TEXT,
-      expires_at TIMESTAMP,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS finance_connections (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      suite_id TEXT NOT NULL,
-      office_id TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      external_account_id TEXT,
-      status TEXT DEFAULT 'connected' NOT NULL,
-      scopes JSONB,
-      last_sync_at TIMESTAMP,
-      last_webhook_at TIMESTAMP,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_connections_suite_office_provider
-    ON finance_connections (suite_id, office_id, provider)
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS finance_tokens (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      connection_id UUID REFERENCES finance_connections(id) NOT NULL,
-      access_token_enc TEXT NOT NULL,
-      refresh_token_enc TEXT,
-      expires_at TIMESTAMP,
-      rotation_version INTEGER DEFAULT 1 NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS finance_events (
-      event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      suite_id TEXT NOT NULL,
-      office_id TEXT NOT NULL,
-      connection_id UUID REFERENCES finance_connections(id),
-      provider TEXT NOT NULL,
-      provider_event_id TEXT NOT NULL,
-      event_type TEXT NOT NULL,
-      occurred_at TIMESTAMP NOT NULL,
-      amount INTEGER,
-      currency TEXT DEFAULT 'usd',
-      status TEXT DEFAULT 'posted',
-      entity_refs JSONB,
-      raw_hash TEXT,
-      receipt_id UUID,
-      metadata JSONB,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS finance_events_idempotency_idx
-    ON finance_events (suite_id, office_id, provider, provider_event_id)
-  `);
-
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS idx_finance_events_suite_office_occurred
-    ON finance_events (suite_id, office_id, occurred_at)
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS finance_entities (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      suite_id TEXT NOT NULL,
-      office_id TEXT NOT NULL,
-      connection_id UUID REFERENCES finance_connections(id),
-      provider TEXT NOT NULL,
-      entity_type TEXT NOT NULL,
-      entity_id TEXT NOT NULL,
-      data JSONB NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS finance_snapshots (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      suite_id TEXT NOT NULL,
-      office_id TEXT NOT NULL,
-      generated_at TIMESTAMP NOT NULL,
-      chapter_now JSONB,
-      chapter_next JSONB,
-      chapter_month JSONB,
-      chapter_reconcile JSONB,
-      chapter_actions JSONB,
-      sources JSONB,
-      staleness JSONB,
-      receipt_id UUID,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS idx_finance_snapshots_suite_office
-    ON finance_snapshots (suite_id, office_id)
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS receipts (
-      receipt_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      suite_id TEXT NOT NULL,
-      office_id TEXT NOT NULL,
-      action_type TEXT NOT NULL,
-      inputs_hash TEXT,
-      outputs_hash TEXT,
-      policy_decision_id TEXT,
-      metadata JSONB,
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL
-    )
-  `);
-
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS idx_receipts_suite_office
-    ON receipts (suite_id, office_id)
-  `);
-
-  console.log('Database tables ready');
-}
+// RLS context middleware — MUST run before ANY route that touches DB
+// Sets app.current_suite_id for row-level security enforcement (Law #6)
+app.use(async (req, res, next) => {
+  try {
+    // Use default suite for all requests. Auth-based suite derivation comes in Phase 1.
+    // SECURITY: Do NOT accept suite_id from request headers (injection risk)
+    const suiteId = defaultSuiteId;
+    if (suiteId) {
+      await db.execute(sql`SELECT set_config('app.current_suite_id', ${suiteId}, true)`);
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 async function initStripe() {
   if (!runMigrations || !getStripeSync) {
@@ -515,30 +290,55 @@ async function loadOAuthTokens() {
 
   try {
     const { runInitialSync } = require('./initialSync');
-    runInitialSync('default', 'default').catch((err: any) => console.warn('Initial sync error:', err));
+    runInitialSync(defaultSuiteId, defaultOfficeId).catch((err: any) => console.warn('Initial sync error:', err));
   } catch (e: any) {
     console.warn('Initial sync module not available:', e.message);
   }
 }
 
 async function start() {
-  if (process.env.DATABASE_URL) {
-    try {
-      await initDatabase();
-      await loadOAuthTokens();
-      await initStripe();
-    } catch (err: any) {
-      console.error('Database initialization failed:', err.message);
-      console.warn('Server will continue without database features');
+  try {
+    // Bootstrap default suite + office
+    const suiteResult = await db.execute(sql`
+      SELECT app.ensure_suite('default-tenant', 'Aspire Desktop') AS suite_id
+    `);
+    const rows = (suiteResult.rows || suiteResult) as any[];
+    defaultSuiteId = rows[0].suite_id;
+    setDefaultSuiteId(defaultSuiteId);
+
+    // Ensure default office exists
+    const officeResult = await db.execute(sql`
+      INSERT INTO app.offices (suite_id, label)
+      VALUES (${defaultSuiteId}, 'Default Office')
+      ON CONFLICT DO NOTHING
+      RETURNING office_id
+    `);
+    const officeRows = (officeResult.rows || officeResult) as any[];
+    if (officeRows.length > 0) {
+      defaultOfficeId = officeRows[0].office_id;
+    } else {
+      const existingOffice = await db.execute(sql`
+        SELECT office_id FROM app.offices WHERE suite_id = ${defaultSuiteId} LIMIT 1
+      `);
+      const existingRows = (existingOffice.rows || existingOffice) as any[];
+      defaultOfficeId = existingRows[0]?.office_id || '';
     }
-  } else {
-    console.warn('DATABASE_URL not set, skipping database initialization');
-    console.warn('Server will serve static files only');
+    setDefaultOfficeId(defaultOfficeId);
+
+    console.log(`Suite bootstrapped: ${defaultSuiteId}, Office: ${defaultOfficeId}`);
+
+    await loadOAuthTokens();
+    await initStripe();
+  } catch (err: any) {
+    console.error('Startup initialization failed:', err.message);
+    console.warn('Server will continue with limited functionality');
   }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Aspire Desktop server running on port ${PORT}`);
   });
 }
+
+export { defaultSuiteId, defaultOfficeId };
 
 start().catch(console.error);

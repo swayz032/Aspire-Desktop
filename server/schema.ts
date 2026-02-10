@@ -1,8 +1,26 @@
-import { pgTable, text, timestamp, integer, boolean, jsonb, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, pgSchema, text, timestamp, integer, boolean, jsonb, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
 
-export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  email: text('email').notNull().unique(),
+// Trust Spine tables (app schema)
+const appSchema = pgSchema('app');
+
+export const suites = appSchema.table('suites', {
+  suiteId: uuid('suite_id').primaryKey().defaultRandom(),
+  tenantId: text('tenant_id').unique(),
+  name: text('name'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const offices = appSchema.table('offices', {
+  officeId: uuid('office_id').primaryKey().defaultRandom(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
+  label: text('label'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Desktop profile (extends suite with business profile data)
+export const suiteProfiles = pgTable('suite_profiles', {
+  suiteId: uuid('suite_id').primaryKey().references(() => suites.suiteId),
+  email: text('email').notNull(),
   name: text('name').notNull(),
   businessName: text('business_name'),
   bookingSlug: text('booking_slug').unique(),
@@ -10,13 +28,13 @@ export const users = pgTable('users', {
   accentColor: text('accent_color').default('#3b82f6'),
   stripeCustomerId: text('stripe_customer_id'),
   stripeAccountId: text('stripe_account_id'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const services = pgTable('services', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').references(() => users.id).notNull(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
   name: text('name').notNull(),
   description: text('description'),
   duration: integer('duration').notNull(),
@@ -32,7 +50,7 @@ export const services = pgTable('services', {
 
 export const availability = pgTable('availability', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').references(() => users.id).notNull(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
   dayOfWeek: integer('day_of_week').notNull(),
   startTime: text('start_time').notNull(),
   endTime: text('end_time').notNull(),
@@ -41,7 +59,7 @@ export const availability = pgTable('availability', {
 
 export const bookings = pgTable('bookings', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').references(() => users.id).notNull(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
   serviceId: uuid('service_id').references(() => services.id).notNull(),
   clientName: text('client_name').notNull(),
   clientEmail: text('client_email').notNull(),
@@ -63,15 +81,15 @@ export const bookings = pgTable('bookings', {
 
 export const bufferSettings = pgTable('buffer_settings', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').references(() => users.id).notNull().unique(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull().unique(),
   beforeBuffer: integer('before_buffer').default(0).notNull(),
   afterBuffer: integer('after_buffer').default(15).notNull(),
   minimumNotice: integer('minimum_notice').default(60).notNull(),
   maxAdvanceBooking: integer('max_advance_booking').default(30).notNull(),
 });
 
-export type User = typeof users.$inferSelect;
-export type InsertUser = typeof users.$inferInsert;
+export type SuiteProfile = typeof suiteProfiles.$inferSelect;
+export type InsertSuiteProfile = typeof suiteProfiles.$inferInsert;
 export type Service = typeof services.$inferSelect;
 export type InsertService = typeof services.$inferInsert;
 export type Availability = typeof availability.$inferSelect;
@@ -83,7 +101,7 @@ export type InsertBufferSettings = typeof bufferSettings.$inferInsert;
 
 export const frontDeskSetup = pgTable('front_desk_setup', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').references(() => users.id).notNull().unique(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull().unique(),
   lineMode: text('line_mode').default('ASPIRE_NUMBER'),
   aspireNumberE164: text('aspire_number_e164'),
   existingNumberE164: text('existing_number_e164'),
@@ -107,7 +125,8 @@ export type InsertFrontDeskSetup = typeof frontDeskSetup.$inferInsert;
 
 export const oauthTokens = pgTable('oauth_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),
-  provider: text('provider').notNull().unique(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
+  provider: text('provider').notNull(),
   accessToken: text('access_token').notNull(),
   refreshToken: text('refresh_token'),
   realmId: text('realm_id'),
@@ -116,15 +135,17 @@ export const oauthTokens = pgTable('oauth_tokens', {
   expiresAt: timestamp('expires_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => ({
+  suiteProviderIdx: uniqueIndex('oauth_tokens_suite_provider_idx').on(table.suiteId, table.provider),
+}));
 
 export type OAuthToken = typeof oauthTokens.$inferSelect;
 export type InsertOAuthToken = typeof oauthTokens.$inferInsert;
 
 export const financeConnections = pgTable('finance_connections', {
   id: uuid('id').primaryKey().defaultRandom(),
-  suiteId: text('suite_id').notNull(),
-  officeId: text('office_id').notNull(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
+  officeId: uuid('office_id').references(() => offices.officeId).notNull(),
   provider: text('provider').notNull(),
   externalAccountId: text('external_account_id'),
   status: text('status').default('connected').notNull(),
@@ -154,8 +175,8 @@ export type InsertFinanceToken = typeof financeTokens.$inferInsert;
 
 export const financeEvents = pgTable('finance_events', {
   eventId: uuid('event_id').primaryKey().defaultRandom(),
-  suiteId: text('suite_id').notNull(),
-  officeId: text('office_id').notNull(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
+  officeId: uuid('office_id').references(() => offices.officeId).notNull(),
   connectionId: uuid('connection_id').references(() => financeConnections.id),
   provider: text('provider').notNull(),
   providerEventId: text('provider_event_id').notNull(),
@@ -178,8 +199,8 @@ export type InsertFinanceEvent = typeof financeEvents.$inferInsert;
 
 export const financeEntities = pgTable('finance_entities', {
   id: uuid('id').primaryKey().defaultRandom(),
-  suiteId: text('suite_id').notNull(),
-  officeId: text('office_id').notNull(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
+  officeId: uuid('office_id').references(() => offices.officeId).notNull(),
   connectionId: uuid('connection_id').references(() => financeConnections.id),
   provider: text('provider').notNull(),
   entityType: text('entity_type').notNull(),
@@ -194,8 +215,8 @@ export type InsertFinanceEntity = typeof financeEntities.$inferInsert;
 
 export const financeSnapshots = pgTable('finance_snapshots', {
   id: uuid('id').primaryKey().defaultRandom(),
-  suiteId: text('suite_id').notNull(),
-  officeId: text('office_id').notNull(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
+  officeId: uuid('office_id').references(() => offices.officeId).notNull(),
   generatedAt: timestamp('generated_at').notNull(),
   chapterNow: jsonb('chapter_now'),
   chapterNext: jsonb('chapter_next'),
@@ -211,16 +232,23 @@ export const financeSnapshots = pgTable('finance_snapshots', {
 export type FinanceSnapshot = typeof financeSnapshots.$inferSelect;
 export type InsertFinanceSnapshot = typeof financeSnapshots.$inferInsert;
 
+// Trust Spine receipts (15-column governed format)
 export const receipts = pgTable('receipts', {
-  receiptId: uuid('receipt_id').primaryKey().defaultRandom(),
-  suiteId: text('suite_id').notNull(),
-  officeId: text('office_id').notNull(),
-  actionType: text('action_type').notNull(),
-  inputsHash: text('inputs_hash'),
-  outputsHash: text('outputs_hash'),
-  policyDecisionId: text('policy_decision_id'),
-  metadata: jsonb('metadata'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  receiptId: text('receipt_id').primaryKey(),
+  suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
+  tenantId: text('tenant_id').notNull(),
+  officeId: uuid('office_id'),
+  receiptType: text('receipt_type').notNull(),
+  status: text('status').notNull().default('PENDING'),
+  correlationId: text('correlation_id').notNull(),
+  actorType: text('actor_type').notNull().default('SYSTEM'),
+  actorId: text('actor_id'),
+  action: jsonb('action').notNull().default({}),
+  result: jsonb('result').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  hashAlg: text('hash_alg').notNull().default('sha256'),
+  receiptHash: text('receipt_hash'),
+  signature: text('signature'),
 });
 
 export type Receipt = typeof receipts.$inferSelect;

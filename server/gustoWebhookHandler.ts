@@ -4,12 +4,10 @@ import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
 import { updateConnectionSyncTime, getConnectionByProvider } from './financeTokenStore';
 import { loadToken, saveToken } from './tokenStore';
+import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 
 const router = Router();
-
-const DEFAULT_SUITE_ID = 'default';
-const DEFAULT_OFFICE_ID = 'default';
 
 const GUSTO_API_BASE = 'https://api.gusto-demo.com';
 const GUSTO_API_VERSION = '2025-06-15';
@@ -176,8 +174,8 @@ async function gustoApiFetch(url: string, accessToken: string): Promise<any> {
 }
 
 export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): Promise<any[]> {
-  const sId = suiteId || DEFAULT_SUITE_ID;
-  const oId = officeId || DEFAULT_OFFICE_ID;
+  const sId = suiteId || getDefaultSuiteId();
+  const oId = officeId || getDefaultOfficeId();
 
   const tokenResult = await refreshGustoCompanyToken();
   if (!tokenResult) {
@@ -392,9 +390,8 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
     if (req.body && req.body.verification_token && !req.body.event_type && !req.body.type) {
       capturedVerificationToken = req.body.verification_token;
       console.log('==========================================================');
-      console.log('GUSTO VERIFICATION TOKEN RECEIVED:', capturedVerificationToken);
-      console.log('Set this as GUSTO_WEBHOOK_SECRET in your Secrets tab.');
-      console.log('Or visit /api/gusto/webhook-verification-token to retrieve it.');
+      console.log('GUSTO VERIFICATION TOKEN RECEIVED (redacted from logs for security)');
+      console.log('Visit /api/gusto/webhook-verification-token to retrieve it.');
       console.log('==========================================================');
       return res.status(200).json({ received: true, verification_token_captured: true });
     }
@@ -420,15 +417,15 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
       return res.status(200).json({ received: true, handled: false });
     }
 
-    const connection = await getConnectionByProvider(DEFAULT_SUITE_ID, DEFAULT_OFFICE_ID, 'gusto');
+    const connection = await getConnectionByProvider(getDefaultSuiteId(), getDefaultOfficeId(), 'gusto');
     const connectionId = connection?.id || null;
 
     const providerEventId = `gusto_${eventType}_${resourceUuid}_${timestamp}`;
     const rawHash = computeRawHash(body);
 
     const receiptId = await createReceipt({
-      suiteId: DEFAULT_SUITE_ID,
-      officeId: DEFAULT_OFFICE_ID,
+      suiteId: getDefaultSuiteId(),
+      officeId: getDefaultOfficeId(),
       actionType: 'ingest_webhook',
       inputs: { provider: 'gusto', event_type: eventType, resource_uuid: resourceUuid },
       outputs: { normalized_type: normalizedType, providerEventId },
@@ -436,8 +433,8 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
     });
 
     const written = await writeFinanceEvent({
-      suiteId: DEFAULT_SUITE_ID,
-      officeId: DEFAULT_OFFICE_ID,
+      suiteId: getDefaultSuiteId(),
+      officeId: getDefaultOfficeId(),
       connectionId,
       providerEventId,
       eventType: normalizedType,

@@ -4,12 +4,10 @@ import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
 import { updateConnectionSyncTime, getConnectionByProvider } from './financeTokenStore';
 import { loadToken } from './tokenStore';
+import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 
 const router = Router();
-
-const DEFAULT_SUITE_ID = 'default';
-const DEFAULT_OFFICE_ID = 'default';
 
 const QBO_EVENT_MAP: Record<string, string> = {
   'Invoice': 'qbo_invoice_changed',
@@ -162,8 +160,8 @@ async function qboApiFetch(path: string, accessToken: string, realmId: string, r
 }
 
 export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Promise<{ processed: number }> {
-  const sId = suiteId || DEFAULT_SUITE_ID;
-  const oId = officeId || DEFAULT_OFFICE_ID;
+  const sId = suiteId || getDefaultSuiteId();
+  const oId = officeId || getDefaultOfficeId();
 
   const creds = await getQBOCredentials();
   if (!creds) {
@@ -310,8 +308,8 @@ export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Pr
 }
 
 export async function fetchQBOReports(suiteId?: string, officeId?: string): Promise<{ profitAndLoss: any; balanceSheet: any }> {
-  const sId = suiteId || DEFAULT_SUITE_ID;
-  const oId = officeId || DEFAULT_OFFICE_ID;
+  const sId = suiteId || getDefaultSuiteId();
+  const oId = officeId || getDefaultOfficeId();
 
   const creds = await getQBOCredentials();
   if (!creds) {
@@ -428,7 +426,7 @@ router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
       const dataChangeEvent = notification.dataChangeEvent;
       if (!dataChangeEvent?.entities) continue;
 
-      const connection = await getConnectionByProvider(DEFAULT_SUITE_ID, DEFAULT_OFFICE_ID, 'qbo');
+      const connection = await getConnectionByProvider(getDefaultSuiteId(), getDefaultOfficeId(), 'qbo');
       const connectionId = connection?.id || null;
 
       for (const entity of dataChangeEvent.entities) {
@@ -447,8 +445,8 @@ router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
         const rawHash = computeRawHash(entity);
 
         const receiptId = await createReceipt({
-          suiteId: DEFAULT_SUITE_ID,
-          officeId: DEFAULT_OFFICE_ID,
+          suiteId: getDefaultSuiteId(),
+          officeId: getDefaultOfficeId(),
           actionType: 'ingest_webhook',
           inputs: { provider: 'qbo', entityName, entityId, operation },
           outputs: { eventType, providerEventId },
@@ -456,8 +454,8 @@ router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
         });
 
         const written = await writeFinanceEvent({
-          suiteId: DEFAULT_SUITE_ID,
-          officeId: DEFAULT_OFFICE_ID,
+          suiteId: getDefaultSuiteId(),
+          officeId: getDefaultOfficeId(),
           connectionId,
           providerEventId,
           eventType,

@@ -4,7 +4,7 @@ import { getUncachableStripeClient, getStripePublishableKey } from './stripeClie
 
 const router = Router();
 
-const getParam = (param: string | string[]): string => 
+const getParam = (param: string | string[]): string =>
   Array.isArray(param) ? param[0] : param;
 
 router.get('/api/stripe/publishable-key', async (req: Request, res: Response) => {
@@ -16,11 +16,22 @@ router.get('/api/stripe/publishable-key', async (req: Request, res: Response) =>
   }
 });
 
+router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
+  try {
+    const profile = await storage.getSuiteProfile(getParam(req.params.suiteId));
+    if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
+    res.json(profile);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Backward-compatible alias: /api/users/:userId -> suite profile lookup
 router.get('/api/users/:userId', async (req: Request, res: Response) => {
   try {
-    const user = await storage.getUser(getParam(req.params.userId));
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
+    const profile = await storage.getSuiteProfile(getParam(req.params.userId));
+    if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
+    res.json(profile);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -28,9 +39,9 @@ router.get('/api/users/:userId', async (req: Request, res: Response) => {
 
 router.get('/api/users/slug/:slug', async (req: Request, res: Response) => {
   try {
-    const user = await storage.getUserBySlug(getParam(req.params.slug));
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
+    const profile = await storage.getSuiteProfileBySlug(getParam(req.params.slug));
+    if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
+    res.json(profile);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -38,8 +49,8 @@ router.get('/api/users/slug/:slug', async (req: Request, res: Response) => {
 
 router.post('/api/users', async (req: Request, res: Response) => {
   try {
-    const user = await storage.createUser(req.body);
-    res.status(201).json(user);
+    const profile = await storage.createSuiteProfile(req.body);
+    res.status(201).json(profile);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -47,9 +58,9 @@ router.post('/api/users', async (req: Request, res: Response) => {
 
 router.patch('/api/users/:userId', async (req: Request, res: Response) => {
   try {
-    const user = await storage.updateUser(getParam(req.params.userId), req.body);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
+    const profile = await storage.updateSuiteProfile(getParam(req.params.userId), req.body);
+    if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
+    res.json(profile);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -76,11 +87,11 @@ router.get('/api/users/:userId/services/active', async (req: Request, res: Respo
 router.post('/api/users/:userId/services', async (req: Request, res: Response) => {
   try {
     const stripe = await getUncachableStripeClient();
-    
+
     const product = await stripe.products.create({
       name: req.body.name,
       description: req.body.description || '',
-      metadata: { userId: getParam(req.params.userId) },
+      metadata: { suiteId: getParam(req.params.userId) },
     });
 
     const price = await stripe.prices.create({
@@ -91,7 +102,7 @@ router.post('/api/users/:userId/services', async (req: Request, res: Response) =
 
     const service = await storage.createService({
       ...req.body,
-      userId: getParam(req.params.userId),
+      suiteId: getParam(req.params.userId),
       stripeProductId: product.id,
       stripePriceId: price.id,
     });
@@ -134,7 +145,7 @@ router.put('/api/users/:userId/availability', async (req: Request, res: Response
   try {
     const slots = req.body.slots.map((slot: any) => ({
       ...slot,
-      userId: getParam(req.params.userId),
+      suiteId: getParam(req.params.userId),
     }));
     const availability = await storage.setAvailability(getParam(req.params.userId), slots);
     res.json(availability);
@@ -210,15 +221,15 @@ router.post('/api/bookings/:bookingId/cancel', async (req: Request, res: Respons
 
 router.get('/api/book/:slug', async (req: Request, res: Response) => {
   try {
-    const user = await storage.getUserBySlug(getParam(req.params.slug));
-    if (!user) return res.status(404).json({ error: 'Booking page not found' });
-    
-    const services = await storage.getActiveServices(user.id);
-    const availability = await storage.getAvailability(user.id);
-    const bufferSettings = await storage.getBufferSettings(user.id);
+    const profile = await storage.getSuiteProfileBySlug(getParam(req.params.slug));
+    if (!profile) return res.status(404).json({ error: 'Booking page not found' });
+
+    const services = await storage.getActiveServices(profile.suiteId);
+    const availability = await storage.getAvailability(profile.suiteId);
+    const bufferSettings = await storage.getBufferSettings(profile.suiteId);
 
     res.json({
-      user: { id: user.id, name: user.name, businessName: user.businessName, logoUrl: user.logoUrl, accentColor: user.accentColor },
+      user: { id: profile.suiteId, name: profile.name, businessName: profile.businessName, logoUrl: profile.logoUrl, accentColor: profile.accentColor },
       services,
       availability,
       bufferSettings: bufferSettings || { beforeBuffer: 0, afterBuffer: 15, minimumNotice: 60, maxAdvanceBooking: 30 },
@@ -235,15 +246,15 @@ router.get('/api/book/:slug/slots', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'serviceId and date are required' });
     }
 
-    const user = await storage.getUserBySlug(getParam(req.params.slug));
-    if (!user) return res.status(404).json({ error: 'Booking page not found' });
+    const profile = await storage.getSuiteProfileBySlug(getParam(req.params.slug));
+    if (!profile) return res.status(404).json({ error: 'Booking page not found' });
 
     const service = await storage.getService(serviceId as string);
     if (!service) return res.status(404).json({ error: 'Service not found' });
 
-    const availability = await storage.getAvailability(user.id);
-    const bufferSettings = await storage.getBufferSettings(user.id);
-    const existingBookings = await storage.getBookingsByDate(user.id, new Date(date as string));
+    const availability = await storage.getAvailability(profile.suiteId);
+    const bufferSettings = await storage.getBufferSettings(profile.suiteId);
+    const existingBookings = await storage.getBookingsByDate(profile.suiteId, new Date(date as string));
 
     const requestedDate = new Date(date as string);
     const dayOfWeek = requestedDate.getDay();
@@ -293,14 +304,14 @@ router.post('/api/book/:slug/checkout', async (req: Request, res: Response) => {
   try {
     const { serviceId, scheduledAt, clientName, clientEmail, clientPhone, clientNotes } = req.body;
 
-    const user = await storage.getUserBySlug(getParam(req.params.slug));
-    if (!user) return res.status(404).json({ error: 'Booking page not found' });
+    const profile = await storage.getSuiteProfileBySlug(getParam(req.params.slug));
+    if (!profile) return res.status(404).json({ error: 'Booking page not found' });
 
     const service = await storage.getService(serviceId);
     if (!service) return res.status(404).json({ error: 'Service not found' });
 
     const booking = await storage.createBooking({
-      userId: user.id,
+      suiteId: profile.suiteId,
       serviceId,
       clientName,
       clientEmail,
@@ -355,9 +366,9 @@ router.post('/api/book/:slug/confirm/:bookingId', async (req: Request, res: Resp
 
 router.get('/api/frontdesk/setup', async (req: Request, res: Response) => {
   try {
-    const userId = req.query.userId as string;
-    if (!userId) return res.status(400).json({ error: 'userId required' });
-    const setup = await storage.getFrontDeskSetup(userId);
+    const suiteId = (req.query.userId as string) || (req.query.suiteId as string);
+    if (!suiteId) return res.status(400).json({ error: 'suiteId required' });
+    const setup = await storage.getFrontDeskSetup(suiteId);
     res.json(setup || null);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -366,9 +377,10 @@ router.get('/api/frontdesk/setup', async (req: Request, res: Response) => {
 
 router.patch('/api/frontdesk/setup', async (req: Request, res: Response) => {
   try {
-    const { userId, ...data } = req.body;
-    if (!userId) return res.status(400).json({ error: 'userId required' });
-    const setup = await storage.upsertFrontDeskSetup(userId, data);
+    const { userId, suiteId: bodySuiteId, ...data } = req.body;
+    const suiteId = bodySuiteId || userId;
+    if (!suiteId) return res.status(400).json({ error: 'suiteId required' });
+    const setup = await storage.upsertFrontDeskSetup(suiteId, data);
     res.json(setup);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -379,10 +391,10 @@ router.post('/api/frontdesk/preview-audio', async (req: Request, res: Response) 
   try {
     const { clipType, reason, businessName, voiceId } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-    
+
     console.log('Audio preview request:', { clipType, reason, businessName, voiceId });
     console.log('ElevenLabs API key present:', !!ELEVENLABS_API_KEY);
-    
+
     if (!ELEVENLABS_API_KEY) {
       console.error('ElevenLabs API key not found in environment');
       return res.status(500).json({ error: 'ElevenLabs API key not configured' });

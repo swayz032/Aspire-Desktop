@@ -1,36 +1,36 @@
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { db } from './db';
-import { users, services, availability, bookings, bufferSettings, frontDeskSetup } from './schema';
-import type { User, InsertUser, Service, InsertService, Availability, InsertAvailability, Booking, InsertBooking, BufferSettings, InsertBufferSettings, FrontDeskSetup, InsertFrontDeskSetup } from './schema';
+import { suiteProfiles, services, availability, bookings, bufferSettings, frontDeskSetup } from './schema';
+import type { SuiteProfile, InsertSuiteProfile, Service, InsertService, Availability, InsertAvailability, Booking, InsertBooking, BufferSettings, InsertBufferSettings, FrontDeskSetup, InsertFrontDeskSetup } from './schema';
 
 export class Storage {
-  async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+  async getSuiteProfile(suiteId: string): Promise<SuiteProfile | undefined> {
+    const [profile] = await db.select().from(suiteProfiles).where(eq(suiteProfiles.suiteId, suiteId));
+    return profile;
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user;
+  async getSuiteProfileByEmail(email: string): Promise<SuiteProfile | undefined> {
+    const [profile] = await db.select().from(suiteProfiles).where(eq(suiteProfiles.email, email));
+    return profile;
   }
 
-  async getUserBySlug(slug: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.bookingSlug, slug));
-    return user;
+  async getSuiteProfileBySlug(slug: string): Promise<SuiteProfile | undefined> {
+    const [profile] = await db.select().from(suiteProfiles).where(eq(suiteProfiles.bookingSlug, slug));
+    return profile;
   }
 
-  async createUser(data: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(data).returning();
-    return user;
+  async createSuiteProfile(data: InsertSuiteProfile): Promise<SuiteProfile> {
+    const [profile] = await db.insert(suiteProfiles).values(data).returning();
+    return profile;
   }
 
-  async updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
-    const [user] = await db.update(users).set({ ...data, updatedAt: new Date() }).where(eq(users.id, id)).returning();
-    return user;
+  async updateSuiteProfile(suiteId: string, data: Partial<InsertSuiteProfile>): Promise<SuiteProfile | undefined> {
+    const [profile] = await db.update(suiteProfiles).set({ ...data, updatedAt: new Date() }).where(eq(suiteProfiles.suiteId, suiteId)).returning();
+    return profile;
   }
 
-  async getServices(userId: string): Promise<Service[]> {
-    return db.select().from(services).where(eq(services.userId, userId));
+  async getServices(suiteId: string): Promise<Service[]> {
+    return db.select().from(services).where(eq(services.suiteId, suiteId));
   }
 
   async getService(id: string): Promise<Service | undefined> {
@@ -38,8 +38,8 @@ export class Storage {
     return service;
   }
 
-  async getActiveServices(userId: string): Promise<Service[]> {
-    return db.select().from(services).where(and(eq(services.userId, userId), eq(services.isActive, true)));
+  async getActiveServices(suiteId: string): Promise<Service[]> {
+    return db.select().from(services).where(and(eq(services.suiteId, suiteId), eq(services.isActive, true)));
   }
 
   async createService(data: InsertService): Promise<Service> {
@@ -56,25 +56,25 @@ export class Storage {
     await db.delete(services).where(eq(services.id, id));
   }
 
-  async getAvailability(userId: string): Promise<Availability[]> {
-    return db.select().from(availability).where(eq(availability.userId, userId));
+  async getAvailability(suiteId: string): Promise<Availability[]> {
+    return db.select().from(availability).where(eq(availability.suiteId, suiteId));
   }
 
-  async setAvailability(userId: string, slots: InsertAvailability[]): Promise<Availability[]> {
-    await db.delete(availability).where(eq(availability.userId, userId));
+  async setAvailability(suiteId: string, slots: InsertAvailability[]): Promise<Availability[]> {
+    await db.delete(availability).where(eq(availability.suiteId, suiteId));
     if (slots.length === 0) return [];
     const result = await db.insert(availability).values(slots).returning();
     return result;
   }
 
-  async getBookings(userId: string): Promise<Booking[]> {
-    return db.select().from(bookings).where(eq(bookings.userId, userId)).orderBy(desc(bookings.scheduledAt));
+  async getBookings(suiteId: string): Promise<Booking[]> {
+    return db.select().from(bookings).where(eq(bookings.suiteId, suiteId)).orderBy(desc(bookings.scheduledAt));
   }
 
-  async getUpcomingBookings(userId: string): Promise<Booking[]> {
+  async getUpcomingBookings(suiteId: string): Promise<Booking[]> {
     return db.select().from(bookings)
       .where(and(
-        eq(bookings.userId, userId),
+        eq(bookings.suiteId, suiteId),
         gte(bookings.scheduledAt, new Date()),
         eq(bookings.status, 'confirmed')
       ))
@@ -86,7 +86,7 @@ export class Storage {
     return booking;
   }
 
-  async getBookingsByDate(userId: string, date: Date): Promise<Booking[]> {
+  async getBookingsByDate(suiteId: string, date: Date): Promise<Booking[]> {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
@@ -94,7 +94,7 @@ export class Storage {
 
     return db.select().from(bookings)
       .where(and(
-        eq(bookings.userId, userId),
+        eq(bookings.suiteId, suiteId),
         gte(bookings.scheduledAt, startOfDay),
         lte(bookings.scheduledAt, endOfDay)
       ))
@@ -113,56 +113,56 @@ export class Storage {
 
   async cancelBooking(id: string, reason?: string): Promise<Booking | undefined> {
     const [booking] = await db.update(bookings)
-      .set({ 
-        status: 'cancelled', 
-        cancelledAt: new Date(), 
+      .set({
+        status: 'cancelled',
+        cancelledAt: new Date(),
         cancelReason: reason,
-        updatedAt: new Date() 
+        updatedAt: new Date()
       })
       .where(eq(bookings.id, id))
       .returning();
     return booking;
   }
 
-  async getBufferSettings(userId: string): Promise<BufferSettings | undefined> {
-    const [settings] = await db.select().from(bufferSettings).where(eq(bufferSettings.userId, userId));
+  async getBufferSettings(suiteId: string): Promise<BufferSettings | undefined> {
+    const [settings] = await db.select().from(bufferSettings).where(eq(bufferSettings.suiteId, suiteId));
     return settings;
   }
 
-  async upsertBufferSettings(userId: string, data: Partial<InsertBufferSettings>): Promise<BufferSettings> {
-    const existing = await this.getBufferSettings(userId);
+  async upsertBufferSettings(suiteId: string, data: Partial<InsertBufferSettings>): Promise<BufferSettings> {
+    const existing = await this.getBufferSettings(suiteId);
     if (existing) {
-      const [updated] = await db.update(bufferSettings).set(data).where(eq(bufferSettings.userId, userId)).returning();
+      const [updated] = await db.update(bufferSettings).set(data).where(eq(bufferSettings.suiteId, suiteId)).returning();
       return updated;
     }
-    const [created] = await db.insert(bufferSettings).values({ userId, ...data }).returning();
+    const [created] = await db.insert(bufferSettings).values({ suiteId, ...data }).returning();
     return created;
   }
 
-  async getBookingStats(userId: string): Promise<{ total: number; upcoming: number; revenue: number }> {
-    const allBookings = await this.getBookings(userId);
+  async getBookingStats(suiteId: string): Promise<{ total: number; upcoming: number; revenue: number }> {
+    const allBookings = await this.getBookings(suiteId);
     const upcoming = allBookings.filter(b => new Date(b.scheduledAt) > new Date() && b.status === 'confirmed');
     const paidBookings = allBookings.filter(b => b.paymentStatus === 'paid');
     const revenue = paidBookings.reduce((sum, b) => sum + b.amount, 0);
     return { total: allBookings.length, upcoming: upcoming.length, revenue };
   }
 
-  async getFrontDeskSetup(userId: string): Promise<FrontDeskSetup | undefined> {
-    const [setup] = await db.select().from(frontDeskSetup).where(eq(frontDeskSetup.userId, userId));
+  async getFrontDeskSetup(suiteId: string): Promise<FrontDeskSetup | undefined> {
+    const [setup] = await db.select().from(frontDeskSetup).where(eq(frontDeskSetup.suiteId, suiteId));
     return setup;
   }
 
-  async upsertFrontDeskSetup(userId: string, data: Partial<InsertFrontDeskSetup>): Promise<FrontDeskSetup> {
-    const existing = await this.getFrontDeskSetup(userId);
+  async upsertFrontDeskSetup(suiteId: string, data: Partial<InsertFrontDeskSetup>): Promise<FrontDeskSetup> {
+    const existing = await this.getFrontDeskSetup(suiteId);
     if (existing) {
       const [updated] = await db.update(frontDeskSetup)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(frontDeskSetup.userId, userId))
+        .where(eq(frontDeskSetup.suiteId, suiteId))
         .returning();
       return updated;
     } else {
       const [created] = await db.insert(frontDeskSetup)
-        .values({ ...data, userId })
+        .values({ ...data, suiteId })
         .returning();
       return created;
     }

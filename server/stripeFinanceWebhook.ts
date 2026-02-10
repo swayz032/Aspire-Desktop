@@ -4,10 +4,8 @@ import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
 import { updateConnectionSyncTime, getConnectionByProvider } from './financeTokenStore';
+import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
-
-const DEFAULT_SUITE_ID = 'default';
-const DEFAULT_OFFICE_ID = 'default';
 
 const STRIPE_EVENT_MAP: Record<string, string> = {
   'invoice.sent': 'invoice_sent',
@@ -138,8 +136,8 @@ async function writeFinanceEvent(params: {
 export async function fetchPayoutReconciliation(payoutId: string, suiteId?: string, officeId?: string): Promise<void> {
   try {
     const stripe = getStripeClient();
-    const sId = suiteId || DEFAULT_SUITE_ID;
-    const oId = officeId || DEFAULT_OFFICE_ID;
+    const sId = suiteId || getDefaultSuiteId();
+    const oId = officeId || getDefaultOfficeId();
 
     const payout = await stripe.payouts.retrieve(payoutId);
     console.log(`Fetching reconciliation for payout ${payoutId}, amount: ${payout.amount}`);
@@ -189,8 +187,8 @@ export async function checkSettlementState(suiteId?: string, officeId?: string):
 }> {
   try {
     const stripe = getStripeClient();
-    const sId = suiteId || DEFAULT_SUITE_ID;
-    const oId = officeId || DEFAULT_OFFICE_ID;
+    const sId = suiteId || getDefaultSuiteId();
+    const oId = officeId || getDefaultOfficeId();
 
     const balance = await stripe.balance.retrieve();
 
@@ -283,12 +281,12 @@ router.post(
       const currency = dataObject.currency || 'usd';
       const occurredAt = new Date((event.created || Math.floor(Date.now() / 1000)) * 1000);
 
-      const connection = await getConnectionByProvider(DEFAULT_SUITE_ID, DEFAULT_OFFICE_ID, 'stripe');
+      const connection = await getConnectionByProvider(getDefaultSuiteId(), getDefaultOfficeId(), 'stripe');
       const connectionId = connection?.id || null;
 
       const eventId = await writeFinanceEvent({
-        suiteId: DEFAULT_SUITE_ID,
-        officeId: DEFAULT_OFFICE_ID,
+        suiteId: getDefaultSuiteId(),
+        officeId: getDefaultOfficeId(),
         connectionId,
         providerEventId: event.id,
         eventType: normalizedType,
@@ -302,8 +300,8 @@ router.post(
       if (eventId) {
         try {
           const receiptId = await createReceipt({
-            suiteId: DEFAULT_SUITE_ID,
-            officeId: DEFAULT_OFFICE_ID,
+            suiteId: getDefaultSuiteId(),
+            officeId: getDefaultOfficeId(),
             actionType: 'ingest_webhook',
             inputs: { provider: 'stripe', stripe_event_id: event.id, event_type: stripeEventType },
             outputs: { event_id: eventId, normalized_type: normalizedType },
@@ -321,8 +319,8 @@ router.post(
         if (fee !== null && fee > 0) {
           try {
             await writeFinanceEvent({
-              suiteId: DEFAULT_SUITE_ID,
-              officeId: DEFAULT_OFFICE_ID,
+              suiteId: getDefaultSuiteId(),
+              officeId: getDefaultOfficeId(),
               connectionId,
               providerEventId: `${event.id}_fee`,
               eventType: 'fee_assessed',
@@ -340,7 +338,7 @@ router.post(
 
       if (stripeEventType.startsWith('payout.') && dataObject.id) {
         try {
-          await fetchPayoutReconciliation(dataObject.id, DEFAULT_SUITE_ID, DEFAULT_OFFICE_ID);
+          await fetchPayoutReconciliation(dataObject.id, getDefaultSuiteId(), getDefaultOfficeId());
         } catch (reconErr: any) {
           console.error('Payout reconciliation failed:', reconErr.message);
         }

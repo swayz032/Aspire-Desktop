@@ -1,5 +1,6 @@
 import { db } from './db';
 import { sql } from 'drizzle-orm';
+import { getDefaultSuiteId } from './suiteContext';
 
 export interface StoredToken {
   access_token: string;
@@ -12,11 +13,12 @@ export interface StoredToken {
 
 export async function saveToken(provider: string, token: StoredToken): Promise<void> {
   try {
+    const suiteId = getDefaultSuiteId();
     const expiresAt = token.expires_at || null;
     await db.execute(sql`
-      INSERT INTO oauth_tokens (provider, access_token, refresh_token, realm_id, company_uuid, item_id, expires_at, updated_at)
-      VALUES (${provider}, ${token.access_token}, ${token.refresh_token || null}, ${token.realm_id || null}, ${token.company_uuid || null}, ${token.item_id || null}, ${expiresAt}, NOW())
-      ON CONFLICT (provider)
+      INSERT INTO oauth_tokens (suite_id, provider, access_token, refresh_token, realm_id, company_uuid, item_id, expires_at, updated_at)
+      VALUES (${suiteId}, ${provider}, ${token.access_token}, ${token.refresh_token || null}, ${token.realm_id || null}, ${token.company_uuid || null}, ${token.item_id || null}, ${expiresAt}, NOW())
+      ON CONFLICT (suite_id, provider)
       DO UPDATE SET
         access_token = ${token.access_token},
         refresh_token = COALESCE(${token.refresh_token || null}, oauth_tokens.refresh_token),
@@ -34,10 +36,11 @@ export async function saveToken(provider: string, token: StoredToken): Promise<v
 
 export async function loadToken(provider: string): Promise<StoredToken | null> {
   try {
+    const suiteId = getDefaultSuiteId();
     const result = await db.execute(sql`
       SELECT access_token, refresh_token, realm_id, company_uuid, item_id, expires_at
       FROM oauth_tokens
-      WHERE provider = ${provider}
+      WHERE suite_id = ${suiteId} AND provider = ${provider}
     `);
     const rows = result.rows || result;
     if (rows && rows.length > 0) {
@@ -61,7 +64,8 @@ export async function loadToken(provider: string): Promise<StoredToken | null> {
 
 export async function deleteToken(provider: string): Promise<void> {
   try {
-    await db.execute(sql`DELETE FROM oauth_tokens WHERE provider = ${provider}`);
+    const suiteId = getDefaultSuiteId();
+    await db.execute(sql`DELETE FROM oauth_tokens WHERE suite_id = ${suiteId} AND provider = ${provider}`);
     console.log(`Token deleted for provider: ${provider}`);
   } catch (error: any) {
     console.error(`Failed to delete token for ${provider}:`, error.message);
@@ -70,10 +74,11 @@ export async function deleteToken(provider: string): Promise<void> {
 
 export async function loadAllTokens(providerPrefix: string): Promise<StoredToken[]> {
   try {
+    const suiteId = getDefaultSuiteId();
     const result = await db.execute(sql`
       SELECT access_token, refresh_token, realm_id, company_uuid, item_id, expires_at, provider
       FROM oauth_tokens
-      WHERE provider LIKE ${providerPrefix + '%'}
+      WHERE suite_id = ${suiteId} AND provider LIKE ${providerPrefix + '%'}
       ORDER BY created_at ASC
     `);
     const rows = (result.rows || result) as any[];
@@ -96,7 +101,8 @@ export async function loadAllTokens(providerPrefix: string): Promise<StoredToken
 
 export async function deleteAllTokens(providerPrefix: string): Promise<void> {
   try {
-    await db.execute(sql`DELETE FROM oauth_tokens WHERE provider LIKE ${providerPrefix + '%'}`);
+    const suiteId = getDefaultSuiteId();
+    await db.execute(sql`DELETE FROM oauth_tokens WHERE suite_id = ${suiteId} AND provider LIKE ${providerPrefix + '%'}`);
     console.log(`All tokens deleted for prefix: ${providerPrefix}`);
   } catch (error: any) {
     console.error(`Failed to delete tokens for ${providerPrefix}:`, error.message);
