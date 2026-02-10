@@ -63,7 +63,7 @@
     "google-auth-library": "^10.5.0",
     "node-quickbooks": "^2.0.47",
     "otplib": "^13.2.1",
-    "pg": "^8.17.2",
+    "pg": "^8.18.0",
     "phosphor-react-native": "^3.0.3",
     "plaid": "^41.1.0",
     "qrcode": "^1.5.4",

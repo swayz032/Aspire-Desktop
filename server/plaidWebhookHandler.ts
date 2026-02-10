@@ -4,6 +4,7 @@ import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
 import { updateConnectionSyncTime } from './financeTokenStore';
+import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 
 const configuration = new Configuration({
@@ -17,9 +18,6 @@ const configuration = new Configuration({
 });
 
 const plaidClient = new PlaidApi(configuration);
-
-const DEFAULT_SUITE_ID = 'default';
-const DEFAULT_OFFICE_ID = 'default';
 
 const PLAID_EVENT_MAP: Record<string, string> = {
   'TRANSACTIONS.DEFAULT_UPDATE': 'bank_tx_posted',
@@ -430,8 +428,8 @@ router.post('/api/plaid/finance-webhook', async (req: Request, res: Response) =>
     }
 
     const connection = await findConnectionByItemId(itemId);
-    const suiteId = connection?.suiteId || DEFAULT_SUITE_ID;
-    const officeId = connection?.officeId || DEFAULT_OFFICE_ID;
+    const suiteId = connection?.suiteId || getDefaultSuiteId();
+    const officeId = connection?.officeId || getDefaultOfficeId();
     const connectionId = connection?.id || null;
 
     const timestamp = new Date().toISOString();

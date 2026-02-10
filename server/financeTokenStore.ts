@@ -2,9 +2,17 @@ import { db } from './db';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 
-const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || 'aspire-dev-key-32-chars-padding!';
+// Law #3: Fail Closed — no hardcoded fallback key. If TOKEN_ENCRYPTION_KEY is not set,
+// token encryption/decryption will fail explicitly rather than using a guessable key.
+const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY;
+if (!ENCRYPTION_KEY) {
+  console.warn('WARNING: TOKEN_ENCRYPTION_KEY not set. Finance token encryption will be unavailable.');
+}
 
 function encrypt(text: string): string {
+  if (!ENCRYPTION_KEY) {
+    throw new Error('TOKEN_ENCRYPTION_KEY not set — cannot encrypt tokens (Law #3: Fail Closed)');
+  }
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY, 'utf-8'), iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
@@ -14,6 +22,9 @@ function encrypt(text: string): string {
 }
 
 function decrypt(encryptedText: string): string {
+  if (!ENCRYPTION_KEY) {
+    throw new Error('TOKEN_ENCRYPTION_KEY not set — cannot decrypt tokens (Law #3: Fail Closed)');
+  }
   const [ivHex, authTagHex, encrypted] = encryptedText.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
