@@ -390,8 +390,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logoIcon: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
+    marginLeft: 2,
   },
   expandChevronBadge: {
     position: 'absolute',

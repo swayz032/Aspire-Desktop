@@ -34,71 +34,77 @@ export function DocumentThumbnail({
   const config = TYPE_CONFIG[type] || TYPE_CONFIG.document;
 
   const s = {
-    sm: { label: 5.5, stripH: 12, lineH: 1.5, gap: 2.5, pad: 4 },
-    md: { label: 7, stripH: 16, lineH: 2, gap: 3, pad: 5 },
-    lg: { label: 8.5, stripH: 18, lineH: 2.5, gap: 3.5, pad: 7 },
-    xl: { label: 10, stripH: 22, lineH: 3, gap: 4, pad: 9 },
+    sm: { label: 5.5, stripH: 11, lineH: 1, thickH: 1.5, gap: 1.5, pad: 3, thinGap: 1 },
+    md: { label: 7, stripH: 14, lineH: 1.5, thickH: 2, gap: 2, pad: 4, thinGap: 1.5 },
+    lg: { label: 8.5, stripH: 16, lineH: 2, thickH: 2.5, gap: 2.5, pad: 5, thinGap: 2 },
+    xl: { label: 10, stripH: 20, lineH: 2.5, thickH: 3, gap: 3, pad: 7, thinGap: 2.5 },
   }[size];
 
-  const topLines = [
-    { w: '55%', o: 0.22 },
-    { w: '80%', o: 0.13 },
-    { w: '65%', o: 0.13 },
-    { w: '90%', o: 0.10 },
-  ];
-
-  const bottomLines = [
-    { w: '88%', o: 0.13 },
-    { w: '72%', o: 0.13 },
-    { w: '60%', o: 0.10 },
-    { w: '82%', o: 0.10 },
-    { w: '40%', o: 0.08 },
-  ];
-
-  const visibleTop = size === 'sm' ? 2 : size === 'md' ? 3 : 4;
-  const visibleBottom = size === 'sm' ? 2 : size === 'md' ? 3 : size === 'lg' ? 4 : 5;
+  const isSmall = size === 'sm';
+  const isMedium = size === 'md';
 
   return (
     <View style={[styles.card, dimensions]}>
-      <View style={[styles.topSection, { paddingHorizontal: s.pad, paddingTop: s.pad, gap: s.gap }]}>
-        {topLines.slice(0, visibleTop).map((line, i) => (
-          <View
-            key={`t${i}`}
-            style={[
-              styles.docLine,
-              {
-                height: s.lineH,
-                width: line.w as any,
-                opacity: line.o,
-                backgroundColor: i === 0 ? '#4B5563' : '#9CA3AF',
-              },
-            ]}
-          />
-        ))}
+      {/* Letterhead area */}
+      <View style={[styles.letterhead, { padding: s.pad, paddingBottom: 0, gap: s.thinGap }]}>
+        {/* Company name - bold dark line */}
+        <View style={{ height: s.thickH, width: '60%', backgroundColor: '#374151', opacity: 0.35, borderRadius: 0.5 }} />
+        {/* Address lines */}
+        <View style={{ height: s.lineH, width: '45%', backgroundColor: '#9CA3AF', opacity: 0.2, borderRadius: 0.5 }} />
+        {!isSmall && (
+          <View style={{ height: s.lineH, width: '50%', backgroundColor: '#9CA3AF', opacity: 0.15, borderRadius: 0.5 }} />
+        )}
+        {/* Thin separator */}
+        <View style={{ height: 0.5, width: '100%', backgroundColor: '#D1D5DB', opacity: 0.3, marginTop: s.thinGap }} />
       </View>
 
-      <View style={[styles.strip, { height: s.stripH }]}>
+      {/* Blue type strip */}
+      <View style={[styles.strip, { height: s.stripH }]}>  
         <View style={styles.stripGradient} />
         <Text style={[styles.stripLabel, { fontSize: s.label }]}>
           {config.label}
         </Text>
       </View>
 
-      <View style={[styles.bottomSection, { paddingHorizontal: s.pad, paddingBottom: s.pad, gap: s.gap }]}>
-        {bottomLines.slice(0, visibleBottom).map((line, i) => (
-          <View
-            key={`b${i}`}
-            style={[
-              styles.docLine,
-              {
-                height: s.lineH,
-                width: line.w as any,
-                opacity: line.o,
-                backgroundColor: '#9CA3AF',
-              },
-            ]}
-          />
-        ))}
+      {/* Document body */}
+      <View style={[styles.body, { paddingHorizontal: s.pad, gap: s.thinGap, paddingTop: s.thinGap }]}>
+        {/* Paragraph 1 */}
+        <View style={{ gap: s.thinGap }}>
+          <View style={{ height: s.lineH, width: '92%', backgroundColor: '#6B7280', opacity: 0.18, borderRadius: 0.5 }} />
+          <View style={{ height: s.lineH, width: '85%', backgroundColor: '#6B7280', opacity: 0.15, borderRadius: 0.5 }} />
+          <View style={{ height: s.lineH, width: '78%', backgroundColor: '#6B7280', opacity: 0.13, borderRadius: 0.5 }} />
+          {!isSmall && (
+            <View style={{ height: s.lineH, width: '88%', backgroundColor: '#6B7280', opacity: 0.14, borderRadius: 0.5 }} />
+          )}
+        </View>
+
+        {/* Paragraph gap */}
+        <View style={{ height: s.thinGap }} />
+
+        {/* Paragraph 2 / amounts area */}
+        {!isSmall && (
+          <View style={{ gap: s.thinGap }}>
+            <View style={{ height: s.lineH, width: '90%', backgroundColor: '#6B7280', opacity: 0.16, borderRadius: 0.5 }} />
+            <View style={{ height: s.lineH, width: '70%', backgroundColor: '#6B7280', opacity: 0.13, borderRadius: 0.5 }} />
+            {!isMedium && (
+              <>
+                <View style={{ height: s.lineH, width: '82%', backgroundColor: '#6B7280', opacity: 0.14, borderRadius: 0.5 }} />
+                {/* Amount line - right aligned, bolder */}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                  <View style={{ height: s.thickH, width: '35%', backgroundColor: '#374151', opacity: 0.22, borderRadius: 0.5 }} />
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Signature area */}
+        {(size === 'lg' || size === 'xl') && (
+          <View style={{ marginTop: 'auto', gap: s.thinGap, paddingBottom: s.pad }}>
+            <View style={{ height: 0.5, width: '40%', backgroundColor: '#9CA3AF', opacity: 0.25, borderRadius: 0.5 }} />
+            <View style={{ height: s.lineH, width: '30%', backgroundColor: '#9CA3AF', opacity: 0.15, borderRadius: 0.5 }} />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -108,23 +114,15 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: BorderRadius.xs + 1,
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FAFAFA',
     borderWidth: 1,
     borderColor: '#E5E7EB',
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     } : {}),
   } as any,
-  topSection: {
-    flex: 1,
+  letterhead: {
     justifyContent: 'flex-end',
-  },
-  bottomSection: {
-    flex: 1,
-    justifyContent: 'flex-start',
-  },
-  docLine: {
-    borderRadius: 0.5,
   },
   strip: {
     width: '100%',
@@ -132,7 +130,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
-    marginVertical: 1,
   },
   stripGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -153,4 +150,7 @@ const styles = StyleSheet.create({
       textShadow: '0 1px 2px rgba(0,0,0,0.15)',
     } : {}),
   } as any,
+  body: {
+    flex: 1,
+  },
 });
