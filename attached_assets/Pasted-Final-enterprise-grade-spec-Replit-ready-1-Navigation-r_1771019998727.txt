@@ -1,0 +1,604 @@
+Final enterprise-grade spec (Replit-ready)
+1) Navigation & routing
+Sidebar
+Add Inbox sub-item: “Mailbox Setup”
+
+
+Parent: Inbox (existing)
+
+
+Sub-item: Mailbox Setup
+
+
+Route: /inbox/setup
+
+
+File
+
+
+components/desktop/DesktopSidebar.tsx
+
+
+Change
+
+
+Update the Inbox nav item to include:
+{ id: 'mailbox-setup', label: 'Mailbox Setup', route: '/inbox/setup' }
+
+
+
+RBAC UI rule (client-side only; server must enforce too)
+
+
+OWNER: enabled
+
+
+STAFF/AUDITOR: show locked state + tooltip “Owner only”
+
+
+
+Note: current app doesn’t have full suite/office RBAC wired end-to-end. Implement UI gating with a placeholder role source now, but treat server-side RBAC as required in the API contract.
+
+
+2) Inbox → Mail tab gating (setup modal + setup empty state)
+Trigger rules (fail-closed)
+When activeTab === 'mail' in app/(tabs)/inbox.tsx:
+
+
+Call GET /api/mail/accounts?userId=... (or your auth principal)
+
+
+If response returns:
+
+
+accounts.length === 0 OR
+
+
+no account with status === 'ACTIVE'
+
+
+
+
+Then:
+
+
+Show setup modal (once per session / once per page mount)
+
+
+Replace the list area with a Setup Required empty state (CTA remains visible even if modal dismissed)
+
+
+
+
+Modal UI (match Return Calls)
+Must reuse the same visual primitives as app/session/calls.tsx:
+
+
+styles.modalOverlay, styles.setupModal, icon container, feature rows, primary/secondary buttons.
+
+
+Modal copy
+
+
+Title: Set Up Your Mailbox
+
+
+Body: “Connect business email so Aspire Inbox can read, draft, and send messages with receipts.”
+
+
+3 feature bullets:
+
+
+“Mailbox selector + unified inbox”
+
+
+“Verification checks and health status”
+
+
+“Eli drafting with policy-gated sending”
+
+
+
+
+Primary CTA: Set Up Mailbox → router.push('/inbox/setup')
+
+
+Secondary: Maybe Later (dismiss modal only)
+
+
+Mailbox selector in Inbox header (Mail tab only)
+Per mail handoff doc:
+
+
+Displays current mailbox: Display Name + email@domain.com + provider badge
+
+
+Dropdown: list all mailboxes
+
+
+CTA: Add mailbox → /inbox/setup
+
+
+Placement in app/(tabs)/inbox.tsx
+
+
+Render directly below the filter bar when activeTab === mail (or between header and filters if you want it even more “primary”).
+
+
+Keep existing filters unchanged (All/Unread/Starred/Sent/Drafts/Junk remain stable).
+
+
+
+3) New subpage: /inbox/setup (Mailbox Setup wizard)
+New file
+
+
+app/inbox/setup.tsx
+
+
+Layout (desktop premium)
+Two-column layout with deterministic stepper.
+Header
+
+
+Title: Mailbox Setup
+
+
+Subtitle: “Provision Aspire Business Email or connect Google Workspace / Gmail.”
+
+
+Right actions:
+
+
+“View Receipts” → /(tabs)/receipts (or your receipts route)
+
+
+“Help” → /more/help (or wherever help lives)
+
+
+
+
+Body
+
+
+Left column:
+
+
+Vertical Stepper (4 steps)
+
+
+Step content panel (single primary CTA)
+
+
+
+
+Right column (“Setup Summary”):
+
+
+Provider
+
+
+Domain (if any)
+
+
+Mailbox address(es)
+
+
+Status: ACTIVE / SETUP_REQUIRED / VERIFYING / ERROR
+
+
+Recent setup receipts (last 3–5; can be mocked initially)
+
+
+
+
+Wizard state model (single source of truth)
+UI must be driven by one server-backed object (MailOnboardingState), not ad-hoc component booleans.
+Type (create types/mailbox.ts)
+
+
+MailProvider = 'POLARIS' | 'GOOGLE'
+
+
+MailAccountStatus = 'SETUP_REQUIRED' | 'VERIFYING' | 'ACTIVE' | 'ERROR'
+
+
+MailCapabilities (booleans): canSend, canDraft, canLabels, canJunk, canThreads
+
+
+MailOnboardingState:
+
+
+provider?: MailProvider
+
+
+domainMode?: 'NEW_DOMAIN' | 'EXISTING_DOMAIN'
+
+
+domain?: string
+
+
+mailboxes?: { email: string; displayName?: string }[]
+
+
+dnsPlan?: { type: 'MX'|'SPF'|'DKIM'|'DMARC'; host: string; value: string; ttl?: number }[]
+
+
+dnsStatus?: { lastCheckedAt: string; results: { type: string; ok: boolean; observed?: string }[] }
+
+
+oauthStatus?: { connectedEmail?: string; scopes?: string[] }
+
+
+checks?: { id: 'LIST'|'DRAFT'|'SEND_TEST'|'LABEL'; status: 'NOT_RUN'|'PASS'|'FAIL'; message?: string }[]
+
+
+eli?: { canDraft: boolean; canSend: boolean; externalApprovalRequired: boolean; attachmentsAlwaysApproval: boolean; rateLimitPreset: 'CONSERVATIVE'|'STANDARD' }
+
+
+
+
+Step 0 — Choose Provider
+Two option cards:
+
+
+Aspire Business Email
+
+
+Google Workspace / Gmail
+
+
+Primary CTA: Continue
+Persist selection:
+
+
+PATCH /api/mail/onboarding → { provider } (or POST /api/mail/accounts depending on how you structure)
+
+
+Step 1A — Aspire Email (Domain + Mailbox)
+Segmented control
+
+
+Buy a new domain
+
+
+Use existing domain
+
+
+Key enterprise rule
+
+
+Domain purchase + DNS apply are red-tier actions: must be draft → approval → execute (even if approvals are mocked in MVP UI).
+
+
+UX required elements
+
+
+Domain input + validation
+
+
+Mailbox creation (at least 1)
+
+
+DNS plan preview table (read-only)
+
+
+“Copy record” buttons per row
+
+
+DNS “Check now” with:
+
+
+last checked timestamp
+
+
+backoff-friendly copy (“DNS can take time to propagate”)
+
+
+
+
+Step 1B — Google (OAuth connect)
+
+
+Single CTA: Connect Google mailbox
+
+
+After return: show connected email + granted scopes (human-readable)
+
+
+If OAuth not implemented in this repo yet, wire a placeholder response but keep UI state machine intact.
+
+
+Step 2 — Verification checks (both providers)
+Checklist with “Run checks” and per-check rerun.
+Checks:
+
+
+LIST messages
+
+
+CREATE draft
+
+
+SEND test to self (must be user-clicked; never automatic)
+
+
+APPLY label/mark read (for Unread/Junk behavior)
+
+
+Required UI behavior:
+
+
+Pass/fail chips
+
+
+Inline remediation text on fail
+
+
+“View receipt” link per check row
+
+
+Step 3 — Enable Eli (optional; policy gated)
+Toggles:
+
+
+Eli can draft (default ON)
+
+
+Eli can send (default OFF)
+
+
+When enabling Eli send:
+
+
+Require explicit confirmation panel:
+
+
+Internal recipients auto-approve
+
+
+External recipients require approval (default ON)
+
+
+Attachments always require approval (default ON)
+
+
+Rate limit preset (default CONSERVATIVE)
+
+
+
+
+If role != OWNER: deny and show “Owner required” (and emit a denial receipt via API contract).
+
+
+Completion
+Success state:
+
+
+“Mailbox Active”
+
+
+Show active mailbox + provider badge
+
+
+CTA: Go to Inbox → Mail
+
+
+Secondary: Add another mailbox
+
+
+
+4) Minimal API contract (must exist, even if stubbed)
+Align to your mail handoff doc.
+Required endpoints
+
+
+GET /api/mail/accounts?userId=...
+
+
+
+
+Returns:
+{ "accounts": [ { "id":"...", "provider":"GOOGLE", "email":"...", "displayName":"...", "status":"ACTIVE", "capabilities": { ... } } ] }
+
+
+
+
+
+GET /api/mail/onboarding?userId=...
+
+
+
+
+Returns MailOnboardingState
+
+
+
+
+PATCH /api/mail/onboarding
+
+
+
+
+Updates onboarding state incrementally (provider selection, domain, mailbox list, Eli toggles, etc.)
+
+
+
+
+POST /api/mail/onboarding/checks/run
+
+
+
+
+Runs selected checks and updates checks[]
+
+
+
+If you don’t implement real provider calls yet: return deterministic mocked pass/fail with explicit “mocked” message values and generate receipts via mockDb.
+
+
+5) Receipts integration (UI + taxonomy)
+In the UI:
+
+
+Setup Summary panel shows last 3–5 receipts tagged Mail Setup
+
+
+Each step writes a receipt (even in mocked mode)
+
+
+Receipt action names (from mail handoff):
+
+
+mail.domain.verification.requested
+
+
+mail.domain.verified
+
+
+mail.mailbox.create.requested
+
+
+mail.mailbox.created
+
+
+mail.dkim.enabled
+
+
+mail.dns.health.checked
+
+
+mail.draft.created
+
+
+mail.send.sent
+
+
+mail.send.quarantined (if policy denies)
+
+
+Redaction:
+
+
+No secrets/tokens/passwords in receipts.
+
+
+
+Risks / edge cases
+
+
+DNS propagation delays: must be resumable; show last checked time; never imply completion.
+
+
+Provider capability mismatch: disable UI actions with tooltip; never pretend.
+
+
+Non-owner trying setup: UI gating + server 403 + denial receipt.
+
+
+Multiple mailboxes: selector and list must handle >1; “Add mailbox” loops back to setup.
+
+
+
+Acceptance criteria (Definition of Done)
+
+
+Sidebar shows Inbox → Mailbox Setup and routes to /inbox/setup.
+
+
+Inbox → Mail tab:
+
+
+If no ACTIVE mailbox: shows modal + setup empty state CTA
+
+
+If ACTIVE mailbox exists: shows mailbox selector
+
+
+
+
+Mailbox Setup wizard:
+
+
+Deterministic 4-step stepper
+
+
+Resumable (refresh returns to correct step based on server state)
+
+
+Eli send requires explicit policy confirmation
+
+
+
+
+Receipts affordance exists in setup summary + per-check “View receipt” link (can be mocked).
+
+
+
+Replit Prompt (copy/paste)
+You are implementing an enterprise-grade “Mailbox Setup” UX in the Aspire Expo desktop app.
+
+GOAL
+- Add an Inbox subpage “Mailbox Setup” that guides users to activate a mailbox (Aspire Email or Google).
+- Add a setup modal + gating in Inbox → Mail tab, matching the existing Return Calls → Front Desk Setup modal pattern.
+
+SCOPE (must implement)
+1) Sidebar
+- File: components/desktop/DesktopSidebar.tsx
+- Add subItem under Inbox:
+  - id: mailbox-setup
+  - label: Mailbox Setup
+  - route: /inbox/setup
+- Keep existing styling and sub-nav behavior consistent with Return Calls.
+
+2) New route + page
+- Create file: app/inbox/setup.tsx
+- Build a premium 2-column wizard:
+  - Left: deterministic stepper with 4 steps
+    Step 0: Choose Provider (Aspire Business Email / Google Workspace)
+    Step 1A: Aspire Email domain + mailbox + DNS plan + DNS verify UI
+    Step 1B: Google OAuth connect UI + show connected email + scopes
+    Step 2: Verification checks UI (LIST, DRAFT, SEND_TEST, LABEL) with pass/fail chips and rerun
+    Step 3: Enable Eli toggles (Draft ON default, Send OFF default). Enabling Send requires explicit policy confirmation panel.
+  - Right: Setup Summary panel:
+    provider, domain, mailboxes, status, last DNS check, recent receipts list (can be placeholder).
+- Must be resumable: on mount fetch onboarding state and jump to the correct step.
+
+3) Inbox Mail tab gating + mailbox selector
+- File: app/(tabs)/inbox.tsx
+- Add a mailbox selector row that only shows when activeTab === 'mail':
+  - Displays current mailbox email + provider badge
+  - Dropdown of mailboxes
+  - CTA “Add mailbox” routes to /inbox/setup
+- Add a blocking setup modal when activeTab === 'mail' and no ACTIVE mailbox.
+  - Reuse the same modal visual pattern from app/session/calls.tsx (modalOverlay, setupModal, icon, feature list, primary/secondary buttons).
+  - Primary CTA -> /inbox/setup
+  - Secondary -> dismiss
+- When mailbox not active, also show a “Setup Required” empty state in the list area with CTA.
+
+DATA + API (minimal contract)
+- Add types: types/mailbox.ts with MailProvider, MailAccountStatus, MailCapabilities, MailAccount, MailOnboardingState.
+- Implement a minimal API adapter layer in lib/mailApi.ts:
+  - getMailAccounts(userId) -> GET /api/mail/accounts?userId=...
+  - getMailOnboarding(userId) -> GET /api/mail/onboarding?userId=...
+  - patchMailOnboarding(payload) -> PATCH /api/mail/onboarding
+  - runMailChecks(payload) -> POST /api/mail/onboarding/checks/run
+- If server endpoints do not exist yet, create stub endpoints in server/routes.ts returning deterministic demo data (fail-closed on missing userId).
+- Do not store secrets in responses or logs.
+
+ENTERPRISE UX REQUIREMENTS
+- Single primary CTA per step; clear disabled states; inline error messages with remediation.
+- Degrade gracefully when capability flags are false: disable UI with tooltip.
+- Eli “can send” must require explicit confirmation and must default OFF.
+- Never claim DNS is verified unless server state says verified; show last-checked timestamp.
+
+TESTS / MANUAL VERIFICATION
+- Navigate to Inbox → Mail with no accounts: modal appears + empty state CTA works.
+- Go to /inbox/setup and complete steps: state persists; returning to Inbox shows mailbox selector and no modal.
+- Refresh /inbox/setup mid-flow: resumes to correct step.
+- Non-owner (if role stubbed) sees Mailbox Setup locked and cannot enable Eli send.
+
+Do not change the global theme/tokens. Reuse existing token constants (Colors/Spacing/Typography/BorderRadius/Shadows).
+Keep implementation clean, typed, and consistent with existing code style.
+
+
