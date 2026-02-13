@@ -160,18 +160,11 @@ function PeopleTab({
             </>
           )}
           {canInvite && (
-            <Pressable onPress={onInvite}>
-              {({ hovered }: any) => (
-                <LinearGradient 
-                  colors={[Colors.accent.cyan, Colors.accent.cyanDark]} 
-                  start={{ x: 0, y: 0 }} 
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.primaryBtn, hovered && styles.primaryBtnHover]}
-                >
-                  <Ionicons name="person-add" size={16} color="#FFFFFF" />
-                  <Text style={styles.primaryBtnText}>Invite Teammate</Text>
-                </LinearGradient>
-              )}
+            <Pressable onPress={onInvite} style={({ hovered }: any) => [styles.secondaryBtn, hovered && styles.secondaryBtnHover]}>
+              <View style={styles.btnIconWrap}>
+                <Ionicons name="person-add" size={16} color={Colors.accent.cyan} />
+              </View>
+              <Text style={styles.secondaryBtnText}>Invite Teammate</Text>
             </Pressable>
           )}
         </View>

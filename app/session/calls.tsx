@@ -580,9 +580,9 @@ export default function CallsScreen() {
               <View style={desktopStyles.quickActionsRow}>
                 <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => setActiveTab('dialpad')} activeOpacity={0.7}>
                   <LinearGradient colors={[Colors.accent.cyan, Colors.accent.cyanDark]} style={desktopStyles.quickActionIconCircle}>
-                    <Ionicons name="keypad" size={20} color="#fff" />
+                    <Ionicons name="book" size={20} color="#fff" />
                   </LinearGradient>
-                  <Text style={desktopStyles.quickActionLabel}>New Call</Text>
+                  <Text style={desktopStyles.quickActionLabel}>Contacts</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/inbox' as any)} activeOpacity={0.7}>
                   <View style={{ position: 'relative' }}>
