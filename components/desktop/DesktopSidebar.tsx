@@ -8,7 +8,7 @@ import { canAccessTeamWorkspace } from '@/lib/permissions';
 import { currentUser } from '@/data/teamWorkspace';
 
 const logoSource = require('../../assets/images/aspire-logo-new.png');
-const iconSource = require('../../assets/images/aspire-icon-square.png');
+const iconSource = require('../../assets/images/aspire-icon-new.png');
 
 interface SubNavItem {
   id: string;
