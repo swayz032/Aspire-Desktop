@@ -1,12 +1,16 @@
-import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius } from '@/constants/tokens';
+import { DocumentPreviewModal } from './DocumentPreviewModal';
 
 interface DocumentThumbnailProps {
   type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording';
   size?: 'sm' | 'md' | 'lg' | 'xl';
   variant?: number;
   context?: 'todayplan' | 'authorityqueue' | 'conference' | 'financehub';
+  documentName?: string;
+  previewEnabled?: boolean;
 }
 
 const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
@@ -175,8 +179,13 @@ export function DocumentThumbnail({
   type, 
   size = 'md',
   variant = 0,
-  context = 'authorityqueue'
+  context = 'authorityqueue',
+  documentName,
+  previewEnabled = true,
 }: DocumentThumbnailProps) {
+  const [hovered, setHovered] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   const dimensions = {
     sm: { width: 40, height: 52 },
     md: { width: 56, height: 72 },
@@ -198,17 +207,18 @@ export function DocumentThumbnail({
   const bodyCount = size === 'sm' ? 3 : size === 'md' ? 5 : size === 'lg' ? 7 : layout.body.length;
 
   const curlSize = { sm: 6, md: 8, lg: 10, xl: 14 }[size];
+  const eyeSize = { sm: 10, md: 14, lg: 18, xl: 24 }[size];
+  const previewFontSize = { sm: 0, md: 0, lg: 7, xl: 9 }[size];
+  const showLabel = size === 'lg' || size === 'xl';
 
-  return (
+  const cardContent = (
     <View style={[styles.card, dimensions]}>
-      {/* Header section */}
       <View style={[styles.section, { padding: pad, paddingBottom: pad * 0.4 }]}>
         {layout.header.slice(0, headerCount).map((spec, i) => (
           <DocLine key={`h${i}`} spec={spec} lineGap={lineGap} />
         ))}
       </View>
 
-      {/* Type strip */}
       <View style={[styles.strip, { height: stripH }]}>
         <View style={styles.stripGradient} />
         <Text style={[styles.stripLabel, { fontSize: labelSize }]}>
@@ -216,14 +226,12 @@ export function DocumentThumbnail({
         </Text>
       </View>
 
-      {/* Body section */}
       <View style={[styles.section, { padding: pad, paddingTop: pad * 0.6, flex: 1 }]}>
         {layout.body.slice(0, bodyCount).map((spec, i) => (
           <DocLine key={`b${i}`} spec={spec} lineGap={lineGap} />
         ))}
       </View>
 
-      {/* Page curl — bottom right corner */}
       <View style={[styles.curlContainer, { width: curlSize, height: curlSize }]}>
         <View style={[styles.curlFold, { 
           width: curlSize, 
@@ -235,7 +243,43 @@ export function DocumentThumbnail({
           height: curlSize,
         }]} />
       </View>
+
+      {previewEnabled && (
+        <View style={[styles.hoverOverlay, hovered ? styles.hoverOverlayVisible : styles.hoverOverlayHidden]}>
+          <Ionicons name="eye-outline" size={eyeSize} color="#FFFFFF" />
+          {showLabel && (
+            <Text style={[styles.hoverLabel, { fontSize: previewFontSize }]}>Preview</Text>
+          )}
+        </View>
+      )}
     </View>
+  );
+
+  if (!previewEnabled) {
+    return cardContent;
+  }
+
+  return (
+    <>
+      <Pressable
+        onPress={() => setPreviewOpen(true)}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
+        style={({ pressed }: any) => [
+          pressed && styles.pressed,
+          Platform.OS === 'web' ? { cursor: 'pointer' } as any : {},
+        ]}
+      >
+        {cardContent}
+      </Pressable>
+
+      <DocumentPreviewModal
+        visible={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        type={type}
+        documentName={documentName}
+      />
+    </>
   );
 }
 
@@ -249,6 +293,7 @@ const styles = StyleSheet.create({
     position: 'relative' as const,
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 0.5px 1.5px rgba(0,0,0,0.05)',
+      transition: 'transform 0.2s ease-out, box-shadow 0.2s ease-out',
     } : {}),
   } as any,
   section: {
@@ -304,4 +349,34 @@ const styles = StyleSheet.create({
       textShadow: '0 1px 2px rgba(0,0,0,0.15)',
     } : {}),
   } as any,
+  hoverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BorderRadius.xs + 1,
+    gap: 3,
+    ...(Platform.OS === 'web' ? {
+      backdropFilter: 'blur(2px)',
+      transition: 'opacity 0.2s ease-out',
+      pointerEvents: 'none',
+    } : {}),
+  } as any,
+  hoverOverlayVisible: {
+    opacity: 1,
+  },
+  hoverOverlayHidden: {
+    opacity: 0,
+  },
+  hoverLabel: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    ...(Platform.OS === 'web' ? {
+      textShadow: '0 1px 3px rgba(0,0,0,0.3)',
+    } : {}),
+  } as any,
+  pressed: {
+    transform: [{ scale: 0.96 }],
+  },
 });
