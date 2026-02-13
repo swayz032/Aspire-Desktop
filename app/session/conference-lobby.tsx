@@ -24,6 +24,8 @@ import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionSh
 const CONFERENCE_ROOM_IMAGE = require('@/assets/images/conference-room-meeting.jpg');
 const TEAM_MEETING_IMAGE = require('@/assets/images/executive-conference.jpg');
 const NORA_AVATAR = require('@/assets/images/nora-avatar.png');
+const RECORDING_IMAGE = require('@/assets/images/approval-recording.jpg');
+const PROJECT_IMAGE = require('@/assets/images/approval-invite.jpg');
 
 const PURPOSE_OPTIONS: { id: SessionPurpose; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'Internal', label: 'Internal', icon: 'business' },
@@ -55,6 +57,7 @@ interface AuthorityItem {
   status: 'pending' | 'approved' | 'denied';
   documentName?: string;
   documentType?: 'invoice' | 'contract' | 'report' | 'document' | 'recording';
+  thumbnailImage?: any;
   icon: keyof typeof Ionicons.glyphMap;
 }
 
@@ -75,7 +78,7 @@ const AUTHORITY_QUEUE: AuthorityItem[] = [
     description: 'Auto-transcription with AI summarization',
     risk: 'Low',
     status: 'pending',
-    documentType: 'recording',
+    thumbnailImage: RECORDING_IMAGE,
     icon: 'mic',
   },
   {
@@ -85,7 +88,7 @@ const AUTHORITY_QUEUE: AuthorityItem[] = [
     risk: 'High',
     status: 'pending',
     documentName: 'Project_Proposal_v2.pdf',
-    documentType: 'document',
+    thumbnailImage: PROJECT_IMAGE,
     icon: 'document-text',
   },
   {
@@ -507,9 +510,15 @@ export default function ConferenceLobby() {
                   ]}
                 >
                   <View style={styles.authorityCardContent}>
-                    {/* Document Thumbnail or Icon */}
+                    {/* Document Thumbnail, Image, or Icon */}
                     <View style={styles.authorityVisual}>
-                      {item.documentType ? (
+                      {item.thumbnailImage ? (
+                        <Image 
+                          source={item.thumbnailImage} 
+                          style={styles.authorityThumbnailImage}
+                          resizeMode="cover"
+                        />
+                      ) : item.documentType ? (
                         <DocumentThumbnail 
                           type={item.documentType} 
                           size="lg" 
@@ -1220,6 +1229,11 @@ const styles = StyleSheet.create({
   },
   authorityVisual: {
     flexShrink: 0,
+  },
+  authorityThumbnailImage: {
+    width: 72,
+    height: 92,
+    borderRadius: 8,
   },
   authorityIconBox: {
     width: 72,
