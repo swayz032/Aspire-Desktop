@@ -42,34 +42,61 @@ export function AuthorityQueueCard({ item, onAction }: AuthorityQueueCardProps) 
       <Text style={styles.subtitle}>{item.subtitle}</Text>
 
       {isSession && item.thumbnailUrl && (
-        <View style={styles.previewContainer}>
-          <Image 
-            source={{ uri: item.thumbnailUrl }}
-            style={styles.preview}
-          />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.8)']}
-            style={styles.previewOverlay}
-          />
-          {item.documentPreview && (
-            <View style={styles.meetingDetails}>
-              <Text style={styles.meetingAgenda} numberOfLines={3}>
-                {item.documentPreview.content.split('\n').slice(0, 3).join('\n')}
-              </Text>
-              {item.documentPreview.metadata?.participants && (
-                <Text style={styles.participants}>
-                  {item.documentPreview.metadata.participants.join(' • ')}
+        <View>
+          <View style={styles.previewContainer}>
+            <Image 
+              source={{ uri: item.thumbnailUrl }}
+              style={styles.preview}
+            />
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.8)']}
+              style={styles.previewOverlay}
+            />
+            {item.documentPreview && (
+              <View style={styles.meetingDetails}>
+                <Text style={styles.meetingAgenda} numberOfLines={3}>
+                  {item.documentPreview.content.split('\n').slice(0, 3).join('\n')}
                 </Text>
-              )}
+                {item.documentPreview.metadata?.participants && (
+                  <Text style={styles.participants}>
+                    {item.documentPreview.metadata.participants.join(' • ')}
+                  </Text>
+                )}
+              </View>
+            )}
+            {item.actions.includes('join') && (
+              <Pressable 
+                style={styles.joinButton}
+                onPress={() => onAction?.('join')}
+              >
+                <Text style={styles.joinButtonText}>Join</Text>
+              </Pressable>
+            )}
+          </View>
+
+          {item.documentPreview && (
+            <View style={styles.sessionExpandedInfo}>
+              <View style={styles.sessionAgendaSection}>
+                <Text style={styles.sessionAgendaLabel}>Agenda</Text>
+                <Text style={styles.sessionAgendaContent} numberOfLines={6}>
+                  {item.documentPreview.content.split('\n').filter((l: string) => l.startsWith('•')).join('\n')}
+                </Text>
+              </View>
+              <View style={styles.sessionFooterRow}>
+                {item.documentPreview.metadata?.duration && (
+                  <View style={styles.sessionMetaChip}>
+                    <Ionicons name="time-outline" size={12} color={Colors.accent.cyan} />
+                    <Text style={styles.sessionMetaText}>{item.documentPreview.metadata.duration}</Text>
+                  </View>
+                )}
+                {item.staffRole && (
+                  <View style={styles.sessionMetaChip}>
+                    <Ionicons name="person-circle" size={12} color={Colors.text.muted} />
+                    <Text style={styles.sessionMetaText}>Managed by {item.staffRole}</Text>
+                  </View>
+                )}
+              </View>
             </View>
-          )}
-          {item.actions.includes('join') && (
-            <Pressable 
-              style={styles.joinButton}
-              onPress={() => onAction?.('join')}
-            >
-              <Text style={styles.joinButtonText}>Join</Text>
-            </Pressable>
           )}
         </View>
       )}
@@ -228,6 +255,45 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     fontSize: Typography.caption.fontSize,
     fontWeight: '600',
+  },
+  sessionExpandedInfo: {
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.background.tertiary,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+  },
+  sessionAgendaSection: {
+    marginBottom: Spacing.sm,
+  },
+  sessionAgendaLabel: {
+    color: Colors.text.muted,
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  sessionAgendaContent: {
+    color: Colors.text.secondary,
+    fontSize: Typography.small.fontSize,
+    lineHeight: 18,
+  },
+  sessionFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border.subtle,
+  },
+  sessionMetaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sessionMetaText: {
+    color: Colors.text.muted,
+    fontSize: Typography.small.fontSize,
   },
   documentPreviewContainer: {
     backgroundColor: Colors.background.tertiary,

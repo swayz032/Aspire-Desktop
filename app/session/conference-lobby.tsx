@@ -813,7 +813,7 @@ const styles = StyleSheet.create({
   },
   content: {
     width: '100%',
-    maxWidth: 1100,
+    maxWidth: 1240,
     paddingHorizontal: 32,
     paddingTop: 28,
     paddingBottom: 40,

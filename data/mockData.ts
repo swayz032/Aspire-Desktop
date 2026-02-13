@@ -629,7 +629,7 @@ export const mockAuthorityQueue: AuthorityItem[] = [
     staffRole: 'Nora',
     documentPreview: {
       type: 'meeting',
-      content: 'Vendor Contract Renewal Discussion\n\nAgenda:\n• Review current pricing terms ($4,200/mo)\n• Discuss volume discount (15% proposed)\n• Negotiate payment terms (Net-30 to Net-45)\n• SLA requirements update',
+      content: 'Vendor Contract Renewal Discussion\n\nAgenda:\n• Review current pricing terms ($4,200/mo)\n• Discuss volume discount (15% proposed)\n• Negotiate payment terms (Net-30 to Net-45)\n• SLA requirements update\n• Evaluate multi-year commitment options\n• Review service delivery milestones\n\nKey Documents:\n• Current MSA (expires Mar 2026)\n• Proposed Rate Card v3\n• Performance Scorecard Q4',
       metadata: {
         participants: ['Marcus Chen (Vendor)', 'Ava (Host)', 'You'],
         duration: '15 min elapsed',
@@ -676,6 +676,93 @@ export const mockAuthorityQueue: AuthorityItem[] = [
         counterparty: 'Acme Technologies Inc.',
         term: '2 years',
         preparedBy: 'Cole (Contracts Specialist)',
+      }
+    }
+  },
+  {
+    id: 'auth_004',
+    title: 'Expense Report — Q1 Travel',
+    subtitle: 'Finance Review • Submitted 2 days ago',
+    type: 'invoice',
+    status: 'pending',
+    priority: 'medium',
+    timestamp: new Date().toISOString(),
+    dueDate: '2026-02-18',
+    documentType: 'pdf',
+    actions: ['review', 'approve', 'defer'],
+    staffRole: 'Quinn',
+    documentPreview: {
+      type: 'invoice',
+      content: 'EXPENSE REPORT — ER-2026-0091\n\nSubmitted by: Sarah Kim, VP Sales\nPeriod: Jan 15–29, 2026\n\nClient Visit — Apex Corp (NYC)\nAirfare (Round Trip)......................$1,240.00\nHotel (3 nights, Marriott)...............$897.00\nMeals & Entertainment...................$342.50\nGround Transport...........................$185.00\n\nConference — SaaS Connect 2026\nRegistration Fee............................$1,500.00\nHotel (2 nights).............................$598.00\n\nTOTAL: $4,762.50\n\nReceipts: 9 attached\nPolicy Compliance: Verified',
+      metadata: {
+        vendor: 'Sarah Kim',
+        amount: '$4,762.50',
+        dueDate: 'Feb 18, 2026',
+      }
+    }
+  },
+  {
+    id: 'auth_005',
+    title: 'Purchase Order — Cloud Infrastructure',
+    subtitle: 'IT Procurement • Budget approval needed',
+    type: 'invoice',
+    status: 'pending',
+    priority: 'high',
+    timestamp: new Date().toISOString(),
+    dueDate: '2026-02-25',
+    documentType: 'pdf',
+    actions: ['review', 'approve', 'deny'],
+    staffRole: 'Eli',
+    documentPreview: {
+      type: 'invoice',
+      content: 'PURCHASE ORDER — PO-2026-0334\n\nVendor: AWS (Amazon Web Services)\nDepartment: Engineering\n\nItems:\nEC2 Reserved Instances (1yr)........$18,400.00\nRDS PostgreSQL (Multi-AZ)............$6,200.00\nCloudFront CDN (Enterprise).........$2,400.00\nS3 Storage (50TB tier)...................$1,150.00\n\nSubtotal: $28,150.00\nNegotiated Discount (12%): -$3,378.00\n\nTOTAL: $24,772.00\n\nBudget Remaining: $41,228.00\nApproval Threshold: Exceeds $10K',
+      metadata: {
+        vendor: 'AWS',
+        amount: '$24,772.00',
+        dueDate: 'Feb 25, 2026',
+      }
+    }
+  },
+  {
+    id: 'auth_006',
+    title: 'SOW — Brightline Consulting',
+    subtitle: 'New engagement • Legal review complete',
+    type: 'contract',
+    status: 'pending',
+    priority: 'medium',
+    timestamp: new Date().toISOString(),
+    documentType: 'pdf',
+    actions: ['review', 'approve', 'deny'],
+    staffRole: 'Cole',
+    documentPreview: {
+      type: 'contract',
+      content: 'STATEMENT OF WORK\n\nProject: Digital Transformation Phase II\nClient: Zenith Solutions\nVendor: Brightline Consulting Group\n\nScope:\n• API architecture redesign (8 weeks)\n• Data migration planning & execution\n• Staff training program (40 hours)\n• Post-launch support (90 days)\n\nTimeline: Mar 1 — May 31, 2026\nTotal Value: $87,500.00\nPayment: 3 milestones (30/40/30)\n\nKey Personnel: 2 Sr. Engineers + PM\nStatus: Legal review cleared Feb 10',
+      metadata: {
+        counterparty: 'Brightline Consulting',
+        term: '3 months',
+        preparedBy: 'Cole (Contracts Specialist)',
+      }
+    }
+  },
+  {
+    id: 'auth_007',
+    title: 'Payroll Adjustment — Feb Cycle',
+    subtitle: 'HR Action • Effective next pay period',
+    type: 'invoice',
+    status: 'pending',
+    priority: 'high',
+    timestamp: new Date().toISOString(),
+    dueDate: '2026-02-14',
+    documentType: 'pdf',
+    actions: ['review', 'approve', 'defer'],
+    staffRole: 'Quinn',
+    documentPreview: {
+      type: 'invoice',
+      content: 'PAYROLL ADJUSTMENT REQUEST\n\nRef: PAR-2026-0019\nPay Period: Feb 1–15, 2026\n\nAdjustments:\n1. Marcus Chen — Promotion\n   New Title: Senior Account Manager\n   Salary: $92,000 → $108,000/yr\n   Effective: Feb 1, 2026\n\n2. Lisa Park — Bonus\n   Q4 Performance Bonus: $4,500.00\n   One-time disbursement\n\n3. New Hire: Jordan Blake\n   Role: UX Designer\n   Start: Feb 10, 2026\n   Annual: $85,000.00\n\nTotal Impact: +$3,291.67/period\nBudget Status: Within allocation',
+      metadata: {
+        vendor: 'HR Department',
+        amount: '$3,291.67',
+        dueDate: 'Feb 14, 2026',
       }
     }
   },
