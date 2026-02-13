@@ -621,4 +621,118 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
   res.json({ id, status: 'denied', reason, deniedAt: new Date().toISOString() });
 });
 
+// ─── Mail Onboarding API (Stubbed) ───
+
+const mailOnboardingStore: Record<string, any> = {};
+const mailAccountsStore: Record<string, any[]> = {};
+const mailReceiptsStore: Record<string, any[]> = {};
+
+function getMailReceipts(userId: string) {
+  if (!mailReceiptsStore[userId]) mailReceiptsStore[userId] = [];
+  return mailReceiptsStore[userId];
+}
+
+function addMailReceipt(userId: string, action: string, status: string, detail?: string) {
+  const receipts = getMailReceipts(userId);
+  receipts.unshift({
+    id: `mr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    action,
+    timestamp: new Date().toISOString(),
+    status,
+    detail: detail || undefined,
+  });
+  if (receipts.length > 20) receipts.length = 20;
+}
+
+router.get('/api/mail/accounts', (req: Request, res: Response) => {
+  const userId = getParam(req.query.userId as string || '');
+  const accounts = mailAccountsStore[userId] || [];
+  res.json({ accounts });
+});
+
+router.get('/api/mail/onboarding', (req: Request, res: Response) => {
+  const userId = getParam(req.query.userId as string || '');
+  const state = mailOnboardingStore[userId] || {};
+  res.json(state);
+});
+
+router.patch('/api/mail/onboarding', (req: Request, res: Response) => {
+  const userId = getParam(req.query.userId as string || req.body.userId || '');
+  if (!mailOnboardingStore[userId]) mailOnboardingStore[userId] = {};
+  const current = mailOnboardingStore[userId];
+  Object.assign(current, req.body);
+  delete current.userId;
+
+  if (req.body.provider) {
+    addMailReceipt(userId, 'mail.provider.selected', 'success', `Provider: ${req.body.provider}`);
+  }
+  if (req.body.domain) {
+    addMailReceipt(userId, 'mail.domain.verification.requested', 'success', `Domain: ${req.body.domain}`);
+  }
+  if (req.body.mailboxes) {
+    req.body.mailboxes.forEach((mb: any) => {
+      addMailReceipt(userId, 'mail.mailbox.create.requested', 'success', `Mailbox: ${mb.email}`);
+    });
+  }
+  if (req.body.eli) {
+    addMailReceipt(userId, 'mail.eli.configured', 'success', `Draft: ${req.body.eli.canDraft}, Send: ${req.body.eli.canSend}`);
+  }
+
+  res.json(current);
+});
+
+router.post('/api/mail/onboarding/checks/run', (req: Request, res: Response) => {
+  const userId = getParam(req.query.userId as string || req.body.userId || '');
+  const checksToRun: string[] = req.body.checks || ['LIST', 'DRAFT', 'SEND_TEST', 'LABEL'];
+
+  const results = checksToRun.map((id: string) => {
+    const pass = id !== 'SEND_TEST';
+    const status = pass ? 'PASS' : 'NOT_RUN';
+    const message = pass
+      ? `${id} check passed (mocked)`
+      : `${id} requires manual trigger`;
+
+    addMailReceipt(userId, `mail.check.${id.toLowerCase()}`, pass ? 'success' : 'pending', message);
+
+    return { id, status, message };
+  });
+
+  if (!mailOnboardingStore[userId]) mailOnboardingStore[userId] = {};
+  mailOnboardingStore[userId].checks = results;
+  res.json({ checks: results });
+});
+
+router.post('/api/mail/onboarding/activate', (req: Request, res: Response) => {
+  const userId = getParam(req.query.userId as string || req.body.userId || '');
+  const state = mailOnboardingStore[userId] || {};
+
+  const account = {
+    id: `ma-${Date.now()}`,
+    provider: state.provider || 'POLARIS',
+    email: state.mailboxes?.[0]?.email || 'hello@yourbusiness.com',
+    displayName: state.mailboxes?.[0]?.displayName || 'Business Email',
+    status: 'ACTIVE',
+    capabilities: {
+      canSend: true,
+      canDraft: true,
+      canLabels: state.provider === 'GOOGLE',
+      canJunk: true,
+      canThreads: true,
+    },
+  };
+
+  if (!mailAccountsStore[userId]) mailAccountsStore[userId] = [];
+  mailAccountsStore[userId].push(account);
+  addMailReceipt(userId, 'mail.mailbox.created', 'success', `Activated: ${account.email}`);
+
+  mailOnboardingStore[userId] = {};
+  res.json({ account });
+});
+
+router.get('/api/mail/receipts', (req: Request, res: Response) => {
+  const userId = getParam(req.query.userId as string || '');
+  const receipts = getMailReceipts(userId);
+  res.json({ receipts: receipts.slice(0, 5) });
+});
+
 export default router;

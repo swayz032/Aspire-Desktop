@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, Text, Platform, Animated, TextInput, Image, ImageBackground, Alert } from 'react-native';
+import { StyleSheet, View, ScrollView, TouchableOpacity, Text, Platform, Animated, TextInput, Image, ImageBackground, Alert, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
@@ -768,6 +769,7 @@ function ContactPreview({ item }: { item: Contact }) {
 export default function InboxScreen() {
   const insets = useSafeAreaInsets();
   const isDesktop = useDesktop();
+  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabType>('office');
   const [activeFilter, setActiveFilter] = useState<Record<TabType, string>>({ office: 'All', calls: 'All', mail: 'All', contacts: 'All' });
@@ -780,6 +782,12 @@ export default function InboxScreen() {
   const [eliOpen, setEliOpen] = useState(false);
   const [eliVoiceActive, setEliVoiceActive] = useState(false);
   const [eliTranscript, setEliTranscript] = useState('');
+  const [showMailSetupModal, setShowMailSetupModal] = useState(false);
+  const [mailSetupChecked, setMailSetupChecked] = useState(false);
+  const [hasActiveMailbox, setHasActiveMailbox] = useState(false);
+  const [mailAccounts, setMailAccounts] = useState<any[]>([]);
+  const [selectedMailbox, setSelectedMailbox] = useState<string | null>(null);
+  const [showMailboxDropdown, setShowMailboxDropdown] = useState(false);
 
   const eliConversation = useConversation({
     onConnect: () => {
@@ -850,6 +858,42 @@ export default function InboxScreen() {
     }, 100);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'mail') {
+      setMailSetupChecked(false);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'mail' && !mailSetupChecked) {
+      (async () => {
+        try {
+          const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
+          const res = await fetch(`/api/mail/accounts?userId=${DEMO_USER_ID}`);
+          if (res.ok) {
+            const data = await res.json();
+            const accounts = data.accounts || [];
+            setMailAccounts(accounts);
+            const active = accounts.find((a: any) => a.status === 'ACTIVE');
+            if (active) {
+              setHasActiveMailbox(true);
+              setSelectedMailbox(active.id);
+            } else {
+              setHasActiveMailbox(false);
+              setShowMailSetupModal(true);
+            }
+          } else {
+            setHasActiveMailbox(false);
+            setShowMailSetupModal(true);
+          }
+        } catch (e) {
+          console.error('Mail accounts check failed', e);
+        }
+        setMailSetupChecked(true);
+      })();
+    }
+  }, [activeTab, mailSetupChecked]);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -1065,6 +1109,57 @@ export default function InboxScreen() {
           })}
         </View>
 
+        {/* Mailbox Selector - Mail tab only */}
+        {activeTab === 'mail' && hasActiveMailbox && mailAccounts.length > 0 && (
+          <View style={styles.mailboxSelectorBar}>
+            <Pressable 
+              style={({ hovered }: any) => [styles.mailboxSelector, hovered && styles.mailboxSelectorHover]}
+              onPress={() => setShowMailboxDropdown(!showMailboxDropdown)}
+            >
+              <View style={styles.mailboxSelectorLeft}>
+                <View style={styles.mailboxProviderBadge}>
+                  <Ionicons 
+                    name={(mailAccounts.find((a: any) => a.id === selectedMailbox) || mailAccounts[0])?.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} 
+                    size={14} 
+                    color={(mailAccounts.find((a: any) => a.id === selectedMailbox) || mailAccounts[0])?.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} 
+                  />
+                </View>
+                <View>
+                  <Text style={styles.mailboxDisplayName}>{mailAccounts.find((a: any) => a.id === selectedMailbox)?.displayName || 'Business Email'}</Text>
+                  <Text style={styles.mailboxEmail}>{mailAccounts.find((a: any) => a.id === selectedMailbox)?.email || ''}</Text>
+                </View>
+              </View>
+              <Ionicons name={showMailboxDropdown ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.text.muted} />
+            </Pressable>
+
+            {showMailboxDropdown && (
+              <View style={styles.mailboxDropdown}>
+                {mailAccounts.map((acct: any) => (
+                  <Pressable
+                    key={acct.id}
+                    style={({ hovered }: any) => [styles.mailboxDropdownItem, selectedMailbox === acct.id && styles.mailboxDropdownItemActive, hovered && styles.mailboxDropdownItemHover]}
+                    onPress={() => { setSelectedMailbox(acct.id); setShowMailboxDropdown(false); }}
+                  >
+                    <Ionicons name={acct.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} size={14} color={acct.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.mailboxDropdownName}>{acct.displayName}</Text>
+                      <Text style={styles.mailboxDropdownEmail}>{acct.email}</Text>
+                    </View>
+                    {selectedMailbox === acct.id && <Ionicons name="checkmark" size={16} color={Colors.accent.cyan} />}
+                  </Pressable>
+                ))}
+                <Pressable
+                  style={({ hovered }: any) => [styles.mailboxDropdownItem, styles.mailboxAddItem, hovered && styles.mailboxDropdownItemHover]}
+                  onPress={() => { setShowMailboxDropdown(false); router.push('/inbox/setup' as any); }}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color={Colors.accent.cyan} />
+                  <Text style={[styles.mailboxDropdownName, { color: Colors.accent.cyan }]}>Add mailbox</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
+
         <View style={styles.filterBar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
             {FILTERS[activeTab].map((f) => {
@@ -1084,7 +1179,67 @@ export default function InboxScreen() {
           </ScrollView>
         </View>
 
-        {selectedItem ? (
+        {/* Mail Setup Modal */}
+        {showMailSetupModal && activeTab === 'mail' && (
+          <View style={styles.mailSetupOverlay}>
+            <View style={styles.mailSetupModal}>
+              <View style={styles.mailSetupIconContainer}>
+                <Ionicons name="mail-outline" size={48} color={Colors.accent.cyan} />
+              </View>
+              <Text style={styles.mailSetupTitle}>Set Up Your Mailbox</Text>
+              <Text style={styles.mailSetupDescription}>
+                Connect business email so Aspire Inbox can read, draft, and send messages with receipts.
+              </Text>
+              <View style={styles.mailSetupFeatures}>
+                <View style={styles.mailSetupFeatureRow}>
+                  <Ionicons name="checkmark-circle" size={20} color={Colors.accent.cyan} />
+                  <Text style={styles.mailSetupFeatureText}>Mailbox selector + unified inbox</Text>
+                </View>
+                <View style={styles.mailSetupFeatureRow}>
+                  <Ionicons name="checkmark-circle" size={20} color={Colors.accent.cyan} />
+                  <Text style={styles.mailSetupFeatureText}>Verification checks and health status</Text>
+                </View>
+                <View style={styles.mailSetupFeatureRow}>
+                  <Ionicons name="checkmark-circle" size={20} color={Colors.accent.cyan} />
+                  <Text style={styles.mailSetupFeatureText}>Eli drafting with policy-gated sending</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.mailSetupPrimaryButton}
+                onPress={() => {
+                  setShowMailSetupModal(false);
+                  router.push('/inbox/setup' as any);
+                }}
+              >
+                <Text style={styles.mailSetupPrimaryButtonText}>Set Up Mailbox</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.mailSetupSecondaryButton}
+                onPress={() => setShowMailSetupModal(false)}
+              >
+                <Text style={styles.mailSetupSecondaryButtonText}>Maybe Later</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Mail Setup Required Empty State */}
+        {activeTab === 'mail' && mailSetupChecked && !hasActiveMailbox && !showMailSetupModal ? (
+          <View style={styles.mailSetupEmptyState}>
+            <View style={styles.mailSetupEmptyIcon}>
+              <Ionicons name="mail-unread-outline" size={40} color={Colors.text.muted} />
+            </View>
+            <Text style={styles.mailSetupEmptyTitle}>Mailbox Not Connected</Text>
+            <Text style={styles.mailSetupEmptyDesc}>Set up your business email to start receiving and managing mail in Aspire Inbox.</Text>
+            <TouchableOpacity
+              style={styles.mailSetupEmptyCTA}
+              onPress={() => router.push('/inbox/setup' as any)}
+            >
+              <Ionicons name="settings-outline" size={16} color="#fff" />
+              <Text style={styles.mailSetupEmptyCTAText}>Set Up Mailbox</Text>
+            </TouchableOpacity>
+          </View>
+        ) : selectedItem ? (
           <View>
             <TouchableOpacity style={styles.backButton} onPress={() => setSelectedId(null)} activeOpacity={0.7}>
               <Ionicons name="arrow-back" size={20} color={Colors.accent.cyan} />
@@ -2376,5 +2531,215 @@ const styles = StyleSheet.create({
     height: 10,
     backgroundColor: Colors.background.tertiary,
     borderRadius: 4,
+  },
+  mailboxSelectorBar: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+    position: 'relative' as const,
+    zIndex: 100,
+  },
+  mailboxSelector: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    backgroundColor: Colors.background.secondary,
+  },
+  mailboxSelectorHover: {
+    backgroundColor: Colors.background.tertiary,
+  },
+  mailboxSelectorLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: Spacing.sm,
+  },
+  mailboxProviderBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: Colors.background.tertiary,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  mailboxDisplayName: {
+    ...Typography.smallMedium,
+    color: Colors.text.primary,
+    fontWeight: '600' as const,
+  },
+  mailboxEmail: {
+    ...Typography.small,
+    color: Colors.text.muted,
+  },
+  mailboxDropdown: {
+    position: 'absolute' as const,
+    top: '100%' as unknown as number,
+    left: Spacing.lg,
+    right: Spacing.lg,
+    backgroundColor: Colors.background.card,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    borderRadius: BorderRadius.md,
+    ...Shadows.md,
+    zIndex: 200,
+    overflow: 'hidden' as const,
+  },
+  mailboxDropdownItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
+  mailboxDropdownItemActive: {
+    backgroundColor: Colors.accent.cyan + '0D',
+  },
+  mailboxDropdownItemHover: {
+    backgroundColor: Colors.background.tertiary,
+  },
+  mailboxDropdownName: {
+    ...Typography.smallMedium,
+    color: Colors.text.primary,
+    fontWeight: '500' as const,
+  },
+  mailboxDropdownEmail: {
+    ...Typography.small,
+    color: Colors.text.muted,
+  },
+  mailboxAddItem: {
+    borderBottomWidth: 0,
+  },
+  mailSetupOverlay: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    zIndex: 500,
+    paddingHorizontal: Spacing.xl,
+  },
+  mailSetupModal: {
+    width: '100%' as unknown as number,
+    maxWidth: 480,
+    backgroundColor: Colors.background.card,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    padding: Spacing.xl + Spacing.sm,
+    alignItems: 'center' as const,
+    ...Shadows.lg,
+  },
+  mailSetupIconContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Colors.accent.cyan + '18',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: Spacing.lg,
+  },
+  mailSetupTitle: {
+    ...Typography.heading,
+    color: Colors.text.primary,
+    fontWeight: '700' as const,
+    textAlign: 'center' as const,
+    marginBottom: Spacing.sm,
+  },
+  mailSetupDescription: {
+    ...Typography.body,
+    color: Colors.text.secondary,
+    textAlign: 'center' as const,
+    lineHeight: 22,
+    marginBottom: Spacing.lg,
+  },
+  mailSetupFeatures: {
+    width: '100%' as unknown as number,
+    gap: Spacing.md,
+    marginBottom: Spacing.xl,
+  },
+  mailSetupFeatureRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: Spacing.sm,
+  },
+  mailSetupFeatureText: {
+    ...Typography.body,
+    color: Colors.text.primary,
+  },
+  mailSetupPrimaryButton: {
+    width: '100%' as unknown as number,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.accent.cyan,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center' as const,
+    marginBottom: Spacing.sm,
+  },
+  mailSetupPrimaryButtonText: {
+    ...Typography.bodyMedium,
+    color: '#fff',
+    fontWeight: '600' as const,
+  },
+  mailSetupSecondaryButton: {
+    width: '100%' as unknown as number,
+    paddingVertical: Spacing.md,
+    alignItems: 'center' as const,
+  },
+  mailSetupSecondaryButtonText: {
+    ...Typography.body,
+    color: Colors.text.muted,
+  },
+  mailSetupEmptyState: {
+    flex: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: Spacing.xl * 3,
+    paddingHorizontal: Spacing.xl,
+  },
+  mailSetupEmptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.background.tertiary,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: Spacing.lg,
+  },
+  mailSetupEmptyTitle: {
+    ...Typography.heading,
+    color: Colors.text.secondary,
+    fontWeight: '600' as const,
+    marginBottom: Spacing.sm,
+  },
+  mailSetupEmptyDesc: {
+    ...Typography.body,
+    color: Colors.text.muted,
+    textAlign: 'center' as const,
+    lineHeight: 22,
+    maxWidth: 380,
+    marginBottom: Spacing.lg,
+  },
+  mailSetupEmptyCTA: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.accent.cyan,
+    borderRadius: BorderRadius.md,
+  },
+  mailSetupEmptyCTAText: {
+    ...Typography.bodyMedium,
+    color: '#fff',
+    fontWeight: '600' as const,
   },
 });

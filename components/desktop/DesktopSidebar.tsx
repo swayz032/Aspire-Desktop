@@ -14,6 +14,7 @@ interface SubNavItem {
   id: string;
   label: string;
   route: string;
+  ownerOnly?: boolean;
 }
 
 interface NavItem {
@@ -28,7 +29,16 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: 'home', label: 'Home', icon: 'home', iconActive: 'home', route: '/(tabs)' },
   { id: 'bookings', label: 'Bookings', icon: 'calendar', iconActive: 'calendar', route: '/bookings' },
-  { id: 'inbox', label: 'Inbox', icon: 'mail', iconActive: 'mail', route: '/(tabs)/inbox' },
+  { 
+    id: 'inbox', 
+    label: 'Inbox', 
+    icon: 'mail', 
+    iconActive: 'mail', 
+    route: '/(tabs)/inbox',
+    subItems: [
+      { id: 'mailbox-setup', label: 'Mailbox Setup', route: '/inbox/setup', ownerOnly: true },
+    ]
+  },
   { 
     id: 'calls', 
     label: 'Return Calls', 
@@ -218,7 +228,9 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
               {/* Sub-items */}
               {expanded && hasSubItems && (showActive || active) && (
                 <View style={styles.subNavList}>
-                  {item.subItems!.map((subItem) => {
+                  {item.subItems!
+                    .filter((subItem) => !subItem.ownerOnly || currentUser.role === 'Owner')
+                    .map((subItem) => {
                     const subActive = pathname.startsWith(subItem.route);
                     return (
                       <Pressable
