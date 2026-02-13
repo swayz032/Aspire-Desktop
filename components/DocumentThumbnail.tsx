@@ -197,6 +197,8 @@ export function DocumentThumbnail({
   const headerCount = size === 'sm' ? 2 : size === 'md' ? 3 : layout.header.length;
   const bodyCount = size === 'sm' ? 3 : size === 'md' ? 5 : size === 'lg' ? 7 : layout.body.length;
 
+  const curlSize = { sm: 6, md: 8, lg: 10, xl: 14 }[size];
+
   return (
     <View style={[styles.card, dimensions]}>
       {/* Header section */}
@@ -220,6 +222,19 @@ export function DocumentThumbnail({
           <DocLine key={`b${i}`} spec={spec} lineGap={lineGap} />
         ))}
       </View>
+
+      {/* Page curl — bottom right corner */}
+      <View style={[styles.curlContainer, { width: curlSize, height: curlSize }]}>
+        <View style={[styles.curlFold, { 
+          width: curlSize, 
+          height: curlSize,
+          borderTopLeftRadius: curlSize * 0.3,
+        }]} />
+        <View style={[styles.curlShadow, {
+          width: curlSize,
+          height: curlSize,
+        }]} />
+      </View>
     </View>
   );
 }
@@ -231,6 +246,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    position: 'relative' as const,
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 0.5px 1.5px rgba(0,0,0,0.05)',
     } : {}),
@@ -238,6 +254,30 @@ const styles = StyleSheet.create({
   section: {
     overflow: 'hidden',
   },
+  curlContainer: {
+    position: 'absolute' as const,
+    bottom: 0,
+    right: 0,
+    overflow: 'hidden',
+  },
+  curlFold: {
+    position: 'absolute' as const,
+    bottom: 0,
+    right: 0,
+    ...(Platform.OS === 'web' ? {
+      background: 'linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 40%, #F3F4F6 100%)',
+    } : {
+      backgroundColor: '#E5E7EB',
+    }),
+  } as any,
+  curlShadow: {
+    position: 'absolute' as const,
+    bottom: 0,
+    right: 0,
+    ...(Platform.OS === 'web' ? {
+      background: 'linear-gradient(135deg, rgba(0,0,0,0.08) 0%, transparent 60%)',
+    } : {}),
+  } as any,
   strip: {
     width: '100%',
     justifyContent: 'center',
