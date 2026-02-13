@@ -154,3 +154,6 @@ Aggregates finance_events into 5 chaptered story sections:
 - Money Trail (Owner view): timeline-grouped layout (day/week/month) with period selector, converts GL data to normalized FinanceEvents with date parsing
 - Story foundation components: components/finance/story/ — StoryCard, StoryTimeline, StoryExplainDrawer, StoryWizard, types with FinanceEvent model and grouping functions
 - Booking → Money panel: added to bookings page with paid/unpaid breakdown, reconciled %, next payout date, drill links to Invoices/Payouts/Books
+- Updated collapsed sidebar icon to new glowing blue Aspire "A" logo (assets/images/aspire-icon-new.png)
+- Rebuilt DocumentThumbnail as fully vector-rendered component (no blurry images): white card base, Aspire blue gradient header with document type label (INVOICE, NDA, REPORT, DOC, REC, EMAIL), faint "A" watermark, simulated text lines, subtle footer accent — crisp at any size, infinitely scalable, enterprise-grade branding system
+- Same DocumentThumbnail interface preserved (type/size/variant/context props) — all 6+ usages across app (AuthorityQueue, TodayPlan, ConferenceLobby, FinanceHub, Invoices, Quotes) automatically pick up new premium design
