@@ -9,13 +9,13 @@ interface DocumentThumbnailProps {
   context?: 'todayplan' | 'authorityqueue' | 'conference' | 'financehub';
 }
 
-const TYPE_CONFIG: Record<string, { label: string; accent: string; icon: string }> = {
-  invoice: { label: 'INVOICE', accent: '#3B82F6', icon: '$' },
-  contract: { label: 'NDA', accent: '#3B82F6', icon: '\u00A7' },
-  report: { label: 'REPORT', accent: '#3B82F6', icon: '\u25A0' },
-  email: { label: 'EMAIL', accent: '#3B82F6', icon: '@' },
-  document: { label: 'DOC', accent: '#3B82F6', icon: '\u2261' },
-  recording: { label: 'REC', accent: '#3B82F6', icon: '\u25CF' },
+const TYPE_CONFIG: Record<string, { label: string }> = {
+  invoice: { label: 'INVOICE' },
+  contract: { label: 'NDA' },
+  report: { label: 'REPORT' },
+  email: { label: 'EMAIL' },
+  document: { label: 'DOC' },
+  recording: { label: 'REC' },
 };
 
 export function DocumentThumbnail({ 
@@ -33,60 +33,72 @@ export function DocumentThumbnail({
 
   const config = TYPE_CONFIG[type] || TYPE_CONFIG.document;
 
-  const fontSizes = {
-    sm: { label: 6, icon: 10, lines: 3, lineH: 2 },
-    md: { label: 7.5, icon: 14, lines: 4, lineH: 2.5 },
-    lg: { label: 9, icon: 18, lines: 5, lineH: 3 },
-    xl: { label: 11, icon: 24, lines: 6, lineH: 3.5 },
+  const s = {
+    sm: { label: 5.5, stripH: 12, lineH: 1.5, gap: 2.5, pad: 4 },
+    md: { label: 7, stripH: 16, lineH: 2, gap: 3, pad: 5 },
+    lg: { label: 8.5, stripH: 18, lineH: 2.5, gap: 3.5, pad: 7 },
+    xl: { label: 10, stripH: 22, lineH: 3, gap: 4, pad: 9 },
   }[size];
 
-  const headerHeight = size === 'sm' ? 14 : size === 'md' ? 18 : size === 'lg' ? 22 : 28;
+  const topLines = [
+    { w: '55%', o: 0.22 },
+    { w: '80%', o: 0.13 },
+    { w: '65%', o: 0.13 },
+    { w: '90%', o: 0.10 },
+  ];
+
+  const bottomLines = [
+    { w: '88%', o: 0.13 },
+    { w: '72%', o: 0.13 },
+    { w: '60%', o: 0.10 },
+    { w: '82%', o: 0.10 },
+    { w: '40%', o: 0.08 },
+  ];
+
+  const visibleTop = size === 'sm' ? 2 : size === 'md' ? 3 : 4;
+  const visibleBottom = size === 'sm' ? 2 : size === 'md' ? 3 : size === 'lg' ? 4 : 5;
 
   return (
     <View style={[styles.card, dimensions]}>
-      <View style={[styles.header, { height: headerHeight }]}>
-        <View style={styles.headerGradient} />
-        <View style={styles.headerGradientOverlay} />
-        <Text style={[styles.headerLabel, { fontSize: fontSizes.label }]}>
+      <View style={[styles.topSection, { paddingHorizontal: s.pad, paddingTop: s.pad, gap: s.gap }]}>
+        {topLines.slice(0, visibleTop).map((line, i) => (
+          <View
+            key={`t${i}`}
+            style={[
+              styles.docLine,
+              {
+                height: s.lineH,
+                width: line.w as any,
+                opacity: line.o,
+                backgroundColor: i === 0 ? '#4B5563' : '#9CA3AF',
+              },
+            ]}
+          />
+        ))}
+      </View>
+
+      <View style={[styles.strip, { height: s.stripH }]}>
+        <View style={styles.stripGradient} />
+        <Text style={[styles.stripLabel, { fontSize: s.label }]}>
           {config.label}
         </Text>
       </View>
 
-      <View style={styles.body}>
-        <View style={styles.watermarkContainer}>
-          <Text style={[styles.watermark, { fontSize: dimensions.width * 0.55 }]}>
-            A
-          </Text>
-        </View>
-
-        <View style={styles.linesContainer}>
-          {Array.from({ length: fontSizes.lines }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.textLine,
-                {
-                  height: fontSizes.lineH,
-                  width: i === 0 ? '85%' : i === fontSizes.lines - 1 ? '45%' : `${70 + ((i * 13) % 20)}%`,
-                  opacity: i === 0 ? 0.35 : 0.18,
-                },
-              ]}
-            />
-          ))}
-        </View>
-
-        {size !== 'sm' && (
-          <View style={styles.iconBadge}>
-            <Text style={[styles.iconText, { fontSize: fontSizes.icon }]}>
-              {config.icon}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.footer}>
-        <View style={styles.footerLine} />
-        <View style={[styles.footerDot, { backgroundColor: config.accent }]} />
+      <View style={[styles.bottomSection, { paddingHorizontal: s.pad, paddingBottom: s.pad, gap: s.gap }]}>
+        {bottomLines.slice(0, visibleBottom).map((line, i) => (
+          <View
+            key={`b${i}`}
+            style={[
+              styles.docLine,
+              {
+                height: s.lineH,
+                width: line.w as any,
+                opacity: line.o,
+                backgroundColor: '#9CA3AF',
+              },
+            ]}
+          />
+        ))}
       </View>
     </View>
   );
@@ -96,97 +108,49 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: BorderRadius.xs + 1,
     overflow: 'hidden',
-    backgroundColor: '#FAFBFC',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.15)',
+    borderColor: '#E5E7EB',
     ...(Platform.OS === 'web' ? {
-      boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 0 0 0.5px rgba(59,130,246,0.08)',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     } : {}),
   } as any,
-  header: {
+  topSection: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  bottomSection: {
+    flex: 1,
+    justifyContent: 'flex-start',
+  },
+  docLine: {
+    borderRadius: 0.5,
+  },
+  strip: {
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
+    marginVertical: 1,
   },
-  headerGradient: {
+  stripGradient: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#3B82F6',
-  },
-  headerGradientOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
     ...(Platform.OS === 'web' ? {
-      background: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 50%, #60A5FA 100%)',
-    } : {}),
+      background: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 45%, #60A5FA 100%)',
+    } : {
+      backgroundColor: '#3B82F6',
+    }),
   } as any,
-  headerLabel: {
+  stripLabel: {
     color: '#FFFFFF',
     fontWeight: '700',
-    letterSpacing: 1.5,
+    letterSpacing: 1.8,
     textAlign: 'center',
-    ...(Platform.OS === 'web' ? {
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-      textShadow: '0 1px 2px rgba(0,0,0,0.2)',
-    } : {}),
-  } as any,
-  body: {
-    flex: 1,
-    paddingHorizontal: 6,
-    paddingTop: 6,
-    paddingBottom: 4,
-    position: 'relative',
-    justifyContent: 'flex-start',
-  },
-  watermarkContainer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  watermark: {
-    color: 'rgba(59, 130, 246, 0.04)',
-    fontWeight: '900',
-    ...(Platform.OS === 'web' ? {
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-      userSelect: 'none',
-    } : {}),
-  } as any,
-  linesContainer: {
-    gap: 4,
     zIndex: 1,
-  },
-  textLine: {
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-    borderRadius: 1,
-  },
-  iconBadge: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    opacity: 0.08,
-  },
-  iconText: {
-    color: '#3B82F6',
-    fontWeight: '800',
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingBottom: 4,
-    gap: 4,
-  },
-  footerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(59, 130, 246, 0.08)',
-  },
-  footerDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    opacity: 0.5,
-  },
+    ...(Platform.OS === 'web' ? {
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      textShadow: '0 1px 2px rgba(0,0,0,0.15)',
+    } : {}),
+  } as any,
 });

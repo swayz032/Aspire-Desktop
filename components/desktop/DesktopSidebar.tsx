@@ -382,16 +382,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(59, 130, 246, 0.1)',
   },
   logoIconWrapper: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
   },
   logoIcon: {
-    width: 44,
-    height: 44,
+    width: 32,
+    height: 32,
   },
   expandChevronBadge: {
     position: 'absolute',
