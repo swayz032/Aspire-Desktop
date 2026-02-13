@@ -514,13 +514,13 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 8,
-    gap: 2,
+    gap: 0,
   },
   footerDivider: {
     height: 1,
     backgroundColor: Colors.border.subtle,
     marginHorizontal: 8,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   footerDividerCollapsed: {
     marginHorizontal: 12,
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
   footerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 5,
     paddingHorizontal: 8,
     gap: 10,
     borderRadius: 8,
