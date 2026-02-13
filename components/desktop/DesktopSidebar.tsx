@@ -42,7 +42,6 @@ const navItems: NavItem[] = [
   { id: 'receipts', label: 'Receipts', icon: 'document-text', iconActive: 'document-text', route: '/(tabs)/receipts' },
   { id: 'team', label: 'Team Workspace', icon: 'people', iconActive: 'people', route: '/team-workspace' },
   { id: 'store', label: 'Office Store', icon: 'storefront', iconActive: 'storefront', route: '/office-store' },
-  { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle', iconActive: 'ellipsis-horizontal-circle', route: '/(tabs)/more' },
 ];
 
 const SIDEBAR_EXPANDED = 240;
@@ -246,6 +245,43 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
       </View>
 
       <View style={styles.footer}>
+        <View style={[styles.footerDivider, !expanded && styles.footerDividerCollapsed]} />
+        <Pressable 
+          style={({ hovered }: any) => [
+            styles.footerItem, 
+            !expanded && styles.footerItemCollapsed,
+            hovered && styles.footerItemHover,
+          ]}
+          onPress={() => router.push('/(tabs)/more' as any)}
+          {...(Platform.OS === 'web' && !expanded ? { title: 'More' } : {})}
+        >
+          <View style={styles.footerIconContainer}>
+            <Ionicons name="ellipsis-horizontal-circle" size={18} color={isActive('/(tabs)/more') ? Colors.accent.cyan : Colors.text.tertiary} />
+          </View>
+          {Platform.OS === 'web' ? (
+            <Text 
+              style={[
+                styles.navLabelMuted,
+                isActive('/(tabs)/more') && styles.navLabelActive,
+                { 
+                  opacity: expanded ? 1 : 0,
+                  width: expanded ? 'auto' : 0,
+                  overflow: 'hidden',
+                  transition: 'opacity 200ms ease-out, width 200ms ease-out',
+                } as any
+              ]}
+            >
+              More
+            </Text>
+          ) : (
+            <Animated.Text 
+              style={[styles.navLabelMuted, isActive('/(tabs)/more') && styles.navLabelActive, { opacity: opacityAnim }]}
+              numberOfLines={1}
+            >
+              {expanded ? 'More' : ''}
+            </Animated.Text>
+          )}
+        </Pressable>
         <Pressable 
           style={({ hovered }: any) => [
             styles.footerItem, 
@@ -478,7 +514,16 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 8,
-    gap: 4,
+    gap: 2,
+  },
+  footerDivider: {
+    height: 1,
+    backgroundColor: Colors.border.subtle,
+    marginHorizontal: 8,
+    marginBottom: 8,
+  },
+  footerDividerCollapsed: {
+    marginHorizontal: 12,
   },
   footerItem: {
     flexDirection: 'row',

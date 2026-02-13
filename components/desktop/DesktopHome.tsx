@@ -108,10 +108,17 @@ export function DesktopHome() {
               actionLabel="View all"
               onAction={() => router.push('/inbox' as any)}
             />
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.authorityScrollContent}
+            <View
+              style={{
+                flexDirection: 'row',
+                gap: 12,
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                paddingVertical: 4,
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#3B3B3D transparent',
+                alignItems: 'stretch',
+              } as any}
             >
               {allAuthorityItems.map((item) => (
                 <View key={item.id} style={styles.authorityCardWrapper}>
@@ -131,7 +138,7 @@ export function DesktopHome() {
                   />
                 </View>
               ))}
-            </ScrollView>
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -204,12 +211,9 @@ const styles = StyleSheet.create({
       backgroundColor: '#1C1C1E',
     }),
   } as any,
-  authorityScrollContent: {
-    gap: 12,
-    paddingVertical: 4,
-  },
   authorityCardWrapper: {
     width: 300,
     flexShrink: 0,
+    display: 'flex',
   },
 });
