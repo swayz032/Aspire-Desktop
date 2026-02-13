@@ -84,9 +84,13 @@ export async function createTrustSpineReceipt(params: TrustSpineReceiptParams): 
     const status = params.status || 'SUCCEEDED';
     const actorType = params.actorType || 'SYSTEM';
 
+    const tenantResult = await db.execute(sql`SELECT tenant_id FROM app.suites WHERE suite_id = ${params.suiteId}::uuid`);
+    const tenantRows = (tenantResult.rows || tenantResult) as any[];
+    const tenantId = tenantRows[0]?.tenant_id || 'unknown';
+
     await db.execute(sql`
-      INSERT INTO receipts (receipt_id, suite_id, receipt_type, status, correlation_id, actor_type, actor_id, office_id, action, result)
-      VALUES (${receiptId}, ${params.suiteId}::uuid, ${params.receiptType}, ${status}, ${correlationId}, ${actorType}, ${params.actorId || null}, ${params.officeId || null}::uuid, ${JSON.stringify(params.action)}::jsonb, ${JSON.stringify(params.result)}::jsonb)
+      INSERT INTO receipts (receipt_id, suite_id, tenant_id, receipt_type, status, correlation_id, actor_type, actor_id, office_id, action, result)
+      VALUES (${receiptId}, ${params.suiteId}::uuid, ${tenantId}, ${params.receiptType}, ${status}, ${correlationId}, ${actorType}, ${params.actorId || null}, ${params.officeId || null}::uuid, ${JSON.stringify(params.action)}::jsonb, ${JSON.stringify(params.result)}::jsonb)
     `);
 
     console.log(`Receipt created: ${receiptId} (${params.receiptType}/${status})`);

@@ -42,6 +42,7 @@
     "@uppy/dashboard": "^5.1.0",
     "@uppy/react": "^5.1.1",
     "cors": "^2.8.6",
+    "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.1",
     "expo": "^54.0.9",
     "expo-av": "^16.0.8",
