@@ -244,7 +244,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
         })}
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, !expanded && styles.footerCollapsed]}>
         <View style={[styles.footerDivider, !expanded && styles.footerDividerCollapsed]} />
         <Pressable 
           style={({ hovered }: any) => [
@@ -514,21 +514,26 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 8,
-    gap: 0,
+    gap: 2,
+  },
+  footerCollapsed: {
+    alignItems: 'center',
+    paddingHorizontal: 0,
   },
   footerDivider: {
     height: 1,
     backgroundColor: Colors.border.subtle,
     marginHorizontal: 8,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   footerDividerCollapsed: {
     marginHorizontal: 12,
+    marginBottom: 2,
   },
   footerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 5,
+    paddingVertical: 6,
     paddingHorizontal: 8,
     gap: 10,
     borderRadius: 8,
@@ -538,8 +543,14 @@ const styles = StyleSheet.create({
     } : {}),
   } as any,
   footerItemCollapsed: {
+    flexDirection: 'column',
     justifyContent: 'center',
-    paddingHorizontal: 0,
+    alignItems: 'center',
+    padding: 0,
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    gap: 0,
   },
   footerItemHover: {
     backgroundColor: '#1C1C1E',
