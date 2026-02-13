@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   logoIcon: {
     width: 44,
     height: 44,
-    marginLeft: 6,
+    marginLeft: 10,
   },
   expandChevronBadge: {
     position: 'absolute',
