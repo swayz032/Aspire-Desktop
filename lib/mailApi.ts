@@ -6,6 +6,7 @@ export interface DomainSearchResult {
   price?: string;
   currency?: string;
   tld: string;
+  term?: number;
 }
 
 async function apiFetch<T = any>(url: string, options?: RequestInit): Promise<T> {

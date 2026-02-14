@@ -858,17 +858,20 @@ router.get('/v1/domains/search', (req: Request, res: Response) => {
   const h = hashCode(query);
   const tlds = ['.com', '.io', '.co', '.dev', '.app'];
   const prices = ['$12.99/yr', '$29.99/yr', '$19.99/yr', '$14.99/yr', '$49.99/yr'];
+  const terms = [1, 1, 1, 2, 1];
   const baseName = query.includes('.') ? query.split('.')[0] : query;
 
   const results: any[] = [];
 
   if (query.includes('.')) {
+    const tldIdx = tlds.indexOf('.' + query.split('.').pop());
     results.push({
       domain: query,
       available: (h % 10) < 7,
       price: prices[h % prices.length],
       currency: 'USD',
       tld: '.' + query.split('.').pop(),
+      term: tldIdx >= 0 ? terms[tldIdx] : 1,
     });
   }
 
@@ -882,6 +885,7 @@ router.get('/v1/domains/search', (req: Request, res: Response) => {
       price: prices[i],
       currency: 'USD',
       tld: tlds[i],
+      term: terms[i],
     });
   }
 

@@ -2612,7 +2612,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   mailSetupOverlay: {
-    position: 'absolute' as const,
+    ...(Platform.OS === 'web' ? { position: 'fixed' as any } : { position: 'absolute' as const }),
     top: 0,
     left: 0,
     right: 0,
@@ -2620,7 +2620,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    zIndex: 500,
+    zIndex: 9999,
     paddingHorizontal: Spacing.xl,
   },
   mailSetupModal: {

@@ -10,7 +10,7 @@ import type { MailProvider, MailOnboardingState, OnboardingCheck, DnsPlanRecord,
 const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
 const STEPS = ['Choose Provider', 'Configure', 'Verify', 'Enable Eli'];
 
-const IS_OPERATOR = false;
+const IS_OPERATOR = true;
 
 export default function MailboxSetupScreen() {
   const router = useRouter();
@@ -543,7 +543,7 @@ function Step1APolaris({
           <Ionicons name="shield-checkmark" size={16} color="#f59e0b" />
           <Text style={s.approvalNoticeText}>
             {isOperator
-              ? 'Domain purchase will be auto-approved. Explicit confirmation required.'
+              ? 'Search and purchase a new domain for your business. Payment will be processed immediately.'
               : 'Domain purchase is a red-tier action requiring approval before execution.'}
           </Text>
         </View>
@@ -634,6 +634,26 @@ function BuyDomainSection({
   searchQuery, setSearchQuery, results, searching, onSearch, selected, setSelected,
   onPurchase, purchaseStatus, loading, isOperator,
 }: any) {
+  const [showTermPopup, setShowTermPopup] = useState(false);
+  const [pendingPurchaseDomain, setPendingPurchaseDomain] = useState<DomainSearchResult | null>(null);
+
+  const handlePurchaseClick = (domain: string) => {
+    if (selected?.term && selected.term > 1) {
+      setPendingPurchaseDomain(selected);
+      setShowTermPopup(true);
+    } else {
+      onPurchase(domain);
+    }
+  };
+
+  const confirmMultiYearPurchase = () => {
+    if (pendingPurchaseDomain) {
+      setShowTermPopup(false);
+      onPurchase(pendingPurchaseDomain.domain);
+      setPendingPurchaseDomain(null);
+    }
+  };
+
   return (
     <View>
       {/* Search bar */}
@@ -687,11 +707,16 @@ function BuyDomainSection({
                     <Text style={s.exactMatchText}>Exact</Text>
                   </View>
                 )}
+                {r.term && r.term > 1 && r.available && (
+                  <View style={s.multiYearBadge}>
+                    <Text style={s.multiYearBadgeText}>{r.term}yr min</Text>
+                  </View>
+                )}
               </View>
               <View style={s.domainResultRight}>
                 {r.available ? (
                   <>
-                    <Text style={s.domainPrice}>{r.price}/{r.currency === 'USD' ? 'yr' : r.currency}</Text>
+                    <Text style={s.domainPrice}>{r.price}</Text>
                     {selected?.domain === r.domain && (
                       <Ionicons name="checkmark-circle" size={18} color="#3B82F6" />
                     )}
@@ -710,7 +735,7 @@ function BuyDomainSection({
         <View style={s.purchaseCTA}>
           <View style={s.purchaseSummary}>
             <Text style={s.purchaseDomain}>{selected.domain}</Text>
-            <Text style={s.purchasePrice}>{selected.price}/yr</Text>
+            <Text style={s.purchasePrice}>{selected.price}</Text>
           </View>
 
           {purchaseStatus === 'PENDING_APPROVAL' ? (
@@ -726,15 +751,75 @@ function BuyDomainSection({
           ) : (
             <Pressable
               style={({ hovered }: any) => [s.primaryBtn, loading && s.primaryBtnDisabled, hovered && !loading && s.primaryBtnHover]}
-              onPress={() => onPurchase(selected.domain)}
+              onPress={() => handlePurchaseClick(selected.domain)}
               disabled={loading}
             >
-              <Ionicons name={isOperator ? 'card-outline' : 'document-text-outline'} size={16} color="#fff" />
+              <Ionicons name={isOperator ? 'cart-outline' : 'document-text-outline'} size={16} color="#fff" />
               <Text style={s.primaryBtnText}>
-                {isOperator ? 'Proceed to Checkout' : 'Request Purchase'}
+                {isOperator ? 'Purchase Domain' : 'Request Purchase'}
               </Text>
             </Pressable>
           )}
+        </View>
+      )}
+
+      {/* Multi-Year Pricing Popup */}
+      {showTermPopup && pendingPurchaseDomain && (
+        <View style={s.termPopupOverlay}>
+          <View style={s.termPopupCard}>
+            <View style={s.termPopupHeader}>
+              <View style={s.termPopupIconWrap}>
+                <Ionicons name="calendar-outline" size={24} color="#3B82F6" />
+              </View>
+              <Pressable onPress={() => { setShowTermPopup(false); setPendingPurchaseDomain(null); }} style={s.termPopupClose}>
+                <Ionicons name="close" size={18} color={Colors.text.muted} />
+              </Pressable>
+            </View>
+
+            <Text style={s.termPopupTitle}>Multi-Year Registration</Text>
+            <Text style={s.termPopupDesc}>
+              <Text style={{ fontWeight: '700', color: Colors.text.primary }}>{pendingPurchaseDomain.domain}</Text> requires a minimum{' '}
+              <Text style={{ fontWeight: '700', color: '#3B82F6' }}>{pendingPurchaseDomain.term}-year</Text> registration commitment.
+            </Text>
+
+            <View style={s.termPopupBreakdown}>
+              <View style={s.termPopupRow}>
+                <Text style={s.termPopupRowLabel}>Annual price</Text>
+                <Text style={s.termPopupRowValue}>{pendingPurchaseDomain.price}</Text>
+              </View>
+              <View style={s.termPopupDivider} />
+              <View style={s.termPopupRow}>
+                <Text style={s.termPopupRowLabel}>Registration term</Text>
+                <Text style={s.termPopupRowValue}>{pendingPurchaseDomain.term} years</Text>
+              </View>
+              <View style={s.termPopupDivider} />
+              <View style={s.termPopupRow}>
+                <Text style={[s.termPopupRowLabel, { fontWeight: '700', color: Colors.text.primary }]}>Total due today</Text>
+                <Text style={[s.termPopupRowValue, { fontWeight: '700', color: '#22c55e', fontSize: 16 }]}>
+                  {(() => {
+                    const priceNum = parseFloat((pendingPurchaseDomain.price || '').replace(/[^0-9.]/g, ''));
+                    return `$${(priceNum * (pendingPurchaseDomain.term || 1)).toFixed(2)}`;
+                  })()}
+                </Text>
+              </View>
+            </View>
+
+            <View style={s.termPopupActions}>
+              <Pressable
+                style={({ hovered }: any) => [s.primaryBtn, hovered && s.primaryBtnHover]}
+                onPress={confirmMultiYearPurchase}
+              >
+                <Ionicons name="cart-outline" size={16} color="#fff" />
+                <Text style={s.primaryBtnText}>Confirm Purchase</Text>
+              </Pressable>
+              <Pressable
+                style={({ hovered }: any) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
+                onPress={() => { setShowTermPopup(false); setPendingPurchaseDomain(null); }}
+              >
+                <Text style={s.secondaryBtnText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
       )}
     </View>
@@ -2178,5 +2263,106 @@ const s = StyleSheet.create({
   completionActions: {
     gap: 12,
     alignItems: 'center',
+  },
+
+  multiYearBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  multiYearBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#f59e0b',
+  },
+
+  termPopupOverlay: {
+    ...(Platform.OS === 'web' ? { position: 'fixed' as any } : { position: 'absolute' as any }),
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+    paddingHorizontal: 24,
+  } as any,
+  termPopupCard: {
+    width: '100%' as any,
+    maxWidth: 440,
+    backgroundColor: Colors.surface.card,
+    borderRadius: 20,
+    padding: 28,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    ...(Platform.OS === 'web' ? { boxShadow: '0 24px 48px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04)' } : {}),
+  } as any,
+  termPopupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  termPopupIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  termPopupClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+  } as any,
+  termPopupTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text.primary,
+    letterSpacing: -0.3,
+    marginBottom: 10,
+  },
+  termPopupDesc: {
+    fontSize: 14,
+    color: Colors.text.secondary,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  termPopupBreakdown: {
+    backgroundColor: Colors.background.tertiary,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+  },
+  termPopupRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  termPopupRowLabel: {
+    fontSize: 14,
+    color: Colors.text.secondary,
+  },
+  termPopupRowValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text.primary,
+  },
+  termPopupDivider: {
+    height: 1,
+    backgroundColor: Colors.border.subtle,
+  },
+  termPopupActions: {
+    gap: 10,
   },
 });
