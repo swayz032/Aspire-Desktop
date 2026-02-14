@@ -16,16 +16,44 @@ const stateConfig = {
   responding: { playbackRate: 1.2, glowOpacity: 0.7, pulseScale: 1.03 },
 };
 
+let cssInjected = false;
+function injectVideoCss() {
+  if (cssInjected || Platform.OS !== 'web') return;
+  cssInjected = true;
+  const style = document.createElement('style');
+  style.textContent = `
+    video.ava-orb-video::-webkit-media-controls,
+    video.ava-orb-video::-webkit-media-controls-enclosure,
+    video.ava-orb-video::-webkit-media-controls-panel,
+    video.ava-orb-video::-webkit-media-controls-start-playback-button,
+    video.ava-orb-video::-webkit-media-controls-overlay-play-button {
+      display: none !important;
+      -webkit-appearance: none !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+    video.ava-orb-video::-moz-media-controls { display: none !important; }
+  `;
+  document.head.appendChild(style);
+}
+
 export function AvaOrbVideo({ state, size = 300 }: AvaOrbVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const config = stateConfig[state];
 
   useEffect(() => {
-    if (Platform.OS === 'web' && videoRef.current) {
-      try {
-        videoRef.current.playbackRate = config.playbackRate;
-        videoRef.current.play().catch(() => {});
-      } catch (e) {}
+    if (Platform.OS === 'web') {
+      injectVideoCss();
+      const vid = videoRef.current;
+      if (vid) {
+        vid.muted = true;
+        vid.loop = true;
+        vid.playsInline = true;
+        try {
+          vid.playbackRate = config.playbackRate;
+        } catch (e) {}
+        vid.play().catch(() => {});
+      }
     }
   }, [state, config.playbackRate]);
 
@@ -51,6 +79,7 @@ export function AvaOrbVideo({ state, size = 300 }: AvaOrbVideoProps) {
       <View style={[styles.videoContainer, { width: size, height: size, borderRadius: size / 2 }]}>
         <video
           ref={videoRef}
+          className="ava-orb-video"
           src="/ava-orb.mp4"
           autoPlay
           loop
@@ -63,7 +92,7 @@ export function AvaOrbVideo({ state, size = 300 }: AvaOrbVideoProps) {
             height: size * 1.5,
             objectFit: 'cover',
             transform: `scale(${config.pulseScale})`,
-            pointerEvents: 'none' as any,
+            pointerEvents: 'none',
           }}
         />
       </View>

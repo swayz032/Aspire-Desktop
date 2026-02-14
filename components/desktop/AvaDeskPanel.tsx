@@ -109,6 +109,63 @@ function getActivitySequence(userText: string): { events: Omit<AvaActivityEvent,
   return MOCK_ACTIVITY_SEQUENCES.default;
 }
 
+function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const style = document.createElement('style');
+      style.textContent = `
+        video.ava-orb-video::-webkit-media-controls,
+        video.ava-orb-video::-webkit-media-controls-enclosure,
+        video.ava-orb-video::-webkit-media-controls-panel,
+        video.ava-orb-video::-webkit-media-controls-start-playback-button,
+        video.ava-orb-video::-webkit-media-controls-overlay-play-button {
+          display: none !important;
+          -webkit-appearance: none !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+        }
+        video.ava-orb-video::-moz-media-controls { display: none !important; }
+        video.ava-orb-video { object-fit: contain; }
+      `;
+      document.head.appendChild(style);
+
+      const vid = videoRef.current;
+      if (vid) {
+        vid.muted = true;
+        vid.loop = true;
+        vid.playsInline = true;
+        vid.play().catch(() => {});
+      }
+
+      return () => { document.head.removeChild(style); };
+    }
+  }, []);
+
+  if (Platform.OS !== 'web') return null;
+
+  return (
+    <video
+      ref={videoRef as any}
+      className="ava-orb-video"
+      src="/ava-orb.mp4"
+      autoPlay
+      loop
+      muted
+      playsInline
+      controls={false}
+      style={{
+        width: size,
+        height: size,
+        objectFit: 'contain',
+        background: 'transparent',
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
 function ThinkingDots() {
   const dot1 = useRef(new Animated.Value(0.3)).current;
   const dot2 = useRef(new Animated.Value(0.3)).current;
@@ -709,15 +766,7 @@ export function AvaDeskPanel() {
             <View style={styles.orbWrap}>
               {Platform.OS === 'web' ? (
                 <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                  <video
-                    src="/ava-orb.mp4"
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    controls={false}
-                    style={{ width: 320, height: 320, objectFit: 'contain', background: 'transparent', pointerEvents: 'none' }}
-                  />
+                  <AvaOrbVideoInline size={320} />
                 </Animated.View>
               ) : (
                 <View style={styles.orbPlaceholderLarge}>
