@@ -1,24 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Platform, TextInput, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Platform, TextInput, Switch, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
-import { LinearGradient } from 'expo-linear-gradient';
-import type { MailProvider, MailOnboardingState, OnboardingCheck, DnsPlanRecord, MailSetupReceipt, DomainMode } from '@/types/mailbox';
+import { mailApi, DomainSearchResult } from '@/lib/mailApi';
+import type { MailProvider, MailOnboardingState, OnboardingCheck, DnsPlanRecord, MailSetupReceipt, DomainMode, EliConfig, DnsCheckResult } from '@/types/mailbox';
 
 const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
 const STEPS = ['Choose Provider', 'Configure', 'Verify', 'Enable Eli'];
 
-const DNS_MOCK: DnsPlanRecord[] = [
-  { type: 'MX', host: '@', value: 'mail.aspire.email', ttl: 3600 },
-  { type: 'SPF', host: '@', value: 'v=spf1 include:aspire.email ~all', ttl: 3600 },
-  { type: 'DKIM', host: 'aspire._domainkey', value: 'v=DKIM1; k=rsa; p=MIIBIjANBgkq...', ttl: 3600 },
-  { type: 'DMARC', host: '_dmarc', value: 'v=DMARC1; p=quarantine; rua=mailto:dmarc@aspire.email', ttl: 3600 },
-];
+const IS_OPERATOR = false;
 
 export default function MailboxSetupScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+
+  const [jobId, setJobId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [onboarding, setOnboarding] = useState<MailOnboardingState>({});
   const [receipts, setReceipts] = useState<MailSetupReceipt[]>([]);
@@ -30,100 +28,195 @@ export default function MailboxSetupScreen() {
   const [completed, setCompleted] = useState(false);
   const [activatedEmail, setActivatedEmail] = useState('');
   const [checksRunning, setChecksRunning] = useState(false);
+  const [dnsChecking, setDnsChecking] = useState(false);
+
+  const [domainSearchQuery, setDomainSearchQuery] = useState('');
+  const [domainSearchResults, setDomainSearchResults] = useState<DomainSearchResult[]>([]);
+  const [domainSearching, setDomainSearching] = useState(false);
+  const [selectedDomainResult, setSelectedDomainResult] = useState<DomainSearchResult | null>(null);
+  const [purchaseStatus, setPurchaseStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchOnboarding();
-    fetchReceipts();
+    const savedJobId = typeof window !== 'undefined' ? sessionStorage.getItem('mailSetupJobId') : null;
+    if (savedJobId) {
+      setJobId(savedJobId);
+      resumeFromJob(savedJobId);
+    }
+
+    if (params.checkout === 'success' && params.orderId) {
+      handleCheckoutReturn(params.orderId as string);
+    }
   }, []);
 
-  const fetchOnboarding = async () => {
+  const resumeFromJob = async (jId: string) => {
     try {
-      const res = await fetch(`/api/mail/onboarding?userId=${DEMO_USER_ID}`);
-      if (res.ok) {
-        const data = await res.json();
-        setOnboarding(data);
-        if (data.provider) setCurrentStep(1);
-        if (data.checks?.length) setCurrentStep(2);
-        if (data.eli) setCurrentStep(3);
+      const job = await mailApi.getOnboarding(jId);
+      setOnboarding(job);
+
+      if (job.provider) setCurrentStep(1);
+      if (job.dnsPlan || job.oauthStatus?.connectedEmail) setCurrentStep(2);
+      if (job.checks?.length) setCurrentStep(2);
+      if (job.eli) setCurrentStep(3);
+
+      if (job.domain) setDomainInput(job.domain);
+      if (job.mailboxes?.length) {
+        const email = job.mailboxes[0].email;
+        const parts = email.split('@');
+        setMailboxInput(parts[0] || '');
+        if (job.mailboxes[0].displayName) {
+          setDisplayNameInput(job.mailboxes[0].displayName);
+        }
       }
+      if (job.domainMode) setDomainMode(job.domainMode);
+      if (job.domainPurchase) {
+        setPurchaseStatus(job.domainPurchase.status);
+        if (job.domainPurchase.domain) {
+          setSelectedDomainResult({ domain: job.domainPurchase.domain, available: true, tld: job.domainPurchase.domain.split('.').pop() || '' });
+        }
+      }
+
+      fetchReceipts(jId);
+    } catch (e) {
+      console.error('Failed to resume job', e);
+      sessionStorage.removeItem('mailSetupJobId');
+      setJobId(null);
+    }
+  };
+
+  const handleCheckoutReturn = async (orderId: string) => {
+    const savedJobId = typeof window !== 'undefined' ? sessionStorage.getItem('mailSetupJobId') : null;
+    if (savedJobId) {
+      await resumeFromJob(savedJobId);
+    }
+  };
+
+  const fetchReceipts = async (jId?: string) => {
+    const id = jId || jobId;
+    if (!id) return;
+    try {
+      const data = await mailApi.getReceipts(id);
+      setReceipts(data.receipts || []);
     } catch (e) { console.error(e); }
   };
 
-  const fetchReceipts = async () => {
-    try {
-      const res = await fetch(`/api/mail/receipts?userId=${DEMO_USER_ID}`);
-      if (res.ok) {
-        const data = await res.json();
-        setReceipts(data.receipts || []);
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const patchOnboarding = async (updates: Partial<MailOnboardingState>) => {
+  const handleSelectProvider = async (provider: MailProvider) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/mail/onboarding?userId=${DEMO_USER_ID}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...updates, userId: DEMO_USER_ID }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setOnboarding(data);
+      const result = await mailApi.startOnboarding(DEMO_USER_ID, provider);
+      const newJobId = result.jobId;
+      setJobId(newJobId);
+      setOnboarding(result);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('mailSetupJobId', newJobId);
+      }
+      fetchReceipts(newJobId);
+      setCurrentStep(1);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+
+  const handleSaveDomain = async () => {
+    if (!jobId || !domainInput.trim()) return;
+    setLoading(true);
+    try {
+      const mb = mailboxInput.trim() || 'hello';
+      const dn = displayNameInput.trim() || 'Business Email';
+      const result = await mailApi.generateDnsPlan(jobId, domainInput.trim(), mb, dn, domainMode);
+      setOnboarding(prev => ({
+        ...prev,
+        domain: domainInput.trim(),
+        domainMode,
+        dnsPlan: result.dnsPlan,
+        mailboxes: [{ email: `${mb}@${domainInput.trim()}`, displayName: dn }],
+      }));
+      fetchReceipts();
+      setCurrentStep(2);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+
+  const handleCheckDns = async () => {
+    if (!jobId) return;
+    setDnsChecking(true);
+    try {
+      const result = await mailApi.checkDns(jobId);
+      setOnboarding(prev => ({ ...prev, dnsStatus: result.dnsStatus }));
+      fetchReceipts();
+    } catch (e) { console.error(e); }
+    setDnsChecking(false);
+  };
+
+  const handleSearchDomains = async () => {
+    if (!domainSearchQuery.trim()) return;
+    setDomainSearching(true);
+    try {
+      const result = await mailApi.searchDomains(domainSearchQuery.trim());
+      setDomainSearchResults(result.results || []);
+    } catch (e) { console.error(e); }
+    setDomainSearching(false);
+  };
+
+  const handleDomainPurchase = async (domain: string) => {
+    if (!jobId) return;
+    setLoading(true);
+    setPurchaseStatus('PROCESSING');
+    try {
+      if (IS_OPERATOR) {
+        const result = await mailApi.startDomainCheckout(jobId, domain);
+        setPurchaseStatus(result.status);
+        if (result.status === 'COMPLETED') {
+          setDomainInput(domain);
+          const parts = domain.split('.');
+          const brandName = parts[0] || 'hello';
+          setMailboxInput(brandName);
+          setOnboarding(prev => ({
+            ...prev,
+            domain,
+            domainMode: 'NEW_DOMAIN',
+            dnsPlan: result.dnsPlan,
+            mailboxes: [{ email: `${brandName}@${domain}`, displayName: 'Business Email' }],
+          }));
+          fetchReceipts();
+          setCurrentStep(2);
+        }
+      } else {
+        const result = await mailApi.requestDomainPurchase(jobId, domain);
+        setPurchaseStatus(result.status);
         fetchReceipts();
       }
     } catch (e) { console.error(e); }
     setLoading(false);
   };
 
-  const handleSelectProvider = async (provider: MailProvider) => {
-    await patchOnboarding({ provider });
-    setCurrentStep(1);
-  };
-
-  const handleSaveDomain = async () => {
-    if (!domainInput.trim()) return;
-    const mailboxes = mailboxInput.trim()
-      ? [{ email: `${mailboxInput.trim()}@${domainInput.trim()}`, displayName: displayNameInput.trim() || undefined }]
-      : [{ email: `hello@${domainInput.trim()}`, displayName: 'Business Email' }];
-    await patchOnboarding({
-      domain: domainInput.trim(),
-      domainMode,
-      mailboxes,
-      dnsPlan: DNS_MOCK.map(r => ({ ...r, host: r.host === '@' ? domainInput.trim() : `${r.host}.${domainInput.trim()}` })),
-    });
-    setCurrentStep(2);
-  };
-
   const handleConnectGoogle = async () => {
-    await patchOnboarding({
-      oauthStatus: {
-        connectedEmail: 'user@workspace.google.com',
-        scopes: ['gmail.readonly', 'gmail.send', 'gmail.labels', 'gmail.modify'],
-      },
-      mailboxes: [{ email: 'user@workspace.google.com', displayName: 'Google Workspace' }],
-    });
-    setCurrentStep(2);
+    if (!jobId) return;
+    setLoading(true);
+    try {
+      const result = await mailApi.startGoogleOAuth(jobId);
+      setOnboarding(prev => ({
+        ...prev,
+        oauthStatus: { connectedEmail: result.email, scopes: result.scopes },
+        mailboxes: [{ email: result.email, displayName: 'Google Workspace' }],
+      }));
+      fetchReceipts();
+      setCurrentStep(2);
+    } catch (e) { console.error(e); }
+    setLoading(false);
   };
 
   const handleRunChecks = async () => {
+    if (!jobId) return;
     setChecksRunning(true);
     try {
-      const res = await fetch(`/api/mail/onboarding/checks/run?userId=${DEMO_USER_ID}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: DEMO_USER_ID }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setOnboarding(prev => ({ ...prev, checks: data.checks }));
-        fetchReceipts();
-      }
+      const data = await mailApi.runChecks(jobId);
+      setOnboarding(prev => ({ ...prev, checks: data.checks }));
+      fetchReceipts();
     } catch (e) { console.error(e); }
     setChecksRunning(false);
   };
 
   const handleSaveEli = async () => {
+    if (!jobId) return;
     const eli = onboarding.eli || {
       canDraft: true,
       canSend: false,
@@ -131,22 +224,22 @@ export default function MailboxSetupScreen() {
       attachmentsAlwaysApproval: true,
       rateLimitPreset: 'CONSERVATIVE' as const,
     };
-    await patchOnboarding({ eli });
+    try {
+      await mailApi.applyEliPolicy(jobId, eli);
+      fetchReceipts();
+    } catch (e) { console.error(e); }
   };
 
   const handleActivate = async () => {
+    if (!jobId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/mail/onboarding/activate?userId=${DEMO_USER_ID}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: DEMO_USER_ID }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setActivatedEmail(data.account?.email || '');
-        setCompleted(true);
-        fetchReceipts();
+      const data = await mailApi.activate(jobId);
+      setActivatedEmail(data.account?.email || '');
+      setCompleted(true);
+      fetchReceipts();
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('mailSetupJobId');
       }
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -195,7 +288,20 @@ export default function MailboxSetupScreen() {
               </Pressable>
               <Pressable
                 style={({ hovered }: any) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
-                onPress={() => { setCompleted(false); setCurrentStep(0); setOnboarding({}); }}
+                onPress={() => {
+                  setCompleted(false);
+                  setCurrentStep(0);
+                  setOnboarding({});
+                  setJobId(null);
+                  setDomainInput('');
+                  setMailboxInput('');
+                  setDisplayNameInput('');
+                  setDomainSearchQuery('');
+                  setDomainSearchResults([]);
+                  setSelectedDomainResult(null);
+                  setPurchaseStatus(null);
+                  setReceipts([]);
+                }}
               >
                 <Ionicons name="add-circle-outline" size={18} color={Colors.text.secondary} />
                 <Text style={s.secondaryBtnText}>Add another mailbox</Text>
@@ -285,6 +391,19 @@ export default function MailboxSetupScreen() {
                     setDisplayNameInput={setDisplayNameInput}
                     onSave={handleSaveDomain}
                     loading={loading}
+                    onboarding={onboarding}
+                    dnsChecking={dnsChecking}
+                    onCheckDns={handleCheckDns}
+                    domainSearchQuery={domainSearchQuery}
+                    setDomainSearchQuery={setDomainSearchQuery}
+                    domainSearchResults={domainSearchResults}
+                    domainSearching={domainSearching}
+                    onSearchDomains={handleSearchDomains}
+                    selectedDomainResult={selectedDomainResult}
+                    setSelectedDomainResult={setSelectedDomainResult}
+                    onDomainPurchase={handleDomainPurchase}
+                    purchaseStatus={purchaseStatus}
+                    isOperator={IS_OPERATOR}
                   />
                 )}
                 {currentStep === 1 && onboarding.provider === 'GOOGLE' && (
@@ -312,7 +431,12 @@ export default function MailboxSetupScreen() {
 
             {/* Right column: Summary */}
             <View style={s.rightCol}>
-              <SetupSummary onboarding={onboarding} receipts={receipts} />
+              <SetupSummary
+                onboarding={onboarding}
+                receipts={receipts}
+                domainInput={domainInput}
+                mailboxInput={mailboxInput}
+              />
             </View>
           </View>
         </ScrollView>
@@ -387,7 +511,12 @@ function Step0ChooseProvider({ onSelect, loading }: { onSelect: (p: MailProvider
 }
 
 /* ─── Step 1A: Aspire/Polaris Domain ─── */
-function Step1APolaris({ domainMode, setDomainMode, domainInput, setDomainInput, mailboxInput, setMailboxInput, displayNameInput, setDisplayNameInput, onSave, loading }: any) {
+function Step1APolaris({
+  domainMode, setDomainMode, domainInput, setDomainInput, mailboxInput, setMailboxInput,
+  displayNameInput, setDisplayNameInput, onSave, loading, onboarding, dnsChecking, onCheckDns,
+  domainSearchQuery, setDomainSearchQuery, domainSearchResults, domainSearching, onSearchDomains,
+  selectedDomainResult, setSelectedDomainResult, onDomainPurchase, purchaseStatus, isOperator,
+}: any) {
   return (
     <View style={s.stepPanel}>
       <Text style={s.stepTitle}>Configure Domain & Mailbox</Text>
@@ -412,88 +541,292 @@ function Step1APolaris({ domainMode, setDomainMode, domainInput, setDomainInput,
       {domainMode === 'NEW_DOMAIN' && (
         <View style={s.approvalNotice}>
           <Ionicons name="shield-checkmark" size={16} color="#f59e0b" />
-          <Text style={s.approvalNoticeText}>Domain purchase is a red-tier action requiring approval before execution.</Text>
+          <Text style={s.approvalNoticeText}>
+            {isOperator
+              ? 'Domain purchase will be auto-approved. Explicit confirmation required.'
+              : 'Domain purchase is a red-tier action requiring approval before execution.'}
+          </Text>
         </View>
       )}
 
-      {/* Domain input */}
-      <View style={s.fieldGroup}>
-        <Text style={s.fieldLabel}>Domain</Text>
-        <View style={s.inputRow}>
-          <TextInput
-            style={s.textInput}
-            value={domainInput}
-            onChangeText={setDomainInput}
-            placeholder="yourbusiness.com"
-            placeholderTextColor={Colors.text.muted}
-          />
-        </View>
-      </View>
+      {domainMode === 'NEW_DOMAIN' ? (
+        <BuyDomainSection
+          searchQuery={domainSearchQuery}
+          setSearchQuery={setDomainSearchQuery}
+          results={domainSearchResults}
+          searching={domainSearching}
+          onSearch={onSearchDomains}
+          selected={selectedDomainResult}
+          setSelected={setSelectedDomainResult}
+          onPurchase={onDomainPurchase}
+          purchaseStatus={purchaseStatus}
+          loading={loading}
+          isOperator={isOperator}
+        />
+      ) : (
+        <>
+          {/* BYOD Domain input */}
+          <View style={s.fieldGroup}>
+            <Text style={s.fieldLabel}>Domain</Text>
+            <View style={s.inputRow}>
+              <TextInput
+                style={s.textInput}
+                value={domainInput}
+                onChangeText={setDomainInput}
+                placeholder="yourbusiness.com"
+                placeholderTextColor={Colors.text.muted}
+              />
+            </View>
+          </View>
 
-      {/* Mailbox input */}
+          <View style={s.fieldGroup}>
+            <Text style={s.fieldLabel}>Mailbox Address</Text>
+            <View style={s.inputRow}>
+              <TextInput
+                style={[s.textInput, { flex: 1 }]}
+                value={mailboxInput}
+                onChangeText={setMailboxInput}
+                placeholder="hello"
+                placeholderTextColor={Colors.text.muted}
+              />
+              <Text style={s.inputSuffix}>@{domainInput || 'domain.com'}</Text>
+            </View>
+          </View>
+
+          <View style={s.fieldGroup}>
+            <Text style={s.fieldLabel}>Display Name</Text>
+            <TextInput
+              style={s.textInput}
+              value={displayNameInput}
+              onChangeText={setDisplayNameInput}
+              placeholder="Business Email"
+              placeholderTextColor={Colors.text.muted}
+            />
+          </View>
+
+          {/* DNS Preview */}
+          {domainInput.trim() && onboarding.dnsPlan && (
+            <DnsPreview
+              records={onboarding.dnsPlan}
+              domain={domainInput}
+              dnsStatus={onboarding.dnsStatus}
+              onCheckDns={onCheckDns}
+              checking={dnsChecking}
+            />
+          )}
+
+          <Pressable
+            style={({ hovered }: any) => [s.primaryBtn, !domainInput.trim() && s.primaryBtnDisabled, hovered && domainInput.trim() && s.primaryBtnHover]}
+            onPress={onSave}
+            disabled={!domainInput.trim() || loading}
+          >
+            <Text style={s.primaryBtnText}>{loading ? 'Saving...' : 'Continue to Verification'}</Text>
+            <Ionicons name="arrow-forward" size={16} color="#fff" />
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+}
+
+/* ─── Buy Domain Section ─── */
+function BuyDomainSection({
+  searchQuery, setSearchQuery, results, searching, onSearch, selected, setSelected,
+  onPurchase, purchaseStatus, loading, isOperator,
+}: any) {
+  return (
+    <View>
+      {/* Search bar */}
       <View style={s.fieldGroup}>
-        <Text style={s.fieldLabel}>Mailbox Address</Text>
-        <View style={s.inputRow}>
+        <Text style={s.fieldLabel}>Search for a domain</Text>
+        <View style={s.searchRow}>
           <TextInput
             style={[s.textInput, { flex: 1 }]}
-            value={mailboxInput}
-            onChangeText={setMailboxInput}
-            placeholder="hello"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="brandname or brandname.com"
             placeholderTextColor={Colors.text.muted}
+            onSubmitEditing={onSearch}
           />
-          <Text style={s.inputSuffix}>@{domainInput || 'domain.com'}</Text>
+          <Pressable
+            style={({ hovered }: any) => [s.searchBtn, hovered && s.searchBtnHover]}
+            onPress={onSearch}
+            disabled={searching || !searchQuery.trim()}
+          >
+            {searching ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="search" size={16} color="#fff" />
+            )}
+            <Text style={s.searchBtnText}>{searching ? 'Searching...' : 'Search'}</Text>
+          </Pressable>
         </View>
       </View>
 
-      <View style={s.fieldGroup}>
-        <Text style={s.fieldLabel}>Display Name</Text>
-        <TextInput
-          style={s.textInput}
-          value={displayNameInput}
-          onChangeText={setDisplayNameInput}
-          placeholder="Business Email"
-          placeholderTextColor={Colors.text.muted}
-        />
-      </View>
-
-      {/* DNS Preview */}
-      {domainInput.trim() && (
-        <View style={s.dnsSection}>
-          <Text style={s.dnsSectionTitle}>DNS Records Required</Text>
-          <Text style={s.dnsNote}>Add these records to your DNS provider. Propagation may take up to 48 hours.</Text>
-          <View style={s.dnsTable}>
-            <View style={s.dnsHeaderRow}>
-              <Text style={[s.dnsHeaderCell, { flex: 0.6 }]}>Type</Text>
-              <Text style={[s.dnsHeaderCell, { flex: 1.5 }]}>Host</Text>
-              <Text style={[s.dnsHeaderCell, { flex: 2 }]}>Value</Text>
-              <Text style={[s.dnsHeaderCell, { flex: 0.4 }]}></Text>
-            </View>
-            {DNS_MOCK.map((rec, i) => (
-              <View key={i} style={[s.dnsRow, i % 2 === 0 && s.dnsRowAlt]}>
-                <View style={[{ flex: 0.6 }]}>
-                  <View style={s.dnsTypeBadge}>
-                    <Text style={s.dnsTypeBadgeText}>{rec.type}</Text>
+      {/* Results */}
+      {results.length > 0 && (
+        <View style={s.domainResults}>
+          <Text style={s.domainResultsTitle}>Available Domains</Text>
+          {results.map((r: DomainSearchResult, i: number) => (
+            <Pressable
+              key={r.domain}
+              style={({ hovered }: any) => [
+                s.domainResultRow,
+                selected?.domain === r.domain && s.domainResultSelected,
+                hovered && s.domainResultHover,
+                !r.available && s.domainResultUnavailable,
+              ]}
+              onPress={() => r.available && setSelected(r)}
+              disabled={!r.available}
+            >
+              <View style={s.domainResultLeft}>
+                <View style={[s.domainAvailDot, r.available ? s.dotAvailable : s.dotUnavailable]} />
+                <Text style={[s.domainResultName, !r.available && { color: Colors.text.muted }]}>{r.domain}</Text>
+                {i === 0 && r.available && (
+                  <View style={s.exactMatchBadge}>
+                    <Text style={s.exactMatchText}>Exact</Text>
                   </View>
-                </View>
-                <Text style={[s.dnsCell, { flex: 1.5 }]} numberOfLines={1}>{rec.host === '@' ? domainInput : `${rec.host}.${domainInput}`}</Text>
-                <Text style={[s.dnsCell, { flex: 2 }]} numberOfLines={1}>{rec.value}</Text>
-                <Pressable style={[{ flex: 0.4, alignItems: 'center' }]}>
-                  <Ionicons name="copy-outline" size={14} color={Colors.text.muted} />
-                </Pressable>
+                )}
               </View>
-            ))}
-          </View>
+              <View style={s.domainResultRight}>
+                {r.available ? (
+                  <>
+                    <Text style={s.domainPrice}>{r.price}/{r.currency === 'USD' ? 'yr' : r.currency}</Text>
+                    {selected?.domain === r.domain && (
+                      <Ionicons name="checkmark-circle" size={18} color="#3B82F6" />
+                    )}
+                  </>
+                ) : (
+                  <Text style={s.domainTaken}>Taken</Text>
+                )}
+              </View>
+            </Pressable>
+          ))}
         </View>
       )}
 
-      <Pressable
-        style={({ hovered }: any) => [s.primaryBtn, !domainInput.trim() && s.primaryBtnDisabled, hovered && domainInput.trim() && s.primaryBtnHover]}
-        onPress={onSave}
-        disabled={!domainInput.trim() || loading}
-      >
-        <Text style={s.primaryBtnText}>{loading ? 'Saving...' : 'Continue to Verification'}</Text>
-        <Ionicons name="arrow-forward" size={16} color="#fff" />
-      </Pressable>
+      {/* Purchase CTA */}
+      {selected && (
+        <View style={s.purchaseCTA}>
+          <View style={s.purchaseSummary}>
+            <Text style={s.purchaseDomain}>{selected.domain}</Text>
+            <Text style={s.purchasePrice}>{selected.price}/yr</Text>
+          </View>
+
+          {purchaseStatus === 'PENDING_APPROVAL' ? (
+            <View style={s.purchasePending}>
+              <Ionicons name="time-outline" size={18} color="#f59e0b" />
+              <Text style={s.purchasePendingText}>Purchase request submitted. Awaiting approval.</Text>
+            </View>
+          ) : purchaseStatus === 'PROCESSING' ? (
+            <View style={s.purchasePending}>
+              <ActivityIndicator size="small" color="#3B82F6" />
+              <Text style={[s.purchasePendingText, { color: '#3B82F6' }]}>Processing purchase...</Text>
+            </View>
+          ) : (
+            <Pressable
+              style={({ hovered }: any) => [s.primaryBtn, loading && s.primaryBtnDisabled, hovered && !loading && s.primaryBtnHover]}
+              onPress={() => onPurchase(selected.domain)}
+              disabled={loading}
+            >
+              <Ionicons name={isOperator ? 'card-outline' : 'document-text-outline'} size={16} color="#fff" />
+              <Text style={s.primaryBtnText}>
+                {isOperator ? 'Proceed to Checkout' : 'Request Purchase'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+/* ─── DNS Preview with Check ─── */
+function DnsPreview({ records, domain, dnsStatus, onCheckDns, checking }: {
+  records: DnsPlanRecord[];
+  domain: string;
+  dnsStatus?: { lastCheckedAt: string; results: DnsCheckResult[] };
+  onCheckDns: () => void;
+  checking: boolean;
+}) {
+  return (
+    <View style={s.dnsSection}>
+      <View style={s.dnsHeaderBar}>
+        <View>
+          <Text style={s.dnsSectionTitle}>DNS Records Required</Text>
+          <Text style={s.dnsNote}>Add these records to your DNS provider. Propagation may take up to 48 hours.</Text>
+        </View>
+        <Pressable
+          style={({ hovered }: any) => [s.dnsCheckBtn, hovered && s.dnsCheckBtnHover]}
+          onPress={onCheckDns}
+          disabled={checking}
+        >
+          {checking ? (
+            <ActivityIndicator size="small" color="#3B82F6" />
+          ) : (
+            <Ionicons name="refresh" size={14} color="#3B82F6" />
+          )}
+          <Text style={s.dnsCheckBtnText}>{checking ? 'Checking...' : 'Check DNS'}</Text>
+        </Pressable>
+      </View>
+
+      {dnsStatus?.lastCheckedAt && (
+        <Text style={s.dnsLastChecked}>
+          Last checked: {new Date(dnsStatus.lastCheckedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      )}
+
+      <View style={s.dnsTable}>
+        <View style={s.dnsHeaderRow}>
+          <Text style={[s.dnsHeaderCell, { flex: 0.6 }]}>Type</Text>
+          <Text style={[s.dnsHeaderCell, { flex: 1.5 }]}>Host</Text>
+          <Text style={[s.dnsHeaderCell, { flex: 2 }]}>Value</Text>
+          <Text style={[s.dnsHeaderCell, { flex: 0.6 }]}>Status</Text>
+        </View>
+        {records.map((rec, i) => {
+          const checkResult = dnsStatus?.results?.find(r => r.type === rec.type);
+          return (
+            <View key={i} style={[s.dnsRow, i % 2 === 0 && s.dnsRowAlt]}>
+              <View style={[{ flex: 0.6 }]}>
+                <View style={s.dnsTypeBadge}>
+                  <Text style={s.dnsTypeBadgeText}>{rec.type}</Text>
+                </View>
+              </View>
+              <Text style={[s.dnsCell, { flex: 1.5 }]} numberOfLines={1}>
+                {rec.host === '@' ? domain : `${rec.host}.${domain}`}
+              </Text>
+              <Text style={[s.dnsCell, { flex: 2 }]} numberOfLines={1}>{rec.value}</Text>
+              <View style={[{ flex: 0.6, alignItems: 'center' }]}>
+                {checkResult ? (
+                  <View style={[s.dnsStatusChip, checkResult.ok ? s.dnsStatusPass : s.dnsStatusFail]}>
+                    <Ionicons
+                      name={checkResult.ok ? 'checkmark' : 'close'}
+                      size={10}
+                      color={checkResult.ok ? '#22c55e' : '#ef4444'}
+                    />
+                    <Text style={[s.dnsStatusText, { color: checkResult.ok ? '#22c55e' : '#ef4444' }]}>
+                      {checkResult.ok ? 'PASS' : 'FAIL'}
+                    </Text>
+                  </View>
+                ) : (
+                  <Pressable style={{ padding: 4 }}>
+                    <Ionicons name="copy-outline" size={14} color={Colors.text.muted} />
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {dnsStatus?.results?.some(r => !r.ok) && (
+        <View style={s.dnsFailNote}>
+          <Ionicons name="information-circle" size={14} color="#f59e0b" />
+          <Text style={s.dnsFailNoteText}>
+            Some DNS records have not propagated yet. Update your DNS settings and check again.
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -511,7 +844,7 @@ function Step1BGoogle({ onConnect, loading, oauthStatus }: any) {
           <View style={{ flex: 1 }}>
             <Text style={s.oauthEmail}>{oauthStatus.connectedEmail}</Text>
             <Text style={s.oauthScopes}>
-              Scopes: {(oauthStatus.scopes || []).map((s: string) => s.replace('gmail.', '')).join(', ')}
+              Scopes: {(oauthStatus.scopes || []).map((sc: string) => sc.replace('gmail.', '')).join(', ')}
             </Text>
           </View>
           <View style={s.connectedBadge}>
@@ -544,12 +877,12 @@ function Step1BGoogle({ onConnect, loading, oauthStatus }: any) {
       </View>
 
       <Pressable
-        style={({ hovered }: any) => [s.googleBtn, hovered && s.googleBtnHover]}
+        style={({ hovered }: any) => [s.primaryBtn, hovered && s.primaryBtnHover]}
         onPress={onConnect}
         disabled={loading}
       >
         <Ionicons name="logo-google" size={18} color="#fff" />
-        <Text style={s.googleBtnText}>{loading ? 'Connecting...' : 'Connect Google Account'}</Text>
+        <Text style={s.primaryBtnText}>{loading ? 'Connecting...' : 'Connect Google Account'}</Text>
       </Pressable>
     </View>
   );
@@ -739,16 +1072,25 @@ function Step3Eli({ eli, onUpdate, onSave, onActivate, loading }: any) {
   );
 }
 
-/* ─── Setup Summary Panel ─── */
-function SetupSummary({ onboarding, receipts }: { onboarding: MailOnboardingState; receipts: MailSetupReceipt[] }) {
+/* ─── Setup Summary Panel (fixed: uses live draft inputs) ─── */
+function SetupSummary({ onboarding, receipts, domainInput, mailboxInput }: {
+  onboarding: MailOnboardingState;
+  receipts: MailSetupReceipt[];
+  domainInput: string;
+  mailboxInput: string;
+}) {
   const formatTime = (ts: string) => {
     const d = new Date(ts);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const formatAction = (action: string) => {
-    return action.replace(/^mail\./, '').replace(/\./g, ' › ').replace(/_/g, ' ');
+    return action.replace(/^mail\./, '').replace(/^domain\./, '').replace(/\./g, ' › ').replace(/_/g, ' ');
   };
+
+  const displayDomain = onboarding.domain || domainInput || null;
+  const displayMailbox = onboarding.mailboxes?.[0]?.email
+    || (domainInput && mailboxInput ? `${mailboxInput}@${domainInput}` : null);
 
   return (
     <View style={s.summaryPanel}>
@@ -774,8 +1116,8 @@ function SetupSummary({ onboarding, receipts }: { onboarding: MailOnboardingStat
 
       <View style={s.summarySection}>
         <Text style={s.summaryLabel}>Domain</Text>
-        <Text style={onboarding.domain ? s.summaryValue : s.summaryEmpty}>
-          {onboarding.domain || 'Not configured'}
+        <Text style={displayDomain ? s.summaryValue : s.summaryEmpty}>
+          {displayDomain || 'Not configured'}
         </Text>
       </View>
 
@@ -783,13 +1125,11 @@ function SetupSummary({ onboarding, receipts }: { onboarding: MailOnboardingStat
 
       <View style={s.summarySection}>
         <Text style={s.summaryLabel}>Mailbox</Text>
-        {onboarding.mailboxes?.length ? (
-          onboarding.mailboxes.map((mb, i) => (
-            <View key={i} style={s.mailboxRow}>
-              <Ionicons name="mail" size={13} color={Colors.accent.cyan} />
-              <Text style={s.summaryValue}>{mb.email}</Text>
-            </View>
-          ))
+        {displayMailbox ? (
+          <View style={s.mailboxRow}>
+            <Ionicons name="mail" size={13} color={Colors.accent.cyan} />
+            <Text style={s.summaryValue}>{displayMailbox}</Text>
+          </View>
         ) : (
           <Text style={s.summaryEmpty}>Not created</Text>
         )}
@@ -1160,21 +1500,197 @@ const s = StyleSheet.create({
     fontWeight: '500',
   },
 
+  searchRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  searchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    backgroundColor: '#2563EB',
+    borderRadius: 10,
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease-out' } : {}),
+  } as any,
+  searchBtnHover: {
+    backgroundColor: '#1d4ed8',
+  },
+  searchBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+  },
+
+  domainResults: {
+    marginBottom: 20,
+  },
+  domainResultsTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.text.secondary,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  domainResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    backgroundColor: Colors.background.tertiary,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border.subtle,
+    marginBottom: 6,
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease-out' } : {}),
+  } as any,
+  domainResultSelected: {
+    borderColor: '#3B82F6',
+    backgroundColor: 'rgba(59, 130, 246, 0.06)',
+  },
+  domainResultHover: {
+    borderColor: Colors.border.default,
+  },
+  domainResultUnavailable: {
+    opacity: 0.5,
+    ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : {}),
+  } as any,
+  domainResultLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  domainAvailDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  dotAvailable: {
+    backgroundColor: '#22c55e',
+  },
+  dotUnavailable: {
+    backgroundColor: '#ef4444',
+  },
+  domainResultName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text.primary,
+  },
+  exactMatchBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+  },
+  exactMatchText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#3B82F6',
+  },
+  domainResultRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  domainPrice: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#22c55e',
+  },
+  domainTaken: {
+    fontSize: 12,
+    color: Colors.text.muted,
+    fontStyle: 'italic',
+  },
+
+  purchaseCTA: {
+    backgroundColor: Colors.background.tertiary,
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    marginBottom: 20,
+  },
+  purchaseSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  purchaseDomain: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text.primary,
+  },
+  purchasePrice: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#22c55e',
+  },
+  purchasePending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    backgroundColor: 'rgba(245, 158, 11, 0.06)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  purchasePendingText: {
+    fontSize: 13,
+    color: '#f59e0b',
+    flex: 1,
+  },
+
   dnsSection: {
     marginTop: 8,
     marginBottom: 24,
+  },
+  dnsHeaderBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   dnsSectionTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: Colors.text.primary,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   dnsNote: {
     fontSize: 12,
     color: Colors.text.muted,
-    marginBottom: 12,
     lineHeight: 18,
+  },
+  dnsCheckBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.15)',
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease-out' } : {}),
+  } as any,
+  dnsCheckBtnHover: {
+    backgroundColor: 'rgba(59, 130, 246, 0.14)',
+  },
+  dnsCheckBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  dnsLastChecked: {
+    fontSize: 11,
+    color: Colors.text.muted,
+    marginBottom: 8,
   },
   dnsTable: {
     backgroundColor: Colors.background.tertiary,
@@ -1224,6 +1740,40 @@ const s = StyleSheet.create({
     color: Colors.text.secondary,
     fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
   },
+  dnsStatusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  dnsStatusPass: {
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+  },
+  dnsStatusFail: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  dnsStatusText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  dnsFailNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.06)',
+    borderRadius: 8,
+  },
+  dnsFailNoteText: {
+    fontSize: 12,
+    color: '#f59e0b',
+    flex: 1,
+    lineHeight: 18,
+  },
 
   primaryBtn: {
     flexDirection: 'row',
@@ -1266,27 +1816,6 @@ const s = StyleSheet.create({
     fontSize: 14,
     color: Colors.text.muted,
     fontWeight: '500',
-  },
-
-  googleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#EA4335',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease-out', cursor: 'pointer', boxShadow: '0 4px 16px rgba(234, 67, 53, 0.25)' } : {}),
-  } as any,
-  googleBtnHover: {
-    backgroundColor: '#d33426',
-    ...(Platform.OS === 'web' ? { transform: 'translateY(-1px)' } : {}),
-  } as any,
-  googleBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
   },
 
   oauthFeatures: {

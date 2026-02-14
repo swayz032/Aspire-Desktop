@@ -626,13 +626,17 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
 const mailOnboardingStore: Record<string, any> = {};
 const mailAccountsStore: Record<string, any[]> = {};
 const mailReceiptsStore: Record<string, any[]> = {};
+const mailJobsStore: Record<string, any> = {};
+const domainSearchCache: Record<string, any[]> = {};
+
+const generateJobId = () => `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 function getMailReceipts(userId: string) {
   if (!mailReceiptsStore[userId]) mailReceiptsStore[userId] = [];
   return mailReceiptsStore[userId];
 }
 
-function addMailReceipt(userId: string, action: string, status: string, detail?: string) {
+function addMailReceipt(userId: string, action: string, status: string, detail?: string, jobId?: string) {
   const receipts = getMailReceipts(userId);
   receipts.unshift({
     id: `mr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -640,8 +644,19 @@ function addMailReceipt(userId: string, action: string, status: string, detail?:
     timestamp: new Date().toISOString(),
     status,
     detail: detail || undefined,
+    jobId: jobId || undefined,
   });
   if (receipts.length > 20) receipts.length = 20;
+}
+
+function getMailReceiptsByJobId(jobId: string) {
+  const all: any[] = [];
+  for (const userId of Object.keys(mailReceiptsStore)) {
+    for (const r of mailReceiptsStore[userId]) {
+      if (r.jobId === jobId) all.push(r);
+    }
+  }
+  return all;
 }
 
 router.get('/api/mail/accounts', (req: Request, res: Response) => {
@@ -733,6 +748,267 @@ router.get('/api/mail/receipts', (req: Request, res: Response) => {
   const userId = getParam(req.query.userId as string || '');
   const receipts = getMailReceipts(userId);
   res.json({ receipts: receipts.slice(0, 5) });
+});
+
+// ─── /v1/* Mail Onboarding API ───
+
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function generateMockDnsPlan(domain: string, mailbox: string) {
+  return [
+    { type: 'MX', host: domain, value: `mail.${domain}`, ttl: 3600 },
+    { type: 'SPF', host: domain, value: `v=spf1 include:_spf.${domain} ~all`, ttl: 3600 },
+    { type: 'DKIM', host: `default._domainkey.${domain}`, value: `v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG...mock`, ttl: 3600 },
+    { type: 'DMARC', host: `_dmarc.${domain}`, value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}`, ttl: 3600 },
+  ];
+}
+
+router.get('/v1/inbox/accounts', (req: Request, res: Response) => {
+  const userId = getParam(req.query.userId as string || '');
+  const accounts = mailAccountsStore[userId] || [];
+  res.json({ accounts });
+});
+
+router.post('/v1/mail/onboarding/start', (req: Request, res: Response) => {
+  const { userId, provider, context } = req.body;
+  if (!userId || !provider) {
+    return res.status(400).json({ error: 'userId and provider are required' });
+  }
+  const jobId = generateJobId();
+  const job = {
+    jobId,
+    userId,
+    provider,
+    status: 'SETUP_REQUIRED',
+    domain: null,
+    mailbox: null,
+    dnsPlan: null,
+    dnsStatus: null,
+    oauthStatus: null,
+    checks: [],
+    eli: null,
+    domainMode: null,
+    domainPurchase: null,
+    createdAt: new Date().toISOString(),
+    context: context || null,
+  };
+  mailJobsStore[jobId] = job;
+  addMailReceipt(userId, 'mail.onboarding.started', 'success', `Provider: ${provider}`, jobId);
+  res.json(job);
+});
+
+router.get('/v1/mail/onboarding/:jobId', (req: Request, res: Response) => {
+  const jobId = getParam(req.params.jobId);
+  const job = mailJobsStore[jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(job);
+});
+
+router.post('/v1/mail/onboarding/:jobId/dns/plan', (req: Request, res: Response) => {
+  const jobId = getParam(req.params.jobId);
+  const job = mailJobsStore[jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const { domain, mailbox, displayName, domainMode } = req.body;
+  const dnsPlan = generateMockDnsPlan(domain, mailbox);
+
+  job.domain = domain;
+  job.mailbox = mailbox;
+  job.displayName = displayName;
+  job.domainMode = domainMode;
+  job.dnsPlan = dnsPlan;
+
+  addMailReceipt(job.userId, 'mail.domain.dns_plan.generated', 'success', `Domain: ${domain}`, jobId);
+  res.json({ dnsPlan, domain, mailbox });
+});
+
+router.post('/v1/mail/onboarding/:jobId/dns/check', (req: Request, res: Response) => {
+  const jobId = getParam(req.params.jobId);
+  const job = mailJobsStore[jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const plan = job.dnsPlan || [];
+  const results = plan.map((record: any) => ({
+    type: record.type,
+    ok: record.type !== 'DKIM',
+    observed: record.type === 'DKIM' ? 'NOT_FOUND' : record.value,
+  }));
+
+  const dnsStatus = { lastCheckedAt: new Date().toISOString(), results };
+  job.dnsStatus = dnsStatus;
+
+  addMailReceipt(job.userId, 'mail.domain.dns.checked', 'success', `Checked ${results.length} records`, jobId);
+  res.json({ dnsStatus });
+});
+
+router.get('/v1/domains/search', (req: Request, res: Response) => {
+  const query = (req.query.q as string || '').trim().toLowerCase();
+  if (!query) return res.status(400).json({ error: 'q parameter required' });
+
+  if (domainSearchCache[query]) {
+    return res.json({ query, results: domainSearchCache[query] });
+  }
+
+  const h = hashCode(query);
+  const tlds = ['.com', '.io', '.co', '.dev', '.app'];
+  const prices = ['$12.99/yr', '$29.99/yr', '$19.99/yr', '$14.99/yr', '$49.99/yr'];
+  const baseName = query.includes('.') ? query.split('.')[0] : query;
+
+  const results: any[] = [];
+
+  if (query.includes('.')) {
+    results.push({
+      domain: query,
+      available: (h % 10) < 7,
+      price: prices[h % prices.length],
+      currency: 'USD',
+      tld: '.' + query.split('.').pop(),
+    });
+  }
+
+  for (let i = 0; i < tlds.length; i++) {
+    const dom = baseName + tlds[i];
+    if (dom === query) continue;
+    const domHash = hashCode(dom);
+    results.push({
+      domain: dom,
+      available: (domHash % 10) < 7,
+      price: prices[i],
+      currency: 'USD',
+      tld: tlds[i],
+    });
+  }
+
+  domainSearchCache[query] = results;
+  res.json({ query, results });
+});
+
+router.post('/v1/domains/purchase/request', (req: Request, res: Response) => {
+  const { jobId, domain } = req.body;
+  if (!jobId || !domain) return res.status(400).json({ error: 'jobId and domain required' });
+  const job = mailJobsStore[jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  job.domainPurchase = {
+    domain,
+    status: 'PENDING_APPROVAL',
+    requestedAt: new Date().toISOString(),
+  };
+
+  addMailReceipt(job.userId, 'domain.purchase.requested', 'pending', `Domain: ${domain}`, jobId);
+  res.json({ status: 'PENDING_APPROVAL', message: 'Purchase request submitted for approval' });
+});
+
+router.post('/v1/domains/checkout/start', (req: Request, res: Response) => {
+  const { jobId, domain } = req.body;
+  if (!jobId || !domain) return res.status(400).json({ error: 'jobId and domain required' });
+  const job = mailJobsStore[jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const orderId = `ord-${Date.now()}`;
+  job.domainPurchase = {
+    domain,
+    status: 'CHECKOUT_STARTED',
+    checkoutUrl: null,
+    orderId,
+  };
+
+  job.domain = domain;
+  job.domainPurchase.status = 'COMPLETED';
+
+  const dnsPlan = generateMockDnsPlan(domain, job.mailbox || 'hello');
+  job.dnsPlan = dnsPlan;
+
+  addMailReceipt(job.userId, 'domain.purchase.approved', 'success', `Domain: ${domain}`, jobId);
+  addMailReceipt(job.userId, 'domain.purchase.executed', 'success', `Order: ${orderId}`, jobId);
+  res.json({ status: 'COMPLETED', orderId, domain, dnsPlan });
+});
+
+router.get('/v1/mail/oauth/google/start', (req: Request, res: Response) => {
+  const jobId = req.query.jobId as string;
+  if (!jobId) return res.status(400).json({ error: 'jobId required' });
+  const job = mailJobsStore[jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const scopes = ['https://mail.google.com/', 'https://www.googleapis.com/auth/gmail.modify'];
+  job.oauthStatus = { connectedEmail: 'user@workspace.google.com', scopes };
+
+  addMailReceipt(job.userId, 'mail.oauth.google.connected', 'success', 'Google Workspace connected', jobId);
+  res.json({ redirectUrl: null, connected: true, email: 'user@workspace.google.com', scopes });
+});
+
+router.post('/v1/mail/onboarding/:jobId/checks/run', (req: Request, res: Response) => {
+  const jobId = getParam(req.params.jobId);
+  const job = mailJobsStore[jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const checksToRun: string[] = req.body.checks || ['LIST', 'DRAFT', 'SEND_TEST', 'LABEL'];
+
+  const results = checksToRun.map((id: string) => {
+    const pass = id !== 'SEND_TEST';
+    const status = pass ? 'PASS' : 'NOT_RUN';
+    const message = pass
+      ? `${id} check passed (mocked)`
+      : `${id} requires manual trigger`;
+
+    addMailReceipt(job.userId, `mail.check.${id.toLowerCase()}`, pass ? 'success' : 'pending', message, jobId);
+    return { id, status, message };
+  });
+
+  job.checks = results;
+  res.json({ checks: results });
+});
+
+router.post('/v1/mail/eli/policy/apply', (req: Request, res: Response) => {
+  const { jobId, policy } = req.body;
+  if (!jobId || !policy) return res.status(400).json({ error: 'jobId and policy required' });
+  const job = mailJobsStore[jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  job.eli = { ...policy };
+  addMailReceipt(job.userId, 'mail.eli.policy.applied', 'success', `Draft: ${policy.canDraft}, Send: ${policy.canSend}`, jobId);
+  res.json({ eli: job.eli });
+});
+
+router.post('/v1/mail/onboarding/:jobId/activate', (req: Request, res: Response) => {
+  const jobId = getParam(req.params.jobId);
+  const job = mailJobsStore[jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const account = {
+    id: `ma-${Date.now()}`,
+    provider: job.provider || 'POLARIS',
+    email: job.mailbox ? `${job.mailbox}@${job.domain}` : 'hello@yourbusiness.com',
+    displayName: job.displayName || 'Business Email',
+    status: 'ACTIVE',
+    capabilities: {
+      canSend: true,
+      canDraft: true,
+      canLabels: job.provider === 'GOOGLE',
+      canJunk: true,
+      canThreads: true,
+    },
+  };
+
+  if (!mailAccountsStore[job.userId]) mailAccountsStore[job.userId] = [];
+  mailAccountsStore[job.userId].push(account);
+  addMailReceipt(job.userId, 'mail.mailbox.activated', 'success', `Activated: ${account.email}`, jobId);
+
+  job.status = 'COMPLETED';
+  res.json({ account });
+});
+
+router.get('/v1/receipts', (req: Request, res: Response) => {
+  const jobId = req.query.jobId as string;
+  if (!jobId) return res.status(400).json({ error: 'jobId required' });
+  const receipts = getMailReceiptsByJobId(jobId);
+  res.json({ receipts });
 });
 
 export default router;

@@ -31,6 +31,14 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
 - **Founder Hub**: Provides daily briefs, educational content, and notes.
 - **Bookings**: Service scheduling system integrated with financial tracking.
 - **Inbox**: Business email and message management.
+- **Mailbox Setup**:
+    - Refactored to `/v1/*` OpenAPI contract with `lib/mailApi.ts` adapter layer (13 functions).
+    - jobId-based resumable onboarding with sessionStorage persistence (wizard resumes from server after page refresh).
+    - Buy Domain flow: search bar, availability display, pricing, tenant Request Purchase vs operator Proceed to Checkout, purchase status tracking (PENDING_APPROVAL, PROCESSING, COMPLETED).
+    - Enhanced BYOD DNS flow with Check DNS button, per-record PASS/FAIL status, observed values display, lastChecked timestamp.
+    - Setup Summary panel displays live draft inputs (domainInput, mailboxInput) before server commit.
+    - Server stub routes at `/v1/*` with in-memory stores, jobId-scoped receipts, deterministic domain search, mock DNS checks.
+    - Operator vs Tenant context via IS_OPERATOR flag.
 - **Plaid Compliance Patch**: Implemented legal pages, clean public URLs, explicit consent, security practices disclosure, and gated Plaid connection.
 
 **System Design Choices:**

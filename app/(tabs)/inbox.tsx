@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatRelativeTime, formatMaskedPhone } from '@/lib/formatters';
 import { seedDatabase } from '@/lib/mockSeed';
+import { mailApi } from '@/lib/mailApi';
 import { getOfficeItems, getCalls, getMailThreads, getContacts } from '@/lib/mockDb';
 import { OfficeItem } from '@/types/inbox';
 import { CallItem } from '@/types/calls';
@@ -870,19 +871,13 @@ export default function InboxScreen() {
       (async () => {
         try {
           const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
-          const res = await fetch(`/api/mail/accounts?userId=${DEMO_USER_ID}`);
-          if (res.ok) {
-            const data = await res.json();
-            const accounts = data.accounts || [];
-            setMailAccounts(accounts);
-            const active = accounts.find((a: any) => a.status === 'ACTIVE');
-            if (active) {
-              setHasActiveMailbox(true);
-              setSelectedMailbox(active.id);
-            } else {
-              setHasActiveMailbox(false);
-              setShowMailSetupModal(true);
-            }
+          const data = await mailApi.getAccounts(DEMO_USER_ID);
+          const accounts = data.accounts || [];
+          setMailAccounts(accounts);
+          const active = accounts.find((a: any) => a.status === 'ACTIVE');
+          if (active) {
+            setHasActiveMailbox(true);
+            setSelectedMailbox(active.id);
           } else {
             setHasActiveMailbox(false);
             setShowMailSetupModal(true);
