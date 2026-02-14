@@ -190,15 +190,25 @@ function injectFinnCss() {
       animation-delay: -2s;
     }
     .finn-session-btn {
-      animation: finnLedBg 8s ease-in-out infinite;
+      animation: finnLedBg 8s ease-in-out infinite !important;
       animation-delay: -3s;
-      border: 1px solid rgba(167,139,250,0.3);
+      border: 1px solid rgba(167,139,250,0.3) !important;
       transition: transform 0.15s ease, filter 0.15s ease;
     }
     .finn-session-btn:hover {
       transform: scale(1.04);
       filter: brightness(1.2);
     }
+    .led-icon {
+      animation: finnLedIcon 8s ease-in-out infinite;
+      display: inline-flex;
+    }
+    .led-icon-d1 { animation-delay: -1s; }
+    .led-icon-d2 { animation-delay: -2s; }
+    .led-icon-d3 { animation-delay: -3s; }
+    .led-icon-d4 { animation-delay: -4s; }
+    .led-icon-d5 { animation-delay: -5s; }
+    .led-icon-d6 { animation-delay: -6s; }
   `;
   document.head.appendChild(style);
 }
@@ -219,12 +229,12 @@ function FinnOrbVideo() {
 
   if (Platform.OS !== 'web') {
     return (
-      <View style={{ width: 220, height: 220, borderRadius: 110, backgroundColor: '#222' }} />
+      <View style={{ width: 260, height: 260, borderRadius: 130, backgroundColor: '#222' }} />
     );
   }
 
   return (
-    <div style={{ width: 220, height: 220, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111', flexShrink: 0, position: 'relative' }}>
+    <div style={{ width: 260, height: 260, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111', flexShrink: 0, position: 'relative' }}>
       <video
         ref={videoRef as any}
         className="finn-orb-video"
@@ -236,13 +246,27 @@ function FinnOrbVideo() {
         preload="auto"
         controls={false}
         style={{
-          width: 330,
-          height: 330,
+          width: 390,
+          height: 390,
           objectFit: 'cover',
           display: 'block',
         }}
       />
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10, background: 'transparent', pointerEvents: 'none' }} />
+      <div style={{
+        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10,
+        borderRadius: '50%',
+        pointerEvents: 'none',
+        background: 'radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 35%, transparent 65%), radial-gradient(ellipse at 70% 80%, rgba(255,255,255,0.04) 0%, transparent 50%)',
+        boxShadow: 'inset 0 -8px 20px rgba(0,0,0,0.25), inset 0 4px 12px rgba(255,255,255,0.08)',
+      }} />
+      <div style={{
+        position: 'absolute', top: '8%', left: '15%', width: '40%', height: '22%', zIndex: 11,
+        borderRadius: '50%',
+        pointerEvents: 'none',
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 100%)',
+        filter: 'blur(4px)',
+        transform: 'rotate(-15deg)',
+      }} />
     </div>
   );
 }
@@ -419,10 +443,16 @@ function EnterpriseIcon({ type, color, bgColor, size = 36 }: { type: string; col
   );
 }
 
-function SectionLabel({ icon, label, color = '#555' }: { icon: string; label: string; color?: string }) {
+function SectionLabel({ icon, label, color = '#555', ledDelay }: { icon: string; label: string; color?: string; ledDelay?: number }) {
   return (
     <View style={s.sectionLabel}>
-      <EnterpriseIcon type={icon} color={color} bgColor="transparent" size={16} />
+      {Platform.OS === 'web' ? (
+        <span className={`led-icon ${ledDelay != null ? `led-icon-d${ledDelay}` : ''}`}>
+          <EnterpriseIcon type={icon} color="currentColor" bgColor="transparent" size={16} />
+        </span>
+      ) : (
+        <EnterpriseIcon type={icon} color={color} bgColor="transparent" size={16} />
+      )}
       <Text style={[s.sectionLabelText, { color }]}>{label}</Text>
       <View style={s.sectionLabelLine} />
     </View>
@@ -524,6 +554,7 @@ class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode
 }
 
 function FinanceHubContent() {
+  React.useEffect(() => { if (Platform.OS === 'web') injectFinnCss(); }, []);
   const router = useRouter();
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
@@ -771,7 +802,7 @@ function FinanceHubContent() {
 
       {hasSnapshot && (
         <>
-        <SectionLabel icon="book" label="CHAPTERS" color="#999" />
+        <SectionLabel icon="book" label="CHAPTERS" color="#999" ledDelay={1} />
         <View style={[s.kpiRow, { marginBottom: 16 }]}>
           {[
             { label: 'Now', subtitle: 'Cash truth', value: formatShortCurrency(snapshot.chapters.now.cashAvailable), icon: 'wallet-outline', color: '#10B981', metricId: 'cash_available' },
@@ -794,7 +825,7 @@ function FinanceHubContent() {
         </>
       )}
 
-      <SectionLabel icon="wallet" label="YOUR POSITION" color="#999" />
+      <SectionLabel icon="wallet" label="YOUR POSITION" color="#999" ledDelay={2} />
 
       <View style={s.row}>
         <GlassCard style={[s.balanceCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.trendLine(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '50% auto' }]} tint={{ color: '#3B82F6', position: 'top-right' }}>
@@ -1002,7 +1033,7 @@ function FinanceHubContent() {
         </div>
       )}
 
-      <SectionLabel icon="pulse" label="QUICK PULSE" color="#999" />
+      <SectionLabel icon="pulse" label="QUICK PULSE" color="#999" ledDelay={3} />
 
       <View style={s.kpiRow}>
         {kpiCards.map((kpi, i) => {
@@ -1017,7 +1048,13 @@ function FinanceHubContent() {
           <GlassCard style={[s.kpiCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.barChart(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '40% auto', cursor: 'pointer' }]} tint={kpiTints[i]}>
             {i === 0 && <View style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', backgroundColor: '#3B82F6', borderRadius: 2 } as any} />}
             <View style={s.kpiTopRow}>
-              <EnterpriseIcon type={kpi.icon} color={kpi.up ? '#34D399' : '#F87171'} bgColor={kpi.up ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)'} size={34} />
+              {Platform.OS === 'web' ? (
+                <span className={`led-icon led-icon-d${(i % 6) + 1}`}>
+                  <EnterpriseIcon type={kpi.icon} color="currentColor" bgColor="rgba(255,255,255,0.06)" size={34} />
+                </span>
+              ) : (
+                <EnterpriseIcon type={kpi.icon} color={kpi.up ? '#34D399' : '#F87171'} bgColor={kpi.up ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)'} size={34} />
+              )}
               {hasSnapshot ? (
                 <View style={[s.kpiChangeBadge, { backgroundColor: kpi.up ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' }]}>
                   <Text style={[s.kpiChangeText, { color: kpi.color }]}>{kpi.change}</Text>
@@ -1037,7 +1074,7 @@ function FinanceHubContent() {
         })}
       </View>
 
-      <SectionLabel icon="flow" label="MONEY FLOW" color="#999" />
+      <SectionLabel icon="flow" label="MONEY FLOW" color="#999" ledDelay={4} />
 
       <View style={s.row}>
         <GlassCard style={[s.chartCard, { flex: 2 }]} tint={{ color: '#10B981', position: 'top-right' }}>
@@ -1095,7 +1132,7 @@ function FinanceHubContent() {
         </GlassCard>
 
         <View style={{ flex: 1, gap: 0 }}>
-          <SectionLabel icon="pie" label="WHERE IT GOES" color="#999" />
+          <SectionLabel icon="pie" label="WHERE IT GOES" color="#999" ledDelay={5} />
           <GlassCard style={[s.chartCard, { marginBottom: 0 }]} tint={{ color: '#8b5cf6', position: 'bottom-right' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <EnterpriseIcon type="pie" color="#A78BFA" bgColor="rgba(139,92,246,0.18)" size={28} />
@@ -1174,7 +1211,7 @@ function FinanceHubContent() {
         </View>
       </View>
 
-      <SectionLabel icon="trend" label="THE TREND" color="#999" />
+      <SectionLabel icon="trend" label="THE TREND" color="#999" ledDelay={6} />
 
       <GlassCard style={s.chartCard} tint={{ color: '#3B82F6', position: 'top-left' }}>
         <View style={s.chartHeader}>
@@ -1228,7 +1265,7 @@ function FinanceHubContent() {
 
       {hasSnapshot && snapshot.chapters.reconcile.mismatchCount > 0 && (
         <>
-          <SectionLabel icon="git-compare" label="RECONCILIATION" color="#999" />
+          <SectionLabel icon="git-compare" label="RECONCILIATION" color="#999" ledDelay={1} />
           <View style={{ gap: 10, marginBottom: 4 }}>
             <View style={s.sectionHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1255,7 +1292,7 @@ function FinanceHubContent() {
 
       {isConnected && lifecycleSteps.length > 0 && lifecycleSteps.some((st: any) => st.status !== 'pending') && (
         <>
-          <SectionLabel icon="git-branch" label="MONEY LIFECYCLE" color="#999" />
+          <SectionLabel icon="git-branch" label="MONEY LIFECYCLE" color="#999" ledDelay={2} />
           <LifecycleChain
             steps={lifecycleSteps}
             title="Revenue Flow"
@@ -1274,7 +1311,7 @@ function FinanceHubContent() {
         </>
       )}
 
-      <SectionLabel icon="activity" label="PROPOSALS & RECENT ACTIVITY" color="#999" />
+      <SectionLabel icon="activity" label="PROPOSALS & RECENT ACTIVITY" color="#999" ledDelay={3} />
 
       <View style={s.row}>
         <View style={{ flex: 1, gap: 10 }}>
