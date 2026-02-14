@@ -116,6 +116,71 @@ const tintPositionMap: Record<string, string> = {
   'center': 'center',
 };
 
+let finnCssInjected = false;
+function injectFinnCss() {
+  if (finnCssInjected || Platform.OS !== 'web') return;
+  finnCssInjected = true;
+  const style = document.createElement('style');
+  style.textContent = `
+    video.finn-orb-video::-webkit-media-controls,
+    video.finn-orb-video::-webkit-media-controls-enclosure,
+    video.finn-orb-video::-webkit-media-controls-panel,
+    video.finn-orb-video::-webkit-media-controls-start-playback-button,
+    video.finn-orb-video::-webkit-media-controls-overlay-play-button {
+      display: none !important;
+      -webkit-appearance: none !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+    video.finn-orb-video::-moz-media-controls { display: none !important; }
+  `;
+  document.head.appendChild(style);
+}
+
+function FinnOrbVideo() {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    injectFinnCss();
+    const vid = videoRef.current;
+    if (vid) {
+      vid.muted = true;
+      vid.loop = true;
+      vid.playsInline = true;
+      vid.play().catch(() => {});
+    }
+  }, []);
+
+  if (Platform.OS !== 'web') {
+    return (
+      <View style={{ width: 160, height: 160, borderRadius: 80, backgroundColor: '#222' }} />
+    );
+  }
+
+  return (
+    <div style={{ width: 160, height: 160, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111', flexShrink: 0, position: 'relative' }}>
+      <video
+        ref={videoRef as any}
+        className="finn-orb-video"
+        src="/finn-orb-web.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        controls={false}
+        style={{
+          width: 240,
+          height: 240,
+          objectFit: 'cover',
+          display: 'block',
+        }}
+      />
+      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10, background: 'transparent', pointerEvents: 'none' }} />
+    </div>
+  );
+}
+
 function GlassCard({ children, style, onPress, hovered, tint, ...rest }: any) {
   if (Platform.OS !== 'web') {
     const Comp = onPress ? Pressable : View;
@@ -403,6 +468,8 @@ function FinanceHubContent() {
   const [lifecycleSteps, setLifecycleSteps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [explainMetric, setExplainMetric] = useState<string | null>(null);
+  const [finnChatOpen, setFinnChatOpen] = useState(false);
+  const [finnChatMessage, setFinnChatMessage] = useState('');
 
   const isConnected = connections?.summary?.connected ? connections.summary.connected > 0 : false;
   const hasSnapshot = snapshot?.connected && snapshot?.generatedAt;
@@ -431,45 +498,6 @@ function FinanceHubContent() {
     : fallbackProposals;
   const kpiSparkData = fallbackKpiSparkData;
 
-  const providerCards = hasSnapshot ? [
-    {
-      name: 'Plaid \u00B7 Cash Position',
-      sub: isConnected ? 'Connected' : 'Not connected',
-      icon: 'bank',
-      color: '#34D399',
-      bg: 'rgba(16,185,129,0.2)',
-      amount: formatShortCurrency(snapshot.chapters.now.bankBalance),
-      flow: null,
-      source: 'plaid' as const,
-    },
-    {
-      name: 'QuickBooks \u00B7 Cash Flow',
-      sub: isConnected ? 'Connected' : 'Not connected',
-      icon: 'ledger',
-      color: '#60A5FA',
-      bg: 'rgba(59,130,246,0.2)',
-      amount: null,
-      flow: {
-        inLabel: `+${formatShortCurrency(snapshot.chapters.month.revenue)} in`,
-        outLabel: `-${formatShortCurrency(snapshot.chapters.month.expenses)} out`,
-      },
-      source: 'qbo' as const,
-    },
-    {
-      name: 'Gusto \u00B7 Next Payroll',
-      sub: isConnected ? 'Scheduled' : 'Not connected',
-      icon: 'team',
-      color: '#A78BFA',
-      bg: 'rgba(139,92,246,0.2)',
-      amount: formatShortCurrency(snapshot.chapters.next.expectedOutflows7d),
-      flow: null,
-      source: 'gusto' as const,
-    },
-  ] : [
-    { name: 'Plaid \u00B7 Cash Position', sub: 'Not connected', icon: 'bank', color: '#34D399', bg: 'rgba(16,185,129,0.2)', amount: '\u2014', flow: null, source: 'plaid' as const },
-    { name: 'QuickBooks \u00B7 Cash Flow', sub: 'Not connected', icon: 'ledger', color: '#60A5FA', bg: 'rgba(59,130,246,0.2)', amount: '\u2014', flow: null, source: 'qbo' as const },
-    { name: 'Gusto \u00B7 Next Payroll', sub: 'Not connected', icon: 'team', color: '#A78BFA', bg: 'rgba(139,92,246,0.2)', amount: '\u2014', flow: null, source: 'gusto' as const },
-  ];
 
   const kpiCards = hasSnapshot ? [
     { label: 'Balance', value: formatShortCurrency(snapshot.chapters.now.cashAvailable), change: '+3.2%', up: true, icon: 'wallet', sparkKey: 'balance' as const, color: '#10B981', metricId: 'cash_available' },
@@ -482,13 +510,6 @@ function FinanceHubContent() {
     { label: 'Savings', value: '\u2014', change: '\u2014', up: true, icon: 'shield', sparkKey: 'savings' as const, color: '#666', metricId: 'stripe_available' },
     { label: 'Expenses', value: '\u2014', change: '\u2014', up: false, icon: 'receipt', sparkKey: 'expenses' as const, color: '#666', metricId: 'monthly_expenses' },
   ];
-
-  const getProviderStaleness = (provider: string) => {
-    if (!snapshot?.staleness?.[provider]) return { confidence: 'none' as const, lastSyncAt: null };
-    const s = snapshot.staleness[provider];
-    const confidence = s.status === 'fresh' ? 'high' : s.status === 'stale' ? 'medium' : s.status === 'very_stale' ? 'low' : 'none';
-    return { confidence: confidence as 'high' | 'medium' | 'low' | 'none', lastSyncAt: s.lastSyncAt || null };
-  };
 
   const balanceValue = hasSnapshot ? formatCurrency(snapshot.chapters.now.cashAvailable) : '\u2014';
   const checkingValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.bankBalance) : '\u2014';
@@ -600,6 +621,27 @@ function FinanceHubContent() {
         .pie-chart-animated .recharts-layer.recharts-pie-sector path:hover {
           filter: brightness(1.25);
           transform: scale(1.04);
+        }
+        @keyframes finnAmbientGlow {
+          0%, 100% { box-shadow: 0 0 16px rgba(139,92,246,0.25), 0 0 32px rgba(139,92,246,0.1); }
+          50% { box-shadow: 0 0 20px rgba(139,92,246,0.4), 0 0 44px rgba(139,92,246,0.15), 0 0 60px rgba(99,102,241,0.08); }
+        }
+        .finn-session-btn {
+          animation: finnAmbientGlow 3s ease-in-out infinite;
+          background: linear-gradient(135deg, rgba(139,92,246,0.35) 0%, rgba(99,102,241,0.3) 50%, rgba(139,92,246,0.35) 100%);
+          border: 1px solid rgba(139,92,246,0.4);
+          transition: all 0.2s ease;
+        }
+        .finn-session-btn:hover {
+          background: linear-gradient(135deg, rgba(139,92,246,0.5) 0%, rgba(99,102,241,0.45) 50%, rgba(139,92,246,0.5) 100%);
+          border-color: rgba(139,92,246,0.6);
+        }
+        @keyframes finnChatSlideIn {
+          0% { opacity: 0; transform: translateY(12px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .finn-chat-drawer {
+          animation: finnChatSlideIn 0.25s ease-out both;
         }
       `;
       document.head.appendChild(styleEl);
@@ -768,35 +810,111 @@ function FinanceHubContent() {
           )}
         </GlassCard>
 
-        <View style={s.providerStack}>
-          {providerCards.map((prov, i) => {
-            const staleness = getProviderStaleness(prov.source);
-            return (
-            <GlassCard key={i} style={s.providerCard} tint={{ color: prov.color, position: 'top-right' }}>
-              <View style={s.providerRow}>
-                <EnterpriseIcon type={prov.icon} color={prov.color} bgColor={prov.bg} size={38} />
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={s.providerName}>{prov.name}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                    <SourceBadge source={prov.source} lastSyncAt={staleness.lastSyncAt} confidence={staleness.confidence} compact />
-                  </View>
-                </View>
-                {prov.amount ? (
-                  <Text style={s.providerAmount}>{prov.amount}</Text>
-                ) : prov.flow ? (
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[s.flowSmall, { color: '#10B981' }]}>{prov.flow.inLabel}</Text>
-                    <Text style={[s.flowSmall, { color: '#ef4444' }]}>{prov.flow.outLabel}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </GlassCard>
-            );
-          })}
-        </View>
+        <GlassCard style={[s.finnCard]} tint={{ color: '#8B5CF6', position: 'top-right' }}>
+          <View style={s.finnCardHeader}>
+            <View>
+              <Text style={s.finnTitle}>Finn</Text>
+              <Text style={s.finnSubtitle}>Finance Hub Manager</Text>
+            </View>
+            <View style={s.finnActions}>
+              {Platform.OS === 'web' && (
+                <Pressable
+                  onPress={() => setFinnChatOpen(!finnChatOpen)}
+                  style={({ hovered }: any) => [s.finnChatBtn, hovered && s.finnChatBtnHover]}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={16} color="#A78BFA" />
+                </Pressable>
+              )}
+              {Platform.OS === 'web' && (
+                <div
+                  className="finn-session-btn"
+                  onClick={() => router.push('/finance-hub/finn' as any)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingLeft: 14,
+                    paddingRight: 14,
+                    paddingTop: 9,
+                    paddingBottom: 9,
+                    borderRadius: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Ionicons name="mic" size={14} color="#fff" />
+                  <Text style={s.finnSessionBtnText}>Start Session</Text>
+                </div>
+              )}
+            </View>
+          </View>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 180, marginTop: 8 }}>
+            {Platform.OS === 'web' && <FinnOrbVideo />}
+          </View>
+        </GlassCard>
       </View>
+
+      {finnChatOpen && Platform.OS === 'web' && (
+        <div className="finn-chat-drawer" style={{
+          marginBottom: 16,
+          marginTop: -4,
+          borderRadius: 16,
+          border: '1px solid rgba(139,92,246,0.2)',
+          background: 'rgba(20,20,28,0.85)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          overflow: 'hidden',
+        }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="chatbubble-ellipses" size={16} color="#A78BFA" />
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Message Finn</Text>
+            </View>
+            <Pressable onPress={() => setFinnChatOpen(false)} style={{ padding: 4 }}>
+              <Ionicons name="close" size={16} color="#666" />
+            </Pressable>
+          </View>
+          <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 16, minHeight: 80, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}>
+              <Text style={{ color: '#888', fontSize: 13, fontStyle: 'italic' }}>Finn will respond in your next voice session, or you can type a message below.</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingBottom: 16 }}>
+            <Pressable style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="attach" size={18} color="#888" />
+            </Pressable>
+            {Platform.OS === 'web' && (
+              <div style={{ flex: 1, display: 'flex' }}>
+                <input
+                  type="text"
+                  value={finnChatMessage}
+                  onChange={(e: any) => setFinnChatMessage(e.target.value)}
+                  placeholder="Ask Finn about your finances..."
+                  style={{
+                    flex: 1,
+                    height: 38,
+                    borderRadius: 10,
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: '#fff',
+                    fontSize: 13,
+                    paddingLeft: 14,
+                    paddingRight: 14,
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+            )}
+            <Pressable
+              onPress={() => { if (finnChatMessage.trim()) { setFinnChatMessage(''); } }}
+              style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: finnChatMessage.trim() ? 'rgba(139,92,246,0.4)' : 'rgba(139,92,246,0.25)', borderWidth: 1, borderColor: 'rgba(139,92,246,0.35)', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="send" size={16} color={finnChatMessage.trim() ? '#C4B5FD' : '#A78BFA'} />
+            </Pressable>
+          </View>
+        </div>
+      )}
 
       <SectionLabel icon="pulse" label="QUICK PULSE" color="#999" />
 
@@ -1276,7 +1394,7 @@ const s = StyleSheet.create({
   },
 
   balanceCard: {
-    flex: 2,
+    flex: 1,
     padding: 24,
   },
   balanceHeader: {
@@ -1344,18 +1462,79 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
 
-  providerStack: {
+  finnCard: {
     flex: 1,
-    gap: 8,
+    padding: 20,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  providerCard: {
-    padding: 16,
-    flex: 1,
+  finnCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    zIndex: 2,
   },
-  providerRow: {
+  finnTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  finnSubtitle: {
+    color: '#A78BFA',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+    letterSpacing: 0.3,
+  },
+  finnActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+  },
+  finnChatBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(139,92,246,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  finnChatBtnHover: {
+    backgroundColor: 'rgba(139,92,246,0.22)',
+    borderColor: 'rgba(139,92,246,0.4)',
+  },
+  finnSessionBtn: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  finnSessionBtnHover: {
+    opacity: 0.9,
+  },
+  finnSessionBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: 'rgba(139,92,246,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.35)',
+  },
+  finnSessionBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  finnVideoContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
   },
   providerName: {
     color: '#f0f0f0',
