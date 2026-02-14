@@ -60,7 +60,6 @@ const navItems: NavItem[] = [
   },
   { id: 'connections', label: 'Connections', icon: 'link-outline', iconActive: 'link', route: '/finance-hub/connections' },
   { id: 'receipts', label: 'Receipts', icon: 'receipt-outline', iconActive: 'receipt', route: '/finance-hub/receipts' },
-  { id: 'finn', label: 'Finn', icon: 'sparkles-outline', iconActive: 'sparkles', route: '/finance-hub/finn' },
 ];
 
 const SIDEBAR_EXPANDED = 240;

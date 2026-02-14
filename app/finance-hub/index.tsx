@@ -133,6 +133,72 @@ function injectFinnCss() {
       pointer-events: none !important;
     }
     video.finn-orb-video::-moz-media-controls { display: none !important; }
+
+    @keyframes finnLedText {
+      0%   { color: #A78BFA; }
+      16%  { color: #60A5FA; }
+      33%  { color: #34D399; }
+      50%  { color: #818CF8; }
+      66%  { color: #F472B6; }
+      83%  { color: #C084FC; }
+      100% { color: #A78BFA; }
+    }
+    @keyframes finnLedBorder {
+      0%   { border-color: rgba(167,139,250,0.35); box-shadow: 0 0 8px rgba(167,139,250,0.15); }
+      16%  { border-color: rgba(96,165,250,0.4); box-shadow: 0 0 8px rgba(96,165,250,0.18); }
+      33%  { border-color: rgba(52,211,153,0.4); box-shadow: 0 0 8px rgba(52,211,153,0.18); }
+      50%  { border-color: rgba(129,140,248,0.4); box-shadow: 0 0 8px rgba(129,140,248,0.18); }
+      66%  { border-color: rgba(244,114,182,0.4); box-shadow: 0 0 8px rgba(244,114,182,0.18); }
+      83%  { border-color: rgba(192,132,252,0.4); box-shadow: 0 0 8px rgba(192,132,252,0.18); }
+      100% { border-color: rgba(167,139,250,0.35); box-shadow: 0 0 8px rgba(167,139,250,0.15); }
+    }
+    @keyframes finnLedBg {
+      0%   { background: rgba(167,139,250,0.18); border-color: rgba(167,139,250,0.3); box-shadow: 0 0 12px rgba(167,139,250,0.12); }
+      16%  { background: rgba(96,165,250,0.18); border-color: rgba(96,165,250,0.35); box-shadow: 0 0 12px rgba(96,165,250,0.15); }
+      33%  { background: rgba(52,211,153,0.18); border-color: rgba(52,211,153,0.35); box-shadow: 0 0 12px rgba(52,211,153,0.15); }
+      50%  { background: rgba(129,140,248,0.18); border-color: rgba(129,140,248,0.35); box-shadow: 0 0 12px rgba(129,140,248,0.15); }
+      66%  { background: rgba(244,114,182,0.18); border-color: rgba(244,114,182,0.35); box-shadow: 0 0 12px rgba(244,114,182,0.15); }
+      83%  { background: rgba(192,132,252,0.18); border-color: rgba(192,132,252,0.35); box-shadow: 0 0 12px rgba(192,132,252,0.15); }
+      100% { background: rgba(167,139,250,0.18); border-color: rgba(167,139,250,0.3); box-shadow: 0 0 12px rgba(167,139,250,0.12); }
+    }
+    @keyframes finnLedIcon {
+      0%   { color: #A78BFA; filter: drop-shadow(0 0 4px rgba(167,139,250,0.3)); }
+      16%  { color: #60A5FA; filter: drop-shadow(0 0 4px rgba(96,165,250,0.3)); }
+      33%  { color: #34D399; filter: drop-shadow(0 0 4px rgba(52,211,153,0.3)); }
+      50%  { color: #818CF8; filter: drop-shadow(0 0 4px rgba(129,140,248,0.3)); }
+      66%  { color: #F472B6; filter: drop-shadow(0 0 4px rgba(244,114,182,0.3)); }
+      83%  { color: #C084FC; filter: drop-shadow(0 0 4px rgba(192,132,252,0.3)); }
+      100% { color: #A78BFA; filter: drop-shadow(0 0 4px rgba(167,139,250,0.3)); }
+    }
+    .finn-led-title {
+      animation: finnLedText 8s ease-in-out infinite;
+    }
+    .finn-led-subtitle {
+      animation: finnLedText 8s ease-in-out infinite;
+      animation-delay: -1s;
+    }
+    .finn-chat-icon {
+      animation: finnLedBorder 8s ease-in-out infinite;
+      animation-delay: -2s;
+      transition: transform 0.15s ease;
+    }
+    .finn-chat-icon:hover {
+      transform: scale(1.08);
+    }
+    .finn-chat-icon .icon-inner {
+      animation: finnLedIcon 8s ease-in-out infinite;
+      animation-delay: -2s;
+    }
+    .finn-session-btn {
+      animation: finnLedBg 8s ease-in-out infinite;
+      animation-delay: -3s;
+      border: 1px solid rgba(167,139,250,0.3);
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+    .finn-session-btn:hover {
+      transform: scale(1.04);
+      filter: brightness(1.2);
+    }
   `;
   document.head.appendChild(style);
 }
@@ -813,17 +879,37 @@ function FinanceHubContent() {
         <GlassCard style={[s.finnCard]} tint={{ color: '#8B5CF6', position: 'top-right' }}>
           <View style={s.finnCardHeader}>
             <View>
-              <Text style={s.finnTitle}>Finn</Text>
-              <Text style={s.finnSubtitle}>Finance Hub Manager</Text>
+              {Platform.OS === 'web' ? (
+                <>
+                  <span className="finn-led-title" style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.3, display: 'block' }}>Finn</span>
+                  <span className="finn-led-subtitle" style={{ fontSize: 12, fontWeight: '500', marginTop: 2, letterSpacing: 0.3, display: 'block' }}>Finance Hub Manager</span>
+                </>
+              ) : (
+                <>
+                  <Text style={s.finnTitle}>Finn</Text>
+                  <Text style={s.finnSubtitle}>Finance Hub Manager</Text>
+                </>
+              )}
             </View>
             <View style={s.finnActions}>
               {Platform.OS === 'web' && (
-                <Pressable
-                  onPress={() => setFinnChatOpen(!finnChatOpen)}
-                  style={({ hovered }: any) => [s.finnChatBtn, hovered && s.finnChatBtnHover]}
+                <div
+                  className="finn-chat-icon"
+                  onClick={() => setFinnChatOpen(!finnChatOpen)}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    backgroundColor: 'rgba(139,92,246,0.12)',
+                    border: '1px solid rgba(139,92,246,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                  }}
                 >
-                  <Ionicons name="chatbubble-ellipses-outline" size={16} color="#A78BFA" />
-                </Pressable>
+                  <span className="icon-inner"><Ionicons name="chatbubble-ellipses-outline" size={16} color="currentColor" /></span>
+                </div>
               )}
               {Platform.OS === 'web' && (
                 <div
