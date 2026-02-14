@@ -1,0 +1,226 @@
+You are implementing the final production-grade “Mailbox Setup” + Inbox Mail gating in Aspire Desktop. This work must be aligned to Aspire_Mail_Domains_Integration_Handoff.zip as the source of truth (OpenAPI + state machine + receipts).
+
+PRIMARY GOAL
+- Inbox has a Mail tab that is gated until a mailbox is ACTIVE.
+- Add Inbox sidebar subpage “Mailbox Setup” at /inbox/setup.
+- Implement a resumable 4-step wizard that supports:
+  1) Aspire Business Email (BYOD existing domain)
+  2) Aspire Business Email (Buy new domain via ResellerClub checkout)
+  3) Google Workspace/Gmail OAuth connect
+  4) Verification checks
+  5) Optional Eli enable with policy gating for sending
+- Use the handoff OpenAPI /v1/* endpoints (or a strict adapter that maps UI to /v1/*). Do NOT invent a permanent parallel /api/mail contract.
+
+PROJECT FILES / SOURCE OF TRUTH
+- Aspire_Mail_Domains_Integration_Handoff.zip:
+  - openapi/mail_domains.openapi.yaml (API contract)
+  - docs/03_flows_byod_and_buy_domain.md (flow + states)
+  - docs/04_resellerclub_api.md (registrar integration details)
+  - docs/22_domain_rail_architecture.md (domain rail responsibilities)
+- Aspire Desktop repo:
+  - components/desktop/DesktopSidebar.tsx (sidebar nav + subitems)
+  - app/(tabs)/inbox.tsx (Inbox UI + Mail tab)
+  - app/session/calls.tsx (setup gating modal pattern to reuse)
+  - app/inbox/_layout.tsx (nested route support)
+  - app/inbox/setup.tsx (Mailbox Setup wizard to implement/refactor)
+
+NON-NEGOTIABLES
+- Fail closed: if mailbox is not ACTIVE, Mail tab must show gating modal + setup empty state.
+- Resumable: /inbox/setup must resume from server onboarding state after refresh.
+- No client-side secrets/tokens. OAuth + domain purchase are server-mediated.
+- Every state-changing action emits a receipt and has a correlation id.
+- Operator vs Tenant mode:
+  - Tenant: domain purchase is red-tier and requires approval before execution.
+  - Operator (team portal/admin): may auto-approve domain purchase ONLY if RBAC allows, but still must require explicit confirm and write approval+execution receipts.
+
+========================================
+A) SIDEBAR NAV: INBOX → MAILBOX SETUP
+========================================
+File: components/desktop/DesktopSidebar.tsx
+- Add subItem under Inbox:
+  - id: mailbox-setup
+  - label: Mailbox Setup
+  - route: /inbox/setup
+- Match styling and behavior used by Return Calls → Front Desk Setup.
+
+========================================
+B) INBOX MAIL TAB: GATING MODAL + MAILBOX SELECTOR
+========================================
+File: app/(tabs)/inbox.tsx
+
+1) Add mailbox selector row (visible only when activeTab === 'mail'):
+- Pill: “Mailbox: <email> ▾” with provider badge
+- Dropdown list of mail accounts from GET /v1/inbox/accounts
+- “Add mailbox…” action routes to /inbox/setup
+- Persist selected mailboxId in state (and storage if you already do that for tabs)
+
+2) Add gating modal (reuse the exact modal styling pattern from app/session/calls.tsx):
+- Trigger condition:
+  - activeTab === 'mail' AND no mailbox with status === ACTIVE
+- Modal contents:
+  - Title: “Set up your business mailbox”
+  - 3 bullets: “Connect Gmail”, “Provision Aspire mailbox”, “Enable Eli drafting”
+  - Primary CTA: “Set Up Mailbox” -> router.push('/inbox/setup')
+  - Secondary CTA: “Maybe later” -> dismiss modal only
+- When modal dismissed, still show setup-required empty state in the mail list area.
+
+3) Setup-required empty state in Mail list area:
+- Show when no ACTIVE mailbox:
+  - icon + title + short body + button “Set Up Mailbox” -> /inbox/setup
+- Do NOT attempt to render messages until ACTIVE mailbox exists.
+
+========================================
+C) MAILBOX SETUP WIZARD: /inbox/setup
+========================================
+File: app/inbox/setup.tsx (create or refactor)
+
+Design:
+- Two-column layout:
+  - Left: stepper + main card
+  - Right: Setup Summary panel (provider, domain, mailbox, status, recent receipts)
+
+Step 0 — Choose Provider
+- Two cards:
+  - “Aspire Business Email”
+  - “Google Workspace / Gmail”
+- On select -> call POST /v1/mail/onboarding/start (provider + context)
+- Persist returned jobId; store in state.
+
+Step 1 — Configure (branch by provider)
+
+(1A) Aspire Business Email
+- Two modes:
+  - Use Existing Domain (BYOD)
+  - Buy New Domain (ResellerClub)
+
+BYOD mode UI:
+- Domain input
+- Mailbox local-part input + preview @domain
+- Display name input
+- Button “Generate DNS Plan” -> server returns dns_plan
+- Render dns_plan table:
+  - rows: MX/SPF/DKIM/DMARC with Host/Value/TTL
+  - per-row copy buttons
+- Button “Continue to Verification”
+- DNS checks:
+  - Show lastChecked timestamp
+  - “Check DNS” -> POST /v1/mail/onboarding/{jobId}/dns/check
+  - Render per-record PASS/FAIL with observed value
+
+BUY NEW DOMAIN UI (REQUIRED; must implement)
+- Domain search bar:
+  - supports typing “brandname” or “brandname.com”
+  - on search -> GET /v1/domains/search?q=...
+- Results list:
+  - exact match availability + price
+  - suggested TLDs with prices
+- CTA:
+  - Tenant context: “Request Purchase” -> POST /v1/domains/purchase/request
+  - Operator context: “Proceed to Checkout” -> POST /v1/domains/checkout/start
+- If your registrar checkout uses PayPal (ResellerClub):
+  - redirect to checkout URL returned by server
+  - implement return handler:
+    - /inbox/setup?checkout=success&orderId=...
+  - server verifies orderId and updates onboarding state
+- After purchase success:
+  - server either auto-configures DNS or returns dns_plan
+  - UI proceeds to Verify step
+
+Receipts required in summary panel for Buy Domain:
+- domain.purchase.requested
+- domain.purchase.approved (tenant approval or operator auto-approval)
+- domain.purchase.executed OR domain.purchase.failed
+
+(1B) Google Workspace / Gmail OAuth
+- Button “Connect Google Account” using Aspire primary button styling (no red button)
+- OAuth is server mediated:
+  - GET /v1/mail/oauth/google/start -> returns redirect URL
+  - On callback, server stores tokens and updates onboarding job
+- UI polls GET /v1/mail/onboarding/{jobId} until oauthStatus === CONNECTED
+
+Step 2 — Verify
+- Checklist of checks:
+  - List messages
+  - Create draft
+  - Send test email (explicit user action, never automatic)
+  - Apply label / mark read
+- “Run All Checks” runs sequentially:
+  - POST /v1/mail/onboarding/{jobId}/checks/run
+- Render per-check status: NOT_RUN / RUNNING / PASS / FAIL
+- On FAIL:
+  - show inline error message + “Retry”
+  - “View receipt” link per check
+
+Step 3 — Enable Eli (Optional)
+- Toggle: “Eli can draft emails” (default ON)
+- Toggle: “Eli can send emails” (default OFF)
+- Enabling SEND must be policy-gated:
+  - show a confirmation panel with default safety:
+    - external recipients require approval (default ON)
+    - attachments always require approval (default ON)
+    - rate limit preset conservative (default)
+  - POST /v1/mail/eli/policy/apply
+  - If user not OWNER in tenant context: deny and show “Owner required” and write denial receipt.
+- Finish button: “Activate Mailbox”
+  - POST /v1/mail/onboarding/{jobId}/activate
+  - On success: show “Mailbox Active” success state with CTA “Go to Inbox → Mail” and “Add another mailbox”
+
+Setup Summary Panel (Right Column)
+- Always show:
+  - Provider badge
+  - Domain (draft value before saved, then server value)
+  - Mailbox (draft local-part + domain before saved, then server value)
+  - Status chip (SETUP_REQUIRED/VERIFYING/ACTIVE/ERROR)
+  - Recent receipts list (last 3–5 from GET /v1/receipts?jobId=...)
+- IMPORTANT: fix the bug where summary reads onboarding.domain while the form uses domainInput. The summary must reflect live draft inputs until server state is committed.
+
+========================================
+D) ADAPTER LAYER (IF NEEDED)
+========================================
+If the repo currently uses /api/mail/* endpoints, do NOT expand that contract.
+Instead:
+- Create lib/mailApi.ts that calls /v1/* routes.
+- Refactor UI to call only mailApi.* functions.
+- If backend is not available, create stub route handlers that exactly match /v1/* signatures and return deterministic mock data that follows the state machine.
+
+========================================
+E) OPERATOR VS TENANT CONTEXT
+========================================
+- Determine context from session/auth (e.g., isOperator flag).
+- Tenant:
+  - domain purchase requires approval before execution.
+- Operator:
+  - can auto-approve domain purchase if RBAC allows.
+  - still must require explicit confirm and produce receipts.
+
+========================================
+F) MANUAL ACCEPTANCE TESTS
+========================================
+1) Inbox → Mail with no ACTIVE mailbox:
+- gating modal appears
+- empty state shows
+- CTA routes to /inbox/setup
+
+2) /inbox/setup BYOD:
+- choose Aspire Business Email
+- enter domain + mailbox
+- dns_plan renders
+- verify checks run and show statuses
+- activation succeeds -> success screen
+- returning to Inbox → Mail shows mailbox selector and no gating modal
+
+3) /inbox/setup Buy Domain:
+- domain search shows availability + price
+- request/checkout path works (tenant vs operator)
+- after purchase, state resumes and proceeds to verify
+
+4) /inbox/setup Google:
+- connect flow updates oauthStatus to CONNECTED
+- checks run
+- activation succeeds
+- mailbox selector shows connected mailbox
+
+STYLE REQUIREMENTS
+- Keep existing Aspire theme/tokens. No global theme change.
+- Maintain premium spacing and consistent button styles.
+- Remove off-brand red primary CTAs (Google connect must be Aspire primary button with Google icon).
