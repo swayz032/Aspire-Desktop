@@ -146,23 +146,25 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
   if (Platform.OS !== 'web') return null;
 
   return (
-    <video
-      ref={videoRef as any}
-      className="ava-orb-video"
-      src="/ava-orb.mp4"
-      autoPlay
-      loop
-      muted
-      playsInline
-      controls={false}
-      style={{
-        width: size,
-        height: size,
-        objectFit: 'contain',
-        background: 'transparent',
-        pointerEvents: 'none',
-      }}
-    />
+    <div style={{ position: 'relative', width: size, height: size }}>
+      <video
+        ref={videoRef as any}
+        className="ava-orb-video"
+        src="/ava-orb.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        controls={false}
+        style={{
+          width: size,
+          height: size,
+          objectFit: 'contain',
+          background: 'transparent',
+        }}
+      />
+      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10, background: 'transparent' }} />
+    </div>
   );
 }
 

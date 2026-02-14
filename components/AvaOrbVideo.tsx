@@ -92,9 +92,9 @@ export function AvaOrbVideo({ state, size = 300 }: AvaOrbVideoProps) {
             height: size * 1.5,
             objectFit: 'cover',
             transform: `scale(${config.pulseScale})`,
-            pointerEvents: 'none',
           }}
         />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10, background: 'transparent' }} />
       </View>
 
     </View>
