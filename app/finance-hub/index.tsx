@@ -219,12 +219,12 @@ function FinnOrbVideo() {
 
   if (Platform.OS !== 'web') {
     return (
-      <View style={{ width: 160, height: 160, borderRadius: 80, backgroundColor: '#222' }} />
+      <View style={{ width: 220, height: 220, borderRadius: 110, backgroundColor: '#222' }} />
     );
   }
 
   return (
-    <div style={{ width: 160, height: 160, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111', flexShrink: 0, position: 'relative' }}>
+    <div style={{ width: 220, height: 220, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111', flexShrink: 0, position: 'relative' }}>
       <video
         ref={videoRef as any}
         className="finn-orb-video"
@@ -236,8 +236,8 @@ function FinnOrbVideo() {
         preload="auto"
         controls={false}
         style={{
-          width: 240,
-          height: 240,
+          width: 330,
+          height: 330,
           objectFit: 'cover',
           display: 'block',
         }}
