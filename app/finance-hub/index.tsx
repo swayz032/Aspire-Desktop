@@ -203,12 +203,35 @@ function injectFinnCss() {
       animation: finnLedIcon 8s ease-in-out infinite;
       display: inline-flex;
     }
+    .led-icon svg [stroke]:not([stroke="none"]) {
+      stroke: currentColor !important;
+    }
+    .led-icon svg [fill]:not([fill="none"]):not([fill=""]) {
+      fill: currentColor !important;
+    }
     .led-icon-d1 { animation-delay: -1s; }
     .led-icon-d2 { animation-delay: -2s; }
     .led-icon-d3 { animation-delay: -3s; }
     .led-icon-d4 { animation-delay: -4s; }
     .led-icon-d5 { animation-delay: -5s; }
     .led-icon-d6 { animation-delay: -6s; }
+    @keyframes finnPillGlow {
+      0%   { border-color: rgba(167,139,250,0.5); box-shadow: 0 0 12px rgba(167,139,250,0.25), 0 0 24px rgba(167,139,250,0.1); }
+      16%  { border-color: rgba(96,165,250,0.55); box-shadow: 0 0 12px rgba(96,165,250,0.3), 0 0 24px rgba(96,165,250,0.12); }
+      33%  { border-color: rgba(52,211,153,0.55); box-shadow: 0 0 12px rgba(52,211,153,0.3), 0 0 24px rgba(52,211,153,0.12); }
+      50%  { border-color: rgba(129,140,248,0.55); box-shadow: 0 0 12px rgba(129,140,248,0.3), 0 0 24px rgba(129,140,248,0.12); }
+      66%  { border-color: rgba(244,114,182,0.55); box-shadow: 0 0 12px rgba(244,114,182,0.3), 0 0 24px rgba(244,114,182,0.12); }
+      83%  { border-color: rgba(192,132,252,0.55); box-shadow: 0 0 12px rgba(192,132,252,0.3), 0 0 24px rgba(192,132,252,0.12); }
+      100% { border-color: rgba(167,139,250,0.5); box-shadow: 0 0 12px rgba(167,139,250,0.25), 0 0 24px rgba(167,139,250,0.1); }
+    }
+    .finn-pill {
+      animation: finnPillGlow 8s ease-in-out infinite;
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+    .finn-pill:hover {
+      transform: scale(1.04);
+      filter: brightness(1.15);
+    }
   `;
   document.head.appendChild(style);
 }
@@ -421,6 +444,28 @@ function EnterpriseIcon({ type, color, bgColor, size = 36 }: { type: string; col
       <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none">
         <rect x="3" y="4" width="18" height="16" rx="2" stroke={color} strokeWidth="1.8" fill="none" />
         <path d="M7 9h10M7 13h7M7 17h4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    book: (
+      <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none">
+        <path d="M4 19.5A2.5 2.5 0 016.5 17H20" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" stroke={color} strokeWidth="1.8" fill="none" />
+        <path d="M8 7h8M8 11h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    'git-compare': (
+      <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none">
+        <circle cx="6" cy="6" r="3" stroke={color} strokeWidth="1.8" fill="none" />
+        <circle cx="18" cy="18" r="3" stroke={color} strokeWidth="1.8" fill="none" />
+        <path d="M6 9v6c0 2 1 3 3 3h3M18 15V9c0-2-1-3-3-3h-3" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    ),
+    'git-branch': (
+      <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="4" r="2.5" stroke={color} strokeWidth="1.8" fill="none" />
+        <circle cx="6" cy="20" r="2.5" stroke={color} strokeWidth="1.8" fill="none" />
+        <circle cx="18" cy="20" r="2.5" stroke={color} strokeWidth="1.8" fill="none" />
+        <path d="M12 6.5v4.5c0 3-3 4.5-6 6.5M12 11c0 3 3 4.5 6 6.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
       </svg>
     ),
   };
@@ -907,67 +952,68 @@ function FinanceHubContent() {
           )}
         </GlassCard>
 
-        <GlassCard style={[s.finnCard]} tint={{ color: '#8B5CF6', position: 'top-right' }}>
-          <View style={s.finnCardHeader}>
-            <View>
-              {Platform.OS === 'web' ? (
-                <>
-                  <span className="finn-led-title" style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.3, display: 'block' }}>Finn</span>
-                  <span className="finn-led-subtitle" style={{ fontSize: 12, fontWeight: '500', marginTop: 2, letterSpacing: 0.3, display: 'block' }}>Finance Hub Manager</span>
-                </>
-              ) : (
-                <>
-                  <Text style={s.finnTitle}>Finn</Text>
-                  <Text style={s.finnSubtitle}>Finance Hub Manager</Text>
-                </>
-              )}
-            </View>
-            <View style={s.finnActions}>
-              {Platform.OS === 'web' && (
+        <GlassCard style={[s.finnCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.concentricRings('rgba(139,92,246,0.04)', 'rgba(167,139,250,0.06)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right top', backgroundSize: '70% auto' }]} tint={{ color: '#8B5CF6', position: 'top-right' }}>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 180, position: 'relative' }}>
+            {Platform.OS === 'web' ? (
+              <>
                 <div
-                  className="finn-chat-icon"
-                  onClick={() => setFinnChatOpen(!finnChatOpen)}
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 12,
-                    backgroundColor: 'rgba(139,92,246,0.12)',
-                    border: '1px solid rgba(139,92,246,0.2)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span className="icon-inner"><Ionicons name="chatbubble-ellipses-outline" size={16} color="currentColor" /></span>
-                </div>
-              )}
-              {Platform.OS === 'web' && (
-                <div
-                  className="finn-session-btn"
+                  className="finn-pill"
                   onClick={() => router.push('/finance-hub/finn' as any)}
                   style={{
-                    display: 'flex',
+                    display: 'inline-flex',
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 6,
-                    paddingLeft: 14,
-                    paddingRight: 14,
-                    paddingTop: 9,
-                    paddingBottom: 9,
-                    borderRadius: 12,
+                    gap: 8,
+                    paddingLeft: 16,
+                    paddingRight: 16,
+                    paddingTop: 8,
+                    paddingBottom: 8,
+                    borderRadius: 24,
+                    border: '1.5px solid rgba(167,139,250,0.4)',
+                    background: 'rgba(139,92,246,0.12)',
                     cursor: 'pointer',
+                    marginBottom: 14,
+                    zIndex: 2,
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
                   }}
                 >
                   <Ionicons name="mic" size={14} color="#fff" />
-                  <Text style={s.finnSessionBtnText}>Start Session</Text>
+                  <span style={{ color: '#fff', fontSize: 13, fontWeight: '600', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>Finn · Finance Hub Manager</span>
                 </div>
-              )}
-            </View>
+                <FinnOrbVideo />
+              </>
+            ) : (
+              <>
+                <Text style={s.finnTitle}>Finn</Text>
+                <Text style={s.finnSubtitle}>Finance Hub Manager</Text>
+                <View style={{ width: 260, height: 260, borderRadius: 130, backgroundColor: '#222', marginTop: 12 }} />
+              </>
+            )}
           </View>
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 180, marginTop: 8 }}>
-            {Platform.OS === 'web' && <FinnOrbVideo />}
-          </View>
+          {Platform.OS === 'web' && (
+            <div
+              className="finn-chat-icon"
+              onClick={() => setFinnChatOpen(!finnChatOpen)}
+              style={{
+                position: 'absolute',
+                bottom: 16,
+                right: 16,
+                width: 38,
+                height: 38,
+                borderRadius: 12,
+                backgroundColor: 'rgba(139,92,246,0.12)',
+                border: '1px solid rgba(139,92,246,0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 3,
+              }}
+            >
+              <span className="icon-inner"><Ionicons name="chatbubble-ellipses-outline" size={16} color="currentColor" /></span>
+            </div>
+          )}
         </GlassCard>
       </View>
 

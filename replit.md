@@ -15,6 +15,9 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
 - Fully vector-rendered components like DocumentThumbnail for crisp, scalable visuals.
 - Professional, styled HTML for documents like paystubs.
 - Unified panel management for header dropdowns (notifications, profile) with click-outside-to-close functionality.
+- LED ambient color-cycling animations on Finance Hub icons, section labels, and Finn pill using CSS keyframe animations with staggered delays.
+- Finn card: Premium LED pill above orb (clickable to start voice session), chat button bottom-right, concentricRings SVG background pattern, glass overlay on orb.
+- SVG icons in EnterpriseIcon use currentColor with CSS overrides for LED animation inheritance.
 
 **Technical Implementations:**
 - **Ava Desk**: AI assistant with voice and video modes.
