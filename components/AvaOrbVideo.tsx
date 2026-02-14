@@ -57,11 +57,13 @@ export function AvaOrbVideo({ state, size = 300 }: AvaOrbVideoProps) {
           muted
           playsInline
           preload="auto"
+          controls={false}
           style={{
             width: size * 1.5,
             height: size * 1.5,
             objectFit: 'cover',
             transform: `scale(${config.pulseScale})`,
+            pointerEvents: 'none' as any,
           }}
         />
       </View>

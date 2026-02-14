@@ -204,7 +204,7 @@ export default function VoiceSession() {
 
       <View style={styles.mainContent}>
         <View style={styles.blobSection}>
-          <AvaOrbVideo state={orbState} size={280} />
+          <AvaOrbVideo state={orbState} size={340} />
         </View>
 
         <View style={styles.statusSection}>

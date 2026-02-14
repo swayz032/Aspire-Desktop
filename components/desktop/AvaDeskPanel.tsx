@@ -715,7 +715,8 @@ export function AvaDeskPanel() {
                     loop
                     muted
                     playsInline
-                    style={{ width: 260, height: 260, objectFit: 'contain', background: 'transparent' }}
+                    controls={false}
+                    style={{ width: 320, height: 320, objectFit: 'contain', background: 'transparent', pointerEvents: 'none' }}
                   />
                 </Animated.View>
               ) : (
