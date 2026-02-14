@@ -6,7 +6,7 @@ import { Colors, Typography } from '@/constants/tokens';
 import { useSidebarState } from '@/lib/uiStore';
 
 const logoSource = require('../../assets/images/aspire-logo-new.png');
-const iconSource = require('../../assets/images/aspire-icon-square.png');
+const iconSource = require('../../assets/images/aspire-icon-new.png');
 
 type SubItem = {
   id: string;

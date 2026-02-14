@@ -2699,6 +2699,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     paddingVertical: Spacing.xl * 3,
     paddingHorizontal: Spacing.xl,
+    backgroundColor: Colors.background.card,
+    borderRadius: BorderRadius.lg,
+    marginHorizontal: Spacing.lg,
+    marginVertical: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
   },
   mailSetupEmptyIcon: {
     width: 64,

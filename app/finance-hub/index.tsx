@@ -975,14 +975,6 @@ function FinanceHubContent() {
               }} />
               <div style={{
                 position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                backgroundImage: svgPatterns.pulseWave('rgba(139,92,246,0.03)', 'rgba(167,139,250,0.06)'),
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'left top',
-                backgroundSize: '45% auto',
-                pointerEvents: 'none',
-              }} />
-              <div style={{
-                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                 backgroundImage: svgPatterns.barChart('rgba(139,92,246,0.025)', 'rgba(167,139,250,0.045)'),
                 backgroundRepeat: 'no-repeat',
                 backgroundPosition: 'left bottom',
