@@ -229,7 +229,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
               {expanded && hasSubItems && (showActive || active) && (
                 <View style={styles.subNavList}>
                   {item.subItems!
-                    .filter((subItem) => !subItem.ownerOnly || currentUser.role === 'Owner')
+                    .filter((subItem) => !subItem.ownerOnly || currentUser.roleId === 'owner')
                     .map((subItem) => {
                     const subActive = pathname.startsWith(subItem.route);
                     return (
