@@ -170,28 +170,38 @@ function injectFinnCss() {
       83%  { color: #C084FC; filter: drop-shadow(0 0 4px rgba(192,132,252,0.3)); }
       100% { color: #A78BFA; filter: drop-shadow(0 0 4px rgba(167,139,250,0.3)); }
     }
+    .hero-led-icon {
+      animation: finnLedIcon 3s ease-in-out infinite;
+      display: inline-flex;
+    }
+    .hero-led-icon svg [stroke]:not([stroke="none"]) {
+      stroke: currentColor !important;
+    }
+    .hero-led-icon svg [fill]:not([fill="none"]):not([fill=""]) {
+      fill: currentColor !important;
+    }
     .finn-led-title {
-      animation: finnLedText 8s ease-in-out infinite;
+      animation: finnLedText 3s ease-in-out infinite;
     }
     .finn-led-subtitle {
-      animation: finnLedText 8s ease-in-out infinite;
-      animation-delay: -1s;
+      animation: finnLedText 3s ease-in-out infinite;
+      animation-delay: -0.5s;
     }
     .finn-chat-icon {
-      animation: finnLedBorder 8s ease-in-out infinite;
-      animation-delay: -2s;
+      animation: finnLedBorder 3s ease-in-out infinite;
+      animation-delay: -1s;
       transition: transform 0.15s ease;
     }
     .finn-chat-icon:hover {
       transform: scale(1.08);
     }
     .finn-chat-icon .icon-inner {
-      animation: finnLedIcon 8s ease-in-out infinite;
-      animation-delay: -2s;
+      animation: finnLedIcon 3s ease-in-out infinite;
+      animation-delay: -1s;
     }
     .finn-session-btn {
-      animation: finnLedBg 8s ease-in-out infinite !important;
-      animation-delay: -3s;
+      animation: finnLedBg 3s ease-in-out infinite !important;
+      animation-delay: -1.5s;
       border: 1px solid rgba(167,139,250,0.3) !important;
       transition: transform 0.15s ease, filter 0.15s ease;
     }
@@ -200,7 +210,7 @@ function injectFinnCss() {
       filter: brightness(1.2);
     }
     .led-icon {
-      animation: finnLedIcon 8s ease-in-out infinite;
+      animation: finnLedIcon 3s ease-in-out infinite;
       display: inline-flex;
     }
     .led-icon svg [stroke]:not([stroke="none"]) {
@@ -209,28 +219,28 @@ function injectFinnCss() {
     .led-icon svg [fill]:not([fill="none"]):not([fill=""]) {
       fill: currentColor !important;
     }
-    .led-icon-d1 { animation-delay: -1s; }
-    .led-icon-d2 { animation-delay: -2s; }
-    .led-icon-d3 { animation-delay: -3s; }
-    .led-icon-d4 { animation-delay: -4s; }
-    .led-icon-d5 { animation-delay: -5s; }
-    .led-icon-d6 { animation-delay: -6s; }
+    .led-icon-d1 { animation-delay: -0.4s; }
+    .led-icon-d2 { animation-delay: -0.8s; }
+    .led-icon-d3 { animation-delay: -1.2s; }
+    .led-icon-d4 { animation-delay: -1.6s; }
+    .led-icon-d5 { animation-delay: -2.0s; }
+    .led-icon-d6 { animation-delay: -2.4s; }
     @keyframes finnPillGlow {
-      0%   { border-color: rgba(167,139,250,0.5); box-shadow: 0 0 12px rgba(167,139,250,0.25), 0 0 24px rgba(167,139,250,0.1); }
-      16%  { border-color: rgba(96,165,250,0.55); box-shadow: 0 0 12px rgba(96,165,250,0.3), 0 0 24px rgba(96,165,250,0.12); }
-      33%  { border-color: rgba(52,211,153,0.55); box-shadow: 0 0 12px rgba(52,211,153,0.3), 0 0 24px rgba(52,211,153,0.12); }
-      50%  { border-color: rgba(129,140,248,0.55); box-shadow: 0 0 12px rgba(129,140,248,0.3), 0 0 24px rgba(129,140,248,0.12); }
-      66%  { border-color: rgba(244,114,182,0.55); box-shadow: 0 0 12px rgba(244,114,182,0.3), 0 0 24px rgba(244,114,182,0.12); }
-      83%  { border-color: rgba(192,132,252,0.55); box-shadow: 0 0 12px rgba(192,132,252,0.3), 0 0 24px rgba(192,132,252,0.12); }
-      100% { border-color: rgba(167,139,250,0.5); box-shadow: 0 0 12px rgba(167,139,250,0.25), 0 0 24px rgba(167,139,250,0.1); }
+      0%   { border-color: rgba(167,139,250,0.4); box-shadow: 0 0 6px rgba(167,139,250,0.15); }
+      16%  { border-color: rgba(96,165,250,0.45); box-shadow: 0 0 6px rgba(96,165,250,0.18); }
+      33%  { border-color: rgba(52,211,153,0.45); box-shadow: 0 0 6px rgba(52,211,153,0.18); }
+      50%  { border-color: rgba(129,140,248,0.45); box-shadow: 0 0 6px rgba(129,140,248,0.18); }
+      66%  { border-color: rgba(244,114,182,0.45); box-shadow: 0 0 6px rgba(244,114,182,0.18); }
+      83%  { border-color: rgba(192,132,252,0.45); box-shadow: 0 0 6px rgba(192,132,252,0.18); }
+      100% { border-color: rgba(167,139,250,0.4); box-shadow: 0 0 6px rgba(167,139,250,0.15); }
     }
     .finn-pill {
-      animation: finnPillGlow 8s ease-in-out infinite;
+      animation: finnPillGlow 3s ease-in-out infinite;
       transition: transform 0.15s ease, filter 0.15s ease;
     }
     .finn-pill:hover {
-      transform: scale(1.04);
-      filter: brightness(1.15);
+      transform: scale(1.03);
+      filter: brightness(1.1);
     }
   `;
   document.head.appendChild(style);
@@ -811,14 +821,14 @@ function FinanceHubContent() {
           <View style={[s.heroBannerOverlay, { justifyContent: 'flex-end', paddingBottom: 20 }]}>
             <View style={s.heroBannerRow}>
               <View style={s.heroBannerLeft}>
-                <View style={{
+                <div className="hero-led-icon" style={{
                   width: 44, height: 44, borderRadius: 12,
-                  backgroundColor: 'rgba(59,130,246,0.15)',
-                  alignItems: 'center', justifyContent: 'center',
-                  borderWidth: 1, borderColor: 'rgba(59,130,246,0.2)',
+                  backgroundColor: 'rgba(59,130,246,0.1)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '1px solid rgba(59,130,246,0.15)',
                 }}>
-                  <Ionicons name="analytics" size={22} color="#60A5FA" />
-                </View>
+                  <Ionicons name="analytics" size={22} color="currentColor" />
+                </div>
                 <View style={{ marginLeft: 14 }}>
                   <Text style={s.heroBannerTitle}>Finance Hub</Text>
                   <Text style={s.heroBannerSubtitle}>Your money story + governed actions</Text>
@@ -963,23 +973,24 @@ function FinanceHubContent() {
                     display: 'inline-flex',
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 8,
-                    paddingLeft: 16,
-                    paddingRight: 16,
-                    paddingTop: 8,
-                    paddingBottom: 8,
-                    borderRadius: 24,
-                    border: '1.5px solid rgba(167,139,250,0.4)',
-                    background: 'rgba(139,92,246,0.12)',
+                    gap: 6,
+                    paddingLeft: 14,
+                    paddingRight: 14,
+                    paddingTop: 6,
+                    paddingBottom: 6,
+                    borderRadius: 20,
+                    border: '1px solid rgba(167,139,250,0.35)',
+                    background: 'rgba(139,92,246,0.08)',
                     cursor: 'pointer',
-                    marginBottom: 14,
+                    marginBottom: 12,
                     zIndex: 2,
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
                   }}
                 >
-                  <Ionicons name="mic" size={14} color="#fff" />
-                  <span style={{ color: '#fff', fontSize: 13, fontWeight: '600', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>Finn · Finance Hub Manager</span>
+                  <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Finn</span>
+                  <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>{'\u00b7'}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: '400', letterSpacing: 0.4, whiteSpace: 'nowrap' }}>Finance Hub Manager</span>
                 </div>
                 <FinnOrbVideo />
               </>
