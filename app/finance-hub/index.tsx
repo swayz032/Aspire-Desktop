@@ -267,7 +267,7 @@ function FinnOrbVideo() {
   }
 
   return (
-    <div style={{ width: 260, height: 260, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111', flexShrink: 0, position: 'relative' }}>
+    <div style={{ width: 290, height: 290, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111', flexShrink: 0, position: 'relative' }}>
       <video
         ref={videoRef as any}
         className="finn-orb-video"
@@ -279,8 +279,8 @@ function FinnOrbVideo() {
         preload="auto"
         controls={false}
         style={{
-          width: 390,
-          height: 390,
+          width: 430,
+          height: 430,
           objectFit: 'cover',
           display: 'block',
         }}
@@ -962,46 +962,77 @@ function FinanceHubContent() {
           )}
         </GlassCard>
 
-        <GlassCard style={[s.finnCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.concentricRings('rgba(139,92,246,0.04)', 'rgba(167,139,250,0.06)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right top', backgroundSize: '70% auto' }]} tint={{ color: '#8B5CF6', position: 'top-right' }}>
+        <GlassCard style={[s.finnCard]} tint={{ color: '#8B5CF6', position: 'top-right' }}>
+          {Platform.OS === 'web' && (
+            <>
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundImage: svgPatterns.financeDashboard('rgba(139,92,246,0.04)', 'rgba(167,139,250,0.07)'),
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right bottom',
+                backgroundSize: '55% auto',
+                pointerEvents: 'none',
+              }} />
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundImage: svgPatterns.pulseWave('rgba(139,92,246,0.03)', 'rgba(167,139,250,0.06)'),
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'left top',
+                backgroundSize: '45% auto',
+                pointerEvents: 'none',
+              }} />
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundImage: svgPatterns.barChart('rgba(139,92,246,0.025)', 'rgba(167,139,250,0.045)'),
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'left bottom',
+                backgroundSize: '30% auto',
+                pointerEvents: 'none',
+                opacity: 0.7,
+              }} />
+            </>
+          )}
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 180, position: 'relative' }}>
             {Platform.OS === 'web' ? (
-              <>
-                <div
-                  className="finn-pill"
-                  onClick={() => router.push('/finance-hub/finn' as any)}
-                  style={{
-                    display: 'inline-flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    paddingLeft: 14,
-                    paddingRight: 14,
-                    paddingTop: 6,
-                    paddingBottom: 6,
-                    borderRadius: 20,
-                    border: '1px solid rgba(167,139,250,0.35)',
-                    background: 'rgba(139,92,246,0.08)',
-                    cursor: 'pointer',
-                    marginBottom: 12,
-                    zIndex: 2,
-                    backdropFilter: 'blur(12px)',
-                    WebkitBackdropFilter: 'blur(12px)',
-                  }}
-                >
-                  <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Finn</span>
-                  <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>{'\u00b7'}</span>
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: '400', letterSpacing: 0.4, whiteSpace: 'nowrap' }}>Finance Hub Manager</span>
-                </div>
-                <FinnOrbVideo />
-              </>
+              <FinnOrbVideo />
             ) : (
               <>
                 <Text style={s.finnTitle}>Finn</Text>
                 <Text style={s.finnSubtitle}>Finance Hub Manager</Text>
-                <View style={{ width: 260, height: 260, borderRadius: 130, backgroundColor: '#222', marginTop: 12 }} />
+                <View style={{ width: 280, height: 280, borderRadius: 140, backgroundColor: '#222', marginTop: 12 }} />
               </>
             )}
           </View>
+          {Platform.OS === 'web' && (
+            <div
+              className="finn-pill"
+              onClick={() => router.push('/finance-hub/finn' as any)}
+              style={{
+                position: 'absolute',
+                bottom: 16,
+                left: 16,
+                display: 'inline-flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingLeft: 16,
+                paddingRight: 18,
+                paddingTop: 8,
+                paddingBottom: 8,
+                borderRadius: 22,
+                border: '1px solid rgba(167,139,250,0.35)',
+                background: 'rgba(15,15,20,0.65)',
+                cursor: 'pointer',
+                zIndex: 3,
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+              }}
+            >
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: '600', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>Finn</span>
+              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13 }}>{'\u00b7'}</span>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '400', letterSpacing: 0.2, whiteSpace: 'nowrap' }}>Finance Hub Manager</span>
+            </div>
+          )}
           {Platform.OS === 'web' && (
             <div
               className="finn-chat-icon"
