@@ -18,10 +18,10 @@ export function TopHeader({ pageTitle, showStatus = true }: TopHeaderProps) {
         <View style={styles.identityBar}>
           <View style={styles.titleRow}>
             {showStatus && <StatusDot status="active" />}
-            <Text style={styles.businessName}>{tenant?.businessName || 'Zenith Solutions'}</Text>
+            <Text style={styles.businessName}>{tenant?.businessName || 'Your Business'}</Text>
           </View>
           <Text style={styles.details}>
-            Suite {tenant?.suiteId || 'ZEN-014'} • Office {tenant?.officeId || 'O-1029'} Role: {tenant?.role || 'Founder'}
+            {tenant?.suiteId ? `Suite ${tenant.suiteId}` : ''} {tenant?.officeId ? `• Office ${tenant.officeId}` : ''} {tenant?.role ? `Role: ${tenant.role}` : 'Role: Founder'}
           </Text>
         </View>
         {pageTitle && (

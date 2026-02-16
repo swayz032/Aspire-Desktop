@@ -5,6 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { FinanceRightRail } from '@/components/finance/FinanceRightRail';
+import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useSupabase } from '@/providers';
 import { ProposalReviewSheet, Proposal } from '@/components/finance/ProposalReviewSheet';
 import SourceBadge from '@/components/finance/SourceBadge';
 import ExplainDrawer from '@/components/finance/ExplainDrawer';
@@ -623,6 +625,32 @@ function FinanceHubContent() {
   const [explainMetric, setExplainMetric] = useState<string | null>(null);
   const [finnChatOpen, setFinnChatOpen] = useState(false);
   const [finnChatMessage, setFinnChatMessage] = useState('');
+  const [finnChatMessages, setFinnChatMessages] = useState<Array<{ role: 'user' | 'finn'; text: string }>>([]);
+
+  // Finn voice — voice is primary interaction mode
+  const { suiteId, session } = useSupabase();
+  const finnVoice = useAgentVoice({
+    agent: 'finn',
+    suiteId: suiteId ?? undefined,
+    accessToken: session?.access_token,
+    onTranscript: (text) => {
+      // Voice transcripts get added to chat (typed messages are added in send handler)
+      setFinnChatMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'user' && last.text === text) return prev; // dedupe
+        return [...prev, { role: 'user', text }];
+      });
+    },
+    onResponse: (text) => setFinnChatMessages(prev => [...prev, { role: 'finn', text }]),
+    onError: (err) => console.error('Finn voice error:', err),
+  });
+  const handleFinnVoiceToggle = useCallback(async () => {
+    if (finnVoice.isActive) {
+      finnVoice.endSession();
+    } else {
+      try { await finnVoice.startSession(); } catch {}
+    }
+  }, [finnVoice]);
 
   const isConnected = connections?.summary?.connected ? connections.summary.connected > 0 : false;
   const hasSnapshot = snapshot?.connected && snapshot?.generatedAt;
@@ -807,7 +835,7 @@ function FinanceHubContent() {
 
   return (
     <>
-    <FinanceHubShell rightRail={<FinanceRightRail onOpenFinnDesk={() => router.push('/finance-hub/finn' as any)} />}>
+    <FinanceHubShell rightRail={<FinanceRightRail />}>
       {Platform.OS === 'web' ? (
         <div style={{
           height: 155, borderRadius: 16, overflow: 'hidden', marginBottom: 20, position: 'relative',
@@ -999,7 +1027,7 @@ function FinanceHubContent() {
           {Platform.OS === 'web' && (
             <div
               className="finn-pill"
-              onClick={() => router.push('/finance-hub/finn' as any)}
+              onClick={handleFinnVoiceToggle}
               style={{
                 position: 'absolute',
                 bottom: 16,
@@ -1013,17 +1041,19 @@ function FinanceHubContent() {
                 paddingTop: 8,
                 paddingBottom: 8,
                 borderRadius: 22,
-                border: '1px solid rgba(167,139,250,0.35)',
-                background: 'rgba(15,15,20,0.65)',
+                border: finnVoice.isActive ? '1px solid rgba(139,92,246,0.6)' : '1px solid rgba(167,139,250,0.35)',
+                background: finnVoice.isActive ? 'rgba(139,92,246,0.25)' : 'rgba(15,15,20,0.65)',
                 cursor: 'pointer',
                 zIndex: 3,
                 backdropFilter: 'blur(16px)',
                 WebkitBackdropFilter: 'blur(16px)',
+                boxShadow: finnVoice.isActive ? '0 0 20px rgba(139,92,246,0.4)' : 'none',
               }}
             >
-              <span style={{ color: '#fff', fontSize: 13, fontWeight: '600', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>Finn</span>
-              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13 }}>{'\u00b7'}</span>
-              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '400', letterSpacing: 0.2, whiteSpace: 'nowrap' }}>Finance Hub Manager</span>
+              <Ionicons name={finnVoice.isActive ? 'mic' : 'mic-outline'} size={14} color={finnVoice.isActive ? '#C4B5FD' : 'rgba(255,255,255,0.7)'} />
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: '600', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
+                {finnVoice.isActive ? 'Talking to Finn...' : 'Talk to Finn'}
+              </span>
             </div>
           )}
           {Platform.OS === 'web' && (
@@ -1073,8 +1103,35 @@ function FinanceHubContent() {
             </Pressable>
           </View>
           <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
-            <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 16, minHeight: 80, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}>
-              <Text style={{ color: '#888', fontSize: 13, fontStyle: 'italic' }}>Finn will respond in your next voice session, or you can type a message below.</Text>
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 16, minHeight: 80, maxHeight: 240, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}>
+              {finnChatMessages.length === 0 ? (
+                <Text style={{ color: '#888', fontSize: 13, fontStyle: 'italic' }}>Ask Finn about cash runway, invoices, expenses, or financial strategy.</Text>
+              ) : (
+                <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                  {finnChatMessages.map((msg, i) => (
+                    <View key={i} style={{ marginBottom: 8, alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                      <View style={{
+                        maxWidth: '85%',
+                        backgroundColor: msg.role === 'user' ? 'rgba(139,92,246,0.25)' : 'rgba(255,255,255,0.06)',
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderWidth: 1,
+                        borderColor: msg.role === 'user' ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.08)',
+                      }}>
+                        <Text style={{ color: msg.role === 'user' ? '#C4B5FD' : '#ccc', fontSize: 13 }}>{msg.text}</Text>
+                      </View>
+                    </View>
+                  ))}
+                  {finnVoice.status === 'thinking' && (
+                    <View style={{ marginBottom: 8, alignItems: 'flex-start' }}>
+                      <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                        <Text style={{ color: '#888', fontSize: 13, fontStyle: 'italic' }}>Finn is thinking...</Text>
+                      </View>
+                    </View>
+                  )}
+                </ScrollView>
+              )}
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingBottom: 16 }}>
@@ -1087,6 +1144,7 @@ function FinanceHubContent() {
                   type="text"
                   value={finnChatMessage}
                   onChange={(e: any) => setFinnChatMessage(e.target.value)}
+                  onKeyDown={(e: any) => { if (e.key === 'Enter' && finnChatMessage.trim()) { setFinnChatMessages(prev => [...prev, { role: 'user', text: finnChatMessage.trim() }]); finnVoice.sendText(finnChatMessage.trim()); setFinnChatMessage(''); } }}
                   placeholder="Ask Finn about your finances..."
                   style={{
                     flex: 1,
@@ -1105,7 +1163,7 @@ function FinanceHubContent() {
               </div>
             )}
             <Pressable
-              onPress={() => { if (finnChatMessage.trim()) { setFinnChatMessage(''); } }}
+              onPress={() => { if (finnChatMessage.trim()) { setFinnChatMessages(prev => [...prev, { role: 'user', text: finnChatMessage.trim() }]); finnVoice.sendText(finnChatMessage.trim()); setFinnChatMessage(''); } }}
               style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: finnChatMessage.trim() ? 'rgba(139,92,246,0.4)' : 'rgba(139,92,246,0.25)', borderWidth: 1, borderColor: 'rgba(139,92,246,0.35)', alignItems: 'center', justifyContent: 'center' }}
             >
               <Ionicons name="send" size={16} color={finnChatMessage.trim() ? '#C4B5FD' : '#A78BFA'} />

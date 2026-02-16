@@ -111,7 +111,7 @@ export default function BookingsPage() {
         const userData = await userRes.json();
         setUser(userData);
         const domain = Platform.OS === 'web' ? window.location.origin : process.env.EXPO_PUBLIC_DOMAIN || 'https://aspire.app';
-        setBookingLink(`${domain}/book/${userData.bookingSlug || 'zenith-solutions'}`);
+        setBookingLink(`${domain}/book/${userData.bookingSlug || 'my-business'}`);
       }
 
       const [bookingsRes, servicesRes, statsRes, availRes, bufferRes] = await Promise.all([
@@ -179,7 +179,7 @@ export default function BookingsPage() {
     if (user?.bookingSlug) {
       router.push(`/book/${user.bookingSlug}` as any);
     } else {
-      router.push('/book/zenith-solutions' as any);
+      router.push('/book/my-business' as any);
     }
   };
 

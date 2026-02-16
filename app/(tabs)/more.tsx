@@ -88,7 +88,7 @@ export default function MoreScreen() {
           <MenuItem
             icon="business"
             title="Office Identity"
-            subtitle="Zenith Solutions • Suite ZEN-014"
+            subtitle="Your Business • Suite"
             onPress={() => router.push('/more/office-identity')}
           />
           <MenuItem

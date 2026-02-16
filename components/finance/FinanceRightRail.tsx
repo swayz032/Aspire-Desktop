@@ -4,69 +4,44 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 
-const approvals = [
-  { title: 'Fund payroll buffer', amount: '$12,400', level: 'Owner approval', dotColor: Colors.accent.amber },
-  { title: 'Vendor payment — Delta', amount: '$3,200', level: 'Admin approval', dotColor: Colors.accent.cyan },
-];
+interface ApprovalItem {
+  title: string;
+  amount: string;
+  level: string;
+  dotColor: string;
+}
 
-const alerts = [
-  { title: 'Low cash buffer', description: 'Buffer drops below $5K after payroll', dotColor: Colors.semantic.error },
-  { title: 'Overdue AR', description: '2 invoices past 30 days ($6,800)', dotColor: Colors.accent.amber },
-  { title: 'QBO sync needed', description: 'Last sync: 4 hours ago', dotColor: Colors.accent.cyan },
-];
+interface AlertItem {
+  title: string;
+  description: string;
+  dotColor: string;
+}
 
-const providers = [
-  { name: 'Plaid', status: 'Connected · Synced 12m ago', dotColor: Colors.semantic.success },
-  { name: 'QuickBooks', status: 'Connected · Synced 4h ago', dotColor: Colors.semantic.success },
-  { name: 'Gusto', status: 'Needs attention · Reconnect', dotColor: Colors.accent.amber },
-];
+interface ProviderItem {
+  name: string;
+  status: string;
+  dotColor: string;
+}
 
-const promptChips = ['Runway', 'Payroll check', 'What changed?'];
+interface Props {
+  approvals?: ApprovalItem[];
+  alerts?: AlertItem[];
+  providers?: ProviderItem[];
+}
 
-type Props = {
-  onOpenFinnDesk?: () => void;
-};
-
-export function FinanceRightRail({ onOpenFinnDesk }: Props = {}) {
+export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }: Props) {
   const router = useRouter();
 
   return (
     <View>
       <View style={styles.sectionCard}>
-        <View style={styles.finnHeader}>
-          <Ionicons name="sparkles" size={20} color={Colors.accent.cyan} />
-          <Text style={styles.finnTitle}>Finn</Text>
-        </View>
-        <Pressable
-          style={({ hovered }: any) => [
-            styles.finnButton,
-            hovered && styles.finnButtonHover,
-          ]}
-          onPress={onOpenFinnDesk}
-        >
-          <Text style={styles.finnButtonText}>Open Finn Desk</Text>
-        </Pressable>
-        <View style={styles.chipsRow}>
-          {promptChips.map((chip) => (
-            <Pressable
-              key={chip}
-              style={({ hovered }: any) => [
-                styles.chip,
-                hovered && styles.chipHover,
-              ]}
-            >
-              <Text style={styles.chipText}>{chip}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Approvals</Text>
-          <View style={styles.countBadge}>
-            <Text style={styles.countBadgeText}>{approvals.length}</Text>
-          </View>
+          {approvals.length > 0 && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countBadgeText}>{approvals.length}</Text>
+            </View>
+          )}
         </View>
         {approvals.length > 0 ? (
           <>
@@ -97,50 +72,89 @@ export function FinanceRightRail({ onOpenFinnDesk }: Props = {}) {
             </Pressable>
           </>
         ) : (
-          <Text style={styles.emptyState}>No approvals pending</Text>
+          <View style={styles.emptyContainer}>
+            <Ionicons name="checkmark-circle-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
+            <Text style={styles.emptyHeadline}>Your approval queue is clear</Text>
+            <Text style={styles.emptyBody}>
+              When agents need your sign-off on invoices, payments, or contracts — they'll appear here.
+            </Text>
+          </View>
         )}
       </View>
 
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Alerts</Text>
-          <View style={styles.countBadgeAmber}>
-            <Text style={styles.countBadgeText}>{alerts.length}</Text>
-          </View>
-        </View>
-        {alerts.map((alert) => (
-          <View key={alert.title} style={styles.alertItem}>
-            <View style={[styles.dot, { backgroundColor: alert.dotColor }]} />
-            <View style={styles.alertContent}>
-              <Text style={styles.alertTitle}>{alert.title}</Text>
-              <Text style={styles.alertDescription}>{alert.description}</Text>
+          {alerts.length > 0 && (
+            <View style={styles.countBadgeAmber}>
+              <Text style={styles.countBadgeText}>{alerts.length}</Text>
             </View>
+          )}
+        </View>
+        {alerts.length > 0 ? (
+          alerts.map((alert) => (
+            <View key={alert.title} style={styles.alertItem}>
+              <View style={[styles.dot, { backgroundColor: alert.dotColor }]} />
+              <View style={styles.alertContent}>
+                <Text style={styles.alertTitle}>{alert.title}</Text>
+                <Text style={styles.alertDescription}>{alert.description}</Text>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="notifications-off-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
+            <Text style={styles.emptyHeadline}>All clear — no financial alerts</Text>
+            <Text style={styles.emptyBody}>
+              Low cash warnings, overdue invoices, and sync issues will appear here.
+            </Text>
           </View>
-        ))}
+        )}
       </View>
 
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Data Health</Text>
         </View>
-        {providers.map((provider) => (
-          <View key={provider.name} style={styles.providerRow}>
-            <View style={[styles.dot, { backgroundColor: provider.dotColor }]} />
-            <View style={styles.providerContent}>
-              <Text style={styles.providerName}>{provider.name}</Text>
-              <Text style={styles.providerStatus}>{provider.status}</Text>
-            </View>
+        {providers.length > 0 ? (
+          <>
+            {providers.map((provider) => (
+              <View key={provider.name} style={styles.providerRow}>
+                <View style={[styles.dot, { backgroundColor: provider.dotColor }]} />
+                <View style={styles.providerContent}>
+                  <Text style={styles.providerName}>{provider.name}</Text>
+                  <Text style={styles.providerStatus}>{provider.status}</Text>
+                </View>
+              </View>
+            ))}
+            <Pressable
+              style={({ hovered }: any) => [
+                styles.linkButton,
+                hovered && styles.linkButtonHover,
+              ]}
+              onPress={() => router.push('/more/integrations' as any)}
+            >
+              <Text style={styles.linkText}>Manage connections</Text>
+            </Pressable>
+          </>
+        ) : (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="link-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
+            <Text style={styles.emptyHeadline}>Connect your first service</Text>
+            <Text style={styles.emptyBody}>
+              Link your bank, payments, and accounting to see real-time data health.
+            </Text>
+            <Pressable
+              style={({ hovered }: any) => [
+                styles.linkButton,
+                hovered && styles.linkButtonHover,
+              ]}
+              onPress={() => router.push('/finance-hub/connections' as any)}
+            >
+              <Text style={styles.emptyCta}>Connect accounts</Text>
+            </Pressable>
           </View>
-        ))}
-        <Pressable
-          style={({ hovered }: any) => [
-            styles.linkButton,
-            hovered && styles.linkButtonHover,
-          ]}
-          onPress={() => router.push('/more/integrations' as any)}
-        >
-          <Text style={styles.linkText}>Manage connections</Text>
-        </Pressable>
+        )}
       </View>
     </View>
   );
@@ -154,53 +168,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
-  },
-  finnHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  finnTitle: {
-    color: Colors.text.primary,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  finnButton: {
-    backgroundColor: Colors.accent.cyan,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginBottom: 12,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'opacity 0.15s ease' } : {}),
-  },
-  finnButtonHover: {
-    opacity: 0.85,
-  },
-  finnButtonText: {
-    color: Colors.text.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    backgroundColor: Colors.surface.cardHover,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.15s ease' } : {}),
-  },
-  chipHover: {
-    backgroundColor: Colors.border.default,
-  },
-  chipText: {
-    color: Colors.text.secondary,
-    fontSize: 12,
-    fontWeight: '500',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -280,11 +247,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  emptyState: {
-    color: Colors.text.tertiary,
-    fontSize: 13,
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 12,
+    minHeight: 120,
+  },
+  emptyStateIcon: {
+    marginBottom: 8,
+  },
+  emptyHeadline: {
+    color: Colors.text.primary,
+    fontSize: 14,
+    fontWeight: '600',
     textAlign: 'center',
-    paddingVertical: 16,
+    marginBottom: 6,
+  },
+  emptyBody: {
+    color: Colors.text.tertiary,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  emptyCta: {
+    color: Colors.accent.cyan,
+    fontSize: 13,
+    fontWeight: '600',
   },
   alertItem: {
     flexDirection: 'row',

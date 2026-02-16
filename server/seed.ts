@@ -6,7 +6,7 @@ async function seed() {
 
   // Create demo suite via Trust Spine's ensure_suite function
   const suiteResult = await db.execute(sql`
-    SELECT app.ensure_suite('demo-tenant', 'Zenith Solutions') AS suite_id
+    SELECT app.ensure_suite('demo-tenant', 'Aspire Demo') AS suite_id
   `);
   const rows = (suiteResult.rows || suiteResult) as any[];
   const demoSuiteId = rows[0].suite_id;
@@ -23,7 +23,7 @@ async function seed() {
   // Create suite profile (business profile)
   await db.execute(sql`
     INSERT INTO suite_profiles (suite_id, email, name, business_name, booking_slug)
-    VALUES (${demoSuiteId}, 'demo@zenith.com', 'Scott Thompson', 'Zenith Solutions', 'zenith-solutions')
+    VALUES (${demoSuiteId}, 'demo@aspire.com', 'Scott Thompson', 'Aspire Demo', 'aspire-demo')
     ON CONFLICT (suite_id) DO UPDATE SET
       email = EXCLUDED.email,
       name = EXCLUDED.name,

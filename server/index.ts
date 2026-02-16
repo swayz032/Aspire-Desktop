@@ -79,8 +79,14 @@ app.use(async (req, res, next) => {
 
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-      // No JWT provided — fall back to defaultSuiteId for dev-auth mode
-      // In production, X-Suite-Id header is required by individual routes
+      // Law #3: Fail closed in production — no JWT = no access to authenticated routes
+      if (process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production') {
+        return res.status(401).json({
+          error: 'AUTH_REQUIRED',
+          message: 'Authentication required',
+        });
+      }
+      // Development fallback — use defaultSuiteId for local testing
       if (defaultSuiteId) {
         await db.execute(sql`SELECT set_config('app.current_suite_id', ${defaultSuiteId}, true)`);
       }
@@ -407,40 +413,58 @@ async function loadOAuthTokens() {
 
 async function start() {
   try {
-    // Bootstrap default suite + office
-    const suiteResult = await db.execute(sql`
-      SELECT app.ensure_suite('default-tenant', 'Aspire Desktop') AS suite_id
-    `);
-    const rows = (suiteResult.rows || suiteResult) as any[];
-    defaultSuiteId = rows[0].suite_id;
-    setDefaultSuiteId(defaultSuiteId);
+    // Bootstrap default suite context — resilient to schema differences
+    // Priority: 1) suite_profiles (public schema), 2) app.ensure_suite, 3) JWT-only mode
 
-    // Ensure default office exists
-    const officeResult = await db.execute(sql`
-      INSERT INTO app.offices (suite_id, label)
-      VALUES (${defaultSuiteId}, 'Default Office')
-      ON CONFLICT DO NOTHING
-      RETURNING office_id
-    `);
-    const officeRows = (officeResult.rows || officeResult) as any[];
-    if (officeRows.length > 0) {
-      defaultOfficeId = officeRows[0].office_id;
-    } else {
-      const existingOffice = await db.execute(sql`
-        SELECT office_id FROM app.offices WHERE suite_id = ${defaultSuiteId} LIMIT 1
+    // Try suite_profiles first (public schema — always available on Supabase)
+    try {
+      const profileResult = await db.execute(sql`
+        SELECT suite_id FROM suite_profiles LIMIT 1
       `);
-      const existingRows = (existingOffice.rows || existingOffice) as any[];
-      defaultOfficeId = existingRows[0]?.office_id || '';
+      const profileRows = (profileResult.rows || profileResult) as any[];
+      if (profileRows.length > 0) {
+        defaultSuiteId = profileRows[0].suite_id;
+      }
+    } catch {
+      // suite_profiles might not exist yet — continue
     }
-    setDefaultOfficeId(defaultOfficeId);
 
-    console.log(`Suite bootstrapped: ${defaultSuiteId}, Office: ${defaultOfficeId}`);
+    // Fallback: try app.ensure_suite (Trust Spine schema — local Postgres)
+    if (!defaultSuiteId) {
+      try {
+        const suiteResult = await db.execute(sql`
+          SELECT app.ensure_suite('default-tenant', 'Aspire Desktop') AS suite_id
+        `);
+        const rows = (suiteResult.rows || suiteResult) as any[];
+        defaultSuiteId = rows[0]?.suite_id || '';
+      } catch {
+        // app schema not available — JWT-only mode
+      }
+    }
+
+    if (defaultSuiteId) {
+      setDefaultSuiteId(defaultSuiteId);
+
+      // Try to find default office
+      try {
+        const officeResult = await db.execute(sql`
+          SELECT office_id FROM app.offices WHERE suite_id = ${defaultSuiteId} LIMIT 1
+        `);
+        const officeRows = (officeResult.rows || officeResult) as any[];
+        defaultOfficeId = officeRows[0]?.office_id || '';
+      } catch {
+        // app.offices not available — office context from JWT
+      }
+      if (defaultOfficeId) setDefaultOfficeId(defaultOfficeId);
+    }
+
+    console.log(`Suite context: ${defaultSuiteId || 'JWT-based'}, Office: ${defaultOfficeId || 'JWT-based'}`);
 
     await loadOAuthTokens();
     await initStripe();
   } catch (err: any) {
     console.error('Startup initialization failed:', err.message);
-    console.warn('Server will continue with limited functionality');
+    console.warn('Server will continue with JWT-based suite context');
   }
 
   app.listen(PORT, '0.0.0.0', () => {

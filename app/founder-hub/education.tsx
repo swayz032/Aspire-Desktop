@@ -113,7 +113,7 @@ export default function EducationScreen() {
               <View style={styles.heroFooter}>
                 <View style={styles.heroAttribution}>
                   <Text style={styles.heroForText}>
-                    <Text style={styles.heroForLabel}>For Zenith Solutions: </Text>
+                    <Text style={styles.heroForLabel}>For your business:</Text>
                     This can improve your AR based on last 30 days
                   </Text>
                 </View>

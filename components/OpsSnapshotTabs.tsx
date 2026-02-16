@@ -64,7 +64,7 @@ export function OpsSnapshotTabs({ cashData, pipelineStages, businessScore, found
 
 function CashContent({ data }: { data: CashPosition }) {
   const router = useRouter();
-  
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -76,6 +76,26 @@ function CashContent({ data }: { data: CashPosition }) {
 
   const netChange = data.expectedInflows7d - data.upcomingOutflows7d;
   const isPositive = netChange >= 0;
+  const hasProviders = data.accountsConnected > 0;
+
+  if (!hasProviders) {
+    return (
+      <View style={[styles.cashContainer, styles.emptyContainer]}>
+        <Ionicons name="wallet-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
+        <Text style={styles.emptyHeadline}>Connect your accounts to see live cash</Text>
+        <Text style={styles.emptyBody}>
+          Link your bank and payment accounts to see real-time cash position, upcoming flows, and financial alerts.
+        </Text>
+        <TouchableOpacity
+          style={styles.emptyCta}
+          onPress={() => router.push('/finance-hub/connections' as any)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.emptyCtaText}>Connect accounts</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.cashContainer}>
@@ -280,6 +300,42 @@ const styles = StyleSheet.create({
   },
   cashContainer: {
     padding: Spacing.md,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 200,
+    paddingHorizontal: Spacing.lg,
+  },
+  emptyStateIcon: {
+    marginBottom: 8,
+  },
+  emptyHeadline: {
+    color: Colors.text.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  emptyBody: {
+    color: Colors.text.tertiary,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
+    marginBottom: 16,
+  },
+  emptyCta: {
+    backgroundColor: Colors.accent.cyanLight,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.accent.cyan,
+  },
+  emptyCtaText: {
+    color: Colors.accent.cyan,
+    fontSize: 13,
+    fontWeight: '600',
   },
   premiumCardWrapper: {
     borderRadius: BorderRadius.lg,

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, ImageBackground } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
-import { getHubImage } from '@/data/founderHub/imageHelper';
+import { resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 
 interface PulseItem {
@@ -12,6 +12,7 @@ interface PulseItem {
   title: string;
   summary: string;
   imageKey: string;
+  imageUrl?: string;
 }
 
 const IMAGE_KEYS_BY_CATEGORY: Record<string, string> = {
@@ -84,6 +85,7 @@ export default function PulseScreen() {
               title: payload.title ?? r.action_type ?? 'Research insight',
               summary: payload.summary ?? payload.snippet ?? payload.description ?? '',
               imageKey: IMAGE_KEYS_BY_CATEGORY[category] ?? 'warehouse-dock',
+              imageUrl: payload.image_url ?? payload.results?.[0]?.image_url ?? undefined,
             };
           }));
         }
@@ -232,7 +234,7 @@ export default function PulseScreen() {
             onHoverOut={() => setHoveredItem(null)}
           >
             <ImageBackground
-              source={getHubImage(item.imageKey)}
+              source={resolveHubImage(item.imageUrl, item.imageKey)}
               style={styles.pulseImage}
               imageStyle={styles.pulseImageStyle}
             >

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
-import { getHubImage } from '@/data/founderHub/imageHelper';
+import { resolveHubImage } from '@/data/founderHub/imageHelper';
+import { supabase } from '@/lib/supabase';
 
 const THEME = {
   bg: '#000000',
@@ -18,53 +19,24 @@ const THEME = {
   },
 };
 
-const savedItems = [
-  {
-    id: '1',
-    type: 'brief',
-    title: 'Pricing power is hiding in your pickup radius and repair grading',
-    source: 'Daily Brief',
-    date: 'Today',
-    starred: true,
-    imageKey: 'pallet-yard',
-  },
-  {
-    id: '2',
-    type: 'insight',
-    title: 'Your Grade B margins outperform industry average by 23%',
-    source: 'AI Analysis',
-    date: 'Yesterday',
-    starred: true,
-    imageKey: 'pallet-stacks',
-  },
-  {
-    id: '3',
-    type: 'template',
-    title: 'Cold outreach email template for warehouse prospects',
-    source: 'Templates',
-    date: '3 days ago',
-    starred: false,
-    imageKey: 'truck-loading',
-  },
-  {
-    id: '4',
-    type: 'pulse',
-    title: 'EPA treated lumber regulations: What pallet shops need to know',
-    source: 'Industry Pulse',
-    date: '1 week ago',
-    starred: false,
-    imageKey: 'lumber-yard',
-  },
-  {
-    id: '5',
-    type: 'note',
-    title: 'Morning reflection on Q1 goals',
-    source: 'Notes & Journal',
-    date: '2 weeks ago',
-    starred: true,
-    imageKey: 'warehouse-dock',
-  },
-];
+interface SavedItem {
+  id: string;
+  type: string;
+  title: string;
+  source: string;
+  date: string;
+  starred: boolean;
+  imageKey: string;
+  imageUrl?: string;
+}
+
+const IMAGE_KEYS_BY_TYPE: Record<string, string> = {
+  brief: 'pallet-yard',
+  insight: 'pallet-stacks',
+  template: 'truck-loading',
+  pulse: 'lumber-yard',
+  note: 'warehouse-dock',
+};
 
 const avaRecommendations = [
   { id: '1', title: 'Grade B pricing optimization tips', type: 'Pulse' },
@@ -81,6 +53,55 @@ const collections = [
 export default function SavedScreen() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        // Saved items are bookmarked receipts/content — query from a saved_items table or tagged receipts
+        const { data } = await supabase
+          .from('receipts')
+          .select('*')
+          .or('action_type.like.founder_hub.saved%,action_type.like.adam.%,action_type.like.research.%')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (!mounted) return;
+        if (data && data.length > 0) {
+          const formatAge = (dateStr: string) => {
+            const diff = Date.now() - new Date(dateStr).getTime();
+            const days = Math.floor(diff / 86400000);
+            if (days === 0) return 'Today';
+            if (days === 1) return 'Yesterday';
+            if (days < 7) return `${days} days ago`;
+            if (days < 14) return '1 week ago';
+            return `${Math.floor(days / 7)} weeks ago`;
+          };
+          setSavedItems(data.map((r: any, idx: number) => {
+            const p = r.payload ?? r.metadata ?? {};
+            const type = p.content_type ?? p.type ?? 'insight';
+            return {
+              id: r.id ?? `saved-${idx}`,
+              type,
+              title: p.title ?? r.action_type ?? 'Saved item',
+              source: p.source ?? 'Adam Research',
+              date: formatAge(r.created_at ?? new Date().toISOString()),
+              starred: p.starred ?? false,
+              imageKey: IMAGE_KEYS_BY_TYPE[type] ?? 'warehouse-dock',
+              imageUrl: p.image_url ?? p.results?.[0]?.image_url ?? undefined,
+            };
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load saved items:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -227,7 +248,7 @@ export default function SavedScreen() {
           >
             <View style={styles.savedImage}>
               <Image
-                source={getHubImage(item.imageKey)}
+                source={resolveHubImage(item.imageUrl, item.imageKey)}
                 style={styles.savedThumb}
               />
             </View>

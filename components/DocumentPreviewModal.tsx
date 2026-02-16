@@ -29,7 +29,7 @@ function InvoiceContent() {
     <View>
       <View style={p.docHeader}>
         <View>
-          <Text style={p.companyName}>Zenith Solutions</Text>
+          <Text style={p.companyName}>Your Company</Text>
           <Text style={p.companyDetail}>Suite 1042 • 123 Innovation Drive</Text>
           <Text style={p.companyDetail}>San Francisco, CA 94105</Text>
         </View>
@@ -109,7 +109,7 @@ function ContractContent() {
       <View style={p.contractParties}>
         <View style={p.partyBox}>
           <Text style={p.sectionLabel}>DISCLOSING PARTY</Text>
-          <Text style={p.partyName}>Zenith Solutions, Inc.</Text>
+          <Text style={p.partyName}>Your Company, Inc.</Text>
           <Text style={p.billToDetail}>123 Innovation Drive, SF, CA 94105</Text>
         </View>
         <View style={p.partyBox}>
@@ -139,7 +139,7 @@ function ContractContent() {
       <View style={p.signatureSection}>
         <View style={p.signatureBox}>
           <View style={p.signatureLine} />
-          <Text style={p.signatureLabel}>Zenith Solutions, Inc.</Text>
+          <Text style={p.signatureLabel}>Your Company, Inc.</Text>
           <Text style={p.signatureSub}>Authorized Representative</Text>
         </View>
         <View style={p.signatureBox}>
@@ -169,7 +169,7 @@ function ReportContent() {
     <View>
       <View style={p.docHeader}>
         <View>
-          <Text style={p.companyName}>Zenith Solutions</Text>
+          <Text style={p.companyName}>Your Company</Text>
           <Text style={p.reportTitle}>Q4 2024 Financial Report</Text>
           <Text style={p.companyDetail}>Period: October 1 — December 31, 2024</Text>
         </View>
@@ -210,7 +210,7 @@ function ReportContent() {
       ))}
 
       <View style={p.footer}>
-        <Text style={p.footerText}>Prepared by: Sarah Mitchell, CFO • Zenith Solutions</Text>
+        <Text style={p.footerText}>Prepared by: Sarah Mitchell, CFO • Your Company</Text>
         <Text style={p.footerText}>This report is confidential and intended for internal use only.</Text>
       </View>
     </View>
@@ -223,7 +223,7 @@ function EmailContent() {
       <View style={p.emailHeader}>
         <View style={p.emailRow}>
           <Text style={p.emailLabel}>From:</Text>
-          <Text style={p.emailValue}>jordan@zenithsolutions.com</Text>
+          <Text style={p.emailValue}>you@yourcompany.com</Text>
         </View>
         <View style={p.emailRow}>
           <Text style={p.emailLabel}>To:</Text>
@@ -244,7 +244,7 @@ function EmailContent() {
       <View style={p.emailBody}>
         <Text style={p.emailBodyText}>Hi Michael,</Text>
         <Text style={p.emailBodyText}>
-          Thank you for the productive meeting yesterday. I wanted to follow up on the key points we discussed regarding the strategic partnership between Zenith Solutions and Apex Corporation.
+          Thank you for the productive meeting yesterday. I wanted to follow up on the key points we discussed regarding the strategic partnership between Your Company and Apex Corporation.
         </Text>
         <Text style={p.emailBodyText}>
           As agreed, I've attached the preliminary proposal outlining the scope of collaboration, revenue sharing model, and implementation timeline. Our team has incorporated the feedback from your VP of Engineering regarding the technical integration requirements.
@@ -260,7 +260,7 @@ function EmailContent() {
         </Text>
         <Text style={p.emailBodyText}>Best regards,</Text>
         <Text style={[p.emailBodyText, { fontWeight: '600', color: '#d1d1d6' }]}>Jordan Mitchell</Text>
-        <Text style={p.emailBodyText}>Founder & CEO, Zenith Solutions</Text>
+        <Text style={p.emailBodyText}>Founder & CEO, Your Company</Text>
       </View>
 
       <View style={p.divider} />
@@ -320,7 +320,7 @@ function GenericDocContent() {
     <View>
       <View style={p.docHeader}>
         <View>
-          <Text style={p.companyName}>Zenith Solutions</Text>
+          <Text style={p.companyName}>Your Company</Text>
           <Text style={p.reportTitle}>Project Proposal — Phase 2</Text>
           <Text style={p.companyDetail}>Prepared: February 13, 2025 • Version 2.1</Text>
         </View>

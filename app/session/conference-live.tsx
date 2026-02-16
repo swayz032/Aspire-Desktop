@@ -75,11 +75,9 @@ interface Participant {
   isSpotlighted?: boolean;
 }
 
-const MOCK_PARTICIPANTS: Participant[] = [
+// Host participant — other participants joined via LiveKit room events
+const INITIAL_PARTICIPANTS: Participant[] = [
   { id: 'you', name: 'You', role: 'Host', avatarColor: '#2D3748', isMuted: false, isVideoOff: false, isSpeaking: false, isHost: true },
-  { id: 'alex', name: 'Alex Chen', role: 'Director', avatarColor: '#374151', isMuted: false, isVideoOff: false, isSpeaking: false, isHost: false },
-  { id: 'sarah', name: 'Sarah Miller', role: 'VP Sales', avatarColor: '#1F2937', isMuted: true, isVideoOff: false, isSpeaking: false, isHost: false },
-  { id: 'marcus', name: 'Marcus Webb', role: 'CFO', avatarColor: '#1E293B', isMuted: false, isVideoOff: false, isSpeaking: false, isHost: false },
 ];
 
 const AVA_PARTICIPANT: Participant = {
@@ -123,28 +121,12 @@ interface AuthorityItem {
   timestamp: Date;
 }
 
-const MOCK_MESSAGES: ChatMessage[] = [
-  { id: '1', senderId: 'alex', senderName: 'Alex Chen', text: 'Can we review the Q4 numbers?', timestamp: new Date(Date.now() - 300000) },
-  { id: '2', senderId: 'ava', senderName: 'Ava', text: 'I have the Q4 report ready. Would you like me to share it with the room?', timestamp: new Date(Date.now() - 240000), isPrivate: true },
-];
+// Chat messages and materials populated during live session
+const INITIAL_MESSAGES: ChatMessage[] = [];
+const INITIAL_MATERIALS: MaterialItem[] = [];
 
-const MOCK_MATERIALS: MaterialItem[] = [
-  { id: 'm1', name: 'Q4 Financial Summary.pdf', type: 'document', sender: 'Ava', timestamp: new Date(), sensitivity: 'internal_sensitive', saved: false },
-  { id: 'm2', name: 'Meeting Action Items', type: 'note', sender: 'Ava', timestamp: new Date(), sensitivity: 'room_safe', saved: true },
-];
-
-const MOCK_AUTHORITY: AuthorityItem[] = [
-  {
-    id: 'auth1',
-    title: 'Share Q4 Report',
-    description: 'Ava wants to share the Q4 Financial Summary with all participants including external guests.',
-    type: 'send_material',
-    sensitivity: 'internal_sensitive',
-    requestedBy: 'Ava',
-    recipients: ['Alex Chen', 'Sarah Miller', 'External Guest'],
-    timestamp: new Date(),
-  },
-];
+// Authority items populated from Supabase approval_requests during live session
+const INITIAL_AUTHORITY: AuthorityItem[] = [];
 
 function AvaTile({ 
   avaState, 
@@ -360,9 +342,8 @@ export default function ConferenceLive() {
   const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
   const liveKit = useLiveKitRoom({ token: liveKitToken });
 
-  // Merge LiveKit participants with mock fallback
-  const [mockParticipants, setMockParticipants] = useState(MOCK_PARTICIPANTS);
-  const participants = liveKit.isConnected && liveKit.participants.length > 0
+  // LiveKit participants — production mode, no mock fallback
+  const participants: Participant[] = liveKit.participants.length > 0
     ? liveKit.participants.map(p => ({
         id: p.id,
         name: p.name || p.id,
@@ -375,8 +356,7 @@ export default function ConferenceLive() {
         isPinned: false,
         isSpotlighted: false,
       } as Participant))
-    : mockParticipants;
-  const setParticipants = liveKit.isConnected ? () => {} : setMockParticipants;
+    : INITIAL_PARTICIPANTS;
   
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -385,9 +365,9 @@ export default function ConferenceLive() {
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const [controlsVisible, setControlsVisible] = useState(true);
   
-  const [messages, setMessages] = useState(MOCK_MESSAGES);
-  const [materials, setMaterials] = useState(MOCK_MATERIALS);
-  const [authorityQueue, setAuthorityQueue] = useState(MOCK_AUTHORITY);
+  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [materials, setMaterials] = useState(INITIAL_MATERIALS);
+  const [authorityQueue, setAuthorityQueue] = useState(INITIAL_AUTHORITY);
   const [avaState, setAvaState] = useState<RoomAvaState>('idle');
   const [chatInput, setChatInput] = useState('');
   const [activeTab, setActiveTab] = useState<'chat' | 'materials' | 'authority'>('chat');
@@ -430,7 +410,7 @@ export default function ConferenceLive() {
         }
       })
       .catch(err => {
-        console.warn('LiveKit token fetch failed, using mock participants:', err.message);
+        console.error('LiveKit token fetch failed:', err.message);
       });
   }, [suiteId, params.roomName, params.participantName]);
 
@@ -438,7 +418,7 @@ export default function ConferenceLive() {
   useEffect(() => {
     if (liveKitToken && !liveKit.isConnected) {
       liveKit.connect().catch(err => {
-        console.warn('LiveKit connect failed, falling back to mock:', err.message);
+        console.error('LiveKit connect failed:', err.message);
       });
     }
   }, [liveKitToken, liveKit.isConnected]);
@@ -519,19 +499,12 @@ export default function ConferenceLive() {
     return () => clearInterval(timer);
   }, []);
 
-  // Mock speaker simulation — only active when LiveKit is NOT connected
+  // Track active speaker from LiveKit
   useEffect(() => {
-    if (liveKit.isConnected) return;
-    const speakerInterval = setInterval(() => {
-      const randomIndex = Math.floor(Math.random() * mockParticipants.length);
-      setMockParticipants(prev => prev.map((p, i) => ({
-        ...p,
-        isSpeaking: i === randomIndex,
-      })));
-      setActiveSpeakerId(mockParticipants[randomIndex].id);
-    }, 4000);
-    return () => clearInterval(speakerInterval);
-  }, [mockParticipants.length, liveKit.isConnected]);
+    if (!liveKit.isConnected) return;
+    const speaking = participants.find(p => p.isSpeaking);
+    if (speaking) setActiveSpeakerId(speaking.id);
+  }, [participants, liveKit.isConnected]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToastMessage(message);
@@ -548,26 +521,18 @@ export default function ConferenceLive() {
   const handleToggleMute = () => {
     const newMuted = !isMuted;
     setIsMuted(newMuted);
-    // Toggle LiveKit microphone track if connected
-    if (liveKit.isConnected && liveKit.room) {
+    if (liveKit.room) {
       liveKit.room.localParticipant?.setMicrophoneEnabled(!newMuted).catch(() => {});
     }
-    setMockParticipants(prev => prev.map(p =>
-      p.id === 'you' ? { ...p, isMuted: newMuted } : p
-    ));
     showToast(newMuted ? 'Microphone off' : 'Microphone on', 'info');
   };
 
   const handleToggleVideo = () => {
     const newVideoOff = !isVideoOff;
     setIsVideoOff(newVideoOff);
-    // Toggle LiveKit camera track if connected
-    if (liveKit.isConnected && liveKit.room) {
+    if (liveKit.room) {
       liveKit.room.localParticipant?.setCameraEnabled(!newVideoOff).catch(() => {});
     }
-    setMockParticipants(prev => prev.map(p =>
-      p.id === 'you' ? { ...p, isVideoOff: newVideoOff } : p
-    ));
     showToast(newVideoOff ? 'Camera off' : 'Camera on', 'info');
   };
 
@@ -683,30 +648,35 @@ export default function ConferenceLive() {
     }
   }, [isDesktop, toggleFullscreen]);
 
+  // Local UI state for pin/spotlight (not part of LiveKit)
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  const [spotlightedIds, setSpotlightedIds] = useState<Set<string>>(new Set());
+
+  // Merge pin/spotlight into participants
+  const participantsWithUI = participants.map(p => ({
+    ...p,
+    isPinned: pinnedIds.has(p.id),
+    isSpotlighted: spotlightedIds.has(p.id),
+  }));
+
   const handlePinParticipant = (id: string) => {
-    const pinCount = participants.filter(p => p.isPinned).length;
-    setMockParticipants(prev => prev.map(p => {
-      if (p.id === id) {
-        if (p.isPinned) return { ...p, isPinned: false };
-        if (pinCount >= 9) return p;
-        return { ...p, isPinned: true };
-      }
-      return p;
-    }));
+    setPinnedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); }
+      else if (next.size < 9) { next.add(id); }
+      return next;
+    });
   };
 
   const handleSpotlightParticipant = (id: string) => {
     const currentUser = participants.find(p => p.id === 'you');
     if (!currentUser?.isHost) return;
-    const spotlightCount = participants.filter(p => p.isSpotlighted).length;
-    setMockParticipants(prev => prev.map(p => {
-      if (p.id === id) {
-        if (p.isSpotlighted) return { ...p, isSpotlighted: false };
-        if (spotlightCount >= 9) return p;
-        return { ...p, isSpotlighted: true };
-      }
-      return p;
-    }));
+    setSpotlightedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); }
+      else if (next.size < 9) { next.add(id); }
+      return next;
+    });
   };
 
   const handleViewModeChange = (mode: ViewMode) => {
@@ -715,7 +685,7 @@ export default function ConferenceLive() {
     showToast(`Switched to ${mode === 'multiSpeaker' ? 'Multi-speaker' : mode === 'floatingThumbnail' ? 'Floating Thumbnail' : mode.charAt(0).toUpperCase() + mode.slice(1)} view`, 'info');
   };
 
-  const filteredParticipants = participants.filter(p => {
+  const filteredParticipants = participantsWithUI.filter(p => {
     if (hideSelfView && p.id === 'you') return false;
     if (hideNonVideo && p.isVideoOff) return false;
     return true;
@@ -726,8 +696,8 @@ export default function ConferenceLive() {
   const totalPages = Math.ceil(allTiles.length / maxTilesPerPage);
   const pagedTiles = allTiles.slice(galleryPage * maxTilesPerPage, (galleryPage + 1) * maxTilesPerPage);
 
-  const pinnedParticipant = participants.find(p => p.isPinned);
-  const stageParticipant = pinnedParticipant || participants.find(p => p.id === activeSpeakerId) || participants[0];
+  const pinnedParticipant = participantsWithUI.find(p => p.isPinned);
+  const stageParticipant = pinnedParticipant || participantsWithUI.find(p => p.id === activeSpeakerId) || participantsWithUI[0];
   const filmstripParticipants = allTiles.filter(p => p.id !== stageParticipant?.id);
 
   const handleSendMessage = (text: string) => {
@@ -794,11 +764,11 @@ export default function ConferenceLive() {
     setAvaState('idle');
   };
 
-  const activeSpeaker = participants.find(p => p.id === activeSpeakerId) || participants[0];
-  const otherParticipants = participants.filter(p => p.id !== activeSpeakerId);
+  const activeSpeaker = participantsWithUI.find(p => p.id === activeSpeakerId) || participantsWithUI[0];
+  const otherParticipants = participantsWithUI.filter(p => p.id !== activeSpeakerId);
 
   const getGridLayout = () => {
-    const count = participants.length;
+    const count = participantsWithUI.length;
     if (isDesktop) {
       if (count <= 1) return { cols: 1, rows: 1 };
       if (count <= 2) return { cols: 2, rows: 1 };
@@ -881,7 +851,7 @@ export default function ConferenceLive() {
               >
                 <Ionicons name="people" size={18} color={Colors.text.primary} />
                 <View style={styles.participantBadge}>
-                  <Text style={styles.participantBadgeText}>{participants.length}</Text>
+                  <Text style={styles.participantBadgeText}>{participantsWithUI.length}</Text>
                 </View>
               </Pressable>
             </View>
@@ -892,12 +862,12 @@ export default function ConferenceLive() {
       <View style={styles.videoArea}>
         {layout === 'gallery' ? (
           <View style={styles.galleryGrid}>
-            {participants.map((participant) => (
-              <View 
+            {participantsWithUI.map((participant) => (
+              <View
                 key={participant.id}
                 style={[styles.gridTileWrapper, { width: tileWidth, height: tileHeight }]}
               >
-                <VideoTile 
+                <VideoTile
                   participant={participant}
                   isActiveSpeaker={participant.id === activeSpeakerId}
                 />

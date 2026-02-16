@@ -24,7 +24,24 @@ export function TodayPlanTabs({ planItems }: { planItems: TodayPlanItem[] }) {
 
   return (
     <Card variant="elevated" style={styles.container}>
-      <TodayPlanContent items={displayedPlan} router={router} />
+      {displayedPlan.length > 0 ? (
+        <TodayPlanContent items={displayedPlan} router={router} />
+      ) : (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="sunny-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
+          <Text style={styles.emptyHeadline}>Your morning plan builds itself</Text>
+          <Text style={styles.emptyBody}>
+            As your inbox, calls, and invoices are processed — your daily action list appears here. Start by connecting your first service.
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyCta}
+            onPress={() => router.push('/inbox' as any)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.emptyCtaText}>Set up your inbox</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </Card>
   );
 }
@@ -88,6 +105,44 @@ const styles = StyleSheet.create({
     padding: 0,
     overflow: 'hidden',
     flex: 1,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    minHeight: 180,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xl,
+  },
+  emptyStateIcon: {
+    marginBottom: 8,
+  },
+  emptyHeadline: {
+    color: Colors.text.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  emptyBody: {
+    color: Colors.text.tertiary,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
+    marginBottom: 16,
+  },
+  emptyCta: {
+    backgroundColor: Colors.accent.cyanLight,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.accent.cyan,
+  },
+  emptyCtaText: {
+    color: Colors.accent.cyan,
+    fontSize: 13,
+    fontWeight: '600',
   },
   planContainer: {
     padding: Spacing.md,

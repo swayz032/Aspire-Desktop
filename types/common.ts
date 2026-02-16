@@ -2,9 +2,9 @@ export type Tag = 'Legal' | 'Finance' | 'Ops' | 'Security' | 'Sales';
 export type Priority = 'Low' | 'Medium' | 'High';
 export type ItemStatus = 'Open' | 'Waiting' | 'Resolved' | 'resolved' | 'in_progress';
 
-export const SUITE_ID = 'ZEN-014';
-export const OFFICE_ID = 'O-1011';
-export const BUSINESS_NAME = 'Zenith Solutions';
+export const SUITE_ID = '7B2F-014';
+export const OFFICE_ID = 'OFC-101';
+export const BUSINESS_NAME = 'Your Business';
 
 export interface SuiteContext {
   suiteId: string;

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
-import { getHubImage } from '@/data/founderHub/imageHelper';
+import { resolveHubImage } from '@/data/founderHub/imageHelper';
+import { supabase } from '@/lib/supabase';
 
 const THEME = {
   bg: '#000000',
@@ -27,65 +28,81 @@ const categories = [
   { id: 'strategy', label: 'Strategy', count: 2 },
 ];
 
-const libraryItems = [
-  {
-    id: '1',
-    type: 'article',
-    title: 'How to price repair-grade pallets for maximum margin',
-    source: 'Ava Summary',
-    date: '2 days ago',
-    category: 'Pricing',
-    saved: true,
-    imageKey: 'pallet-stacks',
-  },
-  {
-    id: '2',
-    type: 'insight',
-    title: 'Your Grade B margins outperform industry average by 23%',
-    source: 'AI Analysis',
-    date: '3 days ago',
-    category: 'Operations',
-    saved: true,
-    imageKey: 'warehouse-dock',
-  },
-  {
-    id: '3',
-    type: 'article',
-    title: 'EPA treated lumber regulations: What pallet shops need to know',
-    source: 'Industry Brief',
-    date: '1 week ago',
-    category: 'Market',
-    saved: false,
-    imageKey: 'lumber-yard',
-  },
-  {
-    id: '4',
-    type: 'template',
-    title: 'Cold outreach email template for warehouse prospects',
-    source: 'Template Library',
-    date: '1 week ago',
-    category: 'Sales',
-    saved: true,
-    imageKey: 'truck-loading',
-  },
-  {
-    id: '5',
-    type: 'insight',
-    title: 'Fuel cost trends suggest Q2 logistics price increase',
-    source: 'Market Watch',
-    date: '2 weeks ago',
-    category: 'Market',
-    saved: false,
-    imageKey: 'delivery-truck',
-  },
-];
+interface LibraryItem {
+  id: string;
+  type: string;
+  title: string;
+  source: string;
+  date: string;
+  category: string;
+  saved: boolean;
+  imageKey: string;
+  imageUrl?: string;
+}
 
 const recentSearches = ['lumber pricing', 'Grade B margins', 'EPA regulations', 'cold email'];
+
+const IMAGE_KEYS_BY_CATEGORY: Record<string, string> = {
+  Sales: 'truck-loading',
+  Operations: 'warehouse-dock',
+  Pricing: 'pallet-stacks',
+  Market: 'delivery-truck',
+  Strategy: 'lumber-yard',
+};
 
 export default function LibraryScreen() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('receipts')
+          .select('*')
+          .or('action_type.like.adam.library%,action_type.like.research.%,action_type.like.founder_hub.library%')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (!mounted) return;
+        if (data && data.length > 0) {
+          const formatAge = (dateStr: string) => {
+            const diff = Date.now() - new Date(dateStr).getTime();
+            const days = Math.floor(diff / 86400000);
+            if (days === 0) return 'Today';
+            if (days === 1) return 'Yesterday';
+            if (days < 7) return `${days} days ago`;
+            if (days < 14) return '1 week ago';
+            return `${Math.floor(days / 7)} weeks ago`;
+          };
+          setLibraryItems(data.map((r: any, idx: number) => {
+            const p = r.payload ?? r.metadata ?? {};
+            const category = p.category ?? p.domain ?? 'Market';
+            return {
+              id: r.id ?? `lib-${idx}`,
+              type: p.content_type ?? p.type ?? 'article',
+              title: p.title ?? r.action_type ?? 'Resource',
+              source: p.source ?? 'Adam Research',
+              date: formatAge(r.created_at ?? new Date().toISOString()),
+              category,
+              saved: false,
+              imageKey: IMAGE_KEYS_BY_CATEGORY[category] ?? 'warehouse-dock',
+              imageUrl: p.image_url ?? p.results?.[0]?.image_url ?? undefined,
+            };
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load library items:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -207,6 +224,15 @@ export default function LibraryScreen() {
       </View>
 
       <View style={styles.itemsList}>
+        {!loading && libraryItems.length === 0 && (
+          <View style={{ alignItems: 'center', paddingVertical: 48, gap: 12 }}>
+            <Ionicons name="library-outline" size={32} color={THEME.text.muted} />
+            <Text style={{ fontSize: 16, fontWeight: '600', color: THEME.text.secondary }}>Your library is building</Text>
+            <Text style={{ fontSize: 13, color: THEME.text.muted, textAlign: 'center', maxWidth: 320, lineHeight: 18 }}>
+              As Adam researches your industry and Ava generates summaries, your curated knowledge library fills up automatically.
+            </Text>
+          </View>
+        )}
         {libraryItems.map((item) => (
           <Pressable
             key={item.id}
@@ -219,7 +245,7 @@ export default function LibraryScreen() {
           >
             <View style={styles.itemImage}>
               <Image
-                source={getHubImage(item.imageKey)}
+                source={resolveHubImage(item.imageUrl, item.imageKey)}
                 style={styles.itemThumb}
               />
             </View>

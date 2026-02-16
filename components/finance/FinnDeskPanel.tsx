@@ -498,12 +498,13 @@ export function FinnDeskPanel() {
   }, []);
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
-  const { suiteId } = useSupabase();
+  const { suiteId, session } = useSupabase();
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const finnVoice = useAgentVoice({
     agent: 'finn',
     suiteId: suiteId ?? undefined,
+    accessToken: session?.access_token,
     onStatusChange: (voiceStatus) => {
       setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
@@ -742,7 +743,7 @@ export function FinnDeskPanel() {
                 ]}
               />
               <Text style={styles.companyName}>
-                {finnVoice.isActive ? 'Talking with Finn...' : 'Zenith Solutions'}
+                {finnVoice.isActive ? 'Talking with Finn...' : 'Your Business'}
               </Text>
             </Pressable>
           </View>

@@ -18,7 +18,7 @@ router.get('/api/deepgram/token', async (_req: Request, res: Response) => {
     if (!DEEPGRAM_API_KEY) {
       return res
         .status(500)
-        .json({ error: 'Deepgram API key not configured' });
+        .json({ error: 'Voice transcription service not configured' });
     }
 
     // For production, use Deepgram's project key API to create short-lived keys.

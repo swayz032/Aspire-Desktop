@@ -14,18 +14,17 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Toast } from '@/components/session/Toast';
 import { BottomSheet } from '@/components/session/BottomSheet';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
-import { 
+import {
   SessionPurpose,
   MEMBER_DIRECTORY,
 } from '@/data/session';
 import { useDesktop } from '@/lib/useDesktop';
+import { useSupabase } from '@/providers';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
 
 const CONFERENCE_ROOM_IMAGE = require('@/assets/images/conference-room-meeting.jpg');
 const TEAM_MEETING_IMAGE = require('@/assets/images/executive-conference.jpg');
 const NORA_AVATAR = require('@/assets/images/nora-avatar.png');
-const RECORDING_IMAGE = require('@/assets/images/approval-recording.jpg');
-const PROJECT_IMAGE = require('@/assets/images/approval-invite.jpg');
 
 const PURPOSE_OPTIONS: { id: SessionPurpose; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'Internal', label: 'Internal', icon: 'business' },
@@ -61,47 +60,8 @@ interface AuthorityItem {
   icon: keyof typeof Ionicons.glyphMap;
 }
 
-const AUTHORITY_QUEUE: AuthorityItem[] = [
-  {
-    id: 'auth-1',
-    title: 'Share Q4 Financial Summary',
-    description: 'Share financial documents with meeting participants',
-    risk: 'Medium',
-    status: 'pending',
-    documentName: 'Q4_Financial_Report.pdf',
-    documentType: 'report',
-    icon: 'bar-chart',
-  },
-  {
-    id: 'auth-2',
-    title: 'Record Meeting Transcript',
-    description: 'Auto-transcription with AI summarization',
-    risk: 'Low',
-    status: 'pending',
-    thumbnailImage: RECORDING_IMAGE,
-    icon: 'mic',
-  },
-  {
-    id: 'auth-3',
-    title: 'Share Project Proposal',
-    description: 'Send proposal to external client for review',
-    risk: 'High',
-    status: 'pending',
-    documentName: 'Project_Proposal_v2.pdf',
-    thumbnailImage: PROJECT_IMAGE,
-    icon: 'document-text',
-  },
-  {
-    id: 'auth-4',
-    title: 'Execute NDA Agreement',
-    description: 'Digital signature for mutual NDA',
-    risk: 'Medium',
-    status: 'pending',
-    documentName: 'Mutual_NDA_2024.pdf',
-    documentType: 'contract',
-    icon: 'shield-checkmark',
-  },
-];
+// Authority items loaded from Supabase approval_requests — starts empty
+const INITIAL_AUTHORITY_QUEUE: AuthorityItem[] = [];
 
 const getRiskConfig = (risk: AuthorityItem['risk']) => {
   switch (risk) {
@@ -117,14 +77,20 @@ const getRiskConfig = (risk: AuthorityItem['risk']) => {
 export default function ConferenceLobby() {
   const router = useRouter();
   const isDesktop = useDesktop();
-  
+  const { session, suiteId } = useSupabase();
+
+  const userName = session?.user?.user_metadata?.full_name
+    ?? session?.user?.email?.split('@')[0]
+    ?? 'You';
+  const suiteLabel = suiteId ? `Suite ${suiteId.slice(0, 8)}` : 'Conference Room';
+
   const [purpose, setPurpose] = useState<SessionPurpose>('Internal');
   const [participants, setParticipants] = useState<Participant[]>([
-    { id: 'you', name: 'Marcus Chen', role: 'Founder', avatarColor: Colors.accent.cyan, status: 'ready' },
+    { id: 'you', name: userName, role: 'Founder', avatarColor: Colors.accent.cyan, status: 'ready' },
   ]);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
-  const [authorityItems, setAuthorityItems] = useState(AUTHORITY_QUEUE);
+  const [authorityItems, setAuthorityItems] = useState<AuthorityItem[]>(INITIAL_AUTHORITY_QUEUE);
   
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
@@ -296,7 +262,7 @@ export default function ConferenceLobby() {
         
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Conference Room</Text>
-          <Text style={styles.headerSubtitle}>Suite ZEN-014 • Room CR-01</Text>
+          <Text style={styles.headerSubtitle}>{suiteLabel} • Room CR-01</Text>
         </View>
         
         <View style={styles.headerActions}>
@@ -363,7 +329,7 @@ export default function ConferenceLobby() {
                     {/* Idle Mode Details */}
                     <View style={styles.sessionDetails}>
                       <Text style={styles.sessionMeetingTitle}>Conference Room</Text>
-                      <Text style={styles.sessionLocation}>Suite ZEN-014 • Room CR-01</Text>
+                      <Text style={styles.sessionLocation}>{suiteLabel} • Room CR-01</Text>
                       
                       <View style={styles.idleInfoRow}>
                         <Ionicons name="time-outline" size={16} color="rgba(255,255,255,0.6)" />
@@ -418,8 +384,8 @@ export default function ConferenceLobby() {
 
                     {/* Meeting Details - Bottom Section */}
                     <View style={styles.sessionDetails}>
-                      <Text style={styles.sessionMeetingTitle}>Q4 Strategy Review</Text>
-                      <Text style={styles.sessionLocation}>Suite ZEN-014 • Room CR-01</Text>
+                      <Text style={styles.sessionMeetingTitle}>{purpose} Session</Text>
+                      <Text style={styles.sessionLocation}>{suiteLabel} • Room CR-01</Text>
                       
                       {/* Participants */}
                       <View style={styles.sessionParticipantsRow}>
@@ -447,7 +413,7 @@ export default function ConferenceLobby() {
                       {/* Agenda Preview */}
                       <View style={styles.agendaPreview}>
                         <Text style={styles.agendaPreviewText}>
-                          Review Q4 projections • Expansion timeline • Resource allocation
+                          Nora is ready to transcribe and take notes
                         </Text>
                       </View>
                     </View>
@@ -484,6 +450,15 @@ export default function ConferenceLobby() {
           </View>
 
           {/* Authority Queue - Horizontal Scrollable */}
+          {authorityItems.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 24, paddingHorizontal: 24 }}>
+              <Ionicons name="checkmark-circle-outline" size={28} color={Colors.accent.cyan} style={{ marginBottom: 8 }} />
+              <Text style={{ color: Colors.text.primary, fontSize: 14, fontWeight: '600', textAlign: 'center', marginBottom: 4 }}>No approvals needed</Text>
+              <Text style={{ color: Colors.text.muted, fontSize: 12, textAlign: 'center', lineHeight: 17 }}>
+                When documents or actions need your sign-off before the session, they'll appear here.
+              </Text>
+            </View>
+          ) : (
           <View
             style={{
               flexDirection: 'row',
@@ -587,6 +562,7 @@ export default function ConferenceLobby() {
               );
             })}
           </View>
+          )}
         </View>
         </View>
 

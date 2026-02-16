@@ -141,7 +141,7 @@ export default function RunPayrollScreen() {
   }, []);
 
   const gustoConnected = !gustoLoading && !gustoError && gustoCompany;
-  const displayCompanyName = gustoCompany?.name || gustoCompany?.trade_name || 'Zenith Solutions';
+  const displayCompanyName = gustoCompany?.name || gustoCompany?.trade_name || 'Your Business';
   const companyStatus = gustoCompany?.company_status || '';
   const payScheduleLabel = gustoPaySchedules.length > 0
     ? gustoPaySchedules[0].frequency?.replace(/_/g, ' ')?.replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Bi-weekly'

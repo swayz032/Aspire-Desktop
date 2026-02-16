@@ -12,7 +12,6 @@ export default function FinanceHubLayout() {
       <Stack.Screen name="clients" />
       <Stack.Screen name="connections" />
       <Stack.Screen name="receipts" />
-      <Stack.Screen name="finn" />
     </Stack>
   );
 }

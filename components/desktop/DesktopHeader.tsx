@@ -17,74 +17,9 @@ interface Notification {
   iconBg: string;
 }
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  {
-    id: 'n1',
-    type: 'approval',
-    title: 'Invoice Approved',
-    message: 'Q4 Financial Report has been approved by Sarah',
-    time: '2 min ago',
-    read: false,
-    icon: 'checkmark-circle',
-    iconColor: '#22c55e',
-    iconBg: 'rgba(34, 197, 94, 0.12)',
-  },
-  {
-    id: 'n2',
-    type: 'activity',
-    title: 'New Booking Request',
-    message: 'Marcus Chen requested a strategy session for tomorrow at 2:00 PM',
-    time: '15 min ago',
-    read: false,
-    icon: 'calendar',
-    iconColor: '#3B82F6',
-    iconBg: 'rgba(59, 130, 246, 0.12)',
-  },
-  {
-    id: 'n3',
-    type: 'system',
-    title: 'Payroll Processing',
-    message: 'February payroll has been submitted to Gusto for processing',
-    time: '1 hr ago',
-    read: false,
-    icon: 'cash',
-    iconColor: '#f59e0b',
-    iconBg: 'rgba(245, 158, 11, 0.12)',
-  },
-  {
-    id: 'n4',
-    type: 'activity',
-    title: 'Document Signed',
-    message: 'Mutual NDA with Apex Corp has been fully executed',
-    time: '3 hrs ago',
-    read: true,
-    icon: 'document-text',
-    iconColor: '#8b5cf6',
-    iconBg: 'rgba(139, 92, 246, 0.12)',
-  },
-  {
-    id: 'n5',
-    type: 'approval',
-    title: 'Expense Report',
-    message: 'Travel expenses ($2,450) submitted for your approval',
-    time: '5 hrs ago',
-    read: true,
-    icon: 'receipt',
-    iconColor: '#ec4899',
-    iconBg: 'rgba(236, 72, 153, 0.12)',
-  },
-  {
-    id: 'n6',
-    type: 'system',
-    title: 'Plaid Sync Complete',
-    message: 'Bank accounts synced successfully — 12 new transactions imported',
-    time: 'Yesterday',
-    read: true,
-    icon: 'sync',
-    iconColor: '#06b6d4',
-    iconBg: 'rgba(6, 182, 212, 0.12)',
-  },
-];
+// Notifications are fetched from Supabase (inbox_items, approval_requests)
+// Start empty — populated via real-time subscriptions or polling
+const INITIAL_NOTIFICATIONS: Notification[] = [];
 
 interface ProfileMenuItem {
   id: string;
@@ -117,7 +52,7 @@ interface DesktopHeaderProps {
 }
 
 export function DesktopHeader({ 
-  businessName = 'Zenith Solutions',
+  businessName = 'Your Business',
   role = 'Founder',
   suiteId = '1042'
 }: DesktopHeaderProps) {
@@ -237,7 +172,7 @@ export function DesktopHeader({
           </View>
           <View style={s.profileHeaderInfo}>
             <Text style={s.profileHeaderName}>Jordan Mitchell</Text>
-            <Text style={s.profileHeaderEmail}>jordan@zenithsolutions.com</Text>
+            <Text style={s.profileHeaderEmail}>jordan@example.com</Text>
           </View>
           <View style={s.profileBadge}>
             <Text style={s.profileBadgeText}>{role}</Text>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
 import { DesktopShell } from './DesktopShell';
 import { AvaDeskPanel } from './AvaDeskPanel';
 import { InteractionModePanel } from '@/components/InteractionModePanel';
@@ -8,8 +8,9 @@ import { TodayPlanTabs } from '@/components/TodayPlanTabs';
 import { CalendarCard } from '@/components/CalendarCard';
 import { AuthorityQueueCard } from '@/components/AuthorityQueueCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors } from '@/constants/tokens';
+import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { getAuthorityQueue, getCalendarEvents, getCashPosition } from '@/lib/api';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import type { CashPosition, AuthorityItem } from '@/types';
@@ -162,37 +163,47 @@ export function DesktopHome() {
               actionLabel="View all"
               onAction={() => router.push('/inbox' as any)}
             />
-            <View
-              style={{
-                flexDirection: 'row',
-                gap: 12,
-                overflowX: 'auto',
-                overflowY: 'hidden',
-                paddingVertical: 4,
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#3B3B3D transparent',
-                alignItems: 'stretch',
-              } as any}
-            >
-              {allAuthorityItems.map((item) => (
-                <View key={item.id} style={styles.authorityCardWrapper}>
-                  <AuthorityQueueCard
-                    item={item}
-                    onAction={(action) => {
-                      if (action === 'join') {
-                        router.push('/session/conference-live' as any);
-                      } else if (action === 'review' || action === 'approve') {
-                        if (item.type === 'approval') {
-                          router.push('/finance-hub/payroll' as any);
-                        } else {
-                          router.push('/inbox' as any);
+            {allAuthorityItems.length > 0 ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 12,
+                  overflowX: 'auto',
+                  overflowY: 'hidden',
+                  paddingVertical: 4,
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: '#3B3B3D transparent',
+                  alignItems: 'stretch',
+                } as any}
+              >
+                {allAuthorityItems.map((item) => (
+                  <View key={item.id} style={styles.authorityCardWrapper}>
+                    <AuthorityQueueCard
+                      item={item}
+                      onAction={(action) => {
+                        if (action === 'join') {
+                          router.push('/session/conference-live' as any);
+                        } else if (action === 'review' || action === 'approve') {
+                          if (item.type === 'approval') {
+                            router.push('/finance-hub/payroll' as any);
+                          } else {
+                            router.push('/inbox' as any);
+                          }
                         }
-                      }
-                    }}
-                  />
-                </View>
-              ))}
-            </View>
+                      }}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.authorityEmpty}>
+                <Ionicons name="shield-checkmark-outline" size={24} color={Colors.accent.cyan} style={styles.authorityEmptyIcon} />
+                <Text style={styles.authorityEmptyHeadline}>Your approval queue is clear</Text>
+                <Text style={styles.authorityEmptyBody}>
+                  When agents need your sign-off — invoices over $500, contracts, payments — they land here. Every action leaves a receipt.
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -269,5 +280,29 @@ const styles = StyleSheet.create({
     width: 300,
     flexShrink: 0,
     display: 'flex',
+  },
+  authorityEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 140,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+  },
+  authorityEmptyIcon: {
+    marginBottom: 8,
+  },
+  authorityEmptyHeadline: {
+    color: Colors.text.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  authorityEmptyBody: {
+    color: Colors.text.tertiary,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
+    maxWidth: 480,
   },
 });

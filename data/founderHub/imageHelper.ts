@@ -17,8 +17,28 @@ const imageMap: Record<string, ImageSourcePropType> = {
 
 const placeholder = require('@/assets/images/founder-hub/pallet-yard.jpg');
 
+/**
+ * Get hub image source — prefers remote URL from Adam's research,
+ * falls back to local imageKey mapping, then placeholder.
+ */
 export function getHubImage(imageKey: string): ImageSourcePropType {
   return imageMap[imageKey] || placeholder;
+}
+
+/**
+ * Resolve image source for Founder Hub content.
+ * Prefers real image_url from web sources (blog thumbnails, article images)
+ * delivered by Adam's research via n8n workflows.
+ * Falls back to local imageKey mapping when no URL is available.
+ */
+export function resolveHubImage(
+  imageUrl?: string | null,
+  imageKey?: string
+): ImageSourcePropType | { uri: string } {
+  if (imageUrl && imageUrl.startsWith('http')) {
+    return { uri: imageUrl };
+  }
+  return imageMap[imageKey || ''] || placeholder;
 }
 
 export const hubImages = imageMap;

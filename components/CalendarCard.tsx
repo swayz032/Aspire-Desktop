@@ -136,7 +136,20 @@ export function CalendarCard({ events }: CalendarCardProps) {
             );
           })}
           {selectedEvents.length === 0 && (
-            <Text style={styles.noEventsText}>No events scheduled</Text>
+            <View style={styles.emptyContainer}>
+              <Ionicons name="calendar-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
+              <Text style={styles.emptyHeadline}>No meetings today</Text>
+              <Text style={styles.emptyBody}>
+                Set your availability so clients can book appointments, or connect your calendar to sync.
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyCta}
+                onPress={() => router.push('/more/bookings' as any)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.emptyCtaText}>Set availability</Text>
+              </TouchableOpacity>
+            </View>
           )}
           {selectedEvents.length > 3 && (
             <Text style={styles.moreEventsText}>+{selectedEvents.length - 3} more</Text>
@@ -271,11 +284,41 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     textAlign: 'center',
   },
-  noEventsText: {
-    fontSize: Typography.caption.fontSize,
-    color: Colors.text.muted,
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+  },
+  emptyStateIcon: {
+    marginBottom: 8,
+  },
+  emptyHeadline: {
+    color: Colors.text.primary,
+    fontSize: 14,
+    fontWeight: '600',
     textAlign: 'center',
-    paddingVertical: Spacing.sm,
+    marginBottom: 6,
+  },
+  emptyBody: {
+    color: Colors.text.tertiary,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
+    marginBottom: 12,
+  },
+  emptyCta: {
+    backgroundColor: Colors.accent.cyanLight,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.accent.cyan,
+  },
+  emptyCtaText: {
+    color: Colors.accent.cyan,
+    fontSize: 13,
+    fontWeight: '600',
   },
   seeFullButton: {
     flexDirection: 'row',

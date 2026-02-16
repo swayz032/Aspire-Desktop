@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, Image, ImageBackground } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
-import { getHubImage } from '@/data/founderHub/imageHelper';
+import { resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 
 const THEME = {
@@ -20,20 +20,6 @@ const THEME = {
   },
 };
 
-const pastBriefs = [
-  { id: '1', date: '2026-01-21', title: 'Fuel costs are climbing—hedge with Q2 contracts now', read: true },
-  { id: '2', date: '2026-01-20', title: 'Your top customer hasn\'t reordered in 14 days', read: true },
-  { id: '3', date: '2026-01-19', title: 'Competitor pricing dropped 8% on Grade B pallets', read: false },
-  { id: '4', date: '2026-01-18', title: 'Cash position strong—consider equipment upgrade', read: true },
-  { id: '5', date: '2026-01-17', title: 'New EPA regulations coming for treated lumber', read: false },
-];
-
-const aiInsights = [
-  { id: '1', icon: 'trending-up-outline' as const, title: 'Revenue Opportunity', desc: 'Lumber prices are at 6-month lows. Lock in Q2 supply now for 12% margin boost.' },
-  { id: '2', icon: 'warning-outline' as const, title: 'Risk Alert', desc: 'ABC Logistics payment is 8 days overdue. Consider follow-up before Friday.' },
-  { id: '3', icon: 'bulb-outline' as const, title: 'Strategic Insight', desc: 'Your repair-grade pallets outperform new sales by 23%. Consider expansion.' },
-];
-
 // Daily brief data comes from Adam (research agent) + n8n daily workflows → Supabase receipts
 type DailyBriefData = {
   id: string;
@@ -43,7 +29,13 @@ type DailyBriefData = {
   whyItMatters: string;
   ctas: { label: string; action: string; params?: any }[];
   imageKey: string;
+  imageUrl?: string;
+  metrics?: { label: string; value: string; change: string; color?: string }[];
+  focusAreas?: { title: string; description: string; icon?: string }[];
 };
+
+type PastBrief = { id: string; date: string; title: string; read: boolean };
+type AiInsight = { id: string; icon: string; title: string; desc: string };
 
 export default function DailyBriefScreen() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -56,11 +48,13 @@ export default function DailyBriefScreen() {
     ctas: [{ label: 'Discuss with Ava', action: 'OPEN_STUDIO' }],
     imageKey: 'pallet-yard',
   });
+  const [pastBriefs, setPastBriefs] = useState<PastBrief[]>([]);
+  const [aiInsights, setAiInsights] = useState<AiInsight[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Fetch latest daily brief from Adam's research receipts
-    supabase
+    const fetchBrief = supabase
       .from('receipts')
       .select('*')
       .or('action_type.like.adam.daily_brief%,action_type.like.research.daily_brief%,action_type.like.founder_hub.brief%')
@@ -77,13 +71,58 @@ export default function DailyBriefScreen() {
             whyItMatters: p.why_it_matters ?? p.summary ?? '',
             ctas: p.ctas ?? [{ label: 'Discuss with Ava', action: 'OPEN_STUDIO' }],
             imageKey: p.image_key ?? 'pallet-yard',
+            imageUrl: p.image_url ?? p.results?.[0]?.image_url ?? undefined,
+            metrics: p.metrics ?? undefined,
+            focusAreas: p.focus_areas ?? p.action_items ?? undefined,
           });
         }
-      })
-      .then(
-        () => { setLoading(false); },
-        () => { setLoading(false); }
-      );
+      });
+
+    // Fetch past briefs (last 5)
+    const fetchPast = supabase
+      .from('receipts')
+      .select('id,created_at,payload')
+      .or('action_type.like.adam.daily_brief%,action_type.like.research.daily_brief%,action_type.like.founder_hub.brief%')
+      .order('created_at', { ascending: false })
+      .range(1, 5)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setPastBriefs(data.map((r: any, idx: number) => ({
+            id: r.id ?? `past-${idx}`,
+            date: r.created_at?.split('T')[0] ?? '',
+            title: r.payload?.title ?? 'Past brief',
+            read: true,
+          })));
+        }
+      });
+
+    // Fetch AI insights from Adam's pulse/insight receipts
+    const fetchInsights = supabase
+      .from('receipts')
+      .select('id,payload')
+      .or('action_type.like.adam.pulse%,action_type.like.research.insight%,action_type.like.founder_hub.insight%')
+      .order('created_at', { ascending: false })
+      .limit(3)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const iconMap: Record<string, string> = {
+            opportunity: 'trending-up-outline',
+            risk: 'warning-outline',
+            strategic: 'bulb-outline',
+          };
+          setAiInsights(data.map((r: any, idx: number) => {
+            const p = r.payload ?? {};
+            return {
+              id: r.id ?? `insight-${idx}`,
+              icon: iconMap[p.insight_type] ?? ['trending-up-outline', 'warning-outline', 'bulb-outline'][idx % 3],
+              title: p.title ?? 'Insight',
+              desc: p.summary ?? p.description ?? '',
+            };
+          }));
+        }
+      });
+
+    Promise.allSettled([fetchBrief, fetchPast, fetchInsights]).then(() => setLoading(false));
   }, []);
 
   const formatDate = (dateStr: string) => {
@@ -147,7 +186,7 @@ export default function DailyBriefScreen() {
 
       <View style={styles.todayCard}>
         <ImageBackground
-          source={getHubImage(dailyBrief.imageKey)}
+          source={resolveHubImage(dailyBrief.imageUrl, dailyBrief.imageKey)}
           style={styles.heroImage}
           imageStyle={styles.heroImageStyle}
         >
@@ -198,65 +237,56 @@ export default function DailyBriefScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Key Metrics Today</Text>
         <View style={styles.metricsGrid}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Cash Position</Text>
-            <Text style={styles.metricValue}>$127,450</Text>
-            <Text style={[styles.metricChange, { color: '#34d399' }]}>+$4,200 today</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Open Orders</Text>
-            <Text style={styles.metricValue}>23</Text>
-            <Text style={styles.metricChange}>5 shipping today</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Receivables</Text>
-            <Text style={styles.metricValue}>$42,800</Text>
-            <Text style={[styles.metricChange, { color: '#fbbf24' }]}>2 overdue</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Inventory</Text>
-            <Text style={styles.metricValue}>1,240</Text>
-            <Text style={styles.metricChange}>pallets in stock</Text>
-          </View>
+          {dailyBrief.metrics && dailyBrief.metrics.length > 0 ? (
+            dailyBrief.metrics.map((m: any, idx: number) => (
+              <View key={idx} style={styles.metricCard}>
+                <Text style={styles.metricLabel}>{m.label}</Text>
+                <Text style={styles.metricValue}>{m.value}</Text>
+                <Text style={[styles.metricChange, m.color ? { color: m.color } : undefined]}>{m.change}</Text>
+              </View>
+            ))
+          ) : (
+            <View style={styles.metricCard}>
+              <View style={{ alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+                <Ionicons name="analytics-outline" size={24} color={THEME.text.muted} />
+                <Text style={styles.metricLabel}>Connect your accounts to see live metrics</Text>
+                <Text style={[styles.metricChange, { color: THEME.accent }]}>Finance Hub → Connections</Text>
+              </View>
+            </View>
+          )}
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Today's Focus Areas</Text>
         <View style={styles.focusGrid}>
-          <Pressable
-            style={[styles.focusCard, hoveredItem === 'focus-1' && styles.focusCardHover]}
-            onHoverIn={() => setHoveredItem('focus-1')}
-            onHoverOut={() => setHoveredItem(null)}
-          >
-            <View style={[styles.focusIcon, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
-              <Ionicons name="call-outline" size={20} color={THEME.accent} />
+          {dailyBrief.focusAreas && dailyBrief.focusAreas.length > 0 ? (
+            dailyBrief.focusAreas.map((focus: any, idx: number) => {
+              const iconColors = ['rgba(59, 130, 246, 0.12)', 'rgba(251, 191, 36, 0.12)', 'rgba(52, 211, 153, 0.12)'];
+              const textColors = [THEME.accent, '#fbbf24', '#34d399'];
+              const icons: Array<'flag-outline' | 'alert-circle-outline' | 'trending-up-outline'> = ['flag-outline', 'alert-circle-outline', 'trending-up-outline'];
+              return (
+                <Pressable
+                  key={idx}
+                  style={[styles.focusCard, hoveredItem === `focus-${idx}` && styles.focusCardHover]}
+                  onHoverIn={() => setHoveredItem(`focus-${idx}`)}
+                  onHoverOut={() => setHoveredItem(null)}
+                >
+                  <View style={[styles.focusIcon, { backgroundColor: iconColors[idx % 3] }]}>
+                    <Ionicons name={focus.icon ?? icons[idx % 3]} size={20} color={textColors[idx % 3]} />
+                  </View>
+                  <Text style={styles.focusTitle}>{focus.title}</Text>
+                  <Text style={styles.focusDesc}>{focus.description}</Text>
+                </Pressable>
+              );
+            })
+          ) : (
+            <View style={[styles.focusCard, { alignItems: 'center', justifyContent: 'center', paddingVertical: 24 }]}>
+              <Ionicons name="sunny-outline" size={24} color={THEME.text.muted} />
+              <Text style={[styles.focusTitle, { textAlign: 'center' }]}>Focus areas appear with your first brief</Text>
+              <Text style={[styles.focusDesc, { textAlign: 'center' }]}>Adam analyzes your data daily to surface what matters most.</Text>
             </View>
-            <Text style={styles.focusTitle}>Follow up with ABC Logistics</Text>
-            <Text style={styles.focusDesc}>Overdue payment of $4,200</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.focusCard, hoveredItem === 'focus-2' && styles.focusCardHover]}
-            onHoverIn={() => setHoveredItem('focus-2')}
-            onHoverOut={() => setHoveredItem(null)}
-          >
-            <View style={[styles.focusIcon, { backgroundColor: 'rgba(251, 191, 36, 0.12)' }]}>
-              <Ionicons name="pricetag-outline" size={20} color="#fbbf24" />
-            </View>
-            <Text style={styles.focusTitle}>Review Grade B pricing</Text>
-            <Text style={styles.focusDesc}>Competitor undercut by 8%</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.focusCard, hoveredItem === 'focus-3' && styles.focusCardHover]}
-            onHoverIn={() => setHoveredItem('focus-3')}
-            onHoverOut={() => setHoveredItem(null)}
-          >
-            <View style={[styles.focusIcon, { backgroundColor: 'rgba(52, 211, 153, 0.12)' }]}>
-              <Ionicons name="cube-outline" size={20} color="#34d399" />
-            </View>
-            <Text style={styles.focusTitle}>Lock in lumber supply</Text>
-            <Text style={styles.focusDesc}>Prices at 6-month low</Text>
-          </Pressable>
+          )}
         </View>
       </View>
     </HubPageShell>

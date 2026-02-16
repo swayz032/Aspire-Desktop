@@ -9,6 +9,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 interface UseDeepgramSTTOptions {
   /** Whether to start listening immediately */
   autoStart?: boolean;
+  /** Called each time a complete utterance is finalized by the STT engine */
+  onUtterance?: (text: string) => void;
 }
 
 interface UseDeepgramSTTResult {
@@ -29,6 +31,8 @@ interface UseDeepgramSTTResult {
 export function useDeepgramSTT(
   options: UseDeepgramSTTOptions = {},
 ): UseDeepgramSTTResult {
+  const onUtteranceRef = useRef(options.onUtterance);
+  onUtteranceRef.current = options.onUtterance;
   const [transcript, setTranscript] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -61,7 +65,7 @@ export function useDeepgramSTT(
       // Fetch token from server
       const resp = await fetch('/api/deepgram/token');
       if (!resp.ok) {
-        throw new Error(`Failed to get Deepgram token: ${resp.status}`);
+        throw new Error('Voice service unavailable');
       }
       const { token } = await resp.json();
 
@@ -70,7 +74,8 @@ export function useDeepgramSTT(
       streamRef.current = stream;
 
       // Connect to Deepgram via WebSocket — Nova-3 model
-      const wsUrl = `wss://api.deepgram.com/v1/listen?model=nova-3&punctuate=true&interim_results=true&endpointing=300&encoding=linear16&sample_rate=16000`;
+      // Browser MediaRecorder sends webm/opus — let Deepgram auto-detect container format
+      const wsUrl = `wss://api.deepgram.com/v1/listen?model=nova-3&punctuate=true&interim_results=true&endpointing=300`;
       const ws = new WebSocket(wsUrl, ['token', token]);
       wsRef.current = ws;
 
@@ -100,6 +105,9 @@ export function useDeepgramSTT(
             if (data.is_final) {
               setFinalTranscript((prev) => (prev ? `${prev} ${text}` : text));
               setTranscript('');
+              if (text.trim()) {
+                onUtteranceRef.current?.(text.trim());
+              }
             } else {
               setTranscript(text);
             }
@@ -110,7 +118,7 @@ export function useDeepgramSTT(
       };
 
       ws.onerror = () => {
-        setError('Deepgram WebSocket error');
+        setError('Voice connection interrupted');
         stop();
       };
 

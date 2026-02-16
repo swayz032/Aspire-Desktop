@@ -101,8 +101,8 @@ export default function VoiceSession() {
       setGeneratedContent({
         id: '1',
         type: 'pdf',
-        name: 'NDA_ZenithSolutions.pdf',
-        preview: 'Non-Disclosure Agreement between Zenith Solutions and...',
+        name: 'NDA_Agreement.pdf',
+        preview: 'Non-Disclosure Agreement between your company and...',
       });
       
       Animated.parallel([

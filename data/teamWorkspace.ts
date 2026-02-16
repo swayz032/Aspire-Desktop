@@ -145,14 +145,14 @@ export interface UsageLedger {
 export const mockSuites: Suite[] = [
   {
     id: 'suite_1',
-    name: 'Zenith Solutions',
+    name: 'Your Business',
     suiteNumber: '1042',
     isActive: true,
     createdAt: '2024-01-15T10:00:00Z',
   },
   {
     id: 'suite_2',
-    name: 'Zenith Consulting',
+    name: 'Your Consulting',
     suiteNumber: '1043',
     isActive: true,
     createdAt: '2024-06-01T10:00:00Z',
@@ -163,7 +163,7 @@ export const mockMembers: Member[] = [
   {
     id: 'member_1',
     name: 'Marcus Chen',
-    email: 'marcus@zenithsolutions.com',
+    email: 'marcus@example.com',
     roleId: 'owner',
     status: 'active',
     suiteAccessIds: ['suite_1', 'suite_2'],
@@ -173,7 +173,7 @@ export const mockMembers: Member[] = [
   {
     id: 'member_2',
     name: 'Sarah Mitchell',
-    email: 'sarah@zenithsolutions.com',
+    email: 'sarah@example.com',
     roleId: 'admin',
     status: 'active',
     suiteAccessIds: ['suite_1'],
@@ -183,7 +183,7 @@ export const mockMembers: Member[] = [
   {
     id: 'member_3',
     name: 'James Park',
-    email: 'james@zenithsolutions.com',
+    email: 'james@example.com',
     roleId: 'member',
     status: 'active',
     suiteAccessIds: ['suite_1'],
@@ -195,7 +195,7 @@ export const mockMembers: Member[] = [
 export const mockInvites: Invite[] = [
   {
     id: 'invite_1',
-    email: 'alex@zenithsolutions.com',
+    email: 'alex@example.com',
     name: 'Alex Rivera',
     roleId: 'member',
     suiteAccessIds: ['suite_1'],

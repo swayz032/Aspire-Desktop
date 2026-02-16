@@ -17,7 +17,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const LIVEKIT_URL =
-  process.env.EXPO_PUBLIC_LIVEKIT_URL || 'wss://aspire-dev.livekit.cloud';
+  process.env.EXPO_PUBLIC_LIVEKIT_URL || 'wss://aspire-3rdm9zjn.livekit.cloud';
 
 // ---------------------------------------------------------------------------
 // Default room options

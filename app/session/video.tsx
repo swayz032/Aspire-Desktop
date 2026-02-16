@@ -628,7 +628,7 @@ export default function VideoSession() {
                   </View>
                   <View style={desktopStyles.contextCard}>
                     <Text style={desktopStyles.contextLabel}>Client</Text>
-                    <Text style={desktopStyles.contextValue}>Zenith Solutions</Text>
+                    <Text style={desktopStyles.contextValue}>Your Business</Text>
                   </View>
                   <View style={desktopStyles.contextCard}>
                     <Text style={desktopStyles.contextLabel}>Duration</Text>

@@ -1,17 +1,18 @@
 /**
  * useAgentVoice — Orchestrator-Routed Voice Hook
  *
- * Replaces ElevenLabs useConversation() with the correct Aspire architecture:
- * User speaks → Deepgram STT → Orchestrator (LangGraph) → Skill Pack → ElevenLabs TTS → User hears
+ * Full voice pipeline: Mic → Deepgram STT → Orchestrator (LangGraph) → Skill Pack → ElevenLabs TTS → Speaker
  *
- * Law #1: Single Brain — LangGraph orchestrator decides, not ElevenLabs.
+ * Law #1: Single Brain — LangGraph orchestrator decides, not any provider.
  * Law #3: Fail Closed — orchestrator errors return 503, not 200.
  * Law #6: Tenant Isolation — X-Suite-Id header required on all requests.
- * ElevenLabs is the mouth (TTS). Deepgram is the ear (STT). The orchestrator is the brain.
+ *
+ * Voice is the PRIMARY interaction mode. Chat is a fallback option.
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { type AgentName, speakText, getVoiceId } from '../lib/elevenlabs';
+import { useDeepgramSTT } from './useDeepgramSTT';
 
 export type VoiceStatus = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
 
@@ -19,6 +20,8 @@ interface UseAgentVoiceOptions {
   agent: AgentName;
   /** Suite ID for tenant isolation (Law #6). Required. */
   suiteId?: string;
+  /** JWT access token for auth (Law #3). Required in production. */
+  accessToken?: string;
   onTranscript?: (text: string) => void;
   onResponse?: (text: string, receiptId?: string) => void;
   onStatusChange?: (status: VoiceStatus) => void;
@@ -29,6 +32,7 @@ interface UseAgentVoiceReturn {
   status: VoiceStatus;
   isActive: boolean;
   transcript: string;
+  interimTranscript: string;
   lastResponse: string;
   lastReceiptId: string | null;
   startSession: () => Promise<void>;
@@ -39,13 +43,15 @@ interface UseAgentVoiceReturn {
 /**
  * Voice interaction hook that routes through the orchestrator.
  *
- * startSession() begins listening via Deepgram STT.
+ * startSession() begins listening via STT (voice is primary).
  * When speech is detected, it sends the transcript to the orchestrator.
  * The orchestrator routes to the correct skill pack and returns response text.
- * ElevenLabs TTS speaks the response using the agent's voice ID.
+ * TTS speaks the response using the agent's voice.
+ *
+ * The loop: Listen → Transcribe → Think → Speak → Listen again.
  */
 export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceReturn {
-  const { agent, suiteId, onTranscript, onResponse, onStatusChange, onError } = options;
+  const { agent, suiteId, accessToken, onTranscript, onResponse, onStatusChange, onError } = options;
 
   const [status, setStatus] = useState<VoiceStatus>('idle');
   const [transcript, setTranscript] = useState('');
@@ -53,6 +59,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeRef = useRef(false);
+  // Prevent duplicate sends while processing
+  const processingRef = useRef(false);
 
   const updateStatus = useCallback((newStatus: VoiceStatus) => {
     setStatus(newStatus);
@@ -61,16 +69,20 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
   /**
    * Send text to the orchestrator and speak the response.
-   * This is the core pipeline: text → orchestrator → TTS.
+   * Core pipeline: text → orchestrator → TTS.
    */
   const sendText = useCallback(async (text: string) => {
     if (!text.trim()) return;
 
     if (!suiteId) {
-      onError?.(new Error('Missing suiteId — tenant isolation requires authentication'));
+      onError?.(new Error('Authentication required to use voice'));
       updateStatus('error');
       return;
     }
+
+    // Prevent overlapping sends
+    if (processingRef.current) return;
+    processingRef.current = true;
 
     setTranscript(text);
     onTranscript?.(text);
@@ -79,12 +91,16 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     try {
       // Route through orchestrator — the Single Brain (Law #1)
       // Law #6: X-Suite-Id header required for tenant isolation
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Suite-Id': suiteId,
+      };
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
       const resp = await fetch('/api/orchestrator/intent', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Suite-Id': suiteId,
-        },
+        headers,
         body: JSON.stringify({
           agent,
           text,
@@ -93,7 +109,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       });
 
       if (!resp.ok) {
-        throw new Error(`Orchestrator returned ${resp.status}`);
+        throw new Error(`Service returned ${resp.status}`);
       }
 
       const data = await resp.json();
@@ -104,7 +120,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       setLastReceiptId(receiptId);
       onResponse?.(responseText, receiptId);
 
-      // Speak the response via ElevenLabs TTS
+      // Speak the response via TTS
       updateStatus('speaking');
 
       const audioBlob = await speakText(agent, responseText);
@@ -115,6 +131,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
         audio.onended = () => {
           URL.revokeObjectURL(url);
+          processingRef.current = false;
           if (activeRef.current) {
             updateStatus('listening');
           }
@@ -122,13 +139,14 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
         await audio.play();
       } else {
-        // TTS unavailable — notify caller (Law #3: don't silently degrade)
-        onError?.(new Error('TTS_UNAVAILABLE'));
+        // TTS unavailable — still return to listening (Law #3: don't silently degrade)
+        processingRef.current = false;
         if (activeRef.current) {
           updateStatus('listening');
         }
       }
     } catch (error) {
+      processingRef.current = false;
       const err = error instanceof Error ? error : new Error(String(error));
       onError?.(err);
       updateStatus('error');
@@ -139,26 +157,52 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         }
       }, 2000);
     }
-  }, [agent, suiteId, onTranscript, onResponse, onError, updateStatus]);
+  }, [agent, suiteId, accessToken, onTranscript, onResponse, onError, updateStatus]);
+
+  // Stable ref for sendText to avoid re-creating STT hook
+  const sendTextRef = useRef(sendText);
+  sendTextRef.current = sendText;
+
+  // Integrate Deepgram STT — voice is the PRIMARY interaction mode
+  const stt = useDeepgramSTT({
+    onUtterance: useCallback((text: string) => {
+      // Only send if session is active and not already processing
+      if (activeRef.current && !processingRef.current) {
+        sendTextRef.current(text);
+      }
+    }, []),
+  });
 
   /**
-   * Start a voice session. Begins listening for speech input.
-   * The actual STT is handled by useDeepgramSTT or browser SpeechRecognition.
+   * Start a voice session. Begins listening for speech input immediately.
+   * Voice is primary — the mic activates as soon as you start.
    */
   const startSession = useCallback(async () => {
     if (!suiteId) {
-      onError?.(new Error('Cannot start voice session without authentication (missing suiteId)'));
+      onError?.(new Error('Sign in to use voice'));
       return;
     }
     activeRef.current = true;
+    processingRef.current = false;
     updateStatus('listening');
-  }, [suiteId, updateStatus, onError]);
+
+    // Start STT immediately — voice is primary
+    try {
+      await stt.start();
+    } catch {
+      onError?.(new Error('Unable to access microphone'));
+      activeRef.current = false;
+      updateStatus('error');
+    }
+  }, [suiteId, updateStatus, onError, stt]);
 
   /**
    * End the voice session. Stops listening and any in-progress TTS.
    */
   const endSession = useCallback(() => {
     activeRef.current = false;
+    processingRef.current = false;
+    stt.stop();
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -166,7 +210,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     setTranscript('');
     setLastReceiptId(null);
     updateStatus('idle');
-  }, [updateStatus]);
+  }, [updateStatus, stt]);
 
   // Auto-end session if suiteId becomes null (logout)
   useEffect(() => {
@@ -179,6 +223,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     status,
     isActive: activeRef.current,
     transcript,
+    interimTranscript: stt.transcript,
     lastResponse,
     lastReceiptId,
     startSession,

@@ -28,7 +28,7 @@ router.post('/api/livekit/token', async (req: Request, res: Response) => {
     if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
       return res
         .status(500)
-        .json({ error: 'LiveKit credentials not configured' });
+        .json({ error: 'Conference service not configured' });
     }
 
     const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {

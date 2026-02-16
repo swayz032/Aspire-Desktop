@@ -509,12 +509,13 @@ export function AvaDeskPanel() {
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
-  const { suiteId } = useSupabase();
+  const { suiteId, session } = useSupabase();
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const avaVoice = useAgentVoice({
     agent: 'ava',
     suiteId: suiteId ?? undefined,
+    accessToken: session?.access_token,
     onStatusChange: (voiceStatus) => {
       setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
@@ -650,8 +651,8 @@ export function AvaDeskPanel() {
       anamClientRef.current = null;
       setVideoState('idle');
       setConnectionStatus('');
-      console.error('Anam connection failed:', error);
-      Alert.alert('Connection Failed', error.message || 'Unable to connect to Ava video.');
+      console.error('Video connection failed:', error);
+      Alert.alert('Connection Failed', 'Unable to start video session. Please try again.');
     }
   }, [videoState, clearConnectionTimeouts]);
 
@@ -844,7 +845,7 @@ export function AvaDeskPanel() {
                   ]}
                 />
                 <Text style={styles.companyName}>
-                  {avaVoice.isActive ? 'Talking with Ava...' : 'Zenith Solutions'}
+                  {avaVoice.isActive ? 'Talking with Ava...' : 'Your Business'}
                 </Text>
               </Pressable>
             </View>
@@ -863,23 +864,30 @@ export function AvaDeskPanel() {
           </View>
         ) : (
           <View style={styles.videoSurface}>
+            {/* Anam <video> element must be in DOM BEFORE streamToVideoElement() is called.
+                Render it during both 'connecting' and 'connected' states. Hidden during connecting
+                so the spinner shows, visible once connected. */}
+            {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
+              <video
+                id="anam-video-element"
+                autoPlay
+                playsInline
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  borderRadius: 0,
+                  display: videoState === 'connected' ? 'block' : 'none',
+                  backgroundColor: '#000',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  zIndex: 1,
+                }}
+              />
+            )}
             {videoState === 'connected' ? (
               <View style={styles.anamContainer}>
-                {Platform.OS === 'web' && (
-                  <video
-                    id="anam-video-element"
-                    autoPlay
-                    playsInline
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      borderRadius: 0,
-                      display: 'block',
-                      backgroundColor: '#000',
-                    }}
-                  />
-                )}
                 {/* End session overlay button */}
                 <Pressable
                   style={{
@@ -893,6 +901,7 @@ export function AvaDeskPanel() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 6,
+                    zIndex: 2,
                   }}
                   onPress={handleEndSession}
                 >

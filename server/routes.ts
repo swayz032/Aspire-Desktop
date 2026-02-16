@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { storage } from './storage';
 import { getUncachableStripeClient, getStripePublishableKey } from './stripeClient';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
+import { getDefaultSuiteId } from './suiteContext';
 
 const router = Router();
 
@@ -387,7 +389,7 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     const { agent, text, voiceId } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
-      return res.status(500).json({ error: 'ElevenLabs API key not configured' });
+      return res.status(500).json({ error: 'Voice synthesis service not configured' });
     }
 
     const resolvedVoiceId = voiceId || VOICE_IDS[agent];
@@ -439,7 +441,7 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     const { agent, text, voiceId } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
-      return res.status(500).json({ error: 'ElevenLabs API key not configured' });
+      return res.status(500).json({ error: 'Voice synthesis service not configured' });
     }
 
     const resolvedVoiceId = voiceId || VOICE_IDS[agent];
@@ -661,9 +663,18 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       orchestratorLastFailureAt = Date.now();
       const errorText = await response.text();
       console.error(`Orchestrator error [${correlationId}]:`, response.status, errorText);
+
+      // Extract human-readable text from orchestrator error response
+      let errorData: any = null;
+      try { errorData = JSON.parse(errorText); } catch { /* non-JSON error */ }
+      const responseText = errorData?.text || errorData?.message || 'I\'m having trouble processing that right now. Please try again.';
+
       return res.status(response.status).json({
-        response: 'I\'m having trouble processing that right now. Please try again.',
-        error: `Orchestrator returned ${response.status}`,
+        response: responseText,
+        error: errorData?.error || `Orchestrator returned ${response.status}`,
+        approval_payload_hash: errorData?.approval_payload_hash || null,
+        required_approvals: errorData?.required_approvals || null,
+        receipt_ids: errorData?.receipt_ids || [],
         correlation_id: correlationId,
       });
     }
@@ -673,13 +684,14 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
     const data = await response.json();
     res.json({
-      response: data.response || data.text || data.message || 'I processed your request.',
-      receipt_id: data.receipt_id,
-      action: data.action,
+      response: data.text || data.message || 'I processed your request.',
+      receipt_id: data.governance?.receipt_ids?.[0] || null,
+      receipt_ids: data.governance?.receipt_ids || [],
+      action: data.plan?.task_type || null,
       governance: data.governance || null,
-      risk_tier: data.risk_tier || data.risk?.tier || null,
+      risk_tier: data.risk?.tier || null,
       route: data.route || null,
-      activity: data.activity || data.pipeline_steps || null,
+      plan: data.plan || null,
       correlation_id: correlationId,
     });
   } catch (error: any) {
@@ -846,7 +858,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     const ANAM_API_KEY = process.env.ANAM_API_KEY;
     if (!ANAM_API_KEY) {
       // Law #3: Fail Closed
-      return res.status(503).json({ error: 'ANAM_NOT_CONFIGURED', message: 'Anam API key not configured' });
+      return res.status(503).json({ error: 'AVATAR_NOT_CONFIGURED', message: 'Avatar service not configured' });
     }
 
     const response = await fetch('https://api.anam.ai/v1/auth/session-token', {
@@ -862,415 +874,219 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Anam session token error:', response.status, errorText);
-      return res.status(502).json({ error: 'ANAM_SESSION_FAILED', message: `Anam returned ${response.status}` });
+      console.error('Avatar session token error:', response.status, errorText);
+      return res.status(502).json({ error: 'AVATAR_SESSION_FAILED', message: 'Avatar service temporarily unavailable' });
     }
 
     const data = await response.json() as { sessionToken?: string };
     if (!data.sessionToken) {
-      return res.status(502).json({ error: 'ANAM_NO_TOKEN', message: 'Anam did not return a session token' });
+      return res.status(502).json({ error: 'AVATAR_NO_TOKEN', message: 'Avatar service returned invalid response' });
     }
 
     // Return only the session token — no API key exposure
     res.json({ sessionToken: data.sessionToken });
   } catch (error: any) {
-    console.error('Anam session error:', error);
-    res.status(500).json({ error: 'ANAM_ERROR', message: error.message });
+    console.error('Avatar session error:', error);
+    res.status(500).json({ error: 'AVATAR_ERROR', message: 'Avatar service error' });
   }
 });
 
-// ─── Mail Onboarding API (Stubbed) ───
+// ─── Mail Onboarding API (Domain Rail Proxy) ───
 
-const mailOnboardingStore: Record<string, any> = {};
-const mailAccountsStore: Record<string, any[]> = {};
-const mailReceiptsStore: Record<string, any[]> = {};
-const mailJobsStore: Record<string, any> = {};
-const domainSearchCache: Record<string, any[]> = {};
+const DOMAIN_RAIL_URL = process.env.DOMAIN_RAIL_URL || 'https://domain-rail-production.up.railway.app';
 
-const generateJobId = () => `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-function getMailReceipts(userId: string) {
-  if (!mailReceiptsStore[userId]) mailReceiptsStore[userId] = [];
-  return mailReceiptsStore[userId];
+function getMailHmacHeaders(bodyStr: string): Record<string, string> {
+  const secret = process.env.DOMAIN_RAIL_HMAC_SECRET;
+  if (!secret) throw new Error('DOMAIN_RAIL_HMAC_SECRET not configured');
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = crypto.createHmac('sha256', secret).update(`${timestamp}.${bodyStr}`).digest('hex');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `HMAC-SHA256 ${signature}`,
+    'X-Timestamp': timestamp,
+    'X-Suite-Id': getDefaultSuiteId(),
+  };
 }
 
-function addMailReceipt(userId: string, action: string, status: string, detail?: string, jobId?: string) {
-  const receipts = getMailReceipts(userId);
-  receipts.unshift({
-    id: `mr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    action,
-    timestamp: new Date().toISOString(),
-    status,
-    detail: detail || undefined,
-    jobId: jobId || undefined,
-  });
-  if (receipts.length > 20) receipts.length = 20;
+async function mailProxy(method: string, path: string, body?: any): Promise<{ status: number; data: any }> {
+  const secret = process.env.DOMAIN_RAIL_HMAC_SECRET;
+  if (!secret) return { status: 503, data: { error: 'DOMAIN_RAIL_HMAC_SECRET not configured — mail onboarding unavailable' } };
+  const bodyStr = body ? JSON.stringify(body) : '';
+  const url = `${DOMAIN_RAIL_URL}${path}`;
+  const opts: RequestInit = { method, headers: getMailHmacHeaders(bodyStr) };
+  if (body && method !== 'GET') opts.body = bodyStr;
+  const response = await fetch(url, opts);
+  const data = await response.json().catch(() => ({ error: 'Invalid response from Domain Rail' }));
+  return { status: response.status, data };
 }
 
-function getMailReceiptsByJobId(jobId: string) {
-  const all: any[] = [];
-  for (const userId of Object.keys(mailReceiptsStore)) {
-    for (const r of mailReceiptsStore[userId]) {
-      if (r.jobId === jobId) all.push(r);
-    }
-  }
-  return all;
-}
-
-router.get('/api/mail/accounts', (req: Request, res: Response) => {
-  const userId = getParam(req.query.userId as string || '');
-  const accounts = mailAccountsStore[userId] || [];
-  res.json({ accounts });
+// GET /api/mail/accounts
+router.get('/api/mail/accounts', async (req: Request, res: Response) => {
+  try {
+    const userId = getParam(req.query.userId as string || '');
+    const { status, data } = await mailProxy('GET', `/api/mail/accounts?userId=${encodeURIComponent(userId)}`);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/api/mail/onboarding', (req: Request, res: Response) => {
-  const userId = getParam(req.query.userId as string || '');
-  const state = mailOnboardingStore[userId] || {};
-  res.json(state);
+// GET /api/mail/onboarding
+router.get('/api/mail/onboarding', async (req: Request, res: Response) => {
+  try {
+    const userId = getParam(req.query.userId as string || '');
+    const { status, data } = await mailProxy('GET', `/api/mail/onboarding?userId=${encodeURIComponent(userId)}`);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.patch('/api/mail/onboarding', (req: Request, res: Response) => {
-  const userId = getParam(req.query.userId as string || req.body.userId || '');
-  if (!mailOnboardingStore[userId]) mailOnboardingStore[userId] = {};
-  const current = mailOnboardingStore[userId];
-  Object.assign(current, req.body);
-  delete current.userId;
-
-  if (req.body.provider) {
-    addMailReceipt(userId, 'mail.provider.selected', 'success', `Provider: ${req.body.provider}`);
-  }
-  if (req.body.domain) {
-    addMailReceipt(userId, 'mail.domain.verification.requested', 'success', `Domain: ${req.body.domain}`);
-  }
-  if (req.body.mailboxes) {
-    req.body.mailboxes.forEach((mb: any) => {
-      addMailReceipt(userId, 'mail.mailbox.create.requested', 'success', `Mailbox: ${mb.email}`);
-    });
-  }
-  if (req.body.eli) {
-    addMailReceipt(userId, 'mail.eli.configured', 'success', `Draft: ${req.body.eli.canDraft}, Send: ${req.body.eli.canSend}`);
-  }
-
-  res.json(current);
+// PATCH /api/mail/onboarding
+router.patch('/api/mail/onboarding', async (req: Request, res: Response) => {
+  try {
+    const { status, data } = await mailProxy('PATCH', '/api/mail/onboarding', req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/api/mail/onboarding/checks/run', (req: Request, res: Response) => {
-  const userId = getParam(req.query.userId as string || req.body.userId || '');
-  const checksToRun: string[] = req.body.checks || ['LIST', 'DRAFT', 'SEND_TEST', 'LABEL'];
-
-  const results = checksToRun.map((id: string) => {
-    const pass = id !== 'SEND_TEST';
-    const status = pass ? 'PASS' : 'NOT_RUN';
-    const message = pass
-      ? `${id} check passed (mocked)`
-      : `${id} requires manual trigger`;
-
-    addMailReceipt(userId, `mail.check.${id.toLowerCase()}`, pass ? 'success' : 'pending', message);
-
-    return { id, status, message };
-  });
-
-  if (!mailOnboardingStore[userId]) mailOnboardingStore[userId] = {};
-  mailOnboardingStore[userId].checks = results;
-  res.json({ checks: results });
+// POST /api/mail/onboarding/checks/run
+router.post('/api/mail/onboarding/checks/run', async (req: Request, res: Response) => {
+  try {
+    const { status, data } = await mailProxy('POST', '/api/mail/onboarding/checks/run', req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/api/mail/onboarding/activate', (req: Request, res: Response) => {
-  const userId = getParam(req.query.userId as string || req.body.userId || '');
-  const state = mailOnboardingStore[userId] || {};
-
-  const account = {
-    id: `ma-${Date.now()}`,
-    provider: state.provider || 'POLARIS',
-    email: state.mailboxes?.[0]?.email || 'hello@yourbusiness.com',
-    displayName: state.mailboxes?.[0]?.displayName || 'Business Email',
-    status: 'ACTIVE',
-    capabilities: {
-      canSend: true,
-      canDraft: true,
-      canLabels: state.provider === 'GOOGLE',
-      canJunk: true,
-      canThreads: true,
-    },
-  };
-
-  if (!mailAccountsStore[userId]) mailAccountsStore[userId] = [];
-  mailAccountsStore[userId].push(account);
-  addMailReceipt(userId, 'mail.mailbox.created', 'success', `Activated: ${account.email}`);
-
-  mailOnboardingStore[userId] = {};
-  res.json({ account });
+// POST /api/mail/onboarding/activate
+router.post('/api/mail/onboarding/activate', async (req: Request, res: Response) => {
+  try {
+    const { status, data } = await mailProxy('POST', '/api/mail/onboarding/activate', req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/api/mail/receipts', (req: Request, res: Response) => {
-  const userId = getParam(req.query.userId as string || '');
-  const receipts = getMailReceipts(userId);
-  res.json({ receipts: receipts.slice(0, 5) });
+// GET /api/mail/receipts
+router.get('/api/mail/receipts', async (req: Request, res: Response) => {
+  try {
+    const userId = getParam(req.query.userId as string || '');
+    const { status, data } = await mailProxy('GET', `/api/mail/receipts?userId=${encodeURIComponent(userId)}`);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── /v1/* Mail Onboarding API ───
+// ─── /v1/* Mail Onboarding API (Domain Rail Proxy) ───
 
-function hashCode(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function generateMockDnsPlan(domain: string, mailbox: string) {
-  return [
-    { type: 'MX', host: domain, value: `mail.${domain}`, ttl: 3600 },
-    { type: 'SPF', host: domain, value: `v=spf1 include:_spf.${domain} ~all`, ttl: 3600 },
-    { type: 'DKIM', host: `default._domainkey.${domain}`, value: `v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG...mock`, ttl: 3600 },
-    { type: 'DMARC', host: `_dmarc.${domain}`, value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}`, ttl: 3600 },
-  ];
-}
-
-router.get('/v1/inbox/accounts', (req: Request, res: Response) => {
-  const userId = getParam(req.query.userId as string || '');
-  const accounts = mailAccountsStore[userId] || [];
-  res.json({ accounts });
+// GET /v1/inbox/accounts
+router.get('/v1/inbox/accounts', async (req: Request, res: Response) => {
+  try {
+    const userId = getParam(req.query.userId as string || '');
+    const { status, data } = await mailProxy('GET', `/v1/inbox/accounts?userId=${encodeURIComponent(userId)}`);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/v1/mail/onboarding/start', (req: Request, res: Response) => {
-  const { userId, provider, context } = req.body;
-  if (!userId || !provider) {
-    return res.status(400).json({ error: 'userId and provider are required' });
-  }
-  const jobId = generateJobId();
-  const job = {
-    jobId,
-    userId,
-    provider,
-    status: 'SETUP_REQUIRED',
-    domain: null,
-    mailbox: null,
-    dnsPlan: null,
-    dnsStatus: null,
-    oauthStatus: null,
-    checks: [],
-    eli: null,
-    domainMode: null,
-    domainPurchase: null,
-    createdAt: new Date().toISOString(),
-    context: context || null,
-  };
-  mailJobsStore[jobId] = job;
-  addMailReceipt(userId, 'mail.onboarding.started', 'success', `Provider: ${provider}`, jobId);
-  res.json(job);
+// POST /v1/mail/onboarding/start
+router.post('/v1/mail/onboarding/start', async (req: Request, res: Response) => {
+  try {
+    const { status, data } = await mailProxy('POST', '/v1/mail/onboarding/start', req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/v1/mail/onboarding/:jobId', (req: Request, res: Response) => {
-  const jobId = getParam(req.params.jobId);
-  const job = mailJobsStore[jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-  res.json(job);
+// GET /v1/mail/onboarding/:jobId
+router.get('/v1/mail/onboarding/:jobId', async (req: Request, res: Response) => {
+  try {
+    const jobId = getParam(req.params.jobId);
+    const { status, data } = await mailProxy('GET', `/v1/mail/onboarding/${encodeURIComponent(jobId)}`);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/v1/mail/onboarding/:jobId/dns/plan', (req: Request, res: Response) => {
-  const jobId = getParam(req.params.jobId);
-  const job = mailJobsStore[jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  const { domain, mailbox, displayName, domainMode } = req.body;
-  const dnsPlan = generateMockDnsPlan(domain, mailbox);
-
-  job.domain = domain;
-  job.mailbox = mailbox;
-  job.displayName = displayName;
-  job.domainMode = domainMode;
-  job.dnsPlan = dnsPlan;
-
-  addMailReceipt(job.userId, 'mail.domain.dns_plan.generated', 'success', `Domain: ${domain}`, jobId);
-  res.json({ dnsPlan, domain, mailbox });
+// POST /v1/mail/onboarding/:jobId/dns/plan
+router.post('/v1/mail/onboarding/:jobId/dns/plan', async (req: Request, res: Response) => {
+  try {
+    const jobId = getParam(req.params.jobId);
+    const { status, data } = await mailProxy('POST', `/v1/mail/onboarding/${encodeURIComponent(jobId)}/dns/plan`, req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/v1/mail/onboarding/:jobId/dns/check', (req: Request, res: Response) => {
-  const jobId = getParam(req.params.jobId);
-  const job = mailJobsStore[jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  const plan = job.dnsPlan || [];
-  const results = plan.map((record: any) => ({
-    type: record.type,
-    ok: record.type !== 'DKIM',
-    observed: record.type === 'DKIM' ? 'NOT_FOUND' : record.value,
-  }));
-
-  const dnsStatus = { lastCheckedAt: new Date().toISOString(), results };
-  job.dnsStatus = dnsStatus;
-
-  addMailReceipt(job.userId, 'mail.domain.dns.checked', 'success', `Checked ${results.length} records`, jobId);
-  res.json({ dnsStatus });
+// POST /v1/mail/onboarding/:jobId/dns/check
+router.post('/v1/mail/onboarding/:jobId/dns/check', async (req: Request, res: Response) => {
+  try {
+    const jobId = getParam(req.params.jobId);
+    const { status, data } = await mailProxy('POST', `/v1/mail/onboarding/${encodeURIComponent(jobId)}/dns/check`, req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/v1/domains/search', (req: Request, res: Response) => {
-  const query = (req.query.q as string || '').trim().toLowerCase();
-  if (!query) return res.status(400).json({ error: 'q parameter required' });
-
-  if (domainSearchCache[query]) {
-    return res.json({ query, results: domainSearchCache[query] });
-  }
-
-  const h = hashCode(query);
-  const tlds = ['.com', '.io', '.co', '.dev', '.app'];
-  const prices = ['$12.99/yr', '$29.99/yr', '$19.99/yr', '$14.99/yr', '$49.99/yr'];
-  const terms = [1, 1, 1, 2, 1];
-  const baseName = query.includes('.') ? query.split('.')[0] : query;
-
-  const results: any[] = [];
-
-  if (query.includes('.')) {
-    const tldIdx = tlds.indexOf('.' + query.split('.').pop());
-    results.push({
-      domain: query,
-      available: (h % 10) < 7,
-      price: prices[h % prices.length],
-      currency: 'USD',
-      tld: '.' + query.split('.').pop(),
-      term: tldIdx >= 0 ? terms[tldIdx] : 1,
-    });
-  }
-
-  for (let i = 0; i < tlds.length; i++) {
-    const dom = baseName + tlds[i];
-    if (dom === query) continue;
-    const domHash = hashCode(dom);
-    results.push({
-      domain: dom,
-      available: (domHash % 10) < 7,
-      price: prices[i],
-      currency: 'USD',
-      tld: tlds[i],
-      term: terms[i],
-    });
-  }
-
-  domainSearchCache[query] = results;
-  res.json({ query, results });
+// GET /v1/domains/search
+router.get('/v1/domains/search', async (req: Request, res: Response) => {
+  try {
+    const q = (req.query.q as string || '').trim();
+    if (!q) return res.status(400).json({ error: 'q parameter required' });
+    const { status, data } = await mailProxy('GET', `/v1/domains/search?q=${encodeURIComponent(q)}`);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/v1/domains/purchase/request', (req: Request, res: Response) => {
-  const { jobId, domain } = req.body;
-  if (!jobId || !domain) return res.status(400).json({ error: 'jobId and domain required' });
-  const job = mailJobsStore[jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  job.domainPurchase = {
-    domain,
-    status: 'PENDING_APPROVAL',
-    requestedAt: new Date().toISOString(),
-  };
-
-  addMailReceipt(job.userId, 'domain.purchase.requested', 'pending', `Domain: ${domain}`, jobId);
-  res.json({ status: 'PENDING_APPROVAL', message: 'Purchase request submitted for approval' });
+// POST /v1/domains/purchase/request
+router.post('/v1/domains/purchase/request', async (req: Request, res: Response) => {
+  try {
+    const { status, data } = await mailProxy('POST', '/v1/domains/purchase/request', req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/v1/domains/checkout/start', (req: Request, res: Response) => {
-  const { jobId, domain } = req.body;
-  if (!jobId || !domain) return res.status(400).json({ error: 'jobId and domain required' });
-  const job = mailJobsStore[jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  const orderId = `ord-${Date.now()}`;
-  job.domainPurchase = {
-    domain,
-    status: 'CHECKOUT_STARTED',
-    checkoutUrl: null,
-    orderId,
-  };
-
-  job.domain = domain;
-  job.domainPurchase.status = 'COMPLETED';
-
-  const dnsPlan = generateMockDnsPlan(domain, job.mailbox || 'hello');
-  job.dnsPlan = dnsPlan;
-
-  addMailReceipt(job.userId, 'domain.purchase.approved', 'success', `Domain: ${domain}`, jobId);
-  addMailReceipt(job.userId, 'domain.purchase.executed', 'success', `Order: ${orderId}`, jobId);
-  res.json({ status: 'COMPLETED', orderId, domain, dnsPlan });
+// POST /v1/domains/checkout/start
+router.post('/v1/domains/checkout/start', async (req: Request, res: Response) => {
+  try {
+    const { status, data } = await mailProxy('POST', '/v1/domains/checkout/start', req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/v1/mail/oauth/google/start', (req: Request, res: Response) => {
-  const jobId = req.query.jobId as string;
-  if (!jobId) return res.status(400).json({ error: 'jobId required' });
-  const job = mailJobsStore[jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  const scopes = ['https://mail.google.com/', 'https://www.googleapis.com/auth/gmail.modify'];
-  job.oauthStatus = { connectedEmail: 'user@workspace.google.com', scopes };
-
-  addMailReceipt(job.userId, 'mail.oauth.google.connected', 'success', 'Google Workspace connected', jobId);
-  res.json({ redirectUrl: null, connected: true, email: 'user@workspace.google.com', scopes });
+// GET /v1/mail/oauth/google/start
+router.get('/v1/mail/oauth/google/start', async (req: Request, res: Response) => {
+  try {
+    const jobId = req.query.jobId as string;
+    if (!jobId) return res.status(400).json({ error: 'jobId required' });
+    const { status, data } = await mailProxy('GET', `/v1/mail/oauth/google/start?jobId=${encodeURIComponent(jobId)}`);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/v1/mail/onboarding/:jobId/checks/run', (req: Request, res: Response) => {
-  const jobId = getParam(req.params.jobId);
-  const job = mailJobsStore[jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  const checksToRun: string[] = req.body.checks || ['LIST', 'DRAFT', 'SEND_TEST', 'LABEL'];
-
-  const results = checksToRun.map((id: string) => {
-    const pass = id !== 'SEND_TEST';
-    const status = pass ? 'PASS' : 'NOT_RUN';
-    const message = pass
-      ? `${id} check passed (mocked)`
-      : `${id} requires manual trigger`;
-
-    addMailReceipt(job.userId, `mail.check.${id.toLowerCase()}`, pass ? 'success' : 'pending', message, jobId);
-    return { id, status, message };
-  });
-
-  job.checks = results;
-  res.json({ checks: results });
+// POST /v1/mail/onboarding/:jobId/checks/run
+router.post('/v1/mail/onboarding/:jobId/checks/run', async (req: Request, res: Response) => {
+  try {
+    const jobId = getParam(req.params.jobId);
+    const { status, data } = await mailProxy('POST', `/v1/mail/onboarding/${encodeURIComponent(jobId)}/checks/run`, req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/v1/mail/eli/policy/apply', (req: Request, res: Response) => {
-  const { jobId, policy } = req.body;
-  if (!jobId || !policy) return res.status(400).json({ error: 'jobId and policy required' });
-  const job = mailJobsStore[jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  job.eli = { ...policy };
-  addMailReceipt(job.userId, 'mail.eli.policy.applied', 'success', `Draft: ${policy.canDraft}, Send: ${policy.canSend}`, jobId);
-  res.json({ eli: job.eli });
+// POST /v1/mail/eli/policy/apply
+router.post('/v1/mail/eli/policy/apply', async (req: Request, res: Response) => {
+  try {
+    const { status, data } = await mailProxy('POST', '/v1/mail/eli/policy/apply', req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/v1/mail/onboarding/:jobId/activate', (req: Request, res: Response) => {
-  const jobId = getParam(req.params.jobId);
-  const job = mailJobsStore[jobId];
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  const account = {
-    id: `ma-${Date.now()}`,
-    provider: job.provider || 'POLARIS',
-    email: job.mailbox ? `${job.mailbox}@${job.domain}` : 'hello@yourbusiness.com',
-    displayName: job.displayName || 'Business Email',
-    status: 'ACTIVE',
-    capabilities: {
-      canSend: true,
-      canDraft: true,
-      canLabels: job.provider === 'GOOGLE',
-      canJunk: true,
-      canThreads: true,
-    },
-  };
-
-  if (!mailAccountsStore[job.userId]) mailAccountsStore[job.userId] = [];
-  mailAccountsStore[job.userId].push(account);
-  addMailReceipt(job.userId, 'mail.mailbox.activated', 'success', `Activated: ${account.email}`, jobId);
-
-  job.status = 'COMPLETED';
-  res.json({ account });
+// POST /v1/mail/onboarding/:jobId/activate
+router.post('/v1/mail/onboarding/:jobId/activate', async (req: Request, res: Response) => {
+  try {
+    const jobId = getParam(req.params.jobId);
+    const { status, data } = await mailProxy('POST', `/v1/mail/onboarding/${encodeURIComponent(jobId)}/activate`, req.body);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/v1/receipts', (req: Request, res: Response) => {
-  const jobId = req.query.jobId as string;
-  if (!jobId) return res.status(400).json({ error: 'jobId required' });
-  const receipts = getMailReceiptsByJobId(jobId);
-  res.json({ receipts });
+// GET /v1/receipts (by jobId)
+router.get('/v1/receipts', async (req: Request, res: Response) => {
+  try {
+    const jobId = req.query.jobId as string;
+    if (!jobId) return res.status(400).json({ error: 'jobId required' });
+    const { status, data } = await mailProxy('GET', `/v1/receipts?jobId=${encodeURIComponent(jobId)}`);
+    res.status(status).json(data);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 export default router;
