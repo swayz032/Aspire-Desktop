@@ -106,7 +106,7 @@ export default function FocusScreen() {
     <View style={styles.container}>
       <View style={styles.heroWrapper}>
         <LinearGradient
-          colors={config.gradientColors as readonly [string, ...string[]]}
+          colors={config.gradientColors as any}
           locations={[0, 0.2, 0.5, 0.8, 1]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -152,7 +152,7 @@ export default function FocusScreen() {
             insights.map((insight) => (
               <View key={insight.id} style={styles.insightCardWrapper}>
                 <LinearGradient
-                  colors={config.gradientColors as readonly [string, ...string[]]}
+                  colors={config.gradientColors as any}
                   locations={[0, 0.2, 0.5, 0.8, 1]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}

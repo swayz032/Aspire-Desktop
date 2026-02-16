@@ -102,9 +102,13 @@ export default function TeamScreen() {
     fetchMembers();
   }, []);
 
-  const handleToggle = (id: string, enabled: boolean) => {
-    updateTeamMember(id, { enabled });
-    setMembers(getTeamMembers());
+  const handleToggle = async (id: string, enabled: boolean) => {
+    try {
+      await supabase.from('suite_members').update({ enabled }).eq('id', id);
+      setMembers(prev => prev.map(m => m.id === id ? { ...m, enabled } : m));
+    } catch (e) {
+      console.warn('Failed to toggle member:', e);
+    }
   };
 
   const handlePress = (id: string) => {

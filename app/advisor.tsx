@@ -15,9 +15,9 @@ import { DraftArtifact, RecommendedTool } from '@/types/advisory';
 type BusinessProfile = { industry: string; stage: string; connectedTools: string[]; companyName: string; employeeCount: number };
 type DailyQuote = { id: string; quote: string; author: string; source: string };
 type GrowthLever = { id: string; title: string; whyItMatters: string; whyYouSeeThis: string; roiExpectation: { type: string; value: string; timeframe: string }; riskTier: string; evidenceType: string; packId: string };
-type MarketAngle = { id: string; title: string; description: string; opportunity: string; timeframe: string; confidence: string };
-type AdvisoryPack = { id: string; title: string; description: string; category: string; price: string; features: string[] };
-type RecommendedAgent = { id: string; name: string; role: string; description: string; status: string };
+type MarketAngle = { id: string; title: string; description: string; opportunity: string; timeframe: string; confidence: string; riskTier?: string; bullets?: string[]; whenItFits?: string[]; risksTradeoffs?: string[] };
+type AdvisoryPack = { id: string; title: string; description: string; category: string; price: string; features: string[]; name?: string; includes?: string[]; templates?: string[]; agentConfigs?: string[]; requiredTools?: string[] };
+type RecommendedAgent = { id: string; name: string; role: string; description: string; status: string; avatarColor?: string; riskTier?: string; capabilities?: string[] };
 
 export default function AdvisorScreen() {
   const router = useRouter();
@@ -92,7 +92,7 @@ export default function AdvisorScreen() {
             name: c.name ?? c.provider,
             connected: true,
             description: `Connected ${c.provider} account`,
-          } as RecommendedTool)));
+          } as unknown as RecommendedTool)));
         }
 
         // Suite profile for business info
@@ -318,9 +318,9 @@ export default function AdvisorScreen() {
           {marketAngles.map((angle) => (
             <Card key={angle.id} variant="elevated" style={styles.angleCard}>
               <View style={styles.angleHeader}>
-                <View style={[styles.leverDot, { backgroundColor: getRiskColor(angle.riskTier) }]} />
-                <View style={[styles.riskBadge, { backgroundColor: `${getRiskColor(angle.riskTier)}20` }]}>
-                  <Text style={[styles.riskBadgeText, { color: getRiskColor(angle.riskTier) }]}>
+                <View style={[styles.leverDot, { backgroundColor: getRiskColor(angle.riskTier ?? 'green') }]} />
+                <View style={[styles.riskBadge, { backgroundColor: `${getRiskColor(angle.riskTier ?? 'green')}20` }]}>
+                  <Text style={[styles.riskBadgeText, { color: getRiskColor(angle.riskTier ?? 'green') }]}>
                     {angle.riskTier === 'yellow' ? 'Consider' : 'Low Risk'}
                   </Text>
                 </View>
@@ -329,7 +329,7 @@ export default function AdvisorScreen() {
               <Text style={styles.angleDescription}>{angle.description}</Text>
               
               <View style={styles.angleBullets}>
-                {angle.bullets.map((bullet, i) => (
+                {(angle.bullets ?? []).map((bullet: string, i: number) => (
                   <View key={i} style={styles.bulletRow}>
                     <View style={styles.bulletDot} />
                     <Text style={styles.bulletText}>{bullet}</Text>
@@ -339,7 +339,7 @@ export default function AdvisorScreen() {
 
               <View style={styles.angleConditions}>
                 <Text style={styles.conditionsLabel}>When it fits:</Text>
-                {angle.whenItFits.slice(0, 2).map((condition, i) => (
+                {(angle.whenItFits ?? []).slice(0, 2).map((condition: string, i: number) => (
                   <View key={i} style={styles.conditionRow}>
                     <Ionicons name="checkmark" size={12} color="#34c759" />
                     <Text style={styles.conditionText}>{condition}</Text>
@@ -349,7 +349,7 @@ export default function AdvisorScreen() {
 
               <View style={styles.angleRisks}>
                 <Text style={styles.risksLabel}>Tradeoffs:</Text>
-                {angle.risksTradeoffs.slice(0, 2).map((risk, i) => (
+                {(angle.risksTradeoffs ?? []).slice(0, 2).map((risk: string, i: number) => (
                   <View key={i} style={styles.riskRow}>
                     <Ionicons name="alert-circle-outline" size={12} color="#f59e0b" />
                     <Text style={styles.riskText}>{risk}</Text>
@@ -385,14 +385,14 @@ export default function AdvisorScreen() {
                 </View>
               </View>
               <View style={styles.packIncludes}>
-                {pack.includes.slice(0, 3).map((item, i) => (
+                {(pack.includes ?? []).slice(0, 3).map((item: string, i: number) => (
                   <View key={i} style={styles.includeRow}>
                     <Ionicons name="checkmark-circle" size={12} color="#34c759" />
                     <Text style={styles.includeText}>{item}</Text>
                   </View>
                 ))}
-                {pack.includes.length > 3 && (
-                  <Text style={styles.moreIncludes}>+{pack.includes.length - 3} more</Text>
+                {(pack.includes ?? []).length > 3 && (
+                  <Text style={styles.moreIncludes}>+{(pack.includes ?? []).length - 3} more</Text>
                 )}
               </View>
               <View style={styles.packFooter}>
@@ -407,7 +407,7 @@ export default function AdvisorScreen() {
                 </View>
                 <TouchableOpacity 
                   style={[styles.installBtn, installedPacks.includes(pack.id) && styles.installedBtn]}
-                  onPress={() => handleInstallPack(pack.id, pack.name, pack.includes)}
+                  onPress={() => handleInstallPack(pack.id, pack.name ?? pack.title, pack.includes ?? pack.features)}
                   disabled={installedPacks.includes(pack.id)}
                 >
                   <Text style={styles.installBtnText}>
@@ -469,14 +469,14 @@ export default function AdvisorScreen() {
                   <Text style={styles.agentName}>{agent.name}</Text>
                   <Text style={styles.agentRole}>{agent.role}</Text>
                 </View>
-                <View style={[styles.riskBadge, { backgroundColor: `${getRiskColor(agent.riskTier)}20` }]}>
-                  <Text style={[styles.riskBadgeText, { color: getRiskColor(agent.riskTier) }]}>
+                <View style={[styles.riskBadge, { backgroundColor: `${getRiskColor(agent.riskTier ?? 'green')}20` }]}>
+                  <Text style={[styles.riskBadgeText, { color: getRiskColor(agent.riskTier ?? 'green') }]}>
                     {agent.riskTier === 'green' ? 'Low Risk' : 'Medium'}
                   </Text>
                 </View>
               </View>
               <View style={styles.agentCapabilities}>
-                {agent.capabilities.map((cap, i) => (
+                {(agent.capabilities ?? []).map((cap: string, i: number) => (
                   <View key={i} style={styles.capabilityRow}>
                     <Ionicons name="checkmark" size={12} color="#3B82F6" />
                     <Text style={styles.capabilityText}>{cap}</Text>

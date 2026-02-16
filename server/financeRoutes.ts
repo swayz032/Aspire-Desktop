@@ -682,7 +682,7 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
 
 router.post('/api/authority-queue/:id/approve', async (req: Request, res: Response) => {
   try {
-    const eventId = parseInt(req.params.id, 10);
+    const eventId = parseInt(req.params.id as string, 10);
     const suiteId = req.body.suiteId || getDefaultSuiteId();
     const officeId = req.body.officeId || getDefaultOfficeId();
     const approvedBy = req.body.approvedBy || 'owner';
@@ -734,7 +734,7 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
 
 router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response) => {
   try {
-    const eventId = parseInt(req.params.id, 10);
+    const eventId = parseInt(req.params.id as string, 10);
     const suiteId = req.body.suiteId || getDefaultSuiteId();
     const officeId = req.body.officeId || getDefaultOfficeId();
     const deniedBy = req.body.deniedBy || 'owner';

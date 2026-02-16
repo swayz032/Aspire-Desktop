@@ -77,11 +77,11 @@ export default function RoadmapScreen() {
 
   const getStaffColor = (staffName?: string) => {
     const staff = STAFF_ROSTER.find(s => s.name === staffName);
-    return staff?.avatarColor || '#3B82F6';
+    return (staff as any)?.avatarColor || '#3B82F6';
   };
 
-  const totalOpportunityValue = score.hiddenOpportunities.reduce((sum, opp) => sum + opp.dollarValue, 0);
-  const totalTimeSavings = score.efficiencyWins.reduce((sum, eff) => sum + eff.potentialSavingsHours, 0);
+  const totalOpportunityValue = (score.hiddenOpportunities ?? []).reduce((sum: number, opp: any) => sum + opp.dollarValue, 0);
+  const totalTimeSavings = (score.efficiencyWins ?? []).reduce((sum: number, eff: any) => sum + eff.potentialSavingsHours, 0);
 
   const content = (
     <View style={styles.container}>
@@ -173,7 +173,7 @@ export default function RoadmapScreen() {
             </View>
           </View>
           
-          {score.hiddenOpportunities.map((opp) => {
+          {(score.hiddenOpportunities ?? []).map((opp: any) => {
             const staffColor = getStaffColor(opp.staffOwner);
             return (
               <Card key={opp.id} variant="elevated" style={styles.opportunityCard}>
@@ -266,7 +266,7 @@ export default function RoadmapScreen() {
           </Card>
 
           <Text style={styles.scenariosTitle}>If you take action:</Text>
-          {score.growthForecast.scenarios.map((scenario) => (
+          {(score.growthForecast?.scenarios ?? []).map((scenario: any) => (
             <View key={scenario.id} style={styles.scenarioCard}>
               <View style={styles.scenarioLeft}>
                 <View style={styles.scenarioCondition}>
@@ -293,7 +293,7 @@ export default function RoadmapScreen() {
             </View>
           </View>
 
-          {score.efficiencyWins.map((eff) => {
+          {(score.efficiencyWins ?? []).map((eff: any) => {
             const staffColor = getStaffColor(eff.staffOwner);
             const savingsPercent = (eff.potentialSavingsHours / eff.currentHoursPerWeek) * 100;
             return (
@@ -340,7 +340,7 @@ export default function RoadmapScreen() {
           </View>
           <Text style={styles.benchmarkSubtitle}>Industry comparison analysis</Text>
 
-          {score.benchmarks.map((bench) => {
+          {(score.benchmarks ?? []).map((bench: any) => {
             const userPercent = (bench.userValue / bench.topPerformers) * 100;
             const industryPercent = (bench.industryAverage / bench.topPerformers) * 100;
             const isWorseIsHigher = bench.unit === 'days' || bench.unit === 'hours';
@@ -426,7 +426,7 @@ export default function RoadmapScreen() {
               <View style={styles.capabilitiesSection}>
                 <Text style={styles.capabilitiesTitle}>Active capabilities:</Text>
                 <View style={styles.capabilitiesList}>
-                  {score.cumulativeValue.capabilitiesUnlocked.map((cap, index) => (
+                  {(score.cumulativeValue?.capabilitiesUnlocked ?? []).map((cap: string, index: number) => (
                     <View key={index} style={styles.capabilityChip}>
                       <Ionicons name="checkmark-circle" size={12} color="#34c759" />
                       <Text style={styles.capabilityText}>{cap}</Text>
@@ -447,7 +447,7 @@ export default function RoadmapScreen() {
           </View>
           
           <Card variant="elevated" style={styles.activityCard}>
-            {score.recentActivity.map((activity, index) => {
+            {(score.recentActivity ?? []).map((activity: any, index: number) => {
               const staffColor = getStaffColor(activity.staffOwner);
               const isLast = index === score.recentActivity.length - 1;
               return (

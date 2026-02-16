@@ -80,8 +80,10 @@ export default function DailyBriefScreen() {
           });
         }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .then(
+        () => { setLoading(false); },
+        () => { setLoading(false); }
+      );
   }, []);
 
   const formatDate = (dateStr: string) => {

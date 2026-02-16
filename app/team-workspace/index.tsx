@@ -674,7 +674,7 @@ function QueuesTab({
             <View style={styles.deskCardHeader}>
               <View style={styles.deskCardHeaderLeft}>
                 {staffMember ? (
-                  <Image source={staffMember.avatarImage} style={styles.deskStaffAvatar} />
+                  <Image source={(staffMember as any).avatarImage} style={styles.deskStaffAvatar} />
                 ) : (
                   <View style={[styles.deskStaffIconWrap, { backgroundColor: `${info.color}15` }]}>
                     <Ionicons name={info.icon as any} size={22} color={info.color} />
@@ -1252,7 +1252,7 @@ function getActionIcon(actionType: ActionType): any {
 
 export default function TeamWorkspacePage() {
   const isDesktop = useDesktop();
-  const { profile } = useTenant();
+  const { tenant: profile } = useTenant();
   const [selectedSuiteId, setSelectedSuiteId] = useState('');
   const [activeTab, setActiveTab] = useState<TabType>('people');
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -1269,11 +1269,11 @@ export default function TeamWorkspacePage() {
   // Build currentUser from tenant profile
   const currentUser: Member | null = profile ? {
     id: profile.id ?? '',
-    name: profile.business_name ?? profile.full_name ?? 'User',
-    email: '',
+    name: profile.businessName ?? profile.ownerName ?? 'User',
+    email: profile.ownerEmail ?? '',
     roleId: 'owner' as RoleType,
     status: 'active' as const,
-    suiteAccessIds: profile.suite_id ? [profile.suite_id] : [],
+    suiteAccessIds: profile.suiteId ? [profile.suiteId] : [],
     lastActiveAt: new Date().toISOString(),
   } : null;
 
@@ -1338,11 +1338,11 @@ export default function TeamWorkspacePage() {
           })));
         }
         // Set suite from profile
-        if (profile?.suite_id) {
-          setSelectedSuiteId(profile.suite_id);
+        if (profile?.suiteId) {
+          setSelectedSuiteId(profile.suiteId);
           setSuites([{
-            id: profile.suite_id,
-            name: profile.business_name ?? 'My Suite',
+            id: profile.suiteId,
+            name: profile.businessName ?? 'My Suite',
             suiteNumber: '1001',
             isActive: true,
             createdAt: new Date().toISOString(),

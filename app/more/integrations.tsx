@@ -105,6 +105,8 @@ export default function IntegrationsScreen() {
           icon: 'cloud' as const,
           status: 'Connected' as IntegrationStatus,
           lastSync: row.updated_at ?? row.created_at,
+          createdAt: row.created_at ?? new Date().toISOString(),
+          updatedAt: row.updated_at ?? new Date().toISOString(),
           healthCheck: {
             webhookVerified: true,
             tokenExpiry: row.expires_at && new Date(row.expires_at) > new Date() ? 'ok' as const : 'expired' as const,

@@ -98,7 +98,7 @@ export default function FullPlanScreen() {
               {visibleRiskItems[0].description}
             </Text>
             <View style={styles.atRiskActions}>
-              {visibleRiskItems[0].actions.map((action) => (
+              {visibleRiskItems[0].actions.map((action: string) => (
                 <Button 
                   key={action}
                   label={action} 
