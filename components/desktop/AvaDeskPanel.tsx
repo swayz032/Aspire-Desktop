@@ -718,12 +718,15 @@ export function AvaDeskPanel() {
     try {
       // Law #1: Single Brain — route through orchestrator
       // Law #6: X-Suite-Id for tenant isolation
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (suiteId) headers['X-Suite-Id'] = suiteId;
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
       const resp = await fetch('/api/orchestrator/intent', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Suite-Id': suiteId || '',
-        },
+        headers,
         body: JSON.stringify({
           agent: 'ava',
           text: trimmed,

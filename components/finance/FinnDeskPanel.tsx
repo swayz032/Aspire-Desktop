@@ -628,7 +628,8 @@ export function FinnDeskPanel() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Suite-Id': suiteId || '',
+            ...(suiteId ? { 'X-Suite-Id': suiteId } : {}),
+            ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
           },
           body: JSON.stringify({
             agent: 'finn',
