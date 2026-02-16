@@ -9,8 +9,8 @@ import crypto from 'crypto';
 
 const router = Router();
 
-const getQueryParam = (param: string | string[] | undefined, defaultVal: string): string =>
-  param ? (Array.isArray(param) ? param[0] : param) : defaultVal;
+const getQueryParam = (param: unknown, defaultVal: string): string =>
+  param ? (Array.isArray(param) ? String(param[0]) : String(param)) : defaultVal;
 
 const METRIC_DEFINITIONS: Record<string, { definition: string; formula: string; providers: string[] }> = {
   cash_available: {
@@ -60,8 +60,8 @@ const emptyChapters = () => ({
 
 router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
-    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
+    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
 
     const snapshotResult = await db.execute(sql`
       SELECT id, suite_id, office_id, generated_at, chapter_now, chapter_next, chapter_month,
@@ -119,11 +119,11 @@ router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
 
 router.get('/api/finance/timeline', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
-    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
-    const range = getQueryParam(req.query.range as string, '30d');
-    const limit = Math.min(parseInt(getQueryParam(req.query.limit as string, '50'), 10) || 50, 200);
-    const offset = parseInt(getQueryParam(req.query.offset as string, '0'), 10) || 0;
+    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
+    const range = getQueryParam(req.query.range, '30d');
+    const limit = Math.min(parseInt(getQueryParam(req.query.limit, '50'), 10) || 50, 200);
+    const offset = parseInt(getQueryParam(req.query.offset, '0'), 10) || 0;
 
     const days = parseInt(range.replace('d', ''), 10) || 30;
 
@@ -167,9 +167,9 @@ router.get('/api/finance/timeline', async (req: Request, res: Response) => {
 
 router.get('/api/finance/explain', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
-    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
-    const metricId = getQueryParam(req.query.metricId as string, '');
+    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
+    const metricId = getQueryParam(req.query.metricId, '');
 
     if (!metricId) {
       return res.status(400).json({ error: 'metricId query parameter is required' });
@@ -224,8 +224,8 @@ router.get('/api/finance/explain', async (req: Request, res: Response) => {
 
 router.get('/api/connections/status', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
-    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
+    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
 
     const connections = await getConnectionsByTenant(suiteId, officeId);
 
@@ -264,9 +264,9 @@ router.get('/api/connections/status', async (req: Request, res: Response) => {
 
 router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
   try {
-    const suiteId = getQueryParam(req.query.suiteId as string, getDefaultSuiteId());
-    const officeId = getQueryParam(req.query.officeId as string, getDefaultOfficeId());
-    const entityId = getQueryParam(req.query.entityId as string, '');
+    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
+    const entityId = getQueryParam(req.query.entityId, '');
 
     let result;
     if (entityId) {
@@ -359,18 +359,34 @@ router.post('/api/finance/compute-snapshot', async (req: Request, res: Response)
 
 router.post('/api/finance/proposals', async (req: Request, res: Response) => {
   try {
-    const { suiteId = getDefaultSuiteId(), officeId = getDefaultOfficeId(), title, type, description, predictedImpact, dependencies } = req.body;
+    const suiteId = req.body.suiteId || getDefaultSuiteId();
+    const officeId = req.body.officeId || getDefaultOfficeId();
+    const { title, type, description, predictedImpact, dependencies,
+            risk_tier, required_approval, inputs_hash, correlation_id, action, inputs } = req.body;
 
-    if (!title || !type) {
-      return res.status(400).json({ error: 'title and type are required' });
+    if (!title && !action) {
+      return res.status(400).json({ error: 'title or action is required' });
     }
 
-    const providerEventId = `proposal_${crypto.randomUUID()}`;
-    const metadata = { title, type, description, predictedImpact, dependencies };
+    const correlationId = correlation_id || req.headers['x-correlation-id'] || `corr_${crypto.randomUUID()}`;
+    const proposalId = `proposal_${crypto.randomUUID()}`;
+    const riskTier = risk_tier || 'yellow';
+    const requiredApproval = required_approval || (riskTier === 'red' ? 'owner' : riskTier === 'yellow' ? 'admin' : 'none');
+    const intentSummary = title || action || 'Finance proposal';
+
+    const inputsHashComputed = inputs_hash || `sha256:${crypto.createHash('sha256').update(
+      JSON.stringify({ suiteId, officeId, action: action || type, inputs: inputs || { title, description, predictedImpact, dependencies } })
+    ).digest('hex')}`;
+
+    const metadata = {
+      title: intentSummary, type: type || action, description, predictedImpact, dependencies,
+      risk_tier: riskTier, required_approval: requiredApproval, inputs_hash: inputsHashComputed,
+      correlation_id: correlationId, inputs: inputs || {},
+    };
 
     const result = await db.execute(sql`
-      INSERT INTO finance_events (suite_id, office_id, provider, provider_event_id, event_type, occurred_at, metadata)
-      VALUES (${suiteId}, ${officeId}, 'aspire', ${providerEventId}, 'proposal_created', NOW(), ${JSON.stringify(metadata)})
+      INSERT INTO finance_events (suite_id, office_id, provider, provider_event_id, event_type, occurred_at, status, metadata)
+      VALUES (${suiteId}, ${officeId}, 'aspire', ${proposalId}, 'proposal_created', NOW(), 'pending', ${JSON.stringify(metadata)})
       RETURNING event_id, occurred_at
     `);
 
@@ -382,24 +398,27 @@ router.post('/api/finance/proposals', async (req: Request, res: Response) => {
       suiteId,
       officeId,
       actionType: 'propose_action',
-      inputs: { title, type, description, predictedImpact, dependencies },
-      outputs: { eventId, providerEventId },
-      metadata: { proposalTitle: title },
+      inputs: { title: intentSummary, type: type || action, risk_tier: riskTier, inputs_hash: inputsHashComputed, correlation_id: correlationId },
+      outputs: { eventId, proposalId },
+      metadata: { proposalTitle: intentSummary, risk_tier: riskTier, required_approval: requiredApproval },
     });
 
     await db.execute(sql`
       UPDATE finance_events SET receipt_id = ${receiptId} WHERE event_id = ${eventId}
     `);
 
-    console.log(`Proposal created: ${eventId} (${title})`);
+    console.log(`Proposal created: ${eventId} (${intentSummary}) [${riskTier}]`);
 
     res.status(201).json({
       eventId,
-      title,
-      type,
-      description,
-      predictedImpact,
-      dependencies,
+      proposalId,
+      title: intentSummary,
+      type: type || action,
+      risk_tier: riskTier,
+      required_approval: requiredApproval,
+      inputs_hash: inputsHashComputed,
+      correlation_id: correlationId,
+      status: 'pending',
       occurredAt,
       receiptId,
     });
@@ -496,6 +515,271 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
     });
   } catch (error: any) {
     console.error('Execute action error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Finn v2: Exceptions endpoint ──────────────────────────────────────────────
+router.get('/api/finance/exceptions', async (req: Request, res: Response) => {
+  try {
+    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
+    const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+
+    // Get current snapshot to derive exceptions
+    const snapshotResult = await db.execute(sql`
+      SELECT chapter_now, chapter_next, chapter_month, chapter_reconcile, chapter_actions, staleness, generated_at
+      FROM finance_snapshots
+      WHERE suite_id = ${suiteId} AND office_id = ${officeId}
+      ORDER BY generated_at DESC
+      LIMIT 1
+    `);
+
+    const rows = (snapshotResult.rows || snapshotResult) as any[];
+    const snap = rows.length > 0 ? rows[0] : null;
+    const exceptions: Array<{
+      exception_id: string; lane: string; severity: string;
+      summary: string; evidence_refs: string[]; recommended_next_action: string;
+    }> = [];
+
+    if (snap) {
+      const now = snap.chapter_now || {};
+      const next = snap.chapter_next || {};
+      const reconcile = snap.chapter_reconcile || {};
+      const staleness = snap.staleness || {};
+
+      // Low cash buffer
+      if (now.cashAvailable !== undefined && now.cashAvailable < 5000) {
+        exceptions.push({
+          exception_id: `exc_low_cash_${Date.now()}`,
+          lane: 'cash',
+          severity: now.cashAvailable < 1000 ? 'critical' : 'warn',
+          summary: `Cash buffer is low at $${(now.cashAvailable || 0).toLocaleString()}`,
+          evidence_refs: ['snapshot.now.cashAvailable'],
+          recommended_next_action: 'finance.proposal.create',
+        });
+      }
+
+      // Negative net cash flow forecast
+      if (next.netCashFlow7d !== undefined && next.netCashFlow7d < 0) {
+        exceptions.push({
+          exception_id: `exc_negative_forecast_${Date.now()}`,
+          lane: 'cash',
+          severity: Math.abs(next.netCashFlow7d) > 10000 ? 'critical' : 'warn',
+          summary: `Projected 7-day net cash flow is negative: -$${Math.abs(next.netCashFlow7d).toLocaleString()}`,
+          evidence_refs: ['snapshot.next.netCashFlow7d'],
+          recommended_next_action: 'finance.proposal.create',
+        });
+      }
+
+      // Reconciliation mismatches
+      const mismatchCount = reconcile.mismatchCount || 0;
+      if (mismatchCount > 0) {
+        exceptions.push({
+          exception_id: `exc_reconcile_${Date.now()}`,
+          lane: 'books',
+          severity: mismatchCount > 5 ? 'warn' : 'info',
+          summary: `${mismatchCount} unreconciled transaction${mismatchCount > 1 ? 's' : ''} between providers`,
+          evidence_refs: ['snapshot.reconcile.mismatches'],
+          recommended_next_action: 'finance.proposal.create',
+        });
+      }
+
+      // Stale data per lane
+      for (const [provider, info] of Object.entries(staleness as Record<string, any>)) {
+        if (info && info.isStale) {
+          const lane = provider === 'gusto' ? 'payroll' : provider === 'stripe' ? 'invoices' : 'books';
+          exceptions.push({
+            exception_id: `exc_stale_${provider}_${Date.now()}`,
+            lane,
+            severity: 'warn',
+            summary: `Data from ${provider} is stale (last sync: ${info.lastSyncAt || 'unknown'})`,
+            evidence_refs: [`staleness.${provider}`],
+            recommended_next_action: 'a2a.create',
+          });
+        }
+      }
+    } else {
+      // No snapshot at all
+      exceptions.push({
+        exception_id: `exc_no_snapshot_${Date.now()}`,
+        lane: 'cash',
+        severity: 'critical',
+        summary: 'No financial snapshot available — connect at least one provider',
+        evidence_refs: [],
+        recommended_next_action: 'finance.proposal.create',
+      });
+    }
+
+    // Sort by severity: critical > warn > info
+    const severityOrder: Record<string, number> = { critical: 0, warn: 1, info: 2 };
+    exceptions.sort((a, b) => (severityOrder[a.severity] || 2) - (severityOrder[b.severity] || 2));
+
+    // Emit receipt
+    await createReceipt({
+      suiteId,
+      officeId,
+      actionType: 'compute_snapshot',
+      inputs: { endpoint: 'finance.exceptions.read', correlation_id: correlationId },
+      outputs: { exception_count: exceptions.length },
+      metadata: { event_type: 'finance.exceptions.read' },
+    });
+
+    res.json({
+      as_of: snap?.generated_at || new Date().toISOString(),
+      exceptions,
+      correlation_id: correlationId,
+    });
+  } catch (error: any) {
+    console.error('Finance exceptions error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Finn v2: Authority Queue endpoints ────────────────────────────────────────
+router.get('/api/authority-queue', async (req: Request, res: Response) => {
+  try {
+    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
+    const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
+    const domain = getQueryParam(req.query.domain, 'finance');
+    const statusFilter = getQueryParam(req.query.status, 'pending');
+
+    const result = await db.execute(sql`
+      SELECT event_id, provider_event_id, occurred_at, status, metadata, receipt_id
+      FROM finance_events
+      WHERE suite_id = ${suiteId} AND office_id = ${officeId}
+        AND event_type = 'proposal_created'
+        AND status = ${statusFilter}
+      ORDER BY occurred_at DESC
+      LIMIT 50
+    `);
+
+    const rows = (result.rows || result) as any[];
+    const items = rows.map((row: any) => {
+      const meta = row.metadata || {};
+      return {
+        id: row.event_id,
+        proposalId: row.provider_event_id,
+        domain,
+        title: meta.title || 'Untitled proposal',
+        type: meta.type || 'unknown',
+        risk_tier: meta.risk_tier || 'yellow',
+        required_approval: meta.required_approval || 'admin',
+        status: row.status || 'pending',
+        correlation_id: meta.correlation_id || null,
+        inputs_hash: meta.inputs_hash || null,
+        createdAt: row.occurred_at,
+        receiptId: row.receipt_id,
+      };
+    });
+
+    res.json({ items, total: items.length, domain });
+  } catch (error: any) {
+    console.error('Authority queue error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/api/authority-queue/:id/approve', async (req: Request, res: Response) => {
+  try {
+    const eventId = parseInt(req.params.id, 10);
+    const suiteId = req.body.suiteId || getDefaultSuiteId();
+    const officeId = req.body.officeId || getDefaultOfficeId();
+    const approvedBy = req.body.approvedBy || 'owner';
+    const correlationId = (req.headers['x-correlation-id'] as string) || req.body.correlation_id || `corr_${crypto.randomUUID()}`;
+
+    // Check current status (idempotent)
+    const check = await db.execute(sql`
+      SELECT event_id, status, metadata FROM finance_events
+      WHERE event_id = ${eventId} AND suite_id = ${suiteId} AND office_id = ${officeId}
+        AND event_type = 'proposal_created'
+      LIMIT 1
+    `);
+
+    const checkRows = (check.rows || check) as any[];
+    if (checkRows.length === 0) {
+      return res.status(404).json({ error: 'Proposal not found' });
+    }
+
+    if (checkRows[0].status === 'approved') {
+      return res.json({ id: eventId, status: 'approved', message: 'Already approved' });
+    }
+
+    if (checkRows[0].status === 'denied') {
+      return res.status(409).json({ error: 'Cannot approve a denied proposal' });
+    }
+
+    await db.execute(sql`
+      UPDATE finance_events SET status = 'approved'
+      WHERE event_id = ${eventId} AND suite_id = ${suiteId} AND office_id = ${officeId}
+    `);
+
+    const receiptId = await createReceipt({
+      suiteId,
+      officeId,
+      actionType: 'execute_action',
+      inputs: { eventId, action: 'approve', approvedBy, correlation_id: correlationId },
+      outputs: { status: 'approved' },
+      metadata: { event_type: 'authority.item.approved', proposalTitle: checkRows[0].metadata?.title },
+    });
+
+    console.log(`Authority item approved: ${eventId} by ${approvedBy}`);
+
+    res.json({ id: eventId, status: 'approved', approvedBy, receiptId, correlation_id: correlationId });
+  } catch (error: any) {
+    console.error('Authority approve error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response) => {
+  try {
+    const eventId = parseInt(req.params.id, 10);
+    const suiteId = req.body.suiteId || getDefaultSuiteId();
+    const officeId = req.body.officeId || getDefaultOfficeId();
+    const deniedBy = req.body.deniedBy || 'owner';
+    const reason = req.body.reason || '';
+    const correlationId = (req.headers['x-correlation-id'] as string) || req.body.correlation_id || `corr_${crypto.randomUUID()}`;
+
+    const check = await db.execute(sql`
+      SELECT event_id, status, metadata FROM finance_events
+      WHERE event_id = ${eventId} AND suite_id = ${suiteId} AND office_id = ${officeId}
+        AND event_type = 'proposal_created'
+      LIMIT 1
+    `);
+
+    const checkRows = (check.rows || check) as any[];
+    if (checkRows.length === 0) {
+      return res.status(404).json({ error: 'Proposal not found' });
+    }
+
+    if (checkRows[0].status === 'denied') {
+      return res.json({ id: eventId, status: 'denied', message: 'Already denied' });
+    }
+
+    if (checkRows[0].status === 'approved') {
+      return res.status(409).json({ error: 'Cannot deny an approved proposal' });
+    }
+
+    await db.execute(sql`
+      UPDATE finance_events SET status = 'denied'
+      WHERE event_id = ${eventId} AND suite_id = ${suiteId} AND office_id = ${officeId}
+    `);
+
+    const receiptId = await createReceipt({
+      suiteId,
+      officeId,
+      actionType: 'execute_action',
+      inputs: { eventId, action: 'deny', deniedBy, reason, correlation_id: correlationId },
+      outputs: { status: 'denied', reason },
+      metadata: { event_type: 'authority.item.denied', proposalTitle: checkRows[0].metadata?.title },
+    });
+
+    console.log(`Authority item denied: ${eventId} by ${deniedBy}`);
+
+    res.json({ id: eventId, status: 'denied', deniedBy, reason, receiptId, correlation_id: correlationId });
+  } catch (error: any) {
+    console.error('Authority deny error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

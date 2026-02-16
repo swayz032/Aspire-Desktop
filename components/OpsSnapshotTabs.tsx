@@ -17,13 +17,13 @@ interface OpsSnapshotTabsProps {
 const defaultFounderHubData: FounderHubData = {
   topPriorities: [],
   focusAreas: [
-    { id: 'cashflow', name: 'Cashflow', icon: 'wallet', count: 7, label: 'past due AR', color: '#4facfe' },
-    { id: 'leads', name: 'Leads', icon: 'mail', count: 1, label: 'new inquiry', color: '#3B82F6' },
-    { id: 'ops', name: 'Operations', icon: 'construct', count: 5, label: 'pallet returns', color: '#a78bfa' },
+    { id: 'cashflow', name: 'Cashflow', icon: 'wallet', count: 0, label: 'items', color: '#4facfe' },
+    { id: 'leads', name: 'Leads', icon: 'mail', count: 0, label: 'items', color: '#3B82F6' },
+    { id: 'ops', name: 'Operations', icon: 'construct', count: 0, label: 'items', color: '#a78bfa' },
   ],
   preparedArtifacts: [],
-  prioritiesCount: 2,
-  preparedCount: 4,
+  prioritiesCount: 0,
+  preparedCount: 0,
 };
 
 export function OpsSnapshotTabs({ cashData, pipelineStages, businessScore, founderHubData }: OpsSnapshotTabsProps) {
@@ -199,8 +199,8 @@ function FounderHubContent({ data }: { data: FounderHubData }) {
             </View>
           </View>
 
-          <Text style={styles.hubHeadline}>Pricing power is hiding in your pickup radius</Text>
-          <Text style={styles.hubSubtitle}>Your AI-powered growth campus for strategy, insights, and masterminds.</Text>
+          <Text style={styles.hubHeadline}>Your business at a glance</Text>
+          <Text style={styles.hubSubtitle}>AI-powered insights, strategy tools, and growth resources.</Text>
           
           <View style={styles.hubPillarsRow}>
             <View style={[styles.hubPillarChip, { backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.2)' }]}>

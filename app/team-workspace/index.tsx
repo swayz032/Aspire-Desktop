@@ -32,34 +32,155 @@ const approvalThumbnails: Record<string, any> = {
 };
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { useDesktop } from '@/lib/useDesktop';
-import {
-  mockSuites,
-  mockMembers,
-  mockInvites,
-  mockApprovalRequests,
-  mockApprovalRules,
-  mockQueueItems,
-  mockReceipts,
-  mockUsage,
-  mockMemberUsage,
-  currentUser,
-  deskInfo,
-  actionTypeLabels,
-  pricing,
-  Suite,
-  Member,
-  Invite,
-  ApprovalRequest,
-  ApprovalRule,
-  QueueItem,
-  Receipt,
-  UsageLedger,
-  DeskType,
-  RoleType,
-  ActionType,
-} from '@/data/teamWorkspace';
-import { officeStoreStaff } from '@/data/officeStoreData';
-import { hasPermission, isOwnerOrAdmin, getRoleName } from '@/lib/permissions';
+import { hasPermission, isOwnerOrAdmin, getRoleName, type RoleType, type PermissionKey, type Member } from '@/lib/permissions';
+import { useTenant } from '@/providers/TenantProvider';
+import { supabase } from '@/lib/supabase';
+
+type ActionType = 'email_send' | 'contract_send' | 'money_move' | 'invite_member' | 'suite_change';
+
+interface Suite {
+  id: string;
+  name: string;
+  suiteNumber: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface Invite {
+  id: string;
+  email: string;
+  name: string;
+  roleId: RoleType;
+  suiteAccessIds: string[];
+  status: 'pending' | 'accepted' | 'expired';
+  createdAt: string;
+  requiresApproval: boolean;
+}
+
+interface ApprovalRule {
+  id: string;
+  scope: 'suite' | 'global';
+  actionType: ActionType;
+  requiredApproverRole: RoleType;
+  requiresOwnerVideo: boolean;
+}
+
+interface ApprovalRequest {
+  id: string;
+  actionType: ActionType;
+  createdBy: string;
+  createdByName: string;
+  assignedToRole: RoleType;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  dueAt?: string;
+  payloadSummary: string;
+  requiresVideo: boolean;
+  suiteId: string;
+}
+
+type DeskType = 'frontDesk' | 'inbox' | 'billing' | 'legal' | 'conference';
+
+interface QueueItem {
+  id: string;
+  desk: DeskType;
+  summary: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'pending' | 'in_progress' | 'ready_for_approval' | 'completed';
+  assigneeId?: string;
+  assigneeName?: string;
+  createdAt: string;
+  suiteId: string;
+}
+
+type ActorType = 'human' | 'aiDesk' | 'system';
+
+interface Receipt {
+  id: string;
+  actionType: ActionType | 'queue_complete' | 'login' | 'settings_change';
+  actorId: string;
+  actorName: string;
+  actorType: ActorType;
+  suiteId: string;
+  status: 'drafted' | 'approved' | 'executed' | 'failed' | 'blocked';
+  timestamp: string;
+  summary: string;
+  approverId?: string;
+  approverName?: string;
+}
+
+interface UsageLedger {
+  suiteId: string;
+  memberId?: string;
+  memberName?: string;
+  period: string;
+  actionsUsed: number;
+  actionsLimit: number;
+  phoneInboundMins: number;
+  phoneInboundLimit: number;
+  phoneOutboundMins: number;
+  phoneOutboundLimit: number;
+  smsSegments: number;
+  smsLimit: number;
+  voiceMins: number;
+  voiceLimit: number;
+  videoMins: number;
+  videoLimit: number;
+  conferenceSessions: number;
+  conferenceSessionsLimit: number;
+  conferenceMins: number;
+  conferenceMinsCap: number;
+}
+
+const deskInfo: Record<DeskType, { name: string; staffName: string; icon: string; color: string }> = {
+  frontDesk: { name: 'Front Desk', staffName: 'Sarah', icon: 'call', color: '#22D3EE' },
+  inbox: { name: 'Inbox', staffName: 'Eli', icon: 'mail', color: '#3B82F6' },
+  billing: { name: 'Billing', staffName: 'Quinn', icon: 'card', color: '#10B981' },
+  legal: { name: 'Legal', staffName: 'Clara', icon: 'document-text', color: '#8B5CF6' },
+  conference: { name: 'Conference', staffName: 'Nora', icon: 'videocam', color: '#F59E0B' },
+};
+
+const actionTypeLabels: Record<ActionType, string> = {
+  email_send: 'Email Send',
+  contract_send: 'Contract Send / e-Sign',
+  money_move: 'Money Movement',
+  invite_member: 'Invite Teammate',
+  suite_change: 'Suite Settings Change',
+};
+
+const pricing = {
+  teamMemberSeat: 299,
+  secondSuite: 349,
+};
+
+const officeStoreStaff = [
+  { id: 'staff_eli', name: 'Eli' },
+  { id: 'staff_sarah', name: 'Sarah' },
+  { id: 'staff_clara', name: 'Clara' },
+  { id: 'staff_nora', name: 'Nora' },
+  { id: 'staff_quinn', name: 'Quinn' },
+];
+
+const EMPTY_USAGE: UsageLedger = {
+  suiteId: '',
+  period: new Date().toISOString().slice(0, 7),
+  actionsUsed: 0,
+  actionsLimit: 500,
+  phoneInboundMins: 0,
+  phoneInboundLimit: 250,
+  phoneOutboundMins: 0,
+  phoneOutboundLimit: 600,
+  smsSegments: 0,
+  smsLimit: 300,
+  voiceMins: 0,
+  voiceLimit: 300,
+  videoMins: 0,
+  videoLimit: 150,
+  conferenceSessions: 0,
+  conferenceSessionsLimit: 12,
+  conferenceMins: 0,
+  conferenceMinsCap: 360,
+};
 
 type TabType = 'people' | 'approvals' | 'queues' | 'receipts' | 'usage';
 
@@ -119,19 +240,21 @@ function getRoleBadgeTextColor(roleId: RoleType) {
   }
 }
 
-function PeopleTab({ 
-  members, 
+function PeopleTab({
+  members,
   invites,
   onInvite,
   seatCount,
-}: { 
-  members: Member[]; 
+  currentUser,
+}: {
+  members: Member[];
   invites: Invite[];
   onInvite: () => void;
   seatCount: { used: number; available: number };
+  currentUser: Member | null;
 }) {
   const canInvite = hasPermission(currentUser, 'team.invite');
-  
+
   return (
     <View style={styles.tabScrollContent}>
       <View style={styles.contextToolbar}>
@@ -1129,11 +1252,108 @@ function getActionIcon(actionType: ActionType): any {
 
 export default function TeamWorkspacePage() {
   const isDesktop = useDesktop();
-  const [selectedSuiteId, setSelectedSuiteId] = useState(mockSuites[0].id);
+  const { profile } = useTenant();
+  const [selectedSuiteId, setSelectedSuiteId] = useState('');
   const [activeTab, setActiveTab] = useState<TabType>('people');
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [approvalRequests, setApprovalRequests] = useState(mockApprovalRequests);
-  const [queueItems, setQueueItems] = useState(mockQueueItems);
+  const [suites, setSuites] = useState<Suite[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
+  const [approvalRules, setApprovalRules] = useState<ApprovalRule[]>([]);
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [suiteUsage, setSuiteUsage] = useState<UsageLedger>(EMPTY_USAGE);
+  const [memberUsage, setMemberUsage] = useState<UsageLedger[]>([]);
+
+  // Build currentUser from tenant profile
+  const currentUser: Member | null = profile ? {
+    id: profile.id ?? '',
+    name: profile.business_name ?? profile.full_name ?? 'User',
+    email: '',
+    roleId: 'owner' as RoleType,
+    status: 'active' as const,
+    suiteAccessIds: profile.suite_id ? [profile.suite_id] : [],
+    lastActiveAt: new Date().toISOString(),
+  } : null;
+
+  useEffect(() => {
+    // Fetch team data from Supabase
+    const fetchData = async () => {
+      try {
+        // Fetch suite members
+        const { data: memberRows } = await supabase
+          .from('suite_members')
+          .select('id, user_id, full_name, email, role, status, created_at');
+        if (memberRows) {
+          setMembers(memberRows.map((r: any) => ({
+            id: r.user_id ?? r.id,
+            name: r.full_name ?? 'Team Member',
+            email: r.email ?? '',
+            roleId: (r.role ?? 'member') as RoleType,
+            status: r.status ?? 'active',
+            suiteAccessIds: [],
+            lastActiveAt: r.created_at ?? new Date().toISOString(),
+          })));
+        }
+        // Fetch approval requests
+        const { data: approvalRows } = await supabase
+          .from('approval_requests')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (approvalRows) {
+          setApprovalRequests(approvalRows.map((r: any) => ({
+            id: r.id ?? r.request_id,
+            actionType: r.action_type ?? 'email_send',
+            createdBy: r.actor ?? '',
+            createdByName: r.actor_name ?? 'Unknown',
+            assignedToRole: (r.assigned_to_role ?? 'member') as RoleType,
+            status: r.status ?? 'pending',
+            createdAt: r.created_at ?? new Date().toISOString(),
+            dueAt: r.due_at,
+            payloadSummary: r.payload_summary ?? r.title ?? '',
+            requiresVideo: r.requires_video ?? false,
+            suiteId: r.suite_id ?? '',
+          })));
+        }
+        // Fetch receipts for the workspace view
+        const { data: receiptRows } = await supabase
+          .from('receipts')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (receiptRows) {
+          setReceipts(receiptRows.map((r: any) => ({
+            id: r.id,
+            actionType: r.action_type ?? 'email_send',
+            actorId: r.actor ?? '',
+            actorName: r.actor_name ?? 'System',
+            actorType: (r.actor_type ?? 'system') as ActorType,
+            suiteId: r.suite_id ?? '',
+            status: r.outcome ?? 'executed',
+            timestamp: r.created_at ?? new Date().toISOString(),
+            summary: r.summary ?? r.action_type ?? '',
+            approverId: r.approver_id,
+            approverName: r.approver_name,
+          })));
+        }
+        // Set suite from profile
+        if (profile?.suite_id) {
+          setSelectedSuiteId(profile.suite_id);
+          setSuites([{
+            id: profile.suite_id,
+            name: profile.business_name ?? 'My Suite',
+            suiteNumber: '1001',
+            isActive: true,
+            createdAt: new Date().toISOString(),
+          }]);
+        }
+      } catch (e) {
+        console.warn('Failed to load team workspace data:', e);
+      }
+    };
+    fetchData();
+  }, [profile]);
   
   const pendingApprovals = approvalRequests.filter(r => r.status === 'pending').length;
   
@@ -1158,10 +1378,10 @@ export default function TeamWorkspacePage() {
   };
   
   const handleAssign = (itemId: string, memberId: string) => {
-    const member = mockMembers.find(m => m.id === memberId);
+    const member = members.find(m => m.id === memberId);
     setQueueItems(prev =>
-      prev.map(item => 
-        item.id === itemId 
+      prev.map(item =>
+        item.id === itemId
           ? { ...item, assigneeId: memberId, assigneeName: member?.name, status: 'in_progress' as const }
           : item
       )
@@ -1184,7 +1404,7 @@ export default function TeamWorkspacePage() {
               <View style={{ marginLeft: 16 }}>
                 <Text style={styles.headerTitle}>Team Workspace</Text>
                 <Text style={styles.headerSubtitle}>
-                  {mockMembers.length} members · {mockSuites.length} suite{mockSuites.length > 1 ? 's' : ''}
+                  {members.length} members · {suites.length} suite{suites.length > 1 ? 's' : ''}
                 </Text>
               </View>
             </View>
@@ -1195,10 +1415,10 @@ export default function TeamWorkspacePage() {
       <View style={styles.tabBar}>
         {tabs.map(tab => {
           const isActive = activeTab === tab.id;
-          const count = tab.id === 'people' ? mockMembers.length 
+          const count = tab.id === 'people' ? members.length
             : tab.id === 'approvals' ? approvalRequests.filter(r => r.status === 'pending').length
             : tab.id === 'queues' ? queueItems.length
-            : tab.id === 'receipts' ? mockReceipts.filter(r => r.suiteId === selectedSuiteId).length
+            : tab.id === 'receipts' ? receipts.filter(r => r.suiteId === selectedSuiteId).length
             : 0;
           return (
             <TouchableOpacity key={tab.id} onPress={() => setActiveTab(tab.id)} activeOpacity={0.7}>
@@ -1231,35 +1451,36 @@ export default function TeamWorkspacePage() {
       
       <View style={styles.contentArea}>
         {activeTab === 'people' && (
-          <PeopleTab 
-            members={mockMembers} 
-            invites={mockInvites}
+          <PeopleTab
+            members={members}
+            invites={invites}
             onInvite={() => setShowInviteModal(true)}
-            seatCount={{ used: mockMembers.length, available: 5 }}
+            seatCount={{ used: members.length, available: 5 }}
+            currentUser={currentUser}
           />
         )}
         {activeTab === 'approvals' && (
-          <ApprovalsTab 
+          <ApprovalsTab
             requests={approvalRequests}
-            rules={mockApprovalRules}
+            rules={approvalRules}
             onApprove={handleApprove}
             onReject={handleReject}
           />
         )}
         {activeTab === 'queues' && (
-          <QueuesTab 
+          <QueuesTab
             items={queueItems.filter(i => i.suiteId === selectedSuiteId)}
-            members={mockMembers}
+            members={members}
             onAssign={handleAssign}
           />
         )}
         {activeTab === 'receipts' && (
-          <ReceiptsTab receipts={mockReceipts.filter(r => r.suiteId === selectedSuiteId)} />
+          <ReceiptsTab receipts={receipts.filter(r => r.suiteId === selectedSuiteId)} />
         )}
         {activeTab === 'usage' && (
-          <UsageTab 
-            suiteUsage={mockUsage[0]} 
-            memberUsage={mockMemberUsage}
+          <UsageTab
+            suiteUsage={suiteUsage}
+            memberUsage={memberUsage}
           />
         )}
       </View>
@@ -1268,7 +1489,7 @@ export default function TeamWorkspacePage() {
       <InviteModal
         visible={showInviteModal}
         onClose={() => setShowInviteModal(false)}
-        suites={mockSuites}
+        suites={suites}
       />
     </View>
   );

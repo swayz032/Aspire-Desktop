@@ -1,8 +1,12 @@
-import { 
-  Tenant, 
-  AuthorityItem, 
-  DocumentPreview, 
-  Receipt, 
+/**
+ * @deprecated Use lib/api.ts for real Supabase queries. This file is kept as
+ * offline/dev fallback only. All new code should import from '@/lib/api'.
+ */
+import {
+  Tenant,
+  AuthorityItem,
+  DocumentPreview,
+  Receipt,
   StaffRole, 
   Session,
   CashPosition,

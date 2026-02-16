@@ -3,7 +3,9 @@ import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Ani
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/tokens';
-import { useConversation } from '@elevenlabs/react';
+import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useSupabase } from '@/providers';
+import { connectAnamAvatar, type AnamClientInstance } from '@/lib/anam';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
@@ -37,76 +39,75 @@ type ChatMsg = {
   runId?: string;
 };
 
-const MOCK_ACTIVITY_SEQUENCES: Record<string, { events: Omit<AvaActivityEvent, 'ts'>[]; response: string }> = {
-  contracts: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Scanning vendor contracts database', icon: 'search' },
-      { type: 'tool_call', message: 'Analyzing 12 active contracts', icon: 'document-text' },
-      { type: 'step', message: 'Cross-referencing renewal dates', icon: 'calendar' },
-      { type: 'tool_call', message: 'Evaluating risk clauses', icon: 'shield-checkmark' },
-      { type: 'step', message: 'Generating risk summary report', icon: 'analytics' },
-      { type: 'done', message: 'Analysis complete', icon: 'checkmark-circle' },
-    ],
-    response: 'Done. I have drafted a summary and flagged high-risk items for your approval.',
-  },
-  financial: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Pulling financial records', icon: 'wallet' },
-      { type: 'tool_call', message: 'Reconciling Q4 transactions', icon: 'swap-horizontal' },
-      { type: 'step', message: 'Comparing against budget forecasts', icon: 'trending-up' },
-      { type: 'tool_call', message: 'Identifying anomalies', icon: 'warning' },
-      { type: 'step', message: 'Building executive summary', icon: 'document-text' },
-      { type: 'done', message: 'Report ready', icon: 'checkmark-circle' },
-    ],
-    response: 'Financial review complete. I found 3 anomalies worth reviewing — all flagged in the attached report.',
-  },
-  email: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Scanning inbox for priority items', icon: 'mail' },
-      { type: 'tool_call', message: 'Categorizing 24 unread messages', icon: 'layers' },
-      { type: 'step', message: 'Drafting suggested responses', icon: 'create' },
-      { type: 'done', message: 'Inbox organized', icon: 'checkmark-circle' },
-    ],
-    response: 'Your inbox is organized. 5 messages need your direct attention — I drafted replies for the other 19.',
-  },
-  schedule: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Reviewing your calendar', icon: 'calendar' },
-      { type: 'tool_call', message: 'Checking team availability', icon: 'people' },
-      { type: 'step', message: 'Optimizing meeting blocks', icon: 'time' },
-      { type: 'step', message: 'Resolving 2 scheduling conflicts', icon: 'git-compare' },
-      { type: 'done', message: 'Schedule optimized', icon: 'checkmark-circle' },
-    ],
-    response: 'Schedule optimized. I moved 2 overlapping meetings and blocked focus time from 2-4 PM.',
-  },
-  default: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Analyzing your request', icon: 'search' },
-      { type: 'tool_call', message: 'Gathering relevant data', icon: 'cloud-download' },
-      { type: 'step', message: 'Processing information', icon: 'cog' },
-      { type: 'step', message: 'Preparing response', icon: 'document-text' },
-      { type: 'done', message: 'Task complete', icon: 'checkmark-circle' },
-    ],
-    response: 'Got it. I will adjust based on that clarification.',
-  },
-};
+/**
+ * Build real-time activity events from orchestrator response.
+ * If the orchestrator returns an `activity` array, use it directly.
+ * Otherwise, synthesize pipeline steps from route/risk/action metadata.
+ */
+function buildActivityFromResponse(data: {
+  activity?: Array<{ type: string; message: string; icon?: string }>;
+  route?: { skill_pack?: string; node?: string };
+  risk_tier?: string;
+  action?: string;
+  governance?: { approvals_required?: string[]; receipt_ids?: string[] };
+}): Omit<AvaActivityEvent, 'ts'>[] {
+  // If orchestrator returned explicit activity steps, use them
+  if (data.activity && Array.isArray(data.activity) && data.activity.length > 0) {
+    return data.activity.map((step) => ({
+      type: (step.type as AvaActivityEvent['type']) || 'step',
+      message: step.message,
+      icon: (step.icon as keyof typeof Ionicons.glyphMap) || 'cog',
+    }));
+  }
 
-function getActivitySequence(userText: string): { events: Omit<AvaActivityEvent, 'ts'>[]; response: string } {
-  const lower = userText.toLowerCase();
-  if (lower.includes('contract') || lower.includes('vendor') || lower.includes('risk'))
-    return MOCK_ACTIVITY_SEQUENCES.contracts;
-  if (lower.includes('financ') || lower.includes('budget') || lower.includes('revenue') || lower.includes('cash'))
-    return MOCK_ACTIVITY_SEQUENCES.financial;
-  if (lower.includes('email') || lower.includes('inbox') || lower.includes('mail') || lower.includes('message'))
-    return MOCK_ACTIVITY_SEQUENCES.email;
-  if (lower.includes('schedule') || lower.includes('calendar') || lower.includes('meeting') || lower.includes('book'))
-    return MOCK_ACTIVITY_SEQUENCES.schedule;
-  return MOCK_ACTIVITY_SEQUENCES.default;
+  // Synthesize from pipeline metadata
+  const events: Omit<AvaActivityEvent, 'ts'>[] = [
+    { type: 'thinking', message: 'Processing intent...', icon: 'sparkles' },
+  ];
+
+  if (data.route?.skill_pack) {
+    events.push({
+      type: 'step',
+      message: `Routing to ${data.route.skill_pack}`,
+      icon: 'git-network',
+    });
+  }
+
+  if (data.risk_tier) {
+    const tierIcon = data.risk_tier === 'RED' ? 'alert-circle' : data.risk_tier === 'YELLOW' ? 'warning' : 'shield-checkmark';
+    events.push({
+      type: 'step',
+      message: `Risk tier: ${data.risk_tier}`,
+      icon: tierIcon as keyof typeof Ionicons.glyphMap,
+    });
+  }
+
+  if (data.governance?.approvals_required && data.governance.approvals_required.length > 0) {
+    events.push({
+      type: 'step',
+      message: `Approval required (${data.governance.approvals_required.join(', ')})`,
+      icon: 'hand-left',
+    });
+  }
+
+  if (data.action) {
+    events.push({
+      type: 'tool_call',
+      message: `Executing: ${data.action}`,
+      icon: 'hammer',
+    });
+  }
+
+  if (data.governance?.receipt_ids && data.governance.receipt_ids.length > 0) {
+    events.push({
+      type: 'step',
+      message: `Receipt: ${data.governance.receipt_ids[0].slice(0, 12)}...`,
+      icon: 'receipt',
+    });
+  }
+
+  events.push({ type: 'done', message: 'Complete', icon: 'checkmark-circle' });
+  return events;
 }
 
 function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
@@ -507,56 +508,37 @@ export function AvaDeskPanel() {
   const connectionTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
 
-  const conversation = useConversation({
-    onConnect: () => {
-      console.log('ElevenLabs connected');
-      setIsSessionActive(true);
+  // Tenant context for voice requests (Law #6: Tenant Isolation)
+  const { suiteId } = useSupabase();
+
+  // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
+  const avaVoice = useAgentVoice({
+    agent: 'ava',
+    suiteId: suiteId ?? undefined,
+    onStatusChange: (voiceStatus) => {
+      setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
-    onDisconnect: () => {
-      console.log('ElevenLabs disconnected');
-      setIsSessionActive(false);
-    },
-    onMessage: (message) => {
-      console.log('Ava message:', message);
+    onResponse: (text) => {
+      console.log('Ava response:', text);
     },
     onError: (error) => {
-      console.error('ElevenLabs error:', error);
+      console.error('Ava voice error:', error);
       setIsSessionActive(false);
     },
   });
 
   const handleCompanyPillPress = useCallback(async () => {
-    if (conversation.status === 'connected') {
-      await conversation.endSession();
+    if (avaVoice.isActive) {
+      avaVoice.endSession();
     } else {
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        let signedUrl: string | null = null;
-        try {
-          const resp = await fetch('/api/elevenlabs/signed-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agent: 'ava' }),
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            signedUrl = data.signedUrl || null;
-          }
-        } catch (e) {
-          console.warn('Signed URL fetch failed, using fallback:', e);
-        }
-        if (signedUrl) {
-          await conversation.startSession({ signedUrl });
-        } else {
-          const avaAgentId = process.env.EXPO_PUBLIC_ELEVENLABS_AVA_AGENT_ID || 'agent_0001kfvnjz5yfjkbt1w6pjfw65mw';
-          await conversation.startSession({ agentId: avaAgentId });
-        }
+        await avaVoice.startSession();
       } catch (error) {
-        console.error('Failed to start ElevenLabs session:', error);
+        console.error('Failed to start Ava voice session:', error);
         Alert.alert('Connection Error', 'Unable to connect to Ava. Please try again.');
       }
     }
-  }, [conversation]);
+  }, [avaVoice]);
 
   useEffect(() => {
     if (isSessionActive) {
@@ -606,15 +588,17 @@ export function AvaDeskPanel() {
     };
   }, []);
 
+  const isAvaSpeaking = avaVoice.status === 'speaking';
+
   useEffect(() => {
-    if (conversation.isSpeaking) {
+    if (isAvaSpeaking) {
       setIsConversing(true);
       const pulseAnimation = () => {
         Animated.sequence([
           Animated.timing(dotPulseAnim, { toValue: 1.8, duration: 200, useNativeDriver: false }),
           Animated.timing(dotPulseAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
         ]).start(() => {
-          if (conversation.isSpeaking) pulseAnimation();
+          if (isAvaSpeaking) pulseAnimation();
         });
       };
       pulseAnimation();
@@ -622,40 +606,61 @@ export function AvaDeskPanel() {
       setIsConversing(false);
       dotPulseAnim.setValue(1);
     }
-  }, [conversation.isSpeaking]);
+  }, [isAvaSpeaking]);
 
   const clearConnectionTimeouts = useCallback(() => {
     connectionTimeouts.current.forEach(clearTimeout);
     connectionTimeouts.current = [];
   }, []);
 
-  const handleConnectToAva = useCallback(() => {
+  const anamClientRef = useRef<AnamClientInstance | null>(null);
+
+  const handleConnectToAva = useCallback(async () => {
     if (videoState !== 'idle') return;
-    
+
     clearConnectionTimeouts();
     setVideoState('connecting');
     setConnectionStatus('Connecting to Ava...');
     playConnectionSound();
-    
+
     const t1 = setTimeout(() => {
       setConnectionStatus('Establishing secure video...');
     }, 800);
-    
+
+    // Timeout fallback — 15s for SDK WebRTC handshake (Law #3: Fail Closed)
     const t2 = setTimeout(() => {
-      setConnectionStatus('Initializing session...');
-    }, 1600);
-    
-    const t3 = setTimeout(() => {
+      setVideoState('idle');
+      setConnectionStatus('');
+      anamClientRef.current = null;
+      Alert.alert('Connection Timeout', 'Unable to connect to Ava video. Please try again.');
+    }, 15000);
+
+    connectionTimeouts.current = [t1, t2];
+
+    try {
+      // Anam SDK: fetch session token → create client (disableBrains) → stream to <video>
+      const client = await connectAnamAvatar('anam-video-element');
+      anamClientRef.current = client;
+      clearConnectionTimeouts();
       playSuccessSound();
       setVideoState('connected');
       setConnectionStatus('');
-    }, 2400);
-    
-    connectionTimeouts.current = [t1, t2, t3];
+    } catch (error: any) {
+      clearConnectionTimeouts();
+      anamClientRef.current = null;
+      setVideoState('idle');
+      setConnectionStatus('');
+      console.error('Anam connection failed:', error);
+      Alert.alert('Connection Failed', error.message || 'Unable to connect to Ava video.');
+    }
   }, [videoState, clearConnectionTimeouts]);
 
   const handleEndSession = useCallback(() => {
     clearConnectionTimeouts();
+    if (anamClientRef.current) {
+      try { anamClientRef.current.stopStreaming(); } catch (_) { /* ignore cleanup errors */ }
+      anamClientRef.current = null;
+    }
     setVideoState('idle');
     setConnectionStatus('');
   }, [clearConnectionTimeouts]);
@@ -667,19 +672,24 @@ export function AvaDeskPanel() {
   useEffect(() => {
     return () => {
       runTimers.current.forEach(clearTimeout);
+      // Cleanup Anam connection on unmount
+      if (anamClientRef.current) {
+        try { anamClientRef.current.stopStreaming(); } catch (_) { /* ignore */ }
+        anamClientRef.current = null;
+      }
     };
   }, []);
 
-  const onSend = () => {
+  const onSend = async () => {
     const trimmed = input.trim();
     if (!trimmed) return;
 
     const runId = `run_${Date.now()}`;
-    const sequence = getActivitySequence(trimmed);
 
+    // Show user message + empty Ava response immediately
     setActiveRuns((prev) => ({
       ...prev,
-      [runId]: { id: runId, events: [], status: 'running', finalText: sequence.response },
+      [runId]: { id: runId, events: [], status: 'running', finalText: '' },
     }));
 
     setChat((prev) => [
@@ -691,35 +701,109 @@ export function AvaDeskPanel() {
     setIsConversing(true);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
-    sequence.events.forEach((evt, idx) => {
-      const delay = idx === 0 ? 400 : 400 + idx * 1100 + Math.random() * 400;
-      const timer = setTimeout(() => {
-        const event: AvaActivityEvent = { ...evt, ts: Date.now() };
-        setActiveRuns((prev) => {
-          const run = prev[runId];
-          if (!run) return prev;
-          const isDone = evt.type === 'done';
-          return {
-            ...prev,
-            [runId]: {
-              ...run,
-              events: [...run.events, event],
-              status: isDone ? 'completed' : 'running',
-            },
-          };
-        });
-        if (evt.type === 'done') {
-          setIsConversing(false);
-          setChat((prev) =>
-            prev.map((msg) =>
-              msg.runId === runId ? { ...msg, text: sequence.response } : msg
-            )
-          );
-        }
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-      }, delay);
-      runTimers.current.push(timer);
+    // Show initial thinking event
+    const thinkingEvent: AvaActivityEvent = {
+      type: 'thinking',
+      message: 'Processing intent...',
+      ts: Date.now(),
+      icon: 'sparkles',
+    };
+    setActiveRuns((prev) => {
+      const run = prev[runId];
+      if (!run) return prev;
+      return { ...prev, [runId]: { ...run, events: [thinkingEvent] } };
     });
+
+    try {
+      // Law #1: Single Brain — route through orchestrator
+      // Law #6: X-Suite-Id for tenant isolation
+      const resp = await fetch('/api/orchestrator/intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Suite-Id': suiteId || '',
+        },
+        body: JSON.stringify({
+          agent: 'ava',
+          text: trimmed,
+          channel: 'text',
+        }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Orchestrator returned ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      const responseText = data.response || 'I processed your request.';
+      const activityEvents = buildActivityFromResponse(data);
+
+      // If video connected, pipe response to Anam avatar (Cara speaks with Emma voice)
+      // Anam handles voice output — our LLM drives what she says (Law #1: Single Brain)
+      if (mode === 'video' && videoState === 'connected' && anamClientRef.current) {
+        try {
+          anamClientRef.current.talk(responseText);
+        } catch (talkErr) {
+          console.warn('Anam talk failed:', talkErr);
+        }
+      }
+
+      // Animate real activity events with staggered timing
+      activityEvents.forEach((evt, idx) => {
+        const delay = idx === 0 ? 200 : 200 + idx * 600;
+        const timer = setTimeout(() => {
+          const event: AvaActivityEvent = { ...evt, ts: Date.now() };
+          setActiveRuns((prev) => {
+            const run = prev[runId];
+            if (!run) return prev;
+            const isDone = evt.type === 'done';
+            return {
+              ...prev,
+              [runId]: {
+                ...run,
+                events: [...run.events, event],
+                status: isDone ? 'completed' : 'running',
+                finalText: isDone ? responseText : run.finalText,
+              },
+            };
+          });
+          if (evt.type === 'done') {
+            setIsConversing(false);
+            setChat((prev) =>
+              prev.map((msg) =>
+                msg.runId === runId ? { ...msg, text: responseText } : msg
+              )
+            );
+          }
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+        }, delay);
+        runTimers.current.push(timer);
+      });
+    } catch (error: any) {
+      // Law #3: Fail Closed — show error, don't guess
+      const errorEvent: AvaActivityEvent = {
+        type: 'done',
+        message: 'Connection failed',
+        ts: Date.now(),
+        icon: 'alert-circle',
+      };
+      setActiveRuns((prev) => {
+        const run = prev[runId];
+        if (!run) return prev;
+        return {
+          ...prev,
+          [runId]: { ...run, events: [...run.events, errorEvent], status: 'completed' },
+        };
+      });
+      setIsConversing(false);
+      setChat((prev) =>
+        prev.map((msg) =>
+          msg.runId === runId
+            ? { ...msg, text: 'I\'m having trouble connecting right now. Please try again.' }
+            : msg
+        )
+      );
+    }
   };
 
   const handleStartSession = () => setIsSessionActive(!isSessionActive);
@@ -754,13 +838,13 @@ export function AvaDeskPanel() {
                     { 
                       transform: [{ scale: dotPulseAnim }],
                     },
-                    conversation.isSpeaking && Platform.OS === 'web' && {
+                    isAvaSpeaking && Platform.OS === 'web' && {
                       boxShadow: '0 0 12px #3B82F6, 0 0 24px #3B82F6, 0 0 36px rgba(59,130,246,0.6)',
                     },
-                  ]} 
+                  ]}
                 />
                 <Text style={styles.companyName}>
-                  {conversation.status === 'connected' ? 'Talking with Ava...' : 'Zenith Solutions'}
+                  {avaVoice.isActive ? 'Talking with Ava...' : 'Zenith Solutions'}
                 </Text>
               </Pressable>
             </View>
@@ -782,19 +866,39 @@ export function AvaDeskPanel() {
             {videoState === 'connected' ? (
               <View style={styles.anamContainer}>
                 {Platform.OS === 'web' && (
-                  <iframe
-                    src="https://lab.anam.ai/frame/a1em9A5J3l2W6tmBIFMmr"
-                    style={{ 
-                      width: '100%', 
-                      height: '100%', 
-                      border: 'none',
+                  <video
+                    id="anam-video-element"
+                    autoPlay
+                    playsInline
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
                       borderRadius: 0,
                       display: 'block',
                       backgroundColor: '#000',
                     }}
-                    allow="microphone"
                   />
                 )}
+                {/* End session overlay button */}
+                <Pressable
+                  style={{
+                    position: 'absolute',
+                    bottom: 16,
+                    right: 16,
+                    backgroundColor: 'rgba(239,68,68,0.9)',
+                    borderRadius: 24,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                  onPress={handleEndSession}
+                >
+                  <Ionicons name="close-circle" size={18} color="#fff" />
+                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>End Session</Text>
+                </Pressable>
               </View>
             ) : (
               <ImageBackground

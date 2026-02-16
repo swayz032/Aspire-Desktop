@@ -5,8 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
-import { seedDatabase } from '@/lib/mockSeed';
-import { getTeamMembers, updateTeamMember } from '@/lib/mockDb';
+import { supabase } from '@/lib/supabase';
 import { TeamMember } from '@/types/team';
 
 function SkeletonCard() {
@@ -75,12 +74,32 @@ export default function TeamScreen() {
   const [members, setMembers] = useState<TeamMember[]>([]);
 
   useEffect(() => {
-    seedDatabase();
-    const timer = setTimeout(() => {
-      setMembers(getTeamMembers());
-      setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
+    const fetchMembers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('suite_members')
+          .select('*')
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        if (data && data.length > 0) {
+          setMembers(data.map((m: any) => ({
+            id: m.id ?? m.member_id ?? '',
+            name: m.display_name ?? m.name ?? '',
+            type: m.member_type === 'ai' ? 'ai' : 'human',
+            role: m.role ?? '',
+            enabled: m.enabled !== false,
+            capabilities: Array.isArray(m.capabilities) ? m.capabilities : [],
+            createdAt: m.created_at ?? new Date().toISOString(),
+            updatedAt: m.updated_at ?? new Date().toISOString(),
+          })));
+        }
+      } catch (e) {
+        console.warn('Failed to fetch team members:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMembers();
   }, []);
 
   const handleToggle = (id: string, enabled: boolean) => {

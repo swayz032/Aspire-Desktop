@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
+import { FinanceRightRail } from '@/components/finance/FinanceRightRail';
 import { ProposalReviewSheet, Proposal } from '@/components/finance/ProposalReviewSheet';
 import SourceBadge from '@/components/finance/SourceBadge';
 import ExplainDrawer from '@/components/finance/ExplainDrawer';
@@ -806,7 +807,7 @@ function FinanceHubContent() {
 
   return (
     <>
-    <FinanceHubShell>
+    <FinanceHubShell rightRail={<FinanceRightRail onOpenFinnDesk={() => router.push('/finance-hub/finn' as any)} />}>
       {Platform.OS === 'web' ? (
         <div style={{
           height: 155, borderRadius: 16, overflow: 'hidden', marginBottom: 20, position: 'relative',

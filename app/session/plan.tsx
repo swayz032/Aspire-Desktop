@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,13 +8,40 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
 import { Toast } from '@/components/session/Toast';
-import { mockTodaysPlan, mockAtRiskItems } from '@/data/mockData';
+import { getOutboxJobs, getAuthorityQueue } from '@/lib/api';
 import { useDesktop } from '@/lib/useDesktop';
 
 export default function FullPlanScreen() {
   const router = useRouter();
   const isDesktop = useDesktop();
+  const [todaysPlan, setTodaysPlan] = useState<any[]>([]);
+  const [atRiskItems, setAtRiskItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [toastVisible, setToastVisible] = useState(false);
+
+  useEffect(() => {
+    Promise.all([getOutboxJobs(20), getAuthorityQueue()])
+      .then(([jobs, queue]) => {
+        setTodaysPlan(jobs.map((j: any, i: number) => ({
+          id: j.id ?? `plan-${i}`,
+          title: j.action_type ?? j.title ?? 'Pending task',
+          time: j.queued_at ?? j.created_at ?? '',
+          status: j.status === 'completed' ? 'completed' : j.status === 'failed' ? 'blocked' : 'pending',
+          priority: j.priority ?? 'medium',
+          agent: j.provider ?? 'ava',
+          description: j.description ?? '',
+        })));
+        setAtRiskItems(queue.filter((q: any) => q.risk_level === 'high' || q.risk_tier === 'red').map((q: any, i: number) => ({
+          id: q.id ?? `risk-${i}`,
+          title: q.action_type ?? q.title ?? 'At-risk item',
+          risk: q.risk_level ?? q.risk_tier ?? 'high',
+          description: q.description ?? '',
+          actions: ['Review', 'Defer', 'Delegate'],
+        })));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
   const [dismissedRiskItems, setDismissedRiskItems] = useState<string[]>([]);
@@ -42,7 +69,7 @@ export default function FullPlanScreen() {
     }
   };
 
-  const visibleRiskItems = mockAtRiskItems.filter(item => !dismissedRiskItems.includes(item.id));
+  const visibleRiskItems = atRiskItems.filter(item => !dismissedRiskItems.includes(item.id));
 
   return (
     <View style={styles.container}>
@@ -53,7 +80,7 @@ export default function FullPlanScreen() {
           </TouchableOpacity>
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>Today's Plan</Text>
-            <Text style={styles.headerSubtitle}>{mockTodaysPlan.length} tasks scheduled</Text>
+            <Text style={styles.headerSubtitle}>{todaysPlan.length} tasks scheduled</Text>
           </View>
         </View>
 
@@ -85,7 +112,7 @@ export default function FullPlanScreen() {
           </Card>
         )}
 
-        {mockTodaysPlan.map((planItem, index) => (
+        {todaysPlan.map((planItem, index) => (
           <Card key={planItem.id} variant="elevated" style={styles.planCard}>
             <View style={styles.planHeader}>
               <Badge 

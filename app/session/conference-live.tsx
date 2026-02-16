@@ -13,7 +13,10 @@ import { ConferenceChatDrawer, ChatMessage as DrawerChatMessage, MaterialItem as
 import { AvatarTileSurface } from '@/components/session/AvatarTileSurface';
 import { Image } from 'expo-image';
 import { Platform } from 'react-native';
-import { useConversation } from '@elevenlabs/react';
+import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useSupabase } from '@/providers';
+import { useLiveKitRoom } from '@/hooks/useLiveKitRoom';
+import { ConnectionState } from 'livekit-client';
 
 function WebcamView({ stream }: { stream: MediaStream }) {
   const containerRef = useRef<any>(null);
@@ -350,9 +353,28 @@ export default function ConferenceLive() {
   const [showEndModal, setShowEndModal] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [layout, setLayout] = useState<'gallery' | 'speaker'>('gallery');
-  const [participants, setParticipants] = useState(MOCK_PARTICIPANTS);
   const [activeSpeakerId, setActiveSpeakerId] = useState('you');
   const [elapsedTime, setElapsedTime] = useState(0);
+
+  // LiveKit room connection
+  const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
+  const liveKit = useLiveKitRoom({ token: liveKitToken });
+
+  // Merge LiveKit participants with mock fallback
+  const [mockParticipants, setMockParticipants] = useState(MOCK_PARTICIPANTS);
+  const participants = liveKit.isConnected && liveKit.participants.length > 0
+    ? liveKit.participants.map(p => ({
+        id: p.id,
+        name: p.name || p.id,
+        role: p.role || (p.isHost ? 'Host' : ''),
+        avatarColor: p.isHost ? '#2D3748' : '#374151',
+        isMuted: p.isMuted ?? true,
+        isVideoOff: p.isVideoOff ?? true,
+        isSpeaking: p.isSpeaking ?? false,
+        isHost: p.isHost ?? false,
+      }))
+    : mockParticipants;
+  const setParticipants = liveKit.isConnected ? () => {} : setMockParticipants;
   
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -386,48 +408,81 @@ export default function ConferenceLive() {
   const isInteractingRef = useRef(false);
   const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
 
-  const noraConversation = useConversation({
-    onConnect: () => {
-      console.log('Nora connected');
-      setAvaState('listening');
+  // Tenant context for voice requests (Law #6: Tenant Isolation)
+  const { suiteId } = useSupabase();
+
+  // Fetch LiveKit token and connect to room on mount
+  useEffect(() => {
+    const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
+    const participantName = (params.participantName as string) || 'You';
+
+    fetch('/api/livekit/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomName, participantName, suiteId }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.token) {
+          setLiveKitToken(data.token);
+        }
+      })
+      .catch(err => {
+        console.warn('LiveKit token fetch failed, using mock participants:', err.message);
+      });
+  }, [suiteId, params.roomName, params.participantName]);
+
+  // Auto-connect when token is available
+  useEffect(() => {
+    if (liveKitToken && !liveKit.isConnected) {
+      liveKit.connect().catch(err => {
+        console.warn('LiveKit connect failed, falling back to mock:', err.message);
+      });
+    }
+  }, [liveKitToken, liveKit.isConnected]);
+
+  // Disconnect on unmount
+  useEffect(() => {
+    return () => {
+      if (liveKit.isConnected) {
+        liveKit.disconnect();
+      }
+    };
+  }, []);
+
+  // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
+  const noraVoice = useAgentVoice({
+    agent: 'nora',
+    suiteId: suiteId ?? undefined,
+    onStatusChange: (voiceStatus) => {
+      if (voiceStatus === 'speaking') setAvaState('speaking');
+      else if (voiceStatus === 'listening') setAvaState('listening');
+      else if (voiceStatus === 'thinking') setAvaState('thinking');
+      else setAvaState('idle');
     },
-    onDisconnect: () => {
-      console.log('Nora disconnected');
-      setAvaState('idle');
-    },
-    onMessage: (message) => {
-      console.log('Nora message:', message);
+    onResponse: (text) => {
+      console.log('Nora response:', text);
     },
     onError: (error) => {
-      console.error('Nora error:', error);
+      console.error('Nora voice error:', error);
       setAvaState('idle');
     },
   });
 
-  useEffect(() => {
-    if (noraConversation.isSpeaking) {
-      setAvaState('speaking');
-    } else if (noraConversation.status === 'connected') {
-      setAvaState('listening');
-    }
-  }, [noraConversation.isSpeaking, noraConversation.status]);
+  const isNoraSpeaking = noraVoice.status === 'speaking';
 
   const handleInnerBoxPress = useCallback(async () => {
-    if (noraConversation.status === 'connected') {
-      await noraConversation.endSession();
+    if (noraVoice.isActive) {
+      noraVoice.endSession();
     } else {
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        await noraConversation.startSession({
-          agentId: process.env.EXPO_PUBLIC_NORA_AGENT_ID || 'agent_6601kfvqdy6memqs99rjp2pqdcae',
-          connectionType: 'websocket' as const,
-        });
+        await noraVoice.startSession();
       } catch (error) {
-        console.error('Failed to start Nora session:', error);
+        console.error('Failed to start Nora voice session:', error);
         Alert.alert('Connection Error', 'Unable to connect to Nora. Please try again.');
       }
     }
-  }, [noraConversation]);
+  }, [noraVoice]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -462,17 +517,19 @@ export default function ConferenceLive() {
     return () => clearInterval(timer);
   }, []);
 
+  // Mock speaker simulation — only active when LiveKit is NOT connected
   useEffect(() => {
+    if (liveKit.isConnected) return;
     const speakerInterval = setInterval(() => {
-      const randomIndex = Math.floor(Math.random() * participants.length);
-      setParticipants(prev => prev.map((p, i) => ({
+      const randomIndex = Math.floor(Math.random() * mockParticipants.length);
+      setMockParticipants(prev => prev.map((p, i) => ({
         ...p,
         isSpeaking: i === randomIndex,
       })));
-      setActiveSpeakerId(participants[randomIndex].id);
+      setActiveSpeakerId(mockParticipants[randomIndex].id);
     }, 4000);
     return () => clearInterval(speakerInterval);
-  }, [participants.length]);
+  }, [mockParticipants.length, liveKit.isConnected]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToastMessage(message);
@@ -487,23 +544,37 @@ export default function ConferenceLive() {
   };
 
   const handleToggleMute = () => {
-    setIsMuted(!isMuted);
-    setParticipants(prev => prev.map(p => 
-      p.id === 'you' ? { ...p, isMuted: !isMuted } : p
+    const newMuted = !isMuted;
+    setIsMuted(newMuted);
+    // Toggle LiveKit microphone track if connected
+    if (liveKit.isConnected && liveKit.room) {
+      liveKit.room.localParticipant?.setMicrophoneEnabled(!newMuted).catch(() => {});
+    }
+    setMockParticipants(prev => prev.map(p =>
+      p.id === 'you' ? { ...p, isMuted: newMuted } : p
     ));
-    showToast(isMuted ? 'Microphone on' : 'Microphone off', 'info');
+    showToast(newMuted ? 'Microphone off' : 'Microphone on', 'info');
   };
 
   const handleToggleVideo = () => {
-    setIsVideoOff(!isVideoOff);
-    setParticipants(prev => prev.map(p => 
-      p.id === 'you' ? { ...p, isVideoOff: !isVideoOff } : p
+    const newVideoOff = !isVideoOff;
+    setIsVideoOff(newVideoOff);
+    // Toggle LiveKit camera track if connected
+    if (liveKit.isConnected && liveKit.room) {
+      liveKit.room.localParticipant?.setCameraEnabled(!newVideoOff).catch(() => {});
+    }
+    setMockParticipants(prev => prev.map(p =>
+      p.id === 'you' ? { ...p, isVideoOff: newVideoOff } : p
     ));
-    showToast(isVideoOff ? 'Camera on' : 'Camera off', 'info');
+    showToast(newVideoOff ? 'Camera off' : 'Camera on', 'info');
   };
 
   const handleEndCall = () => {
     setShowEndModal(false);
+    // Disconnect from LiveKit room if connected
+    if (liveKit.isConnected) {
+      liveKit.disconnect().catch(() => {});
+    }
     showToast('Session ended. Generating receipt...', 'success');
     setTimeout(() => router.replace('/(tabs)'), 1500);
   };
@@ -612,7 +683,7 @@ export default function ConferenceLive() {
 
   const handlePinParticipant = (id: string) => {
     const pinCount = participants.filter(p => p.isPinned).length;
-    setParticipants(prev => prev.map(p => {
+    setMockParticipants(prev => prev.map(p => {
       if (p.id === id) {
         if (p.isPinned) return { ...p, isPinned: false };
         if (pinCount >= 9) return p;
@@ -626,7 +697,7 @@ export default function ConferenceLive() {
     const currentUser = participants.find(p => p.id === 'you');
     if (!currentUser?.isHost) return;
     const spotlightCount = participants.filter(p => p.isSpotlighted).length;
-    setParticipants(prev => prev.map(p => {
+    setMockParticipants(prev => prev.map(p => {
       if (p.id === id) {
         if (p.isSpotlighted) return { ...p, isSpotlighted: false };
         if (spotlightCount >= 9) return p;
@@ -958,7 +1029,7 @@ export default function ConferenceLive() {
                       avaState={avaState}
                       onPress={handleAvaTap}
                       onInnerBoxPress={handleInnerBoxPress}
-                      isNoraSpeaking={noraConversation.isSpeaking}
+                      isNoraSpeaking={isNoraSpeaking}
                       fillContainer={true}
                     />
                   ) : (
@@ -1011,7 +1082,7 @@ export default function ConferenceLive() {
             avaState={avaState}
             onPress={handleAvaTap}
             onInnerBoxPress={handleInnerBoxPress}
-            isNoraSpeaking={noraConversation.isSpeaking}
+            isNoraSpeaking={isNoraSpeaking}
             fillContainer={true}
           />
         )}
@@ -1029,7 +1100,7 @@ export default function ConferenceLive() {
                   avaState={avaState}
                   onPress={handleAvaTap}
                   onInnerBoxPress={handleInnerBoxPress}
-                  isNoraSpeaking={noraConversation.isSpeaking}
+                  isNoraSpeaking={isNoraSpeaking}
                   fillContainer={true}
                 />
               ) : (
@@ -1070,7 +1141,7 @@ export default function ConferenceLive() {
             {bottomTiles.map((p) => (
               <View key={p.id} style={desktopStyles.multiBottomTile}>
                 {p.id === 'ava' ? (
-                  <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={noraConversation.isSpeaking} fillContainer={true} />
+                  <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
                 ) : (
                   <VideoTile participant={p} size="small" webcamStream={webcamStream} />
                 )}
@@ -1122,7 +1193,7 @@ export default function ConferenceLive() {
               {pagedTiles.slice(0, 6).map((p) => (
                 <View key={p.id} style={desktopStyles.shareThumbnail}>
                   {p.id === 'ava' ? (
-                    <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={noraConversation.isSpeaking} fillContainer={true} />
+                    <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
                   ) : (
                     <VideoTile participant={p} size="small" />
                   )}
@@ -1209,7 +1280,7 @@ export default function ConferenceLive() {
           {stageParticipant && stageParticipant.id !== 'ava' ? (
             <VideoTile participant={stageParticipant} size="small" isActiveSpeaker={true} />
           ) : (
-            <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={noraConversation.isSpeaking} fillContainer={true} />
+            <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
           )}
         </View>
       </View>

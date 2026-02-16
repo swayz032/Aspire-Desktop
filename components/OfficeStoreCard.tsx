@@ -5,7 +5,20 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
-import { OfficeStoreStaff, StaffState } from '@/data/officeStoreData';
+
+export type StaffState = 'active' | 'available' | 'coming_soon';
+
+export interface OfficeStoreStaff {
+  id: string;
+  name: string;
+  role: string;
+  state: StaffState;
+  headline: string;
+  description: string;
+  bullets: string[];
+  avatarImage: any;
+  introVideoUrl?: string;
+}
 
 interface OfficeStoreCardProps {
   staff: OfficeStoreStaff;

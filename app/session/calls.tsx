@@ -1,5 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Pressable, Platform, Animated, ImageBackground } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Pressable,
+  Platform,
+  Animated,
+  ImageBackground,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '@/constants/tokens';
 import { useRouter } from 'expo-router';
@@ -9,8 +20,18 @@ import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
+import type { CallSession } from '@/types/frontdesk';
+
+// ---------------------------------------------------------------------------
+// Hero image
+// ---------------------------------------------------------------------------
 
 const callsHero = require('@/assets/images/calls-hero.jpg');
+
+// ---------------------------------------------------------------------------
+// DTMF Dialpad Audio (Web Audio API) -- copied exactly from working version
+// ---------------------------------------------------------------------------
 
 const DTMF_FREQUENCIES: Record<string, [number, number]> = {
   '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
@@ -23,20 +44,20 @@ let sharedAudioContext: AudioContext | null = null;
 
 const getAudioContext = (): AudioContext | null => {
   if (Platform.OS !== 'web') return null;
-  
+
   try {
     const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return null;
-    
+
     if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
       sharedAudioContext = new AudioContextClass();
     }
-    
+
     const ctx = sharedAudioContext;
     if (ctx && ctx.state === 'suspended') {
       ctx.resume();
     }
-    
+
     return sharedAudioContext;
   } catch (e) {
     return null;
@@ -46,16 +67,16 @@ const getAudioContext = (): AudioContext | null => {
 const playDTMFTone = (digit: string) => {
   const frequencies = DTMF_FREQUENCIES[digit];
   if (!frequencies) return;
-  
+
   const audioCtx = getAudioContext();
   if (!audioCtx) return;
-  
+
   try {
     const gainNode = audioCtx.createGain();
     gainNode.connect(audioCtx.destination);
     gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-    
+
     frequencies.forEach(freq => {
       const oscillator = audioCtx.createOscillator();
       oscillator.type = 'sine';
@@ -65,7 +86,7 @@ const playDTMFTone = (digit: string) => {
       oscillator.stop(audioCtx.currentTime + 0.15);
     });
   } catch (e) {
-    console.log('Audio playback error');
+    // Audio playback error -- silent fail
   }
 };
 
@@ -74,20 +95,20 @@ let ringingInterval: ReturnType<typeof setInterval> | null = null;
 const playRingingTone = () => {
   const audioCtx = getAudioContext();
   if (!audioCtx) return;
-  
+
   try {
     const gainNode = audioCtx.createGain();
     gainNode.connect(audioCtx.destination);
     gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-    
+
     const osc1 = audioCtx.createOscillator();
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(440, audioCtx.currentTime);
     osc1.connect(gainNode);
     osc1.start(audioCtx.currentTime);
     osc1.stop(audioCtx.currentTime + 0.4);
-    
+
     const osc2 = audioCtx.createOscillator();
     osc2.type = 'sine';
     osc2.frequency.setValueAtTime(480, audioCtx.currentTime);
@@ -95,7 +116,7 @@ const playRingingTone = () => {
     osc2.start(audioCtx.currentTime);
     osc2.stop(audioCtx.currentTime + 0.4);
   } catch (e) {
-    console.log('Ringing error');
+    // Ringing error -- silent fail
   }
 };
 
@@ -113,6 +134,10 @@ const stopRinging = () => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Dial pad layout
+// ---------------------------------------------------------------------------
+
 const DIAL_PAD = [
   { digit: '1', letters: '' },
   { digit: '2', letters: 'ABC' },
@@ -128,47 +153,155 @@ const DIAL_PAD = [
   { digit: '#', letters: '' },
 ];
 
-const mockRecentCalls = [
-  {
-    id: 'call_001',
-    name: 'Marcus Chen',
-    company: 'Delta Partners',
-    number: '+1 (555) 234-5678',
-    type: 'missed',
-    time: '2 hours ago',
-    hasVoicemail: true,
-  },
-  {
-    id: 'call_002',
-    name: 'Sarah Williams',
-    company: 'Apex Corp',
-    number: '+1 (555) 345-6789',
-    type: 'incoming',
-    time: 'Yesterday',
-    hasVoicemail: false,
-  },
-  {
-    id: 'call_003',
-    name: 'James Rodriguez',
-    company: 'BlueSky Inc',
-    number: '+1 (555) 456-7890',
-    type: 'outgoing',
-    time: 'Yesterday',
-    hasVoicemail: false,
-  },
-];
+// ---------------------------------------------------------------------------
+// Call filters
+// ---------------------------------------------------------------------------
 
-const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
+type CallFilter = 'All' | 'Missed' | 'Incoming' | 'Outgoing' | 'Voicemail';
+const CALL_FILTERS: CallFilter[] = ['All', 'Missed', 'Incoming', 'Outgoing', 'Voicemail'];
+
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
+
+interface FormattedCall {
+  id: string;
+  name: string;
+  number: string;
+  type: 'incoming' | 'outgoing' | 'missed' | 'voicemail';
+  status: string;
+  time: string;
+  duration: string | null;
+  hasVoicemail: boolean;
+  hasRecording: boolean;
+  callSessionId: string;
+  rawNumber: string;
+}
+
+function formatCallSession(call: CallSession): FormattedCall {
+  let type: FormattedCall['type'];
+  if (call.status === 'voicemail') {
+    type = 'voicemail';
+  } else if (call.direction === 'outbound') {
+    type = 'outgoing';
+  } else if (call.status === 'failed' || (call.status === 'completed' && call.duration_seconds === 0)) {
+    type = 'missed';
+  } else {
+    type = 'incoming';
+  }
+
+  const name = call.caller_name || call.to_number || call.from_number || 'Unknown';
+  const rawNumber = call.direction === 'outbound' ? (call.to_number || '') : (call.from_number || '');
+  const number = formatE164Display(rawNumber);
+  const timeAgo = call.started_at ? getRelativeTime(call.started_at) : '';
+
+  let duration: string | null = null;
+  if (call.duration_seconds && call.duration_seconds > 0) {
+    const m = Math.floor(call.duration_seconds / 60);
+    const s = call.duration_seconds % 60;
+    duration = `${m}:${s.toString().padStart(2, '0')}`;
+  }
+
+  return {
+    id: call.call_session_id,
+    name,
+    number,
+    type,
+    status: call.status,
+    time: timeAgo,
+    duration,
+    hasVoicemail: !!call.voicemail_url,
+    hasRecording: !!call.recording_url,
+    callSessionId: call.call_session_id,
+    rawNumber,
+  };
+}
+
+function getRelativeTime(isoDate: string): string {
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Yesterday';
+  return `${days}d ago`;
+}
+
+function formatE164Display(number: string): string {
+  const cleaned = number.replace(/\D/g, '');
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
+  }
+  if (cleaned.length === 10) {
+    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+  }
+  return number;
+}
+
+function formatPhoneNumber(number: string): string {
+  const cleaned = number.replace(/\D/g, '');
+  if (cleaned.length <= 3) return cleaned;
+  if (cleaned.length <= 6) return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
+  return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
+}
+
+function formatCallDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// ---------------------------------------------------------------------------
+// Demo user for setup check
+// ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export default function CallsScreen() {
   const router = useRouter();
   const isDesktop = useDesktop();
+  const { calls: rawCalls, loading: callsLoading, error: callsError, refresh } = useFrontdeskCalls({ pollInterval: 5000 });
+
+  // Formatted calls list
+  const allCalls = rawCalls.slice(0, 25).map(formatCallSession);
+
+  // Filter state
+  const [activeFilter, setActiveFilter] = useState<CallFilter>('All');
+
+  const filteredCalls = allCalls.filter((call) => {
+    switch (activeFilter) {
+      case 'Missed': return call.type === 'missed';
+      case 'Incoming': return call.type === 'incoming';
+      case 'Outgoing': return call.type === 'outgoing';
+      case 'Voicemail': return call.hasVoicemail || call.type === 'voicemail';
+      default: return true;
+    }
+  });
+
+  // Counts for badges
+  const missedCount = allCalls.filter(c => c.type === 'missed').length;
+  const voicemailCount = allCalls.filter(c => c.hasVoicemail || c.type === 'voicemail').length;
+  const callbackCount = allCalls.filter(c => c.type === 'missed' && !c.hasVoicemail).length;
+
+  // Dialpad state
   const [phoneNumber, setPhoneNumber] = useState('');
   const [activeTab, setActiveTab] = useState<'dialpad' | 'recent'>('dialpad');
   const [isCalling, setIsCalling] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+  const [callingName, setCallingName] = useState<string | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+  const [outboundBlocked, setOutboundBlocked] = useState(false);
+
+  // Setup modal state
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [setupChecked, setSetupChecked] = useState(false);
+
+  // Animation refs
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const ringAnim1 = useRef(new Animated.Value(0)).current;
@@ -179,13 +312,17 @@ export default function CallsScreen() {
   const glowPulseAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ---------------------------------------------------------------------------
+  // Setup check
+  // ---------------------------------------------------------------------------
+
   useEffect(() => {
     checkFrontDeskSetup();
   }, []);
 
   const checkFrontDeskSetup = async () => {
     try {
-      const res = await fetch(`/api/frontdesk/setup?userId=${DEMO_USER_ID}`);
+      const res = await fetch('/api/frontdesk/setup');
       if (res.ok) {
         const data = await res.json();
         if (!data || !data.setupComplete) {
@@ -194,11 +331,15 @@ export default function CallsScreen() {
       } else {
         setShowSetupModal(true);
       }
-    } catch (e) {
-      console.error('Failed to check setup', e);
+    } catch (_e) {
+      // Setup check failed silently
     }
     setSetupChecked(true);
   };
+
+  // ---------------------------------------------------------------------------
+  // Pulse animation for call button
+  // ---------------------------------------------------------------------------
 
   useEffect(() => {
     if (phoneNumber.length > 0 && !isCalling) {
@@ -227,7 +368,7 @@ export default function CallsScreen() {
       }
       pulseAnim.setValue(1);
     }
-    
+
     return () => {
       if (pulseAnimationRef.current) {
         pulseAnimationRef.current.stop();
@@ -235,13 +376,17 @@ export default function CallsScreen() {
     };
   }, [phoneNumber.length > 0, isCalling]);
 
+  // ---------------------------------------------------------------------------
+  // Calling screen animations + ringing
+  // ---------------------------------------------------------------------------
+
   useEffect(() => {
     if (isCalling) {
       startRinging();
       ringAnim1.setValue(0);
       ringAnim2.setValue(0);
       ringAnim3.setValue(0);
-      
+
       ringAnimRef.current = Animated.loop(
         Animated.stagger(400, [
           Animated.sequence([
@@ -283,7 +428,7 @@ export default function CallsScreen() {
         ])
       );
       ringAnimRef.current.start();
-      
+
       glowPulseAnimRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(glowPulseAnim, {
@@ -299,7 +444,7 @@ export default function CallsScreen() {
         ])
       );
       glowPulseAnimRef.current.start();
-      
+
       callTimerRef.current = setInterval(() => {
         setCallDuration(prev => prev + 1);
       }, 1000);
@@ -320,7 +465,7 @@ export default function CallsScreen() {
       setCallDuration(0);
       glowPulseAnim.setValue(1);
     }
-    
+
     return () => {
       stopRinging();
       if (ringAnimRef.current) {
@@ -339,6 +484,10 @@ export default function CallsScreen() {
     };
   }, [isCalling]);
 
+  // ---------------------------------------------------------------------------
+  // Dialpad handlers
+  // ---------------------------------------------------------------------------
+
   const handleDigitPress = (digit: string) => {
     playDTMFTone(digit);
     if (phoneNumber.length < 15) {
@@ -350,41 +499,123 @@ export default function CallsScreen() {
     setPhoneNumber(prev => prev.slice(0, -1));
   };
 
-  const handleCall = () => {
-    if (phoneNumber.length > 0) {
-      setIsCalling(true);
+  // ---------------------------------------------------------------------------
+  // Outbound call via /api/frontdesk/outbound-call
+  // ---------------------------------------------------------------------------
+
+  const handleCall = async () => {
+    if (phoneNumber.length === 0) return;
+    setCallError(null);
+    setOutboundBlocked(false);
+    setCallingName(null);
+    setIsCalling(true);
+
+    try {
+      const cleaned = phoneNumber.replace(/\D/g, '');
+      const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
+
+      const res = await fetch('/api/frontdesk/outbound-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toE164 }),
+      });
+
+      if (res.status === 403) {
+        setIsCalling(false);
+        setOutboundBlocked(true);
+        return;
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Call failed' }));
+        setCallError(err.error || 'Call initiation failed');
+        setIsCalling(false);
+        return;
+      }
+    } catch (_e) {
+      setCallError('Network error -- could not initiate call');
+      setIsCalling(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Return call via /api/frontdesk/return-call
+  // ---------------------------------------------------------------------------
+
+  const handleReturnCall = async (call: FormattedCall) => {
+    setCallError(null);
+    setOutboundBlocked(false);
+    setCallingName(call.name);
+    setPhoneNumber(call.rawNumber.replace(/\D/g, ''));
+    setIsCalling(true);
+
+    try {
+      const res = await fetch('/api/frontdesk/return-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callSessionId: call.callSessionId }),
+      });
+
+      if (res.status === 403) {
+        setIsCalling(false);
+        setOutboundBlocked(true);
+        return;
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Return call failed' }));
+        setCallError(err.error || 'Return call failed');
+        setIsCalling(false);
+        return;
+      }
+    } catch (_e) {
+      setCallError('Network error -- could not return call');
+      setIsCalling(false);
     }
   };
 
   const handleEndCall = () => {
     setIsCalling(false);
+    setCallingName(null);
   };
 
-  const formatCallDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const formatPhoneNumber = (number: string) => {
-    const cleaned = number.replace(/\D/g, '');
-    if (cleaned.length <= 3) return cleaned;
-    if (cleaned.length <= 6) return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
-    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
-  };
+  // ---------------------------------------------------------------------------
+  // Helpers for call type display
+  // ---------------------------------------------------------------------------
 
   const getCallIcon = (type: string): keyof typeof Ionicons.glyphMap => {
     switch (type) {
       case 'missed': return 'call-outline';
       case 'incoming': return 'arrow-down';
       case 'outgoing': return 'arrow-up';
+      case 'voicemail': return 'recording-outline';
       default: return 'call-outline';
     }
   };
 
-  const getCallColor = (type: string) => {
-    return type === 'missed' ? Colors.semantic.error : Colors.text.secondary;
+  const getCallColor = (type: string): string => {
+    switch (type) {
+      case 'missed': return Colors.semantic.error;
+      case 'voicemail': return Colors.semantic.warning;
+      case 'incoming': return Colors.semantic.success;
+      case 'outgoing': return Colors.accent.cyan;
+      default: return Colors.text.secondary;
+    }
   };
+
+  const getCallBorderColor = (type: string): string => {
+    switch (type) {
+      case 'missed': return Colors.semantic.error;
+      case 'incoming': return Colors.semantic.success;
+      case 'outgoing': return Colors.accent.cyan;
+      case 'voicemail': return Colors.semantic.warning;
+      default: return Colors.border.default;
+    }
+  };
+
+  // =========================================================================
+  // DESKTOP -- Calling screen (fullscreen glassmorphism)
+  // =========================================================================
 
   if (isDesktop) {
     if (isCalling) {
@@ -400,7 +631,7 @@ export default function CallsScreen() {
             <View style={callingStyles.noiseOverlay} />
             <View style={callingStyles.topVignette} />
             <View style={callingStyles.bottomVignette} />
-            
+
             <View style={callingStyles.content}>
               {/* Premium glassmorphism avatar section */}
               <View style={callingStyles.avatarSection}>
@@ -427,13 +658,13 @@ export default function CallsScreen() {
                       transform: [{ scale: ringAnim3.interpolate({ inputRange: [0, 1], outputRange: [1, 3] }) }],
                     }
                   ]} />
-                  
+
                   {/* Pulsing outer glow */}
                   <Animated.View style={[
                     callingStyles.avatarGlowOuter,
                     { transform: [{ scale: glowPulseAnim }] }
                   ]} />
-                  
+
                   {/* Glassmorphism avatar container */}
                   <View style={callingStyles.glassContainer}>
                     <View style={callingStyles.glassInner}>
@@ -448,8 +679,15 @@ export default function CallsScreen() {
               {/* Premium info section with glow typography */}
               <View style={callingStyles.infoSection}>
                 <Text style={callingStyles.callingLabel}>CALLING</Text>
-                <Text style={callingStyles.phoneNumberDisplay}>{formatPhoneNumber(phoneNumber)}</Text>
-                <Text style={callingStyles.companyName}>Client</Text>
+                <Text style={callingStyles.phoneNumberDisplay}>
+                  {callingName || formatPhoneNumber(phoneNumber)}
+                </Text>
+                {callingName && (
+                  <Text style={callingStyles.companyName}>{formatPhoneNumber(phoneNumber)}</Text>
+                )}
+                {!callingName && (
+                  <Text style={callingStyles.companyName}>Client</Text>
+                )}
                 <Text style={callingStyles.callTimer}>{formatCallDuration(callDuration)}</Text>
               </View>
 
@@ -504,18 +742,14 @@ export default function CallsScreen() {
       );
     }
 
-    const getCallBorderColor = (type: string) => {
-      switch (type) {
-        case 'missed': return Colors.semantic.error;
-        case 'incoming': return Colors.semantic.success;
-        case 'outgoing': return Colors.accent.cyan;
-        default: return Colors.border.default;
-      }
-    };
+    // =========================================================================
+    // DESKTOP -- Main calls dashboard
+    // =========================================================================
 
     return (
       <DesktopShell>
         <View style={desktopStyles.container}>
+          {/* Setup modal overlay */}
           {showSetupModal && (
             <View style={styles.modalOverlay}>
               <View style={styles.setupModal}>
@@ -559,7 +793,52 @@ export default function CallsScreen() {
             </View>
           )}
 
+          {/* 403 outbound-blocked premium warning */}
+          {outboundBlocked && (
+            <View style={styles.modalOverlay}>
+              <Card variant="default" style={desktopStyles.blockedCard}>
+                <View style={desktopStyles.blockedIconWrap}>
+                  <Ionicons name="warning-outline" size={40} color={Colors.semantic.warning} />
+                </View>
+                <Text style={desktopStyles.blockedTitle}>Outbound Calls Not Available</Text>
+                <Text style={desktopStyles.blockedDescription}>
+                  Your business line is configured as inbound-only. Outbound calling requires a full-duplex Aspire line.
+                </Text>
+                <View style={desktopStyles.blockedFeatureBox}>
+                  <View style={desktopStyles.blockedFeatureRow}>
+                    <Ionicons name="call" size={18} color={Colors.semantic.success} />
+                    <Text style={desktopStyles.blockedFeatureText}>Inbound calls are active and working</Text>
+                  </View>
+                  <View style={desktopStyles.blockedFeatureRow}>
+                    <Ionicons name="close-circle" size={18} color={Colors.semantic.error} />
+                    <Text style={desktopStyles.blockedFeatureText}>Outbound dialing requires upgrade</Text>
+                  </View>
+                  <View style={desktopStyles.blockedFeatureRow}>
+                    <Ionicons name="shield-checkmark" size={18} color={Colors.accent.cyan} />
+                    <Text style={desktopStyles.blockedFeatureText}>All call attempts generate receipts</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={desktopStyles.blockedPrimaryButton}
+                  onPress={() => {
+                    setOutboundBlocked(false);
+                    router.push('/session/calls/setup' as any);
+                  }}
+                >
+                  <Text style={desktopStyles.blockedPrimaryButtonText}>Upgrade Line</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={desktopStyles.blockedSecondaryButton}
+                  onPress={() => setOutboundBlocked(false)}
+                >
+                  <Text style={desktopStyles.blockedSecondaryButtonText}>Dismiss</Text>
+                </TouchableOpacity>
+              </Card>
+            </View>
+          )}
+
           <ScrollView showsVerticalScrollIndicator={false}>
+            {/* Hero banner with gradient overlay */}
             <ImageBackground source={callsHero} style={desktopStyles.headerBanner} imageStyle={desktopStyles.headerBannerImage}>
               <LinearGradient colors={['rgba(10, 10, 10, 0.35)', 'rgba(10, 10, 10, 0.65)']} style={desktopStyles.headerOverlay}>
                 <View style={desktopStyles.headerRow}>
@@ -569,14 +848,28 @@ export default function CallsScreen() {
                     </LinearGradient>
                     <View style={{ marginLeft: Spacing.md }}>
                       <Text style={desktopStyles.headerTitle}>Return Calls</Text>
-                      <Text style={desktopStyles.headerSubtitle}>3 missed · 2 voicemails · Make outbound calls with Ava</Text>
+                      <Text style={desktopStyles.headerSubtitle}>
+                        {missedCount} missed{voicemailCount > 0 ? ` \u00B7 ${voicemailCount} voicemail${voicemailCount !== 1 ? 's' : ''}` : ''} \u00B7 Make outbound calls with Ava
+                      </Text>
                     </View>
                   </View>
+                  <TouchableOpacity
+                    style={desktopStyles.refreshButton}
+                    onPress={refresh}
+                    activeOpacity={0.7}
+                  >
+                    {callsLoading ? (
+                      <ActivityIndicator size="small" color={Colors.accent.cyan} />
+                    ) : (
+                      <Ionicons name="refresh" size={18} color={Colors.accent.cyan} />
+                    )}
+                  </TouchableOpacity>
                 </View>
               </LinearGradient>
             </ImageBackground>
 
             <View style={desktopStyles.bodyContent}>
+              {/* Quick action buttons -- enterprise routes */}
               <View style={desktopStyles.quickActionsRow}>
                 <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => setActiveTab('dialpad')} activeOpacity={0.7}>
                   <LinearGradient colors={[Colors.accent.cyan, Colors.accent.cyanDark]} style={desktopStyles.quickActionIconCircle}>
@@ -584,28 +877,49 @@ export default function CallsScreen() {
                   </LinearGradient>
                   <Text style={desktopStyles.quickActionLabel}>Contacts</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/inbox' as any)} activeOpacity={0.7}>
+
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/(tabs)/inbox' as any)} activeOpacity={0.7}>
                   <View style={{ position: 'relative' }}>
                     <LinearGradient colors={[Colors.semantic.warning, '#c88a00']} style={desktopStyles.quickActionIconCircle}>
                       <Ionicons name="recording-outline" size={20} color="#fff" />
                     </LinearGradient>
-                    <View style={desktopStyles.quickActionBadge}>
-                      <Text style={desktopStyles.quickActionBadgeText}>2</Text>
-                    </View>
+                    {voicemailCount > 0 && (
+                      <View style={desktopStyles.quickActionBadge}>
+                        <Text style={desktopStyles.quickActionBadgeText}>{voicemailCount}</Text>
+                      </View>
+                    )}
                   </View>
-                  <Text style={desktopStyles.quickActionLabel}>Voicemail</Text>
+                  <Text style={desktopStyles.quickActionLabel}>Voicemails</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/inbox' as any)} activeOpacity={0.7}>
+
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/(tabs)/inbox' as any)} activeOpacity={0.7}>
                   <View style={{ position: 'relative' }}>
                     <LinearGradient colors={[Colors.semantic.error, '#dc2626']} style={desktopStyles.quickActionIconCircle}>
                       <Ionicons name="arrow-undo" size={20} color="#fff" />
                     </LinearGradient>
-                    <View style={desktopStyles.quickActionBadge}>
-                      <Text style={desktopStyles.quickActionBadgeText}>1</Text>
-                    </View>
+                    {callbackCount > 0 && (
+                      <View style={desktopStyles.quickActionBadge}>
+                        <Text style={desktopStyles.quickActionBadgeText}>{callbackCount}</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={desktopStyles.quickActionLabel}>Call Back Queue</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/(tabs)/inbox' as any)} activeOpacity={0.7}>
+                  <LinearGradient colors={['#8B5CF6', '#7C3AED']} style={desktopStyles.quickActionIconCircle}>
+                    <Ionicons name="people" size={20} color="#fff" />
+                  </LinearGradient>
+                  <Text style={desktopStyles.quickActionLabel}>Contacts</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/session/messages' as any)} activeOpacity={0.7}>
+                  <LinearGradient colors={['#06B6D4', '#0891B2']} style={desktopStyles.quickActionIconCircle}>
+                    <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+                  </LinearGradient>
+                  <Text style={desktopStyles.quickActionLabel}>Text Messages</Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/session/calls/setup' as any)} activeOpacity={0.7}>
                   <LinearGradient colors={[Colors.semantic.success, '#16a34a']} style={desktopStyles.quickActionIconCircle}>
                     <Ionicons name="headset-outline" size={20} color="#fff" />
@@ -614,7 +928,20 @@ export default function CallsScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* Call error banner */}
+              {callError && (
+                <View style={desktopStyles.errorBanner}>
+                  <Ionicons name="alert-circle" size={18} color={Colors.semantic.error} />
+                  <Text style={desktopStyles.errorBannerText}>{callError}</Text>
+                  <TouchableOpacity onPress={() => setCallError(null)}>
+                    <Ionicons name="close" size={16} color={Colors.text.muted} />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Two-column layout: dialpad + recent calls */}
               <View style={desktopStyles.twoColumnLayout}>
+                {/* Left column: Dial pad */}
                 <View style={desktopStyles.leftColumn}>
                   <View style={desktopStyles.sectionHeaderRow}>
                     <Ionicons name="keypad" size={20} color={Colors.accent.cyan} />
@@ -642,9 +969,9 @@ export default function CallsScreen() {
                           activeOpacity={0.7}
                         >
                           <Text style={desktopStyles.dialDigit}>{item.digit}</Text>
-                          {item.letters && (
+                          {item.letters ? (
                             <Text style={desktopStyles.dialLetters}>{item.letters}</Text>
-                          )}
+                          ) : null}
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -670,27 +997,72 @@ export default function CallsScreen() {
                   </View>
                 </View>
 
+                {/* Right column: Recent calls list */}
                 <View style={desktopStyles.rightColumn}>
                   <View style={desktopStyles.sectionHeaderRow}>
                     <Ionicons name="time" size={20} color={Colors.accent.cyan} />
                     <Text style={desktopStyles.sectionHeaderText}>Recent Activity</Text>
                     <View style={desktopStyles.countBadge}>
-                      <Text style={desktopStyles.countBadgeText}>{mockRecentCalls.length}</Text>
+                      <Text style={desktopStyles.countBadgeText}>{allCalls.length}</Text>
                     </View>
                   </View>
 
+                  {/* Filter pills */}
                   <View style={desktopStyles.filterPillsRow}>
-                    {['All', 'Missed', 'Incoming', 'Outgoing'].map((filter) => (
-                      <TouchableOpacity key={filter} style={[desktopStyles.filterPill, filter === 'All' && desktopStyles.filterPillActive]} activeOpacity={0.7}>
-                        <Text style={[desktopStyles.filterPillText, filter === 'All' && desktopStyles.filterPillTextActive]}>{filter}</Text>
+                    {CALL_FILTERS.map((filter) => (
+                      <TouchableOpacity
+                        key={filter}
+                        style={[desktopStyles.filterPill, activeFilter === filter && desktopStyles.filterPillActive]}
+                        onPress={() => setActiveFilter(filter)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[desktopStyles.filterPillText, activeFilter === filter && desktopStyles.filterPillTextActive]}>
+                          {filter}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
 
-                  {mockRecentCalls.map((call) => (
-                    <View key={call.id} style={[desktopStyles.callCard, { borderLeftWidth: 3, borderLeftColor: getCallBorderColor(call.type) }]}>
+                  {/* Loading state */}
+                  {callsLoading && allCalls.length === 0 && (
+                    <View style={desktopStyles.loadingContainer}>
+                      <ActivityIndicator size="small" color={Colors.accent.cyan} />
+                      <Text style={desktopStyles.loadingText}>Loading call history...</Text>
+                    </View>
+                  )}
+
+                  {/* Error state */}
+                  {callsError && allCalls.length === 0 && (
+                    <View style={desktopStyles.emptyState}>
+                      <Ionicons name="alert-circle-outline" size={32} color={Colors.semantic.error} />
+                      <Text style={desktopStyles.emptyStateText}>Failed to load calls</Text>
+                      <TouchableOpacity onPress={refresh} style={desktopStyles.retryButton}>
+                        <Text style={desktopStyles.retryButtonText}>Retry</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Empty state */}
+                  {!callsLoading && !callsError && filteredCalls.length === 0 && (
+                    <View style={desktopStyles.emptyState}>
+                      <Ionicons name="call-outline" size={32} color={Colors.text.muted} />
+                      <Text style={desktopStyles.emptyStateText}>
+                        {activeFilter === 'All' ? 'No calls yet' : `No ${activeFilter.toLowerCase()} calls`}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Call cards */}
+                  {filteredCalls.map((call) => (
+                    <Pressable
+                      key={call.id}
+                      style={[desktopStyles.callCard, { borderLeftWidth: 3, borderLeftColor: getCallBorderColor(call.type) }]}
+                      onPress={() => {
+                        setPhoneNumber(call.rawNumber.replace(/\D/g, ''));
+                      }}
+                    >
                       <View style={desktopStyles.callAvatarCircle}>
-                        <Ionicons name="person" size={18} color={Colors.text.secondary} />
+                        <Ionicons name={getCallIcon(call.type)} size={18} color={getCallColor(call.type)} />
                       </View>
                       <View style={desktopStyles.callInfo}>
                         <View style={desktopStyles.callNameRow}>
@@ -698,23 +1070,33 @@ export default function CallsScreen() {
                           {call.hasVoicemail && (
                             <Badge label="VM" variant="info" size="sm" />
                           )}
+                          {call.hasRecording && (
+                            <Badge label="REC" variant="warning" size="sm" />
+                          )}
                         </View>
-                        <Text style={desktopStyles.callCompany}>{call.company}</Text>
                         <Text style={desktopStyles.callNumber}>{call.number}</Text>
+                        {call.duration && (
+                          <Text style={desktopStyles.callDuration}>{call.duration}</Text>
+                        )}
                       </View>
                       <View style={desktopStyles.callMeta}>
                         <Text style={desktopStyles.callTime}>{call.time}</Text>
-                        <TouchableOpacity style={desktopStyles.callBackButton}>
+                        <TouchableOpacity
+                          style={desktopStyles.callBackButton}
+                          onPress={() => handleReturnCall(call)}
+                        >
                           <Ionicons name="call" size={18} color={Colors.accent.cyan} />
                         </TouchableOpacity>
                       </View>
-                    </View>
+                    </Pressable>
                   ))}
 
-                  <TouchableOpacity style={desktopStyles.viewAllLink} onPress={() => router.push('/inbox' as any)} activeOpacity={0.7}>
-                    <Text style={desktopStyles.viewAllText}>View All in Inbox</Text>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.accent.cyan} />
-                  </TouchableOpacity>
+                  {filteredCalls.length > 0 && (
+                    <TouchableOpacity style={desktopStyles.viewAllLink} onPress={() => router.push('/(tabs)/inbox' as any)} activeOpacity={0.7}>
+                      <Text style={desktopStyles.viewAllText}>View All in Inbox</Text>
+                      <Ionicons name="chevron-forward" size={16} color={Colors.accent.cyan} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </View>
@@ -724,8 +1106,13 @@ export default function CallsScreen() {
     );
   }
 
+  // =========================================================================
+  // MOBILE -- Calls screen
+  // =========================================================================
+
   return (
     <View style={styles.container}>
+      {/* Setup modal */}
       {showSetupModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.setupModal}>
@@ -768,34 +1155,69 @@ export default function CallsScreen() {
           </View>
         </View>
       )}
+
+      {/* 403 outbound-blocked warning (mobile) */}
+      {outboundBlocked && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.setupModal}>
+            <View style={styles.modalIconContainer}>
+              <Ionicons name="warning-outline" size={48} color={Colors.semantic.warning} />
+            </View>
+            <Text style={styles.modalTitle}>Outbound Not Available</Text>
+            <Text style={styles.modalDescription}>
+              Your business line is configured as inbound-only. Outbound calling requires a full-duplex Aspire line.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalPrimaryButton}
+              onPress={() => {
+                setOutboundBlocked(false);
+                router.push('/session/calls/setup' as any);
+              }}
+            >
+              <Text style={styles.modalPrimaryButtonText}>Upgrade Line</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalSecondaryButton}
+              onPress={() => setOutboundBlocked(false)}
+            >
+              <Text style={styles.modalSecondaryButtonText}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => router.back()} 
+        <TouchableOpacity
+          onPress={() => router.back()}
           style={styles.backButton}
         >
           <Ionicons name="chevron-back" size={24} color={Colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Return Calls</Text>
-        <TouchableOpacity 
-          onPress={() => router.push('/inbox')}
+        <TouchableOpacity
+          onPress={() => router.push('/(tabs)/inbox' as any)}
           style={styles.inboxButton}
         >
           <Ionicons name="time-outline" size={22} color={Colors.text.primary} />
-          <View style={styles.inboxBadge}>
-            <Badge label="3" variant="error" size="sm" />
-          </View>
+          {missedCount > 0 && (
+            <View style={styles.inboxBadge}>
+              <Badge label={String(missedCount)} variant="error" size="sm" />
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
+      {/* Tabs */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'dialpad' && styles.tabActive]}
           onPress={() => setActiveTab('dialpad')}
         >
-          <Ionicons 
-            name="keypad" 
-            size={18} 
-            color={activeTab === 'dialpad' ? Colors.accent.cyan : Colors.text.muted} 
+          <Ionicons
+            name="keypad"
+            size={18}
+            color={activeTab === 'dialpad' ? Colors.accent.cyan : Colors.text.muted}
           />
           <Text style={[styles.tabText, activeTab === 'dialpad' && styles.tabTextActive]}>
             Dial Pad
@@ -805,17 +1227,30 @@ export default function CallsScreen() {
           style={[styles.tab, activeTab === 'recent' && styles.tabActive]}
           onPress={() => setActiveTab('recent')}
         >
-          <Ionicons 
-            name="time" 
-            size={18} 
-            color={activeTab === 'recent' ? Colors.accent.cyan : Colors.text.muted} 
+          <Ionicons
+            name="time"
+            size={18}
+            color={activeTab === 'recent' ? Colors.accent.cyan : Colors.text.muted}
           />
           <Text style={[styles.tabText, activeTab === 'recent' && styles.tabTextActive]}>
             Recent
           </Text>
-          <Badge label="3" variant="warning" size="sm" />
+          {missedCount > 0 && (
+            <Badge label={String(missedCount)} variant="warning" size="sm" />
+          )}
         </TouchableOpacity>
       </View>
+
+      {/* Error banner (mobile) */}
+      {callError && (
+        <View style={styles.errorBanner}>
+          <Ionicons name="alert-circle" size={16} color={Colors.semantic.error} />
+          <Text style={styles.errorBannerText}>{callError}</Text>
+          <TouchableOpacity onPress={() => setCallError(null)}>
+            <Ionicons name="close" size={14} color={Colors.text.muted} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {activeTab === 'dialpad' ? (
         <View style={styles.dialpadContainer}>
@@ -839,9 +1274,9 @@ export default function CallsScreen() {
                 activeOpacity={0.7}
               >
                 <Text style={styles.dialDigit}>{item.digit}</Text>
-                {item.letters && (
+                {item.letters ? (
                   <Text style={styles.dialLetters}>{item.letters}</Text>
-                )}
+                ) : null}
               </TouchableOpacity>
             ))}
           </View>
@@ -867,49 +1302,91 @@ export default function CallsScreen() {
         </View>
       ) : (
         <ScrollView style={styles.recentContainer} contentContainerStyle={styles.recentContent}>
+          {/* Quick actions -- enterprise routes */}
           <View style={styles.quickActions}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.quickAction}
-              onPress={() => router.push('/inbox')}
+              onPress={() => router.push('/(tabs)/inbox' as any)}
             >
               <View style={styles.quickActionIcon}>
                 <Ionicons name="recording-outline" size={24} color={Colors.accent.cyan} />
-                <View style={styles.quickBadge}>
-                  <Badge label="2" variant="error" size="sm" />
-                </View>
+                {voicemailCount > 0 && (
+                  <View style={styles.quickBadge}>
+                    <Badge label={String(voicemailCount)} variant="error" size="sm" />
+                  </View>
+                )}
               </View>
               <Text style={styles.quickActionLabel}>Voicemails</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={styles.quickAction}
-              onPress={() => router.push('/inbox')}
+              onPress={() => router.push('/(tabs)/inbox' as any)}
             >
               <View style={styles.quickActionIcon}>
-                <Ionicons name="call" size={24} color={Colors.semantic.warning} />
-                <View style={styles.quickBadge}>
-                  <Badge label="1" variant="warning" size="sm" />
-                </View>
+                <Ionicons name="arrow-undo" size={24} color={Colors.semantic.warning} />
+                {callbackCount > 0 && (
+                  <View style={styles.quickBadge}>
+                    <Badge label={String(callbackCount)} variant="warning" size="sm" />
+                  </View>
+                )}
               </View>
-              <Text style={styles.quickActionLabel}>Missed</Text>
+              <Text style={styles.quickActionLabel}>Call Back Queue</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.quickAction}>
+
+            <TouchableOpacity
+              style={styles.quickAction}
+              onPress={() => router.push('/(tabs)/inbox' as any)}
+            >
               <View style={styles.quickActionIcon}>
                 <Ionicons name="people" size={24} color={Colors.text.secondary} />
               </View>
               <Text style={styles.quickActionLabel}>Contacts</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickAction}
+              onPress={() => router.push('/session/messages' as any)}
+            >
+              <View style={styles.quickActionIcon}>
+                <Ionicons name="chatbubble-ellipses" size={24} color={Colors.semantic.info} />
+              </View>
+              <Text style={styles.quickActionLabel}>Text Messages</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickAction}
+              onPress={() => router.push('/session/calls/setup' as any)}
+            >
+              <View style={styles.quickActionIcon}>
+                <Ionicons name="headset-outline" size={24} color={Colors.semantic.success} />
+              </View>
+              <Text style={styles.quickActionLabel}>Front Desk</Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.sectionTitle}>Recent Calls</Text>
-          
-          {mockRecentCalls.map((call) => (
+
+          {/* Loading state (mobile) */}
+          {callsLoading && allCalls.length === 0 && (
+            <View style={styles.mobileLoadingContainer}>
+              <ActivityIndicator size="small" color={Colors.accent.cyan} />
+              <Text style={styles.mobileLoadingText}>Loading...</Text>
+            </View>
+          )}
+
+          {/* Call list (mobile) */}
+          {filteredCalls.map((call) => (
             <Card key={call.id} variant="default" style={styles.callCard}>
-              <Pressable style={styles.callItem}>
+              <Pressable
+                style={styles.callItem}
+                onPress={() => setPhoneNumber(call.rawNumber.replace(/\D/g, ''))}
+              >
                 <View style={[styles.callTypeIcon, { borderColor: getCallColor(call.type) }]}>
-                  <Ionicons 
-                    name={getCallIcon(call.type)} 
-                    size={16} 
-                    color={getCallColor(call.type)} 
+                  <Ionicons
+                    name={getCallIcon(call.type)}
+                    size={16}
+                    color={getCallColor(call.type)}
                   />
                 </View>
                 <View style={styles.callInfo}>
@@ -919,12 +1396,14 @@ export default function CallsScreen() {
                       <Badge label="VM" variant="info" size="sm" />
                     )}
                   </View>
-                  <Text style={styles.callCompany}>{call.company}</Text>
                   <Text style={styles.callNumber}>{call.number}</Text>
                 </View>
                 <View style={styles.callMeta}>
                   <Text style={styles.callTime}>{call.time}</Text>
-                  <TouchableOpacity style={styles.callBackButton}>
+                  <TouchableOpacity
+                    style={styles.callBackButton}
+                    onPress={() => handleReturnCall(call)}
+                  >
                     <Ionicons name="call" size={18} color={Colors.accent.cyan} />
                   </TouchableOpacity>
                 </View>
@@ -932,18 +1411,24 @@ export default function CallsScreen() {
             </Card>
           ))}
 
-          <TouchableOpacity 
-            style={styles.viewAllButton}
-            onPress={() => router.push('/inbox')}
-          >
-            <Text style={styles.viewAllText}>View all in Inbox</Text>
-            <Ionicons name="chevron-forward" size={16} color={Colors.accent.cyan} />
-          </TouchableOpacity>
+          {filteredCalls.length > 0 && (
+            <TouchableOpacity
+              style={styles.viewAllButton}
+              onPress={() => router.push('/(tabs)/inbox' as any)}
+            >
+              <Text style={styles.viewAllText}>View all in Inbox</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.accent.cyan} />
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
     </View>
   );
 }
+
+// ===========================================================================
+// CALLING SCREEN styles (glassmorphism fullscreen)
+// ===========================================================================
 
 const callingStyles = StyleSheet.create({
   container: {
@@ -1247,6 +1732,10 @@ const callingStyles = StyleSheet.create({
   },
 });
 
+// ===========================================================================
+// DESKTOP styles
+// ===========================================================================
+
 const desktopStyles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1292,6 +1781,16 @@ const desktopStyles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
+  refreshButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
   bodyContent: {
     paddingHorizontal: 32,
     paddingTop: Spacing.xl,
@@ -1301,9 +1800,11 @@ const desktopStyles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginBottom: Spacing.xl,
+    flexWrap: 'wrap',
   },
   quickActionCard: {
     flex: 1,
+    minWidth: 100,
     alignItems: 'center',
     gap: 10,
     paddingVertical: 20,
@@ -1347,6 +1848,23 @@ const desktopStyles = StyleSheet.create({
     color: Colors.text.secondary,
     fontSize: 13,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    marginBottom: Spacing.lg,
+    backgroundColor: Colors.semantic.errorLight,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.25)',
+  },
+  errorBannerText: {
+    flex: 1,
+    color: Colors.text.secondary,
+    fontSize: 13,
   },
   twoColumnLayout: {
     flexDirection: 'row',
@@ -1508,6 +2026,7 @@ const desktopStyles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 16,
+    flexWrap: 'wrap',
   },
   filterPill: {
     paddingVertical: 6,
@@ -1532,6 +2051,39 @@ const desktopStyles = StyleSheet.create({
   },
   filterPillTextActive: {
     color: Colors.accent.cyan,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 40,
+  },
+  loadingText: {
+    color: Colors.text.muted,
+    fontSize: 13,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 12,
+  },
+  emptyStateText: {
+    color: Colors.text.muted,
+    fontSize: 14,
+  },
+  retryButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.accent.cyanLight,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    color: Colors.accent.cyan,
+    fontSize: 13,
+    fontWeight: '600',
   },
   callCard: {
     flexDirection: 'row',
@@ -1574,13 +2126,14 @@ const desktopStyles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  callCompany: {
-    color: Colors.text.secondary,
-    fontSize: 13,
-  },
   callNumber: {
     color: Colors.text.muted,
     fontSize: 13,
+    marginTop: 2,
+  },
+  callDuration: {
+    color: Colors.text.tertiary,
+    fontSize: 11,
     marginTop: 2,
   },
   callMeta: {
@@ -1622,7 +2175,89 @@ const desktopStyles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+
+  // 403 blocked card styles
+  blockedCard: {
+    width: 480,
+    padding: 40,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 160, 23, 0.3)',
+    // @ts-ignore
+    boxShadow: '0 24px 80px rgba(0, 0, 0, 0.6), 0 8px 32px rgba(0, 0, 0, 0.4)',
+  },
+  blockedIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.semantic.warningLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 160, 23, 0.3)',
+  },
+  blockedTitle: {
+    color: Colors.text.primary,
+    fontSize: 22,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 12,
+    letterSpacing: -0.3,
+  },
+  blockedDescription: {
+    color: Colors.text.secondary,
+    fontSize: 15,
+    lineHeight: 24,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  blockedFeatureBox: {
+    backgroundColor: Colors.background.tertiary,
+    borderRadius: BorderRadius.md,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+  },
+  blockedFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  blockedFeatureText: {
+    color: Colors.text.primary,
+    fontSize: 14,
+  },
+  blockedPrimaryButton: {
+    backgroundColor: Colors.semantic.warning,
+    paddingVertical: 16,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    marginBottom: 12,
+    // @ts-ignore
+    boxShadow: '0 4px 16px rgba(212, 160, 23, 0.3)',
+  },
+  blockedPrimaryButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  blockedSecondaryButton: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  blockedSecondaryButtonText: {
+    color: Colors.text.muted,
+    fontSize: 14,
+    fontWeight: '500',
+  },
 });
+
+// ===========================================================================
+// MOBILE styles
+// ===========================================================================
 
 const styles = StyleSheet.create({
   container: {
@@ -1785,6 +2420,23 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: Colors.accent.cyan,
   },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.md,
+    padding: 12,
+    backgroundColor: Colors.semantic.errorLight,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.25)',
+  },
+  errorBannerText: {
+    flex: 1,
+    color: Colors.text.secondary,
+    fontSize: 12,
+  },
   dialpadContainer: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
@@ -1879,13 +2531,16 @@ const styles = StyleSheet.create({
   },
   quickActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-around',
     marginBottom: Spacing.xxl,
     paddingVertical: Spacing.lg,
+    gap: Spacing.md,
   },
   quickAction: {
     alignItems: 'center',
     gap: Spacing.sm,
+    minWidth: 60,
   },
   quickActionIcon: {
     width: 56,
@@ -1906,12 +2561,24 @@ const styles = StyleSheet.create({
   quickActionLabel: {
     color: Colors.text.secondary,
     fontSize: Typography.small.fontSize,
+    textAlign: 'center',
   },
   sectionTitle: {
     color: Colors.text.primary,
     fontSize: Typography.headline.fontSize,
     fontWeight: Typography.headline.fontWeight,
     marginBottom: Spacing.lg,
+  },
+  mobileLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 32,
+  },
+  mobileLoadingText: {
+    color: Colors.text.muted,
+    fontSize: 13,
   },
   callCard: {
     marginBottom: Spacing.md,
@@ -1943,10 +2610,6 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     fontSize: Typography.bodyMedium.fontSize,
     fontWeight: Typography.bodyMedium.fontWeight,
-  },
-  callCompany: {
-    color: Colors.text.secondary,
-    fontSize: Typography.small.fontSize,
   },
   callNumber: {
     color: Colors.text.muted,

@@ -6,7 +6,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-import { mockTenant } from '@/data/mockData';
+import { useTenant } from '@/providers/TenantProvider';
 import { 
   getDefaultSession, 
   updateSessionPurpose, 
@@ -76,6 +76,7 @@ const PURPOSE_OPTIONS: { id: SessionPurpose; label: string; icon: keyof typeof I
 export default function ConferenceSession() {
   const router = useRouter();
   const isDesktop = useDesktop();
+  const { tenant } = useTenant();
   const session = getDefaultSession();
   
   const [isMuted, setIsMuted] = useState(false);
@@ -296,7 +297,7 @@ export default function ConferenceSession() {
           <Text style={styles.headerTitle}>Conference Lobby</Text>
           <View style={styles.headerMeta}>
             <Text style={styles.headerSubtitle}>
-              Suite {mockTenant.suiteId} • Room CR-01
+              Suite {tenant?.suiteId ?? ''} • Room CR-01
             </Text>
             <View style={styles.headerBadges}>
               <View style={styles.lobbyBadge}>

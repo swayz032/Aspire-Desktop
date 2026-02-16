@@ -4,8 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
-import { seedDatabase } from '@/lib/mockSeed';
-import { getNotificationSettings, updateNotificationSettings } from '@/lib/mockDb';
 import { NotificationSettings } from '@/types/tenant';
 
 function SettingRow({ icon, title, subtitle, value, onChange }: { 
@@ -48,18 +46,13 @@ export default function NotificationsScreen() {
   });
 
   useEffect(() => {
-    seedDatabase();
-    const timer = setTimeout(() => {
-      setSettings(getNotificationSettings());
-      setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
+    // Notification preferences are local-only; use defaults
+    setLoading(false);
   }, []);
 
   const handleUpdate = (key: keyof NotificationSettings, value: boolean) => {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
-    updateNotificationSettings(updated);
   };
 
   return (

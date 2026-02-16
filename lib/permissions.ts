@@ -1,7 +1,42 @@
 // Permissions System for Team Workspace
 // Enterprise-grade role-based access control
 
-import { PermissionKey, RoleType, mockRoles, Member } from '@/data/teamWorkspace';
+// Types inlined from teamWorkspace (no mock data dependency)
+export type RoleType = 'owner' | 'admin' | 'member' | 'viewer' | 'external';
+
+export type PermissionKey =
+  | 'team.invite'
+  | 'team.manage_roles'
+  | 'team.manage_members'
+  | 'suite.switch'
+  | 'approvals.view'
+  | 'approvals.approve_low_risk'
+  | 'approvals.approve_high_risk'
+  | 'receipts.view_all'
+  | 'receipts.export'
+  | 'queues.assign'
+  | 'billing.view_usage';
+
+export interface Member {
+  id: string;
+  name: string;
+  email: string;
+  roleId: RoleType;
+  status: 'active' | 'pending' | 'suspended';
+  suiteAccessIds: string[];
+  extension?: string;
+  lastActiveAt: string;
+  avatarUrl?: string;
+}
+
+// Static role name mapping (no mock data needed)
+const roleNames: Record<RoleType, string> = {
+  owner: 'Owner',
+  admin: 'Admin',
+  member: 'Member',
+  viewer: 'Viewer',
+  external: 'External',
+};
 
 // Role to permissions mapping
 export const rolePermissionMap: Record<RoleType, PermissionKey[]> = {
@@ -73,8 +108,7 @@ export function isOwner(user: Member | null): boolean {
 
 // Get role display name
 export function getRoleName(roleId: RoleType): string {
-  const role = mockRoles.find(r => r.id === roleId);
-  return role?.name || roleId;
+  return roleNames[roleId] || roleId;
 }
 
 // Check if Team Workspace should be visible

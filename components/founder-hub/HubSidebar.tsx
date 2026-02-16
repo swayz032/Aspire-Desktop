@@ -24,8 +24,6 @@ const navItems: NavItem[] = [
   { id: 'library', label: 'Library', icon: 'library-outline', iconActive: 'library', route: '/founder-hub/library' },
   { id: 'studio', label: 'Studio', icon: 'bulb-outline', iconActive: 'bulb', route: '/founder-hub/studio' },
   { id: 'notes', label: 'Notes', icon: 'journal-outline', iconActive: 'journal', route: '/founder-hub/notes' },
-  { id: 'templates', label: 'Templates', icon: 'documents-outline', iconActive: 'documents', route: '/founder-hub/templates' },
-  { id: 'masterminds', label: 'Masterminds', icon: 'people-outline', iconActive: 'people', route: '/founder-hub/masterminds' },
   { id: 'saved', label: 'Saved', icon: 'bookmark-outline', iconActive: 'bookmark', route: '/founder-hub/saved' },
 ];
 

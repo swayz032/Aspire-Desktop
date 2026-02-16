@@ -10,27 +10,36 @@ import { AuthorityQueueCard } from '@/components/AuthorityQueueCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/tokens';
-import {
-  mockInteractionModes,
-  mockCashPosition,
-  mockPipelineStages,
-  mockAuthorityQueue,
-  mockTodaysPlan,
-  mockCalendarEvents,
-  mockBusinessScore,
-} from '@/data/mockData';
+import { getAuthorityQueue, getCalendarEvents, getCashPosition } from '@/lib/api';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
-import type { CashPosition } from '@/types';
+import type { CashPosition, AuthorityItem } from '@/types';
+
+const INTERACTION_MODES = [
+  { id: 'conference', icon: 'people', title: 'Conference Call', subtitle: 'Multi-party business calls', route: '/session/conference-lobby' },
+  { id: 'calls', icon: 'call', title: 'Return Calls', subtitle: 'Creates receipt', route: '/session/calls' },
+  { id: 'messages', icon: 'chatbubble-ellipses', title: 'Text Messages', subtitle: 'SMS conversations', route: '/session/messages' },
+];
+
+const EMPTY_CASH: CashPosition = { availableCash: 0, upcomingOutflows7d: 0, expectedInflows7d: 0, accountsConnected: 0 };
 
 const HEADER_HEIGHT = 72;
 
 export function DesktopHome() {
   const router = useRouter();
-  const [liveCashData, setLiveCashData] = useState<CashPosition>(mockCashPosition);
+  const [liveCashData, setLiveCashData] = useState<CashPosition>(EMPTY_CASH);
+  const [supabaseAuthority, setSupabaseAuthority] = useState<AuthorityItem[]>([]);
+  const [planItems, setPlanItems] = useState<any[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<any[]>([]);
+  const [businessScore, setBusinessScore] = useState<any>(null);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const dynamicItems = useDynamicAuthorityQueue();
-  const allAuthorityItems = useMemo(() => [...dynamicItems, ...mockAuthorityQueue], [dynamicItems]);
+  const allAuthorityItems = useMemo(
+    () => [...dynamicItems, ...supabaseAuthority],
+    [dynamicItems, supabaseAuthority],
+  );
 
   useEffect(() => {
+    // Fetch live cash position from ops-snapshot
     (async () => {
       try {
         const res = await fetch('/api/ops-snapshot');
@@ -46,14 +55,59 @@ export function DesktopHome() {
             });
           }
         }
-      } catch (e) {
-      }
+      } catch (e) { /* ops-snapshot not available */ }
+    })();
+
+    // Fetch authority queue from Supabase
+    (async () => {
+      try {
+        const rows = await getAuthorityQueue();
+        if (rows.length > 0) {
+          setSupabaseAuthority(
+            rows.map((r: any) => ({
+              id: r.id ?? r.request_id ?? '',
+              title: r.title ?? r.action_type ?? 'Approval Request',
+              subtitle: r.subtitle ?? `Suite ${r.suite_id ?? ''}`,
+              type: r.type ?? 'approval',
+              status: r.status ?? 'pending',
+              priority: r.priority ?? 'medium',
+              timestamp: r.created_at ?? new Date().toISOString(),
+              actions: ['review', 'approve', 'deny'],
+              staffRole: r.actor ?? r.staff_role ?? '',
+            })),
+          );
+        }
+      } catch (e) { /* authority queue not available */ }
+    })();
+
+    // Fetch calendar events from Supabase
+    (async () => {
+      try {
+        const events = await getCalendarEvents();
+        setCalendarEvents(events);
+      } catch (e) { /* calendar not available */ }
+    })();
+
+    // Fetch Today's Plan from pending approvals + outbox jobs
+    (async () => {
+      try {
+        const res = await fetch('/api/authority-queue');
+        if (res.ok) {
+          const data = await res.json();
+          const pending = data.pendingApprovals || [];
+          const items = pending.slice(0, 4).map((p: any, idx: number) => ({
+            id: p.id || `plan-${idx}`,
+            time: idx === 0 ? 'Next' : new Date(p.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            action: `Review: ${p.title || p.type || 'Approval Request'}`,
+            details: p.amount ? `$${p.amount.toLocaleString()} ${p.currency?.toUpperCase() || 'USD'} — ${p.requestedBy || 'System'}` : (p.requestedBy || 'Pending approval'),
+            status: idx === 0 ? 'next' : 'upcoming',
+            staffRole: p.requestedBy || '',
+          }));
+          setPlanItems(items);
+        }
+      } catch (e) { /* plan not available */ }
     })();
   }, []);
-
-  const desktopInteractionModes = mockInteractionModes.filter(
-    (mode) => mode.id === 'conference' || mode.id === 'calls'
-  );
 
   return (
     <DesktopShell>
@@ -67,17 +121,17 @@ export function DesktopHome() {
             <View style={styles.leftCol}>
               <View style={styles.section}>
                 <SectionHeader title="Interaction Mode" />
-                <InteractionModePanel options={desktopInteractionModes} />
+                <InteractionModePanel options={INTERACTION_MODES} />
               </View>
 
               <View style={[styles.section, styles.flexSection]}>
                 <SectionHeader
                   title="Today's Plan"
-                  subtitle={`${mockTodaysPlan.length} tasks`}
+                  subtitle={`${planItems.length} tasks`}
                   actionLabel="See all"
                   onAction={() => router.push('/session/plan' as any)}
                 />
-                <TodayPlanTabs planItems={mockTodaysPlan} />
+                <TodayPlanTabs planItems={planItems} />
               </View>
             </View>
 
@@ -90,14 +144,14 @@ export function DesktopHome() {
                 <SectionHeader title="Ops Snapshot" />
                 <OpsSnapshotTabs
                   cashData={liveCashData}
-                  pipelineStages={mockPipelineStages}
-                  businessScore={mockBusinessScore}
+                  pipelineStages={pipelineStages}
+                  businessScore={businessScore}
                 />
               </View>
 
               <View style={[styles.section, styles.flexSection]}>
                 <SectionHeader title="Calendar" />
-                <CalendarCard events={mockCalendarEvents as any} />
+                <CalendarCard events={calendarEvents as any} />
               </View>
             </View>
           </View>

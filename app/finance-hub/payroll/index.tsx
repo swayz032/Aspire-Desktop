@@ -227,7 +227,7 @@ export default function RunPayrollScreen() {
         setCalculating(false);
         return;
       }
-      const hasZeroRate = employees.some(emp => parseFloat(emp.rate || '0') <= 0);
+      const hasZeroRate = employees.some(emp => parseFloat(String(emp.rate || 0)) <= 0);
       if (hasZeroRate) {
         setCalcError('One or more employees have a $0 pay rate. Go to People and set their compensation before calculating payroll.');
         setCalculating(false);
@@ -659,7 +659,7 @@ export default function RunPayrollScreen() {
           </View>
         </View>
       </ScrollView>
-      {employees.some(emp => parseFloat(emp.rate || '0') <= 0) && (
+      {employees.some(emp => parseFloat(String(emp.rate || 0)) <= 0) && (
         <View style={{ backgroundColor: 'rgba(255, 59, 48, 0.1)', borderWidth: 1, borderColor: 'rgba(255, 59, 48, 0.25)', borderRadius: 10, padding: 12, marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Ionicons name="alert-circle" size={18} color="#FF3B30" />
           <Text style={{ color: '#FF6B6B', fontSize: 13, flex: 1 }}>
@@ -668,13 +668,13 @@ export default function RunPayrollScreen() {
         </View>
       )}
       <Pressable
-        style={[styles.primaryBtn, { marginTop: 16 }, (employees.length === 0 || employees.some(emp => parseFloat(emp.rate || '0') <= 0)) && styles.primaryBtnDisabled, hoveredBtn === 'next-prep' && styles.primaryBtnHover]}
+        style={[styles.primaryBtn, { marginTop: 16 }, (employees.length === 0 || employees.some(emp => parseFloat(String(emp.rate || 0)) <= 0)) && styles.primaryBtnDisabled, hoveredBtn === 'next-prep' && styles.primaryBtnHover]}
         onPress={() => {
           if (employees.length === 0) return;
-          if (employees.some(emp => parseFloat(emp.rate || '0') <= 0)) return;
+          if (employees.some(emp => parseFloat(String(emp.rate || 0)) <= 0)) return;
           setCurrentStep(2);
         }}
-        disabled={employees.length === 0 || employees.some(emp => parseFloat(emp.rate || '0') <= 0)}
+        disabled={employees.length === 0 || employees.some(emp => parseFloat(String(emp.rate || 0)) <= 0)}
         {...webHover('next-prep')}
       >
         <View style={styles.btnRow}>

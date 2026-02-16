@@ -2,7 +2,8 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
-import { useConversation } from '@elevenlabs/react';
+import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useSupabase } from '@/providers';
 
 type FileAttachment = {
   id: string;
@@ -33,78 +34,124 @@ type ChatMsg = {
   runId?: string;
 };
 
-const MOCK_ACTIVITY_SEQUENCES: Record<string, { events: Omit<FinnActivityEvent, 'ts'>[]; response: string }> = {
-  cashflow: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Pulling cash position data', icon: 'wallet' },
-      { type: 'tool_call', message: 'Analyzing inflows and outflows', icon: 'swap-horizontal' },
-      { type: 'step', message: 'Comparing against 30-day trend', icon: 'trending-up' },
-      { type: 'tool_call', message: 'Forecasting next 14 days', icon: 'analytics' },
-      { type: 'step', message: 'Building cash flow summary', icon: 'document-text' },
-      { type: 'done', message: 'Analysis complete', icon: 'checkmark-circle' },
-    ],
-    response: 'Cash flow analysis complete. Net inflow is +$12,400 this week. I flagged a projected dip next Thursday — recommend holding $8K in reserve.',
-  },
-  payroll: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Loading payroll schedule', icon: 'calendar' },
-      { type: 'tool_call', message: 'Calculating gross payroll for 24 employees', icon: 'people' },
-      { type: 'step', message: 'Verifying tax withholdings', icon: 'shield-checkmark' },
-      { type: 'tool_call', message: 'Checking account buffer', icon: 'wallet' },
-      { type: 'step', message: 'Generating payroll summary', icon: 'document-text' },
-      { type: 'done', message: 'Payroll review complete', icon: 'checkmark-circle' },
-    ],
-    response: 'Payroll review done. Total: $47,200 due Friday. Buffer is healthy at $62,400. No issues flagged.',
-  },
-  invoices: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Scanning accounts receivable', icon: 'search' },
-      { type: 'tool_call', message: 'Aging 38 open invoices', icon: 'layers' },
-      { type: 'step', message: 'Identifying overdue accounts', icon: 'warning' },
-      { type: 'tool_call', message: 'Drafting collection notices', icon: 'create' },
-      { type: 'done', message: 'Invoice review complete', icon: 'checkmark-circle' },
-    ],
-    response: 'Invoice review complete. 2 invoices overdue totaling $6,800. I drafted collection notices for Apex Corp and Delta Partners.',
-  },
-  budget: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Loading budget allocations', icon: 'pie-chart' },
-      { type: 'tool_call', message: 'Comparing actuals vs. budget', icon: 'bar-chart' },
-      { type: 'step', message: 'Identifying variance drivers', icon: 'git-compare' },
-      { type: 'tool_call', message: 'Projecting Q4 landing', icon: 'trending-up' },
-      { type: 'step', message: 'Building forecast report', icon: 'document-text' },
-      { type: 'done', message: 'Budget forecast ready', icon: 'checkmark-circle' },
-    ],
-    response: 'Budget forecast complete. You\'re 4% under budget YTD. Marketing is 12% over — recommend reallocating $3,200 from operations.',
-  },
-  default: {
-    events: [
-      { type: 'thinking', message: 'Understanding request...', icon: 'sparkles' },
-      { type: 'step', message: 'Analyzing your request', icon: 'search' },
-      { type: 'tool_call', message: 'Gathering financial data', icon: 'cloud-download' },
-      { type: 'step', message: 'Processing information', icon: 'cog' },
-      { type: 'step', message: 'Preparing response', icon: 'document-text' },
-      { type: 'done', message: 'Task complete', icon: 'checkmark-circle' },
-    ],
-    response: 'Got it. I will adjust based on that clarification.',
-  },
+// Activity step definitions keyed by intent (steps are real, response is built from server data)
+/**
+ * Build activity events from orchestrator response for Finn's activity visualization.
+ * Falls back to synthesized steps if orchestrator doesn't return explicit activity.
+ */
+function buildFinnActivity(data: {
+  activity?: Array<{ type: string; message: string; icon?: string }>;
+  route?: { skill_pack?: string };
+  risk_tier?: string;
+  action?: string;
+}): Omit<FinnActivityEvent, 'ts'>[] {
+  if (data.activity && Array.isArray(data.activity) && data.activity.length > 0) {
+    return data.activity.map((step) => ({
+      type: (step.type as FinnActivityEvent['type']) || 'step',
+      message: step.message,
+      icon: (step.icon as keyof typeof Ionicons.glyphMap) || 'cog',
+    }));
+  }
+
+  // Synthesize from pipeline metadata
+  const events: Omit<FinnActivityEvent, 'ts'>[] = [
+    { type: 'thinking', message: 'Processing financial request...', icon: 'sparkles' },
+  ];
+  if (data.route?.skill_pack) {
+    events.push({ type: 'step', message: `Routing to ${data.route.skill_pack}`, icon: 'git-network' });
+  }
+  if (data.action) {
+    events.push({ type: 'tool_call', message: `Executing: ${data.action}`, icon: 'hammer' });
+  }
+  events.push({ type: 'done', message: 'Complete', icon: 'checkmark-circle' });
+  return events;
+}
+
+type SnapshotData = {
+  chapters: {
+    now: { cashAvailable: number; bankBalance: number; stripeAvailable: number; stripePending: number; lastUpdated: string | null };
+    next: { expectedInflows7d: number; expectedOutflows7d: number; netCashFlow7d: number; items: any[] };
+    month: { revenue: number; expenses: number; netIncome: number; period: string };
+    reconcile: { mismatches: any[]; mismatchCount: number };
+    actions: { proposals: any[]; proposalCount: number };
+  };
+  connected: boolean;
+  generatedAt: string | null;
 };
 
-function getActivitySequence(userText: string): { events: Omit<FinnActivityEvent, 'ts'>[]; response: string } {
-  const lower = userText.toLowerCase();
-  if (lower.includes('cash') || lower.includes('flow') || lower.includes('position') || lower.includes('balance'))
-    return MOCK_ACTIVITY_SEQUENCES.cashflow;
-  if (lower.includes('payroll') || lower.includes('salary') || lower.includes('employee') || lower.includes('wage'))
-    return MOCK_ACTIVITY_SEQUENCES.payroll;
-  if (lower.includes('invoice') || lower.includes('overdue') || lower.includes('receivable') || lower.includes('collection'))
-    return MOCK_ACTIVITY_SEQUENCES.invoices;
-  if (lower.includes('budget') || lower.includes('forecast') || lower.includes('variance') || lower.includes('spending'))
-    return MOCK_ACTIVITY_SEQUENCES.budget;
-  return MOCK_ACTIVITY_SEQUENCES.default;
+type ExceptionData = {
+  as_of: string;
+  exceptions: Array<{ exception_id: string; lane: string; severity: string; summary: string }>;
+};
+
+async function fetchFinnContext(): Promise<{ snapshot: SnapshotData | null; exceptions: ExceptionData | null }> {
+  try {
+    const [snapResp, excResp] = await Promise.all([
+      fetch('/api/finance/snapshot').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/finance/exceptions').then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    return { snapshot: snapResp, exceptions: excResp };
+  } catch {
+    return { snapshot: null, exceptions: null };
+  }
+}
+
+function buildResponse(intent: string, snapshot: SnapshotData | null, exceptions: ExceptionData | null): string {
+  if (!snapshot || !snapshot.connected) {
+    return 'No financial data available yet. Connect at least one provider (Plaid, Stripe, QuickBooks) to get started.';
+  }
+
+  const { chapters } = snapshot;
+  const excList = exceptions?.exceptions || [];
+  const excSummary = excList.length > 0
+    ? ` I found ${excList.length} exception${excList.length > 1 ? 's' : ''}: ${excList.slice(0, 3).map(e => e.summary).join('; ')}.`
+    : ' No exceptions flagged.';
+
+  switch (intent) {
+    case 'cashflow': {
+      const cash = chapters.now.cashAvailable;
+      const net7d = chapters.next.netCashFlow7d;
+      const direction = net7d >= 0 ? '+' : '-';
+      return `Cash position: $${cash.toLocaleString()} available. 7-day forecast: ${direction}$${Math.abs(net7d).toLocaleString()} net.${excSummary}`;
+    }
+    case 'payroll': {
+      const outflows = chapters.next.expectedOutflows7d;
+      const buffer = chapters.now.cashAvailable;
+      const healthy = buffer > outflows * 1.5;
+      return `Expected outflows: $${outflows.toLocaleString()} in next 7 days. Buffer: $${buffer.toLocaleString()} (${healthy ? 'healthy' : 'tight'}).${excSummary}`;
+    }
+    case 'invoices': {
+      const inflows = chapters.next.expectedInflows7d;
+      const mismatches = chapters.reconcile.mismatchCount;
+      return `Expected inflows: $${inflows.toLocaleString()} in next 7 days. ${mismatches} reconciliation issue${mismatches !== 1 ? 's' : ''}.${excSummary}`;
+    }
+    case 'budget': {
+      const { revenue, expenses, netIncome } = chapters.month;
+      return `This month: $${revenue.toLocaleString()} revenue, $${expenses.toLocaleString()} expenses, $${netIncome.toLocaleString()} net.${excSummary}`;
+    }
+    default:
+      return `Snapshot as of ${snapshot.generatedAt ? new Date(snapshot.generatedAt).toLocaleTimeString() : 'now'}. Cash: $${chapters.now.cashAvailable.toLocaleString()}.${excSummary}`;
+  }
+}
+
+function buildSeedMessage(snapshot: SnapshotData | null, exceptions: ExceptionData | null): string {
+  if (!snapshot || !snapshot.connected) {
+    return 'Good morning. No providers connected yet — connect Plaid, Stripe, or QuickBooks to get started. I\'ll analyze your finances once data flows in.';
+  }
+  const cash = snapshot.chapters.now.cashAvailable;
+  const excCount = exceptions?.exceptions?.length || 0;
+  const net7d = snapshot.chapters.next.netCashFlow7d;
+  const parts = [`Good morning. Cash is at $${cash.toLocaleString()}.`];
+  if (net7d !== 0) {
+    parts.push(`7-day forecast: ${net7d >= 0 ? '+' : '-'}$${Math.abs(net7d).toLocaleString()}.`);
+  }
+  if (excCount > 0) {
+    parts.push(`${excCount} exception${excCount > 1 ? 's' : ''} need attention.`);
+  } else {
+    parts.push('No exceptions flagged.');
+  }
+  parts.push('What would you like to review?');
+  return parts.join(' ');
 }
 
 function ThinkingDots() {
@@ -388,8 +435,8 @@ const actStyles = StyleSheet.create({
   },
 });
 
-const seedChat: ChatMsg[] = [
-  { id: 'm1', from: 'finn', text: 'Good morning. Cash is up $4,200 today. Payroll is Friday — buffer looks healthy. Two invoices are overdue. Want me to draft collection notices?' },
+const defaultSeedChat: ChatMsg[] = [
+  { id: 'm1', from: 'finn', text: 'Loading financial data...' },
 ];
 
 const playConnectionSound = () => {
@@ -431,65 +478,56 @@ const playSuccessSound = () => {
 export function FinnDeskPanel() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [isConversing, setIsConversing] = useState(false);
-  const [chat, setChat] = useState<ChatMsg[]>(seedChat);
+  const [chat, setChat] = useState<ChatMsg[]>(defaultSeedChat);
   const [input, setInput] = useState('');
   const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRun>>({});
+  const [finnContext, setFinnContext] = useState<{ snapshot: SnapshotData | null; exceptions: ExceptionData | null }>({ snapshot: null, exceptions: null });
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const voiceLineAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef<ScrollView>(null);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
 
-  const conversation = useConversation({
-    onConnect: () => {
-      console.log('ElevenLabs Finn connected');
-      setIsSessionActive(true);
+  // Fetch real financial data on mount
+  useEffect(() => {
+    fetchFinnContext().then((ctx) => {
+      setFinnContext(ctx);
+      const greeting = buildSeedMessage(ctx.snapshot, ctx.exceptions);
+      setChat([{ id: 'm1', from: 'finn', text: greeting }]);
+    });
+  }, []);
+
+  // Tenant context for voice requests (Law #6: Tenant Isolation)
+  const { suiteId } = useSupabase();
+
+  // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
+  const finnVoice = useAgentVoice({
+    agent: 'finn',
+    suiteId: suiteId ?? undefined,
+    onStatusChange: (voiceStatus) => {
+      setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
-    onDisconnect: () => {
-      console.log('ElevenLabs Finn disconnected');
-      setIsSessionActive(false);
-    },
-    onMessage: (message) => {
-      console.log('Finn message:', message);
+    onResponse: (text) => {
+      console.log('Finn response:', text);
     },
     onError: (error) => {
-      console.error('ElevenLabs Finn error:', error);
+      console.error('Finn voice error:', error);
       setIsSessionActive(false);
     },
   });
 
   const handleCompanyPillPress = useCallback(async () => {
-    if (conversation.status === 'connected') {
-      await conversation.endSession();
+    if (finnVoice.isActive) {
+      finnVoice.endSession();
     } else {
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        let signedUrl: string | null = null;
-        try {
-          const resp = await fetch('/api/elevenlabs/signed-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agent: 'finn' }),
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            signedUrl = data.signedUrl || null;
-          }
-        } catch (e) {
-          console.warn('Signed URL fetch failed, using fallback:', e);
-        }
-        if (signedUrl) {
-          await conversation.startSession({ signedUrl });
-        } else {
-          const finnAgentId = process.env.EXPO_PUBLIC_ELEVENLABS_FINN_AGENT_ID || 'agent_0001kfvnjz5yfjkbt1w6pjfw65mw';
-          await conversation.startSession({ agentId: finnAgentId });
-        }
+        await finnVoice.startSession();
       } catch (error) {
-        console.error('Failed to start ElevenLabs session:', error);
+        console.error('Failed to start Finn voice session:', error);
         Alert.alert('Connection Error', 'Unable to connect to Finn. Please try again.');
       }
     }
-  }, [conversation]);
+  }, [finnVoice]);
 
   useEffect(() => {
     if (isSessionActive) {
@@ -522,15 +560,17 @@ export function FinnDeskPanel() {
     }
   }, [isConversing]);
 
+  const isFinnSpeaking = finnVoice.status === 'speaking';
+
   useEffect(() => {
-    if (conversation.isSpeaking) {
+    if (isFinnSpeaking) {
       setIsConversing(true);
       const pulseAnimation = () => {
         Animated.sequence([
           Animated.timing(dotPulseAnim, { toValue: 1.8, duration: 200, useNativeDriver: false }),
           Animated.timing(dotPulseAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
         ]).start(() => {
-          if (conversation.isSpeaking) pulseAnimation();
+          if (isFinnSpeaking) pulseAnimation();
         });
       };
       pulseAnimation();
@@ -538,7 +578,7 @@ export function FinnDeskPanel() {
       setIsConversing(false);
       dotPulseAnim.setValue(1);
     }
-  }, [conversation.isSpeaking]);
+  }, [isFinnSpeaking]);
 
   useEffect(() => {
     return () => {
@@ -546,16 +586,15 @@ export function FinnDeskPanel() {
     };
   }, []);
 
-  const onSend = () => {
+  const onSend = async () => {
     const trimmed = input.trim();
     if (!trimmed) return;
 
     const runId = `run_${Date.now()}`;
-    const sequence = getActivitySequence(trimmed);
 
     setActiveRuns((prev) => ({
       ...prev,
-      [runId]: { id: runId, events: [], status: 'running', finalText: sequence.response },
+      [runId]: { id: runId, events: [], status: 'running', finalText: '' },
     }));
 
     setChat((prev) => [
@@ -567,35 +606,111 @@ export function FinnDeskPanel() {
     setIsConversing(true);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
-    sequence.events.forEach((evt, idx) => {
-      const delay = idx === 0 ? 400 : 400 + idx * 1100 + Math.random() * 400;
-      const timer = setTimeout(() => {
-        const event: FinnActivityEvent = { ...evt, ts: Date.now() };
-        setActiveRuns((prev) => {
-          const run = prev[runId];
-          if (!run) return prev;
-          const isDone = evt.type === 'done';
-          return {
-            ...prev,
-            [runId]: {
-              ...run,
-              events: [...run.events, event],
-              status: isDone ? 'completed' : 'running',
-            },
-          };
-        });
-        if (evt.type === 'done') {
-          setIsConversing(false);
-          setChat((prev) =>
-            prev.map((msg) =>
-              msg.runId === runId ? { ...msg, text: sequence.response } : msg
-            )
-          );
-        }
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-      }, delay);
-      runTimers.current.push(timer);
+    // Show initial thinking
+    setActiveRuns((prev) => {
+      const run = prev[runId];
+      if (!run) return prev;
+      return {
+        ...prev,
+        [runId]: {
+          ...run,
+          events: [{ type: 'thinking', message: 'Processing financial request...', ts: Date.now(), icon: 'sparkles' }],
+        },
+      };
     });
+
+    try {
+      // Fetch fresh financial context AND route through orchestrator in parallel
+      const [ctx, orchestratorResp] = await Promise.all([
+        fetchFinnContext(),
+        fetch('/api/orchestrator/intent', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Suite-Id': suiteId || '',
+          },
+          body: JSON.stringify({
+            agent: 'finn',
+            text: trimmed,
+            channel: 'text',
+          }),
+        }),
+      ]);
+
+      setFinnContext(ctx);
+
+      let responseText: string;
+      let activityEvents: Omit<FinnActivityEvent, 'ts'>[];
+
+      if (orchestratorResp.ok) {
+        const data = await orchestratorResp.json();
+        responseText = data.response || 'I processed your request.';
+        activityEvents = buildFinnActivity(data);
+      } else {
+        // Orchestrator unavailable — fall back to local financial data
+        const intent = trimmed.toLowerCase();
+        const fallbackIntent = intent.includes('cash') || intent.includes('flow') ? 'cashflow'
+          : intent.includes('payroll') ? 'payroll'
+          : intent.includes('invoice') ? 'invoices'
+          : 'default';
+        responseText = buildResponse(fallbackIntent, ctx.snapshot, ctx.exceptions);
+        activityEvents = [
+          { type: 'step', message: 'Using local financial data', icon: 'cloud-offline' },
+          { type: 'done', message: 'Complete', icon: 'checkmark-circle' },
+        ];
+      }
+
+      // Animate real activity events
+      activityEvents.forEach((evt, idx) => {
+        const delay = idx === 0 ? 200 : 200 + idx * 600;
+        const timer = setTimeout(() => {
+          const event: FinnActivityEvent = { ...evt, ts: Date.now() };
+          setActiveRuns((prev) => {
+            const run = prev[runId];
+            if (!run) return prev;
+            const isDone = evt.type === 'done';
+            return {
+              ...prev,
+              [runId]: {
+                ...run,
+                events: [...run.events, event],
+                status: isDone ? 'completed' : 'running',
+              },
+            };
+          });
+          if (evt.type === 'done') {
+            setIsConversing(false);
+            setChat((prev) =>
+              prev.map((msg) =>
+                msg.runId === runId ? { ...msg, text: responseText } : msg
+              )
+            );
+          }
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+        }, delay);
+        runTimers.current.push(timer);
+      });
+    } catch (error) {
+      // Fail closed — show error
+      setIsConversing(false);
+      setActiveRuns((prev) => {
+        const run = prev[runId];
+        if (!run) return prev;
+        return {
+          ...prev,
+          [runId]: {
+            ...run,
+            events: [...run.events, { type: 'done', message: 'Connection failed', ts: Date.now(), icon: 'alert-circle' }],
+            status: 'completed',
+          },
+        };
+      });
+      setChat((prev) =>
+        prev.map((msg) =>
+          msg.runId === runId ? { ...msg, text: 'Unable to reach the orchestrator. Please try again.' } : msg
+        )
+      );
+    }
   };
 
   return (
@@ -621,13 +736,13 @@ export function FinnDeskPanel() {
                   {
                     transform: [{ scale: dotPulseAnim }],
                   },
-                  conversation.isSpeaking && Platform.OS === 'web' && {
+                  isFinnSpeaking && Platform.OS === 'web' && {
                     boxShadow: '0 0 12px #3B82F6, 0 0 24px #3B82F6, 0 0 36px rgba(59,130,246,0.6)',
                   },
                 ]}
               />
               <Text style={styles.companyName}>
-                {conversation.status === 'connected' ? 'Talking with Finn...' : 'Zenith Solutions'}
+                {finnVoice.isActive ? 'Talking with Finn...' : 'Zenith Solutions'}
               </Text>
             </Pressable>
           </View>

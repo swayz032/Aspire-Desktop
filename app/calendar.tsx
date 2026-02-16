@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { mockCalendarEvents } from '@/data/mockData';
+import { getCalendarEvents } from '@/lib/api';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 
@@ -35,12 +35,33 @@ export default function CalendarScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-  
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getCalendarEvents()
+      .then((bookings: any[]) => {
+        setCalendarEvents(bookings.map((b: any) => ({
+          id: b.id ?? b.booking_id ?? '',
+          date: b.start_time ? new Date(b.start_time).toISOString().split('T')[0] : '',
+          time: b.start_time ? new Date(b.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '',
+          title: b.title ?? b.service_name ?? 'Event',
+          type: (b.type ?? 'meeting') as CalendarEvent['type'],
+          duration: b.duration_minutes ? `${b.duration_minutes} min` : undefined,
+          location: b.location ?? undefined,
+          participants: b.participants ?? [],
+          isAllDay: b.is_all_day ?? false,
+        })));
+      })
+      .catch(() => setCalendarEvents([]))
+      .finally(() => setLoading(false));
+  }, []);
+
   const today = new Date();
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
-    (mockCalendarEvents as CalendarEvent[]).forEach(event => {
+    (calendarEvents as CalendarEvent[]).forEach(event => {
       if (!map[event.date]) map[event.date] = [];
       map[event.date].push(event);
     });
@@ -384,25 +405,25 @@ export default function CalendarScreen() {
             <View style={styles.statsRow}>
               <View style={[styles.statItem, { borderLeftColor: Colors.accent.cyan }]}>
                 <Text style={styles.statValue}>
-                  {(mockCalendarEvents as CalendarEvent[]).filter(e => e.type === 'meeting').length}
+                  {(calendarEvents as CalendarEvent[]).filter(e => e.type === 'meeting').length}
                 </Text>
                 <Text style={styles.statLabel}>Meetings</Text>
               </View>
               <View style={[styles.statItem, { borderLeftColor: Colors.semantic.success }]}>
                 <Text style={styles.statValue}>
-                  {(mockCalendarEvents as CalendarEvent[]).filter(e => e.type === 'task').length}
+                  {(calendarEvents as CalendarEvent[]).filter(e => e.type === 'task').length}
                 </Text>
                 <Text style={styles.statLabel}>Tasks</Text>
               </View>
               <View style={[styles.statItem, { borderLeftColor: Colors.semantic.error }]}>
                 <Text style={styles.statValue}>
-                  {(mockCalendarEvents as CalendarEvent[]).filter(e => e.type === 'deadline').length}
+                  {(calendarEvents as CalendarEvent[]).filter(e => e.type === 'deadline').length}
                 </Text>
                 <Text style={styles.statLabel}>Deadlines</Text>
               </View>
               <View style={[styles.statItem, { borderLeftColor: '#af52de' }]}>
                 <Text style={styles.statValue}>
-                  {(mockCalendarEvents as CalendarEvent[]).filter(e => e.type === 'call').length}
+                  {(calendarEvents as CalendarEvent[]).filter(e => e.type === 'call').length}
                 </Text>
                 <Text style={styles.statLabel}>Calls</Text>
               </View>

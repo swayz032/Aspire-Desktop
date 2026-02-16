@@ -1,3 +1,8 @@
+/**
+ * @deprecated This file contains mock office inbox data used during development.
+ * Real office items are now served from Supabase inbox_items table.
+ * This file is retained for reference and fallback only. Do not add new mock data here.
+ */
 import { OfficeItem, TimelineMessage } from '@/types/inbox';
 import { SUITE_ID, OFFICE_ID } from '@/types/common';
 import { officeId } from '@/lib/ids';

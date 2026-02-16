@@ -1,17 +1,20 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, Pressable } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
-import { getDefaultSession, approveAuthorityItem, denyAuthorityItem } from '@/data/session';
 import { SessionAuthorityItem } from '@/types/session';
 import { Toast } from '@/components/session/Toast';
 import { ConfirmationModal } from '@/components/session/ConfirmationModal';
+import { SUITE_ID } from '@/types/common';
 
 const RISK_COLORS: Record<string, { bg: string; text: string }> = {
   Low: { bg: 'rgba(34, 197, 94, 0.2)', text: Colors.semantic.success },
   Medium: { bg: 'rgba(251, 191, 36, 0.2)', text: Colors.semantic.warning },
   High: { bg: 'rgba(239, 68, 68, 0.2)', text: Colors.semantic.error },
+  green: { bg: 'rgba(34, 197, 94, 0.2)', text: Colors.semantic.success },
+  yellow: { bg: 'rgba(251, 191, 36, 0.2)', text: Colors.semantic.warning },
+  red: { bg: 'rgba(239, 68, 68, 0.2)', text: Colors.semantic.error },
 };
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
@@ -20,10 +23,62 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   denied: { bg: 'rgba(239, 68, 68, 0.2)', text: Colors.semantic.error },
 };
 
+function mapRiskTier(tier: string): 'Low' | 'Medium' | 'High' {
+  if (tier === 'green') return 'Low';
+  if (tier === 'red') return 'High';
+  return 'Medium';
+}
+
+async function fetchAuthorityItems(status: string = 'pending'): Promise<SessionAuthorityItem[]> {
+  try {
+    const resp = await fetch(`/api/authority-queue?domain=finance&status=${status}`);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return (data.items || []).map((item: any) => ({
+      id: String(item.id),
+      title: item.title || 'Finance Proposal',
+      description: item.type || '',
+      risk: mapRiskTier(item.risk_tier || 'yellow'),
+      whyRequired: `${item.required_approval || 'admin'} approval required (${item.risk_tier || 'yellow'} tier)`,
+      status: item.status || 'pending',
+      evidence: item.inputs_hash ? [`inputs_hash: ${item.inputs_hash}`] : [],
+      createdAt: new Date(item.createdAt),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function serverApprove(id: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`/api/authority-queue/${id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Suite-Id': SUITE_ID },
+      body: JSON.stringify({ approvedBy: 'owner' }),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function serverDeny(id: string, reason?: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`/api/authority-queue/${id}/deny`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Suite-Id': SUITE_ID },
+      body: JSON.stringify({ deniedBy: 'owner', reason: reason || '' }),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 export default function AuthorityScreen() {
   const router = useRouter();
-  const session = getDefaultSession();
-  const [authorityItems, setAuthorityItems] = useState(session.authorityQueue);
+  const [authorityItems, setAuthorityItems] = useState<SessionAuthorityItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
@@ -32,6 +87,20 @@ export default function AuthorityScreen() {
     action: 'approve' | 'deny';
     item: SessionAuthorityItem | null;
   }>({ visible: false, action: 'approve', item: null });
+
+  const loadItems = useCallback(async () => {
+    setLoading(true);
+    const [pending, resolved] = await Promise.all([
+      fetchAuthorityItems('pending'),
+      fetchAuthorityItems('approved'),
+    ]);
+    // Also fetch denied
+    const denied = await fetchAuthorityItems('denied');
+    setAuthorityItems([...pending, ...resolved, ...denied]);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadItems(); }, [loadItems]);
 
   const pendingItems = authorityItems.filter(i => i.status === 'pending');
   const resolvedItems = authorityItems.filter(i => i.status !== 'pending');
@@ -44,28 +113,38 @@ export default function AuthorityScreen() {
     setConfirmModal({ visible: true, action: 'deny', item });
   };
 
-  const executeAction = () => {
+  const executeAction = async () => {
     if (!confirmModal.item) return;
-    
+
     const itemId = confirmModal.item.id;
     const itemTitle = confirmModal.item.title;
-    
+
     if (confirmModal.action === 'approve') {
-      approveAuthorityItem(itemId);
-      setAuthorityItems(prev => prev.map(item => 
-        item.id === itemId ? { ...item, status: 'approved' as const } : item
-      ));
-      setToastMessage(`Approved: ${itemTitle}`);
-      setToastType('success');
+      const ok = await serverApprove(itemId);
+      if (ok) {
+        setAuthorityItems(prev => prev.map(item =>
+          item.id === itemId ? { ...item, status: 'approved' as const } : item
+        ));
+        setToastMessage(`Approved: ${itemTitle}`);
+        setToastType('success');
+      } else {
+        setToastMessage(`Failed to approve: ${itemTitle}`);
+        setToastType('error');
+      }
     } else {
-      denyAuthorityItem(itemId);
-      setAuthorityItems(prev => prev.map(item => 
-        item.id === itemId ? { ...item, status: 'denied' as const } : item
-      ));
-      setToastMessage(`Denied: ${itemTitle}`);
-      setToastType('error');
+      const ok = await serverDeny(itemId);
+      if (ok) {
+        setAuthorityItems(prev => prev.map(item =>
+          item.id === itemId ? { ...item, status: 'denied' as const } : item
+        ));
+        setToastMessage(`Denied: ${itemTitle}`);
+        setToastType('error');
+      } else {
+        setToastMessage(`Failed to deny: ${itemTitle}`);
+        setToastType('error');
+      }
     }
-    
+
     setToastVisible(true);
     setConfirmModal({ visible: false, action: 'approve', item: null });
   };
@@ -98,14 +177,28 @@ export default function AuthorityScreen() {
           <Text style={styles.headerTitle}>Authority Queue</Text>
           <Text style={styles.headerSubtitle}>{pendingItems.length} pending approval</Text>
         </View>
-        <View style={styles.headerRight} />
+        <Pressable style={styles.backButton} onPress={loadItems}>
+          <Ionicons name="refresh" size={22} color={Colors.text.secondary} />
+        </Pressable>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
+        {loading && (
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <ActivityIndicator size="large" color={Colors.accent.cyan} />
+            <Text style={[styles.headerSubtitle, { marginTop: 12 }]}>Loading authority queue...</Text>
+          </View>
+        )}
+        {!loading && pendingItems.length === 0 && resolvedItems.length === 0 && (
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <Ionicons name="checkmark-circle-outline" size={48} color={Colors.text.muted} />
+            <Text style={[styles.headerSubtitle, { marginTop: 12 }]}>No items in the authority queue</Text>
+          </View>
+        )}
         {pendingItems.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>Pending Approval</Text>

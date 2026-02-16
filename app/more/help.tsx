@@ -4,8 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
-import { seedDatabase } from '@/lib/mockSeed';
-import { getFAQArticles } from '@/lib/mockDb';
 import { FAQArticle } from '@/types/support';
 
 function FAQItem({ article, isExpanded, onToggle }: { article: FAQArticle; isExpanded: boolean; onToggle: () => void }) {
@@ -55,12 +53,17 @@ export default function HelpScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    seedDatabase();
-    const timer = setTimeout(() => {
-      setArticles(getFAQArticles());
-      setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
+    // FAQ articles are static content — defined inline
+    const staticArticles: FAQArticle[] = [
+      { id: 'faq_1', question: 'How do I approve an authority item?', answer: 'Navigate to the Authority Queue on your Home screen. Tap on any item to view its details. You can then choose to Approve, Deny, or Defer the item. Every action you take generates a receipt for your records.', category: 'Getting Started', helpful: 42, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'faq_2', question: 'What is a Receipt and why does it matter?', answer: 'A Receipt is an immutable audit trail entry that documents every action taken by AI staff on your behalf. Receipts include the intent, execution plan, evidence, and policy evaluation. They ensure complete accountability and transparency.', category: 'Core Concepts', helpful: 38, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'faq_3', question: 'How do I add a new AI staff member?', answer: 'Go to the Office Store from the More tab. Browse available staff members and tap "Enable Staff" on any member you want to add. You can configure their permissions and daily limits after enabling.', category: 'Staff Management', helpful: 35, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'faq_4', question: 'What happens if an AI action is blocked?', answer: 'When an action is blocked, it means the AI staff member attempted something that violated your configured policies or exceeded their permissions. The blocked action generates a receipt explaining why it was stopped, and no external action is taken.', category: 'Security', helpful: 45, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'faq_5', question: 'How do I connect external integrations?', answer: 'Navigate to Integrations from the More tab. Select the service you want to connect and follow the authentication flow. Once connected, the integration will sync automatically and appear in your health dashboard.', category: 'Integrations', helpful: 28, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'faq_6', question: 'How secure is my business data?', answer: 'All data is encrypted at rest and in transit. AI staff operate within strict sandboxes and cannot access data outside their permissions. Every action is logged, and you maintain full control over what each staff member can access.', category: 'Security', helpful: 62, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    ];
+    setArticles(staticArticles);
+    setLoading(false);
   }, []);
 
   const filteredArticles = articles.filter(a => 

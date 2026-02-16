@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { AvaOrbVideo, OrbState } from '@/components/AvaOrbVideo';
-import { mockTenant } from '@/data/mockData';
+import { useTenant } from '@/providers/TenantProvider';
 import { ConfirmationModal } from '@/components/session/ConfirmationModal';
 import { Toast } from '@/components/session/Toast';
 import { BottomSheet } from '@/components/session/BottomSheet';
@@ -32,6 +32,7 @@ const MENU_OPTIONS = [
 export default function VoiceSession() {
   const router = useRouter();
   const isDesktop = useDesktop();
+  const { tenant } = useTenant();
   const [orbState, setOrbState] = useState<OrbState>('idle');
   const [currentActivity, setCurrentActivity] = useState<string>('Connecting to Ava...');
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
@@ -193,7 +194,7 @@ export default function VoiceSession() {
         <View style={styles.identityPill}>
           <View style={styles.liveDot} />
           <Text style={styles.identityText}>
-            {mockTenant.businessName}
+            {tenant?.businessName ?? 'Aspire Business'}
           </Text>
         </View>
 

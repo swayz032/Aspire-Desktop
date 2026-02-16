@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,28 +7,113 @@ import { Card } from '@/components/ui/Card';
 import { useRouter } from 'expo-router';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
-import {
-  mockBusinessProfile,
-  mockDailyQuote,
-  mockGrowthLevers,
-  mockMarketAngles,
-  mockAdvisoryPacks,
-  mockRecommendedTools,
-  mockRecommendedAgents,
-  initialDraftArtifacts,
-} from '@/data/mockAdvisory';
+import { supabase } from '@/lib/supabase';
+import { useTenant } from '@/providers/TenantProvider';
 import { DraftArtifact, RecommendedTool } from '@/types/advisory';
+
+// Advisory data comes from Adam (research agent) + n8n workflows → Supabase receipts
+type BusinessProfile = { industry: string; stage: string; connectedTools: string[]; companyName: string; employeeCount: number };
+type DailyQuote = { id: string; quote: string; author: string; source: string };
+type GrowthLever = { id: string; title: string; whyItMatters: string; whyYouSeeThis: string; roiExpectation: { type: string; value: string; timeframe: string }; riskTier: string; evidenceType: string; packId: string };
+type MarketAngle = { id: string; title: string; description: string; opportunity: string; timeframe: string; confidence: string };
+type AdvisoryPack = { id: string; title: string; description: string; category: string; price: string; features: string[] };
+type RecommendedAgent = { id: string; name: string; role: string; description: string; status: string };
 
 export default function AdvisorScreen() {
   const router = useRouter();
   const isDesktop = useDesktop();
+  const { tenant } = useTenant();
   const [quoteHidden, setQuoteHidden] = useState(false);
-  const [draftArtifacts, setDraftArtifacts] = useState<DraftArtifact[]>(initialDraftArtifacts);
-  const [connectedTools, setConnectedTools] = useState<string[]>(
-    mockRecommendedTools.filter(t => t.connected).map(t => t.id)
-  );
+  const [loading, setLoading] = useState(true);
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfile>({
+    industry: tenant?.businessName ?? 'Business', stage: 'growth', connectedTools: [], companyName: tenant?.businessName ?? '', employeeCount: 0,
+  });
+  const [dailyQuote, setDailyQuote] = useState<DailyQuote>({ id: '', quote: 'Connect your tools to unlock AI-powered business intelligence.', author: 'Aspire', source: 'Aspire Intelligence' });
+  const [growthLevers, setGrowthLevers] = useState<GrowthLever[]>([]);
+  const [marketAngles, setMarketAngles] = useState<MarketAngle[]>([]);
+  const [advisoryPacks, setAdvisoryPacks] = useState<AdvisoryPack[]>([]);
+  const [recommendedTools, setRecommendedTools] = useState<RecommendedTool[]>([]);
+  const [recommendedAgents, setRecommendedAgents] = useState<RecommendedAgent[]>([]);
+  const [draftArtifacts, setDraftArtifacts] = useState<DraftArtifact[]>([]);
+  const [connectedTools, setConnectedTools] = useState<string[]>([]);
   const [installedPacks, setInstalledPacks] = useState<string[]>([]);
   const [installedAgentConfigs, setInstalledAgentConfigs] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function loadAdvisoryData() {
+      try {
+        // Research results from Adam agent → receipts table
+        const { data: researchReceipts } = await supabase
+          .from('receipts')
+          .select('*')
+          .or('action_type.like.research.%,action_type.like.advisory.%,action_type.like.adam.%')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (researchReceipts?.length) {
+          // Parse growth levers from Adam's research receipts
+          const levers = researchReceipts
+            .filter((r: any) => r.action_type?.includes('growth') || r.action_type?.includes('lever'))
+            .map((r: any, i: number) => ({
+              id: r.id ?? `lever-${i}`,
+              title: r.payload?.title ?? r.action_type ?? 'Growth Opportunity',
+              whyItMatters: r.payload?.why_it_matters ?? '',
+              whyYouSeeThis: r.payload?.why_you_see_this ?? 'Based on your connected tool data.',
+              roiExpectation: r.payload?.roi ?? { type: 'potential', value: 'TBD', timeframe: 'next 30 days' },
+              riskTier: r.risk_tier ?? 'yellow',
+              evidenceType: r.payload?.evidence_type ?? 'ai-generated',
+              packId: r.payload?.pack_id ?? '',
+            }));
+          if (levers.length) setGrowthLevers(levers);
+
+          // Parse market angles
+          const angles = researchReceipts
+            .filter((r: any) => r.action_type?.includes('market') || r.action_type?.includes('angle'))
+            .map((r: any, i: number) => ({
+              id: r.id ?? `angle-${i}`,
+              title: r.payload?.title ?? 'Market Insight',
+              description: r.payload?.description ?? '',
+              opportunity: r.payload?.opportunity ?? '',
+              timeframe: r.payload?.timeframe ?? '',
+              confidence: r.payload?.confidence ?? 'medium',
+            }));
+          if (angles.length) setMarketAngles(angles);
+        }
+
+        // Connected tools from finance_connections
+        const { data: connections } = await supabase
+          .from('finance_connections')
+          .select('name, provider, status')
+          .eq('status', 'active');
+        if (connections?.length) {
+          setConnectedTools(connections.map((c: any) => c.name ?? c.provider));
+          setRecommendedTools(connections.map((c: any) => ({
+            id: c.provider ?? c.name,
+            name: c.name ?? c.provider,
+            connected: true,
+            description: `Connected ${c.provider} account`,
+          } as RecommendedTool)));
+        }
+
+        // Suite profile for business info
+        const { data: profile } = await supabase.from('suite_profiles').select('*').limit(1).single();
+        if (profile) {
+          setBusinessProfile({
+            industry: profile.industry ?? 'Business Services',
+            stage: profile.stage ?? 'growth',
+            connectedTools: connections?.map((c: any) => c.name) ?? [],
+            companyName: profile.business_name ?? '',
+            employeeCount: profile.employee_count ?? 0,
+          });
+        }
+      } catch {
+        // Empty state — no advisory data yet
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadAdvisoryData();
+  }, []);
 
   const hasEvidenceBacked = connectedTools.length >= 2;
 
@@ -128,11 +213,11 @@ export default function AdvisorScreen() {
             <View style={styles.chipRow}>
               <View style={styles.chip}>
                 <Ionicons name="business-outline" size={12} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.chipText}>{mockBusinessProfile.industry}</Text>
+                <Text style={styles.chipText}>{businessProfile.industry}</Text>
               </View>
               <View style={styles.chip}>
                 <Ionicons name="trending-up-outline" size={12} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.chipText}>{mockBusinessProfile.stage}</Text>
+                <Text style={styles.chipText}>{businessProfile.stage}</Text>
               </View>
               <View style={[styles.chip, hasEvidenceBacked ? styles.chipSuccess : styles.chipWarning]}>
                 <Ionicons 
@@ -152,7 +237,7 @@ export default function AdvisorScreen() {
           <View style={styles.quoteRibbon}>
             <View style={styles.quoteContent}>
               <Ionicons name="chatbubble-outline" size={14} color="rgba(255,255,255,0.6)" />
-              <Text style={styles.quoteText} numberOfLines={1}>"{mockDailyQuote.quote}"</Text>
+              <Text style={styles.quoteText} numberOfLines={1}>"{dailyQuote.quote}"</Text>
             </View>
             <View style={styles.quoteActions}>
               <TouchableOpacity style={styles.quoteActionBtn}>
@@ -173,7 +258,7 @@ export default function AdvisorScreen() {
             <Text style={styles.sectionTitle}>Top Growth Levers</Text>
             <Text style={styles.sectionBadge}>3 identified</Text>
           </View>
-          {mockGrowthLevers.map((lever) => (
+          {growthLevers.map((lever) => (
             <Card key={lever.id} variant="elevated" style={styles.leverCard}>
               <View style={styles.leverHeader}>
                 <View style={[styles.leverDot, { backgroundColor: getRiskColor(lever.riskTier) }]} />
@@ -230,7 +315,7 @@ export default function AdvisorScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Market Angles You Might Be Missing</Text>
           </View>
-          {mockMarketAngles.map((angle) => (
+          {marketAngles.map((angle) => (
             <Card key={angle.id} variant="elevated" style={styles.angleCard}>
               <View style={styles.angleHeader}>
                 <View style={[styles.leverDot, { backgroundColor: getRiskColor(angle.riskTier) }]} />
@@ -288,7 +373,7 @@ export default function AdvisorScreen() {
             <Text style={styles.sectionTitle}>Advisory Packs</Text>
             <Text style={styles.sectionBadge}>Installable</Text>
           </View>
-          {mockAdvisoryPacks.map((pack) => (
+          {advisoryPacks.map((pack) => (
             <Card key={pack.id} variant="elevated" style={styles.packCard}>
               <View style={styles.packHeader}>
                 <View style={styles.packIconWrapper}>
@@ -340,12 +425,12 @@ export default function AdvisorScreen() {
             <Text style={styles.sectionSubtitle}>Connect to unlock evidence-backed insights</Text>
           </View>
           <Card variant="elevated" style={styles.toolsCard}>
-            {mockRecommendedTools.map((tool, index) => (
+            {recommendedTools.map((tool, index) => (
               <View 
                 key={tool.id} 
                 style={[
                   styles.toolRow,
-                  index < mockRecommendedTools.length - 1 && styles.toolRowBorder
+                  index < recommendedTools.length - 1 && styles.toolRowBorder
                 ]}
               >
                 <View style={styles.toolInfo}>
@@ -374,7 +459,7 @@ export default function AdvisorScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recommended Agents</Text>
           </View>
-          {mockRecommendedAgents.map((agent) => (
+          {recommendedAgents.map((agent) => (
             <Card key={agent.id} variant="elevated" style={styles.agentCard}>
               <View style={styles.agentHeader}>
                 <View style={[styles.agentAvatar, { backgroundColor: agent.avatarColor }]}>

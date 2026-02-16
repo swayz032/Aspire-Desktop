@@ -1,3 +1,4 @@
+export { SupabaseProvider, useSupabase } from './SupabaseProvider';
 export { TenantProvider, useTenant } from './TenantProvider';
 export { SessionProvider, useSession } from './SessionProvider';
 export { AvaDockProvider, useAvaDock } from './AvaDockProvider';

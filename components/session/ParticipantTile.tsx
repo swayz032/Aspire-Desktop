@@ -1,10 +1,41 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { AvaVoiceStrip } from './AvaVoiceStrip';
+
+/**
+ * Renders a LiveKit HTMLVideoElement inside a React Native View (web only).
+ */
+function VideoTrackView({ videoEl }: { videoEl: HTMLVideoElement }) {
+  const containerRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !containerRef.current || !videoEl) return;
+    const container = containerRef.current;
+    videoEl.style.width = '100%';
+    videoEl.style.height = '100%';
+    videoEl.style.objectFit = 'cover';
+    videoEl.style.position = 'absolute';
+    videoEl.style.top = '0';
+    videoEl.style.left = '0';
+    container.appendChild(videoEl);
+    return () => {
+      if (container.contains(videoEl)) {
+        container.removeChild(videoEl);
+      }
+    };
+  }, [videoEl]);
+
+  return (
+    <View
+      ref={containerRef}
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' } as any}
+    />
+  );
+}
 
 export interface ConferenceParticipant {
   id: string;
@@ -27,14 +58,17 @@ interface ParticipantTileProps {
   isActiveSpeaker?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
+  /** Optional LiveKit video track element for rendering real video */
+  videoTrack?: HTMLVideoElement | null;
 }
 
-export function ParticipantTile({ 
-  participant, 
+export function ParticipantTile({
+  participant,
   size = 'medium',
   isActiveSpeaker = false,
   onPress,
   onLongPress,
+  videoTrack,
 }: ParticipantTileProps) {
   const { 
     name, 
@@ -160,16 +194,20 @@ export function ParticipantTile({
           </View>
         ) : (
           <View style={styles.videoFeed}>
-            <LinearGradient
-              colors={['#2d3436', '#636e72', '#2d3436']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.videoPlaceholder}
-            >
-              <View style={[styles.miniAvatar, { backgroundColor: avatarColor }]}>
-                <Text style={styles.miniInitials}>{initials}</Text>
-              </View>
-            </LinearGradient>
+            {videoTrack && Platform.OS === 'web' ? (
+              <VideoTrackView videoEl={videoTrack} />
+            ) : (
+              <LinearGradient
+                colors={['#2d3436', '#636e72', '#2d3436']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.videoPlaceholder}
+              >
+                <View style={[styles.miniAvatar, { backgroundColor: avatarColor }]}>
+                  <Text style={styles.miniInitials}>{initials}</Text>
+                </View>
+              </LinearGradient>
+            )}
             <LinearGradient
               colors={['transparent', 'transparent', 'rgba(0,0,0,0.7)']}
               style={styles.videoOverlay}

@@ -5,8 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { formatRelativeTime } from '@/lib/formatters';
-import { seedDatabase } from '@/lib/mockSeed';
-import { getSecuritySettings, updateSecuritySettings } from '@/lib/mockDb';
 import { SecuritySettings, TrustedDevice } from '@/types/tenant';
 
 const AUTO_LOCK_OPTIONS = [
@@ -62,18 +60,13 @@ export default function SecurityScreen() {
   });
 
   useEffect(() => {
-    seedDatabase();
-    const timer = setTimeout(() => {
-      setSettings(getSecuritySettings());
-      setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
+    // Settings are local-only (no Supabase table); use defaults
+    setLoading(false);
   }, []);
 
   const handleUpdate = (key: keyof SecuritySettings, value: any) => {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
-    updateSecuritySettings(updated);
   };
 
   return (

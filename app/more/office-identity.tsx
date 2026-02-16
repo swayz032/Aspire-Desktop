@@ -4,8 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
-import { seedDatabase } from '@/lib/mockSeed';
-import { getTenant } from '@/lib/mockDb';
+import { getSuiteProfile } from '@/lib/api';
 import { Tenant } from '@/types/tenant';
 
 function EditableField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
@@ -45,18 +44,33 @@ export default function OfficeIdentityScreen() {
   const [ownerEmail, setOwnerEmail] = useState('');
 
   useEffect(() => {
-    seedDatabase();
-    const timer = setTimeout(() => {
-      const t = getTenant();
-      if (t) {
+    const fetchTenant = async () => {
+      try {
+        const profile = await getSuiteProfile();
+        const t: Tenant = {
+          id: profile.id ?? '',
+          businessName: profile.business_name ?? profile.businessName ?? '',
+          suiteId: profile.suite_id ?? '',
+          officeId: profile.office_id ?? '',
+          ownerName: profile.owner_name ?? profile.ownerName ?? '',
+          ownerEmail: profile.owner_email ?? profile.ownerEmail ?? '',
+          role: profile.role ?? 'Founder',
+          timezone: profile.timezone ?? 'America/Los_Angeles',
+          currency: profile.currency ?? 'USD',
+          createdAt: profile.created_at ?? new Date().toISOString(),
+          updatedAt: profile.updated_at ?? new Date().toISOString(),
+        };
         setTenant(t);
         setBusinessName(t.businessName);
         setOwnerName(t.ownerName);
         setOwnerEmail(t.ownerEmail);
+      } catch (e) {
+        console.warn('Failed to load tenant profile:', e);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
+    };
+    fetchTenant();
   }, []);
 
   const handleSave = () => {

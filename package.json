@@ -19,6 +19,7 @@
     "preset": "jest-expo"
   },
   "dependencies": {
+    "@anam-ai/js-sdk": "^4.8.0",
     "@elevenlabs/react": "^0.13.0",
     "@expo/cli": "^54.0.23",
     "@expo/metro-runtime": "~6.1.2",
@@ -32,6 +33,7 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@shopify/react-native-skia": "^2.4.14",
+    "@supabase/supabase-js": "^2.95.3",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.16.0",
@@ -62,6 +64,8 @@
     "expo-web-browser": "~15.0.7",
     "express": "^5.2.1",
     "google-auth-library": "^10.5.0",
+    "livekit-client": "^2.9.0",
+    "livekit-server-sdk": "^2.15.0",
     "node-quickbooks": "^2.0.47",
     "otplib": "^13.2.1",
     "pg": "^8.18.0",

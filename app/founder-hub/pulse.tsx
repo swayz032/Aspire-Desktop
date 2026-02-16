@@ -1,10 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, ImageBackground } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
-import { pulseItems } from '@/data/founderHub/palletMock';
 import { getHubImage } from '@/data/founderHub/imageHelper';
+import { supabase } from '@/lib/supabase';
+
+interface PulseItem {
+  id: string;
+  category: string;
+  title: string;
+  summary: string;
+  imageKey: string;
+}
+
+const IMAGE_KEYS_BY_CATEGORY: Record<string, string> = {
+  Sales: 'warehouse-dock',
+  Operations: 'pallet-stacks',
+  Procurement: 'lumber-yard',
+  Safety: 'safety-floor',
+  Market: 'truck-loading',
+  Pricing: 'delivery-truck',
+};
 
 const THEME = {
   bg: '#000000',
@@ -40,6 +57,44 @@ const quickFilters = [
 export default function PulseScreen() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [pulseItems, setPulseItems] = useState<PulseItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        // Query Adam's research receipts for pulse/insight content
+        const { data } = await supabase
+          .from('receipts')
+          .select('*')
+          .or('action_type.like.research.%,action_type.like.founder_hub.pulse%,action_type.like.adam.%')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (!mounted) return;
+
+        if (data && data.length > 0) {
+          setPulseItems(data.map((r: any, idx: number) => {
+            const payload = r.payload ?? r.metadata ?? {};
+            const category = payload.category ?? payload.domain ?? 'Market';
+            return {
+              id: r.id ?? `pulse-${idx}`,
+              category,
+              title: payload.title ?? r.action_type ?? 'Research insight',
+              summary: payload.summary ?? payload.snippet ?? payload.description ?? '',
+              imageKey: IMAGE_KEYS_BY_CATEGORY[category] ?? 'warehouse-dock',
+            };
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load pulse items:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
@@ -154,6 +209,18 @@ export default function PulseScreen() {
       </View>
 
       <View style={styles.pulseGrid}>
+        {loading && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>Loading pulse insights...</Text>
+          </View>
+        )}
+        {!loading && pulseItems.length === 0 && (
+          <View style={styles.emptyState}>
+            <Ionicons name="analytics-outline" size={32} color={THEME.text.muted} />
+            <Text style={styles.emptyTitle}>No pulse insights yet</Text>
+            <Text style={styles.emptyText}>Adam will generate industry intelligence once research workflows are active.</Text>
+          </View>
+        )}
         {pulseItems.map((item, idx) => (
           <Pressable
             key={item.id}
@@ -483,5 +550,24 @@ const styles = StyleSheet.create({
   alertDesc: {
     fontSize: 12,
     color: THEME.text.muted,
+  },
+  emptyState: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: THEME.text.secondary,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: THEME.text.muted,
+    textAlign: 'center',
+    maxWidth: 320,
+    lineHeight: 18,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, Pressable, ImageBackground } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -7,7 +7,8 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Badge } from '@/components/ui/Badge';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Card } from '@/components/ui/Card';
-import { mockTenant, mockAuthorityQueue, mockDocuments } from '@/data/mockData';
+import { useTenant } from '@/providers/TenantProvider';
+import { getAuthorityQueue } from '@/lib/api';
 import { AuthorityItem } from '@/types';
 import { ConfirmationModal } from '@/components/session/ConfirmationModal';
 import { Toast } from '@/components/session/Toast';
@@ -27,13 +28,18 @@ const MENU_OPTIONS = [
 export default function VideoSession() {
   const router = useRouter();
   const isDesktop = useDesktop();
+  const { tenant } = useTenant();
+  const [authorityItems, setAuthorityItems] = useState<any[]>([]);
+  const [sessionDocuments, setSessionDocuments] = useState<any[]>([]);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [endSessionVisible, setEndSessionVisible] = useState(false);
   const [chatVisible, setChatVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [chatMessages, setChatMessages] = useState<{id: string; senderId: string; senderName: string; text: string; timestamp: Date}[]>([]);
-  const [authorityItems, setAuthorityItems] = useState(() => mockAuthorityQueue.slice(0, 2));
+  useEffect(() => {
+    getAuthorityQueue().then(items => setAuthorityItems(items.slice(0, 2))).catch(() => {});
+  }, []);
   const [connectionState, setConnectionState] = useState<'connecting' | 'connected'>('connecting');
   
   const [toastMessage, setToastMessage] = useState('');
@@ -202,14 +208,14 @@ export default function VideoSession() {
         <View style={styles.identityBar}>
           <View style={styles.identityDot} />
           <Text style={styles.identityText}>
-            {mockTenant.businessName} • Suite {mockTenant.suiteId}
+            {tenant?.businessName ?? 'Aspire Business'} • Suite {tenant?.suiteId ?? ''}
           </Text>
         </View>
 
         <View style={styles.contextSection}>
-          <SectionHeader title="Session Context" subtitle={`(${mockDocuments.length})`} />
+          <SectionHeader title="Session Context" subtitle={`(${sessionDocuments.length})`} />
           <View style={styles.contextChips}>
-            {mockDocuments.map((doc) => (
+            {sessionDocuments.map((doc) => (
               <Pressable 
                 key={doc.id} 
                 style={styles.contextChip}
@@ -386,7 +392,7 @@ export default function VideoSession() {
                     </View>
                   </View>
                   <Text style={desktopStyles.identityText}>
-                    {mockTenant.businessName} • Suite {mockTenant.suiteId}
+                    {tenant?.businessName ?? 'Aspire Business'} • Suite {tenant?.suiteId ?? ''}
                   </Text>
                 </View>
 
@@ -437,7 +443,7 @@ export default function VideoSession() {
                     </View>
                   </View>
                   <Text style={desktopStyles.identityText}>
-                    {mockTenant.businessName} • Suite {mockTenant.suiteId}
+                    {tenant?.businessName ?? 'Aspire Business'} • Suite {tenant?.suiteId ?? ''}
                   </Text>
                 </View>
 
@@ -1213,6 +1219,26 @@ const desktopStyles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  controlWithBadge: {
+    position: 'relative',
+  },
+  controlBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.accent.cyan,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  controlBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
   },
   controlIconWrapperActive: {
     backgroundColor: 'rgba(59, 130, 246, 0.25)',

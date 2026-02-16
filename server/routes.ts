@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { storage } from './storage';
 import { getUncachableStripeClient, getStripePublishableKey } from './stripeClient';
+import { db } from './db';
+import { sql } from 'drizzle-orm';
 
 const router = Router();
 
@@ -364,261 +366,517 @@ router.post('/api/book/:slug/confirm/:bookingId', async (req: Request, res: Resp
   }
 });
 
-router.get('/api/frontdesk/setup', async (req: Request, res: Response) => {
+// @deprecated — frontdesk setup/preview-audio endpoints moved to telephonyEnterpriseRoutes.ts
+
+/**
+ * ElevenLabs TTS — Text-to-Speech Only (Law #1: Single Brain)
+ *
+ * ElevenLabs is the mouth. NOT the brain.
+ * Intelligence comes from the LangGraph orchestrator via OpenAI SDK skill packs.
+ * This route converts orchestrator response text → audio via ElevenLabs TTS API.
+ */
+const VOICE_IDS: Record<string, string> = {
+  ava: '56bWURjYFHyYyVf490Dp',
+  eli: 'c6kFzbpMaJ8UMD5P6l72',
+  finn: 's3TPKV1kjDlVtZbl4Ksh',
+  nora: '6aDn1KB0hjpdcocrUkmq',
+};
+
+router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
   try {
-    const suiteId = (req.query.userId as string) || (req.query.suiteId as string);
-    if (!suiteId) return res.status(400).json({ error: 'suiteId required' });
-    const setup = await storage.getFrontDeskSetup(suiteId);
-    res.json(setup || null);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.patch('/api/frontdesk/setup', async (req: Request, res: Response) => {
-  try {
-    const { userId, suiteId: bodySuiteId, ...data } = req.body;
-    const suiteId = bodySuiteId || userId;
-    if (!suiteId) return res.status(400).json({ error: 'suiteId required' });
-    const setup = await storage.upsertFrontDeskSetup(suiteId, data);
-    res.json(setup);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.post('/api/frontdesk/preview-audio', async (req: Request, res: Response) => {
-  try {
-    const { clipType, reason, businessName, voiceId } = req.body;
-    const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-
-    console.log('Audio preview request:', { clipType, reason, businessName, voiceId });
-    console.log('ElevenLabs API key present:', !!ELEVENLABS_API_KEY);
-
-    if (!ELEVENLABS_API_KEY) {
-      console.error('ElevenLabs API key not found in environment');
-      return res.status(500).json({ error: 'ElevenLabs API key not configured' });
-    }
-
-    let text = '';
-    if (clipType === 'greeting') {
-      text = `Hi, this is Sarah, the AI assistant for ${businessName || 'your business'}. How can I help you today?`;
-    } else {
-      text = `Hi, this is Sarah, the AI assistant for ${businessName || 'your business'}. I'd be happy to help you with that. Let me ask you a few quick questions to make sure I get all the details right.`;
-    }
-
-    const targetVoiceId = voiceId || 'uMM5TEnpKKgD758knVJO';
-    console.log('Calling ElevenLabs TTS with voice:', targetVoiceId);
-
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${targetVoiceId}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': ELEVENLABS_API_KEY,
-      },
-      body: JSON.stringify({
-        text,
-        model_id: 'eleven_monolingual_v1',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-        },
-      }),
-    });
-
-    console.log('ElevenLabs response status:', response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('ElevenLabs API error:', response.status, errorText);
-      return res.status(500).json({ error: `ElevenLabs error: ${response.status} - ${errorText}` });
-    }
-
-    const audioBuffer = await response.arrayBuffer();
-    const base64Audio = Buffer.from(audioBuffer).toString('base64');
-    const audioUrl = `data:audio/mpeg;base64,${base64Audio}`;
-
-    console.log('Audio generated successfully, size:', audioBuffer.byteLength);
-    res.json({ audioUrl, cached: false });
-  } catch (error: any) {
-    console.error('Audio preview error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.post('/api/elevenlabs/signed-url', async (req: Request, res: Response) => {
-  try {
-    const { agent } = req.body;
+    const { agent, text, voiceId } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
       return res.status(500).json({ error: 'ElevenLabs API key not configured' });
     }
 
-    let agentId: string | undefined;
-    if (agent === 'eli') {
-      agentId = process.env.ELEVENLABS_ELI_AGENT_ID;
-    } else if (agent === 'ava') {
-      agentId = process.env.ELEVENLABS_AVA_AGENT_ID;
-    }
-
-    if (!agentId) {
+    const resolvedVoiceId = voiceId || VOICE_IDS[agent];
+    if (!resolvedVoiceId) {
       return res.status(400).json({ error: `Unknown agent: ${agent}` });
     }
 
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'Missing or empty text parameter' });
+    }
+
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${agentId}`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}`,
       {
-        method: 'GET',
-        headers: { 'xi-api-key': ELEVENLABS_API_KEY },
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
+        },
+        body: JSON.stringify({
+          text: text.trim(),
+          model_id: 'eleven_turbo_v2_5',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+          },
+        }),
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('ElevenLabs signed URL error:', response.status, errorText);
-      return res.status(500).json({ error: `Failed to get signed URL: ${response.status}` });
+      console.error('ElevenLabs TTS error:', response.status, errorText);
+      return res.status(500).json({ error: `TTS failed: ${response.status}` });
     }
 
-    const data = await response.json() as { signed_url: string };
-    res.json({ signedUrl: data.signed_url });
+    const audioBuffer = await response.arrayBuffer();
+    res.set('Content-Type', 'audio/mpeg');
+    res.send(Buffer.from(audioBuffer));
   } catch (error: any) {
-    console.error('Signed URL error:', error);
+    console.error('TTS error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-router.get('/api/inbox/items', async (_req: Request, res: Response) => {
+router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) => {
+  try {
+    const { agent, text, voiceId } = req.body;
+    const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!ELEVENLABS_API_KEY) {
+      return res.status(500).json({ error: 'ElevenLabs API key not configured' });
+    }
+
+    const resolvedVoiceId = voiceId || VOICE_IDS[agent];
+    if (!resolvedVoiceId) {
+      return res.status(400).json({ error: `Unknown agent: ${agent}` });
+    }
+
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'Missing or empty text parameter' });
+    }
+
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
+        },
+        body: JSON.stringify({
+          text: text.trim(),
+          model_id: 'eleven_turbo_v2_5',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok || !response.body) {
+      const errorText = await response.text();
+      console.error('ElevenLabs TTS stream error:', response.status, errorText);
+      return res.status(500).json({ error: `TTS stream failed: ${response.status}` });
+    }
+
+    res.set('Content-Type', 'audio/mpeg');
+    res.set('Transfer-Encoding', 'chunked');
+    const reader = response.body.getReader();
+    const pump = async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) { res.end(); break; }
+        res.write(value);
+      }
+    };
+    await pump();
+  } catch (error: any) {
+    console.error('TTS stream error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Sandbox Health Check — Verify provider sandbox API keys are configured
+ * Does NOT log or expose key values (Law #9: Never log secrets)
+ */
+router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
+  const checks: Record<string, { configured: boolean; sandbox: boolean; status: string }> = {};
+
+  // Stripe
+  const stripeKey = process.env.STRIPE_SECRET_KEY || '';
+  checks.stripe = {
+    configured: !!stripeKey,
+    sandbox: stripeKey.startsWith('sk_test_'),
+    status: !stripeKey ? 'NOT_SET' : stripeKey.startsWith('sk_test_') ? 'SANDBOX_OK' : 'LIVE_KEY_WARNING',
+  };
+
+  // Plaid
+  const plaidId = process.env.PLAID_CLIENT_ID || '';
+  const plaidSecret = process.env.PLAID_SECRET || '';
+  checks.plaid = {
+    configured: !!plaidId && !!plaidSecret,
+    sandbox: true, // Plaid sandbox is env-based, not key-prefix based
+    status: !plaidId || !plaidSecret ? 'NOT_SET' : 'CONFIGURED',
+  };
+
+  // Gusto
+  const gustoId = process.env.GUSTO_CLIENT_ID || '';
+  checks.gusto = {
+    configured: !!gustoId,
+    sandbox: true, // Gusto uses gusto-demo.com for sandbox
+    status: !gustoId ? 'NOT_SET' : 'CONFIGURED',
+  };
+
+  // QuickBooks
+  const qbId = process.env.QUICKBOOKS_CLIENT_ID || '';
+  checks.quickbooks = {
+    configured: !!qbId,
+    sandbox: true, // QB sandbox is app-level config
+    status: !qbId ? 'NOT_SET' : 'CONFIGURED',
+  };
+
+  // ElevenLabs
+  checks.elevenlabs = {
+    configured: !!process.env.ELEVENLABS_API_KEY,
+    sandbox: true,
+    status: process.env.ELEVENLABS_API_KEY ? 'CONFIGURED' : 'NOT_SET',
+  };
+
+  // Deepgram
+  checks.deepgram = {
+    configured: !!process.env.DEEPGRAM_API_KEY,
+    sandbox: true,
+    status: process.env.DEEPGRAM_API_KEY ? 'CONFIGURED' : 'NOT_SET',
+  };
+
+  // Domain Rail / PolarisM
+  checks.domain_rail = {
+    configured: !!process.env.DOMAIN_RAIL_HMAC_SECRET,
+    sandbox: true,
+    status: process.env.DOMAIN_RAIL_HMAC_SECRET ? 'CONFIGURED' : 'NOT_SET',
+  };
+
+  // Orchestrator
+  const orchUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+  checks.orchestrator = {
+    configured: !!process.env.ORCHESTRATOR_URL,
+    sandbox: true,
+    status: process.env.ORCHESTRATOR_URL ? 'CONFIGURED' : 'DEFAULT_LOCALHOST',
+  };
+
+  // LiveKit
+  checks.livekit = {
+    configured: !!process.env.LIVEKIT_URL && !!process.env.LIVEKIT_API_KEY,
+    sandbox: true,
+    status: !process.env.LIVEKIT_URL ? 'NOT_SET' : 'CONFIGURED',
+  };
+
+  // Supabase
+  checks.supabase = {
+    configured: !!process.env.EXPO_PUBLIC_SUPABASE_URL,
+    sandbox: false,
+    status: process.env.EXPO_PUBLIC_SUPABASE_URL ? 'CONFIGURED' : 'NOT_SET',
+  };
+
+  const total = Object.keys(checks).length;
+  const configured = Object.values(checks).filter(c => c.configured).length;
+
   res.json({
-    items: [
-      {
-        id: 'inb-1',
-        type: 'email',
-        from: 'Marcus Chen',
-        subject: 'Q4 Vendor Contract Renewals',
-        preview: 'Three vendor contracts are up for renewal this quarter. I\'ve reviewed the terms and have some concerns about the pricing escalation clauses in the Apex Logistics agreement.',
-        priority: 'High',
-        unread: true,
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        tags: ['contracts', 'urgent'],
-      },
-      {
-        id: 'inb-2',
-        type: 'email',
-        from: 'Sarah Kim',
-        subject: 'New Pallet Order - BlueLine Distribution',
-        preview: 'BlueLine Distribution has placed a new order for 500 standard pallets. They\'re requesting a 15% volume discount based on their annual commitment.',
-        priority: 'Medium',
-        unread: true,
-        timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-        tags: ['orders', 'pricing'],
-      },
-      {
-        id: 'inb-3',
-        type: 'notification',
-        from: 'System',
-        subject: 'Cash Position Alert',
-        preview: 'Your operating account balance has dropped below the $50,000 threshold. Current balance: $47,230. Two pending payables totaling $12,400 are due this week.',
-        priority: 'High',
-        unread: false,
-        timestamp: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
-        tags: ['finance', 'alert'],
-      },
-      {
-        id: 'inb-4',
-        type: 'email',
-        from: 'James Wright',
-        subject: 'Warehouse Capacity Planning',
-        preview: 'We\'re at 87% warehouse capacity. With the seasonal uptick coming, we should discuss either expanding storage or optimizing our current layout.',
-        priority: 'Medium',
-        unread: false,
-        timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        tags: ['operations'],
-      },
-      {
-        id: 'inb-5',
-        type: 'email',
-        from: 'Lisa Rodriguez',
-        subject: 'Insurance Policy Renewal Quote',
-        preview: 'Attached is the renewal quote for our general liability and workers comp policies. Premium increase of 8% from last year. Alternative quotes from two other carriers included.',
-        priority: 'Low',
-        unread: false,
-        timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-        tags: ['insurance', 'finance'],
-      },
-    ],
+    summary: `${configured}/${total} providers configured`,
+    all_configured: configured === total,
+    checks,
   });
+});
+
+/**
+ * Orchestrator Intent Proxy — Law #1: Single Brain
+ *
+ * Routes user text/voice intent to the LangGraph orchestrator.
+ * The orchestrator decides which skill pack handles the intent.
+ * Returns response text that gets spoken via ElevenLabs TTS.
+ *
+ * Hardened with:
+ * - 15s timeout (AbortController) — Gate 3: Reliability
+ * - Circuit breaker (3 failures → open 60s) — Gate 3: Reliability
+ * - Correlation ID forwarding — Gate 2: Observability
+ */
+const ORCHESTRATOR_TIMEOUT_MS = 15_000;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_RESET_MS = 60_000;
+let orchestratorConsecutiveFailures = 0;
+let orchestratorLastFailureAt = 0;
+
+router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  try {
+    const { agent, text, voiceId, channel } = req.body;
+
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'Missing or empty text parameter' });
+    }
+
+    const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+    const suiteId = req.headers['x-suite-id'] as string;
+    if (!suiteId) {
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Missing required header: X-Suite-Id' });
+    }
+
+    // Circuit breaker check — Law #3: fail fast when orchestrator is known-down
+    const now = Date.now();
+    if (
+      orchestratorConsecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD &&
+      (now - orchestratorLastFailureAt) < CIRCUIT_BREAKER_RESET_MS
+    ) {
+      return res.status(503).json({
+        error: 'ORCHESTRATOR_CIRCUIT_OPEN',
+        message: 'Orchestrator circuit breaker open. Retrying automatically.',
+        correlation_id: correlationId,
+      });
+    }
+
+    // Timeout enforcement — Gate 3: Reliability
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ORCHESTRATOR_TIMEOUT_MS);
+
+    const response = await fetch(`${ORCHESTRATOR_URL}/v1/intents`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Suite-Id': suiteId,
+        'X-Correlation-Id': correlationId,
+      },
+      body: JSON.stringify({
+        text: text.trim(),
+        agent: agent || 'ava',
+        voice_id: voiceId,
+        channel: channel || 'voice',
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      orchestratorConsecutiveFailures++;
+      orchestratorLastFailureAt = Date.now();
+      const errorText = await response.text();
+      console.error(`Orchestrator error [${correlationId}]:`, response.status, errorText);
+      return res.status(response.status).json({
+        response: 'I\'m having trouble processing that right now. Please try again.',
+        error: `Orchestrator returned ${response.status}`,
+        correlation_id: correlationId,
+      });
+    }
+
+    // Success — reset circuit breaker
+    orchestratorConsecutiveFailures = 0;
+
+    const data = await response.json();
+    res.json({
+      response: data.response || data.text || data.message || 'I processed your request.',
+      receipt_id: data.receipt_id,
+      action: data.action,
+      governance: data.governance || null,
+      risk_tier: data.risk_tier || data.risk?.tier || null,
+      route: data.route || null,
+      activity: data.activity || data.pipeline_steps || null,
+      correlation_id: correlationId,
+    });
+  } catch (error: any) {
+    orchestratorConsecutiveFailures++;
+    orchestratorLastFailureAt = Date.now();
+
+    if (error.name === 'AbortError') {
+      console.error(`Orchestrator timeout [${correlationId}]: exceeded ${ORCHESTRATOR_TIMEOUT_MS}ms`);
+      return res.status(504).json({
+        error: 'ORCHESTRATOR_TIMEOUT',
+        message: `Orchestrator request timed out after ${ORCHESTRATOR_TIMEOUT_MS / 1000}s`,
+        correlation_id: correlationId,
+      });
+    }
+
+    console.error(`Orchestrator intent error [${correlationId}]:`, error.message);
+    // Law #3: Fail Closed — return 503, not 200
+    res.status(503).json({
+      error: 'ORCHESTRATOR_UNAVAILABLE',
+      message: 'The orchestrator is currently unavailable. Please try again.',
+      correlation_id: correlationId,
+    });
+  }
+});
+
+router.get('/api/inbox/items', async (_req: Request, res: Response) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT id, type, sender_name AS "from", subject, preview, priority,
+             unread, created_at AS timestamp, tags
+      FROM inbox_items
+      ORDER BY created_at DESC
+      LIMIT 50
+    `);
+    const rows = (result.rows || result) as any[];
+    res.json({ items: rows });
+  } catch (error: any) {
+    // Graceful degradation: table may not exist yet
+    console.warn('inbox_items query failed, returning empty:', error.message);
+    res.json({ items: [] });
+  }
 });
 
 router.get('/api/authority-queue', async (_req: Request, res: Response) => {
-  res.json({
-    pendingApprovals: [
-      {
-        id: 'aq-1',
-        type: 'invoice',
-        title: 'Apex Logistics Invoice #4892',
-        amount: 8750,
-        currency: 'usd',
-        requestedBy: 'Marcus Chen',
-        risk: 'Medium',
-        status: 'pending',
-        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: 'aq-2',
-        type: 'contract',
-        title: 'BlueLine Distribution Service Agreement',
-        amount: 45000,
-        currency: 'usd',
-        requestedBy: 'Sarah Kim',
-        risk: 'Low',
-        status: 'pending',
-        createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: 'aq-3',
-        type: 'expense',
-        title: 'Forklift Maintenance - Q4',
-        amount: 3200,
-        currency: 'usd',
-        requestedBy: 'James Wright',
-        risk: 'Low',
-        status: 'pending',
-        createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-      },
-    ],
-    recentReceipts: [
-      {
-        id: 'rc-1',
-        type: 'payment',
-        title: 'Payroll - November 2025',
-        amount: 34500,
-        currency: 'usd',
-        status: 'completed',
-        completedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: 'rc-2',
-        type: 'payment',
-        title: 'Utility Bill - Warehouse',
-        amount: 2180,
-        currency: 'usd',
-        status: 'completed',
-        completedAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-      },
-    ],
-  });
+  try {
+    // Query pending approval requests
+    const approvalResult = await db.execute(sql`
+      SELECT id, action_type AS type, title, amount, currency,
+             requested_by AS "requestedBy", risk_tier AS risk,
+             status, created_at AS "createdAt"
+      FROM approval_requests
+      WHERE status = 'pending'
+      ORDER BY created_at DESC
+      LIMIT 20
+    `);
+    const pendingApprovals = (approvalResult.rows || approvalResult) as any[];
+
+    // Query recent completed receipts
+    const receiptResult = await db.execute(sql`
+      SELECT receipt_id AS id, action_type AS type, title, amount, currency,
+             outcome AS status, executed_at AS "completedAt"
+      FROM receipts
+      WHERE outcome = 'success'
+      ORDER BY executed_at DESC
+      LIMIT 10
+    `);
+    const recentReceipts = (receiptResult.rows || receiptResult) as any[];
+
+    res.json({ pendingApprovals, recentReceipts });
+  } catch (error: any) {
+    // Graceful degradation: tables may not exist yet
+    console.warn('authority-queue query failed, returning empty:', error.message);
+    res.json({ pendingApprovals: [], recentReceipts: [] });
+  }
 });
 
 router.post('/api/authority-queue/:id/approve', async (req: Request, res: Response) => {
+  // Law #3: Fail Closed — require suite context for state-changing operations
+  const suiteId = req.headers['x-suite-id'] as string;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Missing required header: X-Suite-Id' });
+  }
+
   const { id } = req.params;
-  res.json({ id, status: 'approved', approvedAt: new Date().toISOString() });
+  try {
+    // Update approval request status (RLS-scoped via middleware)
+    await db.execute(sql`
+      UPDATE approval_requests
+      SET status = 'approved', resolved_at = NOW()
+      WHERE id = ${id}
+    `);
+
+    // Generate approval receipt (Law #2: Receipt for All)
+    const receiptId = `RCP-${Date.now()}`;
+    const correlationId = req.headers['x-correlation-id'] as string || `corr-${Date.now()}`;
+    await db.execute(sql`
+      INSERT INTO receipts (receipt_id, action_type, outcome, reason_code, risk_tier,
+                            suite_id, correlation_id, actor_type, executed_at, title)
+      VALUES (${receiptId}, 'approval', 'success', 'user_approved', 'yellow',
+              ${suiteId}, ${correlationId}, 'user', NOW(),
+              (SELECT title FROM approval_requests WHERE id = ${id}))
+    `);
+
+    res.json({ id, status: 'approved', approvedAt: new Date().toISOString(), receiptId });
+  } catch (error: any) {
+    console.warn('approve failed:', error.message);
+    // Law #3: Fail Closed — return error, not fake success
+    res.status(500).json({ error: 'APPROVE_FAILED', message: 'Failed to approve request' });
+  }
 });
 
 router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response) => {
+  // Law #3: Fail Closed — require suite context for state-changing operations
+  const suiteId = req.headers['x-suite-id'] as string;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Missing required header: X-Suite-Id' });
+  }
+
   const { id } = req.params;
   const { reason } = req.body;
-  res.json({ id, status: 'denied', reason, deniedAt: new Date().toISOString() });
+  try {
+    // Update approval request status (RLS-scoped via middleware)
+    await db.execute(sql`
+      UPDATE approval_requests
+      SET status = 'denied', resolved_at = NOW(), denial_reason = ${reason || 'No reason provided'}
+      WHERE id = ${id}
+    `);
+
+    // Generate denial receipt (Law #2: Receipt for All)
+    const receiptId = `RCP-${Date.now()}`;
+    const correlationId = req.headers['x-correlation-id'] as string || `corr-${Date.now()}`;
+    await db.execute(sql`
+      INSERT INTO receipts (receipt_id, action_type, outcome, reason_code, risk_tier,
+                            suite_id, correlation_id, actor_type, executed_at, title)
+      VALUES (${receiptId}, 'denial', 'denied', ${reason || 'user_denied'}, 'yellow',
+              ${suiteId}, ${correlationId}, 'user', NOW(),
+              (SELECT title FROM approval_requests WHERE id = ${id}))
+    `);
+
+    res.json({ id, status: 'denied', reason, deniedAt: new Date().toISOString(), receiptId });
+  } catch (error: any) {
+    console.warn('deny failed:', error.message);
+    // Law #3: Fail Closed — return error, not fake success
+    res.status(500).json({ error: 'DENY_FAILED', message: 'Failed to deny request' });
+  }
+});
+
+/**
+ * Anam Avatar — Session Token Exchange (Law #9: secrets server-side only)
+ *
+ * The Anam API key stays on the server. The client receives a short-lived
+ * session token to initialize the Anam JS SDK with streamToVideoElement().
+ * Cara avatar (30fa96d0) + Emma voice (6bfbe25a) for Ava.
+ */
+const ANAM_PERSONA = {
+  name: 'Ava',
+  avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',
+  voiceId: '6bfbe25a-979d-40f3-a92b-5394170af54b',
+  systemPrompt: 'You are Ava, the AI executive assistant for Aspire. You help small business professionals manage their operations. Be professional, concise, and helpful.',
+};
+
+router.post('/api/anam/session', async (req: Request, res: Response) => {
+  try {
+    const ANAM_API_KEY = process.env.ANAM_API_KEY;
+    if (!ANAM_API_KEY) {
+      // Law #3: Fail Closed
+      return res.status(503).json({ error: 'ANAM_NOT_CONFIGURED', message: 'Anam API key not configured' });
+    }
+
+    const response = await fetch('https://api.anam.ai/v1/auth/session-token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${ANAM_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        persona: ANAM_PERSONA,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Anam session token error:', response.status, errorText);
+      return res.status(502).json({ error: 'ANAM_SESSION_FAILED', message: `Anam returned ${response.status}` });
+    }
+
+    const data = await response.json() as { sessionToken?: string };
+    if (!data.sessionToken) {
+      return res.status(502).json({ error: 'ANAM_NO_TOKEN', message: 'Anam did not return a session token' });
+    }
+
+    // Return only the session token — no API key exposure
+    res.json({ sessionToken: data.sessionToken });
+  } catch (error: any) {
+    console.error('Anam session error:', error);
+    res.status(500).json({ error: 'ANAM_ERROR', message: error.message });
+  }
 });
 
 // ─── Mail Onboarding API (Stubbed) ───

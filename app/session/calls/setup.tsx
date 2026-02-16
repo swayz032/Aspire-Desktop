@@ -1,14 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  TextInput,
+  Platform,
+  ImageBackground,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import type { LineMode, TeamMember } from '@/types/frontdesk';
 
-const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
-const VOICE_ID = 'uMM5TEnpKKgD758knVJO';
+// ---------------------------------------------------------------------------
+// Hero image
+// ---------------------------------------------------------------------------
+const HERO_IMAGE = require('@/assets/images/professional_busines_c8b6edd6.jpg');
 
-type LineMode = 'ASPIRE_NUMBER' | 'EXISTING_NUMBER_INBOUND_ONLY';
+// ---------------------------------------------------------------------------
+// Sarah voice ID for preview playback
+// ---------------------------------------------------------------------------
+const SARAH_VOICE_ID = 'DODLEQrClDo8wCz460ld';
+
+// ---------------------------------------------------------------------------
+// Local types (UI-only, not persisted)
+// ---------------------------------------------------------------------------
 type AfterHoursMode = 'TAKE_MESSAGE' | 'ASK_CALLBACK_TIME';
 type BusyMode = 'TAKE_MESSAGE' | 'ASK_CALLBACK_TIME' | 'RETRY_ONCE';
 type DetailLevel = 'FAST' | 'DETAILED';
@@ -18,18 +39,15 @@ interface BusinessHours {
   [day: string]: { enabled: boolean; start: string; end: string };
 }
 
-interface TeamMember {
-  name: string;
-  role: 'Sales' | 'Support' | 'Scheduling';
-  extension: string;
-}
-
 interface ReasonConfig {
   detailLevel: DetailLevel;
   questionIds: string[];
   target: TargetType;
 }
 
+// ---------------------------------------------------------------------------
+// Static data
+// ---------------------------------------------------------------------------
 const CALL_REASONS = [
   { id: 'sales', label: 'Sales & Pricing', description: 'Quote requests, pricing questions, new customer inquiries.', example: 'Can I get a quote?' },
   { id: 'scheduling', label: 'Scheduling', description: 'Book, change, or confirm pickup, delivery, or appointments.', example: 'Can we schedule for Friday?' },
@@ -74,7 +92,7 @@ const QUESTION_ALTERNATIVES: Record<string, string[][]> = {
   ],
 };
 
-const TARGET_OPTIONS = [
+const TARGET_OPTIONS: { value: TargetType; label: string }[] = [
   { value: 'OWNER', label: 'Me (Owner)' },
   { value: 'SALES', label: 'Sales' },
   { value: 'SUPPORT', label: 'Support' },
@@ -92,14 +110,21 @@ const getDefaultBusinessHours = (): BusinessHours => {
   return hours;
 };
 
+// ===========================================================================
+// Component
+// ===========================================================================
 export default function FrontDeskSetupScreen() {
-  const router = useRouter();
+  // --- loading / saving --------------------------------------------------
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // --- audio --------------------------------------------------------------
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
 
-  const [lineMode, setLineMode] = useState<LineMode>('ASPIRE_NUMBER');
+  // --- form state ---------------------------------------------------------
+  const [lineMode, setLineMode] = useState<LineMode>('ASPIRE_FULL_DUPLEX');
   const [existingNumber, setExistingNumber] = useState('');
   const [forwardingVerified, setForwardingVerified] = useState(false);
   const [businessName, setBusinessName] = useState('');
@@ -117,6 +142,7 @@ export default function FrontDeskSetupScreen() {
   const [questionMenuOpen, setQuestionMenuOpen] = useState<{ reason: string; index: number } | null>(null);
   const [expandedReason, setExpandedReason] = useState<string | null>(null);
 
+  // --- effects ------------------------------------------------------------
   useEffect(() => {
     loadSetup();
     return () => {
@@ -133,14 +159,15 @@ export default function FrontDeskSetupScreen() {
     }
   }, [enabledReasons]);
 
+  // --- data loading -------------------------------------------------------
   const loadSetup = async () => {
     try {
-      const res = await fetch(`/api/frontdesk/setup?userId=${DEMO_USER_ID}`);
+      const res = await fetch('/api/frontdesk/setup');
       if (res.ok) {
         const data = await res.json();
         if (data) {
-          setLineMode(data.lineMode || 'ASPIRE_NUMBER');
-          setExistingNumber(data.existingNumberE164 || '');
+          setLineMode(data.lineMode || 'ASPIRE_FULL_DUPLEX');
+          setExistingNumber(data.existingNumber || '');
           setForwardingVerified(data.forwardingVerified || false);
           setBusinessName(data.businessName || '');
           setBusinessHours(data.businessHours || getDefaultBusinessHours());
@@ -149,7 +176,7 @@ export default function FrontDeskSetupScreen() {
           setEnabledReasons(data.enabledReasons || []);
           setBusyMode(data.busyMode || 'TAKE_MESSAGE');
           setTeamMembers(data.teamMembers || []);
-          
+
           const configs: Record<string, ReasonConfig> = {};
           (data.enabledReasons || []).forEach((r: string) => {
             configs[r] = {
@@ -161,13 +188,14 @@ export default function FrontDeskSetupScreen() {
           setReasonConfigs(configs);
         }
       }
-    } catch (e) {
-      console.error('Failed to load setup', e);
+    } catch (_e) {
+      // Silently handle — page still renders with defaults
     } finally {
       setLoading(false);
     }
   };
 
+  // --- reason management --------------------------------------------------
   const toggleReason = (id: string) => {
     if (enabledReasons.includes(id)) {
       setEnabledReasons(enabledReasons.filter(r => r !== id));
@@ -188,14 +216,14 @@ export default function FrontDeskSetupScreen() {
   };
 
   const updateReasonConfig = (id: string, updates: Partial<ReasonConfig>) => {
-    const current = reasonConfigs[id] || { detailLevel: 'FAST', questionIds: [], target: 'OWNER' };
+    const current = reasonConfigs[id] || { detailLevel: 'FAST' as DetailLevel, questionIds: [] as string[], target: 'OWNER' as TargetType };
     const updated = { ...current, ...updates };
-    
+
     if (updates.detailLevel) {
       const count = updates.detailLevel === 'FAST' ? 2 : 3;
       updated.questionIds = (DEFAULT_QUESTIONS[id] || []).slice(0, count);
     }
-    
+
     setReasonConfigs({ ...reasonConfigs, [id]: updated });
   };
 
@@ -211,6 +239,7 @@ export default function FrontDeskSetupScreen() {
     setQuestionMenuOpen(null);
   };
 
+  // --- team management ----------------------------------------------------
   const addTeamMember = () => {
     if (!newMemberName.trim()) return;
     const extension = `Ext ${101 + teamMembers.length}`;
@@ -220,10 +249,13 @@ export default function FrontDeskSetupScreen() {
 
   const removeTeamMember = (index: number) => {
     const updated = teamMembers.filter((_, i) => i !== index);
-    updated.forEach((m, i) => { m.extension = `Ext ${101 + i}`; });
+    updated.forEach((m, i) => {
+      m.extension = `Ext ${101 + i}`;
+    });
     setTeamMembers(updated);
   };
 
+  // --- validation ---------------------------------------------------------
   const getValidationError = (): string | null => {
     if (!businessName.trim()) return 'Enter your business name.';
     if (enabledReasons.length === 0) return 'Enable at least one reason customers call.';
@@ -242,21 +274,19 @@ export default function FrontDeskSetupScreen() {
     return null;
   };
 
-  const isSetupComplete = (): boolean => {
-    return !getValidationError();
-  };
+  const isSetupComplete = (): boolean => !getValidationError();
 
+  // --- save ---------------------------------------------------------------
   const saveSetup = async () => {
     const error = getValidationError();
-    if (error) {
-      return;
-    }
+    if (error) return;
 
     setSaving(true);
+    setSaveSuccess(false);
     try {
-      const questionsByReason: Record<string, any> = {};
-      const targetByReason: Record<string, any> = {};
-      
+      const questionsByReason: Record<string, { detailLevel: DetailLevel; questionIds: string[] }> = {};
+      const targetByReason: Record<string, { targetType: TargetType }> = {};
+
       enabledReasons.forEach(r => {
         const config = reasonConfigs[r];
         questionsByReason[r] = { detailLevel: config.detailLevel, questionIds: config.questionIds };
@@ -267,10 +297,9 @@ export default function FrontDeskSetupScreen() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: DEMO_USER_ID,
           lineMode,
-          existingNumberE164: lineMode === 'EXISTING_NUMBER_INBOUND_ONLY' ? existingNumber : null,
           businessName,
+          existingNumber: lineMode === 'EXISTING_INBOUND_ONLY' ? existingNumber : null,
           businessHours,
           afterHoursMode,
           pronunciation,
@@ -280,21 +309,25 @@ export default function FrontDeskSetupScreen() {
           busyMode,
           teamMembers,
           setupComplete: isSetupComplete(),
+          greetingVoiceId: SARAH_VOICE_ID,
         }),
       });
-      
+
       if (res.ok) {
+        setSaveSuccess(true);
         setShowTeam(false);
         setQuestionMenuOpen(null);
         setExpandedReason(null);
+        setTimeout(() => setSaveSuccess(false), 2500);
       }
-    } catch (e) {
-      console.error('Save failed', e);
+    } catch (_e) {
+      // Network error — saving state resets below
     } finally {
       setSaving(false);
     }
   };
 
+  // --- audio preview ------------------------------------------------------
   const playAudio = async (clipType: 'greeting' | 'example') => {
     if (playingAudio) {
       if (audioRef.current) {
@@ -307,59 +340,45 @@ export default function FrontDeskSetupScreen() {
 
     try {
       setPlayingAudio(clipType);
-      console.log('Requesting audio preview:', { clipType, reason: previewReason, businessName });
-      
+
       const res = await fetch('/api/frontdesk/preview-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clipType,
-          reason: previewReason,
           businessName: businessName || 'Your Business',
-          voiceId: VOICE_ID,
+          voiceId: SARAH_VOICE_ID,
         }),
       });
-      
-      console.log('Audio API response status:', res.status);
-      
+
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Audio API error:', errorData);
         setPlayingAudio(null);
         return;
       }
-      
+
       const data = await res.json();
-      console.log('Audio URL received:', data.audioUrl ? 'Yes' : 'No');
-      
+
       if (data.audioUrl && Platform.OS === 'web' && typeof window !== 'undefined') {
         const audio = new window.Audio(data.audioUrl);
         audioRef.current = audio;
         audio.onended = () => {
-          console.log('Audio playback ended');
           setPlayingAudio(null);
           audioRef.current = null;
         };
-        audio.onerror = (e) => {
-          console.error('Audio element error:', e);
+        audio.onerror = () => {
           setPlayingAudio(null);
           audioRef.current = null;
-        };
-        audio.oncanplaythrough = () => {
-          console.log('Audio ready to play');
         };
         await audio.play();
-        console.log('Audio play() called');
       } else {
-        console.error('No audio URL in response or not web platform');
         setPlayingAudio(null);
       }
-    } catch (e) {
-      console.error('Audio playback failed:', e);
+    } catch (_e) {
       setPlayingAudio(null);
     }
   };
 
+  // --- transcript preview -------------------------------------------------
   const getTranscriptPreview = () => {
     if (!previewReason) return null;
     const reason = CALL_REASONS.find(r => r.id === previewReason);
@@ -378,475 +397,695 @@ export default function FrontDeskSetupScreen() {
   const transcript = getTranscriptPreview();
   const validationError = getValidationError();
 
+  // -----------------------------------------------------------------------
+  // Loading state
+  // -----------------------------------------------------------------------
   if (loading) {
     return (
       <DesktopShell>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
+          <View style={styles.loadingSpinner}>
+            <Ionicons name="headset-outline" size={32} color={Colors.accent.cyan} />
+          </View>
+          <Text style={styles.loadingText}>Loading Front Desk...</Text>
         </View>
       </DesktopShell>
     );
   }
 
+  // -----------------------------------------------------------------------
+  // Main render
+  // -----------------------------------------------------------------------
   return (
     <DesktopShell>
       <View style={styles.container}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>Front Desk Setup</Text>
-            <Text style={styles.subtitle}>Choose what Sarah handles and who gets the call note.</Text>
-          </View>
-          <Pressable
-            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-            onPress={saveSetup}
-            disabled={saving}
-          >
-            <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save changes'}</Text>
-          </Pressable>
-        </View>
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        <ScrollView style={styles.columns} showsVerticalScrollIndicator={false} contentContainerStyle={styles.columnsContent}>
-          <View style={styles.leftColumn}>
-            {/* Business Phone Line */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Business Phone Line</Text>
-              <View style={styles.radioGroup}>
-                <Pressable
-                  style={[styles.radioCard, lineMode === 'ASPIRE_NUMBER' && styles.radioCardSelected]}
-                  onPress={() => setLineMode('ASPIRE_NUMBER')}
-                >
-                  <View style={styles.radioCircle}>
-                    {lineMode === 'ASPIRE_NUMBER' && <View style={styles.radioCircleFilled} />}
-                  </View>
-                  <View style={styles.radioContent}>
-                    <Text style={styles.radioLabel}>Get an Aspire business number</Text>
-                    <Text style={styles.radioHint}>Recommended</Text>
-                  </View>
-                  <View style={styles.chipGroup}>
-                    <View style={styles.chipSuccess}><Text style={styles.chipText}>Inbound ready</Text></View>
-                    <View style={styles.chipAccent}><Text style={styles.chipText}>Outbound available</Text></View>
-                  </View>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.radioCard, lineMode === 'EXISTING_NUMBER_INBOUND_ONLY' && styles.radioCardSelected]}
-                  onPress={() => setLineMode('EXISTING_NUMBER_INBOUND_ONLY')}
-                >
-                  <View style={styles.radioCircle}>
-                    {lineMode === 'EXISTING_NUMBER_INBOUND_ONLY' && <View style={styles.radioCircleFilled} />}
-                  </View>
-                  <View style={styles.radioContent}>
-                    <Text style={styles.radioLabel}>Use my existing business number</Text>
-                    <Text style={styles.radioHint}>Inbound only</Text>
-                  </View>
-                  <View style={styles.chipGroup}>
-                    <View style={styles.chipMuted}><Text style={styles.chipTextMuted}>Outbound not available</Text></View>
-                  </View>
-                </Pressable>
-              </View>
-
-              {lineMode === 'EXISTING_NUMBER_INBOUND_ONLY' && (
-                <View style={styles.existingNumberSection}>
-                  <Text style={styles.inputLabel}>Existing business number</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={existingNumber}
-                    onChangeText={setExistingNumber}
-                    placeholder="+1 (555) 123-4567"
-                    placeholderTextColor={Colors.text.muted}
-                  />
-                  <Text style={styles.helperText}>
-                    {forwardingVerified ? '✓ Forwarding verified' : 'Forwarding required. No calls received yet.'}
+          {/* ============================================================= */}
+          {/* Hero Image Header                                             */}
+          {/* ============================================================= */}
+          <View style={styles.heroWrapper}>
+            <ImageBackground
+              source={HERO_IMAGE}
+              style={styles.heroImageBackground}
+              imageStyle={styles.heroImage}
+            >
+              <LinearGradient
+                colors={['rgba(10,10,10,0.35)', 'rgba(10,10,10,0.85)']}
+                style={styles.heroGradient}
+              >
+                <View style={styles.heroTopRow}>
+                  <Badge label="FRONT DESK" variant="info" size="md" />
+                  {isSetupComplete() && (
+                    <Badge label="READY" variant="success" size="md" />
+                  )}
+                </View>
+                <View style={styles.heroBottom}>
+                  <Text style={styles.heroTitle}>Front Desk Setup</Text>
+                  <Text style={styles.heroSubtitle}>
+                    Configure what Sarah handles and who gets the call note.
                   </Text>
                 </View>
-              )}
-            </View>
-
-            {/* Business Basics */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Business Basics</Text>
-              
-              <Text style={styles.inputLabel}>Business name</Text>
-              <TextInput
-                style={styles.input}
-                value={businessName}
-                onChangeText={setBusinessName}
-                placeholder="Your Business Name"
-                placeholderTextColor={Colors.text.muted}
-              />
-
-              <Text style={[styles.inputLabel, { marginTop: 16 }]}>Business hours</Text>
-              <View style={styles.hoursGrid}>
-                {DAYS.map(day => (
-                  <View key={day} style={styles.hoursRow}>
-                    <Pressable
-                      style={styles.dayToggle}
-                      onPress={() => setBusinessHours({
-                        ...businessHours,
-                        [day]: { ...businessHours[day], enabled: !businessHours[day].enabled }
-                      })}
-                    >
-                      <View style={[styles.checkbox, businessHours[day].enabled && styles.checkboxChecked]}>
-                        {businessHours[day].enabled && <Ionicons name="checkmark" size={12} color="#fff" />}
-                      </View>
-                      <Text style={styles.dayLabel}>{day.slice(0, 3)}</Text>
-                    </Pressable>
-                    {businessHours[day].enabled && (
-                      <View style={styles.timeInputs}>
-                        <TextInput
-                          style={styles.timeInput}
-                          value={businessHours[day].start}
-                          onChangeText={(v) => setBusinessHours({
-                            ...businessHours,
-                            [day]: { ...businessHours[day], start: v }
-                          })}
-                          placeholder="09:00"
-                          placeholderTextColor={Colors.text.muted}
-                        />
-                        <Text style={styles.timeSeparator}>to</Text>
-                        <TextInput
-                          style={styles.timeInput}
-                          value={businessHours[day].end}
-                          onChangeText={(v) => setBusinessHours({
-                            ...businessHours,
-                            [day]: { ...businessHours[day], end: v }
-                          })}
-                          placeholder="17:00"
-                          placeholderTextColor={Colors.text.muted}
-                        />
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </View>
-
-              <Text style={[styles.inputLabel, { marginTop: 16 }]}>After-hours handling</Text>
-              <View style={styles.radioGroupSmall}>
-                <Pressable
-                  style={[styles.radioSmall, afterHoursMode === 'TAKE_MESSAGE' && styles.radioSmallSelected]}
-                  onPress={() => setAfterHoursMode('TAKE_MESSAGE')}
-                >
-                  <View style={styles.radioCircleSmall}>
-                    {afterHoursMode === 'TAKE_MESSAGE' && <View style={styles.radioCircleFilledSmall} />}
-                  </View>
-                  <Text style={styles.radioLabelSmall}>Take a message (recommended)</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.radioSmall, afterHoursMode === 'ASK_CALLBACK_TIME' && styles.radioSmallSelected]}
-                  onPress={() => setAfterHoursMode('ASK_CALLBACK_TIME')}
-                >
-                  <View style={styles.radioCircleSmall}>
-                    {afterHoursMode === 'ASK_CALLBACK_TIME' && <View style={styles.radioCircleFilledSmall} />}
-                  </View>
-                  <Text style={styles.radioLabelSmall}>Ask for a callback time</Text>
-                </Pressable>
-              </View>
-
-              <Text style={[styles.inputLabel, { marginTop: 16 }]}>How to say your business name (optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={pronunciation}
-                onChangeText={setPronunciation}
-                placeholder="e.g., Zen-ith So-LOO-shuns"
-                placeholderTextColor={Colors.text.muted}
-              />
-
-              <View style={styles.lockedNotes}>
-                <View style={styles.lockedNote}>
-                  <Ionicons name="lock-closed" size={14} color={Colors.text.muted} />
-                  <Text style={styles.lockedNoteText}>Sarah always says she is A.I. and works for your business.</Text>
-                </View>
-                <View style={styles.lockedNote}>
-                  <Ionicons name="lock-closed" size={14} color={Colors.text.muted} />
-                  <Text style={styles.lockedNoteText}>Sarah never asks for billing or payment details.</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Common reasons customers call */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Common reasons customers call</Text>
-              <Text style={styles.cardDescription}>Tap to enable. Expand to customize.</Text>
-              
-              <View style={styles.reasonCards}>
-                {CALL_REASONS.map(reason => {
-                  const enabled = enabledReasons.includes(reason.id);
-                  const config = reasonConfigs[reason.id];
-                  const isExpanded = expandedReason === reason.id;
-                  return (
-                    <View key={reason.id}>
-                      <Pressable
-                        style={[styles.reasonCard, enabled && styles.reasonCardEnabled]}
-                        onPress={() => {
-                          if (!enabled) {
-                            toggleReason(reason.id);
-                            setExpandedReason(reason.id);
-                          } else {
-                            setExpandedReason(isExpanded ? null : reason.id);
-                          }
-                        }}
-                      >
-                        <View style={styles.reasonHeader}>
-                          <Pressable 
-                            style={[styles.checkbox, enabled && styles.checkboxChecked]}
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              toggleReason(reason.id);
-                              if (enabled && expandedReason === reason.id) {
-                                setExpandedReason(null);
-                              } else if (!enabled) {
-                                setExpandedReason(reason.id);
-                              }
-                            }}
-                          >
-                            {enabled && <Ionicons name="checkmark" size={12} color="#fff" />}
-                          </Pressable>
-                          <View style={styles.reasonInfo}>
-                            <Text style={styles.reasonLabel}>{reason.label}</Text>
-                            <Text style={styles.reasonDescription}>{reason.description}</Text>
-                            <Text style={styles.reasonExample}>Example: "{reason.example}"</Text>
-                          </View>
-                          {enabled && (
-                            <Ionicons 
-                              name={isExpanded ? "chevron-up" : "chevron-down"} 
-                              size={20} 
-                              color={Colors.text.muted} 
-                            />
-                          )}
-                        </View>
-                      </Pressable>
-
-                      {enabled && config && isExpanded && (
-                        <View style={styles.reasonExpanded}>
-                          <Text style={styles.expandedLabel}>How detailed should Sarah be?</Text>
-                          <View style={styles.segmentedControl}>
-                            <Pressable
-                              style={[styles.segment, config.detailLevel === 'FAST' && styles.segmentActive]}
-                              onPress={() => updateReasonConfig(reason.id, { detailLevel: 'FAST' })}
-                            >
-                              <Text style={[styles.segmentText, config.detailLevel === 'FAST' && styles.segmentTextActive]}>Fast (2 questions)</Text>
-                            </Pressable>
-                            <Pressable
-                              style={[styles.segment, config.detailLevel === 'DETAILED' && styles.segmentActive]}
-                              onPress={() => updateReasonConfig(reason.id, { detailLevel: 'DETAILED' })}
-                            >
-                              <Text style={[styles.segmentText, config.detailLevel === 'DETAILED' && styles.segmentTextActive]}>Detailed (3 questions)</Text>
-                            </Pressable>
-                          </View>
-
-                          <View style={styles.questionsList}>
-                            {config.questionIds.map((q, i) => (
-                              <View key={i} style={styles.questionRow}>
-                                <Text style={styles.questionNumber}>{i + 1}.</Text>
-                                <Text style={styles.questionText}>{q}</Text>
-                                <Pressable
-                                  style={styles.changeButton}
-                                  onPress={() => setQuestionMenuOpen({ reason: reason.id, index: i })}
-                                >
-                                  <Text style={styles.changeButtonText}>Change</Text>
-                                </Pressable>
-                              </View>
-                            ))}
-                          </View>
-
-                          {questionMenuOpen?.reason === reason.id && (
-                            <View style={styles.questionMenu}>
-                              {QUESTION_ALTERNATIVES[reason.id]?.[questionMenuOpen.index]?.map((alt, ai) => (
-                                <Pressable
-                                  key={ai}
-                                  style={styles.questionMenuItem}
-                                  onPress={() => changeQuestion(reason.id, questionMenuOpen.index, alt)}
-                                >
-                                  <Text style={styles.questionMenuItemText}>{alt}</Text>
-                                </Pressable>
-                              ))}
-                            </View>
-                          )}
-
-                          <Text style={[styles.expandedLabel, { marginTop: 16 }]}>Who should get the call note?</Text>
-                          <View style={styles.targetDropdown}>
-                            {TARGET_OPTIONS.map(opt => (
-                              <Pressable
-                                key={opt.value}
-                                style={[styles.targetOption, config.target === opt.value && styles.targetOptionSelected]}
-                                onPress={() => updateReasonConfig(reason.id, { target: opt.value as TargetType })}
-                              >
-                                <Text style={[styles.targetOptionText, config.target === opt.value && styles.targetOptionTextSelected]}>
-                                  {opt.label}
-                                </Text>
-                              </Pressable>
-                            ))}
-                          </View>
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* When we're busy */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>When we're busy</Text>
-              <View style={styles.radioGroupSmall}>
-                <Pressable
-                  style={[styles.radioSmall, busyMode === 'TAKE_MESSAGE' && styles.radioSmallSelected]}
-                  onPress={() => setBusyMode('TAKE_MESSAGE')}
-                >
-                  <View style={styles.radioCircleSmall}>
-                    {busyMode === 'TAKE_MESSAGE' && <View style={styles.radioCircleFilledSmall} />}
-                  </View>
-                  <Text style={styles.radioLabelSmall}>Take a message (recommended)</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.radioSmall, busyMode === 'ASK_CALLBACK_TIME' && styles.radioSmallSelected]}
-                  onPress={() => setBusyMode('ASK_CALLBACK_TIME')}
-                >
-                  <View style={styles.radioCircleSmall}>
-                    {busyMode === 'ASK_CALLBACK_TIME' && <View style={styles.radioCircleFilledSmall} />}
-                  </View>
-                  <Text style={styles.radioLabelSmall}>Ask for a callback time</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.radioSmall, busyMode === 'RETRY_ONCE' && styles.radioSmallSelected]}
-                  onPress={() => setBusyMode('RETRY_ONCE')}
-                >
-                  <View style={styles.radioCircleSmall}>
-                    {busyMode === 'RETRY_ONCE' && <View style={styles.radioCircleFilledSmall} />}
-                  </View>
-                  <Text style={styles.radioLabelSmall}>Try again once (30 seconds)</Text>
-                </Pressable>
-              </View>
-              <Text style={styles.helperText}>Sarah will always save a call note.</Text>
-            </View>
-
-            {/* Team (Optional) */}
-            <View style={styles.card}>
-              <Pressable style={styles.collapsibleHeader} onPress={() => setShowTeam(!showTeam)}>
-                <Text style={styles.cardTitle}>Team (Optional)</Text>
-                <Ionicons name={showTeam ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.text.secondary} />
-              </Pressable>
-
-              {showTeam && (
-                <View style={styles.teamSection}>
-                  <View style={styles.addMemberRow}>
-                    <TextInput
-                      style={[styles.input, { flex: 1 }]}
-                      value={newMemberName}
-                      onChangeText={setNewMemberName}
-                      placeholder="Team member name"
-                      placeholderTextColor={Colors.text.muted}
-                    />
-                    <View style={styles.roleSelector}>
-                      {(['Sales', 'Support', 'Scheduling'] as const).map(role => (
-                        <Pressable
-                          key={role}
-                          style={[styles.roleOption, newMemberRole === role && styles.roleOptionSelected]}
-                          onPress={() => setNewMemberRole(role)}
-                        >
-                          <Text style={[styles.roleOptionText, newMemberRole === role && styles.roleOptionTextSelected]}>{role}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                    <Pressable style={styles.addButton} onPress={addTeamMember}>
-                      <Ionicons name="add" size={20} color="#fff" />
-                    </Pressable>
-                  </View>
-
-                  {teamMembers.map((member, i) => (
-                    <View key={i} style={styles.teamMemberRow}>
-                      <View style={styles.teamMemberInfo}>
-                        <Text style={styles.teamMemberName}>{member.name}</Text>
-                        <Text style={styles.teamMemberRole}>{member.role}</Text>
-                      </View>
-                      <Text style={styles.teamMemberExt}>{member.extension}</Text>
-                      <Pressable onPress={() => removeTeamMember(i)}>
-                        <Ionicons name="close-circle" size={20} color={Colors.text.muted} />
-                      </Pressable>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
+              </LinearGradient>
+            </ImageBackground>
           </View>
 
-          {/* Right Column - Preview */}
-          <View style={styles.rightColumn}>
-            <View style={styles.readinessCard}>
+          {/* ============================================================= */}
+          {/* Save bar                                                      */}
+          {/* ============================================================= */}
+          <View style={styles.saveBar}>
+            <View style={styles.saveBarLeft}>
               {validationError ? (
-                <View style={styles.readinessWarning}>
-                  <Ionicons name="warning" size={18} color="#f59e0b" />
+                <View style={styles.readinessRow}>
+                  <Ionicons name="warning" size={16} color={Colors.accent.amber} />
                   <Text style={styles.readinessWarningText}>{validationError}</Text>
                 </View>
               ) : (
-                <View style={styles.readinessReady}>
-                  <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+                <View style={styles.readinessRow}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.semantic.success} />
                   <Text style={styles.readinessReadyText}>Ready to turn on</Text>
                 </View>
               )}
             </View>
+            <Pressable
+              style={[
+                styles.saveButton,
+                saving && styles.saveButtonDisabled,
+                saveSuccess && styles.saveButtonSuccess,
+              ]}
+              onPress={saveSetup}
+              disabled={saving}
+              accessibilityLabel="Save front desk settings"
+              accessibilityRole="button"
+            >
+              {saveSuccess ? (
+                <>
+                  <Ionicons name="checkmark" size={16} color="#fff" />
+                  <Text style={styles.saveButtonText}>Saved</Text>
+                </>
+              ) : (
+                <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save changes'}</Text>
+              )}
+            </Pressable>
+          </View>
 
-            <View style={styles.previewCard}>
-              <Text style={styles.previewTitle}>What callers will hear</Text>
-              
-              {enabledReasons.length > 0 && (
-                <View style={styles.previewDropdown}>
-                  {enabledReasons.map(id => {
-                    const reason = CALL_REASONS.find(r => r.id === id);
-                    return (
+          {/* ============================================================= */}
+          {/* Two-column layout                                             */}
+          {/* ============================================================= */}
+          <View style={styles.columns}>
+            {/* =========================================================== */}
+            {/* Left Column — Configuration                                 */}
+            {/* =========================================================== */}
+            <View style={styles.leftColumn}>
+
+              {/* --- Business Phone Line --------------------------------- */}
+              <Card variant="default" padding="lg">
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardIconBox}>
+                    <Ionicons name="call-outline" size={18} color={Colors.accent.cyan} />
+                  </View>
+                  <Text style={styles.cardTitle}>Business Phone Line</Text>
+                </View>
+
+                <View style={styles.radioGroup}>
+                  <Pressable
+                    style={[styles.radioCard, lineMode === 'ASPIRE_FULL_DUPLEX' && styles.radioCardSelected]}
+                    onPress={() => setLineMode('ASPIRE_FULL_DUPLEX')}
+                    accessibilityLabel="Get an Aspire business number"
+                    accessibilityRole="radio"
+                  >
+                    <View style={styles.radioCircle}>
+                      {lineMode === 'ASPIRE_FULL_DUPLEX' && <View style={styles.radioCircleFilled} />}
+                    </View>
+                    <View style={styles.radioContent}>
+                      <Text style={styles.radioLabel}>Get an Aspire business number</Text>
+                      <Text style={styles.radioHint}>Full duplex -- inbound and outbound</Text>
+                    </View>
+                    <View style={styles.chipGroup}>
+                      <Badge label="Inbound ready" variant="success" size="sm" />
+                      <Badge label="Outbound available" variant="info" size="sm" />
+                    </View>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.radioCard, lineMode === 'EXISTING_INBOUND_ONLY' && styles.radioCardSelected]}
+                    onPress={() => setLineMode('EXISTING_INBOUND_ONLY')}
+                    accessibilityLabel="Use my existing business number"
+                    accessibilityRole="radio"
+                  >
+                    <View style={styles.radioCircle}>
+                      {lineMode === 'EXISTING_INBOUND_ONLY' && <View style={styles.radioCircleFilled} />}
+                    </View>
+                    <View style={styles.radioContent}>
+                      <Text style={styles.radioLabel}>Use my existing business number</Text>
+                      <Text style={styles.radioHint}>Inbound only -- forward calls to Aspire</Text>
+                    </View>
+                    <View style={styles.chipGroup}>
+                      <Badge label="Outbound not available" variant="muted" size="sm" />
+                    </View>
+                  </Pressable>
+                </View>
+
+                {lineMode === 'EXISTING_INBOUND_ONLY' && (
+                  <View style={styles.existingNumberSection}>
+                    <Text style={styles.inputLabel}>Existing business number</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={existingNumber}
+                      onChangeText={setExistingNumber}
+                      placeholder="+1 (555) 123-4567"
+                      placeholderTextColor={Colors.text.muted}
+                      accessibilityLabel="Existing business number"
+                    />
+                    <Text style={styles.helperText}>
+                      {forwardingVerified
+                        ? 'Forwarding verified'
+                        : 'Forwarding required. No calls received yet.'}
+                    </Text>
+                  </View>
+                )}
+              </Card>
+
+              {/* --- Business Basics ------------------------------------- */}
+              <Card variant="default" padding="lg">
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardIconBox}>
+                    <Ionicons name="business-outline" size={18} color={Colors.accent.cyan} />
+                  </View>
+                  <Text style={styles.cardTitle}>Business Basics</Text>
+                </View>
+
+                <Text style={styles.inputLabel}>Business name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={businessName}
+                  onChangeText={setBusinessName}
+                  placeholder="Your Business Name"
+                  placeholderTextColor={Colors.text.muted}
+                  accessibilityLabel="Business name"
+                />
+
+                <Text style={[styles.inputLabel, { marginTop: Spacing.lg }]}>Business hours</Text>
+                <View style={styles.hoursGrid}>
+                  {DAYS.map(day => (
+                    <View key={day} style={styles.hoursRow}>
                       <Pressable
-                        key={id}
-                        style={[styles.previewOption, previewReason === id && styles.previewOptionSelected]}
-                        onPress={() => setPreviewReason(id)}
+                        style={styles.dayToggle}
+                        onPress={() =>
+                          setBusinessHours({
+                            ...businessHours,
+                            [day]: { ...businessHours[day], enabled: !businessHours[day].enabled },
+                          })
+                        }
+                        accessibilityLabel={`Toggle ${day}`}
+                        accessibilityRole="checkbox"
                       >
-                        <Text style={[styles.previewOptionText, previewReason === id && styles.previewOptionTextSelected]}>
-                          {reason?.label}
-                        </Text>
+                        <View style={[styles.checkbox, businessHours[day].enabled && styles.checkboxChecked]}>
+                          {businessHours[day].enabled && <Ionicons name="checkmark" size={12} color="#fff" />}
+                        </View>
+                        <Text style={styles.dayLabel}>{day.slice(0, 3)}</Text>
                       </Pressable>
+                      {businessHours[day].enabled && (
+                        <View style={styles.timeInputs}>
+                          <TextInput
+                            style={styles.timeInput}
+                            value={businessHours[day].start}
+                            onChangeText={v =>
+                              setBusinessHours({
+                                ...businessHours,
+                                [day]: { ...businessHours[day], start: v },
+                              })
+                            }
+                            placeholder="09:00"
+                            placeholderTextColor={Colors.text.muted}
+                          />
+                          <Text style={styles.timeSeparator}>to</Text>
+                          <TextInput
+                            style={styles.timeInput}
+                            value={businessHours[day].end}
+                            onChangeText={v =>
+                              setBusinessHours({
+                                ...businessHours,
+                                [day]: { ...businessHours[day], end: v },
+                              })
+                            }
+                            placeholder="17:00"
+                            placeholderTextColor={Colors.text.muted}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+
+                <Text style={[styles.inputLabel, { marginTop: Spacing.lg }]}>After-hours handling</Text>
+                <View style={styles.radioGroupSmall}>
+                  <Pressable
+                    style={[styles.radioSmall, afterHoursMode === 'TAKE_MESSAGE' && styles.radioSmallSelected]}
+                    onPress={() => setAfterHoursMode('TAKE_MESSAGE')}
+                    accessibilityRole="radio"
+                  >
+                    <View style={styles.radioCircleSmall}>
+                      {afterHoursMode === 'TAKE_MESSAGE' && <View style={styles.radioCircleFilledSmall} />}
+                    </View>
+                    <Text style={styles.radioLabelSmall}>Take a message (recommended)</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.radioSmall, afterHoursMode === 'ASK_CALLBACK_TIME' && styles.radioSmallSelected]}
+                    onPress={() => setAfterHoursMode('ASK_CALLBACK_TIME')}
+                    accessibilityRole="radio"
+                  >
+                    <View style={styles.radioCircleSmall}>
+                      {afterHoursMode === 'ASK_CALLBACK_TIME' && <View style={styles.radioCircleFilledSmall} />}
+                    </View>
+                    <Text style={styles.radioLabelSmall}>Ask for a callback time</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={[styles.inputLabel, { marginTop: Spacing.lg }]}>
+                  How to say your business name (optional)
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={pronunciation}
+                  onChangeText={setPronunciation}
+                  placeholder="e.g., Zen-ith So-LOO-shuns"
+                  placeholderTextColor={Colors.text.muted}
+                  accessibilityLabel="Business name pronunciation"
+                />
+
+                <View style={styles.lockedNotes}>
+                  <View style={styles.lockedNote}>
+                    <Ionicons name="lock-closed" size={14} color={Colors.text.muted} />
+                    <Text style={styles.lockedNoteText}>Sarah always says she is A.I. and works for your business.</Text>
+                  </View>
+                  <View style={styles.lockedNote}>
+                    <Ionicons name="lock-closed" size={14} color={Colors.text.muted} />
+                    <Text style={styles.lockedNoteText}>Sarah never asks for billing or payment details.</Text>
+                  </View>
+                </View>
+              </Card>
+
+              {/* --- Call Reasons ----------------------------------------- */}
+              <Card variant="default" padding="lg">
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardIconBox}>
+                    <Ionicons name="chatbubbles-outline" size={18} color={Colors.accent.cyan} />
+                  </View>
+                  <View>
+                    <Text style={styles.cardTitle}>Common reasons customers call</Text>
+                    <Text style={styles.cardDescription}>Tap to enable. Expand to customize.</Text>
+                  </View>
+                </View>
+
+                <View style={styles.reasonCards}>
+                  {CALL_REASONS.map(reason => {
+                    const enabled = enabledReasons.includes(reason.id);
+                    const config = reasonConfigs[reason.id];
+                    const isExpanded = expandedReason === reason.id;
+                    return (
+                      <View key={reason.id}>
+                        <Pressable
+                          style={[styles.reasonCard, enabled && styles.reasonCardEnabled]}
+                          onPress={() => {
+                            if (!enabled) {
+                              toggleReason(reason.id);
+                              setExpandedReason(reason.id);
+                            } else {
+                              setExpandedReason(isExpanded ? null : reason.id);
+                            }
+                          }}
+                          accessibilityLabel={`${reason.label} call reason`}
+                          accessibilityRole="checkbox"
+                        >
+                          <View style={styles.reasonHeader}>
+                            <Pressable
+                              style={[styles.checkbox, enabled && styles.checkboxChecked]}
+                              onPress={e => {
+                                e.stopPropagation();
+                                toggleReason(reason.id);
+                                if (enabled && expandedReason === reason.id) {
+                                  setExpandedReason(null);
+                                } else if (!enabled) {
+                                  setExpandedReason(reason.id);
+                                }
+                              }}
+                              accessibilityRole="checkbox"
+                            >
+                              {enabled && <Ionicons name="checkmark" size={12} color="#fff" />}
+                            </Pressable>
+                            <View style={styles.reasonInfo}>
+                              <Text style={styles.reasonLabel}>{reason.label}</Text>
+                              <Text style={styles.reasonDescription}>{reason.description}</Text>
+                              <Text style={styles.reasonExample}>Example: "{reason.example}"</Text>
+                            </View>
+                            {enabled && (
+                              <Ionicons
+                                name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                                size={20}
+                                color={Colors.text.muted}
+                              />
+                            )}
+                          </View>
+                        </Pressable>
+
+                        {/* Expanded config */}
+                        {enabled && config && isExpanded && (
+                          <View style={styles.reasonExpanded}>
+                            <Text style={styles.expandedLabel}>How detailed should Sarah be?</Text>
+                            <View style={styles.segmentedControl}>
+                              <Pressable
+                                style={[styles.segment, config.detailLevel === 'FAST' && styles.segmentActive]}
+                                onPress={() => updateReasonConfig(reason.id, { detailLevel: 'FAST' })}
+                              >
+                                <Text
+                                  style={[
+                                    styles.segmentText,
+                                    config.detailLevel === 'FAST' && styles.segmentTextActive,
+                                  ]}
+                                >
+                                  Fast (2 questions)
+                                </Text>
+                              </Pressable>
+                              <Pressable
+                                style={[styles.segment, config.detailLevel === 'DETAILED' && styles.segmentActive]}
+                                onPress={() => updateReasonConfig(reason.id, { detailLevel: 'DETAILED' })}
+                              >
+                                <Text
+                                  style={[
+                                    styles.segmentText,
+                                    config.detailLevel === 'DETAILED' && styles.segmentTextActive,
+                                  ]}
+                                >
+                                  Detailed (3 questions)
+                                </Text>
+                              </Pressable>
+                            </View>
+
+                            <View style={styles.questionsList}>
+                              {config.questionIds.map((q, i) => (
+                                <View key={i} style={styles.questionRow}>
+                                  <Text style={styles.questionNumber}>{i + 1}.</Text>
+                                  <Text style={styles.questionText}>{q}</Text>
+                                  <Pressable
+                                    style={styles.changeButton}
+                                    onPress={() => setQuestionMenuOpen({ reason: reason.id, index: i })}
+                                  >
+                                    <Text style={styles.changeButtonText}>Change</Text>
+                                  </Pressable>
+                                </View>
+                              ))}
+                            </View>
+
+                            {questionMenuOpen?.reason === reason.id && (
+                              <View style={styles.questionMenu}>
+                                {QUESTION_ALTERNATIVES[reason.id]?.[questionMenuOpen.index]?.map((alt, ai) => (
+                                  <Pressable
+                                    key={ai}
+                                    style={styles.questionMenuItem}
+                                    onPress={() => changeQuestion(reason.id, questionMenuOpen.index, alt)}
+                                  >
+                                    <Text style={styles.questionMenuItemText}>{alt}</Text>
+                                  </Pressable>
+                                ))}
+                              </View>
+                            )}
+
+                            <Text style={[styles.expandedLabel, { marginTop: Spacing.lg }]}>
+                              Who should get the call note?
+                            </Text>
+                            <View style={styles.targetDropdown}>
+                              {TARGET_OPTIONS.map(opt => (
+                                <Pressable
+                                  key={opt.value}
+                                  style={[
+                                    styles.targetOption,
+                                    config.target === opt.value && styles.targetOptionSelected,
+                                  ]}
+                                  onPress={() => updateReasonConfig(reason.id, { target: opt.value })}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.targetOptionText,
+                                      config.target === opt.value && styles.targetOptionTextSelected,
+                                    ]}
+                                  >
+                                    {opt.label}
+                                  </Text>
+                                </Pressable>
+                              ))}
+                            </View>
+                          </View>
+                        )}
+                      </View>
                     );
                   })}
                 </View>
-              )}
+              </Card>
 
-              {transcript && (
-                <View style={styles.transcriptPreview}>
-                  <View style={styles.transcriptLine}>
-                    <Text style={styles.transcriptSpeaker}>Caller:</Text>
-                    <Text style={styles.transcriptText}>"{transcript.callerExample}"</Text>
+              {/* --- Busy Mode ------------------------------------------- */}
+              <Card variant="default" padding="lg">
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardIconBox}>
+                    <Ionicons name="time-outline" size={18} color={Colors.accent.cyan} />
                   </View>
-                  <View style={styles.transcriptLine}>
-                    <Text style={styles.transcriptSpeakerSarah}>Sarah:</Text>
-                    <Text style={styles.transcriptText}>{transcript.greeting}</Text>
-                  </View>
-                  {transcript.questions.map((q, i) => (
-                    <View key={i} style={styles.transcriptLine}>
-                      <Text style={styles.transcriptSpeakerSarah}>Sarah:</Text>
-                      <Text style={styles.transcriptText}>{q}</Text>
-                    </View>
-                  ))}
-                  <View style={styles.transcriptResult}>
-                    <Ionicons name="document-text" size={14} color={Colors.text.muted} />
-                    <Text style={styles.transcriptResultText}>A call note is sent to: {transcript.target}</Text>
-                  </View>
+                  <Text style={styles.cardTitle}>When we're busy</Text>
                 </View>
-              )}
 
-              <View style={styles.audioButtons}>
+                <View style={styles.radioGroupSmall}>
+                  <Pressable
+                    style={[styles.radioSmall, busyMode === 'TAKE_MESSAGE' && styles.radioSmallSelected]}
+                    onPress={() => setBusyMode('TAKE_MESSAGE')}
+                    accessibilityRole="radio"
+                  >
+                    <View style={styles.radioCircleSmall}>
+                      {busyMode === 'TAKE_MESSAGE' && <View style={styles.radioCircleFilledSmall} />}
+                    </View>
+                    <Text style={styles.radioLabelSmall}>Take a message (recommended)</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.radioSmall, busyMode === 'ASK_CALLBACK_TIME' && styles.radioSmallSelected]}
+                    onPress={() => setBusyMode('ASK_CALLBACK_TIME')}
+                    accessibilityRole="radio"
+                  >
+                    <View style={styles.radioCircleSmall}>
+                      {busyMode === 'ASK_CALLBACK_TIME' && <View style={styles.radioCircleFilledSmall} />}
+                    </View>
+                    <Text style={styles.radioLabelSmall}>Ask for a callback time</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.radioSmall, busyMode === 'RETRY_ONCE' && styles.radioSmallSelected]}
+                    onPress={() => setBusyMode('RETRY_ONCE')}
+                    accessibilityRole="radio"
+                  >
+                    <View style={styles.radioCircleSmall}>
+                      {busyMode === 'RETRY_ONCE' && <View style={styles.radioCircleFilledSmall} />}
+                    </View>
+                    <Text style={styles.radioLabelSmall}>Try again once (30 seconds)</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.helperText}>Sarah will always save a call note.</Text>
+              </Card>
+
+              {/* --- Team (Optional) ------------------------------------- */}
+              <Card variant="default" padding="lg">
                 <Pressable
-                  style={[styles.audioButton, playingAudio === 'greeting' && styles.audioButtonPlaying]}
-                  onPress={() => playAudio('greeting')}
+                  style={styles.collapsibleHeader}
+                  onPress={() => setShowTeam(!showTeam)}
+                  accessibilityLabel="Toggle team section"
+                  accessibilityRole="button"
                 >
-                  <Ionicons name={playingAudio === 'greeting' ? 'stop' : 'play'} size={16} color={Colors.accent.cyan} />
-                  <Text style={styles.audioButtonText}>{playingAudio === 'greeting' ? 'Stop' : 'Hear greeting'}</Text>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.cardIconBox}>
+                      <Ionicons name="people-outline" size={18} color={Colors.accent.cyan} />
+                    </View>
+                    <Text style={styles.cardTitle}>Team (Optional)</Text>
+                  </View>
+                  <Ionicons name={showTeam ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.text.secondary} />
                 </Pressable>
-                <Pressable
-                  style={[styles.audioButton, playingAudio === 'example' && styles.audioButtonPlaying]}
-                  onPress={() => playAudio('example')}
-                >
-                  <Ionicons name={playingAudio === 'example' ? 'stop' : 'play'} size={16} color={Colors.accent.cyan} />
-                  <Text style={styles.audioButtonText}>{playingAudio === 'example' ? 'Stop' : 'Hear this example'}</Text>
-                </Pressable>
-              </View>
+
+                {showTeam && (
+                  <View style={styles.teamSection}>
+                    <View style={styles.addMemberRow}>
+                      <TextInput
+                        style={[styles.input, { flex: 1 }]}
+                        value={newMemberName}
+                        onChangeText={setNewMemberName}
+                        placeholder="Team member name"
+                        placeholderTextColor={Colors.text.muted}
+                        accessibilityLabel="New team member name"
+                      />
+                      <View style={styles.roleSelector}>
+                        {(['Sales', 'Support', 'Scheduling'] as const).map(role => (
+                          <Pressable
+                            key={role}
+                            style={[styles.roleOption, newMemberRole === role && styles.roleOptionSelected]}
+                            onPress={() => setNewMemberRole(role)}
+                          >
+                            <Text style={[styles.roleOptionText, newMemberRole === role && styles.roleOptionTextSelected]}>
+                              {role}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <Pressable style={styles.addButton} onPress={addTeamMember} accessibilityLabel="Add team member">
+                        <Ionicons name="add" size={20} color="#fff" />
+                      </Pressable>
+                    </View>
+
+                    {teamMembers.map((member, i) => (
+                      <View key={i} style={styles.teamMemberRow}>
+                        <View style={styles.teamMemberAvatar}>
+                          <Text style={styles.teamMemberInitial}>{member.name.charAt(0)}</Text>
+                        </View>
+                        <View style={styles.teamMemberInfo}>
+                          <Text style={styles.teamMemberName}>{member.name}</Text>
+                          <Text style={styles.teamMemberRole}>{member.role}</Text>
+                        </View>
+                        <Text style={styles.teamMemberExt}>{member.extension}</Text>
+                        <Pressable onPress={() => removeTeamMember(i)} accessibilityLabel={`Remove ${member.name}`}>
+                          <Ionicons name="close-circle" size={20} color={Colors.text.muted} />
+                        </Pressable>
+                      </View>
+                    ))}
+
+                    {teamMembers.length === 0 && (
+                      <Text style={styles.emptyTeamText}>No team members added yet.</Text>
+                    )}
+                  </View>
+                )}
+              </Card>
+            </View>
+
+            {/* =========================================================== */}
+            {/* Right Column — Preview                                      */}
+            {/* =========================================================== */}
+            <View style={styles.rightColumn}>
+              {/* Readiness card */}
+              <Card variant="default" padding="lg">
+                {validationError ? (
+                  <View style={styles.readinessRow}>
+                    <Ionicons name="warning" size={18} color={Colors.accent.amber} />
+                    <Text style={styles.readinessWarningText}>{validationError}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.readinessRow}>
+                    <Ionicons name="checkmark-circle" size={18} color={Colors.semantic.success} />
+                    <Text style={styles.readinessReadyText}>Ready to turn on</Text>
+                  </View>
+                )}
+              </Card>
+
+              {/* Live transcript preview */}
+              <Card variant="default" padding="lg">
+                <View style={styles.previewHeader}>
+                  <View style={styles.cardIconBox}>
+                    <Ionicons name="chatbox-ellipses-outline" size={16} color={Colors.accent.cyan} />
+                  </View>
+                  <Text style={styles.previewTitle}>What callers will hear</Text>
+                </View>
+
+                {enabledReasons.length > 0 && (
+                  <View style={styles.previewDropdown}>
+                    {enabledReasons.map(id => {
+                      const reason = CALL_REASONS.find(r => r.id === id);
+                      return (
+                        <Pressable
+                          key={id}
+                          style={[styles.previewOption, previewReason === id && styles.previewOptionSelected]}
+                          onPress={() => setPreviewReason(id)}
+                        >
+                          <Text
+                            style={[
+                              styles.previewOptionText,
+                              previewReason === id && styles.previewOptionTextSelected,
+                            ]}
+                          >
+                            {reason?.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {transcript ? (
+                  <View style={styles.transcriptPreview}>
+                    <View style={styles.transcriptLine}>
+                      <Text style={styles.transcriptSpeaker}>Caller:</Text>
+                      <Text style={styles.transcriptText}>"{transcript.callerExample}"</Text>
+                    </View>
+                    <View style={styles.transcriptLine}>
+                      <Text style={styles.transcriptSpeakerSarah}>Sarah:</Text>
+                      <Text style={styles.transcriptText}>{transcript.greeting}</Text>
+                    </View>
+                    {transcript.questions.map((q, i) => (
+                      <View key={i} style={styles.transcriptLine}>
+                        <Text style={styles.transcriptSpeakerSarah}>Sarah:</Text>
+                        <Text style={styles.transcriptText}>{q}</Text>
+                      </View>
+                    ))}
+                    <View style={styles.transcriptResult}>
+                      <Ionicons name="document-text" size={14} color={Colors.text.muted} />
+                      <Text style={styles.transcriptResultText}>
+                        A call note is sent to: {transcript.target}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.emptyPreview}>
+                    <Ionicons name="headset-outline" size={32} color={Colors.text.disabled} />
+                    <Text style={styles.emptyPreviewText}>Enable a call reason to see the preview.</Text>
+                  </View>
+                )}
+
+                <View style={styles.audioButtons}>
+                  <Pressable
+                    style={[styles.audioButton, playingAudio === 'greeting' && styles.audioButtonPlaying]}
+                    onPress={() => playAudio('greeting')}
+                    accessibilityLabel={playingAudio === 'greeting' ? 'Stop greeting' : 'Hear greeting'}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name={playingAudio === 'greeting' ? 'stop' : 'play'}
+                      size={16}
+                      color={Colors.accent.cyan}
+                    />
+                    <Text style={styles.audioButtonText}>
+                      {playingAudio === 'greeting' ? 'Stop' : 'Hear greeting'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.audioButton, playingAudio === 'example' && styles.audioButtonPlaying]}
+                    onPress={() => playAudio('example')}
+                    accessibilityLabel={playingAudio === 'example' ? 'Stop example' : 'Hear this example'}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name={playingAudio === 'example' ? 'stop' : 'play'}
+                      size={16}
+                      color={Colors.accent.cyan}
+                    />
+                    <Text style={styles.audioButtonText}>
+                      {playingAudio === 'example' ? 'Stop' : 'Hear this example'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </Card>
+
+              {/* Voice info card */}
+              <Card variant="elevated" padding="lg">
+                <View style={styles.voiceInfoRow}>
+                  <View style={styles.voiceAvatar}>
+                    <Ionicons name="mic" size={16} color={Colors.accent.cyan} />
+                  </View>
+                  <View style={styles.voiceInfoText}>
+                    <Text style={styles.voiceInfoName}>Sarah</Text>
+                    <Text style={styles.voiceInfoDesc}>AI Front Desk Agent</Text>
+                  </View>
+                  <Badge label="Active" variant="success" size="sm" />
+                </View>
+              </Card>
             </View>
           </View>
         </ScrollView>
@@ -855,106 +1094,179 @@ export default function FrontDeskSetupScreen() {
   );
 }
 
+// ===========================================================================
+// Styles
+// ===========================================================================
 const styles = StyleSheet.create({
+  // --- Layout -------------------------------------------------------------
   container: {
     flex: 1,
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: Colors.background.primary,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 48,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: Spacing.md,
+  },
+  loadingSpinner: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.accent.cyanLight,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingText: {
+    ...Typography.caption,
     color: Colors.text.secondary,
-    fontSize: 16,
   },
-  header: {
+
+  // --- Hero ---------------------------------------------------------------
+  heroWrapper: {
+    marginBottom: Spacing.xl,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+  },
+  heroImageBackground: {
+    height: 200,
+  },
+  heroImage: {
+    borderRadius: BorderRadius.xl,
+  },
+  heroGradient: {
+    flex: 1,
+    padding: Spacing.xxl,
+    justifyContent: 'space-between',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  heroBottom: {
+    gap: Spacing.xs,
+  },
+  heroTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: -0.5,
+  },
+  heroSubtitle: {
+    ...Typography.caption,
+    color: 'rgba(255,255,255,0.75)',
+  },
+
+  // --- Save bar -----------------------------------------------------------
+  saveBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
+    marginBottom: Spacing.xl,
+    paddingHorizontal: Spacing.xs,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: Colors.text.primary,
+  saveBarLeft: {
+    flex: 1,
   },
-  subtitle: {
-    fontSize: 14,
-    color: Colors.text.secondary,
-    marginTop: 4,
+  readinessRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  readinessWarningText: {
+    ...Typography.caption,
+    color: Colors.accent.amber,
+    flex: 1,
+  },
+  readinessReadyText: {
+    ...Typography.captionMedium,
+    color: Colors.semantic.success,
   },
   saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
     backgroundColor: Colors.accent.cyan,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
   },
   saveButtonDisabled: {
     opacity: 0.6,
   },
+  saveButtonSuccess: {
+    backgroundColor: Colors.semantic.success,
+  },
   saveButtonText: {
+    ...Typography.captionMedium,
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
+
+  // --- Columns ------------------------------------------------------------
   columns: {
-    flex: 1,
-  },
-  columnsContent: {
     flexDirection: 'row',
-    padding: 24,
-    gap: 24,
+    gap: Spacing.xxl,
   },
   leftColumn: {
     flex: 1,
+    gap: Spacing.lg,
   },
   rightColumn: {
-    width: 360,
-    gap: 16,
-    position: 'sticky' as any,
-    top: 24,
+    width: 370,
+    gap: Spacing.lg,
+    position: 'sticky' as unknown as undefined,
+    top: Spacing.xxl,
     alignSelf: 'flex-start',
   },
-  card: {
-    backgroundColor: Colors.background.primary,
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
+
+  // --- Card header --------------------------------------------------------
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  cardIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.accent.cyanLight,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...Typography.bodyMedium,
     color: Colors.text.primary,
-    marginBottom: 12,
   },
   cardDescription: {
-    fontSize: 13,
+    ...Typography.small,
     color: Colors.text.secondary,
-    marginBottom: 12,
+    marginTop: 2,
   },
+
+  // --- Radio group --------------------------------------------------------
   radioGroup: {
-    gap: 12,
+    gap: Spacing.md,
   },
   radioCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    padding: 16,
-    borderRadius: 10,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: Colors.surface.cardBorder,
     backgroundColor: Colors.background.secondary,
-    gap: 12,
+    gap: Spacing.md,
   },
   radioCardSelected: {
     borderColor: Colors.accent.cyan,
-    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+    backgroundColor: 'rgba(59, 130, 246, 0.06)',
   },
   radioCircle: {
     width: 20,
@@ -976,91 +1288,69 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   radioLabel: {
-    fontSize: 14,
-    fontWeight: '500',
+    ...Typography.captionMedium,
     color: Colors.text.primary,
   },
   radioHint: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.secondary,
     marginTop: 2,
   },
   chipGroup: {
     flexDirection: 'row',
-    gap: 6,
+    gap: Spacing.xs,
     flexWrap: 'wrap',
   },
-  chipSuccess: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  chipAccent: {
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  chipMuted: {
-    backgroundColor: 'rgba(113, 113, 122, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  chipText: {
-    fontSize: 11,
-    color: Colors.text.primary,
-  },
-  chipTextMuted: {
-    fontSize: 11,
-    color: Colors.text.muted,
-  },
+
+  // --- Existing number ----------------------------------------------------
   existingNumberSection: {
-    marginTop: 16,
-    paddingTop: 16,
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.lg,
     borderTopWidth: 1,
     borderTopColor: Colors.border.subtle,
   },
+
+  // --- Inputs -------------------------------------------------------------
   inputLabel: {
-    fontSize: 13,
-    fontWeight: '500',
+    ...Typography.smallMedium,
     color: Colors.text.secondary,
-    marginBottom: 6,
+    marginBottom: Spacing.xs,
   },
   input: {
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: Colors.surface.input,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
+    borderColor: Colors.surface.inputBorder,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    ...Typography.caption,
     color: Colors.text.primary,
   },
   helperText: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.muted,
-    marginTop: 6,
+    marginTop: Spacing.xs,
   },
+
+  // --- Hours grid ---------------------------------------------------------
   hoursGrid: {
-    gap: 8,
+    gap: Spacing.sm,
   },
   hoursRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: Spacing.md,
   },
   dayToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.sm,
     width: 80,
   },
   checkbox: {
     width: 18,
     height: 18,
-    borderRadius: 4,
+    borderRadius: BorderRadius.xs,
     borderWidth: 1,
     borderColor: Colors.border.default,
     justifyContent: 'center',
@@ -1071,38 +1361,40 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent.cyan,
   },
   dayLabel: {
-    fontSize: 13,
+    ...Typography.small,
     color: Colors.text.primary,
   },
   timeInputs: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.sm,
   },
   timeInput: {
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: Colors.surface.input,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 13,
+    borderColor: Colors.surface.inputBorder,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    ...Typography.small,
     color: Colors.text.primary,
     width: 70,
     textAlign: 'center',
   },
   timeSeparator: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.muted,
   },
+
+  // --- Radio small --------------------------------------------------------
   radioGroupSmall: {
-    gap: 8,
+    gap: Spacing.sm,
   },
   radioSmall: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm,
   },
   radioSmallSelected: {},
   radioCircleSmall: {
@@ -1121,199 +1413,209 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent.cyan,
   },
   radioLabelSmall: {
-    fontSize: 13,
+    ...Typography.small,
     color: Colors.text.primary,
   },
+
+  // --- Locked notes -------------------------------------------------------
   lockedNotes: {
-    marginTop: 16,
-    gap: 8,
+    marginTop: Spacing.lg,
+    gap: Spacing.sm,
   },
   lockedNote: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.sm,
   },
   lockedNoteText: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.muted,
     fontStyle: 'italic',
   },
+
+  // --- Reason cards -------------------------------------------------------
   reasonCards: {
-    gap: 8,
+    gap: Spacing.sm,
   },
   reasonCard: {
-    padding: 14,
-    borderRadius: 10,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: Colors.surface.cardBorder,
     backgroundColor: Colors.background.secondary,
   },
   reasonCardEnabled: {
     borderColor: Colors.accent.cyan,
-    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+    backgroundColor: 'rgba(59, 130, 246, 0.06)',
   },
   reasonHeader: {
     flexDirection: 'row',
-    gap: 12,
+    gap: Spacing.md,
   },
   reasonInfo: {
     flex: 1,
   },
   reasonLabel: {
-    fontSize: 14,
-    fontWeight: '500',
+    ...Typography.captionMedium,
     color: Colors.text.primary,
   },
   reasonDescription: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.secondary,
     marginTop: 2,
   },
   reasonExample: {
     fontSize: 11,
     color: Colors.text.muted,
-    marginTop: 4,
+    marginTop: Spacing.xs,
     fontStyle: 'italic',
   },
+
+  // --- Reason expanded ----------------------------------------------------
   reasonExpanded: {
     paddingLeft: 30,
     paddingRight: 14,
     paddingBottom: 14,
-    backgroundColor: 'rgba(59, 130, 246, 0.02)',
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
+    backgroundColor: 'rgba(59, 130, 246, 0.03)',
+    borderBottomLeftRadius: BorderRadius.lg,
+    borderBottomRightRadius: BorderRadius.lg,
     marginTop: -8,
-    paddingTop: 12,
+    paddingTop: Spacing.md,
   },
   expandedLabel: {
-    fontSize: 12,
-    fontWeight: '500',
+    ...Typography.smallMedium,
     color: Colors.text.secondary,
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   segmentedControl: {
     flexDirection: 'row',
     backgroundColor: Colors.background.secondary,
-    borderRadius: 8,
+    borderRadius: BorderRadius.md,
     padding: 3,
-    gap: 4,
+    gap: Spacing.xs,
   },
   segment: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: 6,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
     alignItems: 'center',
   },
   segmentActive: {
     backgroundColor: Colors.accent.cyan,
   },
   segmentText: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.secondary,
   },
   segmentTextActive: {
     color: '#fff',
     fontWeight: '500',
   },
+
+  // --- Questions ----------------------------------------------------------
   questionsList: {
-    marginTop: 12,
-    gap: 8,
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
   },
   questionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.sm,
   },
   questionNumber: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.muted,
     width: 16,
   },
   questionText: {
     flex: 1,
-    fontSize: 13,
+    ...Typography.small,
     color: Colors.text.primary,
   },
   changeButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
   },
   changeButtonText: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.accent.cyan,
   },
   questionMenu: {
-    backgroundColor: Colors.background.primary,
-    borderRadius: 8,
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    marginTop: 8,
+    borderColor: Colors.surface.cardBorder,
+    marginTop: Spacing.sm,
     overflow: 'hidden',
   },
   questionMenuItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border.subtle,
   },
   questionMenuItemText: {
-    fontSize: 13,
+    ...Typography.small,
     color: Colors.text.primary,
   },
+
+  // --- Target dropdown ----------------------------------------------------
   targetDropdown: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: Spacing.sm,
   },
   targetOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: Colors.surface.cardBorder,
     backgroundColor: Colors.background.secondary,
   },
   targetOptionSelected: {
     borderColor: Colors.accent.cyan,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    backgroundColor: Colors.accent.cyanLight,
   },
   targetOptionText: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.secondary,
   },
   targetOptionTextSelected: {
     color: Colors.accent.cyan,
     fontWeight: '500',
   },
+
+  // --- Collapsible / Team -------------------------------------------------
   collapsibleHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   teamSection: {
-    marginTop: 12,
-    gap: 12,
+    marginTop: Spacing.md,
+    gap: Spacing.md,
   },
   addMemberRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: Spacing.sm,
     alignItems: 'center',
   },
   roleSelector: {
     flexDirection: 'row',
-    gap: 4,
+    gap: Spacing.xs,
   },
   roleOption: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
     backgroundColor: Colors.background.secondary,
   },
   roleOptionSelected: {
     backgroundColor: Colors.accent.cyan,
   },
   roleOptionText: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.secondary,
   },
   roleOptionTextSelected: {
@@ -1322,7 +1624,7 @@ const styles = StyleSheet.create({
   addButton: {
     width: 36,
     height: 36,
-    borderRadius: 8,
+    borderRadius: BorderRadius.md,
     backgroundColor: Colors.accent.cyan,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1330,151 +1632,182 @@ const styles = StyleSheet.create({
   teamMemberRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    gap: Spacing.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
     backgroundColor: Colors.background.secondary,
-    borderRadius: 8,
+    borderRadius: BorderRadius.md,
+  },
+  teamMemberAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.accent.cyanLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  teamMemberInitial: {
+    ...Typography.smallMedium,
+    color: Colors.accent.cyan,
   },
   teamMemberInfo: {
     flex: 1,
   },
   teamMemberName: {
-    fontSize: 14,
-    fontWeight: '500',
+    ...Typography.captionMedium,
     color: Colors.text.primary,
   },
   teamMemberRole: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.secondary,
   },
   teamMemberExt: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.muted,
   },
-  readinessCard: {
-    backgroundColor: Colors.background.primary,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
+  emptyTeamText: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    textAlign: 'center',
+    paddingVertical: Spacing.lg,
   },
-  readinessWarning: {
+
+  // --- Preview card -------------------------------------------------------
+  previewHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  readinessWarningText: {
-    fontSize: 13,
-    color: '#f59e0b',
-    flex: 1,
-  },
-  readinessReady: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  readinessReadyText: {
-    fontSize: 13,
-    color: '#10b981',
-    fontWeight: '500',
-  },
-  previewCard: {
-    backgroundColor: Colors.background.primary,
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   previewTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...Typography.captionMedium,
     color: Colors.text.primary,
-    marginBottom: 12,
   },
   previewDropdown: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 16,
+    gap: Spacing.xs,
+    marginBottom: Spacing.lg,
   },
   previewOption: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
     backgroundColor: Colors.background.secondary,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: Colors.surface.cardBorder,
   },
   previewOptionSelected: {
     borderColor: Colors.accent.cyan,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    backgroundColor: Colors.accent.cyanLight,
   },
   previewOptionText: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.secondary,
   },
   previewOptionTextSelected: {
     color: Colors.accent.cyan,
     fontWeight: '500',
   },
+
+  // --- Transcript ---------------------------------------------------------
   transcriptPreview: {
-    gap: 12,
-    marginBottom: 16,
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
   },
   transcriptLine: {
-    gap: 4,
+    gap: Spacing.xs,
   },
   transcriptSpeaker: {
     fontSize: 11,
-    color: Colors.text.muted,
     fontWeight: '500',
+    color: Colors.text.muted,
   },
   transcriptSpeakerSarah: {
     fontSize: 11,
-    color: Colors.accent.cyan,
     fontWeight: '500',
+    color: Colors.accent.cyan,
   },
   transcriptText: {
-    fontSize: 13,
+    ...Typography.small,
     color: Colors.text.primary,
     lineHeight: 18,
   },
   transcriptResult: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingTop: 12,
+    gap: Spacing.xs,
+    paddingTop: Spacing.md,
     borderTopWidth: 1,
     borderTopColor: Colors.border.subtle,
-    marginTop: 8,
+    marginTop: Spacing.sm,
   },
   transcriptResultText: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.text.secondary,
   },
+
+  // --- Empty preview ------------------------------------------------------
+  emptyPreview: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xxl,
+  },
+  emptyPreviewText: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    textAlign: 'center',
+  },
+
+  // --- Audio buttons ------------------------------------------------------
   audioButtons: {
     flexDirection: 'row',
-    gap: 10,
+    gap: Spacing.md,
   },
   audioButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 8,
+    gap: Spacing.xs,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.accent.cyan,
-    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+    backgroundColor: 'rgba(59, 130, 246, 0.06)',
   },
   audioButtonPlaying: {
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    backgroundColor: Colors.accent.cyanLight,
   },
   audioButtonText: {
-    fontSize: 12,
+    ...Typography.small,
     color: Colors.accent.cyan,
     fontWeight: '500',
+  },
+
+  // --- Voice info card ----------------------------------------------------
+  voiceInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  voiceAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.accent.cyanLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  voiceInfoText: {
+    flex: 1,
+  },
+  voiceInfoName: {
+    ...Typography.captionMedium,
+    color: Colors.text.primary,
+  },
+  voiceInfoDesc: {
+    ...Typography.small,
+    color: Colors.text.muted,
   },
 });

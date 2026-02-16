@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { useSidebarState } from '@/lib/uiStore';
 import { canAccessTeamWorkspace } from '@/lib/permissions';
-import { currentUser } from '@/data/teamWorkspace';
+import { useTenant } from '@/providers/TenantProvider';
 
 const logoSource = require('../../assets/images/aspire-logo-new.png');
 const iconSource = require('../../assets/images/aspire-icon-new.png');
@@ -65,18 +65,21 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toggleSidebar } = useSidebarState();
+  const { tenant } = useTenant();
   const widthAnim = useRef(new Animated.Value(expanded ? SIDEBAR_EXPANDED : SIDEBAR_COLLAPSED)).current;
   const opacityAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const [isLogoHovered, setIsLogoHovered] = useState(false);
 
   const filteredNavItems = useMemo(() => {
+    // In production, team workspace is always visible for authenticated users
+    const authUser = tenant ? { id: tenant.id, name: tenant.ownerName, email: tenant.ownerEmail, roleId: (tenant.role?.toLowerCase() ?? 'owner') as any, status: 'active' as const, suiteAccessIds: [tenant.suiteId], lastActiveAt: new Date().toISOString() } : null;
     return navItems.filter(item => {
       if (item.id === 'team') {
-        return canAccessTeamWorkspace(currentUser, 1);
+        return canAccessTeamWorkspace(authUser, 1);
       }
       return true;
     });
-  }, []);
+  }, [tenant]);
 
   useEffect(() => {
     Animated.parallel([

@@ -1,21 +1,22 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider } from '@/providers';
+import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
+import { supabase } from '@/lib/supabase';
 import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
 import { useDesktop } from '@/lib/useDesktop';
 
 function useWebDesktopSetup() {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    
+
     document.body.style.backgroundColor = '#0a0a0a';
     document.documentElement.style.backgroundColor = '#0a0a0a';
 
@@ -26,9 +27,172 @@ function useWebDesktopSetup() {
   }, []);
 }
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+/**
+ * Auth Gate — Law #3: Fail Closed
+ * - Unauthenticated users → login
+ * - Authenticated users without completed onboarding → onboarding
+ * - Authenticated users with completed onboarding → main app
+ */
+function useAuthGate() {
+  const { session, isLoading, suiteId } = useSupabase();
+  const segments = useSegments();
+  const router = useRouter();
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
+
+  // Check onboarding status when session is available
+  useEffect(() => {
+    if (!session || !suiteId) {
+      setOnboardingChecked(false);
+      setOnboardingComplete(false);
+      return;
+    }
+
+    supabase
+      .from('suite_profiles')
+      .select('onboarding_completed_at')
+      .eq('suite_id', suiteId)
+      .single()
+      .then(({ data }) => {
+        setOnboardingComplete(!!data?.onboarding_completed_at);
+        setOnboardingChecked(true);
+      })
+      .catch(() => {
+        // Fail closed — treat as incomplete if check fails
+        setOnboardingComplete(false);
+        setOnboardingChecked(true);
+      });
+  }, [session, suiteId]);
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const inAuthGroup = segments[0] === '(auth)';
+    const onOnboarding = segments[1] === 'onboarding';
+
+    if (!session && !inAuthGroup) {
+      // Not logged in → login
+      router.replace('/(auth)/login');
+    } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding) {
+      // Logged in but onboarding incomplete → onboarding (cannot bypass)
+      router.replace('/(auth)/onboarding');
+    } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
+      // Logged in + onboarding done + still on auth pages → main app
+      router.replace('/(tabs)');
+    }
+  }, [session, isLoading, segments, onboardingChecked, onboardingComplete]);
+}
+
+function AppNavigator() {
   const isDesktop = useDesktop();
+  const colorScheme = useColorScheme();
+  useAuthGate();
+
+  return (
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <Stack>
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="session"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'fullScreenModal'
+          }}
+        />
+        <Stack.Screen
+          name="office-store"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="calendar"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="roadmap"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="cash-position"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="inbox"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="receipts"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="more"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="founder-hub"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="finance-hub"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="bookings"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="book"
+          options={{
+            headerShown: false,
+            presentation: 'card'
+          }}
+        />
+        <Stack.Screen
+          name="team-workspace"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen name="+not-found" />
+      </Stack>
+      {!isDesktop && <AvaMiniPlayer />}
+      <StatusBar style="light" />
+    </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
   useWebDesktopSetup();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -40,113 +204,17 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={styles.container}>
+      <SupabaseProvider>
       <TenantProvider>
         <SessionProvider>
           <AvaDockProvider>
             <MicStateProvider>
-              <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                <Stack>
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen 
-                    name="session" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'fullScreenModal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="office-store" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="calendar" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="roadmap" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="cash-position" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="inbox" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="receipts" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="more" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="founder-hub" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="finance-hub" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="bookings" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="book" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: 'card' 
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="team-workspace" 
-                    options={{ 
-                      headerShown: false, 
-                      presentation: isDesktop ? 'card' : 'modal' 
-                    }} 
-                  />
-                  <Stack.Screen name="+not-found" />
-                </Stack>
-                {!isDesktop && <AvaMiniPlayer />}
-                <StatusBar style="light" />
-              </ThemeProvider>
+              <AppNavigator />
             </MicStateProvider>
           </AvaDockProvider>
         </SessionProvider>
       </TenantProvider>
+      </SupabaseProvider>
     </GestureHandlerRootView>
   );
 }

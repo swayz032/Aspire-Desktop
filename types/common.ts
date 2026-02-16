@@ -1,6 +1,6 @@
 export type Tag = 'Legal' | 'Finance' | 'Ops' | 'Security' | 'Sales';
 export type Priority = 'Low' | 'Medium' | 'High';
-export type ItemStatus = 'Open' | 'Waiting' | 'Resolved';
+export type ItemStatus = 'Open' | 'Waiting' | 'Resolved' | 'resolved' | 'in_progress';
 
 export const SUITE_ID = 'ZEN-014';
 export const OFFICE_ID = 'O-1011';

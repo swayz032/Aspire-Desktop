@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Tenant } from '@/types';
-import { MockApi } from '@/data/mockData';
+import { getSuiteProfile } from '@/lib/api';
 
 interface TenantContextType {
   tenant: Tenant | null;
@@ -15,6 +15,22 @@ interface TenantProviderProps {
   children: ReactNode;
 }
 
+function mapSuiteProfileToTenant(profile: any): Tenant {
+  return {
+    id: profile.id ?? profile.suite_id ?? '',
+    businessName: profile.business_name ?? profile.businessName ?? 'Aspire Business',
+    suiteId: profile.suite_id ?? profile.suiteId ?? '',
+    officeId: profile.office_id ?? profile.officeId ?? '',
+    ownerName: profile.owner_name ?? profile.ownerName ?? '',
+    ownerEmail: profile.owner_email ?? profile.ownerEmail ?? '',
+    role: profile.role ?? 'Founder',
+    timezone: profile.timezone ?? 'America/Los_Angeles',
+    currency: profile.currency ?? 'USD',
+    createdAt: profile.created_at ?? profile.createdAt ?? new Date().toISOString(),
+    updatedAt: profile.updated_at ?? profile.updatedAt ?? new Date().toISOString(),
+  };
+}
+
 export function TenantProvider({ children }: TenantProviderProps) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,8 +40,8 @@ export function TenantProvider({ children }: TenantProviderProps) {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await MockApi.getTenant();
-      setTenant(data);
+      const profile = await getSuiteProfile();
+      setTenant(mapSuiteProfileToTenant(profile));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tenant');
     } finally {

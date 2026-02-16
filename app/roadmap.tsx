@@ -1,18 +1,63 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui/Card';
-import { mockBusinessScore, mockStaff } from '@/data/mockData';
+import { getSuiteProfile } from '@/lib/api';
 import { useRouter } from 'expo-router';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 
+// AI workforce — static config, not DB rows (these are governed skill pack workers)
+const STAFF_ROSTER = [
+  { id: 'staff-ava', name: 'Ava', role: 'Orchestrator', avatar: '', status: 'active' },
+  { id: 'staff-eli', name: 'Eli', role: 'Inbox Manager', avatar: '', status: 'active' },
+  { id: 'staff-quinn', name: 'Quinn', role: 'Invoicing', avatar: '', status: 'active' },
+  { id: 'staff-nora', name: 'Nora', role: 'Conference', avatar: '', status: 'active' },
+  { id: 'staff-adam', name: 'Adam', role: 'Research', avatar: '', status: 'active' },
+  { id: 'staff-tec', name: 'Tec', role: 'Documents', avatar: '', status: 'active' },
+  { id: 'staff-finn', name: 'Finn', role: 'Money Desk', avatar: '', status: 'active' },
+  { id: 'staff-milo', name: 'Milo', role: 'Payroll', avatar: '', status: 'active' },
+  { id: 'staff-teressa', name: 'Teressa', role: 'Bookkeeping', avatar: '', status: 'active' },
+  { id: 'staff-clara', name: 'Clara', role: 'Legal', avatar: '', status: 'active' },
+  { id: 'staff-sarah', name: 'Sarah', role: 'Front Desk', avatar: '', status: 'active' },
+];
+
 export default function RoadmapScreen() {
   const router = useRouter();
   const isDesktop = useDesktop();
-  const score = mockBusinessScore;
+  const [score, setScore] = useState<any>({
+    overall: 0,
+    revenue: 0,
+    cashFlow: 0,
+    efficiency: 0,
+    compliance: 0,
+    monthlyRevenue: 0,
+    monthlyExpenses: 0,
+    netProfit: 0,
+    accounts: [],
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getSuiteProfile()
+      .then((profile: any) => {
+        setScore({
+          overall: profile?.business_score ?? 0,
+          revenue: profile?.revenue_score ?? 0,
+          cashFlow: profile?.cash_flow_score ?? 0,
+          efficiency: profile?.efficiency_score ?? 0,
+          compliance: profile?.compliance_score ?? 0,
+          monthlyRevenue: profile?.monthly_revenue ?? 0,
+          monthlyExpenses: profile?.monthly_expenses ?? 0,
+          netProfit: (profile?.monthly_revenue ?? 0) - (profile?.monthly_expenses ?? 0),
+          accounts: profile?.accounts ?? [],
+        });
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   const formatCurrency = (amount: number) => {
     if (amount >= 1000) {
@@ -31,7 +76,7 @@ export default function RoadmapScreen() {
   };
 
   const getStaffColor = (staffName?: string) => {
-    const staff = mockStaff.find(s => s.name === staffName);
+    const staff = STAFF_ROSTER.find(s => s.name === staffName);
     return staff?.avatarColor || '#3B82F6';
   };
 

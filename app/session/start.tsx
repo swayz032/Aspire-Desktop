@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { SessionPurpose, SessionMode } from '@/types/session';
 import { AVAILABLE_STAFF, createSession } from '@/data/session';
-import { mockTenant } from '@/data/mockData';
+import { useTenant } from '@/providers/TenantProvider';
 
 const PURPOSES: { id: SessionPurpose; label: string; icon: keyof typeof Ionicons.glyphMap; description: string }[] = [
   { id: 'Internal', label: 'Internal', icon: 'business', description: 'Team sync or planning session' },
@@ -23,6 +23,7 @@ const MODES: { id: SessionMode; label: string; icon: keyof typeof Ionicons.glyph
 
 export default function StartSessionScreen() {
   const router = useRouter();
+  const { tenant } = useTenant();
   const [step, setStep] = useState(1);
   const [purpose, setPurpose] = useState<SessionPurpose | null>(null);
   const [mode, setMode] = useState<SessionMode | null>(null);
@@ -100,7 +101,7 @@ export default function StartSessionScreen() {
         <View style={styles.identityBar}>
           <View style={styles.identityDot} />
           <Text style={styles.identityText}>
-            {mockTenant.businessName} • Suite {mockTenant.suiteId}
+            {tenant?.businessName ?? 'Aspire Business'} • Suite {tenant?.suiteId ?? ''}
           </Text>
         </View>
 

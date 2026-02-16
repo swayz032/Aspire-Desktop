@@ -6,9 +6,10 @@ import { Colors } from '@/constants/tokens';
 
 type Props = {
   children: React.ReactNode;
+  rightRail?: React.ReactNode;
 };
 
-export function FinanceHubShell({ children }: Props) {
+export function FinanceHubShell({ children, rightRail }: Props) {
   return (
     <View style={styles.container}>
       <FinanceSidebar />
@@ -24,6 +25,13 @@ export function FinanceHubShell({ children }: Props) {
               {children}
             </ScrollView>
           </View>
+          {rightRail && (
+            <View style={styles.rightRail}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {rightRail}
+              </ScrollView>
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -50,6 +58,13 @@ const styles = StyleSheet.create({
   },
   mainArea: {
     flex: 1,
+  },
+  rightRail: {
+    width: 300,
+    borderLeftWidth: 1,
+    borderLeftColor: Colors.background.tertiary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   scrollView: {
     flex: 1,

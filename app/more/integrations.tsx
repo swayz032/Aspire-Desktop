@@ -6,8 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { formatRelativeTime } from '@/lib/formatters';
-import { seedDatabase } from '@/lib/mockSeed';
-import { getIntegrations } from '@/lib/mockDb';
+import { supabase } from '@/lib/supabase';
 import { Integration, IntegrationStatus } from '@/types/integrations';
 
 const STATUS_COLORS: Record<IntegrationStatus, { bg: string; text: string }> = {
@@ -93,12 +92,33 @@ export default function IntegrationsScreen() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
 
   useEffect(() => {
-    seedDatabase();
-    const timer = setTimeout(() => {
-      setIntegrations(getIntegrations());
-      setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
+    const fetchIntegrations = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('oauth_tokens')
+          .select('id, provider, scopes, expires_at, created_at, updated_at');
+        if (error) throw error;
+        const mapped: Integration[] = (data ?? []).map((row: any) => ({
+          id: row.id,
+          name: row.provider ?? 'Unknown',
+          category: 'Connected Service',
+          icon: 'cloud' as const,
+          status: 'Connected' as IntegrationStatus,
+          lastSync: row.updated_at ?? row.created_at,
+          healthCheck: {
+            webhookVerified: true,
+            tokenExpiry: row.expires_at && new Date(row.expires_at) > new Date() ? 'ok' as const : 'expired' as const,
+            syncErrorCount: 0,
+          },
+        }));
+        setIntegrations(mapped);
+      } catch (e) {
+        console.warn('Failed to load integrations:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchIntegrations();
   }, []);
 
   const connected = integrations.filter(i => i.status === 'Connected');

@@ -99,6 +99,7 @@ export type InsertBooking = typeof bookings.$inferInsert;
 export type BufferSettings = typeof bufferSettings.$inferSelect;
 export type InsertBufferSettings = typeof bufferSettings.$inferInsert;
 
+/** @deprecated Replaced by public.business_lines table (migration 052). Use enterprise endpoints instead. */
 export const frontDeskSetup = pgTable('front_desk_setup', {
   id: uuid('id').primaryKey().defaultRandom(),
   suiteId: uuid('suite_id').references(() => suites.suiteId).notNull().unique(),

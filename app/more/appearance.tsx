@@ -4,8 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
-import { seedDatabase } from '@/lib/mockSeed';
-import { getAppearanceSettings, updateAppearanceSettings } from '@/lib/mockDb';
 import { AppearanceSettings } from '@/types/tenant';
 
 type Theme = 'dark' | 'light' | 'system';
@@ -35,18 +33,13 @@ export default function AppearanceScreen() {
   });
 
   useEffect(() => {
-    seedDatabase();
-    const timer = setTimeout(() => {
-      setSettings(getAppearanceSettings());
-      setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
+    // Appearance preferences are local-only; use defaults
+    setLoading(false);
   }, []);
 
   const handleUpdate = (key: keyof AppearanceSettings, value: any) => {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
-    updateAppearanceSettings(updated);
   };
 
   return (

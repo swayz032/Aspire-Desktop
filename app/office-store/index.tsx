@@ -6,9 +6,86 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
-import { OfficeStoreCard } from '@/components/OfficeStoreCard';
-import { officeStoreStaff, OfficeStoreStaff } from '@/data/officeStoreData';
+import { OfficeStoreCard, OfficeStoreStaff } from '@/components/OfficeStoreCard';
 import { useDesktop } from '@/lib/useDesktop';
+
+const officeStoreStaff: OfficeStoreStaff[] = [
+  {
+    id: 'staff_eli',
+    name: 'Eli',
+    role: 'Inbox Specialist',
+    state: 'active',
+    headline: 'Reply fast. Never drop follow-ups.',
+    description: 'Triages your business inbox, drafts replies and follow-ups, and queues everything for approval with a receipt trail.',
+    bullets: [
+      'Summarizes threads and flags urgent messages',
+      'Drafts replies + follow-ups for approval',
+      'Receipts for what was sent and why',
+    ],
+    avatarImage: require('@/assets/avatars/eli.png'),
+    introVideoUrl: '/staff-intros/eli.mp4',
+  },
+  {
+    id: 'staff_sarah',
+    name: 'Sarah',
+    role: 'Front Desk Specialist',
+    state: 'active',
+    headline: 'Stop missing calls — and stop getting interrupted.',
+    description: 'Answers your business number, captures structured intake, and routes each request to the right next step.',
+    bullets: [
+      'Answers calls and captures lead/support/vendor intent',
+      'Drafts call summary + next steps for approval',
+      'Receipts for call outcomes and dispositions',
+    ],
+    avatarImage: require('@/assets/avatars/sarah.png'),
+    introVideoUrl: '/staff-intros/sarah.mp4',
+  },
+  {
+    id: 'staff_clara',
+    name: 'Clara',
+    role: 'Legal Desk (Contracts + e-Signature)',
+    state: 'active',
+    headline: 'Get contracts signed without the back-and-forth.',
+    description: 'Drafts agreements from your templates, prepares signature packets, and tracks status—always with approvals and receipts.',
+    bullets: [
+      'Drafts from approved templates + intake details',
+      'Preps sends + reminders for approval',
+      'Receipts for versions, sends, and signatures',
+    ],
+    avatarImage: require('@/assets/avatars/clara.png'),
+    introVideoUrl: '/staff-intros/clara.mp4',
+  },
+  {
+    id: 'staff_nora',
+    name: 'Nora',
+    role: 'Conference Room Assistant',
+    state: 'active',
+    headline: 'Cleaner meetings. Fewer no-shows.',
+    description: 'Sets up your conference room workflow—invites, confirmations, reminders, and approved recap packs.',
+    bullets: [
+      'Sends invites + reminders for approval',
+      'Recording/transcripts: ON, ASK, or OFF',
+      'Recap pack: notes + action items (approved)',
+    ],
+    avatarImage: require('@/assets/avatars/nora.png'),
+    introVideoUrl: '/staff-intros/nora.mp4',
+  },
+  {
+    id: 'staff_quinn',
+    name: 'Quinn',
+    role: 'Invoices & Quotes Specialist',
+    state: 'active',
+    headline: 'Send quotes and invoices on time—get paid faster.',
+    description: 'Drafts quotes and invoices, prepares follow-ups, and tracks billing events with approval gates and receipts.',
+    bullets: [
+      'Drafts quotes/invoices for approval',
+      'Queues follow-ups without you chasing',
+      'Receipts for invoice and payment events',
+    ],
+    avatarImage: require('@/assets/avatars/quinn.png'),
+    introVideoUrl: '/staff-intros/quinn.mp4',
+  },
+];
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 
 type TabType = 'staff' | 'addons';

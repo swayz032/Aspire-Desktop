@@ -6,12 +6,46 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Wallet, FileText, EnvelopeSimple, Phone } from 'phosphor-react-native';
 import { formatRelativeTime, formatSuiteContext } from '@/lib/formatters';
-import { seedDatabase } from '@/lib/mockSeed';
-import { getReceipts } from '@/lib/mockDb';
+import { useRealtimeReceipts } from '@/hooks/useRealtimeReceipts';
+import { getReceipts as fetchReceipts } from '@/lib/api';
 import { Receipt, ReceiptType, ReceiptStatus } from '@/types/receipts';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { PageHeader } from '@/components/PageHeader';
+
+/** Map a Supabase receipt row (snake_case) to the UI Receipt type. */
+function mapSupabaseReceipt(row: any): Receipt {
+  return {
+    id: row.id ?? row.receipt_id ?? '',
+    type: mapReceiptType(row.action_type ?? row.type ?? 'Communication'),
+    status: mapReceiptStatus(row.outcome ?? row.status ?? 'Pending'),
+    title: row.title ?? row.action_type ?? 'Receipt',
+    timestamp: row.created_at ?? row.timestamp ?? new Date().toISOString(),
+    actor: row.actor ?? 'System',
+    suiteId: row.suite_id ?? '',
+    officeId: row.office_id ?? '',
+    intent: row.intent ?? row.redacted_inputs ?? '',
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    createdAt: row.created_at ?? new Date().toISOString(),
+    updatedAt: row.updated_at ?? new Date().toISOString(),
+  };
+}
+
+function mapReceiptType(raw: string): ReceiptType {
+  const normalized = raw.toLowerCase();
+  if (normalized.includes('payment') || normalized.includes('invoice')) return 'Payment';
+  if (normalized.includes('contract') || normalized.includes('sign')) return 'Contract';
+  if (normalized.includes('call') || normalized.includes('phone')) return 'Call';
+  return 'Communication';
+}
+
+function mapReceiptStatus(raw: string): ReceiptStatus {
+  const normalized = raw.toLowerCase();
+  if (normalized === 'success' || normalized === 'completed') return 'Success';
+  if (normalized === 'denied' || normalized === 'blocked') return 'Blocked';
+  if (normalized === 'failed' || normalized === 'error') return 'Failed';
+  return 'Pending';
+}
 
 const isWeb = Platform.OS === 'web';
 
@@ -266,20 +300,27 @@ export default function ReceiptsScreen() {
   const headerHeight = isDesktop ? 0 : insets.top + 60;
   const scrollRef = useRef<ScrollView>(null);
 
-  const [loading, setLoading] = useState(true);
+  const { receipts: supabaseReceipts, loading: supabaseLoading, error: supabaseError } = useRealtimeReceipts(100);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>('All');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    seedDatabase();
-    const timer = setTimeout(() => {
-      setReceipts(getReceipts());
+    if (supabaseLoading) return;
+
+    if (supabaseReceipts.length > 0) {
+      setReceipts(supabaseReceipts.map(mapSupabaseReceipt));
       setLoading(false);
-    }, 700);
-    return () => clearTimeout(timer);
-  }, []);
+    } else {
+      // Fetch from Supabase API — empty result means no receipts yet
+      fetchReceipts(100)
+        .then((rows: any[]) => setReceipts(rows.map(mapSupabaseReceipt)))
+        .catch(() => setReceipts([]))
+        .finally(() => setLoading(false));
+    }
+  }, [supabaseReceipts, supabaseLoading]);
 
   const filteredReceipts = receipts.filter((r) => {
     const typeMatch = activeFilter === 'All' || r.type === activeFilter;

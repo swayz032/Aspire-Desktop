@@ -634,7 +634,7 @@ export default function ConnectionsScreen() {
               </div>
             </div>
             <div style={{
-              paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+              paddingLeft: 8, paddingRight: 8, paddingTop: 3, paddingBottom: 3, borderRadius: 6,
               background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.2)',
             }}>
               <Text style={{ color: '#34D399', fontSize: 10, fontWeight: '600' }}>Active</Text>

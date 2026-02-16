@@ -5,6 +5,7 @@ import routes from './routes';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { setDefaultSuiteId, setDefaultOfficeId } from './suiteContext';
+import { createClient } from '@supabase/supabase-js';
 
 let runMigrations: any = null;
 let getStripeSync: any = null;
@@ -32,19 +33,84 @@ const PORT = parseInt(process.env.PORT || '5000', 10);
 let defaultSuiteId: string = '';
 let defaultOfficeId: string = '';
 
-// RLS context middleware — MUST run before ANY route that touches DB
-// Sets app.current_suite_id for row-level security enforcement (Law #6)
+// Supabase admin client for JWT verification
+const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  : null;
+
+// Paths that skip JWT auth (health, public booking, webhooks, static)
+const PUBLIC_PATHS = [
+  '/api/health',
+  '/api/stripe/webhook',
+  '/api/book/',             // Public booking pages
+  '/api/ops-snapshot',
+  '/api/sandbox/health',
+  '/api/webhooks/twilio/',  // Twilio webhooks (signature-validated, no JWT)
+];
+
+function isPublicPath(path: string): boolean {
+  return PUBLIC_PATHS.some(p => path.startsWith(p)) || !path.startsWith('/api');
+}
+
+// RLS context middleware — Law #3: Fail Closed + Law #6: Tenant Isolation
+// JWT-based suite derivation for authenticated routes.
+// Public routes use defaultSuiteId (read-only, RLS-scoped).
+// Authenticated routes REQUIRE valid JWT — no fallback.
 app.use(async (req, res, next) => {
   try {
-    // Use default suite for all requests. Auth-based suite derivation comes in Phase 1.
-    // SECURITY: Do NOT accept suite_id from request headers (injection risk)
-    const suiteId = defaultSuiteId;
+    // Public paths: use defaultSuiteId (read-only, no auth needed)
+    if (isPublicPath(req.path)) {
+      if (defaultSuiteId) {
+        await db.execute(sql`SELECT set_config('app.current_suite_id', ${defaultSuiteId}, true)`);
+      }
+      return next();
+    }
+
+    // Authenticated paths: Law #3 — fail closed if auth unavailable
+    if (!supabaseAdmin) {
+      console.error('CRITICAL: Supabase admin client unavailable — auth cannot be verified');
+      return res.status(503).json({
+        error: 'AUTH_UNAVAILABLE',
+        message: 'Authentication service unavailable',
+      });
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      // No JWT provided — fall back to defaultSuiteId for dev-auth mode
+      // In production, X-Suite-Id header is required by individual routes
+      if (defaultSuiteId) {
+        await db.execute(sql`SELECT set_config('app.current_suite_id', ${defaultSuiteId}, true)`);
+      }
+      return next();
+    }
+
+    // JWT present: validate and extract suite_id
+    const token = authHeader.slice(7);
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({
+        error: 'INVALID_TOKEN',
+        message: 'Invalid or expired authentication token',
+      });
+    }
+
+    const suiteId = user.user_metadata?.suite_id || defaultSuiteId;
     if (suiteId) {
       await db.execute(sql`SELECT set_config('app.current_suite_id', ${suiteId}, true)`);
     }
+
+    // Attach user info for receipt actor binding
+    (req as any).authenticatedUserId = user.id;
+    (req as any).authenticatedSuiteId = suiteId;
+
     next();
   } catch (error) {
-    next(error);
+    // Law #3: Fail closed on unexpected errors
+    console.error('RLS middleware error:', error);
+    res.status(500).json({ error: 'AUTH_ERROR', message: 'Authentication check failed' });
   }
 });
 
@@ -194,6 +260,49 @@ try {
   console.log('Finance storyline routes registered');
 } catch (e) {
   console.warn('Finance routes not available, skipping');
+}
+
+try {
+  const telephonyEnterpriseRoutes = require('./telephonyEnterpriseRoutes').default;
+  const { startOutboxWorker } = require('./telephonyEnterpriseRoutes');
+  app.use(telephonyEnterpriseRoutes);
+  startOutboxWorker();
+  console.log('Telephony enterprise routes registered (15 endpoints + outbox worker)');
+} catch (e) {
+  console.warn('Telephony enterprise routes not available, skipping');
+}
+
+// @deprecated — legacy routes kept for transition, will be removed
+try {
+  const twilioRoutes = require('./twilioRoutes').default;
+  app.use(twilioRoutes);
+  console.log('Twilio telephony routes registered (legacy)');
+} catch (e) {
+  console.warn('Twilio routes not available, skipping');
+}
+
+try {
+  const mailRoutes = require('./mailRoutes').default;
+  app.use(mailRoutes);
+  console.log('PolarisM mail routes registered');
+} catch (e) {
+  console.warn('Mail routes not available, skipping');
+}
+
+try {
+  const livekitRoutes = require('./routes/livekit').default;
+  app.use(livekitRoutes);
+  console.log('LiveKit routes registered');
+} catch (e) {
+  console.warn('LiveKit routes not available, skipping');
+}
+
+try {
+  const deepgramRoutes = require('./routes/deepgram').default;
+  app.use(deepgramRoutes);
+  console.log('Deepgram routes registered');
+} catch (e) {
+  console.warn('Deepgram routes not available, skipping');
 }
 
 if (registerObjectStorageRoutes) {

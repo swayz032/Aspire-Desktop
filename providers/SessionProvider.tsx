@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Session, SessionState, AuthorityItem, DocumentPreview, TranscriptEntry } from '@/types';
-import { MockApi } from '@/data/mockData';
 
 interface SessionContextType {
   session: Session | null;
@@ -23,13 +22,17 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [session, setSession] = useState<Session | null>(null);
 
   const startSession = async (type: 'voice' | 'video' | 'conference') => {
-    const mockSession = await MockApi.getSession();
     setSession({
-      ...mockSession,
+      id: `sess_${Date.now()}`,
       type,
       state: 'connecting',
       startedAt: new Date().toISOString(),
-    });
+      currentContext: [],
+      authorityQueue: [],
+      riskLevel: 'medium',
+      mode: 'listening_only',
+      transcript: [],
+    } as Session);
 
     setTimeout(() => {
       setSession(prev => prev ? { ...prev, state: 'listening' } : null);
