@@ -20,7 +20,7 @@ import type { LineMode, TeamMember } from '@/types/frontdesk';
 // ---------------------------------------------------------------------------
 // Hero image
 // ---------------------------------------------------------------------------
-const HERO_IMAGE = require('@/assets/images/professional_busines_c8b6edd6.jpg');
+const HERO_IMAGE = require('@/assets/images/inbox-hero.jpg');
 
 // ---------------------------------------------------------------------------
 // Sarah voice ID for preview playback

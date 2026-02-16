@@ -24,7 +24,7 @@ import type { SmsThread, SmsMessage } from '@/types/frontdesk';
 // Constants
 // ---------------------------------------------------------------------------
 
-const HERO_IMAGE = require('@/assets/images/professional_busines_3e03cde8.jpg');
+const HERO_IMAGE = require('@/assets/images/team-workspace-hero.jpg');
 const THREAD_LIST_WIDTH = 340;
 
 // ---------------------------------------------------------------------------
@@ -571,7 +571,7 @@ export default function MessagesPage() {
   // -------------------------------------------------------------------------
 
   return (
-    <DesktopShell fullBleed>
+    <DesktopShell>
       <View style={styles.root}>
         {/* ============================================================== */}
         {/* Hero Banner                                                     */}

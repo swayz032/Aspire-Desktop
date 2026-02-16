@@ -27,7 +27,7 @@ import type { CallSession } from '@/types/frontdesk';
 // Hero image
 // ---------------------------------------------------------------------------
 
-const callsHero = require('@/assets/images/calls-hero.jpg');
+const callsHero = require('@/assets/images/finance-hub-hero.png');
 
 // ---------------------------------------------------------------------------
 // DTMF Dialpad Audio (Web Audio API) -- copied exactly from working version
@@ -878,7 +878,7 @@ export default function CallsScreen() {
                   <Text style={desktopStyles.quickActionLabel}>Contacts</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/(tabs)/inbox' as any)} activeOpacity={0.7}>
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => { setActiveTab('recent'); setActiveFilter('Voicemail'); }} activeOpacity={0.7}>
                   <View style={{ position: 'relative' }}>
                     <LinearGradient colors={[Colors.semantic.warning, '#c88a00']} style={desktopStyles.quickActionIconCircle}>
                       <Ionicons name="recording-outline" size={20} color="#fff" />
@@ -892,7 +892,7 @@ export default function CallsScreen() {
                   <Text style={desktopStyles.quickActionLabel}>Voicemails</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/(tabs)/inbox' as any)} activeOpacity={0.7}>
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => { setActiveTab('recent'); setActiveFilter('Missed'); }} activeOpacity={0.7}>
                   <View style={{ position: 'relative' }}>
                     <LinearGradient colors={[Colors.semantic.error, '#dc2626']} style={desktopStyles.quickActionIconCircle}>
                       <Ionicons name="arrow-undo" size={20} color="#fff" />
@@ -906,7 +906,7 @@ export default function CallsScreen() {
                   <Text style={desktopStyles.quickActionLabel}>Call Back Queue</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/(tabs)/inbox' as any)} activeOpacity={0.7}>
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/(tabs)/explore' as any)} activeOpacity={0.7}>
                   <LinearGradient colors={['#8B5CF6', '#7C3AED']} style={desktopStyles.quickActionIconCircle}>
                     <Ionicons name="people" size={20} color="#fff" />
                   </LinearGradient>
@@ -1306,7 +1306,7 @@ export default function CallsScreen() {
           <View style={styles.quickActions}>
             <TouchableOpacity
               style={styles.quickAction}
-              onPress={() => router.push('/(tabs)/inbox' as any)}
+              onPress={() => { setActiveTab('recent'); setActiveFilter('Voicemail'); }}
             >
               <View style={styles.quickActionIcon}>
                 <Ionicons name="recording-outline" size={24} color={Colors.accent.cyan} />
@@ -1321,7 +1321,7 @@ export default function CallsScreen() {
 
             <TouchableOpacity
               style={styles.quickAction}
-              onPress={() => router.push('/(tabs)/inbox' as any)}
+              onPress={() => { setActiveTab('recent'); setActiveFilter('Missed'); }}
             >
               <View style={styles.quickActionIcon}>
                 <Ionicons name="arrow-undo" size={24} color={Colors.semantic.warning} />
@@ -1336,7 +1336,7 @@ export default function CallsScreen() {
 
             <TouchableOpacity
               style={styles.quickAction}
-              onPress={() => router.push('/(tabs)/inbox' as any)}
+              onPress={() => router.push('/(tabs)/explore' as any)}
             >
               <View style={styles.quickActionIcon}>
                 <Ionicons name="people" size={24} color={Colors.text.secondary} />
