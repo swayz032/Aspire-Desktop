@@ -372,7 +372,9 @@ export default function ConferenceLive() {
         isVideoOff: p.isVideoOff ?? true,
         isSpeaking: p.isSpeaking ?? false,
         isHost: p.isHost ?? false,
-      }))
+        isPinned: false,
+        isSpotlighted: false,
+      } as Participant))
     : mockParticipants;
   const setParticipants = liveKit.isConnected ? () => {} : setMockParticipants;
   

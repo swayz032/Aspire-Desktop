@@ -57,7 +57,7 @@ function useAuthGate() {
         setOnboardingComplete(!!data?.onboarding_completed_at);
         setOnboardingChecked(true);
       })
-      .catch(() => {
+      .then(undefined, () => {
         // Fail closed — treat as incomplete if check fails
         setOnboardingComplete(false);
         setOnboardingChecked(true);
@@ -67,15 +67,15 @@ function useAuthGate() {
   useEffect(() => {
     if (isLoading) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const onOnboarding = segments[1] === 'onboarding';
+    const inAuthGroup = segments[0] === ('(auth)' as any);
+    const onOnboarding = segments[1] === ('onboarding' as any);
 
     if (!session && !inAuthGroup) {
       // Not logged in → login
-      router.replace('/(auth)/login');
+      router.replace('/(auth)/login' as any);
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding) {
       // Logged in but onboarding incomplete → onboarding (cannot bypass)
-      router.replace('/(auth)/onboarding');
+      router.replace('/(auth)/onboarding' as any);
     } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
       // Logged in + onboarding done + still on auth pages → main app
       router.replace('/(tabs)');

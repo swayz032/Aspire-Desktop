@@ -104,7 +104,7 @@ function ThreadItem({ thread, selected, onSelect }: ThreadItemProps) {
         style={[
           threadItemStyles.card,
           selected ? threadItemStyles.cardSelected : undefined,
-        ] as ViewStyle}
+        ] as any}
       >
         <View style={threadItemStyles.row}>
           {/* Contact avatar placeholder */}

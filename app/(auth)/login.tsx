@@ -51,7 +51,7 @@ export default function LoginScreen() {
             .single();
 
           if (!profile?.onboarding_completed_at) {
-            router.replace('/(auth)/onboarding');
+            router.replace('/(auth)/onboarding' as any);
             return;
           }
         }

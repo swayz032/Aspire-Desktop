@@ -878,7 +878,7 @@ export default function InboxScreen() {
       (async () => {
         try {
           const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
-          const data = await mailApi.getAccounts(DEMO_USER_ID);
+          const data = await fetch(`/api/mail/accounts?userId=${DEMO_USER_ID}`).then(r => r.json());
           const accounts = data.accounts || [];
           setMailAccounts(accounts);
           const active = accounts.find((a: any) => a.status === 'ACTIVE');
@@ -2583,7 +2583,7 @@ const styles = StyleSheet.create({
     top: '100%' as unknown as number,
     left: Spacing.lg,
     right: Spacing.lg,
-    backgroundColor: Colors.background.card,
+    backgroundColor: Colors.surface.card,
     borderWidth: 1,
     borderColor: Colors.border.subtle,
     borderRadius: BorderRadius.md,
@@ -2633,7 +2633,7 @@ const styles = StyleSheet.create({
   mailSetupModal: {
     width: '100%' as unknown as number,
     maxWidth: 480,
-    backgroundColor: Colors.background.card,
+    backgroundColor: Colors.surface.card,
     borderRadius: BorderRadius.xl,
     borderWidth: 1,
     borderColor: Colors.border.subtle,
@@ -2651,7 +2651,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   mailSetupTitle: {
-    ...Typography.heading,
+    ...Typography.title,
     color: Colors.text.primary,
     fontWeight: '700' as const,
     textAlign: 'center' as const,
@@ -2706,7 +2706,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     paddingVertical: Spacing.xl * 3,
     paddingHorizontal: Spacing.xl,
-    backgroundColor: Colors.background.card,
+    backgroundColor: Colors.surface.card,
     borderRadius: BorderRadius.lg,
     marginHorizontal: Spacing.lg,
     marginVertical: Spacing.lg,
@@ -2723,7 +2723,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   mailSetupEmptyTitle: {
-    ...Typography.heading,
+    ...Typography.title,
     color: Colors.text.secondary,
     fontWeight: '600' as const,
     marginBottom: Spacing.sm,

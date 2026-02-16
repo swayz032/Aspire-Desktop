@@ -1,6 +1,4 @@
 export { officeItems, getOfficeItemTimeline } from './inbox';
-export { calls, getCallTranscript, getCallSummary, getCallNextSteps } from './calls';
-export { mailThreads, getMailMessages, complianceFooter } from './mail';
 export { contacts, getContactActivity } from './contacts';
 export { receipts, getReceiptPlanSteps, getReceiptEvidence, getReceiptPolicyEvaluation } from './receipts';
 export { integrations, getIntegrationEvents, getIntegrationPermissions, getIntegrationDescription } from './integrations';
