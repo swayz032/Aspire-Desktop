@@ -34,12 +34,14 @@ export async function fetchAnamSessionToken(): Promise<string> {
 }
 
 /**
- * Create an Anam client with brains disabled.
- * Cara avatar + Emma voice — visual/audio only, no Anam LLM.
+ * Create an Anam client with input audio disabled.
+ * Cara avatar + Emma voice — visual/audio output only, no Anam LLM.
+ * disableInputAudio: true prevents Anam from capturing mic and triggering its LLM.
+ * We drive the avatar exclusively via talk() with our orchestrator's responses.
  */
 export function createAnamClient(sessionToken: string): AnamClientInstance {
   return createClient(sessionToken, {
-    disableBrains: true,
+    disableInputAudio: true,
   });
 }
 
