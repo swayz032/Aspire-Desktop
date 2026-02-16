@@ -42,10 +42,11 @@ const SERVICES = [
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { suiteId } = useSupabase();
+  const { suiteId, session } = useSupabase();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bootstrappedSuiteId, setBootstrappedSuiteId] = useState<string | null>(null);
 
   // Step 1 fields
   const [businessName, setBusinessName] = useState('');
@@ -69,15 +70,57 @@ export default function OnboardingScreen() {
   const canProceedStep2 = servicesNeeded.length > 0;
 
   const handleComplete = async () => {
-    if (!suiteId) {
-      setError('No suite context found. Please sign in again.');
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
+      const effectiveSuiteId = suiteId || bootstrappedSuiteId;
+
+      // No suite_id → bootstrap first (creates suite + profile in one call)
+      if (!effectiveSuiteId) {
+        const token = session?.access_token;
+        if (!token) {
+          setError('Session expired. Please sign in again.');
+          setLoading(false);
+          return;
+        }
+
+        const bootstrapResp = await fetch('/api/onboarding/bootstrap', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            businessName: businessName.trim(),
+            ownerName: ownerName.trim(),
+            ownerTitle: ownerTitle.trim() || null,
+            industry,
+            teamSize,
+            servicesNeeded,
+            currentTools: currentTools.trim() || null,
+            painPoint: painPoint.trim() || null,
+          }),
+        });
+
+        if (!bootstrapResp.ok) {
+          const errData = await bootstrapResp.json().catch(() => ({}));
+          setError(errData.message || 'Failed to set up your business account.');
+          setLoading(false);
+          return;
+        }
+
+        const { suiteId: newSuiteId } = await bootstrapResp.json();
+        setBootstrappedSuiteId(newSuiteId);
+
+        // Refresh session so SupabaseProvider picks up the new suite_id in user_metadata
+        await supabase.auth.refreshSession();
+
+        router.replace('/(tabs)');
+        return;
+      }
+
+      // Existing suite_id → update profile directly
       const { error: updateError } = await supabase
         .from('suite_profiles')
         .update({
@@ -93,7 +136,7 @@ export default function OnboardingScreen() {
           pain_point: painPoint.trim() || null,
           onboarding_completed_at: new Date().toISOString(),
         })
-        .eq('suite_id', suiteId);
+        .eq('suite_id', effectiveSuiteId);
 
       if (updateError) {
         setError(updateError.message);

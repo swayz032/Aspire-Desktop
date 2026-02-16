@@ -1,10 +1,18 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 import { storage } from './storage';
 import { getUncachableStripeClient, getStripePublishableKey } from './stripeClient';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { getDefaultSuiteId } from './suiteContext';
+
+// Supabase admin client for bootstrap operations (user_metadata updates)
+const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  : null;
 
 const router = Router();
 
@@ -17,6 +25,103 @@ router.get('/api/stripe/publishable-key', async (req: Request, res: Response) =>
     res.json({ publishableKey: key });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Suite Bootstrap — creates suite infrastructure for new users
+ * Called during onboarding when user has no suite_id in their metadata.
+ * Uses service role to bypass RLS for initial setup.
+ */
+router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => {
+  const userId = (req as any).authenticatedUserId;
+  if (!userId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Must be authenticated' });
+  }
+
+  // Check if user already has a suite (idempotent)
+  const existingSuiteId = (req as any).authenticatedSuiteId;
+  if (existingSuiteId && existingSuiteId !== getDefaultSuiteId()) {
+    return res.json({ suiteId: existingSuiteId, created: false });
+  }
+
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'BOOTSTRAP_UNAVAILABLE', message: 'Admin client not configured' });
+  }
+
+  try {
+    const { businessName, ownerName, ownerTitle, industry, teamSize,
+            servicesNeeded, currentTools, painPoint } = req.body;
+
+    // 1. Create suite via app.ensure_suite (handles duplicates gracefully)
+    const tenantId = `tenant-${userId.slice(0, 8)}-${Date.now()}`;
+    const suiteName = businessName?.trim() || 'My Business';
+    let suiteId: string;
+
+    try {
+      const result = await db.execute(sql`
+        SELECT app.ensure_suite(${tenantId}, ${suiteName}) AS suite_id
+      `);
+      const rows = (result.rows || result) as any[];
+      suiteId = rows[0]?.suite_id;
+    } catch {
+      // If app.ensure_suite doesn't exist, insert directly
+      const result = await db.execute(sql`
+        INSERT INTO app.suites (tenant_id, name)
+        VALUES (${tenantId}, ${suiteName})
+        RETURNING suite_id
+      `);
+      const rows = (result.rows || result) as any[];
+      suiteId = rows[0]?.suite_id;
+    }
+
+    if (!suiteId) {
+      return res.status(500).json({ error: 'BOOTSTRAP_FAILED', message: 'Could not create suite' });
+    }
+
+    // 2. Get user email from Supabase admin
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (userError || !user) {
+      return res.status(500).json({ error: 'USER_LOOKUP_FAILED', message: 'Could not find user' });
+    }
+
+    // 3. Create suite_profile (service role bypasses RLS)
+    const { error: profileError } = await supabaseAdmin
+      .from('suite_profiles')
+      .upsert({
+        suite_id: suiteId,
+        email: user.email || '',
+        name: ownerName?.trim() || user.email?.split('@')[0] || 'Owner',
+        business_name: businessName?.trim() || null,
+        ...(industry ? { industry } : {}),
+        ...(teamSize ? { team_size: teamSize } : {}),
+        ...(ownerName ? { owner_name: ownerName.trim() } : {}),
+        ...(ownerTitle ? { owner_title: ownerTitle.trim() } : {}),
+        ...(servicesNeeded ? { services_needed: servicesNeeded } : {}),
+        ...(currentTools ? { current_tools: currentTools.split?.(',').map((t: string) => t.trim()) || [] } : {}),
+        ...(painPoint ? { pain_point: painPoint.trim() } : {}),
+        ...(businessName ? { onboarding_completed_at: new Date().toISOString() } : {}),
+      }, { onConflict: 'suite_id' });
+
+    if (profileError) {
+      console.error('Profile creation error:', profileError);
+      // Non-fatal — suite_id is still valid, onboarding form can save later
+    }
+
+    // 4. Update user_metadata with suite_id (so client gets it on session refresh)
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: { suite_id: suiteId },
+    });
+
+    if (updateError) {
+      console.error('User metadata update error:', updateError);
+      return res.status(500).json({ error: 'METADATA_UPDATE_FAILED', message: 'Suite created but metadata update failed' });
+    }
+
+    res.json({ suiteId, created: true });
+  } catch (error: any) {
+    console.error('Bootstrap error:', error);
+    res.status(500).json({ error: 'BOOTSTRAP_FAILED', message: error.message });
   }
 });
 
@@ -618,9 +723,9 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     }
 
     const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
-    const suiteId = req.headers['x-suite-id'] as string;
+    const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string;
     if (!suiteId) {
-      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Missing required header: X-Suite-Id' });
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required. Complete onboarding first.' });
     }
 
     // Circuit breaker check — Law #3: fail fast when orchestrator is known-down
@@ -770,9 +875,9 @@ router.get('/api/authority-queue', async (_req: Request, res: Response) => {
 
 router.post('/api/authority-queue/:id/approve', async (req: Request, res: Response) => {
   // Law #3: Fail Closed — require suite context for state-changing operations
-  const suiteId = req.headers['x-suite-id'] as string;
+  const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string;
   if (!suiteId) {
-    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Missing required header: X-Suite-Id' });
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required. Complete onboarding first.' });
   }
 
   const { id } = req.params;
@@ -805,9 +910,9 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
 
 router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response) => {
   // Law #3: Fail Closed — require suite context for state-changing operations
-  const suiteId = req.headers['x-suite-id'] as string;
+  const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string;
   if (!suiteId) {
-    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Missing required header: X-Suite-Id' });
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required. Complete onboarding first.' });
   }
 
   const { id } = req.params;

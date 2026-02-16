@@ -74,12 +74,6 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const sendText = useCallback(async (text: string) => {
     if (!text.trim()) return;
 
-    if (!suiteId) {
-      onError?.(new Error('Authentication required to use voice'));
-      updateStatus('error');
-      return;
-    }
-
     // Prevent overlapping sends
     if (processingRef.current) return;
     processingRef.current = true;
@@ -90,11 +84,13 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
     try {
       // Route through orchestrator — the Single Brain (Law #1)
-      // Law #6: X-Suite-Id header required for tenant isolation
+      // Server middleware handles suite_id from JWT (Law #6)
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'X-Suite-Id': suiteId,
       };
+      if (suiteId) {
+        headers['X-Suite-Id'] = suiteId;
+      }
       if (accessToken) {
         headers['Authorization'] = `Bearer ${accessToken}`;
       }
@@ -178,10 +174,6 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
    * Voice is primary — the mic activates as soon as you start.
    */
   const startSession = useCallback(async () => {
-    if (!suiteId) {
-      onError?.(new Error('Sign in to use voice'));
-      return;
-    }
     activeRef.current = true;
     processingRef.current = false;
     updateStatus('listening');
@@ -212,12 +204,12 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     updateStatus('idle');
   }, [updateStatus, stt]);
 
-  // Auto-end session if suiteId becomes null (logout)
+  // Auto-end session on logout (session removed, not just missing suiteId)
   useEffect(() => {
-    if (!suiteId && activeRef.current) {
+    if (!accessToken && activeRef.current) {
       endSession();
     }
-  }, [suiteId, endSession]);
+  }, [accessToken, endSession]);
 
   return {
     status,

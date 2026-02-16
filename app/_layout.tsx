@@ -42,8 +42,15 @@ function useAuthGate() {
 
   // Check onboarding status when session is available
   useEffect(() => {
-    if (!session || !suiteId) {
+    if (!session) {
       setOnboardingChecked(false);
+      setOnboardingComplete(false);
+      return;
+    }
+
+    // No suite_id in user_metadata → user definitely needs onboarding (including bootstrap)
+    if (!suiteId) {
+      setOnboardingChecked(true);
       setOnboardingComplete(false);
       return;
     }
