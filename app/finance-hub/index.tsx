@@ -586,7 +586,7 @@ function FinanceHubContent() {
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
-  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [timeline, setTimeline] = useState<any[]>([]);
   const [lifecycleSteps, setLifecycleSteps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [explainMetric, setExplainMetric] = useState<string | null>(null);

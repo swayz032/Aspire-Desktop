@@ -501,12 +501,15 @@ export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProp
   const scrollRef = useRef<ScrollView>(null);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
 
+  // Tenant context for voice requests (Law #6: Tenant Isolation)
+  const { suiteId, session } = useSupabase();
+  const { tenant } = useTenant();
+
   // Fetch real financial data on mount
   useEffect(() => {
     fetchFinnContext().then((ctx) => {
       setFinnContext(ctx);
       if (templateContext) {
-        // Template context: Finn greets with awareness of the selected template
         setChat([{ id: 'm1', from: 'finn', text: `I see you'd like to create a "${templateContext.description}" document. I'll work with Clara to get that ready. Let me ask you a few questions to fill in the details.` }]);
       } else {
         const greeting = buildSeedMessage(ctx.snapshot, ctx.exceptions);
@@ -520,7 +523,6 @@ export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProp
   useEffect(() => {
     if (templateContext && activeTab === 'video' && videoState === 'idle' && !autoConnectAttempted.current) {
       autoConnectAttempted.current = true;
-      // Small delay to let the UI render before connecting
       const timer = setTimeout(() => {
         setVideoState('connecting');
         setConnectionStatus('Connecting to Finn...');
@@ -537,10 +539,6 @@ export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProp
       return () => clearTimeout(timer);
     }
   }, [templateContext, activeTab, videoState, session?.access_token]);
-
-  // Tenant context for voice requests (Law #6: Tenant Isolation)
-  const { suiteId, session } = useSupabase();
-  const { tenant } = useTenant();
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const finnVoice = useAgentVoice({
