@@ -49,7 +49,26 @@ const ENTITY_TYPES = [
   'Other',
 ];
 
+// Map display values → DB enum values (matches server validateEnum + CHECK constraints)
+const ENTITY_TYPE_MAP: Record<string, string> = {
+  'Sole Proprietorship': 'sole_proprietorship',
+  'LLC': 'llc',
+  'S-Corp': 's_corp',
+  'C-Corp': 'c_corp',
+  'Partnership': 'partnership',
+  'Nonprofit': 'nonprofit',
+  'Other': 'other',
+};
+
 const YEARS_OPTIONS = ['<1', '1-3', '3-5', '5-10', '10+'];
+
+const YEARS_MAP: Record<string, string> = {
+  '<1': 'less_than_1',
+  '1-3': '1_to_3',
+  '3-5': '3_to_5',
+  '5-10': '5_to_10',
+  '10+': '10_plus',
+};
 
 const SERVICES: { id: string; icon: string; title: string; desc: string }[] = [
   { id: 'Invoicing & Payments', icon: 'card-outline', title: 'Invoicing & Payments', desc: 'Create, send, and track invoices' },
@@ -443,8 +462,8 @@ export default function OnboardingScreen() {
         ownerTitle: form.ownerTitle.trim() || null,
         industry: form.industry,
         teamSize: form.teamSize,
-        entityType: form.entityType,
-        yearsInBusiness: form.yearsInBusiness,
+        entityType: ENTITY_TYPE_MAP[form.entityType] || form.entityType,
+        yearsInBusiness: YEARS_MAP[form.yearsInBusiness] || form.yearsInBusiness,
         servicesNeeded: form.servicesNeeded,
         currentTools: form.currentTools.trim() || null,
         painPoint: form.painPoint.trim() || null,
