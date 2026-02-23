@@ -55,6 +55,10 @@ function useAuthGate() {
       return;
     }
 
+    // Reset while re-checking — prevents stale onboardingComplete=false from
+    // causing a redirect back to onboarding before the fresh query resolves
+    setOnboardingChecked(false);
+
     // Timeout guard — if Supabase check takes too long, fail closed but don't hang forever
     const timeoutId = setTimeout(() => {
       if (!onboardingChecked) {
