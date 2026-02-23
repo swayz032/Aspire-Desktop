@@ -237,7 +237,7 @@ export const financeSnapshots = pgTable('finance_snapshots', {
 export type FinanceSnapshot = typeof financeSnapshots.$inferSelect;
 export type InsertFinanceSnapshot = typeof financeSnapshots.$inferInsert;
 
-// Trust Spine receipts (15-column governed format)
+// Trust Spine receipts (matches actual Supabase schema — see receipt_store.py:87-91)
 export const receipts = pgTable('receipts', {
   receiptId: text('receipt_id').primaryKey(),
   suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
@@ -251,7 +251,6 @@ export const receipts = pgTable('receipts', {
   action: jsonb('action').notNull().default({}),
   result: jsonb('result').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  hashAlg: text('hash_alg').notNull().default('sha256'),
   receiptHash: text('receipt_hash'),
   signature: text('signature'),
 });

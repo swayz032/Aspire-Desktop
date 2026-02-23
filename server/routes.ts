@@ -59,6 +59,44 @@ function sortKeys(obj: any): any {
 }
 
 /**
+ * Emit a receipt to the Trust Spine receipts table.
+ * Maps desktop-friendly params to the actual receipts schema:
+ *   receipt_type (TEXT), status (SUCCEEDED/FAILED/DENIED), action (JSONB), result (JSONB),
+ *   actor_type (USER/SYSTEM/WORKER), hash_alg (TEXT NOT NULL)
+ */
+async function emitReceipt(params: {
+  receiptId: string;
+  receiptType: string;
+  outcome: 'success' | 'failed' | 'denied';
+  suiteId: string;
+  tenantId: string;
+  correlationId: string;
+  actorType: 'user' | 'system' | 'worker';
+  actorId: string;
+  riskTier: string;
+  actionData?: Record<string, any>;
+  resultData?: Record<string, any>;
+}): Promise<void> {
+  const STATUS_MAP: Record<string, string> = { success: 'SUCCEEDED', failed: 'FAILED', denied: 'DENIED' };
+  const ACTOR_MAP: Record<string, string> = { user: 'USER', system: 'SYSTEM', worker: 'WORKER' };
+
+  await db.execute(sql`
+    INSERT INTO receipts (receipt_id, receipt_type, status, action, result,
+                          suite_id, tenant_id, correlation_id, actor_type, actor_id,
+                          created_at)
+    VALUES (${params.receiptId}, ${params.receiptType},
+            ${STATUS_MAP[params.outcome] || 'FAILED'},
+            ${JSON.stringify({ risk_tier: params.riskTier, ...params.actionData })}::jsonb,
+            ${JSON.stringify({ outcome: params.outcome, ...params.resultData })}::jsonb,
+            ${params.suiteId}, ${params.tenantId},
+            ${params.correlationId},
+            ${ACTOR_MAP[params.actorType] || 'SYSTEM'},
+            ${params.actorId},
+            NOW())
+  `);
+}
+
+/**
  * Suite Bootstrap — creates suite infrastructure for new users
  * Called during onboarding when user has no suite_id in their metadata.
  * Uses service role to bypass RLS for initial setup.
@@ -248,32 +286,27 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
 
     // 5. Emit intake receipt (Law #2: Receipt for All — PII redacted per Law #9)
     try {
-      await db.execute(sql`
-        INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
-                              correlation_id, actor_type, actor_id, risk_tier, created_at,
-                              payload)
-        VALUES (${receiptId}, 'onboarding.intake_submission', 'success', ${suiteId}, ${suiteId},
-                ${correlationId}, 'user', ${userId}, 'yellow', NOW(),
-                ${JSON.stringify({
-                  schema_version: 2,
-                  fields_completed: Object.entries({
-                    businessName, industry, teamSize, entityType, yearsInBusiness,
-                    servicesNeeded, currentTools, painPoint, salesChannel, customerType,
-                    homeAddressLine1, consentPersonalization,
-                  }).filter(([, v]) => v != null && v !== '' && (!Array.isArray(v) || v.length > 0)).length,
-                  services_count: servicesNeeded.length,
-                  industry: industry || '<NOT_PROVIDED>',
-                  team_size: teamSize || '<NOT_PROVIDED>',
-                  entity_type: entityType || '<NOT_PROVIDED>',
-                  consent_personalization: consentPersonalization,
-                  consent_communications: consentCommunications,
-                  // PII redacted — Law #9
-                  date_of_birth: dateOfBirth ? '<DOB_REDACTED>' : null,
-                  gender: gender ? '<GENDER_REDACTED>' : null,
-                  home_address: homeAddressLine1 ? '<ADDRESS_REDACTED>' : null,
-                  business_address: businessAddressLine1 ? '<ADDRESS_REDACTED>' : null,
-                })}::jsonb)
-      `);
+      await emitReceipt({
+        receiptId, receiptType: 'onboarding.intake_submission', outcome: 'success',
+        suiteId, tenantId: suiteId, correlationId, actorType: 'user', actorId: userId, riskTier: 'yellow',
+        actionData: { schema_version: 2, services_count: servicesNeeded.length },
+        resultData: {
+          fields_completed: Object.entries({
+            businessName, industry, teamSize, entityType, yearsInBusiness,
+            servicesNeeded, currentTools, painPoint, salesChannel, customerType,
+            homeAddressLine1, consentPersonalization,
+          }).filter(([, v]) => v != null && v !== '' && (!Array.isArray(v) || v.length > 0)).length,
+          industry: industry || '<NOT_PROVIDED>',
+          team_size: teamSize || '<NOT_PROVIDED>',
+          entity_type: entityType || '<NOT_PROVIDED>',
+          consent_personalization: consentPersonalization,
+          consent_communications: consentCommunications,
+          date_of_birth: dateOfBirth ? '<DOB_REDACTED>' : null,
+          gender: gender ? '<GENDER_REDACTED>' : null,
+          home_address: homeAddressLine1 ? '<ADDRESS_REDACTED>' : null,
+          business_address: businessAddressLine1 ? '<ADDRESS_REDACTED>' : null,
+        },
+      });
     } catch (receiptErr: any) {
       // YELLOW-tier receipt is mandatory — fail closed per Law #3
       console.error(`Receipt emission failed [${correlationId}]:`, receiptErr.message);
@@ -339,13 +372,8 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
     try {
       const failReceiptId = crypto.randomUUID();
       const errorMsg = sanitizeText(String(error?.message || 'unknown_error')) || 'unknown_error';
-      await db.execute(sql`
-        INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
-                              correlation_id, actor_type, actor_id, risk_tier, created_at, payload)
-        VALUES (${failReceiptId}, 'onboarding.intake_submission', 'failed', NULL, NULL,
-                ${correlationId}, 'system', 'bootstrap', 'yellow', NOW(),
-                ${JSON.stringify({ error: true, reason: errorMsg })}::jsonb)
-      `);
+      // Bootstrap failure — no suite exists yet, so receipt goes to system log only
+      console.error(`[receipt] Bootstrap failed [${correlationId}]: ${errorMsg}`);
     } catch (failReceiptErr: any) {
       console.error(`Failure receipt also failed [${correlationId}]:`, (failReceiptErr as Error).message);
     }
@@ -469,16 +497,13 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
 
     if (updateError) {
       console.error('Profile update error:', updateError);
-      // Emit failure receipt — Law #2 (every state-change attempt gets a receipt)
+      // Emit failure receipt — Law #2
       try {
-        await db.execute(sql`
-          INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
-                                correlation_id, actor_type, actor_id, risk_tier, created_at,
-                                payload)
-          VALUES (${crypto.randomUUID()}, 'onboarding.profile_update', 'failed', ${suiteId}, ${suiteId},
-                  ${correlationId}, 'user', ${userId}, 'yellow', NOW(),
-                  ${JSON.stringify({ reason: 'supabase_update_error', error_code: updateError.code || 'UNKNOWN' })}::jsonb)
-        `);
+        await emitReceipt({
+          receiptId: crypto.randomUUID(), receiptType: 'onboarding.profile_update', outcome: 'failed',
+          suiteId, tenantId: suiteId, correlationId, actorType: 'user', actorId: userId, riskTier: 'yellow',
+          resultData: { reason: 'supabase_update_error', error_code: updateError.code || 'UNKNOWN' },
+        });
       } catch (_receiptErr) { /* best-effort — primary error takes precedence */ }
       return res.status(500).json({ error: 'UPDATE_FAILED', message: 'Failed to update profile' });
     }
@@ -487,21 +512,17 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
     const receiptId = crypto.randomUUID();
     const updatedFields = Object.keys(updatePayload).filter(k => updatePayload[k] != null);
     try {
-      await db.execute(sql`
-        INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
-                              correlation_id, actor_type, actor_id, risk_tier, created_at,
-                              payload)
-        VALUES (${receiptId}, 'onboarding.profile_update', 'success', ${suiteId}, ${suiteId},
-                ${correlationId}, 'user', ${userId}, 'yellow', NOW(),
-                ${JSON.stringify({
-                  fields_updated: updatedFields,
-                  field_count: updatedFields.length,
-                  ...(dateOfBirth ? { date_of_birth: '<DOB_REDACTED>' } : {}),
-                  ...(gender ? { gender: '<GENDER_REDACTED>' } : {}),
-                  ...(homeAddressLine1 ? { home_address: '<ADDRESS_REDACTED>' } : {}),
-                  ...(businessAddressLine1 ? { business_address: '<ADDRESS_REDACTED>' } : {}),
-                })}::jsonb)
-      `);
+      await emitReceipt({
+        receiptId, receiptType: 'onboarding.profile_update', outcome: 'success',
+        suiteId, tenantId: suiteId, correlationId, actorType: 'user', actorId: userId, riskTier: 'yellow',
+        resultData: {
+          fields_updated: updatedFields, field_count: updatedFields.length,
+          ...(dateOfBirth ? { date_of_birth: '<DOB_REDACTED>' } : {}),
+          ...(gender ? { gender: '<GENDER_REDACTED>' } : {}),
+          ...(homeAddressLine1 ? { home_address: '<ADDRESS_REDACTED>' } : {}),
+          ...(businessAddressLine1 ? { business_address: '<ADDRESS_REDACTED>' } : {}),
+        },
+      });
     } catch (receiptErr: any) {
       // YELLOW-tier receipt is mandatory — fail closed per Law #3
       console.error(`Profile update receipt failed [${correlationId}]:`, receiptErr.message);
@@ -511,18 +532,15 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
     res.json({ suiteId, updated: true, receiptId });
   } catch (error: any) {
     console.error('Profile update error:', error);
-    // Emit failure receipt — Law #2 (outer catch covers unexpected errors)
+    // Emit failure receipt — Law #2 (outer catch — best-effort)
     try {
-      await db.execute(sql`
-        INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
-                              correlation_id, actor_type, actor_id, risk_tier, created_at,
-                              payload)
-        VALUES (${crypto.randomUUID()}, 'onboarding.profile_update', 'failed',
-                ${suiteId || '00000000-0000-0000-0000-000000000000'}, ${suiteId || '00000000-0000-0000-0000-000000000000'},
-                ${correlationId}, 'user', ${userId || 'unknown'}, 'yellow', NOW(),
-                ${JSON.stringify({ reason: 'unexpected_error', error_message: error?.message || 'Unknown error' })}::jsonb)
-      `);
-    } catch (_receiptErr) { /* best-effort — primary error takes precedence */ }
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'onboarding.profile_update', outcome: 'failed',
+        suiteId: suiteId || '00000000-0000-0000-0000-000000000000', tenantId: suiteId || 'unknown',
+        correlationId, actorType: 'user', actorId: userId || 'unknown', riskTier: 'yellow',
+        resultData: { reason: 'unexpected_error', error_message: error?.message || 'Unknown error' },
+      });
+    } catch (_receiptErr) { /* best-effort */ }
     res.status(500).json({ error: 'UPDATE_FAILED', message: 'Profile update could not be completed. Please try again.' });
   }
 });
