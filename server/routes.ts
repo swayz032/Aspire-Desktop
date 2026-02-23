@@ -125,10 +125,20 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
     bootstrapRateLimit.set(userId, { count: 1, resetAt: now + 60000 });
   }
 
-  // Check if user already has a suite (idempotent)
+  // Check if user already has a suite — but only skip if profile is ALSO complete.
+  // Previous attempts may have created the suite but failed on the profile upsert,
+  // leaving onboarding_completed_at unset and causing the auth gate to loop.
   const existingSuiteId = (req as any).authenticatedSuiteId;
   if (existingSuiteId && existingSuiteId !== getDefaultSuiteId()) {
-    return res.json({ suiteId: existingSuiteId, created: false });
+    // Verify profile actually exists with onboarding_completed_at set
+    const { data: existingProfile } = await (supabaseAdmin ?? supabase).from('suite_profiles')
+      .select('onboarding_completed_at')
+      .eq('suite_id', existingSuiteId)
+      .single();
+    if (existingProfile?.onboarding_completed_at) {
+      return res.json({ suiteId: existingSuiteId, created: false });
+    }
+    // Profile missing or incomplete — fall through to create/update it
   }
 
   if (!supabaseAdmin) {
@@ -495,11 +505,14 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
       onboarding_completed_at: new Date().toISOString(),
     };
 
-    // Update via service role (bypasses RLS for admin operation)
+    // Upsert via service role — handles both existing and missing profile rows.
+    // A missing row can happen if bootstrap created the suite but the profile upsert
+    // failed on a previous attempt. Using upsert ensures the profile is created.
+    const { data: { user: authUser } } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const userEmail = authUser?.email || '';
     const { error: updateError } = await supabaseAdmin
       .from('suite_profiles')
-      .update(updatePayload)
-      .eq('suite_id', suiteId);
+      .upsert({ suite_id: suiteId, email: userEmail, name: updatePayload.owner_name || 'Owner', ...updatePayload }, { onConflict: 'suite_id' });
 
     if (updateError) {
       console.error('Profile update error:', updateError);
