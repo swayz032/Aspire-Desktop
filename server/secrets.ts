@@ -13,10 +13,9 @@
  * Everything else comes from SM.
  */
 
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from '@aws-sdk/client-secrets-manager';
+// Dynamic import — @aws-sdk/client-secrets-manager is loaded lazily so the
+// server doesn't crash when the package isn't installed (e.g., Railway where
+// secrets are set as env vars directly, not via AWS SM).
 
 // SM key name → process.env variable name
 const KEY_MAP: Record<string, string> = {
@@ -69,10 +68,11 @@ const GROUP_KEY_MAP: Record<string, Record<string, string>> = {
 let lastFetch = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-let smClient: SecretsManagerClient | null = null;
+let smClient: any = null;
 
-function getClient(): SecretsManagerClient {
+async function getClient(): Promise<any> {
   if (!smClient) {
+    const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager');
     smClient = new SecretsManagerClient({
       region: process.env.AWS_REGION || 'us-east-1',
     });
@@ -99,11 +99,17 @@ export async function loadSecrets(): Promise<void> {
     return;
   }
 
-  // Production without AWS creds — fail closed (Law #3)
+  // Production without AWS creds — check if secrets are set directly (Railway env vars)
   if (isProduction && !hasAwsCreds) {
+    const hasCriticalEnvVars = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (hasCriticalEnvVars) {
+      console.log('[secrets] Production mode — using Railway env vars (no AWS SM needed)');
+      return;
+    }
+    // No AWS creds AND no direct env vars — fail closed (Law #3)
     throw new Error(
-      '[secrets] FATAL: Production mode requires AWS credentials. ' +
-      'Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY in Railway.'
+      '[secrets] FATAL: Production mode requires either AWS credentials or direct env vars. ' +
+      'Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY, or set secrets directly in Railway.'
     );
   }
 
@@ -112,7 +118,8 @@ export async function loadSecrets(): Promise<void> {
     return;
   }
 
-  const client = getClient();
+  const client = await getClient();
+  const { GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
   const env = isProduction ? 'prod' : 'dev';
 
   const groups = [
