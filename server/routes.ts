@@ -62,7 +62,7 @@ function sortKeys(obj: any): any {
  * Emit a receipt to the Trust Spine receipts table.
  * Maps desktop-friendly params to the actual receipts schema:
  *   receipt_type (TEXT), status (SUCCEEDED/FAILED/DENIED), action (JSONB), result (JSONB),
- *   actor_type (USER/SYSTEM/WORKER), hash_alg (TEXT NOT NULL)
+ *   actor_type (USER/SYSTEM/WORKER)
  */
 async function emitReceipt(params: {
   receiptId: string;
@@ -131,7 +131,7 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
   const existingSuiteId = (req as any).authenticatedSuiteId;
   if (existingSuiteId && existingSuiteId !== getDefaultSuiteId()) {
     // Verify profile actually exists with onboarding_completed_at set
-    const { data: existingProfile } = await (supabaseAdmin ?? supabase).from('suite_profiles')
+    const { data: existingProfile } = await supabaseAdmin!.from('suite_profiles')
       .select('onboarding_completed_at')
       .eq('suite_id', existingSuiteId)
       .single();
@@ -395,6 +395,27 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
     }
     res.status(500).json({ error: 'BOOTSTRAP_FAILED', message: 'Onboarding could not be completed. Please try again.' });
   }
+});
+
+/**
+ * Onboarding Status — server-side check using supabaseAdmin (bypasses RLS).
+ * The client-side Supabase query may be blocked by RLS if no read policy exists
+ * on suite_profiles. This endpoint guarantees a reliable answer.
+ */
+router.get('/api/onboarding/status', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId || suiteId === getDefaultSuiteId()) {
+    return res.json({ complete: false, reason: 'no_suite' });
+  }
+  if (!supabaseAdmin) {
+    return res.json({ complete: false, reason: 'admin_unavailable' });
+  }
+  const { data } = await supabaseAdmin
+    .from('suite_profiles')
+    .select('onboarding_completed_at')
+    .eq('suite_id', suiteId)
+    .single();
+  return res.json({ complete: !!data?.onboarding_completed_at });
 });
 
 /**

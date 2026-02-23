@@ -9,7 +9,6 @@ import { useEffect, useState } from 'react';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
-import { supabase } from '@/lib/supabase';
 import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
 import { useDesktop } from '@/lib/useDesktop';
 
@@ -55,30 +54,27 @@ function useAuthGate() {
       return;
     }
 
-    // Reset while re-checking — prevents stale onboardingComplete=false from
-    // causing a redirect back to onboarding before the fresh query resolves
+    // Reset while re-checking — prevents stale state from causing premature redirect
     setOnboardingChecked(false);
 
-    // Timeout guard — if Supabase check takes too long, fail closed but don't hang forever
-    const timeoutId = setTimeout(() => {
-      if (!onboardingChecked) {
-        console.warn('Onboarding check timed out — treating as incomplete (fail-closed)');
-        setOnboardingComplete(false);
-        setOnboardingChecked(true);
-      }
-    }, 8000);
+    // Use server endpoint (supabaseAdmin) — bypasses RLS.
+    // Client-side Supabase queries fail if suite_profiles has RLS enabled
+    // with no read policy, causing an infinite onboarding redirect loop.
+    const token = session.access_token;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    supabase
-      .from('suite_profiles')
-      .select('onboarding_completed_at')
-      .eq('suite_id', suiteId)
-      .single()
-      .then(({ data }) => {
+    fetch('/api/onboarding/status', {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+      .then(r => r.json())
+      .then(({ complete }) => {
         clearTimeout(timeoutId);
-        setOnboardingComplete(!!data?.onboarding_completed_at);
+        setOnboardingComplete(!!complete);
         setOnboardingChecked(true);
       })
-      .then(undefined, () => {
+      .catch(() => {
         clearTimeout(timeoutId);
         // Fail closed — treat as incomplete if check fails
         setOnboardingComplete(false);
