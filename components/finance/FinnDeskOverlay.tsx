@@ -7,9 +7,11 @@ import { FinnDeskPanel } from './FinnDeskPanel';
 type Props = {
   visible: boolean;
   onClose: () => void;
+  initialTab?: 'voice' | 'video';
+  templateContext?: { key: string; description: string } | null;
 };
 
-export function FinnDeskOverlay({ visible, onClose }: Props) {
+export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext }: Props) {
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -26,7 +28,7 @@ export function FinnDeskOverlay({ visible, onClose }: Props) {
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.panelContainer}>
         <View style={styles.panel}>
-          <FinnDeskPanel />
+          <FinnDeskPanel initialTab={initialTab} templateContext={templateContext} />
           <Pressable style={styles.closeBtn} onPress={onClose}>
             <Ionicons name="close" size={20} color={Colors.text.secondary} />
           </Pressable>

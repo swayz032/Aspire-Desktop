@@ -1,9 +1,12 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Alert, ActivityIndicator } from 'react-native';
+import { ImageBackground } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
-import { useSupabase } from '@/providers';
+import { useSupabase, useTenant } from '@/providers';
+import { connectFinnAvatar, type AnamClientInstance } from '@/lib/anam';
 
 type FileAttachment = {
   id: string;
@@ -475,7 +478,17 @@ const playSuccessSound = () => {
   } catch (e) {}
 };
 
-export function FinnDeskPanel() {
+type FinnDeskPanelProps = {
+  initialTab?: 'voice' | 'video';
+  templateContext?: { key: string; description: string } | null;
+};
+
+export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProps = {}) {
+  const [activeTab, setActiveTab] = useState<'voice' | 'video'>(initialTab || 'voice');
+  const [videoState, setVideoState] = useState<'idle' | 'connecting' | 'connected'>('idle');
+  const [connectionStatus, setConnectionStatus] = useState('');
+  const anamClientRef = useRef<AnamClientInstance | null>(null);
+
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [isConversing, setIsConversing] = useState(false);
   const [chat, setChat] = useState<ChatMsg[]>(defaultSeedChat);
@@ -499,6 +512,7 @@ export function FinnDeskPanel() {
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();
+  const { tenant } = useTenant();
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const finnVoice = useAgentVoice({
@@ -529,6 +543,30 @@ export function FinnDeskPanel() {
       }
     }
   }, [finnVoice]);
+
+  const handleConnectToFinn = useCallback(async () => {
+    setVideoState('connecting');
+    setConnectionStatus('Connecting to Finn...');
+    playConnectionSound();
+    try {
+      const client = await connectFinnAvatar('finn-video-element', session?.access_token);
+      anamClientRef.current = client;
+      setVideoState('connected');
+      playSuccessSound();
+    } catch (_e) {
+      setVideoState('idle');
+      Alert.alert('Connection Failed', 'Unable to connect to Finn video. Please try again.');
+    }
+  }, [session?.access_token]);
+
+  const handleEndFinnSession = useCallback(() => {
+    if (anamClientRef.current) {
+      try { anamClientRef.current.stopStreaming(); } catch (_e) { /* noop */ }
+      anamClientRef.current = null;
+    }
+    setVideoState('idle');
+    setConnectionStatus('');
+  }, []);
 
   useEffect(() => {
     if (isSessionActive) {
@@ -584,6 +622,9 @@ export function FinnDeskPanel() {
   useEffect(() => {
     return () => {
       runTimers.current.forEach(clearTimeout);
+      if (anamClientRef.current) {
+        try { anamClientRef.current.stopStreaming(); } catch (_e) { /* noop */ }
+      }
     };
   }, []);
 
@@ -721,53 +762,152 @@ export function FinnDeskPanel() {
         <Text style={styles.title}>Finn Desk</Text>
       </View>
 
-      <View style={styles.surfaceContainer}>
-        <View style={styles.voiceSurface}>
-          <View style={styles.voiceHeader}>
-            <Pressable
-              style={[
-                styles.companyPill,
-                isSessionActive && styles.companyPillActive,
-              ]}
-              onPress={handleCompanyPillPress}
-            >
-              <Animated.View
-                style={[
-                  styles.onlineDot,
-                  isSessionActive && styles.onlineDotActive,
-                  {
-                    transform: [{ scale: dotPulseAnim }],
-                  },
-                  isFinnSpeaking && Platform.OS === 'web' && {
-                    boxShadow: '0 0 12px #3B82F6, 0 0 24px #3B82F6, 0 0 36px rgba(59,130,246,0.6)',
-                  },
-                ]}
-              />
-              <Text style={styles.companyName}>
-                {finnVoice.isActive ? 'Talking with Finn...' : 'Your Business'}
-              </Text>
-            </Pressable>
-          </View>
+      <View style={styles.tabRow}>
+        <Pressable
+          style={[styles.tabBtn, activeTab === 'voice' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('voice')}
+        >
+          <Ionicons name="mic" size={16} color={activeTab === 'voice' ? Colors.accent.cyan : Colors.text.tertiary} />
+          <Text style={[styles.tabBtnText, activeTab === 'voice' && styles.tabBtnTextActive]}>Voice</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tabBtn, activeTab === 'video' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('video')}
+        >
+          <Ionicons name="videocam" size={16} color={activeTab === 'video' ? Colors.accent.cyan : Colors.text.tertiary} />
+          <Text style={[styles.tabBtnText, activeTab === 'video' && styles.tabBtnTextActive]}>Video</Text>
+        </Pressable>
+      </View>
 
-          <View style={styles.orbWrap}>
-            {Platform.OS === 'web' ? (
-              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <video
-                  src="/ava-orb.mp4"
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  style={{ width: 260, height: 260, objectFit: 'contain', background: 'transparent' }}
+      <View style={styles.surfaceContainer}>
+        {activeTab === 'voice' ? (
+          <View style={styles.voiceSurface}>
+            <View style={styles.voiceHeader}>
+              <Pressable
+                style={[
+                  styles.companyPill,
+                  isSessionActive && styles.companyPillActive,
+                ]}
+                onPress={handleCompanyPillPress}
+              >
+                <Animated.View
+                  style={[
+                    styles.onlineDot,
+                    isSessionActive && styles.onlineDotActive,
+                    {
+                      transform: [{ scale: dotPulseAnim }],
+                    },
+                    isFinnSpeaking && Platform.OS === 'web' && {
+                      boxShadow: '0 0 12px #3B82F6, 0 0 24px #3B82F6, 0 0 36px rgba(59,130,246,0.6)',
+                    },
+                  ]}
                 />
-              </Animated.View>
-            ) : (
-              <View style={styles.orbPlaceholderLarge}>
-                <Ionicons name="sparkles" size={80} color={Colors.accent.cyan} />
+                <Text style={styles.companyName}>
+                  {finnVoice.isActive ? 'Talking with Finn...' : (tenant?.businessName || 'Your Business')}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.orbWrap}>
+              {Platform.OS === 'web' ? (
+                <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                  <video
+                    src="/finn-3d-object.mp4"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    style={{ width: 260, height: 260, objectFit: 'contain', background: 'transparent' }}
+                  />
+                </Animated.View>
+              ) : (
+                <View style={styles.orbPlaceholderLarge}>
+                  <Ionicons name="sparkles" size={80} color={Colors.accent.cyan} />
+                </View>
+              )}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.videoSurface}>
+            {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
+              <video
+                id="finn-video-element"
+                autoPlay
+                playsInline
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: videoState === 'connected' ? 'block' : 'none',
+                  backgroundColor: '#000',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  zIndex: 1,
+                }}
+              />
+            )}
+            {videoState === 'connected' ? (
+              <View style={{ flex: 1 }}>
+                <Pressable
+                  style={{
+                    position: 'absolute',
+                    bottom: 16,
+                    right: 16,
+                    backgroundColor: 'rgba(239,68,68,0.9)',
+                    borderRadius: 24,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    zIndex: 2,
+                  }}
+                  onPress={handleEndFinnSession}
+                >
+                  <Ionicons name="close-circle" size={18} color="#fff" />
+                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>End Session</Text>
+                </Pressable>
               </View>
+            ) : (
+              <ImageBackground
+                source={{ uri: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=800' }}
+                style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+                imageStyle={{ opacity: 0.2 }}
+              >
+                <LinearGradient
+                  colors={['rgba(0,0,0,0.6)', 'transparent']}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 80 }}
+                />
+                <LinearGradient
+                  colors={['transparent', '#1C1C1E']}
+                  style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 80 }}
+                />
+                {videoState === 'connecting' ? (
+                  <View style={{ alignItems: 'center', gap: 12 }}>
+                    <ActivityIndicator size="large" color={Colors.accent.cyan} />
+                    <Text style={{ color: Colors.text.secondary, fontSize: 14 }}>{connectionStatus}</Text>
+                  </View>
+                ) : (
+                  <View style={{ alignItems: 'center', gap: 16 }}>
+                    <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(59,130,246,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(59,130,246,0.3)' }}>
+                      <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
+                    </View>
+                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>Video with Finn</Text>
+                    <Text style={{ color: Colors.text.tertiary, fontSize: 13 }}>Start a face-to-face financial session</Text>
+                    <Pressable
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.accent.cyan, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 }}
+                      onPress={handleConnectToFinn}
+                    >
+                      <Ionicons name="videocam" size={18} color="#fff" />
+                      <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Connect to Finn</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </ImageBackground>
             )}
           </View>
-        </View>
+        )}
       </View>
 
       {isConversing && (
@@ -886,6 +1026,40 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     letterSpacing: 0.2,
   },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  tabBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  tabBtnActive: {
+    backgroundColor: 'rgba(59,130,246,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.3)',
+  },
+  tabBtnText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    color: Colors.text.tertiary,
+  },
+  tabBtnTextActive: {
+    color: Colors.accent.cyan,
+  },
+  videoSurface: {
+    flex: 1,
+    backgroundColor: '#000',
+    position: 'relative',
+    overflow: 'hidden',
+  } as any,
   surfaceContainer: {
     height: 360,
     position: 'relative',
