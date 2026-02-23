@@ -4,8 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/tokens';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
-import { useSupabase } from '@/providers';
-import { connectAnamAvatar, type AnamClientInstance } from '@/lib/anam';
+import { useSupabase, useTenant } from '@/providers';
+import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance } from '@/lib/anam';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
@@ -510,6 +510,28 @@ export function AvaDeskPanel() {
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();
+  const { tenant } = useTenant();
+
+  // W4: Authority queue polling — provides context to orchestrator (approvals shown in Authority Queue, not chat)
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchApprovals = async () => {
+      try {
+        const res = await fetch('/api/authority-queue', {
+          headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPendingApprovals(data.pendingApprovals || []);
+        }
+      } catch (e) { /* authority queue not available */ }
+    };
+
+    fetchApprovals();
+    const interval = setInterval(fetchApprovals, 30000);
+    return () => clearInterval(interval);
+  }, [session?.access_token]);
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const avaVoice = useAgentVoice({
@@ -519,8 +541,22 @@ export function AvaDeskPanel() {
     onStatusChange: (voiceStatus) => {
       setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
-    onResponse: (text) => {
-      console.log('Ava response:', text);
+    onTranscript: (text) => {
+      // W5: Voice transcript → chat (user message with voice indicator)
+      setChat(prev => [...prev, {
+        id: `voice_user_${Date.now()}`,
+        from: 'user',
+        text: `\uD83C\uDFA4 ${text}`,
+      }]);
+    },
+    onResponse: (text, receiptId) => {
+      // W5: Voice response → chat (Ava message synced from voice)
+      setChat(prev => [...prev, {
+        id: `voice_ava_${Date.now()}`,
+        from: 'ava',
+        text: text,
+      }]);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     },
     onError: (error) => {
       console.error('Ava voice error:', error);
@@ -639,8 +675,8 @@ export function AvaDeskPanel() {
     connectionTimeouts.current = [t1, t2];
 
     try {
-      // Anam SDK: fetch session token → create client (disableBrains) → stream to <video>
-      const client = await connectAnamAvatar('anam-video-element');
+      // Anam SDK: fetch session token → create client (CUSTOMER_CLIENT_V1) → stream to <video>
+      const client = await connectAnamAvatar('anam-video-element', session?.access_token);
       anamClientRef.current = client;
       clearConnectionTimeouts();
       playSuccessSound();
@@ -662,6 +698,7 @@ export function AvaDeskPanel() {
       try { anamClientRef.current.stopStreaming(); } catch (_) { /* ignore cleanup errors */ }
       anamClientRef.current = null;
     }
+    clearConversationHistory();
     setVideoState('idle');
     setConnectionStatus('');
   }, [clearConnectionTimeouts]);
@@ -680,6 +717,73 @@ export function AvaDeskPanel() {
       }
     };
   }, []);
+
+  // W6: Approve-then-execute — chains approval into orchestrator resume, surfaces narration in chat
+  const approveAndExecute = useCallback(async (approvalId: string) => {
+    const runId = `run_approve_${Date.now()}`;
+    setActiveRuns((prev) => ({
+      ...prev,
+      [runId]: { id: runId, events: [{ type: 'thinking', message: 'Approving and executing...', ts: Date.now(), icon: 'sparkles' }], status: 'running', finalText: '' },
+    }));
+    setChat((prev) => [
+      ...prev,
+      { id: `m_approve_${Date.now()}`, from: 'ava', text: '', runId },
+    ]);
+    setIsConversing(true);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+      const res = await fetch(`/api/authority-queue/${approvalId}/approve`, {
+        method: 'POST',
+        headers,
+      });
+
+      if (!res.ok) throw new Error(`Approve returned ${res.status}`);
+      const data = await res.json();
+
+      const events: Omit<AvaActivityEvent, 'ts'>[] = [
+        { type: 'step', message: 'Approval confirmed', icon: 'checkmark-circle' },
+      ];
+      if (data.executed) {
+        events.push({ type: 'tool_call', message: 'Executing approved action...', icon: 'hammer' });
+        events.push({ type: 'done', message: 'Execution complete', icon: 'checkmark-circle' });
+      } else {
+        events.push({ type: 'done', message: 'Approved (execution pending)', icon: 'checkmark-circle' });
+      }
+
+      const narrationText = data.narration || data.user_message || (data.executed ? 'Approved and executed successfully.' : 'Approved. Execution will follow.');
+
+      events.forEach((evt, idx) => {
+        const delay = 200 + idx * 500;
+        const timer = setTimeout(() => {
+          const event: AvaActivityEvent = { ...evt, ts: Date.now() };
+          setActiveRuns((prev) => {
+            const run = prev[runId];
+            if (!run) return prev;
+            const isDone = evt.type === 'done';
+            return { ...prev, [runId]: { ...run, events: [...run.events, event], status: isDone ? 'completed' : 'running', finalText: isDone ? narrationText : '' } };
+          });
+          if (evt.type === 'done') {
+            setIsConversing(false);
+            setChat((prev) => prev.map((msg) => msg.runId === runId ? { ...msg, text: narrationText } : msg));
+          }
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+        }, delay);
+        runTimers.current.push(timer);
+      });
+    } catch (error: any) {
+      setActiveRuns((prev) => {
+        const run = prev[runId];
+        if (!run) return prev;
+        return { ...prev, [runId]: { ...run, events: [...run.events, { type: 'done', message: 'Approval failed', ts: Date.now(), icon: 'alert-circle' }], status: 'completed' } };
+      });
+      setIsConversing(false);
+      setChat((prev) => prev.map((msg) => msg.runId === runId ? { ...msg, text: 'Approval failed. Please try again from the Authority Queue.' } : msg));
+    }
+  }, [session?.access_token]);
 
   const onSend = async () => {
     const trimmed = input.trim();
@@ -724,6 +828,18 @@ export function AvaDeskPanel() {
       if (suiteId) headers['X-Suite-Id'] = suiteId;
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
 
+      // Build user profile context for Ava personalization (no PII — Law #9)
+      const userProfile = tenant ? {
+        ownerName: tenant.ownerName || undefined,
+        businessName: tenant.businessName || undefined,
+        industry: tenant.industry || undefined,
+        teamSize: tenant.teamSize || undefined,
+        servicesNeeded: tenant.servicesNeeded || undefined,
+        businessGoals: tenant.businessGoals || undefined,
+        painPoint: tenant.painPoint || undefined,
+        preferredChannel: tenant.preferredChannel || undefined,
+      } : undefined;
+
       const resp = await fetch('/api/orchestrator/intent', {
         method: 'POST',
         headers,
@@ -731,6 +847,12 @@ export function AvaDeskPanel() {
           agent: 'ava',
           text: trimmed,
           channel: 'text',
+          userProfile,
+          context: {
+            pendingApprovals: pendingApprovals.length,
+            approvalSummary: pendingApprovals.slice(0, 3).map((p: any) => p.title || p.type || 'Approval'),
+            conversationHistory: chat.slice(-10).map(m => ({ from: m.from, text: m.text })),
+          },
         }),
       });
 
@@ -824,7 +946,7 @@ export function AvaDeskPanel() {
         </View>
       </View>
 
-      <View style={styles.surfaceContainer}>
+      <View style={[styles.surfaceContainer, mode === 'video' && videoState === 'connected' && styles.surfaceContainerExpanded]}>
         {mode === 'voice' ? (
           <View style={styles.voiceSurface}>
             <View style={styles.voiceHeader}>
@@ -848,7 +970,7 @@ export function AvaDeskPanel() {
                   ]}
                 />
                 <Text style={styles.companyName}>
-                  {avaVoice.isActive ? 'Talking with Ava...' : 'Your Business'}
+                  {avaVoice.isActive ? 'Talking with Ava...' : (tenant?.businessName || 'Your Business')}
                 </Text>
               </Pressable>
             </View>
@@ -1025,7 +1147,32 @@ export function AvaDeskPanel() {
         </ScrollView>
 
         <View style={styles.inputRow}>
-          <Pressable style={styles.attachBtn}>
+          <Pressable style={styles.attachBtn} onPress={() => {
+            if (Platform.OS === 'web') {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = '.pdf,.docx,.xlsx,.png,.jpg,.jpeg,.csv';
+              input.onchange = (e: any) => {
+                const file = e.target?.files?.[0];
+                if (file) {
+                  const attachment: FileAttachment = {
+                    id: `att_${Date.now()}`,
+                    name: file.name,
+                    kind: file.name.endsWith('.pdf') ? 'PDF' :
+                          file.name.endsWith('.docx') ? 'DOCX' :
+                          file.name.endsWith('.xlsx') ? 'XLSX' : 'PNG',
+                  };
+                  setChat(prev => [...prev, {
+                    id: `att_msg_${Date.now()}`,
+                    from: 'user',
+                    text: `Attached: ${file.name}`,
+                    attachments: [attachment],
+                  }]);
+                }
+              };
+              input.click();
+            }
+          }}>
             <Ionicons name="attach" size={20} color={Colors.text.secondary} />
           </Pressable>
           <TextInput

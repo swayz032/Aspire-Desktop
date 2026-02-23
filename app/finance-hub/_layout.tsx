@@ -10,6 +10,7 @@ export default function FinanceHubLayout() {
       <Stack.Screen name="invoices" />
       <Stack.Screen name="quotes" />
       <Stack.Screen name="clients" />
+      <Stack.Screen name="documents" />
       <Stack.Screen name="connections" />
       <Stack.Screen name="receipts" />
     </Stack>

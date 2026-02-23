@@ -21,6 +21,8 @@ function mapSuiteProfileToTenant(profile: any): Tenant {
     businessName: profile.business_name ?? profile.businessName ?? 'Aspire Business',
     suiteId: profile.suite_id ?? profile.suiteId ?? '',
     officeId: profile.office_id ?? profile.officeId ?? '',
+    displayId: profile.display_id ?? profile.displayId ?? undefined,
+    officeDisplayId: profile.office_display_id ?? profile.officeDisplayId ?? undefined,
     ownerName: profile.owner_name ?? profile.ownerName ?? '',
     ownerEmail: profile.owner_email ?? profile.ownerEmail ?? '',
     role: profile.role ?? 'Founder',
@@ -28,6 +30,19 @@ function mapSuiteProfileToTenant(profile: any): Tenant {
     currency: profile.currency ?? 'USD',
     createdAt: profile.created_at ?? profile.createdAt ?? new Date().toISOString(),
     updatedAt: profile.updated_at ?? profile.updatedAt ?? new Date().toISOString(),
+    // Intake fields from suite_profiles (populated after onboarding)
+    industry: profile.industry ?? null,
+    servicesNeeded: profile.services_needed ?? profile.servicesNeeded ?? null,
+    servicesPriority: profile.services_priority ?? profile.servicesPriority ?? null,
+    teamSize: profile.team_size ?? profile.teamSize ?? null,
+    entityType: profile.entity_type ?? profile.entityType ?? null,
+    yearsInBusiness: profile.years_in_business ?? profile.yearsInBusiness ?? null,
+    businessGoals: profile.business_goals ?? profile.businessGoals ?? null,
+    painPoint: profile.pain_point ?? profile.painPoint ?? null,
+    salesChannel: profile.sales_channel ?? profile.salesChannel ?? null,
+    customerType: profile.customer_type ?? profile.customerType ?? null,
+    preferredChannel: profile.preferred_channel ?? profile.preferredChannel ?? null,
+    onboardingCompleted: !!(profile.onboarding_completed_at ?? profile.onboardingCompletedAt),
   };
 }
 

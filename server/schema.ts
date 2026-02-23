@@ -7,6 +7,7 @@ export const suites = appSchema.table('suites', {
   suiteId: uuid('suite_id').primaryKey().defaultRandom(),
   tenantId: text('tenant_id').unique(),
   name: text('name'),
+  displayId: text('display_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -14,6 +15,7 @@ export const offices = appSchema.table('offices', {
   officeId: uuid('office_id').primaryKey().defaultRandom(),
   suiteId: uuid('suite_id').references(() => suites.suiteId).notNull(),
   label: text('label'),
+  displayId: text('display_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -28,6 +30,8 @@ export const suiteProfiles = pgTable('suite_profiles', {
   accentColor: text('accent_color').default('#3b82f6'),
   stripeCustomerId: text('stripe_customer_id'),
   stripeAccountId: text('stripe_account_id'),
+  displayId: text('display_id'),
+  officeDisplayId: text('office_display_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

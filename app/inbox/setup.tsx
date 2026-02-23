@@ -4,10 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
-import { mailApi, DomainSearchResult } from '@/lib/mailApi';
+import { mailApi, initMailApi, DomainSearchResult } from '@/lib/mailApi';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { MailProvider, MailOnboardingState, OnboardingCheck, DnsPlanRecord, MailSetupReceipt, DomainMode, EliConfig, DnsCheckResult } from '@/types/mailbox';
 
-const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
 const STEPS = ['Choose Provider', 'Configure', 'Verify', 'Enable Eli'];
 
 const IS_OPERATOR = true;
@@ -15,6 +15,12 @@ const IS_OPERATOR = true;
 export default function MailboxSetupScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { authenticatedFetch } = useAuthFetch();
+
+  // Wire authenticated fetch into mailApi — Law #3: all API calls must carry JWT
+  useEffect(() => {
+    initMailApi(authenticatedFetch);
+  }, [authenticatedFetch]);
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
@@ -45,6 +51,30 @@ export default function MailboxSetupScreen() {
 
     if (params.checkout === 'success' && params.orderId) {
       handleCheckoutReturn(params.orderId as string);
+    } else if (params.checkout === 'cancelled') {
+      setPurchaseStatus(null);
+      setLoading(false);
+    }
+
+    // Handle Google OAuth callback return
+    if (params.provider === 'google' && params.email) {
+      const email = params.email as string;
+      setOnboarding(prev => ({
+        ...prev,
+        oauthStatus: { connectedEmail: email, scopes: ['gmail.readonly', 'gmail.send', 'gmail.modify', 'gmail.labels'] },
+        mailboxes: [{ email, displayName: 'Google Workspace' }],
+      }));
+      setCurrentStep(2);
+    }
+
+    // Handle OAuth error
+    if (params.error) {
+      console.error('OAuth error:', params.error);
+    }
+
+    // Handle step param from callback redirect
+    if (params.step) {
+      setCurrentStep(parseInt(params.step as string) || 0);
     }
   }, []);
 
@@ -84,9 +114,12 @@ export default function MailboxSetupScreen() {
   };
 
   const handleCheckoutReturn = async (orderId: string) => {
+    // Legacy handler for any bookmark/refresh with checkout params — just resume job
     const savedJobId = typeof window !== 'undefined' ? sessionStorage.getItem('mailSetupJobId') : null;
     if (savedJobId) {
+      setJobId(savedJobId);
       await resumeFromJob(savedJobId);
+      fetchReceipts(savedJobId);
     }
   };
 
@@ -102,7 +135,7 @@ export default function MailboxSetupScreen() {
   const handleSelectProvider = async (provider: MailProvider) => {
     setLoading(true);
     try {
-      const result = await mailApi.startOnboarding(DEMO_USER_ID, provider);
+      const result = await mailApi.startOnboarding(provider);
       const newJobId = result.jobId;
       setJobId(newJobId);
       setOnboarding(result);
@@ -193,13 +226,21 @@ export default function MailboxSetupScreen() {
     setLoading(true);
     try {
       const result = await mailApi.startGoogleOAuth(jobId);
-      setOnboarding(prev => ({
-        ...prev,
-        oauthStatus: { connectedEmail: result.email, scopes: result.scopes },
-        mailboxes: [{ email: result.email, displayName: 'Google Workspace' }],
-      }));
-      fetchReceipts();
-      setCurrentStep(2);
+      if (result.authUrl) {
+        // Redirect to Google consent screen — callback will return to /inbox/setup
+        window.location.href = result.authUrl;
+        return;
+      }
+      // Fallback: if result has email directly (e.g., already connected)
+      if (result.email) {
+        setOnboarding(prev => ({
+          ...prev,
+          oauthStatus: { connectedEmail: result.email, scopes: result.scopes },
+          mailboxes: [{ email: result.email, displayName: 'Google Workspace' }],
+        }));
+        fetchReceipts();
+        setCurrentStep(2);
+      }
     } catch (e) { console.error(e); }
     setLoading(false);
   };
@@ -748,6 +789,11 @@ function BuyDomainSection({
               <ActivityIndicator size="small" color="#3B82F6" />
               <Text style={[s.purchasePendingText, { color: '#3B82F6' }]}>Processing purchase...</Text>
             </View>
+          ) : purchaseStatus === 'COMPLETED' ? (
+            <View style={s.purchasePending}>
+              <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+              <Text style={[s.purchasePendingText, { color: '#10B981' }]}>Domain purchased successfully!</Text>
+            </View>
           ) : (
             <Pressable
               style={({ hovered }: any) => [s.primaryBtn, loading && s.primaryBtnDisabled, hovered && !loading && s.primaryBtnHover]}
@@ -756,7 +802,7 @@ function BuyDomainSection({
             >
               <Ionicons name={isOperator ? 'cart-outline' : 'document-text-outline'} size={16} color="#fff" />
               <Text style={s.primaryBtnText}>
-                {isOperator ? 'Purchase Domain' : 'Request Purchase'}
+                {isOperator ? 'Purchase Now' : 'Request Purchase'}
               </Text>
             </Pressable>
           )}

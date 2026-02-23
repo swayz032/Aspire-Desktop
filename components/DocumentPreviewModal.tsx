@@ -1,13 +1,22 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { useSupabase, useTenant } from '@/providers';
 
 interface DocumentPreviewModalProps {
   visible: boolean;
   onClose: () => void;
   type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording';
   documentName?: string;
+  pandadocDocumentId?: string;
+}
+
+/** Identity fields derived from intake form (suite_profiles via useTenant) */
+interface IdentityProps {
+  ownerName: string;
+  businessName: string;
+  ownerEmail: string;
 }
 
 const TYPE_META: Record<string, { title: string; icon: keyof typeof Ionicons.glyphMap; accent: string }> = {
@@ -19,7 +28,7 @@ const TYPE_META: Record<string, { title: string; icon: keyof typeof Ionicons.gly
   recording: { title: 'Recording Transcript', icon: 'mic-outline', accent: '#22c55e' },
 };
 
-function InvoiceContent() {
+function InvoiceContent({ businessName }: IdentityProps) {
   const items = [
     { desc: 'Strategic Consulting — Q4 Sprint', qty: 1, rate: '$4,200.00', total: '$4,200.00' },
     { desc: 'UX Audit & Redesign Package', qty: 1, rate: '$2,800.00', total: '$2,800.00' },
@@ -29,7 +38,7 @@ function InvoiceContent() {
     <View>
       <View style={p.docHeader}>
         <View>
-          <Text style={p.companyName}>Your Company</Text>
+          <Text style={p.companyName}>{businessName}</Text>
           <Text style={p.companyDetail}>Suite 1042 • 123 Innovation Drive</Text>
           <Text style={p.companyDetail}>San Francisco, CA 94105</Text>
         </View>
@@ -91,7 +100,7 @@ function InvoiceContent() {
   );
 }
 
-function ContractContent() {
+function ContractContent({ businessName }: IdentityProps) {
   return (
     <View>
       <View style={p.docHeader}>
@@ -109,7 +118,7 @@ function ContractContent() {
       <View style={p.contractParties}>
         <View style={p.partyBox}>
           <Text style={p.sectionLabel}>DISCLOSING PARTY</Text>
-          <Text style={p.partyName}>Your Company, Inc.</Text>
+          <Text style={p.partyName}>{businessName}</Text>
           <Text style={p.billToDetail}>123 Innovation Drive, SF, CA 94105</Text>
         </View>
         <View style={p.partyBox}>
@@ -139,7 +148,7 @@ function ContractContent() {
       <View style={p.signatureSection}>
         <View style={p.signatureBox}>
           <View style={p.signatureLine} />
-          <Text style={p.signatureLabel}>Your Company, Inc.</Text>
+          <Text style={p.signatureLabel}>{businessName}</Text>
           <Text style={p.signatureSub}>Authorized Representative</Text>
         </View>
         <View style={p.signatureBox}>
@@ -152,7 +161,7 @@ function ContractContent() {
   );
 }
 
-function ReportContent() {
+function ReportContent({ businessName }: IdentityProps) {
   const metrics = [
     { label: 'Total Revenue', value: '$47,250', change: '+12.3%', up: true },
     { label: 'Operating Expenses', value: '$28,900', change: '+4.1%', up: true },
@@ -169,7 +178,7 @@ function ReportContent() {
     <View>
       <View style={p.docHeader}>
         <View>
-          <Text style={p.companyName}>Your Company</Text>
+          <Text style={p.companyName}>{businessName}</Text>
           <Text style={p.reportTitle}>Q4 2024 Financial Report</Text>
           <Text style={p.companyDetail}>Period: October 1 — December 31, 2024</Text>
         </View>
@@ -210,20 +219,20 @@ function ReportContent() {
       ))}
 
       <View style={p.footer}>
-        <Text style={p.footerText}>Prepared by: Sarah Mitchell, CFO • Your Company</Text>
+        <Text style={p.footerText}>Prepared by: Teressa, Books • {businessName}</Text>
         <Text style={p.footerText}>This report is confidential and intended for internal use only.</Text>
       </View>
     </View>
   );
 }
 
-function EmailContent() {
+function EmailContent({ ownerName, businessName, ownerEmail }: IdentityProps) {
   return (
     <View>
       <View style={p.emailHeader}>
         <View style={p.emailRow}>
           <Text style={p.emailLabel}>From:</Text>
-          <Text style={p.emailValue}>you@yourcompany.com</Text>
+          <Text style={p.emailValue}>{ownerEmail}</Text>
         </View>
         <View style={p.emailRow}>
           <Text style={p.emailLabel}>To:</Text>
@@ -244,7 +253,7 @@ function EmailContent() {
       <View style={p.emailBody}>
         <Text style={p.emailBodyText}>Hi Michael,</Text>
         <Text style={p.emailBodyText}>
-          Thank you for the productive meeting yesterday. I wanted to follow up on the key points we discussed regarding the strategic partnership between Your Company and Apex Corporation.
+          Thank you for the productive meeting yesterday. I wanted to follow up on the key points we discussed regarding the strategic partnership between {businessName} and Apex Corporation.
         </Text>
         <Text style={p.emailBodyText}>
           As agreed, I've attached the preliminary proposal outlining the scope of collaboration, revenue sharing model, and implementation timeline. Our team has incorporated the feedback from your VP of Engineering regarding the technical integration requirements.
@@ -259,8 +268,8 @@ function EmailContent() {
           Please let me know if you have any questions or would like to schedule a follow-up call this week.
         </Text>
         <Text style={p.emailBodyText}>Best regards,</Text>
-        <Text style={[p.emailBodyText, { fontWeight: '600', color: '#d1d1d6' }]}>Jordan Mitchell</Text>
-        <Text style={p.emailBodyText}>Founder & CEO, Your Company</Text>
+        <Text style={[p.emailBodyText, { fontWeight: '600', color: '#d1d1d6' }]}>{ownerName}</Text>
+        <Text style={p.emailBodyText}>Founder & CEO, {businessName}</Text>
       </View>
 
       <View style={p.divider} />
@@ -272,14 +281,15 @@ function EmailContent() {
   );
 }
 
-function RecordingContent() {
+function RecordingContent({ ownerName }: IdentityProps) {
+  const firstName = ownerName.split(' ')[0];
   const entries = [
-    { time: '00:00', speaker: 'Jordan Mitchell', text: 'Good morning everyone. Let\'s get started with the Q4 review. I want to cover three main areas today — financial performance, client pipeline, and our hiring plan for next quarter.' },
-    { time: '01:24', speaker: 'Sarah Mitchell', text: 'Thanks, Jordan. Starting with financials — we closed Q4 at $47,250 in total revenue, which is a 12.3% increase over Q3. Our largest contributor was the Apex Corp engagement at $18,400.' },
-    { time: '03:15', speaker: 'Marcus Chen', text: 'On the pipeline side, we have three major proposals outstanding. The BlueSky Digital project is looking very promising — they\'ve moved to final review stage.' },
-    { time: '05:02', speaker: 'Jordan Mitchell', text: 'Excellent. What\'s the timeline for a decision on BlueSky?' },
-    { time: '05:18', speaker: 'Marcus Chen', text: 'They indicated we should hear back by end of next week. If approved, it would be our largest engagement to date at approximately $35,000.' },
-    { time: '06:45', speaker: 'Sarah Mitchell', text: 'From a hiring perspective, we\'re looking to bring on two additional consultants and a junior designer. Budget has been allocated from the Q4 surplus.' },
+    { time: '00:00', speaker: ownerName, text: 'Good morning everyone. Let\'s get started with the Q4 review. I want to cover three main areas today — financial performance, client pipeline, and our hiring plan for next quarter.' },
+    { time: '01:24', speaker: 'Teressa (Books)', text: `Thanks, ${firstName}. Starting with financials — we closed Q4 at $47,250 in total revenue, which is a 12.3% increase over Q3. Our largest contributor was the Apex Corp engagement at $18,400.` },
+    { time: '03:15', speaker: 'Adam (Research)', text: 'On the pipeline side, we have three major proposals outstanding. The BlueSky Digital project is looking very promising — they\'ve moved to final review stage.' },
+    { time: '05:02', speaker: ownerName, text: 'Excellent. What\'s the timeline for a decision on BlueSky?' },
+    { time: '05:18', speaker: 'Adam (Research)', text: 'They indicated we should hear back by end of next week. If approved, it would be our largest engagement to date at approximately $35,000.' },
+    { time: '06:45', speaker: 'Teressa (Books)', text: 'From a hiring perspective, we\'re looking to bring on two additional consultants and a junior designer. Budget has been allocated from the Q4 surplus.' },
   ];
   return (
     <View>
@@ -297,7 +307,7 @@ function RecordingContent() {
       <View style={p.divider} />
 
       <Text style={p.sectionLabel}>PARTICIPANTS</Text>
-      <Text style={p.companyDetail}>Jordan Mitchell (Host), Sarah Mitchell, Marcus Chen</Text>
+      <Text style={p.companyDetail}>{ownerName} (Host), Teressa (Books), Adam (Research)</Text>
 
       <View style={{ marginTop: 16 }}>
         <Text style={p.sectionLabel}>TRANSCRIPT</Text>
@@ -315,12 +325,12 @@ function RecordingContent() {
   );
 }
 
-function GenericDocContent() {
+function GenericDocContent({ businessName }: IdentityProps) {
   return (
     <View>
       <View style={p.docHeader}>
         <View>
-          <Text style={p.companyName}>Your Company</Text>
+          <Text style={p.companyName}>{businessName}</Text>
           <Text style={p.reportTitle}>Project Proposal — Phase 2</Text>
           <Text style={p.companyDetail}>Prepared: February 13, 2025 • Version 2.1</Text>
         </View>
@@ -353,52 +363,172 @@ function GenericDocContent() {
   );
 }
 
-export function DocumentPreviewModal({ visible, onClose, type, documentName }: DocumentPreviewModalProps) {
+export function DocumentPreviewModal({ visible, onClose, type, documentName, pandadocDocumentId }: DocumentPreviewModalProps) {
   const meta = TYPE_META[type] || TYPE_META.document;
+  const { session } = useSupabase();
+  const { tenant } = useTenant();
+
+  // PandaDoc live preview state
+  const [pdLoading, setPdLoading] = useState(false);
+  const [pdSessionUrl, setPdSessionUrl] = useState<string | null>(null);
+  const [pdError, setPdError] = useState<string | null>(null);
+
+  // When modal opens with a pandadocDocumentId, fetch a preview session
+  useEffect(() => {
+    if (!visible || !pandadocDocumentId) {
+      setPdSessionUrl(null);
+      setPdError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPdLoading(true);
+    setPdError(null);
+    setPdSessionUrl(null);
+
+    (async () => {
+      try {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+        const resp = await fetch(`/api/pandadoc/${pandadocDocumentId}/preview`, {
+          method: 'POST',
+          headers,
+        });
+
+        if (cancelled) return;
+
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.session_id) {
+            setPdSessionUrl(data.preview_url || `https://app.pandadoc.com/s/${data.session_id}`);
+          } else if (data.fallback) {
+            setPdError(`Document is in "${data.document_status}" status — preview not available yet. ${data.document_name ? `(${data.document_name})` : ''}`);
+          }
+        } else {
+          setPdError('Failed to load document preview');
+        }
+      } catch {
+        if (!cancelled) setPdError('Could not connect to preview service');
+      } finally {
+        if (!cancelled) setPdLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [visible, pandadocDocumentId, session?.access_token]);
+
+  // Identity from intake form (suite_profiles) — populated during onboarding
+  const identity: IdentityProps = {
+    ownerName: tenant?.ownerName || session?.user?.user_metadata?.full_name || 'Your Name',
+    businessName: tenant?.businessName || 'Your Business',
+    ownerEmail: session?.user?.email || tenant?.ownerEmail || 'you@yourbusiness.com',
+  };
 
   const renderContent = () => {
     switch (type) {
-      case 'invoice': return <InvoiceContent />;
-      case 'contract': return <ContractContent />;
-      case 'report': return <ReportContent />;
-      case 'email': return <EmailContent />;
-      case 'recording': return <RecordingContent />;
-      default: return <GenericDocContent />;
+      case 'invoice': return <InvoiceContent {...identity} />;
+      case 'contract': return <ContractContent {...identity} />;
+      case 'report': return <ReportContent {...identity} />;
+      case 'email': return <EmailContent {...identity} />;
+      case 'recording': return <RecordingContent {...identity} />;
+      default: return <GenericDocContent {...identity} />;
     }
   };
+
+  // PandaDoc iframe preview (real document)
+  const hasPandaDoc = !!pandadocDocumentId;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={p.backdrop} onPress={onClose}>
-        <Pressable style={p.modalContainer} onPress={(e) => e.stopPropagation()}>
+        <Pressable
+          style={[p.modalContainer, hasPandaDoc && p.modalContainerWide]}
+          onPress={(e) => e.stopPropagation()}
+        >
           <View style={p.modalHeader}>
             <View style={p.modalHeaderLeft}>
               <View style={[p.modalIcon, { backgroundColor: `${meta.accent}15` }]}>
-                <Ionicons name={meta.icon} size={18} color={meta.accent} />
+                <Ionicons name={hasPandaDoc ? 'document-lock-outline' : meta.icon} size={18} color={meta.accent} />
               </View>
               <View>
                 <Text style={p.modalTitle}>{documentName || meta.title}</Text>
-                <Text style={p.modalSubtitle}>{meta.title} Preview</Text>
+                <Text style={p.modalSubtitle}>
+                  {hasPandaDoc ? 'PandaDoc Document' : `${meta.title} Preview`}
+                </Text>
               </View>
             </View>
             <View style={p.modalHeaderRight}>
-              <Pressable style={({ hovered }: any) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}>
-                <Ionicons name="download-outline" size={16} color="#a1a1a6" />
-              </Pressable>
-              <Pressable style={({ hovered }: any) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}>
-                <Ionicons name="share-outline" size={16} color="#a1a1a6" />
-              </Pressable>
+              {!hasPandaDoc && (
+                <>
+                  <Pressable style={({ hovered }: any) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}>
+                    <Ionicons name="download-outline" size={16} color="#a1a1a6" />
+                  </Pressable>
+                  <Pressable style={({ hovered }: any) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}>
+                    <Ionicons name="share-outline" size={16} color="#a1a1a6" />
+                  </Pressable>
+                </>
+              )}
               <Pressable onPress={onClose} style={({ hovered }: any) => [p.modalCloseBtn, hovered && p.modalCloseBtnHover]}>
                 <Ionicons name="close" size={18} color="#a1a1a6" />
               </Pressable>
             </View>
           </View>
 
-          <ScrollView style={p.modalBody} showsVerticalScrollIndicator={false} contentContainerStyle={p.modalBodyContent}>
-            <View style={p.documentPage}>
-              {renderContent()}
+          {hasPandaDoc ? (
+            <View style={p.pandadocBody}>
+              {pdLoading && (
+                <View style={p.pandadocLoadingContainer}>
+                  <ActivityIndicator size="large" color={meta.accent} />
+                  <Text style={p.pandadocLoadingText}>Loading document preview...</Text>
+                </View>
+              )}
+              {pdError && !pdLoading && (
+                <View style={p.pandadocErrorContainer}>
+                  <Ionicons name="alert-circle-outline" size={40} color="#6e6e73" />
+                  <Text style={p.pandadocErrorText}>{pdError}</Text>
+                  <Text style={p.pandadocErrorHint}>The static preview is shown below as a fallback.</Text>
+                  <ScrollView style={{ flex: 1, width: '100%', marginTop: 16 }} showsVerticalScrollIndicator={false} contentContainerStyle={p.modalBodyContent}>
+                    <View style={p.documentPage}>
+                      {renderContent()}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+              {pdSessionUrl && !pdLoading && Platform.OS === 'web' && (
+                <iframe
+                  src={pdSessionUrl}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    backgroundColor: '#ffffff',
+                  }}
+                  title="Document Preview"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                />
+              )}
+              {pdSessionUrl && !pdLoading && Platform.OS !== 'web' && (
+                <View style={p.pandadocLoadingContainer}>
+                  <Ionicons name="open-outline" size={32} color="#6e6e73" />
+                  <Text style={p.pandadocLoadingText}>Document preview is available in browser.</Text>
+                </View>
+              )}
             </View>
-          </ScrollView>
+          ) : (
+            <ScrollView style={p.modalBody} showsVerticalScrollIndicator={false} contentContainerStyle={p.modalBodyContent}>
+              <View style={p.documentPage}>
+                {renderContent()}
+              </View>
+            </ScrollView>
+          )}
+
+          {hasPandaDoc && !pdError && (
+            <View style={p.pandadocFooter}>
+              <Ionicons name="shield-checkmark" size={12} color="#48484a" />
+              <Text style={p.pandadocFooterText}>Secured by Aspire — powered by PandaDoc</Text>
+            </View>
+          )}
         </Pressable>
       </Pressable>
     </Modal>
@@ -497,6 +627,63 @@ const p = StyleSheet.create({
   modalCloseBtnHover: {
     backgroundColor: 'rgba(239, 68, 68, 0.12)',
     borderColor: 'rgba(239, 68, 68, 0.2)',
+  },
+  modalContainerWide: {
+    maxWidth: 920,
+    maxHeight: '92%',
+  },
+  pandadocBody: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    overflow: 'hidden',
+  },
+  pandadocLoadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: '#111113',
+  },
+  pandadocLoadingText: {
+    fontSize: 13,
+    color: '#6e6e73',
+    textAlign: 'center',
+  },
+  pandadocErrorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 32,
+    paddingHorizontal: 24,
+    backgroundColor: '#111113',
+  },
+  pandadocErrorText: {
+    fontSize: 13,
+    color: '#a1a1a6',
+    textAlign: 'center',
+    marginTop: 12,
+    lineHeight: 20,
+  },
+  pandadocErrorHint: {
+    fontSize: 11,
+    color: '#48484a',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  pandadocFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#0d0d0f',
+  },
+  pandadocFooterText: {
+    fontSize: 10,
+    color: '#48484a',
+    letterSpacing: 0.3,
   },
   modalBody: {
     flex: 1,

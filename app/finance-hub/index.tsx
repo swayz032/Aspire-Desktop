@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,10 +7,16 @@ import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { FinanceRightRail } from '@/components/finance/FinanceRightRail';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
-import { ProposalReviewSheet, Proposal } from '@/components/finance/ProposalReviewSheet';
 import SourceBadge from '@/components/finance/SourceBadge';
+import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
+import { AuthorityQueueCard } from '@/components/AuthorityQueueCard';
+import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
+import { getAuthorityQueue } from '@/lib/api';
+import type { AuthorityItem } from '@/types';
 import ExplainDrawer from '@/components/finance/ExplainDrawer';
-import TimelineRow from '@/components/finance/TimelineRow';
+import { FinnDeskOverlay } from '@/components/finance/FinnDeskOverlay';
+import { FinnChatModal } from '@/components/finance/FinnChatModal';
+
 import ReconcileCard from '@/components/finance/ReconcileCard';
 import LifecycleChain from '@/components/finance/LifecycleChain';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
@@ -36,18 +42,6 @@ interface ConnectionStatus {
   summary: { total: number; connected: number; needsAttention: number };
 }
 
-interface TimelineEvent {
-  eventId: string;
-  provider: string;
-  eventType: string;
-  occurredAt: string;
-  amount: number | null;
-  currency: string;
-  status: string;
-  entityRefs: any;
-  metadata?: any;
-  receiptId?: string;
-}
 
 const fallbackCashTrendData = [
   { day: 'Jan 25', value: 42000 }, { day: 'Jan 26', value: 41200 }, { day: 'Jan 27', value: 43800 },
@@ -73,20 +67,6 @@ const fallbackExpenseData = [
   { name: 'Software', value: 15, color: '#D97706' },
   { name: 'Marketing', value: 12, color: '#DC2626' },
   { name: 'Other', value: 7, color: '#6366F1' },
-];
-
-const fallbackProposals = [
-  { title: 'Fund payroll buffer', chips: ['Payroll Fri', 'Projected balance'], risk: 'MED', riskColor: '#f59e0b', riskBg: 'rgba(245, 158, 11, 0.15)', accentColor: '#f59e0b', description: 'Buffer will drop below $5K after Friday payroll. Recommend moving $4,200 from reserves.' },
-  { title: 'Collect overdue AR', chips: ['2 invoices', '$6,800 total'], risk: 'HIGH', riskColor: '#ef4444', riskBg: 'rgba(239, 68, 68, 0.15)', accentColor: '#ef4444', description: 'Two invoices are 14+ days past due. Automated reminder sequence recommended.' },
-  { title: 'Increase tax reserve', chips: ['Q4 estimates', 'Current: 18%'], risk: 'LOW', riskColor: '#10B981', riskBg: 'rgba(16, 185, 129, 0.15)', accentColor: '#10B981', description: 'Current reserve rate is below recommended 22% for Q4. Consider increasing allocation.' },
-];
-
-const fallbackTransactions = [
-  { icon: 'arrow-down-circle' as const, title: 'Apex Corp', subtitle: 'Invoice #1847', amount: '+$4,200', time: '2h ago', color: '#10B981', status: 'Completed' },
-  { icon: 'arrow-up-circle' as const, title: 'Figma Pro Plan', subtitle: 'Subscription', amount: '-$299', time: '5h ago', color: '#ef4444', status: 'Completed' },
-  { icon: 'arrow-down-circle' as const, title: 'Beta Industries', subtitle: 'Invoice #1832', amount: '+$3,400', time: 'Yesterday', color: '#10B981', status: 'Pending' },
-  { icon: 'arrow-up-circle' as const, title: 'AWS Hosting', subtitle: 'Monthly', amount: '-$890', time: 'Yesterday', color: '#ef4444', status: 'Completed' },
-  { icon: 'arrow-down-circle' as const, title: 'Gamma LLC', subtitle: 'Invoice #1828', amount: '+$2,100', time: '2 days ago', color: '#10B981', status: 'Completed' },
 ];
 
 const fallbackKpiSparkData = {
@@ -253,7 +233,6 @@ function FinnOrbVideo() {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   React.useEffect(() => {
     if (Platform.OS !== 'web') return;
-    injectFinnCss();
     const vid = videoRef.current;
     if (vid) {
       vid.muted = true;
@@ -265,16 +244,15 @@ function FinnOrbVideo() {
 
   if (Platform.OS !== 'web') {
     return (
-      <View style={{ width: 260, height: 260, borderRadius: 130, backgroundColor: '#222' }} />
+      <View style={{ width: 260, height: 260, borderRadius: 130, backgroundColor: '#111' }} />
     );
   }
 
   return (
-    <div style={{ width: 290, height: 290, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111', flexShrink: 0, position: 'relative' }}>
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
       <video
         ref={videoRef as any}
-        className="finn-orb-video"
-        src="/finn-orb-web.mp4"
+        src="/finn-3d-object.mp4"
         autoPlay
         loop
         muted
@@ -282,26 +260,17 @@ function FinnOrbVideo() {
         preload="auto"
         controls={false}
         style={{
-          width: 430,
-          height: 430,
+          width: '100%',
+          height: '100%',
           objectFit: 'cover',
           display: 'block',
         }}
       />
+      {/* Subtle ambient glow */}
       <div style={{
-        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10,
-        borderRadius: '50%',
+        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
         pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 35%, transparent 65%), radial-gradient(ellipse at 70% 80%, rgba(255,255,255,0.04) 0%, transparent 50%)',
-        boxShadow: 'inset 0 -8px 20px rgba(0,0,0,0.25), inset 0 4px 12px rgba(255,255,255,0.08)',
-      }} />
-      <div style={{
-        position: 'absolute', top: '8%', left: '15%', width: '40%', height: '22%', zIndex: 11,
-        borderRadius: '50%',
-        pointerEvents: 'none',
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 100%)',
-        filter: 'blur(4px)',
-        transform: 'rotate(-15deg)',
+        background: 'radial-gradient(ellipse at 50% 50%, rgba(139,92,246,0.08) 0%, transparent 70%)',
       }} />
     </div>
   );
@@ -615,17 +584,20 @@ function FinanceHubContent() {
   React.useEffect(() => { if (Platform.OS === 'web') injectFinnCss(); }, []);
   const router = useRouter();
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
-  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
-  const [showProposal, setShowProposal] = useState(false);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [lifecycleSteps, setLifecycleSteps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [explainMetric, setExplainMetric] = useState<string | null>(null);
-  const [finnChatOpen, setFinnChatOpen] = useState(false);
-  const [finnChatMessage, setFinnChatMessage] = useState('');
-  const [finnChatMessages, setFinnChatMessages] = useState<Array<{ role: 'user' | 'finn'; text: string }>>([]);
+  const [showFinnOverlay, setShowFinnOverlay] = useState(false);
+  const [finnOverlayTab, setFinnOverlayTab] = useState<'voice' | 'video'>('voice');
+  const [showFinnChat, setShowFinnChat] = useState(false);
+
+  // Authority Queue state
+  const dynamicItems = useDynamicAuthorityQueue();
+  const [supabaseAuthority, setSupabaseAuthority] = useState<AuthorityItem[]>([]);
+  const [reviewPreview, setReviewPreview] = useState<{ visible: boolean; type: 'invoice' | 'contract' | 'document'; documentName: string; pandadocDocumentId?: string }>({ visible: false, type: 'document', documentName: '' });
 
   // Finn voice — voice is primary interaction mode
   const { suiteId, session } = useSupabase();
@@ -633,16 +605,8 @@ function FinanceHubContent() {
     agent: 'finn',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
-    onTranscript: (text) => {
-      // Voice transcripts get added to chat (typed messages are added in send handler)
-      setFinnChatMessages(prev => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'user' && last.text === text) return prev; // dedupe
-        return [...prev, { role: 'user', text }];
-      });
-    },
-    onResponse: (text) => setFinnChatMessages(prev => [...prev, { role: 'finn', text }]),
-    onError: (err) => console.error('Finn voice error:', err),
+    onResponse: (_text) => {},
+    onError: (_err) => {},
   });
   const handleFinnVoiceToggle = useCallback(async () => {
     if (finnVoice.isActive) {
@@ -666,17 +630,6 @@ function FinanceHubContent() {
         { name: 'Other', value: 7, color: '#6366F1' },
       ]
     : fallbackExpenseData;
-  const proposals = hasSnapshot && snapshot.chapters.actions.proposals.length > 0
-    ? snapshot.chapters.actions.proposals.map((p: any) => ({
-        title: p.title || p.eventType || 'Proposal',
-        chips: p.chips || p.evidence || [],
-        risk: p.risk || 'LOW',
-        riskColor: p.risk === 'HIGH' ? '#ef4444' : p.risk === 'MED' ? '#f59e0b' : '#10B981',
-        riskBg: p.risk === 'HIGH' ? 'rgba(239, 68, 68, 0.15)' : p.risk === 'MED' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-        accentColor: p.risk === 'HIGH' ? '#ef4444' : p.risk === 'MED' ? '#f59e0b' : '#10B981',
-        description: p.description || '',
-      }))
-    : fallbackProposals;
   const kpiSparkData = fallbackKpiSparkData;
 
 
@@ -718,19 +671,32 @@ function FinanceHubContent() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleReviewProposal = (p: typeof fallbackProposals[0]) => {
-    setSelectedProposal({
-      id: p.title.toLowerCase().replace(/\s+/g, '-'),
-      title: p.title,
-      type: p.title.includes('payroll') ? 'payroll' : p.title.includes('AR') ? 'collection' : 'reserve',
-      impact: { amount: p.title.includes('payroll') ? 12400 : p.title.includes('AR') ? 6800 : 2500, description: p.title },
-      evidence: p.chips,
-      sources: ['Cash forecast', 'Historical data'],
-      risk: p.risk as 'LOW' | 'MED' | 'HIGH',
-      approvalLevel: p.risk === 'HIGH' ? 'Owner approval required' : 'Admin approval required',
-    });
-    setShowProposal(true);
-  };
+  // Fetch authority queue from Supabase
+  useEffect(() => {
+    async function fetchAuthorityQueue() {
+      try {
+        const items = await getAuthorityQueue();
+        setSupabaseAuthority(items as AuthorityItem[]);
+      } catch (_e) {
+        // Silently fail — authority queue is non-critical
+      }
+    }
+    fetchAuthorityQueue();
+    const interval = setInterval(fetchAuthorityQueue, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Filter to finance-related agents
+  const financeAgents = ['finn', 'quinn', 'teressa'];
+  const allAuthorityItems = useMemo(() => {
+    const merged = [...dynamicItems, ...supabaseAuthority];
+    const filtered = merged.filter(item =>
+      financeAgents.includes(item.assignedAgent?.toLowerCase() || '') ||
+      financeAgents.includes(item.staffRole?.toLowerCase() || '')
+    );
+    // If no finance-specific items found, show all items as safe fallback
+    return filtered.length > 0 ? filtered : merged;
+  }, [dynamicItems, supabaseAuthority]);
 
   const webHover = (key: string) => Platform.OS === 'web' ? {
     onMouseEnter: () => setHoveredButton(key),
@@ -991,185 +957,79 @@ function FinanceHubContent() {
           )}
         </GlassCard>
 
-        <GlassCard style={[s.finnCard]} tint={{ color: '#8B5CF6', position: 'top-right' }}>
-          {Platform.OS === 'web' && (
-            <>
-              <div style={{
-                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                backgroundImage: svgPatterns.financeDashboard('rgba(139,92,246,0.04)', 'rgba(167,139,250,0.07)'),
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right bottom',
-                backgroundSize: '55% auto',
-                pointerEvents: 'none',
-              }} />
-              <div style={{
-                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                backgroundImage: svgPatterns.barChart('rgba(139,92,246,0.025)', 'rgba(167,139,250,0.045)'),
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'left bottom',
-                backgroundSize: '30% auto',
-                pointerEvents: 'none',
-                opacity: 0.7,
-              }} />
-            </>
-          )}
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 180, position: 'relative' }}>
+        {/* Finn Card — Black bg, floating panel left, 3D object right */}
+        <View style={s.finnCardOuter}>
+          {/* Floating Panel (left) */}
+          <View style={s.finnFloatingPanel}>
+            <View style={s.finnPanelInner}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(139,92,246,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="analytics" size={16} color="#A78BFA" />
+                </View>
+                <View>
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Finn</Text>
+                  <Text style={{ color: '#888', fontSize: 11 }}>Financial Intelligence</Text>
+                </View>
+              </View>
+
+              <Pressable
+                style={[s.finnPanelBtn, finnVoice.isActive && { borderColor: 'rgba(139,92,246,0.5)', backgroundColor: 'rgba(139,92,246,0.15)' }]}
+                onPress={handleFinnVoiceToggle}
+                {...webHover('finn-voice')}
+              >
+                <Ionicons name={finnVoice.isActive ? 'mic' : 'mic-outline'} size={16} color={finnVoice.isActive ? '#C4B5FD' : '#A78BFA'} />
+                <Text style={s.finnPanelBtnText}>{finnVoice.isActive ? 'Talking...' : 'Voice with Finn'}</Text>
+              </Pressable>
+
+              <Pressable
+                style={s.finnPanelBtn}
+                onPress={() => { setFinnOverlayTab('video'); setShowFinnOverlay(true); }}
+                {...webHover('finn-video')}
+              >
+                <Ionicons name="videocam-outline" size={16} color="#A78BFA" />
+                <Text style={s.finnPanelBtnText}>Video with Finn</Text>
+              </Pressable>
+
+              <Pressable
+                style={s.finnPanelBtn}
+                onPress={() => setShowFinnChat(true)}
+                {...webHover('finn-chat')}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={16} color="#A78BFA" />
+                <Text style={s.finnPanelBtnText}>Chat with Finn</Text>
+              </Pressable>
+
+              <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 12 }} />
+              <Text style={{ color: '#666', fontSize: 11, lineHeight: 16 }}>
+                Your financial intelligence advisor. Cash flow, invoicing, payments, and strategy.
+              </Text>
+            </View>
+          </View>
+
+          {/* 3D Object (right) */}
+          <View style={s.finn3dContainer}>
             {Platform.OS === 'web' ? (
               <FinnOrbVideo />
             ) : (
-              <>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={s.finnTitle}>Finn</Text>
-                <Text style={s.finnSubtitle}>Finance Hub Manager</Text>
-                <View style={{ width: 280, height: 280, borderRadius: 140, backgroundColor: '#222', marginTop: 12 }} />
-              </>
+                <Text style={s.finnSubtitle}>Financial Intelligence</Text>
+              </View>
             )}
           </View>
-          {Platform.OS === 'web' && (
-            <div
-              className="finn-pill"
-              onClick={handleFinnVoiceToggle}
-              style={{
-                position: 'absolute',
-                bottom: 16,
-                left: 16,
-                display: 'inline-flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                paddingLeft: 16,
-                paddingRight: 18,
-                paddingTop: 8,
-                paddingBottom: 8,
-                borderRadius: 22,
-                border: finnVoice.isActive ? '1px solid rgba(139,92,246,0.6)' : '1px solid rgba(167,139,250,0.35)',
-                background: finnVoice.isActive ? 'rgba(139,92,246,0.25)' : 'rgba(15,15,20,0.65)',
-                cursor: 'pointer',
-                zIndex: 3,
-                backdropFilter: 'blur(16px)',
-                WebkitBackdropFilter: 'blur(16px)',
-                boxShadow: finnVoice.isActive ? '0 0 20px rgba(139,92,246,0.4)' : 'none',
-              }}
-            >
-              <Ionicons name={finnVoice.isActive ? 'mic' : 'mic-outline'} size={14} color={finnVoice.isActive ? '#C4B5FD' : 'rgba(255,255,255,0.7)'} />
-              <span style={{ color: '#fff', fontSize: 13, fontWeight: '600', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
-                {finnVoice.isActive ? 'Talking to Finn...' : 'Talk to Finn'}
-              </span>
-            </div>
-          )}
-          {Platform.OS === 'web' && (
-            <div
-              className="finn-chat-icon"
-              onClick={() => setFinnChatOpen(!finnChatOpen)}
-              style={{
-                position: 'absolute',
-                bottom: 16,
-                right: 16,
-                width: 38,
-                height: 38,
-                borderRadius: 12,
-                backgroundColor: 'rgba(139,92,246,0.12)',
-                border: '1px solid rgba(139,92,246,0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                zIndex: 3,
-              }}
-            >
-              <span className="icon-inner"><Ionicons name="chatbubble-ellipses-outline" size={16} color="currentColor" /></span>
-            </div>
-          )}
-        </GlassCard>
+        </View>
       </View>
 
-      {finnChatOpen && Platform.OS === 'web' && (
-        <div className="finn-chat-drawer" style={{
-          marginBottom: 16,
-          marginTop: -4,
-          borderRadius: 16,
-          border: '1px solid rgba(139,92,246,0.2)',
-          background: 'rgba(20,20,28,0.85)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          overflow: 'hidden',
-        }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Ionicons name="chatbubble-ellipses" size={16} color="#A78BFA" />
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Message Finn</Text>
-            </View>
-            <Pressable onPress={() => setFinnChatOpen(false)} style={{ padding: 4 }}>
-              <Ionicons name="close" size={16} color="#666" />
-            </Pressable>
-          </View>
-          <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
-            <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 16, minHeight: 80, maxHeight: 240, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}>
-              {finnChatMessages.length === 0 ? (
-                <Text style={{ color: '#888', fontSize: 13, fontStyle: 'italic' }}>Ask Finn about cash runway, invoices, expenses, or financial strategy.</Text>
-              ) : (
-                <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                  {finnChatMessages.map((msg, i) => (
-                    <View key={i} style={{ marginBottom: 8, alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                      <View style={{
-                        maxWidth: '85%',
-                        backgroundColor: msg.role === 'user' ? 'rgba(139,92,246,0.25)' : 'rgba(255,255,255,0.06)',
-                        borderRadius: 10,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderWidth: 1,
-                        borderColor: msg.role === 'user' ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.08)',
-                      }}>
-                        <Text style={{ color: msg.role === 'user' ? '#C4B5FD' : '#ccc', fontSize: 13 }}>{msg.text}</Text>
-                      </View>
-                    </View>
-                  ))}
-                  {finnVoice.status === 'thinking' && (
-                    <View style={{ marginBottom: 8, alignItems: 'flex-start' }}>
-                      <View style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-                        <Text style={{ color: '#888', fontSize: 13, fontStyle: 'italic' }}>Finn is thinking...</Text>
-                      </View>
-                    </View>
-                  )}
-                </ScrollView>
-              )}
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingBottom: 16 }}>
-            <Pressable style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="attach" size={18} color="#888" />
-            </Pressable>
-            {Platform.OS === 'web' && (
-              <div style={{ flex: 1, display: 'flex' }}>
-                <input
-                  type="text"
-                  value={finnChatMessage}
-                  onChange={(e: any) => setFinnChatMessage(e.target.value)}
-                  onKeyDown={(e: any) => { if (e.key === 'Enter' && finnChatMessage.trim()) { setFinnChatMessages(prev => [...prev, { role: 'user', text: finnChatMessage.trim() }]); finnVoice.sendText(finnChatMessage.trim()); setFinnChatMessage(''); } }}
-                  placeholder="Ask Finn about your finances..."
-                  style={{
-                    flex: 1,
-                    height: 38,
-                    borderRadius: 10,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#fff',
-                    fontSize: 13,
-                    paddingLeft: 14,
-                    paddingRight: 14,
-                    outline: 'none',
-                    fontFamily: 'inherit',
-                  }}
-                />
-              </div>
-            )}
-            <Pressable
-              onPress={() => { if (finnChatMessage.trim()) { setFinnChatMessages(prev => [...prev, { role: 'user', text: finnChatMessage.trim() }]); finnVoice.sendText(finnChatMessage.trim()); setFinnChatMessage(''); } }}
-              style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: finnChatMessage.trim() ? 'rgba(139,92,246,0.4)' : 'rgba(139,92,246,0.25)', borderWidth: 1, borderColor: 'rgba(139,92,246,0.35)', alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Ionicons name="send" size={16} color={finnChatMessage.trim() ? '#C4B5FD' : '#A78BFA'} />
-            </Pressable>
-          </View>
-        </div>
+      {/* Finn Chat Modal — premium slide-up */}
+      <FinnChatModal visible={showFinnChat} onClose={() => setShowFinnChat(false)} />
+
+      {/* Finn Desk Overlay — full voice/video experience */}
+      {showFinnOverlay && (
+        <FinnDeskOverlay
+          visible={showFinnOverlay}
+          onClose={() => setShowFinnOverlay(false)}
+          initialTab={finnOverlayTab}
+        />
       )}
 
       <SectionLabel icon="pulse" label="QUICK PULSE" color="#999" ledDelay={3} />
@@ -1450,94 +1310,58 @@ function FinanceHubContent() {
         </>
       )}
 
-      <SectionLabel icon="activity" label="PROPOSALS & RECENT ACTIVITY" color="#999" ledDelay={3} />
+      <SectionLabel icon="shield" label="FINANCE AUTHORITY QUEUE" color="#999" ledDelay={3} />
 
-      <View style={s.row}>
-        <View style={{ flex: 1, gap: 10 }}>
-          <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>Finn's Proposals</Text>
-            <View style={s.proposalCount}>
-              <Text style={s.proposalCountText}>3</Text>
-            </View>
-          </View>
-          {proposals.map((p, i) => (
-            <GlassCard
-              key={i}
-              style={s.proposalCard}
-              hovered={hoveredButton === `prop-${i}`}
-              onPress={() => handleReviewProposal(p)}
-              {...webHover(`prop-${i}`)}
-            >
-              <View style={[s.proposalAccent, { backgroundColor: p.accentColor }]} />
-              <View style={s.proposalBody}>
-                <View style={s.proposalTopRow}>
-                  <Text style={s.proposalTitle}>{p.title}</Text>
-                  <View style={[s.riskBadge, { backgroundColor: p.riskBg }]}>
-                    <View style={[s.riskDot, { backgroundColor: p.riskColor }]} />
-                    <Text style={[s.riskText, { color: p.riskColor }]}>{p.risk}</Text>
-                  </View>
-                </View>
-                <Text style={s.proposalDesc}>{p.description}</Text>
-                <View style={s.proposalChips}>
-                  {p.chips.map((c: string, ci: number) => (
-                    <View key={ci} style={s.chip}>
-                      <Text style={s.chipText}>{c}</Text>
-                    </View>
-                  ))}
-                </View>
-                <Pressable
-                  style={[s.reviewBtn, hoveredButton === `rev-${i}` && { opacity: 0.8 }]}
-                  {...webHover(`rev-${i}`)}
-                  onPress={() => handleReviewProposal(p)}
-                >
-                  <Ionicons name="eye" size={12} color="#fff" />
-                  <Text style={s.reviewBtnText}>Review</Text>
-                </Pressable>
+      <View style={s.authoritySection}>
+        {allAuthorityItems.length > 0 ? (
+          <View style={s.authorityScrollRow}>
+            {allAuthorityItems.map((item) => (
+              <View key={item.id} style={s.authorityCardWrap}>
+                <AuthorityQueueCard
+                  item={item}
+                  onAction={async (action) => {
+                    if (action === 'approve') {
+                      try {
+                        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                        const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
+                        if (res.ok) {
+                          setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
+                        }
+                      } catch (_e) { /* silent */ }
+                    } else if (action === 'deny') {
+                      try {
+                        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                        await fetch(`/api/authority-queue/${item.id}/deny`, { method: 'POST', headers });
+                        setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
+                      } catch (_e) { /* silent */ }
+                    } else if (action === 'review') {
+                      const docType = item.type === 'invoice' ? 'invoice' as const
+                        : item.type === 'contract' ? 'contract' as const
+                        : 'document' as const;
+                      setReviewPreview({
+                        visible: true,
+                        type: docType,
+                        documentName: item.title,
+                        pandadocDocumentId: item.pandadocDocumentId,
+                      });
+                    }
+                  }}
+                />
               </View>
-            </GlassCard>
-          ))}
-        </View>
-
-        <GlassCard style={[s.transactionsCard, { flex: 1 }, Platform.OS === 'web' && { backgroundImage: svgPatterns.shieldCheck(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '30% auto' }]} tint={{ color: '#06b6d4', position: 'bottom-left' }}>
-          <View style={s.sectionHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <EnterpriseIcon type="activity" color="#22D3EE" bgColor="rgba(6,182,212,0.2)" size={28} />
-              <Text style={s.cardTitle}>{timeline.length > 0 ? 'Live Event Feed' : 'Recent Transactions'}</Text>
-            </View>
-            <Pressable {...webHover('viewall')} style={hoveredButton === 'viewall' ? { opacity: 0.7 } : undefined}>
-              <Text style={s.viewAllText}>View all</Text>
-            </Pressable>
+            ))}
           </View>
-          {timeline.length > 0 ? (
-            timeline.slice(0, 5).map((evt) => (
-              <TimelineRow key={evt.eventId} event={evt} />
-            ))
-          ) : !isConnected ? (
-            <View style={{ paddingVertical: 24, alignItems: 'center', gap: 8 }}>
-              <Ionicons name="unlink" size={24} color="#555" />
-              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>Connect providers to see live transaction data</Text>
-            </View>
-          ) : (
-            fallbackTransactions.map((tx, i) => {
-              const txIconType = tx.amount.startsWith('+') ? 'invoice' : (tx.subtitle === 'Subscription' ? 'subscription' : 'transfer');
-              return (
-                <View key={i} style={[s.txRow, i < fallbackTransactions.length - 1 && s.txRowBorder]}>
-                  <EnterpriseIcon type={txIconType} color={tx.color === '#10B981' ? '#34D399' : '#F87171'} bgColor={tx.color === '#10B981' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'} size={36} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.txTitle}>{tx.title}</Text>
-                    <Text style={s.txSub}>{tx.subtitle}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[s.txAmount, { color: tx.amount.startsWith('+') ? '#10B981' : '#ef4444' }]}>{tx.amount}</Text>
-                    <Text style={s.txTime}>{tx.time}</Text>
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </GlassCard>
+        ) : (
+          <GlassCard style={{ padding: 32, alignItems: 'center' }}>
+            <Ionicons name="shield-checkmark-outline" size={32} color={Colors.accent.cyan} style={{ marginBottom: 12 }} />
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 6 }}>No pending financial approvals</Text>
+            <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>
+              When Finn, Quinn, or Teressa need your sign-off, their requests appear here. Every action leaves a receipt.
+            </Text>
+          </GlassCard>
+        )}
       </View>
-
 
     </FinanceHubShell>
     <ExplainDrawer
@@ -1545,11 +1369,12 @@ function FinanceHubContent() {
       onClose={() => setExplainMetric(null)}
       metricId={explainMetric || ''}
     />
-    <ProposalReviewSheet
-      visible={showProposal}
-      proposal={selectedProposal}
-      onClose={() => setShowProposal(false)}
-      onSendToQueue={(p) => { setShowProposal(false); }}
+    <DocumentPreviewModal
+      visible={reviewPreview.visible}
+      onClose={() => setReviewPreview(prev => ({ ...prev, visible: false }))}
+      type={reviewPreview.type}
+      documentName={reviewPreview.documentName}
+      pandadocDocumentId={reviewPreview.pandadocDocumentId}
     />
     </>
   );
@@ -1730,6 +1555,54 @@ const s = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
+  finnCardOuter: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#000',
+    borderRadius: 16,
+    overflow: 'hidden',
+    minHeight: 320,
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.15)',
+  } as any,
+  finnFloatingPanel: {
+    width: '38%',
+    justifyContent: 'center',
+    paddingLeft: 18,
+    paddingVertical: 18,
+    zIndex: 2,
+  } as any,
+  finnPanelInner: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 14,
+    padding: 18,
+  },
+  finnPanelBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    marginBottom: 8,
+    ...Platform.select({ web: { cursor: 'pointer', transition: 'all 0.2s ease' } }),
+  } as any,
+  finnPanelBtnText: {
+    color: '#ddd',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  finn3dContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  } as any,
   finnCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1957,116 +1830,24 @@ const s = StyleSheet.create({
     fontWeight: '700',
   },
 
-  proposalCard: {
+  authoritySection: {
+    marginBottom: 16,
+  },
+  authorityScrollRow: {
     flexDirection: 'row',
-    ...webOnly({ cursor: 'pointer', transition: 'all 0.2s ease' }),
-  } as any,
-  proposalAccent: {
-    width: 3,
-  },
-  proposalBody: {
-    flex: 1,
-    padding: 16,
-  },
-  proposalTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  proposalTitle: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  proposalDesc: {
-    color: '#999',
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: 8,
-  },
-  proposalChips: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 10,
-  },
-  chip: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  chipText: {
-    color: '#aaa',
-    fontSize: 11,
-  },
-  riskBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  riskDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
-  riskText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  reviewBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    ...webOnly({ cursor: 'pointer', transition: 'opacity 0.2s' }),
-  } as any,
-  reviewBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-
-  transactionsCard: {
-    padding: 20,
-  },
-  txRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
-    paddingVertical: 12,
-  },
-  txRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.07)',
-  },
-  txTitle: {
-    color: '#f0f0f0',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  txSub: {
-    color: '#999',
-    fontSize: 11,
-    marginTop: 1,
-  },
-  txAmount: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  txTime: {
-    color: '#888',
-    fontSize: 10,
-    marginTop: 2,
-  },
+    ...Platform.select({ web: {
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      scrollbarWidth: 'thin',
+      scrollbarColor: '#3B3B3D transparent',
+    } as any }),
+    paddingVertical: 4,
+    alignItems: 'stretch',
+  } as any,
+  authorityCardWrap: {
+    width: 300,
+    flexShrink: 0,
+    display: 'flex',
+  } as any,
 });

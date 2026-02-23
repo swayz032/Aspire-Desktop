@@ -58,6 +58,18 @@ const navItems: NavItem[] = [
       { id: 'invoices-clients', label: 'Clients', icon: 'people-outline', route: '/finance-hub/clients' },
     ],
   },
+  {
+    id: 'documents',
+    label: 'Documents',
+    icon: 'folder-outline',
+    iconActive: 'folder',
+    route: '/finance-hub/documents',
+    subItems: [
+      { id: 'docs-all', label: 'All Documents', icon: 'documents-outline', route: '/finance-hub/documents' },
+      { id: 'docs-templates', label: 'Templates', icon: 'copy-outline', route: '/finance-hub/documents/templates' },
+      { id: 'docs-pending', label: 'Awaiting Signature', icon: 'create-outline', route: '/finance-hub/documents/pending' },
+    ],
+  },
   { id: 'connections', label: 'Connections', icon: 'link-outline', iconActive: 'link', route: '/finance-hub/connections' },
   { id: 'receipts', label: 'Receipts', icon: 'receipt-outline', iconActive: 'receipt', route: '/finance-hub/receipts' },
 ];
@@ -76,8 +88,10 @@ export function FinanceSidebar() {
 
   const isOnPayrollPage = pathname.startsWith('/finance-hub/payroll');
   const isOnInvoicesPage = pathname === '/finance-hub/invoices' || pathname.startsWith('/finance-hub/quotes') || pathname.startsWith('/finance-hub/clients');
+  const isOnDocumentsPage = pathname.startsWith('/finance-hub/documents');
   const [payrollExpanded, setPayrollExpanded] = useState(isOnPayrollPage);
   const [invoicesExpanded, setInvoicesExpanded] = useState(isOnInvoicesPage);
+  const [documentsExpanded, setDocumentsExpanded] = useState(isOnDocumentsPage);
 
   useEffect(() => {
     if (isOnPayrollPage) setPayrollExpanded(true);
@@ -86,6 +100,10 @@ export function FinanceSidebar() {
   useEffect(() => {
     if (isOnInvoicesPage) setInvoicesExpanded(true);
   }, [isOnInvoicesPage]);
+
+  useEffect(() => {
+    if (isOnDocumentsPage) setDocumentsExpanded(true);
+  }, [isOnDocumentsPage]);
 
   useEffect(() => {
     Animated.parallel([
@@ -113,6 +131,9 @@ export function FinanceSidebar() {
     if (item.id === 'invoices') {
       return pathname === '/finance-hub/invoices' || pathname.startsWith('/finance-hub/quotes') || pathname.startsWith('/finance-hub/clients');
     }
+    if (item.id === 'documents') {
+      return pathname.startsWith('/finance-hub/documents');
+    }
     return pathname.startsWith(item.route);
   };
 
@@ -122,6 +143,9 @@ export function FinanceSidebar() {
     }
     if (sub.route === '/finance-hub/invoices') {
       return pathname === '/finance-hub/invoices' || pathname === '/finance-hub/invoices/';
+    }
+    if (sub.route === '/finance-hub/documents') {
+      return pathname === '/finance-hub/documents' || pathname === '/finance-hub/documents/';
     }
     return pathname === sub.route || pathname === sub.route + '/';
   };
@@ -209,6 +233,7 @@ export function FinanceSidebar() {
                   if (hasSubItems && expanded) {
                     if (item.id === 'payroll') setPayrollExpanded(prev => !prev);
                     else if (item.id === 'invoices') setInvoicesExpanded(prev => !prev);
+                    else if (item.id === 'documents') setDocumentsExpanded(prev => !prev);
                   }
                 }}
                 {...webProps}
@@ -264,10 +289,11 @@ export function FinanceSidebar() {
                       e.stopPropagation();
                       if (item.id === 'payroll') setPayrollExpanded(prev => !prev);
                       else if (item.id === 'invoices') setInvoicesExpanded(prev => !prev);
+                      else if (item.id === 'documents') setDocumentsExpanded(prev => !prev);
                     }}
                   >
                     <Ionicons
-                      name={(item.id === 'payroll' ? payrollExpanded : item.id === 'invoices' ? invoicesExpanded : false) ? 'chevron-down' : 'chevron-forward'}
+                      name={(item.id === 'payroll' ? payrollExpanded : item.id === 'invoices' ? invoicesExpanded : item.id === 'documents' ? documentsExpanded : false) ? 'chevron-down' : 'chevron-forward'}
                       size={14}
                       color={Colors.text.muted}
                     />
@@ -277,7 +303,7 @@ export function FinanceSidebar() {
                 {active && expanded && hasSubItems && <View style={styles.activeIndicator} />}
               </Pressable>
 
-              {hasSubItems && expanded && ((item.id === 'payroll' && payrollExpanded) || (item.id === 'invoices' && invoicesExpanded)) && (
+              {hasSubItems && expanded && ((item.id === 'payroll' && payrollExpanded) || (item.id === 'invoices' && invoicesExpanded) || (item.id === 'documents' && documentsExpanded)) && (
                 <View style={styles.subItemsContainer}>
                   {item.subItems!.map((sub) => {
                     const subActive = isSubItemActive(sub);

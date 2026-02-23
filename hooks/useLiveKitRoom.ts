@@ -1,4 +1,7 @@
 /**
+ * @deprecated Replaced by LiveKitConferenceProvider + @livekit/components-react hooks
+ * (useParticipants, useTracks) in conference-live.tsx as of Phase 3 Group C-2.
+ *
  * useLiveKitRoom hook
  *
  * Connects to a LiveKit room and maps RemoteParticipant[] into the existing

@@ -2,9 +2,8 @@ export type Tag = 'Legal' | 'Finance' | 'Ops' | 'Security' | 'Sales';
 export type Priority = 'Low' | 'Medium' | 'High';
 export type ItemStatus = 'Open' | 'Waiting' | 'Resolved' | 'resolved' | 'in_progress';
 
-export const SUITE_ID = '7B2F-014';
-export const OFFICE_ID = 'OFC-101';
-export const BUSINESS_NAME = 'Your Business';
+// Identity values are populated from the intake form (suite_profiles via useTenant hook).
+// No hardcoded constants — use useTenant() or useSupabase() in components.
 
 export interface SuiteContext {
   suiteId: string;

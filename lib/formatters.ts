@@ -1,4 +1,4 @@
-import { SUITE_ID, OFFICE_ID, BUSINESS_NAME } from '@/types/common';
+// Identity values come from intake form (suite_profiles via useTenant) — no hardcoded constants
 
 export function formatTimestamp(date: Date): string {
   return date.toISOString();
@@ -83,12 +83,21 @@ export function formatMoney(amount: number, currency: string = 'USD'): string {
   }).format(amount);
 }
 
-export function formatSuiteContext(): string {
-  return `Suite ${SUITE_ID} · Office ${OFFICE_ID}`;
+export function formatDisplayId(displayId?: string | null, uuid?: string | null): string {
+  if (displayId) return displayId;
+  if (uuid) return uuid.slice(0, 8);
+  return '';
 }
 
-export function formatFullContext(): string {
-  return `${BUSINESS_NAME} · Suite ${SUITE_ID} · Office ${OFFICE_ID}`;
+export function formatSuiteContext(suiteId?: string | null, officeId?: string | null, displayId?: string | null): string {
+  const suite = displayId || (suiteId ? suiteId.slice(0, 8) : '');
+  return suite ? `Suite ${suite}` : 'Suite';
+}
+
+export function formatFullContext(businessName?: string | null, suiteId?: string | null, displayId?: string | null): string {
+  const name = businessName || 'Your Business';
+  const suite = displayId || (suiteId ? suiteId.slice(0, 8) : '');
+  return suite ? `${name} · Suite ${suite}` : name;
 }
 
 export function getRandomPastDate(maxDaysAgo: number = 30): Date {

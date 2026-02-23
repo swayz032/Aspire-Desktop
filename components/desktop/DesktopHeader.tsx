@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, Image, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { useSupabase, useTenant } from '@/providers';
 
 const USER_PROFILE = require('@/assets/images/user-profile.jpg');
 
@@ -51,11 +52,21 @@ interface DesktopHeaderProps {
   suiteId?: string;
 }
 
-export function DesktopHeader({ 
-  businessName = 'Your Business',
-  role = 'Founder',
-  suiteId = '1042'
+export function DesktopHeader({
+  businessName: businessNameProp,
+  role: roleProp,
+  suiteId: suiteIdProp,
 }: DesktopHeaderProps) {
+  const { session } = useSupabase();
+  const { tenant } = useTenant();
+
+  // Derive display values from auth context, falling back to props, then defaults
+  const businessName = businessNameProp || tenant?.businessName || 'Your Business';
+  const role = roleProp || tenant?.role || 'Founder';
+  const suiteId = suiteIdProp || tenant?.displayId || tenant?.suiteId?.slice(0, 8) || '';
+  const userName = tenant?.ownerName || session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'User';
+  const userEmail = session?.user?.email || tenant?.ownerEmail || '';
+
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
   const [notifFilter, setNotifFilter] = useState<'all' | 'unread'>('all');
@@ -171,8 +182,8 @@ export function DesktopHeader({
             <Image source={USER_PROFILE} style={s.profileHeaderImg} />
           </View>
           <View style={s.profileHeaderInfo}>
-            <Text style={s.profileHeaderName}>Jordan Mitchell</Text>
-            <Text style={s.profileHeaderEmail}>jordan@example.com</Text>
+            <Text style={s.profileHeaderName}>{userName}</Text>
+            <Text style={s.profileHeaderEmail}>{userEmail}</Text>
           </View>
           <View style={s.profileBadge}>
             <Text style={s.profileBadgeText}>{role}</Text>

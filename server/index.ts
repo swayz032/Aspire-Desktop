@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -6,6 +7,7 @@ import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { setDefaultSuiteId, setDefaultOfficeId } from './suiteContext';
 import { createClient } from '@supabase/supabase-js';
+import { loadSecrets } from './secrets';
 
 let runMigrations: any = null;
 let getStripeSync: any = null;
@@ -34,11 +36,13 @@ let defaultSuiteId: string = '';
 let defaultOfficeId: string = '';
 
 // Supabase admin client for JWT verification
+console.log('SUPABASE_URL set:', !!process.env.SUPABASE_URL, 'SERVICE_ROLE set:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
   : null;
+console.log('supabaseAdmin initialized:', supabaseAdmin !== null);
 
 // Paths that skip JWT auth (health, public booking, webhooks, static)
 const PUBLIC_PATHS = [
@@ -48,9 +52,20 @@ const PUBLIC_PATHS = [
   '/api/ops-snapshot',
   '/api/sandbox/health',
   '/api/webhooks/twilio/',  // Twilio webhooks (signature-validated, no JWT)
+  '/api/mail/oauth/google/callback', // Google redirects here without JWT
+];
+
+// /v1/ paths that REQUIRE auth (Law #3: Fail Closed — default deny)
+const AUTH_REQUIRED_V1 = [
+  '/v1/mail/',
+  '/v1/domains/',
+  '/v1/inbox/',
+  '/v1/receipts',
 ];
 
 function isPublicPath(path: string): boolean {
+  // Auth-required /v1/ paths must NOT be public
+  if (AUTH_REQUIRED_V1.some(p => path.startsWith(p))) return false;
   return PUBLIC_PATHS.some(p => path.startsWith(p)) || !path.startsWith('/api');
 }
 
@@ -79,15 +94,13 @@ app.use(async (req, res, next) => {
 
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-      // No JWT provided — use defaultSuiteId for RLS context.
-      // Client-side fetch calls don't always include JWT (SPA single-origin).
-      // Supabase session is validated client-side; server uses JWT when present
-      // for user identification, but falls back to defaultSuiteId for RLS.
-      // State-changing routes (approve/deny/bootstrap) validate auth independently.
-      if (defaultSuiteId) {
-        await db.execute(sql`SELECT set_config('app.current_suite_id', ${defaultSuiteId}, true)`);
-      }
-      return next();
+      // Law #3: Fail Closed — authenticated routes REQUIRE JWT.
+      // No JWT = no access to non-public API routes.
+      // Client must send Authorization: Bearer <jwt> via authenticatedFetch.
+      return res.status(401).json({
+        error: 'AUTH_REQUIRED',
+        message: 'Authentication required. Please sign in.',
+      });
     }
 
     // JWT present: validate and extract suite_id
@@ -409,6 +422,18 @@ async function loadOAuthTokens() {
 }
 
 async function start() {
+  // Load secrets from AWS Secrets Manager (production) or .env.local (dev)
+  // Must happen BEFORE any code reads process.env for provider keys
+  try {
+    await loadSecrets();
+  } catch (err: any) {
+    console.error('[FATAL] Secrets loading failed:', err.message);
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);  // Fail closed — server CANNOT start without secrets
+    }
+    // Dev mode: continue (may use .env.local values)
+  }
+
   try {
     // Bootstrap default suite context — resilient to schema differences
     // Priority: 1) suite_profiles (public schema), 2) app.ensure_suite, 3) JWT-only mode

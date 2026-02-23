@@ -7,6 +7,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
+import { useTenant } from '@/providers';
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -58,6 +59,7 @@ export default function MoreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isDesktop = useDesktop();
+  const { tenant } = useTenant();
   const headerHeight = isDesktop ? 0 : insets.top + 60;
 
   const content = (
@@ -88,21 +90,20 @@ export default function MoreScreen() {
           <MenuItem
             icon="business"
             title="Office Identity"
-            subtitle="Your Business • Suite"
+            subtitle={tenant ? `${tenant.businessName} • Suite ${tenant.suiteId?.slice(0, 8) || ''}` : 'Your Business • Suite'}
             onPress={() => router.push('/more/office-identity')}
           />
           <MenuItem
             icon="people"
             title="Team Members"
-            subtitle="7 staff members"
+            subtitle="Manage your team"
             onPress={() => router.push('/more/team')}
           />
           <MenuItem
             icon="link"
             title="Integrations"
-            subtitle="10 connected services"
+            subtitle="Manage connected services"
             onPress={() => router.push('/more/integrations')}
-            badge={2}
           />
         </View>
 

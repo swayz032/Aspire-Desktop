@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { handleProviderAuthError } from './secrets';
 
 let stripeInstance: Stripe | null = null;
 
@@ -15,6 +16,28 @@ export async function getUncachableStripeClient(): Promise<Stripe> {
   return new Stripe(secretKey, {
     apiVersion: '2024-12-18.acacia' as any,
   });
+}
+
+/**
+ * Execute a Stripe operation with automatic secret rotation retry.
+ * If the operation fails with an auth error (stale key after rotation),
+ * reloads secrets from SM and retries once.
+ */
+export async function withStripeRetry<T>(
+  operation: (stripe: Stripe) => Promise<T>
+): Promise<T> {
+  const client = await getUncachableStripeClient();
+  try {
+    return await operation(client);
+  } catch (error: any) {
+    const reloaded = await handleProviderAuthError('stripe', error);
+    if (reloaded) {
+      // Retry once with fresh credentials
+      const freshClient = await getUncachableStripeClient();
+      return await operation(freshClient);
+    }
+    throw error;
+  }
 }
 
 export async function getStripePublishableKey(): Promise<string> {

@@ -34,6 +34,7 @@ export interface SessionAuthorityItem {
   status: 'pending' | 'approved' | 'denied';
   evidence?: string[];
   createdAt: Date;
+  pandadocDocumentId?: string;
 }
 
 export interface SessionStaffMember {

@@ -51,6 +51,13 @@ export interface AuthorityItem {
   staffRole?: string;
   receiptId?: string;
   documentPreview?: AuthorityItemDocumentPreview;
+  // Draft-first execution fields
+  draftSummary?: string;
+  riskTier?: 'green' | 'yellow' | 'red';
+  assignedAgent?: string;
+  expiresAt?: string;
+  // PandaDoc document ID for real preview (contracts)
+  pandadocDocumentId?: string;
 }
 
 export interface DocumentPreview {

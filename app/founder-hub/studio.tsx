@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
+import { supabase } from '@/lib/supabase';
+import { useTenant } from '@/providers';
 
 const THEME = {
   bg: '#000000',
@@ -26,26 +28,77 @@ const studioModes = [
   { id: 'ops', label: 'Operations', icon: 'construct-outline' as const, desc: 'Streamline your operations' },
 ];
 
-const recentSessions = [
-  { id: '1', title: 'Grade B pricing optimization', mode: 'Pricing', date: 'Yesterday', status: 'completed' },
-  { id: '2', title: 'Cold email campaign for warehouses', mode: 'Outreach', date: '2 days ago', status: 'in_progress' },
-  { id: '3', title: 'Q2 lumber procurement plan', mode: 'Operations', date: '3 days ago', status: 'completed' },
-];
-
 const quickStarts = [
   { id: '1', icon: 'flash-outline' as const, title: 'Quick win analysis', desc: 'Find low-effort, high-impact opportunities' },
   { id: '2', icon: 'shield-checkmark-outline' as const, title: 'Risk assessment', desc: 'Identify and mitigate business risks' },
   { id: '3', icon: 'rocket-outline' as const, title: 'Growth brainstorm', desc: 'Generate ideas for scaling your business' },
 ];
 
+interface RecentSession {
+  id: string;
+  title: string;
+  mode: string;
+  date: string;
+  status: string;
+}
+
 export default function StudioScreen() {
+  const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('receipts')
+          .select('*')
+          .like('action_type', 'founder_hub.studio%')
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        if (!mounted) return;
+        if (data && data.length > 0) {
+          const formatAge = (dateStr: string) => {
+            const diff = Date.now() - new Date(dateStr).getTime();
+            const days = Math.floor(diff / 86400000);
+            if (days === 0) return 'Today';
+            if (days === 1) return 'Yesterday';
+            return `${days} days ago`;
+          };
+          setRecentSessions(data.map((r: any, idx: number) => {
+            const p = r.payload ?? {};
+            return {
+              id: r.id ?? `session-${idx}`,
+              title: p.title ?? p.topic ?? 'Strategy session',
+              mode: p.mode ?? p.studio_mode ?? 'Market',
+              date: formatAge(r.created_at ?? new Date().toISOString()),
+              status: p.status ?? r.outcome ?? 'completed',
+            };
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load studio sessions:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const rightRail = (
     <View style={styles.railContent}>
       <Text style={styles.railTitle}>Recent Sessions</Text>
       <View style={styles.sessionsList}>
+        {recentSessions.length === 0 && !loading && (
+          <View style={styles.railEmptyState}>
+            <Ionicons name="time-outline" size={20} color={THEME.text.muted} />
+            <Text style={styles.railEmptyText}>No sessions yet</Text>
+          </View>
+        )}
         {recentSessions.map((session) => (
           <Pressable
             key={session.id}
@@ -103,6 +156,41 @@ export default function StudioScreen() {
     </View>
   );
 
+  if (loading || tenantLoading) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <View style={styles.skeletonTitle} />
+          <View style={styles.skeletonSubtitle} />
+        </View>
+        <View style={styles.skeletonHero} />
+        <View style={styles.skeletonModesGrid}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <View key={i} style={styles.skeletonModeCard} />
+          ))}
+        </View>
+      </HubPageShell>
+    );
+  }
+
+  if (!tenant?.onboardingCompleted) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <Text style={styles.pageTitle}>Studio</Text>
+          <Text style={styles.pageSubtitle}>Brainstorm, plan, and create with Ava</Text>
+        </View>
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="person-circle-outline" size={48} color={THEME.text.muted} />
+          <Text style={styles.emptyStateTitle}>Complete your profile to unlock Studio</Text>
+          <Text style={styles.emptyStateDesc}>
+            Once you finish onboarding, you can start strategy sessions with Ava tailored to your business.
+          </Text>
+        </View>
+      </HubPageShell>
+    );
+  }
+
   return (
     <HubPageShell rightRail={rightRail}>
       <View style={styles.header}>
@@ -121,7 +209,7 @@ export default function StudioScreen() {
             </View>
             <Text style={styles.heroTitle}>What are we working on today?</Text>
             <Text style={styles.heroSubtitle}>
-              Choose a mode below or tell Ava what's on your mind. She'll help you brainstorm, 
+              Choose a mode below or tell Ava what's on your mind. She'll help you brainstorm,
               plan, and create actionable strategies for your business.
             </Text>
             <View style={styles.heroInputRow}>
@@ -186,7 +274,7 @@ export default function StudioScreen() {
             <Ionicons name="chatbubbles-outline" size={24} color={THEME.accent} />
             <Text style={styles.featureTitle}>AI Brainstorming</Text>
             <Text style={styles.featureDesc}>
-              Explore ideas with Ava in real-time conversation. She'll challenge your assumptions 
+              Explore ideas with Ava in real-time conversation. She'll challenge your assumptions
               and help you think deeper.
             </Text>
           </View>
@@ -194,7 +282,7 @@ export default function StudioScreen() {
             <Ionicons name="map-outline" size={24} color={THEME.accent} />
             <Text style={styles.featureTitle}>Strategic Planning</Text>
             <Text style={styles.featureDesc}>
-              Turn brainstorms into structured action plans with timelines, milestones, and 
+              Turn brainstorms into structured action plans with timelines, milestones, and
               accountability checkpoints.
             </Text>
           </View>
@@ -202,7 +290,7 @@ export default function StudioScreen() {
             <Ionicons name="document-text-outline" size={24} color={THEME.accent} />
             <Text style={styles.featureTitle}>Plan Export</Text>
             <Text style={styles.featureDesc}>
-              Export your plans to Operate, share with your team, or save to your Library 
+              Export your plans to Operate, share with your team, or save to your Library
               for future reference.
             </Text>
           </View>
@@ -489,5 +577,65 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: THEME.text.muted,
     lineHeight: 14,
+  },
+  railEmptyState: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  railEmptyText: {
+    fontSize: 12,
+    color: THEME.text.muted,
+  },
+  skeletonTitle: {
+    width: 180,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 8,
+  },
+  skeletonSubtitle: {
+    width: 300,
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  skeletonHero: {
+    width: '100%',
+    height: 200,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginBottom: 32,
+  },
+  skeletonModesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  skeletonModeCard: {
+    flex: 1,
+    minWidth: 160,
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+    gap: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: THEME.text.secondary,
+    textAlign: 'center',
+  },
+  emptyStateDesc: {
+    fontSize: 14,
+    color: THEME.text.muted,
+    textAlign: 'center',
+    maxWidth: 400,
+    lineHeight: 20,
   },
 });

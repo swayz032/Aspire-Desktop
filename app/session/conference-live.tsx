@@ -15,8 +15,11 @@ import { Image } from 'expo-image';
 import { Platform } from 'react-native';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
-import { useLiveKitRoom } from '@/hooks/useLiveKitRoom';
-import { ConnectionState } from 'livekit-client';
+import { useParticipants, useTracks, useRoomContext } from '@livekit/components-react';
+import { Track, ConnectionState } from 'livekit-client';
+import { LiveKitConferenceProvider } from '@/components/session/LiveKitConferenceProvider';
+import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
+import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
 
 function WebcamView({ stream }: { stream: MediaStream }) {
   const containerRef = useRef<any>(null);
@@ -340,23 +343,52 @@ export default function ConferenceLive() {
 
   // LiveKit room connection
   const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
-  const liveKit = useLiveKitRoom({ token: liveKitToken });
 
-  // LiveKit participants — production mode, no mock fallback
-  const participants: Participant[] = liveKit.participants.length > 0
-    ? liveKit.participants.map(p => ({
-        id: p.id,
-        name: p.name || p.id,
-        role: p.role || (p.isHost ? 'Host' : ''),
-        avatarColor: p.isHost ? '#2D3748' : '#374151',
-        isMuted: p.isMuted ?? true,
-        isVideoOff: p.isVideoOff ?? true,
-        isSpeaking: p.isSpeaking ?? false,
-        isHost: p.isHost ?? false,
-        isPinned: false,
-        isSpotlighted: false,
-      } as Participant))
+  // LiveKit hooks — useParticipants/useTracks from @livekit/components-react
+  // These work when wrapped in <LiveKitConferenceProvider>; return empty when not connected
+  let lkParticipants: ReturnType<typeof useParticipants> = [];
+  let lkVideoTracks: TrackReferenceOrPlaceholder[] = [];
+  let lkRoom: ReturnType<typeof useRoomContext> | null = null;
+  try {
+    lkParticipants = useParticipants();
+    lkVideoTracks = useTracks(
+      [
+        { source: Track.Source.Camera, withPlaceholder: true },
+        { source: Track.Source.ScreenShare, withPlaceholder: false },
+      ],
+    );
+    lkRoom = useRoomContext();
+  } catch {
+    // Not inside LiveKitRoom context yet (token not ready)
+  }
+
+  // Map LiveKit participants to our UI Participant interface
+  const participants: Participant[] = lkParticipants.length > 0
+    ? lkParticipants.map(p => {
+        const audioTrack = p.getTrackPublication(Track.Source.Microphone);
+        const videoTrack = p.getTrackPublication(Track.Source.Camera);
+        return {
+          id: p.identity,
+          name: p.name || p.identity,
+          role: p.isLocal ? 'Host' : '',
+          avatarColor: p.isLocal ? '#2D3748' : '#374151',
+          isMuted: audioTrack ? audioTrack.isMuted : true,
+          isVideoOff: videoTrack ? videoTrack.isMuted || !videoTrack.isSubscribed : true,
+          isSpeaking: p.isSpeaking,
+          isHost: p.isLocal,
+          isPinned: false,
+          isSpotlighted: false,
+        } as Participant;
+      })
     : INITIAL_PARTICIPANTS;
+
+  // Build a lookup: participant identity → TrackReferenceOrPlaceholder for camera
+  const trackRefMap = new Map<string, TrackReferenceOrPlaceholder>();
+  for (const tr of lkVideoTracks) {
+    if (tr.source === Track.Source.Camera && tr.participant) {
+      trackRefMap.set(tr.participant.identity, tr);
+    }
+  }
   
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -414,23 +446,8 @@ export default function ConferenceLive() {
       });
   }, [suiteId, params.roomName, params.participantName]);
 
-  // Auto-connect when token is available
-  useEffect(() => {
-    if (liveKitToken && !liveKit.isConnected) {
-      liveKit.connect().catch(err => {
-        console.error('LiveKit connect failed:', err.message);
-      });
-    }
-  }, [liveKitToken, liveKit.isConnected]);
-
-  // Disconnect on unmount
-  useEffect(() => {
-    return () => {
-      if (liveKit.isConnected) {
-        liveKit.disconnect();
-      }
-    };
-  }, []);
+  // Connection/disconnection is handled automatically by <LiveKitConferenceProvider>
+  // when token prop changes. No manual connect/disconnect needed.
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const noraVoice = useAgentVoice({
@@ -501,10 +518,9 @@ export default function ConferenceLive() {
 
   // Track active speaker from LiveKit
   useEffect(() => {
-    if (!liveKit.isConnected) return;
     const speaking = participants.find(p => p.isSpeaking);
     if (speaking) setActiveSpeakerId(speaking.id);
-  }, [participants, liveKit.isConnected]);
+  }, [participants]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToastMessage(message);
@@ -521,8 +537,8 @@ export default function ConferenceLive() {
   const handleToggleMute = () => {
     const newMuted = !isMuted;
     setIsMuted(newMuted);
-    if (liveKit.room) {
-      liveKit.room.localParticipant?.setMicrophoneEnabled(!newMuted).catch(() => {});
+    if (lkRoom) {
+      lkRoom.localParticipant?.setMicrophoneEnabled(!newMuted).catch(() => {});
     }
     showToast(newMuted ? 'Microphone off' : 'Microphone on', 'info');
   };
@@ -530,17 +546,17 @@ export default function ConferenceLive() {
   const handleToggleVideo = () => {
     const newVideoOff = !isVideoOff;
     setIsVideoOff(newVideoOff);
-    if (liveKit.room) {
-      liveKit.room.localParticipant?.setCameraEnabled(!newVideoOff).catch(() => {});
+    if (lkRoom) {
+      lkRoom.localParticipant?.setCameraEnabled(!newVideoOff).catch(() => {});
     }
     showToast(newVideoOff ? 'Camera off' : 'Camera on', 'info');
   };
 
   const handleEndCall = () => {
     setShowEndModal(false);
-    // Disconnect from LiveKit room if connected
-    if (liveKit.isConnected) {
-      liveKit.disconnect().catch(() => {});
+    // Disconnect from LiveKit room (handled by LiveKitConferenceProvider unmount)
+    if (lkRoom) {
+      lkRoom.disconnect().catch(() => {});
     }
     showToast('Session ended. Generating receipt...', 'success');
     setTimeout(() => router.replace('/(tabs)'), 1500);
@@ -1005,9 +1021,11 @@ export default function ConferenceLive() {
                       fillContainer={true}
                     />
                   ) : (
-                    <VideoTile
-                      participant={participant}
+                    <LiveKitVideoTile
+                      trackRef={trackRefMap.get(participant.id)}
+                      name={participant.name}
                       isActiveSpeaker={participant.id === activeSpeakerId}
+                      isLocal={participant.isHost}
                       webcamStream={webcamStream}
                     />
                   )}
@@ -1043,10 +1061,12 @@ export default function ConferenceLive() {
     <View style={desktopStyles.speakerContainer}>
       <View style={desktopStyles.stageArea}>
         {stageParticipant && stageParticipant.id !== 'ava' ? (
-          <VideoTile
-            participant={stageParticipant}
+          <LiveKitVideoTile
+            trackRef={trackRefMap.get(stageParticipant.id)}
+            name={stageParticipant.name}
             size="spotlight"
             isActiveSpeaker={true}
+            isLocal={stageParticipant.isHost}
             webcamStream={webcamStream}
           />
         ) : (
@@ -1076,10 +1096,12 @@ export default function ConferenceLive() {
                   fillContainer={true}
                 />
               ) : (
-                <VideoTile
-                  participant={p}
+                <LiveKitVideoTile
+                  trackRef={trackRefMap.get(p.id)}
+                  name={p.name}
                   size="small"
                   isActiveSpeaker={false}
+                  isLocal={p.isHost}
                   webcamStream={webcamStream}
                 />
               )}
@@ -1104,7 +1126,7 @@ export default function ConferenceLive() {
         <View style={desktopStyles.multiStage}>
           {topSpeakers.map((p) => (
             <View key={p.id} style={[desktopStyles.multiStageTile, { width: `${100 / Math.max(topSpeakers.length, 1) - 1}%` as any }]}>
-              <VideoTile participant={p} size="spotlight" isActiveSpeaker={p.id === activeSpeakerId} webcamStream={webcamStream} />
+              <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="spotlight" isActiveSpeaker={p.id === activeSpeakerId} isLocal={p.isHost} webcamStream={webcamStream} />
             </View>
           ))}
         </View>
@@ -1115,7 +1137,7 @@ export default function ConferenceLive() {
                 {p.id === 'ava' ? (
                   <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
                 ) : (
-                  <VideoTile participant={p} size="small" webcamStream={webcamStream} />
+                  <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="small" isLocal={p.isHost} webcamStream={webcamStream} />
                 )}
               </View>
             ))}
@@ -1167,7 +1189,7 @@ export default function ConferenceLive() {
                   {p.id === 'ava' ? (
                     <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
                   ) : (
-                    <VideoTile participant={p} size="small" />
+                    <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="small" isLocal={p.isHost} />
                   )}
                 </View>
               ))}
@@ -1250,7 +1272,7 @@ export default function ConferenceLive() {
       <View style={desktopStyles.floatingThumbnailContainer}>
         <View style={desktopStyles.floatingThumbnailInner}>
           {stageParticipant && stageParticipant.id !== 'ava' ? (
-            <VideoTile participant={stageParticipant} size="small" isActiveSpeaker={true} />
+            <LiveKitVideoTile trackRef={trackRefMap.get(stageParticipant.id)} name={stageParticipant.name} size="small" isActiveSpeaker={true} isLocal={stageParticipant.isHost} />
           ) : (
             <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
           )}
@@ -1262,6 +1284,10 @@ export default function ConferenceLive() {
   if (isDesktop) {
     return (
       <FullscreenSessionShell showBackButton={false} backLabel="Exit Conference">
+        <LiveKitConferenceProvider
+          token={liveKitToken}
+          serverUrl={process.env.EXPO_PUBLIC_LIVEKIT_URL || 'wss://aspire-3rdm9zjn.livekit.cloud'}
+        >
         <View style={desktopStyles.container}>
           <Toast
             visible={toastVisible}
@@ -1317,17 +1343,19 @@ export default function ConferenceLive() {
               </View>
             </Animated.View>
 
-            {renderViewMenu()}
+            <View style={desktopStyles.videoArea}>
+              {renderViewMenu()}
 
-            {shareMode !== 'none' ? renderShareOverlay() : (
-              <>
-                {viewMode === 'gallery' && renderGalleryGrid()}
-                {viewMode === 'speaker' && renderSpeakerView()}
-                {viewMode === 'multiSpeaker' && renderMultiSpeakerView()}
-                {viewMode === 'immersive' && renderImmersiveView()}
-                {viewMode === 'floatingThumbnail' && renderFloatingThumbnail()}
-              </>
-            )}
+              {shareMode !== 'none' ? renderShareOverlay() : (
+                <>
+                  {viewMode === 'gallery' && renderGalleryGrid()}
+                  {viewMode === 'speaker' && renderSpeakerView()}
+                  {viewMode === 'multiSpeaker' && renderMultiSpeakerView()}
+                  {viewMode === 'immersive' && renderImmersiveView()}
+                  {viewMode === 'floatingThumbnail' && renderFloatingThumbnail()}
+                </>
+              )}
+            </View>
 
             <Animated.View style={[desktopStyles.controlBar, { opacity: chromeOpacity }, chromeMode === 'hidden' && !alwaysShowControls && { pointerEvents: 'none' as any }]}>
               <View style={desktopStyles.avaIndicatorBar}>
@@ -1468,6 +1496,7 @@ export default function ConferenceLive() {
             icon="call"
           />
         </View>
+        </LiveKitConferenceProvider>
       </FullscreenSessionShell>
     );
   }
@@ -1483,13 +1512,10 @@ const desktopStyles = StyleSheet.create({
   videoSection: {
     flex: 1,
     backgroundColor: '#000',
-    position: 'relative',
+    flexDirection: 'column',
   },
   topBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1499,6 +1525,10 @@ const desktopStyles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1C1C1E',
     zIndex: 200,
+  },
+  videoArea: {
+    flex: 1,
+    overflow: 'hidden',
   },
   callInfo: {
     flexDirection: 'row',
@@ -1919,10 +1949,7 @@ const desktopStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   controlBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

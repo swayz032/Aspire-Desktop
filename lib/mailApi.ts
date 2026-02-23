@@ -9,8 +9,17 @@ export interface DomainSearchResult {
   term?: number;
 }
 
+// ─── Authenticated fetch injection (Law #3: Fail Closed) ───
+type FetchFn = (url: string, options?: RequestInit) => Promise<Response>;
+let _authFetch: FetchFn = fetch;
+
+/** Call once after login to inject JWT-bearing fetch for all mail API calls. */
+export function initMailApi(fetchFn: FetchFn): void {
+  _authFetch = fetchFn;
+}
+
 async function apiFetch<T = any>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
+  const res = await _authFetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -21,7 +30,8 @@ async function apiFetch<T = any>(url: string, options?: RequestInit): Promise<T>
     const body = await res.text();
     let msg: string;
     try {
-      msg = JSON.parse(body).error || body;
+      const parsed = JSON.parse(body);
+      msg = parsed.error || parsed.message || body;
     } catch {
       msg = body;
     }
@@ -31,13 +41,13 @@ async function apiFetch<T = any>(url: string, options?: RequestInit): Promise<T>
 }
 
 export const mailApi = {
-  getAccounts: (userId: string) =>
-    apiFetch(`${BASE}/inbox/accounts?userId=${encodeURIComponent(userId)}`),
+  getAccounts: () =>
+    apiFetch(`${BASE}/inbox/accounts`),
 
-  startOnboarding: (userId: string, provider: string, context?: any) =>
+  startOnboarding: (provider: string, context?: any) =>
     apiFetch(`${BASE}/mail/onboarding/start`, {
       method: 'POST',
-      body: JSON.stringify({ userId, provider, context }),
+      body: JSON.stringify({ provider, context }),
     }),
 
   getOnboarding: (jobId: string) =>
@@ -66,7 +76,8 @@ export const mailApi = {
     }),
 
   startDomainCheckout: (jobId: string, domain: string) =>
-    apiFetch(`${BASE}/domains/checkout/start`, {
+    apiFetch<{ status: string; orderId?: string; amount?: string; currency?: string; dnsPlan?: any }>(
+      `${BASE}/domains/checkout/start`, {
       method: 'POST',
       body: JSON.stringify({ jobId, domain }),
     }),

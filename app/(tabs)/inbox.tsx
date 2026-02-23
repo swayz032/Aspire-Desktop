@@ -17,6 +17,7 @@ import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
 const inboxHero = require('@/assets/images/inbox-hero.jpg');
@@ -750,6 +751,7 @@ export default function InboxScreen() {
   const insets = useSafeAreaInsets();
   const isDesktop = useDesktop();
   const router = useRouter();
+  const { authenticatedFetch } = useAuthFetch();
 
   const [activeTab, setActiveTab] = useState<TabType>('office');
   const [activeFilter, setActiveFilter] = useState<Record<TabType, string>>({ office: 'All', calls: 'All', mail: 'All', contacts: 'All' });
@@ -821,7 +823,7 @@ export default function InboxScreen() {
     async function loadData() {
       // Mail threads from PolarisM via Domain Rail
       try {
-        const mailRes = await fetch('/api/mail/threads');
+        const mailRes = await authenticatedFetch('/api/mail/threads');
         if (mailRes.ok) {
           const mailData = await mailRes.json();
           if (!cancelled) setMailThreads(mailData.threads ?? []);
@@ -877,8 +879,7 @@ export default function InboxScreen() {
     if (activeTab === 'mail' && !mailSetupChecked) {
       (async () => {
         try {
-          const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
-          const data = await fetch(`/api/mail/accounts?userId=${DEMO_USER_ID}`).then(r => r.json());
+          const data = await authenticatedFetch('/api/mail/accounts').then(r => r.json());
           const accounts = data.accounts || [];
           setMailAccounts(accounts);
           const active = accounts.find((a: any) => a.status === 'ACTIVE');

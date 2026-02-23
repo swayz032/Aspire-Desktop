@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
+import { useTenant } from '@/providers';
 
 interface PulseItem {
   id: string;
@@ -56,6 +57,7 @@ const quickFilters = [
 ];
 
 export default function PulseScreen() {
+  const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState('all');
   const [pulseItems, setPulseItems] = useState<PulseItem[]>([]);
@@ -166,13 +168,59 @@ export default function PulseScreen() {
     </View>
   );
 
+  if (loading || tenantLoading) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <View style={styles.skeletonTitle} />
+          <View style={styles.skeletonSubtitle} />
+        </View>
+        <View style={styles.skeletonFilterRow}>
+          {[1, 2, 3, 4].map((i) => (
+            <View key={i} style={styles.skeletonChip} />
+          ))}
+        </View>
+        <View style={styles.skeletonGrid}>
+          <View style={styles.skeletonCard} />
+          <View style={styles.skeletonCard} />
+        </View>
+      </HubPageShell>
+    );
+  }
+
+  if (!tenant?.onboardingCompleted) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.pageTitle}>Industry Pulse</Text>
+              <Text style={styles.pageSubtitle}>Real-time intelligence for your market</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="person-circle-outline" size={48} color={THEME.text.muted} />
+          <Text style={styles.emptyStateTitle}>Complete your profile to unlock Industry Pulse</Text>
+          <Text style={styles.emptyStateDesc}>
+            Once you finish onboarding, Adam will curate industry intelligence tailored to your market.
+          </Text>
+        </View>
+      </HubPageShell>
+    );
+  }
+
   return (
     <HubPageShell rightRail={rightRail}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.pageTitle}>Industry Pulse</Text>
-            <Text style={styles.pageSubtitle}>Real-time intelligence for your market</Text>
+            <Text style={styles.pageSubtitle}>
+              {tenant?.industry
+                ? `Based on your ${tenant.industry} business`
+                : 'Real-time intelligence for your market'}
+            </Text>
           </View>
           <Pressable
             style={[styles.refreshBtn, hoveredItem === 'refresh' && styles.refreshBtnHover]}
@@ -211,16 +259,13 @@ export default function PulseScreen() {
       </View>
 
       <View style={styles.pulseGrid}>
-        {loading && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Loading pulse insights...</Text>
-          </View>
-        )}
-        {!loading && pulseItems.length === 0 && (
+        {pulseItems.length === 0 && (
           <View style={styles.emptyState}>
             <Ionicons name="analytics-outline" size={32} color={THEME.text.muted} />
-            <Text style={styles.emptyTitle}>No pulse insights yet</Text>
-            <Text style={styles.emptyText}>Adam will generate industry intelligence once research workflows are active.</Text>
+            <Text style={styles.emptyTitle}>Your personalized pulse is being prepared...</Text>
+            <Text style={styles.emptyText}>
+              Adam is scanning {tenant?.industry ?? 'your'} market intelligence. Insights will appear here soon.
+            </Text>
           </View>
         )}
         {pulseItems.map((item, idx) => (
@@ -571,5 +616,61 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 320,
     lineHeight: 18,
+  },
+  skeletonTitle: {
+    width: 220,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 8,
+  },
+  skeletonSubtitle: {
+    width: 300,
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginBottom: 20,
+  },
+  skeletonFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 24,
+  },
+  skeletonChip: {
+    width: 80,
+    height: 36,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 20,
+  },
+  skeletonCard: {
+    width: 'calc(50% - 10px)' as any,
+    minWidth: 280,
+    height: 240,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+    gap: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: THEME.text.secondary,
+    textAlign: 'center',
+  },
+  emptyStateDesc: {
+    fontSize: 14,
+    color: THEME.text.muted,
+    textAlign: 'center',
+    maxWidth: 400,
+    lineHeight: 20,
   },
 });

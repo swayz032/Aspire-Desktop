@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Wallet, FileText, EnvelopeSimple, Phone } from 'phosphor-react-native';
 import { formatRelativeTime, formatSuiteContext } from '@/lib/formatters';
+import { useSupabase, useTenant } from '@/providers';
 import { useRealtimeReceipts } from '@/hooks/useRealtimeReceipts';
 import { getReceipts as fetchReceipts } from '@/lib/api';
 import { Receipt, ReceiptType, ReceiptStatus } from '@/types/receipts';
@@ -109,6 +110,7 @@ function SkeletonCard() {
 
 function ReceiptCard({ receipt, selected, onPress }: { receipt: Receipt; selected: boolean; onPress: () => void }) {
   const [hovered, setHovered] = useState(false);
+  const { suiteId } = useSupabase();
   const statusColor = STATUS_COLORS[receipt.status];
   const typeColor = TYPE_COLORS[receipt.type];
 
@@ -135,7 +137,7 @@ function ReceiptCard({ receipt, selected, onPress }: { receipt: Receipt; selecte
           <View style={styles.titleRow}>
             <Text style={styles.cardTitle} numberOfLines={1}>{receipt.title}</Text>
           </View>
-          <Text style={styles.cardSubtitle}>{formatSuiteContext()} · {receipt.actor} · {receipt.type}</Text>
+          <Text style={styles.cardSubtitle}>{formatSuiteContext(suiteId)} · {receipt.actor} · {receipt.type}</Text>
         </View>
         <View style={styles.cardRight}>
           <Text style={styles.timeText}>{formatRelativeTime(receipt.timestamp)}</Text>
@@ -177,6 +179,7 @@ function DetailActionButton({ icon, label }: { icon: keyof typeof Ionicons.glyph
 }
 
 function ReceiptDetailView({ receipt, onBack }: { receipt: Receipt; onBack: () => void }) {
+  const { suiteId } = useSupabase();
   const statusColor = STATUS_COLORS[receipt.status];
   const typeColor = TYPE_COLORS[receipt.type];
 
@@ -212,7 +215,7 @@ function ReceiptDetailView({ receipt, onBack }: { receipt: Receipt; onBack: () =
           </View>
           <View style={styles.detailHeroContent}>
             <Text style={styles.detailTitle}>{receipt.title}</Text>
-            <Text style={styles.detailSubtitle}>{formatSuiteContext()} · {receipt.actor} · {formatRelativeTime(receipt.timestamp)}</Text>
+            <Text style={styles.detailSubtitle}>{formatSuiteContext(suiteId)} · {receipt.actor} · {formatRelativeTime(receipt.timestamp)}</Text>
           </View>
           <View style={[styles.statusPill, { backgroundColor: statusColor.bg, borderColor: `${statusColor.text}30` }]}>
             <Ionicons name={statusIcon[receipt.status]} size={16} color={statusColor.text} />
@@ -264,7 +267,7 @@ function ReceiptDetailView({ receipt, onBack }: { receipt: Receipt; onBack: () =
                 <Ionicons name="briefcase-outline" size={16} color={Colors.semantic.info} />
               </View>
               <Text style={styles.metaCellLabel}>Suite</Text>
-              <Text style={styles.metaCellValue}>{formatSuiteContext()}</Text>
+              <Text style={styles.metaCellValue}>{formatSuiteContext(suiteId)}</Text>
             </View>
           </View>
         </View>
@@ -299,6 +302,8 @@ export default function ReceiptsScreen() {
   const isDesktop = useDesktop();
   const headerHeight = isDesktop ? 0 : insets.top + 60;
   const scrollRef = useRef<ScrollView>(null);
+  const { suiteId } = useSupabase();
+  const { tenant } = useTenant();
 
   const { receipts: supabaseReceipts, loading: supabaseLoading, error: supabaseError } = useRealtimeReceipts(100);
   const [receipts, setReceipts] = useState<Receipt[]>([]);

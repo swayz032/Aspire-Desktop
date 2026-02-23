@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
+import { useTenant } from '@/providers';
 
 const THEME = {
   bg: '#000000',
@@ -51,11 +52,28 @@ const IMAGE_KEYS_BY_CATEGORY: Record<string, string> = {
 };
 
 export default function LibraryScreen() {
+  const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Generate categories from servicesNeeded (or fallback to defaults)
+  const dynamicCategories = useMemo(() => {
+    const base = [{ id: 'all', label: 'All', count: 0 }];
+    if (tenant?.servicesNeeded && tenant.servicesNeeded.length > 0) {
+      return [
+        ...base,
+        ...tenant.servicesNeeded.map((s) => ({
+          id: s.toLowerCase().replace(/\s+/g, '_'),
+          label: s.charAt(0).toUpperCase() + s.slice(1),
+          count: 0,
+        })),
+      ];
+    }
+    return categories;
+  }, [tenant?.servicesNeeded]);
 
   useEffect(() => {
     let mounted = true;
@@ -128,7 +146,7 @@ export default function LibraryScreen() {
     <View style={styles.railContent}>
       <Text style={styles.railTitle}>Categories</Text>
       <View style={styles.categoryList}>
-        {categories.map((cat) => (
+        {dynamicCategories.map((cat) => (
           <Pressable
             key={cat.id}
             style={[
@@ -188,12 +206,53 @@ export default function LibraryScreen() {
     </View>
   );
 
+  if (loading || tenantLoading) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <View style={styles.skeletonTitle} />
+          <View style={styles.skeletonSubtitle} />
+        </View>
+        <View style={styles.skeletonSearch} />
+        <View style={styles.skeletonList}>
+          {[1, 2, 3].map((i) => (
+            <View key={i} style={styles.skeletonListItem} />
+          ))}
+        </View>
+      </HubPageShell>
+    );
+  }
+
+  if (!tenant?.onboardingCompleted) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.pageTitle}>Knowledge Library</Text>
+            <Text style={styles.pageSubtitle}>Your curated vault of insights and resources</Text>
+          </View>
+        </View>
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="person-circle-outline" size={48} color={THEME.text.muted} />
+          <Text style={styles.emptyStateTitle}>Complete your profile to unlock your Library</Text>
+          <Text style={styles.emptyStateDesc}>
+            Once you finish onboarding, Adam will curate resources tailored to your services and industry.
+          </Text>
+        </View>
+      </HubPageShell>
+    );
+  }
+
   return (
     <HubPageShell rightRail={rightRail}>
       <View style={styles.header}>
         <View>
           <Text style={styles.pageTitle}>Knowledge Library</Text>
-          <Text style={styles.pageSubtitle}>Your curated vault of insights and resources</Text>
+          <Text style={styles.pageSubtitle}>
+            {tenant?.industry
+              ? `Resources curated for your ${tenant.industry} business`
+              : 'Your curated vault of insights and resources'}
+          </Text>
         </View>
       </View>
 
@@ -224,12 +283,12 @@ export default function LibraryScreen() {
       </View>
 
       <View style={styles.itemsList}>
-        {!loading && libraryItems.length === 0 && (
-          <View style={{ alignItems: 'center', paddingVertical: 48, gap: 12 }}>
-            <Ionicons name="library-outline" size={32} color={THEME.text.muted} />
-            <Text style={{ fontSize: 16, fontWeight: '600', color: THEME.text.secondary }}>Your library is building</Text>
-            <Text style={{ fontSize: 13, color: THEME.text.muted, textAlign: 'center', maxWidth: 320, lineHeight: 18 }}>
-              As Adam researches your industry and Ava generates summaries, your curated knowledge library fills up automatically.
+        {libraryItems.length === 0 && (
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="library-outline" size={48} color={THEME.text.muted} />
+            <Text style={styles.emptyStateTitle}>Your personalized library is being prepared...</Text>
+            <Text style={styles.emptyStateDesc}>
+              Adam is curating {tenant?.industry ?? 'business'} resources for you. Articles, templates, and insights will appear here soon.
             </Text>
           </View>
         )}
@@ -530,5 +589,53 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: THEME.text.primary,
+  },
+  skeletonTitle: {
+    width: 220,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 8,
+  },
+  skeletonSubtitle: {
+    width: 340,
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  skeletonSearch: {
+    width: '100%',
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginBottom: 20,
+  },
+  skeletonList: {
+    gap: 12,
+  },
+  skeletonListItem: {
+    width: '100%',
+    height: 80,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+    gap: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: THEME.text.secondary,
+    textAlign: 'center',
+  },
+  emptyStateDesc: {
+    fontSize: 14,
+    color: THEME.text.muted,
+    textAlign: 'center',
+    maxWidth: 400,
+    lineHeight: 20,
   },
 });

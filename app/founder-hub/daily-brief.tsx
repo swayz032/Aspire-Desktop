@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
+import { useTenant } from '@/providers';
 
 const THEME = {
   bg: '#000000',
@@ -38,6 +39,7 @@ type PastBrief = { id: string; date: string; title: string; read: boolean };
 type AiInsight = { id: string; icon: string; title: string; desc: string };
 
 export default function DailyBriefScreen() {
+  const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [dailyBrief, setDailyBrief] = useState<DailyBriefData>({
     id: '',
@@ -165,7 +167,7 @@ export default function DailyBriefScreen() {
         {aiInsights.map((insight) => (
           <View key={insight.id} style={styles.insightCard}>
             <View style={styles.insightIcon}>
-              <Ionicons name={insight.icon} size={16} color={THEME.accent} />
+              <Ionicons name={insight.icon as any} size={16} color={THEME.accent} />
             </View>
             <View style={styles.insightContent}>
               <Text style={styles.insightTitle}>{insight.title}</Text>
@@ -177,13 +179,65 @@ export default function DailyBriefScreen() {
     </View>
   );
 
+  if (loading || tenantLoading) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <View style={styles.skeletonTitle} />
+          <View style={styles.skeletonSubtitle} />
+        </View>
+        <View style={styles.skeletonHero} />
+        <View style={styles.skeletonMetrics}>
+          <View style={styles.skeletonMetricCard} />
+          <View style={styles.skeletonMetricCard} />
+          <View style={styles.skeletonMetricCard} />
+        </View>
+      </HubPageShell>
+    );
+  }
+
+  if (!tenant?.onboardingCompleted) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <Text style={styles.pageTitle}>Daily Brief</Text>
+          <Text style={styles.pageSubtitle}>AI-curated intelligence for your business</Text>
+        </View>
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="person-circle-outline" size={48} color={THEME.text.muted} />
+          <Text style={styles.emptyStateTitle}>Complete your profile to unlock Daily Briefs</Text>
+          <Text style={styles.emptyStateDesc}>
+            Once you finish onboarding, Adam will generate personalized daily intelligence for your business.
+          </Text>
+        </View>
+      </HubPageShell>
+    );
+  }
+
   return (
     <HubPageShell rightRail={rightRail}>
       <View style={styles.header}>
-        <Text style={styles.pageTitle}>Daily Brief</Text>
-        <Text style={styles.pageSubtitle}>AI-curated intelligence for your business</Text>
+        <Text style={styles.pageTitle}>
+          {tenant?.industry ? `Your ${tenant.industry} Daily Brief` : 'Daily Brief'}
+        </Text>
+        <Text style={styles.pageSubtitle}>
+          {tenant?.industry
+            ? `Insights for your ${tenant.industry} business`
+            : 'AI-curated intelligence for your business'}
+        </Text>
       </View>
 
+      {!dailyBrief.id ? (
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="sunny-outline" size={48} color={THEME.text.muted} />
+          <Text style={styles.emptyStateTitle}>Your personalized brief is being prepared...</Text>
+          <Text style={styles.emptyStateDesc}>
+            Adam is analyzing your {tenant?.industry ?? 'business'} data. Your first daily brief will appear here soon.
+          </Text>
+        </View>
+      ) : null}
+
+      {dailyBrief.id ? (
       <View style={styles.todayCard}>
         <ImageBackground
           source={resolveHubImage(dailyBrief.imageUrl, dailyBrief.imageKey)}
@@ -233,7 +287,10 @@ export default function DailyBriefScreen() {
           </LinearGradient>
         </ImageBackground>
       </View>
+      ) : null}
 
+      {dailyBrief.id ? (
+      <>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Key Metrics Today</Text>
         <View style={styles.metricsGrid}>
@@ -289,11 +346,62 @@ export default function DailyBriefScreen() {
           )}
         </View>
       </View>
+      </>
+      ) : null}
     </HubPageShell>
   );
 }
 
 const styles = StyleSheet.create({
+  skeletonTitle: {
+    width: 220,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 8,
+  },
+  skeletonSubtitle: {
+    width: 300,
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  skeletonHero: {
+    width: '100%',
+    height: 280,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginBottom: 32,
+  },
+  skeletonMetrics: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  skeletonMetricCard: {
+    flex: 1,
+    height: 80,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+    gap: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: THEME.text.secondary,
+    textAlign: 'center',
+  },
+  emptyStateDesc: {
+    fontSize: 14,
+    color: THEME.text.muted,
+    textAlign: 'center',
+    maxWidth: 400,
+    lineHeight: 20,
+  },
   header: {
     marginBottom: 32,
   },

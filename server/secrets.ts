@@ -1,0 +1,245 @@
+/**
+ * AWS Secrets Manager bootstrap for Aspire Desktop server.
+ *
+ * Architecture:
+ *   - On startup: fetch all secrets from SM, inject into process.env
+ *   - 5-minute cache TTL (AWS best practice)
+ *   - On auth failure: invalidate cache → re-fetch → retry once
+ *   - In local dev without AWS creds: fall through to .env.local
+ *   - Fail-closed: if SM fetch fails in production, server refuses to start (Law #3)
+ *
+ * Services only need 3 env vars from Railway:
+ *   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+ * Everything else comes from SM.
+ */
+
+import {
+  SecretsManagerClient,
+  GetSecretValueCommand,
+} from '@aws-sdk/client-secrets-manager';
+
+// SM key name → process.env variable name
+const KEY_MAP: Record<string, string> = {
+  // Stripe
+  restricted_key: 'STRIPE_RESTRICTED_KEY',
+  secret_key: 'STRIPE_SECRET_KEY',
+  publishable_key: 'STRIPE_PUBLISHABLE_KEY',
+  webhook_secret: 'STRIPE_WEBHOOK_SECRET',
+  // Supabase
+  service_role_key: 'SUPABASE_SERVICE_ROLE_KEY',
+  jwt_secret: 'SUPABASE_JWT_SECRET',
+  // OpenAI
+  api_key: 'OPENAI_API_KEY',
+  // Twilio
+  account_sid: 'TWILIO_ACCOUNT_SID',
+  api_key: 'TWILIO_API_KEY',
+  api_secret: 'TWILIO_API_SECRET',
+  auth_token: 'TWILIO_AUTH_TOKEN',
+  // Internal
+  token_signing_secret: 'TOKEN_SIGNING_SECRET',
+  token_encryption_key: 'TOKEN_ENCRYPTION_KEY',
+  n8n_hmac_secret: 'N8N_WEBHOOK_SECRET',
+  n8n_eli_webhook_secret: 'N8N_ELI_WEBHOOK_SECRET',
+  n8n_sarah_webhook_secret: 'N8N_SARAH_WEBHOOK_SECRET',
+  n8n_nora_webhook_secret: 'N8N_NORA_WEBHOOK_SECRET',
+  domain_rail_hmac_secret: 'DOMAIN_RAIL_HMAC_SECRET',
+  gateway_internal_key: 'GATEWAY_INTERNAL_KEY',
+  // Providers
+  elevenlabs_key: 'ELEVENLABS_API_KEY',
+  deepgram_key: 'DEEPGRAM_API_KEY',
+  livekit_key: 'LIVEKIT_API_KEY',
+  livekit_secret: 'LIVEKIT_SECRET',
+  anam_key: 'ANAM_API_KEY',
+  tavily_key: 'TAVILY_API_KEY',
+  brave_key: 'BRAVE_API_KEY',
+  google_maps_key: 'GOOGLE_MAPS_API_KEY',
+};
+
+// Per-group key mappings (some SM groups have colliding key names like "api_key")
+const GROUP_KEY_MAP: Record<string, Record<string, string>> = {
+  openai: { api_key: 'OPENAI_API_KEY' },
+  twilio: {
+    account_sid: 'TWILIO_ACCOUNT_SID',
+    api_key: 'TWILIO_API_KEY',
+    api_secret: 'TWILIO_API_SECRET',
+    auth_token: 'TWILIO_AUTH_TOKEN',
+  },
+};
+
+let lastFetch = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+let smClient: SecretsManagerClient | null = null;
+
+function getClient(): SecretsManagerClient {
+  if (!smClient) {
+    smClient = new SecretsManagerClient({
+      region: process.env.AWS_REGION || 'us-east-1',
+    });
+  }
+  return smClient;
+}
+
+/**
+ * Load all secrets from AWS Secrets Manager into process.env.
+ *
+ * Behavior:
+ *   - production + no AWS creds → FATAL (fail-closed, Law #3)
+ *   - local dev + no AWS creds → skip, use .env.local
+ *   - cache fresh → skip (5-min TTL)
+ *   - SM fetch failure in production → throw (server won't start)
+ */
+export async function loadSecrets(): Promise<void> {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const hasAwsCreds = !!process.env.AWS_SECRET_ACCESS_KEY;
+
+  // Local dev without AWS creds — use .env.local
+  if (!isProduction && !hasAwsCreds) {
+    console.log('[secrets] Local dev mode — using .env.local (no AWS creds)');
+    return;
+  }
+
+  // Production without AWS creds — fail closed (Law #3)
+  if (isProduction && !hasAwsCreds) {
+    throw new Error(
+      '[secrets] FATAL: Production mode requires AWS credentials. ' +
+      'Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY in Railway.'
+    );
+  }
+
+  // Cache still fresh — skip
+  if (Date.now() - lastFetch < CACHE_TTL) {
+    return;
+  }
+
+  const client = getClient();
+  const env = isProduction ? 'prod' : 'dev';
+
+  const groups = [
+    { path: `aspire/${env}/stripe`, name: 'stripe' },
+    { path: `aspire/${env}/supabase`, name: 'supabase' },
+    { path: `aspire/${env}/openai`, name: 'openai' },
+    { path: `aspire/${env}/twilio`, name: 'twilio' },
+    { path: `aspire/${env}/internal`, name: 'internal' },
+    { path: `aspire/${env}/providers`, name: 'providers' },
+  ];
+
+  let loadedCount = 0;
+
+  for (const { path, name } of groups) {
+    try {
+      const result = await client.send(
+        new GetSecretValueCommand({ SecretId: path })
+      );
+
+      if (!result.SecretString) {
+        console.warn(`[secrets] Empty secret string for ${path}`);
+        continue;
+      }
+
+      const secrets = JSON.parse(result.SecretString);
+
+      for (const [k, v] of Object.entries(secrets)) {
+        // Skip internal rotation metadata keys
+        if (k.startsWith('_')) continue;
+
+        // Use group-specific mapping if available (handles "api_key" collisions)
+        const groupMap = GROUP_KEY_MAP[name];
+        const envVar = groupMap?.[k] ?? KEY_MAP[k] ?? k.toUpperCase();
+
+        process.env[envVar] = v as string;
+        loadedCount++;
+      }
+    } catch (err: any) {
+      const msg = `[secrets] Failed to fetch ${path}: ${err.message}`;
+      const criticalGroups = ['stripe', 'supabase', 'internal'];
+      const isCritical = criticalGroups.includes(name);
+
+      if (isProduction || isCritical) {
+        // Fail closed — critical groups required even in dev (Law #3)
+        console.error(msg);
+        throw new Error(`Secrets Manager fetch failed for ${path} — cannot start without credentials`);
+      } else {
+        // Dev mode non-critical group — warn and continue
+        console.warn(msg);
+      }
+    }
+  }
+
+  lastFetch = Date.now();
+  console.log(
+    `[secrets] Loaded ${loadedCount} secrets from ${groups.length} SM groups (${env})`
+  );
+}
+
+/**
+ * Invalidate the secrets cache — forces next loadSecrets() call to re-fetch.
+ *
+ * Call this when you detect an authentication error from a provider
+ * (e.g., Stripe AuthenticationError) — the key may have been rotated
+ * and the service is still using the cached old value.
+ *
+ * Usage:
+ *   import { invalidateSecretsCache, loadSecrets } from './secrets';
+ *   catch (err) {
+ *     if (err.type === 'StripeAuthenticationError') {
+ *       invalidateSecretsCache();
+ *       await loadSecrets(); // re-fetch from SM
+ *       // retry the operation once
+ *     }
+ *   }
+ */
+export function invalidateSecretsCache(): void {
+  lastFetch = 0;
+  smClient = null; // Force new client (picks up any credential rotation)
+  console.log('[secrets] Cache invalidated — next loadSecrets() will re-fetch from SM');
+}
+
+/**
+ * Check if secrets were loaded from SM (vs .env.local fallback).
+ */
+export function isSecretsManagerActive(): boolean {
+  return lastFetch > 0;
+}
+
+/**
+ * Handle provider authentication errors by invalidating secrets cache and reloading.
+ *
+ * Call this from any catch block where a provider returns an auth error
+ * (e.g., Stripe AuthenticationError, Twilio 401, OpenAI 401).
+ * After calling this, retry the operation ONCE — if it fails again, the key
+ * is genuinely invalid (not just stale from rotation).
+ *
+ * Returns true if secrets were reloaded (caller should retry), false otherwise.
+ */
+export async function handleProviderAuthError(
+  provider: string,
+  error: any
+): Promise<boolean> {
+  // Only act on authentication-type errors
+  const isAuthError =
+    error?.type === 'StripeAuthenticationError' ||
+    error?.type === 'authentication_error' ||
+    error?.statusCode === 401 ||
+    error?.status === 401 ||
+    (error?.message && /authentication|unauthorized|invalid.*key/i.test(error.message));
+
+  if (!isAuthError) return false;
+
+  // Only reload if SM is active (otherwise there's nothing to reload)
+  if (!isSecretsManagerActive()) return false;
+
+  console.warn(
+    `[secrets] Provider auth error from ${provider} — invalidating cache and reloading from SM`
+  );
+  invalidateSecretsCache();
+
+  try {
+    await loadSecrets();
+    console.log(`[secrets] Secrets reloaded after ${provider} auth error — caller should retry once`);
+    return true;
+  } catch (reloadErr: any) {
+    console.error(`[secrets] Failed to reload secrets after ${provider} auth error:`, reloadErr.message);
+    return false;
+  }
+}

@@ -55,16 +55,27 @@ function useAuthGate() {
       return;
     }
 
+    // Timeout guard — if Supabase check takes too long, fail closed but don't hang forever
+    const timeoutId = setTimeout(() => {
+      if (!onboardingChecked) {
+        console.warn('Onboarding check timed out — treating as incomplete (fail-closed)');
+        setOnboardingComplete(false);
+        setOnboardingChecked(true);
+      }
+    }, 8000);
+
     supabase
       .from('suite_profiles')
       .select('onboarding_completed_at')
       .eq('suite_id', suiteId)
       .single()
       .then(({ data }) => {
+        clearTimeout(timeoutId);
         setOnboardingComplete(!!data?.onboarding_completed_at);
         setOnboardingChecked(true);
       })
       .then(undefined, () => {
+        clearTimeout(timeoutId);
         // Fail closed — treat as incomplete if check fails
         setOnboardingComplete(false);
         setOnboardingChecked(true);
@@ -75,13 +86,14 @@ function useAuthGate() {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === ('(auth)' as any);
+    const inPublicGroup = segments[0] === ('sign' as any) || segments[0] === ('book' as any);
     const onOnboarding = segments[1] === ('onboarding' as any);
 
-    if (!session && !inAuthGroup) {
-      // Not logged in → login
+    if (!session && !inAuthGroup && !inPublicGroup) {
+      // Not logged in → login (public routes like /sign and /book are exempt)
       router.replace('/(auth)/login' as any);
-    } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding) {
-      // Logged in but onboarding incomplete → onboarding (cannot bypass)
+    } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
+      // Logged in but onboarding incomplete → onboarding (cannot bypass, but public routes are exempt)
       router.replace('/(auth)/onboarding' as any);
     } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
       // Logged in + onboarding done + still on auth pages → main app
@@ -189,6 +201,13 @@ function AppNavigator() {
           options={{
             headerShown: false,
             presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
+        <Stack.Screen
+          name="sign"
+          options={{
+            headerShown: false,
+            presentation: 'card'
           }}
         />
         <Stack.Screen name="+not-found" />

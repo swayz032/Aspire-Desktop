@@ -11,6 +11,7 @@ interface DocumentThumbnailProps {
   context?: 'todayplan' | 'authorityqueue' | 'conference' | 'financehub';
   documentName?: string;
   previewEnabled?: boolean;
+  pandadocDocumentId?: string;
 }
 
 const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
@@ -175,13 +176,14 @@ function DocLine({ spec, lineGap }: { spec: LineSpec; lineGap: number }) {
   );
 }
 
-export function DocumentThumbnail({ 
-  type, 
+export function DocumentThumbnail({
+  type,
   size = 'md',
   variant = 0,
   context = 'authorityqueue',
   documentName,
   previewEnabled = true,
+  pandadocDocumentId,
 }: DocumentThumbnailProps) {
   const [hovered, setHovered] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -278,6 +280,7 @@ export function DocumentThumbnail({
         onClose={() => setPreviewOpen(false)}
         type={type}
         documentName={documentName}
+        pandadocDocumentId={pandadocDocumentId}
       />
     </>
   );

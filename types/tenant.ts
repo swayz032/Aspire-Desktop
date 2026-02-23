@@ -4,11 +4,26 @@ export interface Tenant extends BaseEntity {
   businessName: string;
   suiteId: string;
   officeId: string;
+  displayId?: string;
+  officeDisplayId?: string;
   ownerName: string;
   ownerEmail: string;
   role: string;
   timezone: string;
   currency: string;
+  // Intake fields (populated from suite_profiles after onboarding)
+  industry: string | null;
+  servicesNeeded: string[] | null;
+  servicesPriority: string[] | null;
+  teamSize: string | null;
+  entityType: string | null;
+  yearsInBusiness: string | null;
+  businessGoals: string[] | null;
+  painPoint: string | null;
+  salesChannel: string | null;
+  customerType: string | null;
+  preferredChannel: string | null;
+  onboardingCompleted: boolean;
 }
 
 export interface NotificationSettings {

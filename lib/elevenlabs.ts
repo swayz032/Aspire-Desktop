@@ -24,7 +24,7 @@ export interface VoiceConfig {
 export const AGENT_VOICES: Record<string, VoiceConfig> = {
   ava: {
     name: 'Ava',
-    voiceId: '56bWURjYFHyYyVf490Dp',
+    voiceId: 'uYXf8XasLslADfZ2MB4u',
     model: 'eleven_turbo_v2_5',
   },
   eli: {

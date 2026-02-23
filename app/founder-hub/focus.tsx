@@ -1,45 +1,47 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui/Card';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import { useTenant } from '@/providers';
 
 const BRIGHT_BG = '#0a0a0c';
 
 const areaConfig: Record<string, { name: string; icon: string; color: string; description: string; gradientColors: string[] }> = {
-  cashflow: { 
-    name: 'Cashflow', 
-    icon: 'wallet', 
+  cashflow: {
+    name: 'Cashflow',
+    icon: 'wallet',
     color: '#3B82F6',
     description: 'Manage cash position, AR/AP, and financial health',
     gradientColors: ['#0a1628', '#0d2847', '#1a4a6e', '#0d3a5c', '#0a1929'],
   },
-  leads: { 
-    name: 'Leads', 
-    icon: 'mail', 
+  leads: {
+    name: 'Leads',
+    icon: 'mail',
     color: '#3B82F6',
     description: 'Track new inquiries and pipeline opportunities',
     gradientColors: ['#0a1620', '#0d2835', '#1a4a5a', '#0d3a4c', '#0a1520'],
   },
-  ops: { 
-    name: 'Operations', 
-    icon: 'construct', 
+  ops: {
+    name: 'Operations',
+    icon: 'construct',
     color: '#34d399',
     description: 'Monitor returns, deliveries, and operational issues',
     gradientColors: ['#0a1614', '#0d2820', '#1a4a38', '#0d3a2c', '#0a1914'],
   },
-  growth: { 
-    name: 'Growth Angles', 
-    icon: 'rocket', 
+  growth: {
+    name: 'Growth Angles',
+    icon: 'rocket',
     color: '#f472b6',
     description: 'Explore new opportunities and expansion ideas',
     gradientColors: ['#1a0a18', '#280d22', '#4a1a40', '#3a0d32', '#1a0a14'],
   },
-  'ai-edge': { 
-    name: 'AI Edge', 
-    icon: 'sparkles', 
+  'ai-edge': {
+    name: 'AI Edge',
+    icon: 'sparkles',
     color: '#a78bfa',
     description: 'Automation opportunities and efficiency wins',
     gradientColors: ['#140a1a', '#1d0d28', '#3a1a4a', '#2c0d3a', '#140a1a'],
@@ -54,28 +56,6 @@ interface Insight {
   confidence: 'high' | 'medium' | 'low';
   riskTier: 'low' | 'medium' | 'high';
 }
-
-const mockInsights: Record<string, Insight[]> = {
-  cashflow: [
-    { id: '1', title: 'Past due invoices locking up money', evidence: '7 invoices are 14+ days overdue, totaling $12,420.', action: 'Add AR System', confidence: 'high', riskTier: 'medium' },
-    { id: '2', title: 'Tax reserve running low', evidence: 'Current reserve is 15% below recommended level.', action: 'Review Allocations', confidence: 'medium', riskTier: 'medium' },
-  ],
-  leads: [
-    { id: '1', title: 'New inquiry waiting for response', evidence: '1 inquiry received 2 hours ago from website.', action: 'Respond Now', confidence: 'high', riskTier: 'low' },
-    { id: '2', title: 'Follow-up cadence stalled', evidence: '3 leads haven\'t been contacted in 7+ days.', action: 'Create Follow-Up', confidence: 'medium', riskTier: 'low' },
-  ],
-  ops: [
-    { id: '1', title: 'Pallet returns need processing', evidence: '5 returns waiting for inspection.', action: 'Process Returns', confidence: 'high', riskTier: 'low' },
-    { id: '2', title: 'Delivery route optimization possible', evidence: 'Could save 2 hours/week with route changes.', action: 'Review Routes', confidence: 'low', riskTier: 'low' },
-  ],
-  growth: [
-    { id: '1', title: 'Broker trial could land bigger orders', evidence: '6 large orders missed in the last 30 days.', action: 'Create Plan', confidence: 'medium', riskTier: 'medium' },
-  ],
-  'ai-edge': [
-    { id: '1', title: 'Automate invoice reminders', evidence: 'Could save 3 hours/week with automated follow-ups.', action: 'Create Automation', confidence: 'high', riskTier: 'medium' },
-    { id: '2', title: 'Skill Pack: AR Collection', evidence: 'Pre-built workflow for accounts receivable.', action: 'View Skill Pack', confidence: 'high', riskTier: 'low' },
-  ],
-};
 
 const getConfidenceColor = (confidence: string) => {
   switch (confidence) {
@@ -98,9 +78,123 @@ const getRiskTierColor = (tier: string) => {
 export default function FocusScreen() {
   const router = useRouter();
   const { area } = useLocalSearchParams<{ area: string }>();
-  
+  const { tenant, isLoading: tenantLoading } = useTenant();
+  const [insights, setInsights] = useState<Insight[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const config = areaConfig[area || 'cashflow'] || areaConfig.cashflow;
-  const insights = mockInsights[area || 'cashflow'] || [];
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('receipts')
+          .select('*')
+          .like('action_type', 'adam.focus%')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (!mounted) return;
+        if (data && data.length > 0) {
+          setInsights(data.map((r: any, idx: number) => {
+            const p = r.payload ?? {};
+            return {
+              id: r.id ?? `insight-${idx}`,
+              title: p.title ?? 'Focus insight',
+              evidence: p.evidence ?? p.summary ?? p.description ?? '',
+              action: p.action ?? p.cta ?? 'View Details',
+              confidence: p.confidence ?? 'medium',
+              riskTier: p.risk_tier ?? p.riskTier ?? 'low',
+            };
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load focus insights:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [area]);
+
+  if (loading || tenantLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.heroWrapper}>
+          <LinearGradient
+            colors={config.gradientColors as any}
+            locations={[0, 0.2, 0.5, 0.8, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroGradient}
+          >
+            <View style={styles.header}>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => router.canGoBack() ? router.back() : router.push('/founder-hub')}
+                accessibilityLabel="Go back"
+                accessibilityRole="button"
+              >
+                <Ionicons name="chevron-back" size={24} color={Colors.text.primary} />
+              </TouchableOpacity>
+              <View style={styles.headerText}>
+                <View style={styles.skeletonHeaderTitle} />
+                <View style={styles.skeletonHeaderSubtitle} />
+              </View>
+            </View>
+          </LinearGradient>
+        </View>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.skeletonInsights}>
+            {[1, 2].map((i) => (
+              <View key={i} style={styles.skeletonInsightCard} />
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (!tenant?.onboardingCompleted) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.heroWrapper}>
+          <LinearGradient
+            colors={config.gradientColors as any}
+            locations={[0, 0.2, 0.5, 0.8, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroGradient}
+          >
+            <View style={styles.header}>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => router.canGoBack() ? router.back() : router.push('/founder-hub')}
+                accessibilityLabel="Go back"
+                accessibilityRole="button"
+              >
+                <Ionicons name="chevron-back" size={24} color={Colors.text.primary} />
+              </TouchableOpacity>
+              <View style={styles.headerText}>
+                <Text style={styles.headerTitle}>{config.name}</Text>
+                <Text style={styles.headerSubtitle}>{config.description}</Text>
+              </View>
+            </View>
+          </LinearGradient>
+        </View>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="person-circle-outline" size={48} color={Colors.text.muted} />
+            <Text style={styles.emptyStateTitle}>Complete your profile to unlock Focus</Text>
+            <Text style={styles.emptyStateDesc}>
+              Once you finish onboarding, Adam will generate weekly focus goals tailored to your business.
+            </Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -115,9 +209,11 @@ export default function FocusScreen() {
           <View style={[styles.heroGlow, { backgroundColor: `${config.color}15` }]} />
           <View style={[styles.heroGlowSecondary, { backgroundColor: `${config.color}08` }]} />
           <View style={styles.header}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.backButton}
               onPress={() => router.canGoBack() ? router.back() : router.push('/founder-hub')}
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
             >
               <Ionicons name="chevron-back" size={24} color={Colors.text.primary} />
             </TouchableOpacity>
@@ -134,19 +230,34 @@ export default function FocusScreen() {
           </View>
         </LinearGradient>
       </View>
-      
-      <ScrollView 
+
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {tenant?.businessGoals && tenant.businessGoals.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your Business Goals</Text>
+            <View style={styles.goalsRow}>
+              {tenant.businessGoals.map((goal, idx) => (
+                <View key={idx} style={[styles.goalChip, { backgroundColor: `${config.color}15`, borderColor: `${config.color}25` }]}>
+                  <Text style={[styles.goalChipText, { color: config.color }]}>{goal}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Insights & Priorities</Text>
-          
+
           {insights.length === 0 ? (
             <Card variant="elevated" style={styles.emptyCard}>
-              <Ionicons name="checkmark-circle" size={40} color="#34d399" />
-              <Text style={styles.emptyTitle}>All caught up!</Text>
-              <Text style={styles.emptyText}>No urgent items in {config.name} right now.</Text>
+              <Ionicons name="telescope-outline" size={40} color={Colors.text.muted} />
+              <Text style={styles.emptyCardTitle}>Your weekly focus goals will appear here once Adam generates them</Text>
+              <Text style={styles.emptyCardText}>
+                Adam analyzes your {tenant?.industry ?? 'business'} data weekly to surface what matters most.
+              </Text>
             </Card>
           ) : (
             insights.map((insight) => (
@@ -179,10 +290,14 @@ export default function FocusScreen() {
                     </View>
                   </View>
                   <View style={styles.insightActions}>
-                    <TouchableOpacity style={[styles.actionButton, { backgroundColor: `${config.color}12`, borderColor: `${config.color}25` }]}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: `${config.color}12`, borderColor: `${config.color}25` }]}
+                      accessibilityLabel={insight.action}
+                      accessibilityRole="button"
+                    >
                       <Text style={[styles.actionText, { color: config.color }]}>{insight.action}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.seeWhyButton}>
+                    <TouchableOpacity style={styles.seeWhyButton} accessibilityLabel="See why" accessibilityRole="button">
                       <Text style={styles.seeWhyText}>See why</Text>
                       <Ionicons name="chevron-forward" size={14} color={Colors.text.muted} />
                     </TouchableOpacity>
@@ -208,7 +323,7 @@ export default function FocusScreen() {
                   <Text style={styles.skillPackTitle}>AR Collection Workflow</Text>
                   <Text style={styles.skillPackSubtitle}>Automated invoice follow-ups</Text>
                 </View>
-                <TouchableOpacity style={styles.enableButton}>
+                <TouchableOpacity style={styles.enableButton} accessibilityLabel="Enable skill pack" accessibilityRole="button">
                   <Text style={styles.enableText}>Enable</Text>
                 </TouchableOpacity>
               </View>
@@ -258,8 +373,8 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   backButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -312,6 +427,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.text.primary,
     marginBottom: Spacing.md,
+  },
+  goalsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  goalChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+  },
+  goalChipText: {
+    fontSize: Typography.small.fontSize,
+    fontWeight: '600',
   },
   insightCardWrapper: {
     borderRadius: BorderRadius.lg,
@@ -399,6 +529,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   actionText: {
     fontSize: Typography.small.fontSize,
@@ -408,6 +540,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    minHeight: 44,
   },
   seeWhyText: {
     fontSize: Typography.small.fontSize,
@@ -418,12 +551,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  emptyTitle: {
+  emptyCardTitle: {
     fontSize: Typography.body.fontSize,
     fontWeight: '600',
     color: Colors.text.primary,
+    textAlign: 'center',
   },
-  emptyText: {
+  emptyCardText: {
     fontSize: Typography.small.fontSize,
     color: Colors.text.tertiary,
     textAlign: 'center',
@@ -480,10 +614,55 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(79, 172, 254, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(79, 172, 254, 0.3)',
+    minHeight: 44,
+    justifyContent: 'center',
   },
   enableText: {
     fontSize: Typography.small.fontSize,
     fontWeight: '600',
     color: '#3B82F6',
+  },
+  // Skeleton loading
+  skeletonHeaderTitle: {
+    width: 140,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 4,
+  },
+  skeletonHeaderSubtitle: {
+    width: 240,
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  skeletonInsights: {
+    gap: Spacing.md,
+  },
+  skeletonInsightCard: {
+    width: '100%',
+    height: 160,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  // Empty state
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+    gap: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.text.secondary,
+    textAlign: 'center',
+  },
+  emptyStateDesc: {
+    fontSize: 14,
+    color: Colors.text.muted,
+    textAlign: 'center',
+    maxWidth: 400,
+    lineHeight: 20,
   },
 });

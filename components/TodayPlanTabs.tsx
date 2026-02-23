@@ -15,12 +15,13 @@ interface TodayPlanItem {
   status: string;
   staffRole: string;
   documents?: any[];
+  _type?: 'calendar' | 'approval';
 }
 
 
 export function TodayPlanTabs({ planItems }: { planItems: TodayPlanItem[] }) {
   const router = useRouter();
-  const displayedPlan = planItems.slice(0, 2);
+  const displayedPlan = planItems.slice(0, 4);
 
   return (
     <Card variant="elevated" style={styles.container}>
@@ -54,11 +55,19 @@ function TodayPlanContent({ items, router }: { items: TodayPlanItem[]; router: a
           styles.planItem,
           index > 0 && styles.planItemBorder
         ]}>
-          <Badge 
-            label={planItem.status === 'next' ? 'NEXT' : planItem.time.split('–')[0]} 
-            variant={planItem.status === 'next' ? 'primary' : 'muted'} 
-            size="sm" 
-          />
+          <View style={styles.badgeCol}>
+            <Badge
+              label={planItem.status === 'next' ? 'NEXT' : planItem.time.split('–')[0]}
+              variant={planItem.status === 'next' ? 'primary' : 'muted'}
+              size="sm"
+            />
+            <Ionicons
+              name={planItem._type === 'approval' ? 'shield-checkmark' : 'calendar'}
+              size={12}
+              color={planItem._type === 'approval' ? Colors.semantic.warning : Colors.accent.cyan}
+              style={{ marginTop: 4 }}
+            />
+          </View>
           <View style={styles.planDetails}>
             <Text style={styles.planTime}>{planItem.time}</Text>
             <Text style={styles.planAction}>{planItem.action}</Text>
@@ -155,6 +164,10 @@ const styles = StyleSheet.create({
   planItemBorder: {
     borderTopWidth: 1,
     borderTopColor: Colors.border.subtle,
+  },
+  badgeCol: {
+    alignItems: 'center',
+    minWidth: 40,
   },
   planDetails: {
     flex: 1,

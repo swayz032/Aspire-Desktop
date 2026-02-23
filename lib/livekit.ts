@@ -1,4 +1,7 @@
 /**
+ * @deprecated Replaced by LiveKitConferenceProvider which uses <LiveKitRoom>
+ * from @livekit/components-react as of Phase 3 Group C-2.
+ *
  * LiveKit Client Configuration
  *
  * Provides connection helpers for LiveKit rooms.

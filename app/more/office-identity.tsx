@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, Text, TextInput, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, ScrollView, Text, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { getSuiteProfile } from '@/lib/api';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { Tenant } from '@/types/tenant';
 
 function EditableField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
@@ -36,8 +37,10 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
 export default function OfficeIdentityScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
+  const { authenticatedFetch } = useAuthFetch();
 
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [businessName, setBusinessName] = useState('');
   const [ownerName, setOwnerName] = useState('');
@@ -52,6 +55,8 @@ export default function OfficeIdentityScreen() {
           businessName: profile.business_name ?? profile.businessName ?? '',
           suiteId: profile.suite_id ?? '',
           officeId: profile.office_id ?? '',
+          displayId: profile.display_id ?? undefined,
+          officeDisplayId: profile.office_display_id ?? undefined,
           ownerName: profile.owner_name ?? profile.ownerName ?? '',
           ownerEmail: profile.owner_email ?? profile.ownerEmail ?? '',
           role: profile.role ?? 'Founder',
@@ -59,6 +64,18 @@ export default function OfficeIdentityScreen() {
           currency: profile.currency ?? 'USD',
           createdAt: profile.created_at ?? new Date().toISOString(),
           updatedAt: profile.updated_at ?? new Date().toISOString(),
+          industry: profile.industry ?? null,
+          servicesNeeded: profile.services_needed ?? null,
+          servicesPriority: profile.services_priority ?? null,
+          teamSize: profile.team_size ?? null,
+          entityType: profile.entity_type ?? null,
+          yearsInBusiness: profile.years_in_business ?? null,
+          businessGoals: profile.business_goals ?? null,
+          painPoint: profile.pain_point ?? null,
+          salesChannel: profile.sales_channel ?? null,
+          customerType: profile.customer_type ?? null,
+          preferredChannel: profile.preferred_channel ?? null,
+          onboardingCompleted: !!(profile.onboarding_completed_at),
         };
         setTenant(t);
         setBusinessName(t.businessName);
@@ -71,9 +88,60 @@ export default function OfficeIdentityScreen() {
       }
     };
     fetchTenant();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- Runs once on mount, authenticatedFetch is stable
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const resp = await authenticatedFetch('/api/onboarding/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessName,
+          ownerName,
+          ownerEmail,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(err || 'Save failed');
+      }
+      // Re-fetch to sync updated data
+      const profile = await getSuiteProfile();
+      const t: Tenant = {
+        id: profile.id ?? '',
+        businessName: profile.business_name ?? profile.businessName ?? '',
+        suiteId: profile.suite_id ?? '',
+        officeId: profile.office_id ?? '',
+        displayId: profile.display_id ?? undefined,
+        officeDisplayId: profile.office_display_id ?? undefined,
+        ownerName: profile.owner_name ?? profile.ownerName ?? '',
+        ownerEmail: profile.owner_email ?? profile.ownerEmail ?? '',
+        role: profile.role ?? 'Founder',
+        timezone: profile.timezone ?? 'America/Los_Angeles',
+        currency: profile.currency ?? 'USD',
+        createdAt: profile.created_at ?? new Date().toISOString(),
+        updatedAt: profile.updated_at ?? new Date().toISOString(),
+        industry: profile.industry ?? null,
+        servicesNeeded: profile.services_needed ?? null,
+        servicesPriority: profile.services_priority ?? null,
+        teamSize: profile.team_size ?? null,
+        entityType: profile.entity_type ?? null,
+        yearsInBusiness: profile.years_in_business ?? null,
+        businessGoals: profile.business_goals ?? null,
+        painPoint: profile.pain_point ?? null,
+        salesChannel: profile.sales_channel ?? null,
+        customerType: profile.customer_type ?? null,
+        preferredChannel: profile.preferred_channel ?? null,
+        onboardingCompleted: !!(profile.onboarding_completed_at),
+      };
+      setTenant(t);
+      Alert.alert('Saved', 'Office identity updated successfully.');
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading || !tenant) {
@@ -107,8 +175,8 @@ export default function OfficeIdentityScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Business Information</Text>
           <EditableField label="Business Name" value={businessName} onChange={setBusinessName} />
-          <ReadOnlyField label="Suite ID" value={tenant.suiteId} />
-          <ReadOnlyField label="Office ID" value={tenant.officeId} />
+          <ReadOnlyField label="Suite ID" value={tenant.displayId || tenant.suiteId} />
+          <ReadOnlyField label="Office ID" value={tenant.officeDisplayId || tenant.officeId} />
         </View>
 
         <View style={styles.section}>
@@ -124,8 +192,8 @@ export default function OfficeIdentityScreen() {
           <ReadOnlyField label="Currency" value={tenant.currency} />
         </View>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>Save Changes</Text>
+        <TouchableOpacity style={[styles.saveButton, saving && styles.saveButtonDisabled]} onPress={handleSave} disabled={saving}>
+          <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
         </TouchableOpacity>
 
         <Text style={styles.footerNote}>
@@ -245,6 +313,9 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     alignItems: 'center',
     marginBottom: Spacing.md,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
   },
   saveButtonText: {
     ...Typography.body,

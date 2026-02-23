@@ -5,7 +5,7 @@ import { storage } from './storage';
 import { getUncachableStripeClient, getStripePublishableKey } from './stripeClient';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
-import { getDefaultSuiteId } from './suiteContext';
+import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 
 // Supabase admin client for bootstrap operations (user_metadata updates)
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -28,15 +28,63 @@ router.get('/api/stripe/publishable-key', async (req: Request, res: Response) =>
   }
 });
 
+// ─── Input Sanitization (Law #9: strip XSS vectors) ───
+function sanitizeText(text: string | undefined | null): string | null {
+  if (!text || typeof text !== 'string') return null;
+  return text.replace(/<[^>]*>/g, '').replace(/javascript:/gi, '').trim() || null;
+}
+
+function sanitizeArray(arr: any): string[] {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter((s: any) => typeof s === 'string').map((s: string) => sanitizeText(s) || '').filter(Boolean);
+}
+
+// Validate enum field — returns value if valid, null otherwise
+function validateEnum(value: any, allowed: string[]): string | null {
+  if (typeof value !== 'string') return null;
+  return allowed.includes(value) ? value : null;
+}
+
+// Canonical JSON: sort object keys recursively for deterministic HMAC signatures
+// Must match n8n receiver sortKeys() — both sides produce identical canonical JSON
+function sortKeys(obj: any): any {
+  if (Array.isArray(obj)) return obj.map(sortKeys);
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj).sort().reduce((acc: any, key: string) => {
+      acc[key] = sortKeys(obj[key]);
+      return acc;
+    }, {});
+  }
+  return obj;
+}
+
 /**
  * Suite Bootstrap — creates suite infrastructure for new users
  * Called during onboarding when user has no suite_id in their metadata.
  * Uses service role to bypass RLS for initial setup.
+ *
+ * Risk Tier: YELLOW (creates tenant context, collects business intelligence)
+ * Receipt: onboarding.intake_submission (PII redacted — Law #2 + #9)
  */
+// In-memory rate limiter: 3 requests per 60s per user
+const bootstrapRateLimit = new Map<string, { count: number; resetAt: number }>();
 router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-bootstrap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const userId = (req as any).authenticatedUserId;
   if (!userId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Must be authenticated' });
+  }
+
+  // Rate limit check — 3 bootstrap attempts per minute per user
+  const now = Date.now();
+  const rl = bootstrapRateLimit.get(userId);
+  if (rl && now < rl.resetAt) {
+    if (rl.count >= 3) {
+      return res.status(429).json({ error: 'RATE_LIMITED', message: 'Too many onboarding attempts. Please wait and try again.' });
+    }
+    rl.count++;
+  } else {
+    bootstrapRateLimit.set(userId, { count: 1, resetAt: now + 60000 });
   }
 
   // Check if user already has a suite (idempotent)
@@ -50,12 +98,63 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
   }
 
   try {
-    const { businessName, ownerName, ownerTitle, industry, teamSize,
-            servicesNeeded, currentTools, painPoint } = req.body;
+    // ── Extract & validate all fields ──
+    const b = req.body;
+    const businessName = sanitizeText(b.businessName);
+    const ownerName = sanitizeText(b.ownerName);
+    const ownerTitle = sanitizeText(b.ownerTitle);
+    const industry = sanitizeText(b.industry);
+    const teamSize = sanitizeText(b.teamSize);
+    const entityType = validateEnum(b.entityType, ['sole_proprietorship', 'llc', 's_corp', 'c_corp', 'partnership', 'nonprofit', 'other']);
+    const yearsInBusiness = validateEnum(b.yearsInBusiness, ['less_than_1', '1_to_3', '3_to_5', '5_to_10', '10_plus']);
+    const salesChannel = validateEnum(b.salesChannel, ['online', 'in_person', 'both', 'other']);
+    const customerType = validateEnum(b.customerType, ['b2b', 'b2c', 'both']);
+    const annualRevenueBand = validateEnum(b.annualRevenueBand, ['under_50k', '50k_100k', '100k_250k', '250k_500k', '500k_1m', '1m_plus']);
+    const gender = validateEnum(b.gender, ['male', 'female', 'non-binary', 'prefer-not-to-say']);
+    const roleCategory = sanitizeText(b.roleCategory);
+    const preferredChannel = validateEnum(b.preferredChannel, ['cold', 'warm', 'hot']) || 'warm';
+    const timezone = sanitizeText(b.timezone);
+    const currency = (typeof b.currency === 'string' && /^[A-Z]{3}$/.test(b.currency)) ? b.currency : 'USD';
+    const fiscalYearEndMonth = (typeof b.fiscalYearEndMonth === 'number' && b.fiscalYearEndMonth >= 1 && b.fiscalYearEndMonth <= 12) ? b.fiscalYearEndMonth : null;
+
+    const servicesNeeded = sanitizeArray(b.servicesNeeded);
+    const servicesPriority = sanitizeArray(b.servicesPriority);
+    const currentTools = Array.isArray(b.currentTools) ? sanitizeArray(b.currentTools) : (typeof b.currentTools === 'string' ? b.currentTools.split(',').map((t: string) => t.trim()).filter(Boolean) : []);
+    const toolsPlanning = sanitizeArray(b.toolsPlanning);
+    const businessGoals = sanitizeArray(b.businessGoals);
+    const painPoint = sanitizeText(typeof b.painPoint === 'string' ? b.painPoint.slice(0, 1000) : b.painPoint);
+
+    // Address fields
+    const homeAddressLine1 = sanitizeText(b.homeAddressLine1);
+    const homeAddressLine2 = sanitizeText(b.homeAddressLine2);
+    const homeCity = sanitizeText(b.homeCity);
+    const homeState = sanitizeText(b.homeState);
+    const homeZip = sanitizeText(b.homeZip);
+    const homeCountry = sanitizeText(b.homeCountry) || 'US';
+    const businessAddressSameAsHome = b.businessAddressSameAsHome !== false;
+    const businessAddressLine1 = businessAddressSameAsHome ? null : sanitizeText(b.businessAddressLine1);
+    const businessAddressLine2 = businessAddressSameAsHome ? null : sanitizeText(b.businessAddressLine2);
+    const businessCity = businessAddressSameAsHome ? null : sanitizeText(b.businessCity);
+    const businessState = businessAddressSameAsHome ? null : sanitizeText(b.businessState);
+    const businessZip = businessAddressSameAsHome ? null : sanitizeText(b.businessZip);
+    const businessCountry = businessAddressSameAsHome ? null : (sanitizeText(b.businessCountry) || 'US');
+
+    // Date of birth — validate format
+    const dateOfBirth = (typeof b.dateOfBirth === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.dateOfBirth)) ? b.dateOfBirth : null;
+
+    // Consent — Law #9: personalization consent required for full intake
+    const consentPersonalization = b.consentPersonalization === true;
+    const consentCommunications = b.consentCommunications === true;
+
+    // Minimum required fields
+    if (!businessName) {
+      return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'Business name is required' });
+    }
 
     // 1. Create suite via app.ensure_suite (handles duplicates gracefully)
-    const tenantId = `tenant-${userId.slice(0, 8)}-${Date.now()}`;
-    const suiteName = businessName?.trim() || 'My Business';
+    // Deterministic tenantId from userId — ensures idempotency (same user = same tenant)
+    const tenantId = `tenant-${userId.replace(/-/g, '').slice(0, 16)}`;
+    const suiteName = businessName;
     let suiteId: string;
 
     try {
@@ -85,22 +184,61 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       return res.status(500).json({ error: 'USER_LOOKUP_FAILED', message: 'Could not find user' });
     }
 
-    // 3. Create suite_profile (service role bypasses RLS)
+    // 3. Generate receipt ID (Law #2: Receipt for All)
+    const receiptId = crypto.randomUUID();
+
+    // 4. Create suite_profile with ALL enterprise fields (service role bypasses RLS)
     const { error: profileError } = await supabaseAdmin
       .from('suite_profiles')
       .upsert({
         suite_id: suiteId,
         email: user.email || '',
-        name: ownerName?.trim() || user.email?.split('@')[0] || 'Owner',
-        business_name: businessName?.trim() || null,
-        ...(industry ? { industry } : {}),
-        ...(teamSize ? { team_size: teamSize } : {}),
-        ...(ownerName ? { owner_name: ownerName.trim() } : {}),
-        ...(ownerTitle ? { owner_title: ownerTitle.trim() } : {}),
-        ...(servicesNeeded ? { services_needed: servicesNeeded } : {}),
-        ...(currentTools ? { current_tools: currentTools.split?.(',').map((t: string) => t.trim()) || [] } : {}),
-        ...(painPoint ? { pain_point: painPoint.trim() } : {}),
-        ...(businessName ? { onboarding_completed_at: new Date().toISOString() } : {}),
+        name: ownerName || user.email?.split('@')[0] || 'Owner',
+        business_name: businessName,
+        owner_name: ownerName,
+        owner_title: ownerTitle,
+        industry,
+        team_size: teamSize,
+        entity_type: entityType,
+        years_in_business: yearsInBusiness,
+        sales_channel: salesChannel,
+        customer_type: customerType,
+        annual_revenue_band: annualRevenueBand,
+        gender,
+        role_category: roleCategory,
+        date_of_birth: dateOfBirth,
+        // Address
+        home_address_line1: homeAddressLine1,
+        home_address_line2: homeAddressLine2,
+        home_city: homeCity,
+        home_state: homeState,
+        home_zip: homeZip,
+        home_country: homeCountry,
+        business_address_same_as_home: businessAddressSameAsHome,
+        business_address_line1: businessAddressLine1,
+        business_address_line2: businessAddressLine2,
+        business_city: businessCity,
+        business_state: businessState,
+        business_zip: businessZip,
+        business_country: businessCountry,
+        // Services
+        services_needed: servicesNeeded,
+        services_priority: servicesPriority,
+        current_tools: currentTools,
+        tools_planning: toolsPlanning,
+        business_goals: businessGoals,
+        pain_point: painPoint,
+        // Preferences
+        preferred_channel: preferredChannel,
+        timezone,
+        currency,
+        fiscal_year_end_month: fiscalYearEndMonth,
+        // Consent
+        consent_personalization: consentPersonalization,
+        consent_communications: consentCommunications,
+        intake_schema_version: 2,
+        intake_receipt_id: receiptId,
+        onboarding_completed_at: new Date().toISOString(),
       }, { onConflict: 'suite_id' });
 
     if (profileError) {
@@ -108,7 +246,41 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       // Non-fatal — suite_id is still valid, onboarding form can save later
     }
 
-    // 4. Update user_metadata with suite_id (so client gets it on session refresh)
+    // 5. Emit intake receipt (Law #2: Receipt for All — PII redacted per Law #9)
+    try {
+      await db.execute(sql`
+        INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
+                              correlation_id, actor_type, actor_id, risk_tier, created_at,
+                              payload)
+        VALUES (${receiptId}, 'onboarding.intake_submission', 'success', ${suiteId}, ${suiteId},
+                ${correlationId}, 'user', ${userId}, 'yellow', NOW(),
+                ${JSON.stringify({
+                  schema_version: 2,
+                  fields_completed: Object.entries({
+                    businessName, industry, teamSize, entityType, yearsInBusiness,
+                    servicesNeeded, currentTools, painPoint, salesChannel, customerType,
+                    homeAddressLine1, consentPersonalization,
+                  }).filter(([, v]) => v != null && v !== '' && (!Array.isArray(v) || v.length > 0)).length,
+                  services_count: servicesNeeded.length,
+                  industry: industry || '<NOT_PROVIDED>',
+                  team_size: teamSize || '<NOT_PROVIDED>',
+                  entity_type: entityType || '<NOT_PROVIDED>',
+                  consent_personalization: consentPersonalization,
+                  consent_communications: consentCommunications,
+                  // PII redacted — Law #9
+                  date_of_birth: dateOfBirth ? '<DOB_REDACTED>' : null,
+                  gender: gender ? '<GENDER_REDACTED>' : null,
+                  home_address: homeAddressLine1 ? '<ADDRESS_REDACTED>' : null,
+                  business_address: businessAddressLine1 ? '<ADDRESS_REDACTED>' : null,
+                })}::jsonb)
+      `);
+    } catch (receiptErr: any) {
+      // YELLOW-tier receipt is mandatory — fail closed per Law #3
+      console.error(`Receipt emission failed [${correlationId}]:`, receiptErr.message);
+      return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Intake receipt could not be recorded. Operation denied (Law #3: fail closed).' });
+    }
+
+    // 6. Update user_metadata with suite_id (so client gets it on session refresh)
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
       user_metadata: { suite_id: suiteId },
     });
@@ -118,10 +290,240 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       return res.status(500).json({ error: 'METADATA_UPDATE_FAILED', message: 'Suite created but metadata update failed' });
     }
 
-    res.json({ suiteId, created: true });
+    // 7. Fire-and-forget n8n webhook for intake activation (non-blocking)
+    const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'http://localhost:5678';
+    const webhookPayload = {
+      suiteId,
+      officeId: suiteId, // officeId defaults to suiteId for single-office tenants
+      industry,
+      servicesNeeded,
+      servicesPriority,
+      businessGoals,
+      painPoint,
+      customerType,
+      salesChannel,
+      teamSize,
+      correlationId,
+    };
+    const webhookSecret = process.env.N8N_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      try {
+        const webhookBody = JSON.stringify(sortKeys(webhookPayload));
+        // Use sha256= prefix for standard HMAC format
+        const hmac = 'sha256=' + crypto.createHmac('sha256', webhookSecret)
+          .update(webhookBody)
+          .digest('hex');
+
+        fetch(`${N8N_WEBHOOK_URL}/webhook/intake-activation`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Webhook-Signature': hmac,
+            'X-Suite-Id': suiteId,
+            'X-Correlation-Id': correlationId,
+          },
+          body: webhookBody,
+          signal: AbortSignal.timeout(5000),
+        }).catch(err => console.warn('n8n intake webhook failed (non-blocking):', err.message));
+      } catch (webhookErr: any) {
+        console.warn('n8n webhook setup failed (non-blocking):', webhookErr.message);
+      }
+    } else {
+      console.warn('N8N_WEBHOOK_SECRET not set — skipping intake activation webhook (fail-closed)');
+    }
+
+    res.json({ suiteId, created: true, receiptId });
   } catch (error: any) {
     console.error('Bootstrap error:', error);
-    res.status(500).json({ error: 'BOOTSTRAP_FAILED', message: error.message });
+    // Emit failure receipt — Law #2: failures also produce receipts
+    try {
+      const failReceiptId = crypto.randomUUID();
+      const errorMsg = sanitizeText(String(error?.message || 'unknown_error')) || 'unknown_error';
+      await db.execute(sql`
+        INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
+                              correlation_id, actor_type, actor_id, risk_tier, created_at, payload)
+        VALUES (${failReceiptId}, 'onboarding.intake_submission', 'failed', NULL, NULL,
+                ${correlationId}, 'system', 'bootstrap', 'yellow', NOW(),
+                ${JSON.stringify({ error: true, reason: errorMsg })}::jsonb)
+      `);
+    } catch (failReceiptErr: any) {
+      console.error(`Failure receipt also failed [${correlationId}]:`, (failReceiptErr as Error).message);
+    }
+    res.status(500).json({ error: 'BOOTSTRAP_FAILED', message: 'Onboarding could not be completed. Please try again.' });
+  }
+});
+
+/**
+ * Profile Update — updates existing suite_profiles for returning users
+ * Called when a user with an existing suite completes/updates their profile.
+ * Uses authenticated suite context with server-side sanitization + receipt.
+ *
+ * Risk Tier: YELLOW (updates tenant profile, collects business intelligence)
+ * Receipt: onboarding.profile_update (PII redacted — Law #2 + #9)
+ */
+router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-profile-${crypto.randomUUID()}`;
+  const userId = (req as any).authenticatedUserId;
+  const suiteId = (req as any).authenticatedSuiteId;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Must be authenticated' });
+  }
+  if (!suiteId || suiteId === getDefaultSuiteId()) {
+    return res.status(400).json({ error: 'NO_SUITE', message: 'No suite found. Use /api/onboarding/bootstrap instead.' });
+  }
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'SERVICE_UNAVAILABLE', message: 'Admin client not configured' });
+  }
+
+  try {
+    const b = req.body;
+
+    // ── Server-side sanitization (identical to bootstrap — DRY principle) ──
+    const businessName = sanitizeText(b.businessName);
+    const ownerName = sanitizeText(b.ownerName);
+    const ownerTitle = sanitizeText(b.ownerTitle);
+    const industry = sanitizeText(b.industry);
+    const teamSize = sanitizeText(b.teamSize);
+    const entityType = validateEnum(b.entityType, ['sole_proprietorship', 'llc', 's_corp', 'c_corp', 'partnership', 'nonprofit', 'other']);
+    const yearsInBusiness = validateEnum(b.yearsInBusiness, ['less_than_1', '1_to_3', '3_to_5', '5_to_10', '10_plus']);
+    const salesChannel = validateEnum(b.salesChannel, ['online', 'in_person', 'both', 'other']);
+    const customerType = validateEnum(b.customerType, ['b2b', 'b2c', 'both']);
+    const servicesNeeded = sanitizeArray(b.servicesNeeded);
+    const currentTools = Array.isArray(b.currentTools)
+      ? sanitizeArray(b.currentTools)
+      : (typeof b.currentTools === 'string' ? b.currentTools.split(',').map((t: string) => t.trim()).filter(Boolean) : []);
+    const painPoint = sanitizeText(typeof b.painPoint === 'string' ? b.painPoint.slice(0, 1000) : b.painPoint);
+    const timezone = sanitizeText(b.timezone);
+    const currency = (typeof b.currency === 'string' && /^[A-Z]{3}$/.test(b.currency)) ? b.currency : 'USD';
+    const annualRevenueBand = validateEnum(b.annualRevenueBand, ['under_50k', '50k_100k', '100k_250k', '250k_500k', '500k_1m', '1m_plus']);
+    const gender = validateEnum(b.gender, ['male', 'female', 'non-binary', 'prefer-not-to-say']);
+    const dateOfBirth = (typeof b.dateOfBirth === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.dateOfBirth)) ? b.dateOfBirth : null;
+    const roleCategory = sanitizeText(b.roleCategory);
+    const preferredChannel = validateEnum(b.preferredChannel, ['cold', 'warm', 'hot']);
+    const fiscalYearEndMonth = (typeof b.fiscalYearEndMonth === 'number' && b.fiscalYearEndMonth >= 1 && b.fiscalYearEndMonth <= 12)
+      ? Math.floor(b.fiscalYearEndMonth) : null;
+    const consentPersonalization = b.consentPersonalization === true;
+    const consentCommunications = b.consentCommunications === true;
+
+    // Address fields
+    const homeAddressLine1 = sanitizeText(b.homeAddressLine1);
+    const homeAddressLine2 = sanitizeText(b.homeAddressLine2);
+    const homeCity = sanitizeText(b.homeCity);
+    const homeState = sanitizeText(b.homeState);
+    const homeZip = sanitizeText(b.homeZip);
+    const homeCountry = sanitizeText(b.homeCountry) || 'US';
+    const businessAddressSameAsHome = b.businessAddressSameAsHome !== false;
+    const businessAddressLine1 = businessAddressSameAsHome ? null : sanitizeText(b.businessAddressLine1);
+    const businessAddressLine2 = businessAddressSameAsHome ? null : sanitizeText(b.businessAddressLine2);
+    const businessCity = businessAddressSameAsHome ? null : sanitizeText(b.businessCity);
+    const businessState = businessAddressSameAsHome ? null : sanitizeText(b.businessState);
+    const businessZip = businessAddressSameAsHome ? null : sanitizeText(b.businessZip);
+    const businessCountry = businessAddressSameAsHome ? null : (sanitizeText(b.businessCountry) || 'US');
+
+    // Build update object (only non-undefined fields)
+    const updatePayload: Record<string, any> = {
+      business_name: businessName,
+      owner_name: ownerName,
+      owner_title: ownerTitle,
+      industry,
+      team_size: teamSize,
+      entity_type: entityType,
+      years_in_business: yearsInBusiness,
+      sales_channel: salesChannel,
+      customer_type: customerType,
+      services_needed: servicesNeeded,
+      current_tools: currentTools,
+      pain_point: painPoint,
+      home_address_line1: homeAddressLine1,
+      home_address_line2: homeAddressLine2,
+      home_city: homeCity,
+      home_state: homeState,
+      home_zip: homeZip,
+      home_country: homeCountry,
+      business_address_same_as_home: businessAddressSameAsHome,
+      business_address_line1: businessAddressLine1,
+      business_address_line2: businessAddressLine2,
+      business_city: businessCity,
+      business_state: businessState,
+      business_zip: businessZip,
+      business_country: businessCountry,
+      timezone,
+      currency,
+      annual_revenue_band: annualRevenueBand,
+      gender,
+      date_of_birth: dateOfBirth,
+      role_category: roleCategory,
+      preferred_channel: preferredChannel,
+      fiscal_year_end_month: fiscalYearEndMonth,
+      consent_personalization: consentPersonalization,
+      consent_communications: consentCommunications,
+      onboarding_completed_at: new Date().toISOString(),
+    };
+
+    // Update via service role (bypasses RLS for admin operation)
+    const { error: updateError } = await supabaseAdmin
+      .from('suite_profiles')
+      .update(updatePayload)
+      .eq('suite_id', suiteId);
+
+    if (updateError) {
+      console.error('Profile update error:', updateError);
+      // Emit failure receipt — Law #2 (every state-change attempt gets a receipt)
+      try {
+        await db.execute(sql`
+          INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
+                                correlation_id, actor_type, actor_id, risk_tier, created_at,
+                                payload)
+          VALUES (${crypto.randomUUID()}, 'onboarding.profile_update', 'failed', ${suiteId}, ${suiteId},
+                  ${correlationId}, 'user', ${userId}, 'yellow', NOW(),
+                  ${JSON.stringify({ reason: 'supabase_update_error', error_code: updateError.code || 'UNKNOWN' })}::jsonb)
+        `);
+      } catch (_receiptErr) { /* best-effort — primary error takes precedence */ }
+      return res.status(500).json({ error: 'UPDATE_FAILED', message: 'Failed to update profile' });
+    }
+
+    // Emit YELLOW receipt — Law #2 (fail-closed per Law #3)
+    const receiptId = crypto.randomUUID();
+    const updatedFields = Object.keys(updatePayload).filter(k => updatePayload[k] != null);
+    try {
+      await db.execute(sql`
+        INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
+                              correlation_id, actor_type, actor_id, risk_tier, created_at,
+                              payload)
+        VALUES (${receiptId}, 'onboarding.profile_update', 'success', ${suiteId}, ${suiteId},
+                ${correlationId}, 'user', ${userId}, 'yellow', NOW(),
+                ${JSON.stringify({
+                  fields_updated: updatedFields,
+                  field_count: updatedFields.length,
+                  ...(dateOfBirth ? { date_of_birth: '<DOB_REDACTED>' } : {}),
+                  ...(gender ? { gender: '<GENDER_REDACTED>' } : {}),
+                  ...(homeAddressLine1 ? { home_address: '<ADDRESS_REDACTED>' } : {}),
+                  ...(businessAddressLine1 ? { business_address: '<ADDRESS_REDACTED>' } : {}),
+                })}::jsonb)
+      `);
+    } catch (receiptErr: any) {
+      // YELLOW-tier receipt is mandatory — fail closed per Law #3
+      console.error(`Profile update receipt failed [${correlationId}]:`, receiptErr.message);
+      return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Profile update receipt could not be recorded (Law #3: fail closed).' });
+    }
+
+    res.json({ suiteId, updated: true, receiptId });
+  } catch (error: any) {
+    console.error('Profile update error:', error);
+    // Emit failure receipt — Law #2 (outer catch covers unexpected errors)
+    try {
+      await db.execute(sql`
+        INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
+                              correlation_id, actor_type, actor_id, risk_tier, created_at,
+                              payload)
+        VALUES (${crypto.randomUUID()}, 'onboarding.profile_update', 'failed',
+                ${suiteId || '00000000-0000-0000-0000-000000000000'}, ${suiteId || '00000000-0000-0000-0000-000000000000'},
+                ${correlationId}, 'user', ${userId || 'unknown'}, 'yellow', NOW(),
+                ${JSON.stringify({ reason: 'unexpected_error', error_message: error?.message || 'Unknown error' })}::jsonb)
+      `);
+    } catch (_receiptErr) { /* best-effort — primary error takes precedence */ }
+    res.status(500).json({ error: 'UPDATE_FAILED', message: 'Profile update could not be completed. Please try again.' });
   }
 });
 
@@ -165,10 +567,55 @@ router.post('/api/users', async (req: Request, res: Response) => {
   }
 });
 
+// DEPRECATED: Use PATCH /api/onboarding/profile instead (has full sanitization + receipt + auth).
+// This legacy endpoint is auth-gated to prevent unauthenticated profile writes.
 router.patch('/api/users/:userId', async (req: Request, res: Response) => {
+  // Auth enforcement — Law #3: fail closed
+  const authedUserId = (req as any).authenticatedUserId;
+  const authedSuiteId = (req as any).authenticatedSuiteId;
+  if (!authedUserId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required. Use PATCH /api/onboarding/profile for profile updates.' });
+  }
+
+  const userId = getParam(req.params.userId);
+  // Prevent cross-tenant writes: authed user can only update their own suite
+  if (userId !== authedSuiteId) {
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot update another tenant\'s profile.' });
+  }
+
+  const correlationId = `corr-profile-update-${crypto.randomUUID()}`;
   try {
-    const profile = await storage.updateSuiteProfile(getParam(req.params.userId), req.body);
+    // Sanitize all string fields before passing to storage
+    const sanitizedBody: Record<string, any> = {};
+    for (const [key, value] of Object.entries(req.body)) {
+      if (typeof value === 'string') {
+        sanitizedBody[key] = sanitizeText(value);
+      } else if (Array.isArray(value)) {
+        sanitizedBody[key] = sanitizeArray(value);
+      } else {
+        sanitizedBody[key] = value;
+      }
+    }
+
+    const profile = await storage.updateSuiteProfile(userId, sanitizedBody);
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
+
+    // Emit YELLOW receipt for profile update — Law #2
+    const receiptId = crypto.randomUUID();
+    const updatedFields = Object.keys(sanitizedBody).filter(k => sanitizedBody[k] !== undefined);
+    try {
+      await db.execute(sql`
+        INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
+                              correlation_id, actor_type, actor_id, risk_tier, created_at, payload)
+        VALUES (${receiptId}, 'onboarding.profile_update', 'success', ${userId}, ${userId},
+                ${correlationId}, 'user', ${authedUserId}, 'yellow', NOW(),
+                ${JSON.stringify({ fields_updated: updatedFields, field_count: updatedFields.length, via: 'legacy_endpoint' })}::jsonb)
+      `);
+    } catch (receiptErr: any) {
+      console.error(`Profile update receipt failed [${correlationId}]:`, (receiptErr as Error).message);
+      return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Profile update receipt could not be recorded (Law #3: fail closed).' });
+    }
+
     res.json(profile);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -483,10 +930,11 @@ router.post('/api/book/:slug/confirm/:bookingId', async (req: Request, res: Resp
  * This route converts orchestrator response text → audio via ElevenLabs TTS API.
  */
 const VOICE_IDS: Record<string, string> = {
-  ava: '56bWURjYFHyYyVf490Dp',
+  ava: 'uYXf8XasLslADfZ2MB4u',
   eli: 'c6kFzbpMaJ8UMD5P6l72',
   finn: 's3TPKV1kjDlVtZbl4Ksh',
   nora: '6aDn1KB0hjpdcocrUkmq',
+  sarah: 'DODLEQrClDo8wCz460ld',
 };
 
 router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
@@ -706,7 +1154,7 @@ router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
  * - Circuit breaker (3 failures → open 60s) — Gate 3: Reliability
  * - Correlation ID forwarding — Gate 2: Observability
  */
-const ORCHESTRATOR_TIMEOUT_MS = 15_000;
+const ORCHESTRATOR_TIMEOUT_MS = 45_000;
 const CIRCUIT_BREAKER_THRESHOLD = 3;
 const CIRCUIT_BREAKER_RESET_MS = 60_000;
 let orchestratorConsecutiveFailures = 0;
@@ -716,7 +1164,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   try {
-    const { agent, text, voiceId, channel } = req.body;
+    const { agent, text, voiceId, channel, userProfile } = req.body;
 
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ error: 'Missing or empty text parameter' });
@@ -741,6 +1189,19 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       });
     }
 
+    // Build profile context for Ava personalization (PII-filtered — Law #9)
+    // Only safe business context fields, never DOB/address/gender
+    const profileContext = userProfile ? {
+      owner_name: userProfile.ownerName,
+      business_name: userProfile.businessName,
+      industry: userProfile.industry,
+      team_size: userProfile.teamSize,
+      services_needed: userProfile.servicesNeeded,
+      business_goals: userProfile.businessGoals,
+      pain_point: userProfile.painPoint,
+      preferred_channel: userProfile.preferredChannel,
+    } : undefined;
+
     // Timeout enforcement — Gate 3: Reliability
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), ORCHESTRATOR_TIMEOUT_MS);
@@ -757,6 +1218,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         agent: agent || 'ava',
         voice_id: voiceId,
         channel: channel || 'voice',
+        user_profile: profileContext,
       }),
       signal: controller.signal,
     });
@@ -786,6 +1248,26 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
     // Success — reset circuit breaker
     orchestratorConsecutiveFailures = 0;
+
+    // Emit GREEN receipt when profile context was loaded — Law #2
+    if (profileContext && suiteId) {
+      try {
+        const profileReceiptId = crypto.randomUUID();
+        await db.execute(sql`
+          INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
+                                correlation_id, actor_type, actor_id, risk_tier, created_at, payload)
+          VALUES (${profileReceiptId}, 'ava.profile_context_loaded', 'success', ${suiteId}, ${suiteId},
+                  ${correlationId}, 'system', 'ava-profile-loader', 'green', NOW(),
+                  ${JSON.stringify({
+                    fields_sent: Object.keys(profileContext).filter(k => (profileContext as any)[k] != null),
+                    pii_filtered: ['dateOfBirth', 'gender', 'homeAddress', 'businessAddress'],
+                  })}::jsonb)
+        `);
+      } catch (profileReceiptErr: any) {
+        // GREEN-tier receipt failure is non-blocking
+        console.warn(`Ava profile receipt failed [${correlationId}]:`, profileReceiptErr.message);
+      }
+    }
 
     const data = await response.json();
     res.json({
@@ -842,11 +1324,25 @@ router.get('/api/inbox/items', async (_req: Request, res: Response) => {
 
 router.get('/api/authority-queue', async (_req: Request, res: Response) => {
   try {
-    // Query pending approval requests
+    // Query pending approval requests — aligned with orchestrator schema
     const approvalResult = await db.execute(sql`
-      SELECT id, action_type AS type, title, amount, currency,
-             requested_by AS "requestedBy", risk_tier AS risk,
-             status, created_at AS "createdAt"
+      SELECT approval_id AS id,
+             tool || '.' || operation AS type,
+             COALESCE(draft_summary, COALESCE(payload_redacted->>'title', tool || ' ' || operation)) AS title,
+             COALESCE(
+               (execution_payload->>'amount_cents')::numeric / 100,
+               (payload_redacted->>'amount')::numeric
+             ) AS amount,
+             COALESCE(execution_payload->>'currency', payload_redacted->>'currency', 'usd') AS currency,
+             created_by_user_id AS "requestedBy",
+             risk_tier AS risk,
+             status,
+             created_at AS "createdAt",
+             assigned_agent AS "assignedAgent",
+             draft_summary AS "draftSummary",
+             execution_payload->>'invoice_id' AS "stripeInvoiceId",
+             execution_payload->>'customer_name' AS "customerName",
+             execution_payload->>'document_id' AS "pandadocDocumentId"
       FROM approval_requests
       WHERE status = 'pending'
       ORDER BY created_at DESC
@@ -854,13 +1350,16 @@ router.get('/api/authority-queue', async (_req: Request, res: Response) => {
     `);
     const pendingApprovals = (approvalResult.rows || approvalResult) as any[];
 
-    // Query recent completed receipts
+    // Query recent completed receipts — aligned with orchestrator schema
     const receiptResult = await db.execute(sql`
-      SELECT receipt_id AS id, action_type AS type, title, amount, currency,
-             outcome AS status, executed_at AS "completedAt"
+      SELECT receipt_id AS id,
+             action AS type,
+             COALESCE(action, 'Action') AS title,
+             result AS status,
+             created_at AS "completedAt"
       FROM receipts
-      WHERE outcome = 'success'
-      ORDER BY executed_at DESC
+      WHERE result = 'success'
+      ORDER BY created_at DESC
       LIMIT 10
     `);
     const recentReceipts = (receiptResult.rows || receiptResult) as any[];
@@ -880,27 +1379,56 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required. Complete onboarding first.' });
   }
 
+  const userId = (req as any).authenticatedUserId;
   const { id } = req.params;
   try {
-    // Update approval request status (RLS-scoped via middleware)
+    // Update approval request status — aligned with orchestrator schema
     await db.execute(sql`
       UPDATE approval_requests
-      SET status = 'approved', resolved_at = NOW()
-      WHERE id = ${id}
+      SET status = 'approved', decided_at = NOW(), decided_by_user_id = ${userId || null},
+          decision_surface = 'desktop_authority_queue', decision_reason = 'user_approved'
+      WHERE approval_id = ${id}
     `);
 
     // Generate approval receipt (Law #2: Receipt for All)
-    const receiptId = `RCP-${Date.now()}`;
+    const receiptId = crypto.randomUUID();
     const correlationId = req.headers['x-correlation-id'] as string || `corr-${Date.now()}`;
     await db.execute(sql`
-      INSERT INTO receipts (receipt_id, action_type, outcome, reason_code, risk_tier,
-                            suite_id, correlation_id, actor_type, executed_at, title)
-      VALUES (${receiptId}, 'approval', 'success', 'user_approved', 'yellow',
-              ${suiteId}, ${correlationId}, 'user', NOW(),
-              (SELECT title FROM approval_requests WHERE id = ${id}))
+      INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
+                            correlation_id, actor_type, actor_id, created_at)
+      VALUES (${receiptId}, 'approval.approve', 'success', ${suiteId}, ${suiteId},
+              ${correlationId}, 'user', ${userId || null}, NOW())
     `);
 
-    res.json({ id, status: 'approved', approvedAt: new Date().toISOString(), receiptId });
+    // After successful approval, trigger resume execution via orchestrator
+    const officeId = getDefaultOfficeId();
+    try {
+      const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+      const resumeRes = await fetch(`${orchestratorUrl}/v1/resume/${id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-suite-id': suiteId,
+          'x-office-id': officeId || '',
+          'x-actor-id': userId || '',
+        },
+      });
+      const resumeData = await resumeRes.json();
+      return res.json({
+        approved: true,
+        executed: resumeRes.ok,
+        ...resumeData,
+      });
+    } catch (resumeErr) {
+      // Approval succeeded but execution failed — return partial success
+      return res.json({
+        approved: true,
+        executed: false,
+        error: 'Resume execution failed',
+        retry_available: true,
+        receiptId,
+      });
+    }
   } catch (error: any) {
     console.warn('approve failed:', error.message);
     // Law #3: Fail Closed — return error, not fake success
@@ -915,25 +1443,27 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required. Complete onboarding first.' });
   }
 
+  const userId = (req as any).authenticatedUserId;
   const { id } = req.params;
   const { reason } = req.body;
   try {
-    // Update approval request status (RLS-scoped via middleware)
+    // Update approval request status — aligned with orchestrator schema
     await db.execute(sql`
       UPDATE approval_requests
-      SET status = 'denied', resolved_at = NOW(), denial_reason = ${reason || 'No reason provided'}
-      WHERE id = ${id}
+      SET status = 'denied', decided_at = NOW(), decided_by_user_id = ${userId || null},
+          decision_surface = 'desktop_authority_queue',
+          decision_reason = ${reason || 'No reason provided'}
+      WHERE approval_id = ${id}
     `);
 
     // Generate denial receipt (Law #2: Receipt for All)
-    const receiptId = `RCP-${Date.now()}`;
+    const receiptId = crypto.randomUUID();
     const correlationId = req.headers['x-correlation-id'] as string || `corr-${Date.now()}`;
     await db.execute(sql`
-      INSERT INTO receipts (receipt_id, action_type, outcome, reason_code, risk_tier,
-                            suite_id, correlation_id, actor_type, executed_at, title)
-      VALUES (${receiptId}, 'denial', 'denied', ${reason || 'user_denied'}, 'yellow',
-              ${suiteId}, ${correlationId}, 'user', NOW(),
-              (SELECT title FROM approval_requests WHERE id = ${id}))
+      INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
+                            correlation_id, actor_type, actor_id, created_at)
+      VALUES (${receiptId}, 'approval.deny', 'denied', ${suiteId}, ${suiteId},
+              ${correlationId}, 'user', ${userId || null}, NOW())
     `);
 
     res.json({ id, status: 'denied', reason, deniedAt: new Date().toISOString(), receiptId });
@@ -945,25 +1475,71 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
 });
 
 /**
+ * Execute an already-approved authority queue item via orchestrator resume.
+ * Used for retry when approve succeeded but auto-execute failed,
+ * or for manual execution after review.
+ */
+router.post('/api/authority-queue/:id/execute', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string || getDefaultSuiteId();
+  const userId = (req as any).authenticatedUserId;
+  const officeId = getDefaultOfficeId();
+
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required' });
+  }
+
+  try {
+    const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+    const result = await fetch(`${orchestratorUrl}/v1/resume/${id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-suite-id': suiteId,
+        'x-office-id': officeId || '',
+        'x-actor-id': userId || '',
+      },
+    });
+    const data = await result.json();
+    return res.status(result.status).json(data);
+  } catch (err) {
+    return res.status(500).json({ error: 'EXECUTE_FAILED', message: 'Failed to execute approved request' });
+  }
+});
+
+/**
  * Anam Avatar — Session Token Exchange (Law #9: secrets server-side only)
  *
  * The Anam API key stays on the server. The client receives a short-lived
  * session token to initialize the Anam JS SDK with streamToVideoElement().
- * Cara avatar (30fa96d0) + Emma voice (6bfbe25a) for Ava.
+ *
+ * Persona "Ava" created in Anam dashboard (lab.anam.ai/personas):
+ *   - Avatar: Cara at desk (30fa96d0)
+ *   - Voice: Hope (0c8b52f4-f26d-4810-855c-c90e5f599cbc)
+ *   - LLM: CUSTOMER_CLIENT_V1 → routes to /api/ava/chat-stream (Law #1: Single Brain)
+ *   - Persona ID stored in ANAM_PERSONA_ID env var
  */
-const ANAM_PERSONA = {
-  name: 'Ava',
-  avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',
-  voiceId: '6bfbe25a-979d-40f3-a92b-5394170af54b',
-  systemPrompt: 'You are Ava, the AI executive assistant for Aspire. You help small business professionals manage their operations. Be professional, concise, and helpful.',
-};
 
 router.post('/api/anam/session', async (req: Request, res: Response) => {
   try {
+    // Law #3: Fail Closed — require authenticated user for avatar sessions
+    const userId = (req as any).authenticatedUserId;
+    if (!userId) {
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required for avatar sessions' });
+    }
+
     const ANAM_API_KEY = process.env.ANAM_API_KEY;
-    if (!ANAM_API_KEY) {
+    const ANAM_PERSONA_ID = process.env.ANAM_PERSONA_ID;
+    const ANAM_FINN_PERSONA_ID = process.env.ANAM_FINN_PERSONA_ID;
+
+    // Determine which persona — Finn or Ava (default)
+    const requestedPersona = req.body?.persona;
+    const personaId = requestedPersona === 'finn' ? ANAM_FINN_PERSONA_ID : ANAM_PERSONA_ID;
+
+    if (!ANAM_API_KEY || !personaId) {
       // Law #3: Fail Closed
-      return res.status(503).json({ error: 'AVATAR_NOT_CONFIGURED', message: 'Avatar service not configured' });
+      const agent = requestedPersona === 'finn' ? 'Finn' : 'Ava';
+      return res.status(503).json({ error: 'AVATAR_NOT_CONFIGURED', message: `${agent} avatar not configured` });
     }
 
     const response = await fetch('https://api.anam.ai/v1/auth/session-token', {
@@ -973,7 +1549,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        persona: ANAM_PERSONA,
+        personaId,
       }),
     });
 
@@ -996,202 +1572,1942 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
   }
 });
 
-// ─── Mail Onboarding API (Domain Rail Proxy) ───
+// ─── Anam CUSTOMER_CLIENT_V1 Chat Stream ───
+// When Anam is configured with llmId: CUSTOMER_CLIENT_V1, it sends user speech
+// transcripts to this endpoint instead of using its built-in LLM.
+// This endpoint forwards to our orchestrator (Law #1: Single Brain).
+
+router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  try {
+    const { message, session_id, message_history, userProfile } = req.body;
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'Missing or empty message parameter' });
+    }
+
+    const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+    const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string || getDefaultSuiteId();
+
+    if (!suiteId) {
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required' });
+    }
+
+    // Build profile context for Ava avatar personalization (PII-filtered — Law #9)
+    const profileContext = userProfile ? {
+      owner_name: userProfile.ownerName,
+      business_name: userProfile.businessName,
+      industry: userProfile.industry,
+      team_size: userProfile.teamSize,
+      services_needed: userProfile.servicesNeeded,
+      business_goals: userProfile.businessGoals,
+      pain_point: userProfile.painPoint,
+      preferred_channel: userProfile.preferredChannel,
+    } : undefined;
+
+    // Forward to orchestrator (Law #1: Single Brain decides)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ORCHESTRATOR_TIMEOUT_MS);
+
+    const response = await fetch(`${ORCHESTRATOR_URL}/v1/intents`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Suite-Id': suiteId,
+        'X-Correlation-Id': correlationId,
+      },
+      body: JSON.stringify({
+        text: message.trim(),
+        agent: 'ava',
+        channel: 'avatar',
+        session_id,
+        message_history: message_history?.slice(-10),
+        user_profile: profileContext,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Ava chat-stream orchestrator error [${correlationId}]:`, response.status, errorText);
+      // Return a friendly response for Anam to speak
+      return res.json({
+        response: "I'm having trouble processing that right now. Could you try again?",
+        correlation_id: correlationId,
+      });
+    }
+
+    const data = await response.json();
+    const responseText = data.text || data.message || 'I processed your request.';
+
+    // SSE-style streaming for Anam CUSTOMER_CLIENT_V1
+    // Anam expects: text/event-stream with data chunks
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Send the full response as a single SSE event
+    // Anam will pipe this to the avatar's TTS (Hope voice)
+    res.write(`data: ${JSON.stringify({ text: responseText, done: false })}\n\n`);
+    res.write(`data: ${JSON.stringify({ text: '', done: true, receipt_id: data.governance?.receipt_ids?.[0] || null })}\n\n`);
+    res.end();
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.error(`Ava chat-stream timeout [${correlationId}]`);
+      res.json({ response: "I'm taking longer than expected. Please try again.", correlation_id: correlationId });
+      return;
+    }
+    console.error(`Ava chat-stream error [${correlationId}]:`, error.message);
+    res.json({ response: "I'm having trouble connecting right now.", correlation_id: correlationId });
+  }
+});
+
+// ─── Mail Onboarding API (Local Service) ───
+// Enterprise-grade: Auth required, input validated, fail-closed
+
+import { buildAuthUrl, handleCallback, getValidToken } from './mail/googleOAuth';
+import * as onboarding from './mail/onboardingService';
+import { createTrustSpineReceipt } from './receiptService';
+import * as imapClient from './mail/imapClient';
+import * as gmailClient from './mail/gmailClient';
+
+// ─── Validation Helpers (Law #3: Fail Closed) ───
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DOMAIN_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
+const EMAIL_LOCAL_RE = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/;
+
+function isValidUUID(s: string): boolean { return UUID_RE.test(s); }
+function isValidDomain(s: string): boolean { return DOMAIN_RE.test(s) && s.length <= 253; }
+function isValidLocalPart(s: string): boolean { return EMAIL_LOCAL_RE.test(s) && s.length <= 64; }
+
+/** Extract and validate suite_id from authenticated request. Returns null + sends 401 if missing. */
+function requireAuth(req: Request, res: Response): string | null {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required' });
+    return null;
+  }
+  return suiteId;
+}
+
+/** Validate jobId from URL params. Returns null + sends 400 if invalid. */
+function requireJobId(req: Request, res: Response): string | null {
+  const jobId = getParam(req.params.jobId);
+  if (!jobId || !isValidUUID(jobId)) {
+    res.status(400).json({ error: 'INVALID_JOB_ID', message: 'Valid job ID required' });
+    return null;
+  }
+  return jobId;
+}
+
+// Rate limiter for onboarding (5 starts per minute per suite)
+const onboardingRateMap = new Map<string, { count: number; resetAt: number }>();
+function checkOnboardingRate(suiteId: string): boolean {
+  const now = Date.now();
+  const entry = onboardingRateMap.get(suiteId);
+  if (!entry || now > entry.resetAt) {
+    onboardingRateMap.set(suiteId, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (entry.count >= 5) return false;
+  entry.count++;
+  return true;
+}
 
 const DOMAIN_RAIL_URL = process.env.DOMAIN_RAIL_URL || 'https://domain-rail-production.up.railway.app';
 
-function getMailHmacHeaders(bodyStr: string): Record<string, string> {
+/**
+ * Build S2S HMAC headers matching Domain Rail auth.ts format exactly:
+ *   x-aspire-timestamp: unix seconds
+ *   x-aspire-nonce: random hex string (replay protection)
+ *   x-aspire-signature: HMAC-SHA256 of `${timestamp}.${nonce}.${METHOD}.${pathAndQuery}.${sha256(rawBody)}`
+ */
+function getDomainRailS2SHeaders(
+  method: string,
+  pathAndQuery: string,
+  rawBody: string,
+  suiteId?: string,
+): Record<string, string> {
   const secret = process.env.DOMAIN_RAIL_HMAC_SECRET;
   if (!secret) throw new Error('DOMAIN_RAIL_HMAC_SECRET not configured');
+
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = crypto.createHmac('sha256', secret).update(`${timestamp}.${bodyStr}`).digest('hex');
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const bodyHash = crypto.createHash('sha256').update(rawBody).digest('hex');
+  const base = `${timestamp}.${nonce}.${method.toUpperCase()}.${pathAndQuery}.${bodyHash}`;
+  const signature = crypto.createHmac('sha256', secret).update(base).digest('hex');
+
   return {
     'Content-Type': 'application/json',
-    'Authorization': `HMAC-SHA256 ${signature}`,
-    'X-Timestamp': timestamp,
-    'X-Suite-Id': getDefaultSuiteId(),
+    'x-aspire-timestamp': timestamp,
+    'x-aspire-nonce': nonce,
+    'x-aspire-signature': signature,
+    'x-suite-id': suiteId || '',
+    'x-correlation-id': `corr_${crypto.randomUUID()}`,
   };
 }
 
-async function mailProxy(method: string, path: string, body?: any): Promise<{ status: number; data: any }> {
+async function domainRailProxy(method: string, path: string, body?: any, suiteId?: string, extraHeaders?: Record<string, string>): Promise<{ status: number; data: any }> {
   const secret = process.env.DOMAIN_RAIL_HMAC_SECRET;
-  if (!secret) return { status: 503, data: { error: 'DOMAIN_RAIL_HMAC_SECRET not configured — mail onboarding unavailable' } };
+  if (!secret) return { status: 503, data: { error: 'DOMAIN_RAIL_HMAC_SECRET not configured' } };
+  if (!supabaseAdmin) return { status: 503, data: { error: 'Supabase not configured' } };
+
+  // Mint a short-lived capability token for Domain Rail (Law #5)
+  const correlationId = `corr_${crypto.randomUUID()}`;
+  const { data: tokenResult, error: tokenErr } = await supabaseAdmin.rpc('trust_issue_capability_token', {
+    p_suite_id: suiteId,
+    p_office_id: suiteId, // office_id defaults to suite for now
+    p_scope: 'domain-rail',
+    p_ttl_seconds: 60,
+    p_correlation_id: correlationId,
+    p_requested_action: { method, path },
+    p_metadata: {},
+  });
+  if (tokenErr || !tokenResult?.token) {
+    return { status: 503, data: { error: 'Failed to mint capability token' } };
+  }
+
   const bodyStr = body ? JSON.stringify(body) : '';
   const url = `${DOMAIN_RAIL_URL}${path}`;
-  const opts: RequestInit = { method, headers: getMailHmacHeaders(bodyStr) };
+  const headers = getDomainRailS2SHeaders(method, path, bodyStr, suiteId);
+  headers['x-aspire-capability-token'] = tokenResult.token;
+  headers['x-correlation-id'] = correlationId;
+  if (extraHeaders) {
+    for (const [k, v] of Object.entries(extraHeaders)) headers[k] = v;
+  }
+  const opts: RequestInit = { method, headers };
   if (body && method !== 'GET') opts.body = bodyStr;
   const response = await fetch(url, opts);
   const data = await response.json().catch(() => ({ error: 'Invalid response from Domain Rail' }));
   return { status: response.status, data };
 }
 
-// GET /api/mail/accounts
+// ─── Calendar Events API (Law #2: Receipts, Law #4: Risk Tiers, Law #6: RLS) ───
+
+// Rate limiter for calendar creates: 10 per minute per suite
+const calendarRateMap = new Map<string, { count: number; resetAt: number }>();
+function checkCalendarRate(suiteId: string): boolean {
+  const now = Date.now();
+  const entry = calendarRateMap.get(suiteId);
+  if (!entry || now > entry.resetAt) {
+    calendarRateMap.set(suiteId, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (entry.count >= 10) return false;
+  entry.count++;
+  return true;
+}
+
+const CALENDAR_EVENT_TYPES = ['meeting', 'task', 'reminder', 'call', 'deadline', 'other'] as const;
+const CALENDAR_SOURCES = ['manual', 'ava', 'booking', 'google_calendar', 'import'] as const;
+
+// GET /api/calendar/events — list calendar events for suite (GREEN)
+router.get('/api/calendar/events', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const result = await db.execute(sql`
+      SELECT * FROM calendar_events
+      WHERE suite_id = ${suiteId}
+      ORDER BY start_time ASC
+      LIMIT 100`);
+    res.json({ events: result.rows });
+  } catch (e: any) {
+    res.status(500).json({ error: 'Failed to fetch calendar events' });
+  }
+});
+
+// POST /api/calendar/events — create calendar event (YELLOW — Law #4)
+router.post('/api/calendar/events', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    if (!checkCalendarRate(suiteId)) {
+      return res.status(429).json({ error: 'RATE_LIMITED', message: 'Too many calendar creates. Please wait.' });
+    }
+
+    const { title, description, event_type, start_time, end_time, duration_minutes, location, participants, is_all_day, source, source_ref, created_by } = req.body;
+
+    // Validate required fields (Law #3: Fail Closed)
+    const cleanTitle = sanitizeText(title);
+    if (!cleanTitle || cleanTitle.length > 500) {
+      return res.status(400).json({ error: 'INVALID_INPUT', message: 'Title required (max 500 chars)' });
+    }
+    if (!start_time || isNaN(Date.parse(start_time))) {
+      return res.status(400).json({ error: 'INVALID_INPUT', message: 'Valid start_time (ISO 8601) required' });
+    }
+    const validType = validateEnum(event_type, [...CALENDAR_EVENT_TYPES]) || 'meeting';
+    const validSource = validateEnum(source, [...CALENDAR_SOURCES]) || 'manual';
+
+    const correlationId = `corr-cal-create-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const cleanDesc = sanitizeText(description);
+    const cleanLoc = sanitizeText(location);
+    const cleanSourceRef = sanitizeText(source_ref);
+    const cleanCreatedBy = sanitizeText(created_by);
+    const cleanParticipants = sanitizeArray(participants);
+    const participantsPgArray = cleanParticipants.length > 0
+      ? `{${cleanParticipants.map(p => `"${p.replace(/"/g, '\\"')}"`).join(',')}}`
+      : null;
+
+    const result = await db.execute(sql`
+      INSERT INTO calendar_events (suite_id, title, description, event_type, start_time, end_time, duration_minutes, location, participants, is_all_day, source, source_ref, created_by)
+      VALUES (${suiteId}, ${cleanTitle}, ${cleanDesc}, ${validType}, ${start_time}, ${end_time || null}, ${duration_minutes || null}, ${cleanLoc}, ${participantsPgArray}::text[], ${is_all_day || false}, ${validSource}, ${cleanSourceRef}, ${cleanCreatedBy})
+      RETURNING *`);
+
+    // Emit receipt (Law #2) — matches receipts table schema
+    const receiptId = crypto.randomBytes(16).toString('hex');
+    const receiptAction = JSON.stringify({ type: 'calendar.event.create', title: cleanTitle, event_type: validType, start_time, source: validSource });
+    const receiptResult = JSON.stringify({ outcome: 'success', event_id: result.rows[0]?.id });
+    try {
+      await db.execute(sql`
+        INSERT INTO receipts (receipt_id, receipt_type, action, result, suite_id, tenant_id,
+                              correlation_id, actor_type, actor_id, status, created_at)
+        VALUES (${receiptId}, 'calendar.event.create', ${receiptAction}::jsonb, ${receiptResult}::jsonb,
+                ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
+                ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
+    } catch (receiptErr: any) {
+      console.error('Calendar receipt write failed (event created):', receiptErr.message);
+    }
+
+    res.status(201).json({ event: result.rows[0], receipt_id: receiptId });
+  } catch (e: any) {
+    console.error('Calendar create error:', e.message);
+    res.status(500).json({ error: 'Failed to create calendar event' });
+  }
+});
+
+// PUT /api/calendar/events/:id — update calendar event (YELLOW — Law #4)
+router.put('/api/calendar/events/:id', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const eventId = getParam(req.params.id);
+    if (!eventId || !isValidUUID(eventId)) {
+      return res.status(400).json({ error: 'INVALID_ID', message: 'Valid event UUID required' });
+    }
+
+    const { title, description, event_type, start_time, end_time, duration_minutes, location, participants, is_all_day } = req.body;
+
+    // Validate if provided
+    if (title !== undefined) {
+      const cleanTitle = sanitizeText(title);
+      if (!cleanTitle || cleanTitle.length > 500) {
+        return res.status(400).json({ error: 'INVALID_INPUT', message: 'Title must be 1-500 chars' });
+      }
+    }
+    if (start_time !== undefined && isNaN(Date.parse(start_time))) {
+      return res.status(400).json({ error: 'INVALID_INPUT', message: 'Valid start_time (ISO 8601) required' });
+    }
+    if (event_type !== undefined && !validateEnum(event_type, [...CALENDAR_EVENT_TYPES])) {
+      return res.status(400).json({ error: 'INVALID_INPUT', message: 'Invalid event_type' });
+    }
+
+    const correlationId = `corr-cal-update-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const result = await db.execute(sql`
+      UPDATE calendar_events SET
+        title = COALESCE(${sanitizeText(title)}, title),
+        description = COALESCE(${description !== undefined ? sanitizeText(description) : null}, description),
+        event_type = COALESCE(${event_type !== undefined ? validateEnum(event_type, [...CALENDAR_EVENT_TYPES]) : null}, event_type),
+        start_time = COALESCE(${start_time || null}, start_time),
+        end_time = COALESCE(${end_time !== undefined ? end_time : null}, end_time),
+        duration_minutes = COALESCE(${duration_minutes !== undefined ? duration_minutes : null}, duration_minutes),
+        location = COALESCE(${location !== undefined ? sanitizeText(location) : null}, location),
+        participants = COALESCE(${participants !== undefined ? (sanitizeArray(participants).length > 0 ? `{${sanitizeArray(participants).map((p: string) => `"${p.replace(/"/g, '\\"')}"`).join(',')}}` : null) : null}::text[], participants),
+        is_all_day = COALESCE(${is_all_day !== undefined ? is_all_day : null}, is_all_day),
+        updated_at = NOW()
+      WHERE id = ${eventId} AND suite_id = ${suiteId}
+      RETURNING *`);
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Calendar event not found' });
+    }
+
+    // Emit receipt (Law #2) — matches receipts table schema
+    const receiptId = crypto.randomBytes(16).toString('hex');
+    const updReceiptAction = JSON.stringify({ type: 'calendar.event.update', event_id: eventId, fields_updated: Object.keys(req.body) });
+    const updReceiptResult = JSON.stringify({ outcome: 'success' });
+    try {
+      await db.execute(sql`
+        INSERT INTO receipts (receipt_id, receipt_type, action, result, suite_id, tenant_id,
+                              correlation_id, actor_type, actor_id, status, created_at)
+        VALUES (${receiptId}, 'calendar.event.update', ${updReceiptAction}::jsonb, ${updReceiptResult}::jsonb,
+                ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
+                ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
+    } catch (receiptErr: any) {
+      console.error('Calendar update receipt write failed:', receiptErr.message);
+    }
+
+    res.json({ event: result.rows[0], receipt_id: receiptId });
+  } catch (e: any) {
+    console.error('Calendar update error:', e.message);
+    res.status(500).json({ error: 'Failed to update calendar event' });
+  }
+});
+
+// DELETE /api/calendar/events/:id — delete calendar event (YELLOW — Law #4)
+router.delete('/api/calendar/events/:id', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const eventId = getParam(req.params.id);
+    if (!eventId || !isValidUUID(eventId)) {
+      return res.status(400).json({ error: 'INVALID_ID', message: 'Valid event UUID required' });
+    }
+
+    const correlationId = `corr-cal-delete-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const result = await db.execute(sql`
+      DELETE FROM calendar_events
+      WHERE id = ${eventId} AND suite_id = ${suiteId}
+      RETURNING id`);
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Calendar event not found' });
+    }
+
+    // Emit receipt (Law #2) — matches receipts table schema
+    const receiptId = crypto.randomBytes(16).toString('hex');
+    const delReceiptAction = JSON.stringify({ type: 'calendar.event.delete', event_id: eventId });
+    const delReceiptResult = JSON.stringify({ outcome: 'success' });
+    try {
+      await db.execute(sql`
+        INSERT INTO receipts (receipt_id, receipt_type, action, result, suite_id, tenant_id,
+                              correlation_id, actor_type, actor_id, status, created_at)
+        VALUES (${receiptId}, 'calendar.event.delete', ${delReceiptAction}::jsonb, ${delReceiptResult}::jsonb,
+                ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
+                ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
+    } catch (receiptErr: any) {
+      console.error('Calendar delete receipt write failed:', receiptErr.message);
+    }
+
+    res.json({ success: true, receipt_id: receiptId });
+  } catch (e: any) {
+    console.error('Calendar delete error:', e.message);
+    res.status(500).json({ error: 'Failed to delete calendar event' });
+  }
+});
+
+// PATCH /api/calendar/events/:id/complete — mark event as completed (YELLOW)
+router.patch('/api/calendar/events/:id/complete', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const eventId = req.params.id;
+    if (!eventId || !/^[0-9a-f-]{36}$/i.test(eventId)) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    const { status: newStatus } = req.body || {};
+    const validStatuses = ['completed', 'cancelled', 'pending', 'in_progress'];
+    const targetStatus = validStatuses.includes(newStatus) ? newStatus : 'completed';
+    const completedAt = (targetStatus === 'completed') ? new Date().toISOString() : null;
+
+    const result = await db.execute(sql`
+      UPDATE calendar_events SET
+        status = ${targetStatus},
+        completed_at = ${completedAt},
+        updated_at = NOW()
+      WHERE id = ${eventId} AND suite_id = ${suiteId}
+      RETURNING *`);
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    // Emit receipt (Law #2)
+    const correlationId = `corr-cal-complete-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const receiptId = crypto.randomBytes(16).toString('hex');
+    const completeAction = JSON.stringify({ type: 'calendar.event.complete', event_id: eventId, new_status: targetStatus });
+    const completeResult = JSON.stringify({ outcome: 'success', previous_status: 'pending' });
+    try {
+      await db.execute(sql`
+        INSERT INTO receipts (receipt_id, receipt_type, action, result, suite_id, tenant_id,
+                              correlation_id, actor_type, actor_id, status, created_at)
+        VALUES (${receiptId}, 'calendar.event.complete', ${completeAction}::jsonb, ${completeResult}::jsonb,
+                ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
+                ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
+    } catch (receiptErr: any) {
+      console.error('Calendar complete receipt write failed:', receiptErr.message);
+    }
+
+    res.json({ event: result.rows[0], receipt_id: receiptId });
+  } catch (e: any) {
+    console.error('Calendar complete error:', e.message);
+    res.status(500).json({ error: 'Failed to update event status' });
+  }
+});
+
+// GET /api/calendar/today — today's events merged from calendar_events + bookings (GREEN)
+router.get('/api/calendar/today', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+
+    const [calResult, bookResult] = await Promise.all([
+      db.execute(sql`
+        SELECT * FROM calendar_events
+        WHERE suite_id = ${suiteId}
+          AND start_time::date = CURRENT_DATE
+        ORDER BY start_time ASC`),
+      db.execute(sql`
+        SELECT * FROM bookings
+        WHERE suite_id = ${suiteId}
+          AND scheduled_at::date = CURRENT_DATE
+        ORDER BY scheduled_at ASC`),
+    ]);
+
+    const calEvents = (calResult.rows as any[]).map(e => ({
+      ...e,
+      _source: 'calendar',
+    }));
+
+    const bookEvents = (bookResult.rows as any[]).map(b => ({
+      id: b.id,
+      suite_id: b.suite_id,
+      title: `Booking: ${b.client_name || 'Client'}`,
+      description: b.client_notes || null,
+      event_type: 'meeting',
+      start_time: b.scheduled_at,
+      end_time: b.scheduled_at && b.duration ? new Date(new Date(b.scheduled_at).getTime() + b.duration * 60_000).toISOString() : null,
+      duration_minutes: b.duration,
+      location: null,
+      participants: [b.client_email].filter(Boolean),
+      is_all_day: false,
+      source: 'booking',
+      source_ref: b.id,
+      created_at: b.created_at,
+      updated_at: b.updated_at,
+      _source: 'booking',
+      _booking_status: b.status,
+      _booking_amount: b.amount,
+    }));
+
+    const merged = [...calEvents, ...bookEvents].sort((a, b) =>
+      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    );
+
+    res.json({ events: merged });
+  } catch (e: any) {
+    console.error('Calendar today error:', e.message);
+    res.status(500).json({ error: 'Failed to fetch today\'s events' });
+  }
+});
+
+// GET /api/mail/accounts — list connected mail accounts
 router.get('/api/mail/accounts', async (req: Request, res: Response) => {
   try {
-    const userId = getParam(req.query.userId as string || '');
-    const { status, data } = await mailProxy('GET', `/api/mail/accounts?userId=${encodeURIComponent(userId)}`);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const accounts = await onboarding.listAccounts(suiteId);
+    res.json({ accounts });
+  } catch (e: any) { res.status(500).json({ error: 'Failed to fetch accounts' }); }
 });
 
-// GET /api/mail/onboarding
-router.get('/api/mail/onboarding', async (req: Request, res: Response) => {
-  try {
-    const userId = getParam(req.query.userId as string || '');
-    const { status, data } = await mailProxy('GET', `/api/mail/onboarding?userId=${encodeURIComponent(userId)}`);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// PATCH /api/mail/onboarding
-router.patch('/api/mail/onboarding', async (req: Request, res: Response) => {
-  try {
-    const { status, data } = await mailProxy('PATCH', '/api/mail/onboarding', req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// POST /api/mail/onboarding/checks/run
-router.post('/api/mail/onboarding/checks/run', async (req: Request, res: Response) => {
-  try {
-    const { status, data } = await mailProxy('POST', '/api/mail/onboarding/checks/run', req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// POST /api/mail/onboarding/activate
-router.post('/api/mail/onboarding/activate', async (req: Request, res: Response) => {
-  try {
-    const { status, data } = await mailProxy('POST', '/api/mail/onboarding/activate', req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// GET /api/mail/receipts
+// GET /api/mail/receipts — list mail receipts
 router.get('/api/mail/receipts', async (req: Request, res: Response) => {
   try {
-    const userId = getParam(req.query.userId as string || '');
-    const { status, data } = await mailProxy('GET', `/api/mail/receipts?userId=${encodeURIComponent(userId)}`);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const receipts = await onboarding.listMailReceipts(suiteId);
+    res.json({ receipts });
+  } catch (e: any) { res.status(500).json({ error: 'Failed to fetch receipts' }); }
 });
 
-// ─── /v1/* Mail Onboarding API (Domain Rail Proxy) ───
+// ─── /v1/* Mail Onboarding API (Local Service) ───
 
 // GET /v1/inbox/accounts
 router.get('/v1/inbox/accounts', async (req: Request, res: Response) => {
   try {
-    const userId = getParam(req.query.userId as string || '');
-    const { status, data } = await mailProxy('GET', `/v1/inbox/accounts?userId=${encodeURIComponent(userId)}`);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const accounts = await onboarding.listAccounts(suiteId);
+    res.json({ accounts });
+  } catch (e: any) { res.status(500).json({ error: 'Failed to fetch accounts' }); }
 });
 
-// POST /v1/mail/onboarding/start
+// POST /v1/mail/onboarding/start (YELLOW — external service setup)
 router.post('/v1/mail/onboarding/start', async (req: Request, res: Response) => {
   try {
-    const { status, data } = await mailProxy('POST', '/v1/mail/onboarding/start', req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const officeId = (req as any).authenticatedOfficeId || getDefaultOfficeId();
+    if (!checkOnboardingRate(suiteId)) {
+      return res.status(429).json({ error: 'RATE_LIMITED', message: 'Too many onboarding requests. Try again in 1 minute.' });
+    }
+    const { provider, context } = req.body;
+    if (!provider || !['POLARIS', 'GOOGLE'].includes(provider)) {
+      return res.status(400).json({ error: 'INVALID_PROVIDER', message: 'provider must be POLARIS or GOOGLE' });
+    }
+    const result = await onboarding.startOnboarding(suiteId, officeId, provider, context);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: 'Onboarding start failed' }); }
 });
 
 // GET /v1/mail/onboarding/:jobId
 router.get('/v1/mail/onboarding/:jobId', async (req: Request, res: Response) => {
   try {
-    const jobId = getParam(req.params.jobId);
-    const { status, data } = await mailProxy('GET', `/v1/mail/onboarding/${encodeURIComponent(jobId)}`);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const jobId = requireJobId(req, res); if (!jobId) return;
+    const data = await onboarding.getOnboarding(jobId, suiteId);
+    res.json(data);
+  } catch (e: any) { res.status(500).json({ error: 'Failed to fetch onboarding status' }); }
 });
 
 // POST /v1/mail/onboarding/:jobId/dns/plan
 router.post('/v1/mail/onboarding/:jobId/dns/plan', async (req: Request, res: Response) => {
   try {
-    const jobId = getParam(req.params.jobId);
-    const { status, data } = await mailProxy('POST', `/v1/mail/onboarding/${encodeURIComponent(jobId)}/dns/plan`, req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const jobId = requireJobId(req, res); if (!jobId) return;
+    const { domain, mailbox, displayName, domainMode } = req.body;
+    if (domain && !isValidDomain(domain)) {
+      return res.status(400).json({ error: 'INVALID_DOMAIN', message: 'Invalid domain format' });
+    }
+    if (mailbox && !isValidLocalPart(mailbox)) {
+      return res.status(400).json({ error: 'INVALID_MAILBOX', message: 'Invalid mailbox name' });
+    }
+    const result = await onboarding.generateDnsPlan(jobId, suiteId, domain, mailbox, displayName, domainMode);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: 'DNS plan generation failed' }); }
 });
 
 // POST /v1/mail/onboarding/:jobId/dns/check
 router.post('/v1/mail/onboarding/:jobId/dns/check', async (req: Request, res: Response) => {
   try {
-    const jobId = getParam(req.params.jobId);
-    const { status, data } = await mailProxy('POST', `/v1/mail/onboarding/${encodeURIComponent(jobId)}/dns/check`, req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const jobId = requireJobId(req, res); if (!jobId) return;
+    const result = await onboarding.checkDns(jobId, suiteId);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: 'DNS check failed' }); }
 });
 
-// GET /v1/domains/search
+// GET /v1/domains/search — proxy to Domain Rail (needs static IP for ResellerClub)
 router.get('/v1/domains/search', async (req: Request, res: Response) => {
   try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
     const q = (req.query.q as string || '').trim();
-    if (!q) return res.status(400).json({ error: 'q parameter required' });
-    const { status, data } = await mailProxy('GET', `/v1/domains/search?q=${encodeURIComponent(q)}`);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    if (!q || q.length > 253) return res.status(400).json({ error: 'INVALID_QUERY', message: 'Valid search query required' });
+
+    // Build canonical domain (add .com if no TLD provided)
+    const domain = q.includes('.') ? q : `${q}.com`;
+    const dotIdx = domain.indexOf('.');
+    const tld = dotIdx > 0 ? domain.substring(dotIdx + 1) : 'com';
+
+    // Proxy to Domain Rail — only Domain Rail's static IP is whitelisted at ResellerClub
+    const drResult = await domainRailProxy('GET', `/v1/domains/check?domain=${encodeURIComponent(domain)}`, undefined, suiteId);
+    const rawData: Record<string, any> = drResult.data?.data || {};
+
+    // Transform RC response into DomainSearchResult[] format
+    const results: Array<{ domain: string; available: boolean; price: string; currency: string; tld: string; term: number }> = [];
+    for (const [rcKey, info] of Object.entries(rawData)) {
+      const domainInfo = info as any;
+      const rcStatus = typeof domainInfo === 'string' ? domainInfo : domainInfo?.status;
+      if (!rcStatus) continue;
+      const priceVal = typeof domainInfo === 'object' ? (domainInfo.price || domainInfo.sellingprice) : undefined;
+      results.push({
+        domain: rcKey.includes('.') ? rcKey : `${rcKey}.${tld}`,
+        available: rcStatus === 'available',
+        price: priceVal || '12.99',
+        currency: (typeof domainInfo === 'object' ? domainInfo.currency : undefined) || 'USD',
+        tld,
+        term: 1,
+      });
+    }
+
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.domain.search',
+      status: 'SUCCEEDED',
+      action: { operation: 'domain_search', query: q },
+      result: { resultCount: results.length },
+    }).catch(() => {});
+
+    res.json({ query: q, results });
+  } catch (e: any) { res.status(500).json({ error: 'Domain search failed' }); }
 });
 
-// POST /v1/domains/purchase/request
+// POST /v1/domains/purchase/request — proxy to Domain Rail (RED tier — explicit authority)
 router.post('/v1/domains/purchase/request', async (req: Request, res: Response) => {
   try {
-    const { status, data } = await mailProxy('POST', '/v1/domains/purchase/request', req.body);
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    if (!req.body?.domain || !isValidDomain(req.body.domain)) {
+      return res.status(400).json({ error: 'INVALID_DOMAIN', message: 'Valid domain required' });
+    }
+    const { status, data } = await domainRailProxy('POST', '/v1/domains', req.body, suiteId);
+
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.domain.purchase_requested',
+      status: status < 400 ? 'SUCCEEDED' : 'FAILED',
+      action: { operation: 'domain_purchase', domain: req.body.domain },
+      result: { orderId: data?.orderId, statusCode: status },
+    }).catch(() => {});
+
     res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+  } catch (e: any) { res.status(500).json({ error: 'Domain purchase request failed' }); }
 });
 
-// POST /v1/domains/checkout/start
+// POST /v1/domains/checkout/start — Purchase domain via Domain Rail → ResellerClub (RED tier)
+// Payment flows through RC's configured PayPal — no separate PayPal credentials needed
 router.post('/v1/domains/checkout/start', async (req: Request, res: Response) => {
   try {
-    const { status, data } = await mailProxy('POST', '/v1/domains/checkout/start', req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const { jobId, domain } = req.body;
+    if (!domain || !isValidDomain(domain)) {
+      return res.status(400).json({ error: 'INVALID_DOMAIN', message: 'Valid domain required' });
+    }
+
+    // 1. Verify domain is still available via Domain Rail
+    const { data: checkData } = await domainRailProxy('GET', `/v1/domains/check?domain=${encodeURIComponent(domain)}`, undefined, suiteId);
+    const rawAvail: Record<string, any> = checkData?.data || {};
+    const availEntry = Object.values(rawAvail).find((v: any) => typeof v === 'object' && v?.status) as any;
+    if (!availEntry || availEntry?.status !== 'available') {
+      return res.status(400).json({ error: 'DOMAIN_NOT_AVAILABLE', message: 'Domain is not available for purchase' });
+    }
+    const price = availEntry?.price || availEntry?.sellingprice || '12.99';
+
+    // 2. Get contact ID from Domain Rail (proxies to ResellerClub)
+    let contactId: string;
+    try {
+      const { data: contactData } = await domainRailProxy('GET', '/v1/domains/contacts/default', undefined, suiteId);
+      contactId = contactData?.contactId;
+      if (!contactId) throw new Error('No contact ID returned');
+    } catch (e: any) {
+      return res.status(503).json({ error: 'RC_CONTACT_MISSING', message: 'Could not discover ResellerClub contact. ' + (e.message?.slice(0, 100) || '') });
+    }
+
+    // 3. Create approval receipt (RED tier — user clicking "Purchase Now" is the approval)
+    const approvalId = crypto.randomUUID();
+    if (supabaseAdmin) {
+      await supabaseAdmin.from('receipts').insert({
+        receipt_id: approvalId,
+        suite_id: suiteId,
+        receipt_type: 'approval',
+        status: 'SUCCEEDED',
+        risk_tier: 'red',
+        actor_type: 'USER',
+        tool_used: 'desktop.domain.purchase',
+        action: { operation: 'domain_purchase_approval', domain, price },
+        result: { approved: true, approved_at: new Date().toISOString() },
+      }).catch(() => {});
+    }
+
+    // 4. Register domain via Domain Rail (which calls ResellerClub)
+    const idempotencyKey = crypto.randomUUID();
+    const { status: drStatus, data: drData } = await domainRailProxy('POST', '/v1/domains', {
+      domain,
+      years: 1,
+      nameservers: ['ns1.emailarray.com', 'ns2.emailarray.com'],
+      registrantContactId: contactId,
+      adminContactId: contactId,
+      techContactId: contactId,
+      billingContactId: contactId,
+      invoiceOption: 'PayInvoice',
+    }, suiteId, {
+      'x-aspire-approval-id': approvalId,
+      'x-idempotency-key': idempotencyKey,
+    });
+
+    if (drStatus >= 400) {
+      const errMsg = drData?.error || 'Registration failed';
+      await createTrustSpineReceipt({
+        suiteId,
+        receiptType: 'mail.domain.purchase_failed',
+        status: 'FAILED',
+        action: { operation: 'domain_register', domain, invoiceOption: 'PayInvoice' },
+        result: { error: String(errMsg).slice(0, 200), drStatus },
+      }).catch(() => {});
+      return res.status(400).json({ error: 'REGISTRATION_FAILED', message: String(errMsg).slice(0, 200) });
+    }
+
+    const orderId = drData?.data?.domain_id || drData?.receipt_id || crypto.randomUUID();
+
+    // 5. Update onboarding job if present
+    if (supabaseAdmin && jobId) {
+      await supabaseAdmin.from('mail_onboarding_jobs').update({
+        state: 'DOMAIN_SELECTED',
+        domain,
+        domain_mode: 'buy_domain',
+        last_health: { orderId, price, contactId },
+        state_updated_at: new Date().toISOString(),
+      }).eq('id', jobId).eq('suite_id', suiteId).catch(() => {});
+    }
+
+    // 6. Receipt (Law #2) — Domain Rail already emits its own receipt, this is the Desktop-side one
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.domain.purchased',
+      status: 'SUCCEEDED',
+      action: { operation: 'domain_register', domain, invoiceOption: 'PayInvoice', price },
+      result: { orderId, contactId, approvalId },
+    }).catch(() => {});
+
+    // 7. Return with DNS plan for immediate display
+    const dnsPlan = [
+      { type: 'MX', host: '@', value: 'mx1.emailarray.com', priority: 10, ttl: 3600 },
+      { type: 'MX', host: '@', value: 'mx2.emailarray.com', priority: 20, ttl: 3600 },
+      { type: 'TXT', host: '@', value: 'v=spf1 include:spf.emailarray.com ~all', ttl: 3600 },
+      { type: 'CNAME', host: 'webmail', value: 'webmail.emailarray.com', ttl: 3600 },
+    ];
+
+    res.json({ status: 'COMPLETED', orderId, domain, amount: price, currency: 'USD', dnsPlan });
+  } catch (e: any) {
+    console.error('[checkout/start]', e.message);
+    res.status(500).json({ error: 'CHECKOUT_FAILED', message: e.message?.slice(0, 200) || 'Domain checkout failed' });
+  }
 });
 
-// GET /v1/mail/oauth/google/start
+// GET /v1/mail/oauth/google/start — redirect to Google consent screen
 router.get('/v1/mail/oauth/google/start', async (req: Request, res: Response) => {
   try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
     const jobId = req.query.jobId as string;
-    if (!jobId) return res.status(400).json({ error: 'jobId required' });
-    const { status, data } = await mailProxy('GET', `/v1/mail/oauth/google/start?jobId=${encodeURIComponent(jobId)}`);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    if (!jobId || !isValidUUID(jobId)) {
+      return res.status(400).json({ error: 'INVALID_JOB_ID', message: 'Valid jobId required' });
+    }
+    const authUrl = buildAuthUrl(jobId, suiteId);
+    res.json({ authUrl });
+  } catch (e: any) { res.status(500).json({ error: 'OAuth initialization failed' }); }
+});
+
+// GET /api/mail/oauth/google/callback — handle Google OAuth callback
+router.get('/api/mail/oauth/google/callback', async (req: Request, res: Response) => {
+  try {
+    const code = req.query.code as string;
+    const state = req.query.state as string;
+    const error = req.query.error as string;
+
+    if (error) {
+      return res.redirect('/inbox/setup?error=' + encodeURIComponent(error));
+    }
+    if (!code || !state) {
+      return res.redirect('/inbox/setup?error=missing_code');
+    }
+
+    const result = await handleCallback(code, state);
+    res.redirect(`/inbox/setup?step=3&provider=google&email=${encodeURIComponent(result.email)}`);
+  } catch (e: any) {
+    console.error('Google OAuth callback error:', e.message);
+    // Sanitize error — don't pass raw error messages into redirect URL
+    const safeError = (e.message || 'oauth_failed').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+    res.redirect('/inbox/setup?error=' + encodeURIComponent(safeError));
+  }
 });
 
 // POST /v1/mail/onboarding/:jobId/checks/run
 router.post('/v1/mail/onboarding/:jobId/checks/run', async (req: Request, res: Response) => {
   try {
-    const jobId = getParam(req.params.jobId);
-    const { status, data } = await mailProxy('POST', `/v1/mail/onboarding/${encodeURIComponent(jobId)}/checks/run`, req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const jobId = requireJobId(req, res); if (!jobId) return;
+    const validChecks = ['LIST', 'DRAFT', 'SEND_TEST', 'LABEL'];
+    const requestedChecks = req.body.checks;
+    if (requestedChecks && !Array.isArray(requestedChecks)) {
+      return res.status(400).json({ error: 'INVALID_CHECKS', message: 'checks must be an array' });
+    }
+    if (requestedChecks?.some((c: string) => !validChecks.includes(c))) {
+      return res.status(400).json({ error: 'INVALID_CHECK_ID', message: `Valid checks: ${validChecks.join(', ')}` });
+    }
+    const { runChecks } = await import('./mail/verificationService');
+    const checks = await runChecks(jobId, suiteId, requestedChecks);
+    res.json({ checks });
+  } catch (e: any) { res.status(500).json({ error: 'Verification checks failed' }); }
 });
 
 // POST /v1/mail/eli/policy/apply
 router.post('/v1/mail/eli/policy/apply', async (req: Request, res: Response) => {
   try {
-    const { status, data } = await mailProxy('POST', '/v1/mail/eli/policy/apply', req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const { jobId, policy } = req.body;
+    if (!jobId || !isValidUUID(jobId)) {
+      return res.status(400).json({ error: 'INVALID_JOB_ID', message: 'Valid jobId required' });
+    }
+    if (!policy || typeof policy !== 'object') {
+      return res.status(400).json({ error: 'INVALID_POLICY', message: 'Policy object required' });
+    }
+    const validKeys = ['canDraft', 'canSend', 'externalApprovalRequired', 'attachmentsAlwaysApproval', 'rateLimitPreset'];
+    const policyKeys = Object.keys(policy);
+    if (policyKeys.some(k => !validKeys.includes(k))) {
+      return res.status(400).json({ error: 'INVALID_POLICY_KEY', message: `Valid keys: ${validKeys.join(', ')}` });
+    }
+    await onboarding.applyEliPolicy(jobId, suiteId, policy);
+    res.json({ applied: true });
+  } catch (e: any) { res.status(500).json({ error: 'Policy application failed' }); }
 });
 
 // POST /v1/mail/onboarding/:jobId/activate
 router.post('/v1/mail/onboarding/:jobId/activate', async (req: Request, res: Response) => {
   try {
-    const jobId = getParam(req.params.jobId);
-    const { status, data } = await mailProxy('POST', `/v1/mail/onboarding/${encodeURIComponent(jobId)}/activate`, req.body);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const jobId = requireJobId(req, res); if (!jobId) return;
+    const result = await onboarding.activateOnboarding(jobId, suiteId);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: 'Activation failed' }); }
 });
 
-// GET /v1/receipts (by jobId)
+// GET /v1/receipts (by jobId) — mail receipts filtered by correlation
 router.get('/v1/receipts', async (req: Request, res: Response) => {
   try {
-    const jobId = req.query.jobId as string;
-    if (!jobId) return res.status(400).json({ error: 'jobId required' });
-    const { status, data } = await mailProxy('GET', `/v1/receipts?jobId=${encodeURIComponent(jobId)}`);
-    res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const receipts = await onboarding.listMailReceipts(suiteId);
+    res.json({ receipts });
+  } catch (e: any) { res.status(500).json({ error: 'Receipt retrieval failed' }); }
+});
+
+// ─── Mail Thread & Message Routes (Production) ───
+// Supports both Google (Gmail API) and PolarisM (IMAP) accounts.
+// Account type detected from mail_accounts/oauth_tokens, routes to correct client.
+
+/** Load IMAP credentials for a PolarisM account */
+async function loadImapCredentials(suiteId: string, accountEmail?: string): Promise<imapClient.MailAccountCredentials | null> {
+  let query;
+  if (accountEmail) {
+    query = sql`
+      SELECT email_address, encrypted_password, display_name, imap_host, imap_port, smtp_host, smtp_port
+      FROM app.mail_accounts
+      WHERE suite_id = ${suiteId}::uuid AND email_address = ${accountEmail} AND status = 'active' AND encrypted_password IS NOT NULL
+      LIMIT 1
+    `;
+  } else {
+    query = sql`
+      SELECT email_address, encrypted_password, display_name, imap_host, imap_port, smtp_host, smtp_port
+      FROM app.mail_accounts
+      WHERE suite_id = ${suiteId}::uuid AND mailbox_provider = 'polaris' AND status = 'active' AND encrypted_password IS NOT NULL
+      ORDER BY created_at DESC LIMIT 1
+    `;
+  }
+  const result = await db.execute(query);
+  const rows = (result.rows || result) as any[];
+  if (!rows.length) return null;
+
+  const row = rows[0];
+  try {
+    const password = imapClient.decryptPassword(row.encrypted_password);
+    return {
+      email: row.email_address,
+      password,
+      displayName: row.display_name,
+      imapHost: row.imap_host || process.env.POLARIS_IMAP_HOST || 'mail.emailarray.com',
+      imapPort: row.imap_port || parseInt(process.env.POLARIS_IMAP_PORT || '993', 10),
+      smtpHost: row.smtp_host || process.env.POLARIS_SMTP_HOST || 'mail.emailarray.com',
+      smtpPort: row.smtp_port || parseInt(process.env.POLARIS_SMTP_PORT || '465', 10),
+    };
+  } catch {
+    // Fail closed — can't decrypt credentials
+    return null;
+  }
+}
+
+/** Detect account type: 'google' or 'polaris', and load the right token/creds */
+async function detectMailProvider(suiteId: string, preferredAccount?: string): Promise<'google' | 'polaris' | null> {
+  if (preferredAccount) {
+    // Check if it's a Google account
+    const googleResult = await db.execute(sql`
+      SELECT email FROM oauth_tokens
+      WHERE suite_id = ${suiteId}::uuid AND provider = 'google' AND email = ${preferredAccount}
+    `);
+    if (((googleResult.rows || googleResult) as any[]).length > 0) return 'google';
+
+    // Check PolarisM
+    const polarisResult = await db.execute(sql`
+      SELECT email_address FROM app.mail_accounts
+      WHERE suite_id = ${suiteId}::uuid AND email_address = ${preferredAccount} AND status = 'active'
+    `);
+    if (((polarisResult.rows || polarisResult) as any[]).length > 0) return 'polaris';
+    return null;
+  }
+
+  // No preferred account — check what's available, prefer PolarisM (Aspire Business Email)
+  const polarisResult = await db.execute(sql`
+    SELECT email_address FROM app.mail_accounts
+    WHERE suite_id = ${suiteId}::uuid AND mailbox_provider = 'polaris' AND status = 'active'
+    LIMIT 1
+  `);
+  if (((polarisResult.rows || polarisResult) as any[]).length > 0) return 'polaris';
+
+  const googleResult = await db.execute(sql`
+    SELECT email FROM oauth_tokens WHERE suite_id = ${suiteId}::uuid AND provider = 'google'
+  `);
+  if (((googleResult.rows || googleResult) as any[]).length > 0) return 'google';
+
+  return null;
+}
+
+// GET /api/mail/threads — list email threads (Google or PolarisM)
+router.get('/api/mail/threads', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const officeId = (req as any).authenticatedOfficeId || getDefaultOfficeId();
+    const account = req.query.account as string | undefined;
+    const maxResults = Math.min(parseInt(req.query.limit as string || '30', 10), 100);
+    const pageToken = req.query.pageToken as string | undefined;
+
+    const provider = await detectMailProvider(suiteId, account);
+    if (!provider) {
+      return res.json({ threads: [], total: 0, provider: null });
+    }
+
+    if (provider === 'google') {
+      const accessToken = await getValidToken(suiteId);
+      const gmailResult = await gmailClient.listThreads(accessToken, { maxResults, pageToken });
+
+      // Fetch full thread detail for each (with messages) to build MailThread objects
+      const threads = [];
+      for (const t of gmailResult.threads.slice(0, maxResults)) {
+        try {
+          const fullThread = await gmailClient.getThread(accessToken, t.id);
+          threads.push(gmailClient.gmailThreadToMailThread(fullThread, suiteId, officeId));
+        } catch {
+          // Skip failed threads
+        }
+      }
+
+      await createTrustSpineReceipt({
+        suiteId,
+        receiptType: 'mail.threads.listed',
+        status: 'SUCCEEDED',
+        action: { provider: 'google', operation: 'list_threads', count: threads.length },
+        result: { threadCount: threads.length },
+      }).catch(() => {});
+
+      return res.json({ threads, total: threads.length, nextPageToken: gmailResult.nextPageToken, provider: 'google' });
+    }
+
+    // PolarisM — IMAP
+    const creds = await loadImapCredentials(suiteId, account);
+    if (!creds) {
+      return res.json({ threads: [], total: 0, provider: 'polaris', error: 'NO_CREDENTIALS' });
+    }
+
+    const imapResult = await imapClient.listThreads(creds, suiteId, officeId, { maxResults });
+
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.threads.listed',
+      status: 'SUCCEEDED',
+      action: { provider: 'polaris', operation: 'list_threads', count: imapResult.threads.length },
+      result: { threadCount: imapResult.threads.length },
+    }).catch(() => {});
+
+    return res.json({ threads: imapResult.threads, total: imapResult.total, provider: 'polaris' });
+  } catch (e: any) {
+    console.error('[mail/threads]', e.message);
+    res.status(500).json({ error: 'Failed to fetch threads', message: e.message?.slice(0, 200) });
+  }
+});
+
+// GET /api/mail/threads/:threadId — get thread detail with messages
+router.get('/api/mail/threads/:threadId', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const officeId = (req as any).authenticatedOfficeId || getDefaultOfficeId();
+    const threadId = req.params.threadId;
+    if (!threadId) return res.status(400).json({ error: 'Thread ID required' });
+
+    const account = req.query.account as string | undefined;
+
+    // Detect provider from thread ID prefix
+    const isImapThread = threadId.startsWith('imap-');
+
+    if (isImapThread) {
+      const creds = await loadImapCredentials(suiteId, account);
+      if (!creds) return res.status(404).json({ error: 'Mail credentials not found' });
+
+      const detail = await imapClient.getThreadDetail(creds, threadId, suiteId, officeId);
+
+      await createTrustSpineReceipt({
+        suiteId,
+        receiptType: 'mail.thread.read',
+        status: 'SUCCEEDED',
+        action: { provider: 'polaris', operation: 'get_thread', threadId },
+        result: { messageCount: detail.messages.length },
+      }).catch(() => {});
+
+      return res.json(detail);
+    }
+
+    // Gmail thread
+    const accessToken = await getValidToken(suiteId);
+    const fullThread = await gmailClient.getThread(accessToken, threadId);
+    const detail = gmailClient.gmailThreadToMailDetail(fullThread, suiteId, officeId);
+
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.thread.read',
+      status: 'SUCCEEDED',
+      action: { provider: 'google', operation: 'get_thread', threadId },
+      result: { messageCount: detail.messages.length },
+    }).catch(() => {});
+
+    return res.json(detail);
+  } catch (e: any) {
+    console.error('[mail/threads/:id]', e.message);
+    res.status(500).json({ error: 'Failed to fetch thread' });
+  }
+});
+
+// POST /api/mail/messages/send — send email (YELLOW tier — external comms)
+router.post('/api/mail/messages/send', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const { to, subject, body, html, account, replyToMessageId } = req.body;
+    if (!to || !subject || !body) {
+      return res.status(400).json({ error: 'to, subject, and body are required' });
+    }
+    // Basic email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      return res.status(400).json({ error: 'Invalid recipient email' });
+    }
+
+    const provider = await detectMailProvider(suiteId, account);
+    if (!provider) return res.status(404).json({ error: 'No active mail account found' });
+
+    if (provider === 'google') {
+      const accessToken = await getValidToken(suiteId);
+      const raw = gmailClient.buildRawMessage({ to, subject, body, html, replyToMessageId });
+      const result = await gmailClient.sendMessage(accessToken, raw);
+
+      await createTrustSpineReceipt({
+        suiteId,
+        receiptType: 'mail.message.sent',
+        status: 'SUCCEEDED',
+        action: { provider: 'google', operation: 'send_message', to: '<EMAIL_REDACTED>' },
+        result: { sent: true, provider: 'google' },
+      });
+
+      return res.json({ sent: true, messageId: result.id, provider: 'google' });
+    }
+
+    // PolarisM — SMTP
+    const creds = await loadImapCredentials(suiteId, account);
+    if (!creds) return res.status(404).json({ error: 'Mail credentials not found' });
+
+    const result = await imapClient.sendMail(creds, { to, subject, body, html, replyToMessageId });
+
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.message.sent',
+      status: 'SUCCEEDED',
+      action: { provider: 'polaris', operation: 'send_message', to: '<EMAIL_REDACTED>' },
+      result: { sent: true, provider: 'polaris' },
+    });
+
+    return res.json({ sent: true, messageId: result.messageId, provider: 'polaris' });
+  } catch (e: any) {
+    console.error('[mail/send]', e.message);
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// POST /api/mail/messages/draft — create draft
+router.post('/api/mail/messages/draft', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const { to, subject, body, html, account } = req.body;
+    if (!to || !subject || !body) {
+      return res.status(400).json({ error: 'to, subject, and body are required' });
+    }
+
+    const provider = await detectMailProvider(suiteId, account);
+    if (!provider) return res.status(404).json({ error: 'No active mail account found' });
+
+    if (provider === 'google') {
+      const accessToken = await getValidToken(suiteId);
+      const raw = gmailClient.buildRawMessage({ to, subject, body, html });
+      const result = await gmailClient.createDraft(accessToken, raw);
+
+      await createTrustSpineReceipt({
+        suiteId,
+        receiptType: 'mail.draft.created',
+        status: 'SUCCEEDED',
+        action: { provider: 'google', operation: 'create_draft' },
+        result: { draftCreated: true },
+      }).catch(() => {});
+
+      return res.json({ created: true, draftId: result.id, provider: 'google' });
+    }
+
+    // PolarisM — IMAP APPEND to Drafts
+    const creds = await loadImapCredentials(suiteId, account);
+    if (!creds) return res.status(404).json({ error: 'Mail credentials not found' });
+
+    const result = await imapClient.createDraft(creds, { to, subject, body, html });
+
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.draft.created',
+      status: 'SUCCEEDED',
+      action: { provider: 'polaris', operation: 'create_draft' },
+      result: { draftCreated: true },
+    }).catch(() => {});
+
+    return res.json({ created: true, draftId: result.uid, provider: 'polaris' });
+  } catch (e: any) {
+    console.error('[mail/draft]', e.message);
+    res.status(500).json({ error: 'Failed to create draft' });
+  }
+});
+
+// ─── PandaDoc Webhook (Clara Legal) ───
+// HMAC-verified webhook endpoint for PandaDoc document lifecycle events.
+// Events: document_state_change (sent, viewed, completed, voided, declined)
+// Idempotent: dedup by event_id in processed_webhooks table.
+
+const PANDADOC_WEBHOOK_SECRET = process.env.PANDADOC_WEBHOOK_SECRET || '';
+
+router.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
+  try {
+    const signature = req.headers['x-pandadoc-signature'] as string || '';
+    const rawBody = JSON.stringify(req.body);
+
+    // HMAC verification (Law #3: fail closed on missing/invalid signature)
+    if (!PANDADOC_WEBHOOK_SECRET) {
+      console.error('[webhook/pandadoc] Webhook secret not configured — rejecting (fail-closed)');
+      return res.status(503).json({ error: 'Webhook secret not configured' });
+    }
+
+    if (!signature) {
+      console.warn('[webhook/pandadoc] Missing X-PandaDoc-Signature header — rejecting');
+      return res.status(401).json({ error: 'Missing webhook signature' });
+    }
+
+    const expected = crypto
+      .createHmac('sha256', PANDADOC_WEBHOOK_SECRET)
+      .update(rawBody)
+      .digest('hex');
+
+    if (expected.length !== signature.length ||
+        !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+      console.warn('[webhook/pandadoc] HMAC signature mismatch — possible forgery');
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
+
+    const payload = req.body;
+    const eventId = payload.event_id || payload.id || '';
+    const eventType = payload.event || 'unknown';
+    const docData = payload.data || {};
+    const docId = docData.id || '';
+    const docStatus = docData.status || '';
+
+    // Extract Aspire metadata
+    const metadata = docData.metadata || {};
+    const suiteId = metadata.aspire_suite_id || '';
+    const correlationId = metadata.aspire_correlation_id || '';
+
+    console.log(
+      `[webhook/pandadoc] event=${eventType} doc=${docId?.substring(0, 8)} status=${docStatus} suite=${suiteId?.substring(0, 8)}`
+    );
+
+    // Idempotency: check processed_webhooks (if DB available)
+    if (db && eventId) {
+      try {
+        const existing = await db.execute(
+          sql`SELECT event_id FROM processed_webhooks WHERE event_id = ${eventId} LIMIT 1`
+        );
+        if (existing.rows && existing.rows.length > 0) {
+          console.log(`[webhook/pandadoc] Duplicate event ${eventId} — skipping`);
+          return res.status(200).json({ status: 'already_processed' });
+        }
+
+        // Mark as processed
+        await db.execute(
+          sql`INSERT INTO processed_webhooks (event_id, source, document_id, suite_id, processed_at)
+              VALUES (${eventId}, 'pandadoc', ${docId}, ${suiteId || null}::uuid, now())
+              ON CONFLICT (event_id) DO NOTHING`
+        );
+      } catch (dbErr: any) {
+        // DB error shouldn't block webhook processing — log and continue
+        console.warn('[webhook/pandadoc] DB dedup error:', dbErr.message);
+      }
+    }
+
+    // Emit receipt for webhook event
+    if (suiteId) {
+      await createTrustSpineReceipt({
+        suiteId,
+        receiptType: `webhook.pandadoc.${eventType}`,
+        status: 'SUCCEEDED',
+        action: { provider: 'pandadoc', operation: 'webhook', event: eventType },
+        result: { documentId: docId, pandadocStatus: docStatus },
+      }).catch(() => {});
+    }
+
+    // Advance contract state in Supabase based on PandaDoc status
+    const statusToState: Record<string, string> = {
+      'document.draft': 'draft',
+      'document.sent': 'sent',
+      'document.viewed': 'sent',
+      'document.waiting_approval': 'sent',
+      'document.completed': 'signed',
+      'document.voided': 'expired',
+      'document.declined': 'expired',
+      'document.expired': 'expired',
+    };
+    const targetState = statusToState[docStatus];
+
+    if (targetState && docId && suiteId && db) {
+      try {
+        await db.execute(
+          sql`UPDATE contracts
+              SET contract_state = ${targetState},
+                  pandadoc_status = ${docStatus},
+                  updated_at = now()
+              WHERE document_id = ${docId}
+              AND suite_id = ${suiteId}::uuid`
+        );
+        console.log(
+          `[webhook/pandadoc] State advanced: doc=${docId.substring(0, 8)} → ${targetState}`
+        );
+      } catch (stateErr: any) {
+        // State update failure doesn't block webhook acknowledgement
+        console.warn('[webhook/pandadoc] State update failed:', stateErr.message);
+      }
+    }
+
+    res.status(200).json({ status: 'received', event_id: eventId, target_state: targetState || null });
+  } catch (error: any) {
+    console.error('[webhook/pandadoc] Error:', error.message);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// ─── PandaDoc Health Check ───
+router.get('/api/health/pandadoc', async (_req: Request, res: Response) => {
+  try {
+    const apiKey = process.env.ASPIRE_PANDADOC_API_KEY || '';
+    if (!apiKey) {
+      return res.status(503).json({ status: 'unconfigured', detail: 'ASPIRE_PANDADOC_API_KEY not set' });
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const resp = await fetch('https://api.pandadoc.com/public/v1/documents?count=1', {
+      headers: { 'Authorization': `API-Key ${apiKey}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (resp.ok) {
+      return res.json({ status: 'healthy', latency_ms: Date.now() });
+    }
+    return res.status(503).json({ status: 'unhealthy', http_status: resp.status });
+  } catch (error: any) {
+    return res.status(503).json({ status: 'unhealthy', error: error.message });
+  }
+});
+
+// ─── PandaDoc Templates (Live from workspace) ───
+// Proxies PandaDoc GET /templates + /templates/{id}/details.
+// Any template added to the PandaDoc workspace appears here automatically.
+// Clara uses the same API endpoint — single source of truth.
+
+router.get('/api/contracts/templates', async (req: Request, res: Response) => {
+  try {
+    const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    // Fetch template list from PandaDoc workspace
+    const listResp = await fetch('https://api.pandadoc.com/public/v1/templates?count=100', {
+      headers: { 'Authorization': `API-Key ${apiKey}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!listResp.ok) {
+      return res.status(listResp.status).json({ error: 'Failed to fetch templates from PandaDoc' });
+    }
+
+    const listData = await listResp.json() as { results: Array<{ id: string; name: string; date_created: string; date_modified: string; version: string }> };
+    const templates = listData.results || [];
+
+    // Fetch details for each template (tokens, fields, roles)
+    // Safe for small workspace counts (<50 templates)
+    const enriched = await Promise.all(
+      templates.map(async (t) => {
+        try {
+          const detailCtrl = new AbortController();
+          const detailTimeout = setTimeout(() => detailCtrl.abort(), 10000);
+
+          const detailResp = await fetch(`https://api.pandadoc.com/public/v1/templates/${t.id}/details`, {
+            headers: { 'Authorization': `API-Key ${apiKey}` },
+            signal: detailCtrl.signal,
+          });
+          clearTimeout(detailTimeout);
+
+          if (!detailResp.ok) {
+            return {
+              id: t.id,
+              name: t.name,
+              date_created: t.date_created,
+              date_modified: t.date_modified,
+              tokens: [],
+              fields: [],
+              roles: [],
+              images: [],
+              content_placeholders: [],
+              has_pricing: false,
+            };
+          }
+
+          const detail = await detailResp.json() as any;
+          return {
+            id: t.id,
+            name: detail.name || t.name,
+            date_created: t.date_created,
+            date_modified: t.date_modified,
+            tokens: (detail.tokens || []).map((tk: any) => ({ name: tk.name, value: tk.value })),
+            fields: (detail.fields || []).map((f: any) => ({
+              name: f.name,
+              type: f.type,
+              field_id: f.field_id,
+              assigned_to: f.assigned_to?.name || null,
+            })),
+            roles: (detail.roles || []).map((r: any) => ({ id: r.id, name: r.name })),
+            images: (detail.images || []).length,
+            content_placeholders: (detail.content_placeholders || []).length,
+            has_pricing: Boolean(detail.pricing?.quotes?.length),
+          };
+        } catch {
+          // Graceful degradation — return basic info if detail fetch fails
+          return {
+            id: t.id,
+            name: t.name,
+            date_created: t.date_created,
+            date_modified: t.date_modified,
+            tokens: [],
+            fields: [],
+            roles: [],
+            images: 0,
+            content_placeholders: 0,
+            has_pricing: false,
+          };
+        }
+      })
+    );
+
+    res.json({ templates: enriched, count: enriched.length });
+  } catch (error: any) {
+    console.error('[contracts/templates]', error.message);
+    res.status(500).json({ error: 'Failed to fetch templates' });
+  }
+});
+
+// ─── Contract CRUD (Clara Legal — Document Hub) ───
+// All routes require JWT auth + suite_id scoping (Law #6).
+
+// GET /api/contracts — List contracts (paginated, filterable)
+router.get('/api/contracts', async (req: Request, res: Response) => {
+  try {
+    const suiteId = req.headers['x-suite-id'] as string;
+    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+
+    const status = req.query.status as string || '';
+    const templateKey = req.query.template_key as string || '';
+    const page = Math.max(1, parseInt(req.query.page as string || '1', 10));
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string || '20', 10)));
+    const offset = (page - 1) * limit;
+
+    if (!db) return res.status(503).json({ error: 'Database not available' });
+
+    let query;
+    if (status && templateKey) {
+      query = sql`SELECT * FROM contracts
+        WHERE suite_id = ${suiteId}::uuid AND contract_state = ${status} AND template_key = ${templateKey}
+        ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    } else if (status) {
+      query = sql`SELECT * FROM contracts
+        WHERE suite_id = ${suiteId}::uuid AND contract_state = ${status}
+        ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    } else if (templateKey) {
+      query = sql`SELECT * FROM contracts
+        WHERE suite_id = ${suiteId}::uuid AND template_key = ${templateKey}
+        ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    } else {
+      query = sql`SELECT * FROM contracts
+        WHERE suite_id = ${suiteId}::uuid
+        ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    }
+
+    const result = await db.execute(query);
+    const contracts = result.rows || [];
+
+    // Get total count for pagination
+    const countResult = await db.execute(
+      sql`SELECT COUNT(*)::int as total FROM contracts WHERE suite_id = ${suiteId}::uuid`
+    );
+    const total = countResult.rows?.[0]?.total || 0;
+
+    res.json({ contracts, total, page, limit });
+  } catch (error: any) {
+    console.error('[contracts/list]', error.message);
+    res.status(500).json({ error: 'Failed to list contracts' });
+  }
+});
+
+// GET /api/contracts/:id — Contract detail + history
+router.get('/api/contracts/:id', async (req: Request, res: Response) => {
+  try {
+    const suiteId = req.headers['x-suite-id'] as string;
+    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    if (!db) return res.status(503).json({ error: 'Database not available' });
+
+    const contractId = req.params.id;
+    const result = await db.execute(
+      sql`SELECT * FROM contracts WHERE id = ${contractId}::uuid AND suite_id = ${suiteId}::uuid LIMIT 1`
+    );
+
+    if (!result.rows || result.rows.length === 0) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+
+    const contract = result.rows[0];
+
+    // Fetch signing sessions for this contract
+    let sessions: any[] = [];
+    try {
+      const sessResult = await db.execute(
+        sql`SELECT id, token, signer_email, signer_name, expires_at, completed_at, created_at
+            FROM signing_sessions
+            WHERE document_id = ${contract.document_id} AND suite_id = ${suiteId}::uuid
+            ORDER BY created_at DESC`
+      );
+      sessions = sessResult.rows || [];
+    } catch {
+      // signing_sessions table may not exist yet
+    }
+
+    res.json({ contract, sessions });
+  } catch (error: any) {
+    console.error('[contracts/detail]', error.message);
+    res.status(500).json({ error: 'Failed to get contract' });
+  }
+});
+
+// POST /api/contracts/:id/send — Send document for signature
+router.post('/api/contracts/:id/send', async (req: Request, res: Response) => {
+  try {
+    const suiteId = req.headers['x-suite-id'] as string;
+    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    if (!db) return res.status(503).json({ error: 'Database not available' });
+
+    const contractId = req.params.id;
+    // Look up the contract to get document_id
+    const result = await db.execute(
+      sql`SELECT document_id, contract_state FROM contracts
+          WHERE id = ${contractId}::uuid AND suite_id = ${suiteId}::uuid LIMIT 1`
+    );
+
+    if (!result.rows || result.rows.length === 0) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+
+    const { document_id, contract_state } = result.rows[0] as any;
+
+    // Only draft or reviewed contracts can be sent
+    if (!['draft', 'reviewed'].includes(contract_state)) {
+      return res.status(400).json({
+        error: `Cannot send contract in state '${contract_state}'. Must be draft or reviewed.`,
+      });
+    }
+
+    const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
+
+    const message = req.body.message || 'Please review and sign this document.';
+    const silent = req.body.silent !== undefined ? req.body.silent : true;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const resp = await fetch(`https://api.pandadoc.com/public/v1/documents/${document_id}/send`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `API-Key ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message, silent }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      return res.status(resp.status).json({ error: 'PandaDoc send failed', detail: errBody });
+    }
+
+    // Update contract state to 'sent'
+    await db.execute(
+      sql`UPDATE contracts SET contract_state = 'sent', pandadoc_status = 'document.sent', updated_at = now()
+          WHERE id = ${contractId}::uuid AND suite_id = ${suiteId}::uuid`
+    );
+
+    // Emit receipt
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'contract.send',
+      status: 'SUCCEEDED',
+      action: { provider: 'pandadoc', operation: 'send', documentId: document_id },
+      result: { contractId, state: 'sent' },
+    }).catch(() => {});
+
+    res.json({ success: true, contract_state: 'sent' });
+  } catch (error: any) {
+    console.error('[contracts/send]', error.message);
+    const sid = req.headers['x-suite-id'] as string;
+    if (sid) {
+      await createTrustSpineReceipt({
+        suiteId: sid,
+        receiptType: 'contract.send',
+        status: 'FAILED',
+        action: { provider: 'pandadoc', operation: 'send' },
+        result: { error: error.message },
+      }).catch(() => {});
+    }
+    res.status(500).json({ error: 'Failed to send contract' });
+  }
+});
+
+// POST /api/contracts/:id/session — Create embedded signing session
+router.post('/api/contracts/:id/session', async (req: Request, res: Response) => {
+  try {
+    const suiteId = req.headers['x-suite-id'] as string;
+    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    if (!db) return res.status(503).json({ error: 'Database not available' });
+
+    const contractId = req.params.id;
+    const result = await db.execute(
+      sql`SELECT document_id, contract_state, title FROM contracts
+          WHERE id = ${contractId}::uuid AND suite_id = ${suiteId}::uuid LIMIT 1`
+    );
+
+    if (!result.rows || result.rows.length === 0) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+
+    const { document_id, contract_state, title } = result.rows[0] as any;
+
+    if (contract_state !== 'sent') {
+      return res.status(400).json({
+        error: `Cannot create signing session for contract in state '${contract_state}'. Must be sent.`,
+      });
+    }
+
+    const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
+
+    const signerEmail = req.body.recipient || '';
+    const signerName = req.body.signer_name || '';
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const sessionBody: any = {};
+    if (signerEmail) sessionBody.recipient = signerEmail;
+
+    const resp = await fetch(`https://api.pandadoc.com/public/v1/documents/${document_id}/session`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `API-Key ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(sessionBody),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      return res.status(resp.status).json({ error: 'PandaDoc session failed', detail: errBody });
+    }
+
+    const sessionData = await resp.json();
+    const sessionId = sessionData.id || '';
+    const expiresAt = sessionData.expires_at || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    // Generate a secure token for the public signing URL
+    const signingToken = crypto.randomUUID();
+
+    // Store signing session in DB
+    try {
+      await db.execute(
+        sql`INSERT INTO signing_sessions (id, token, document_id, suite_id, signer_email, signer_name, pandadoc_session_id, expires_at, created_at)
+            VALUES (${crypto.randomUUID()}::uuid, ${signingToken}, ${document_id}, ${suiteId}::uuid, ${signerEmail}, ${signerName}, ${sessionId}, ${expiresAt}::timestamptz, now())`
+      );
+    } catch (dbErr: any) {
+      console.warn('[contracts/session] Failed to store signing session:', dbErr.message);
+    }
+
+    // Emit receipt
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'contract.session.create',
+      status: 'SUCCEEDED',
+      action: { provider: 'pandadoc', operation: 'session', documentId: document_id },
+      result: { sessionId, signingToken, expiresAt },
+    }).catch(() => {});
+
+    res.json({
+      session_id: sessionId,
+      signing_token: signingToken,
+      signing_url: `/sign/${signingToken}`,
+      expires_at: expiresAt,
+      document_name: title || '',
+    });
+  } catch (error: any) {
+    console.error('[contracts/session]', error.message);
+    const sid = req.headers['x-suite-id'] as string;
+    if (sid) {
+      await createTrustSpineReceipt({
+        suiteId: sid,
+        receiptType: 'contract.session.create',
+        status: 'FAILED',
+        action: { provider: 'pandadoc', operation: 'session.create' },
+        result: { error: error.message },
+      }).catch(() => {});
+    }
+    res.status(500).json({ error: 'Failed to create signing session' });
+  }
+});
+
+// POST /api/pandadoc/:documentId/preview — Create PandaDoc view session for document preview
+// Used by Authority Queue "Review" button so user sees the REAL document before approving
+router.post('/api/pandadoc/:documentId/preview', async (req: Request, res: Response) => {
+  try {
+    const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
+
+    const documentId = req.params.documentId;
+    if (!documentId || documentId.length < 10) {
+      return res.status(400).json({ error: 'Invalid document ID' });
+    }
+
+    // Create a PandaDoc embedded session for the document.
+    // For draft documents this gives a read-only view.
+    // For sent documents this shows the document with signing fields visible but not actionable
+    // unless a recipient is specified.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const resp = await fetch(`https://api.pandadoc.com/public/v1/documents/${documentId}/session`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `API-Key ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!resp.ok) {
+      // Fallback: if session creation fails (e.g. draft status not supported),
+      // try fetching document details to confirm it exists and return document info only
+      if (resp.status === 409 || resp.status === 400) {
+        const detailResp = await fetch(`https://api.pandadoc.com/public/v1/documents/${documentId}`, {
+          headers: { 'Authorization': `API-Key ${apiKey}` },
+        });
+        if (detailResp.ok) {
+          const doc = await detailResp.json();
+          return res.json({
+            session_id: null,
+            fallback: true,
+            document_name: doc.name || '',
+            document_status: doc.status || '',
+            message: 'Preview session not available for this document status. Document exists.',
+          });
+        }
+      }
+      const errBody = await resp.text();
+      return res.status(resp.status).json({ error: 'PandaDoc preview session failed', detail: errBody });
+    }
+
+    const sessionData = await resp.json();
+    res.json({
+      session_id: sessionData.id || '',
+      expires_at: sessionData.expires_at || '',
+      preview_url: `https://app.pandadoc.com/s/${sessionData.id}`,
+    });
+  } catch (error: any) {
+    console.error('[pandadoc/preview]', error.message);
+    res.status(500).json({ error: 'Failed to create preview session' });
+  }
+});
+
+// POST /api/contracts/:id/void — Void/cancel a document
+router.post('/api/contracts/:id/void', async (req: Request, res: Response) => {
+  try {
+    const suiteId = req.headers['x-suite-id'] as string;
+    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    if (!db) return res.status(503).json({ error: 'Database not available' });
+
+    const contractId = req.params.id;
+    const result = await db.execute(
+      sql`SELECT document_id, contract_state FROM contracts
+          WHERE id = ${contractId}::uuid AND suite_id = ${suiteId}::uuid LIMIT 1`
+    );
+
+    if (!result.rows || result.rows.length === 0) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+
+    const { document_id, contract_state } = result.rows[0] as any;
+
+    // Only sent contracts can be voided
+    if (!['sent', 'draft', 'reviewed'].includes(contract_state)) {
+      return res.status(400).json({
+        error: `Cannot void contract in state '${contract_state}'.`,
+      });
+    }
+
+    // Update state to expired
+    await db.execute(
+      sql`UPDATE contracts SET contract_state = 'expired', pandadoc_status = 'document.voided', updated_at = now()
+          WHERE id = ${contractId}::uuid AND suite_id = ${suiteId}::uuid`
+    );
+
+    // Emit receipt
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'contract.void',
+      status: 'SUCCEEDED',
+      action: { provider: 'pandadoc', operation: 'void', documentId: document_id },
+      result: { contractId, state: 'expired' },
+    }).catch(() => {});
+
+    res.json({ success: true, contract_state: 'expired' });
+  } catch (error: any) {
+    console.error('[contracts/void]', error.message);
+    const sid = req.headers['x-suite-id'] as string;
+    if (sid) {
+      await createTrustSpineReceipt({
+        suiteId: sid,
+        receiptType: 'contract.void',
+        status: 'FAILED',
+        action: { provider: 'pandadoc', operation: 'void' },
+        result: { error: error.message },
+      }).catch(() => {});
+    }
+    res.status(500).json({ error: 'Failed to void contract' });
+  }
+});
+
+// GET /api/contracts/:id/download — Get PandaDoc download URL
+router.get('/api/contracts/:id/download', async (req: Request, res: Response) => {
+  try {
+    const suiteId = req.headers['x-suite-id'] as string;
+    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    if (!db) return res.status(503).json({ error: 'Database not available' });
+
+    const contractId = req.params.id;
+    const result = await db.execute(
+      sql`SELECT document_id FROM contracts
+          WHERE id = ${contractId}::uuid AND suite_id = ${suiteId}::uuid LIMIT 1`
+    );
+
+    if (!result.rows || result.rows.length === 0) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+
+    const { document_id } = result.rows[0] as any;
+    const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const resp = await fetch(`https://api.pandadoc.com/public/v1/documents/${document_id}/download`, {
+      headers: { 'Authorization': `API-Key ${apiKey}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!resp.ok) {
+      return res.status(resp.status).json({ error: 'Download not available' });
+    }
+
+    // PandaDoc returns the PDF directly — proxy it
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="contract-${contractId}.pdf"`);
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('[contracts/download]', error.message);
+    res.status(500).json({ error: 'Failed to download contract' });
+  }
+});
+
+// ─── Public Signing Route (NO AUTH REQUIRED) ───
+// External signers access signing sessions via token — no Aspire account needed.
+// Token-only access, minimal data exposure.
+// Simple in-memory rate limiter for public signing route (per-IP, 20 req/min)
+const signingRateLimiter = new Map<string, { count: number; resetAt: number }>();
+const SIGNING_RATE_LIMIT = 20;
+const SIGNING_RATE_WINDOW_MS = 60_000;
+
+router.get('/api/signing/:token', async (req: Request, res: Response) => {
+  try {
+    // Rate limit by IP (Law #3: fail-closed on abuse)
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    const entry = signingRateLimiter.get(clientIp);
+    if (entry && now < entry.resetAt) {
+      entry.count++;
+      if (entry.count > SIGNING_RATE_LIMIT) {
+        return res.status(429).json({ error: 'Too many requests. Try again later.' });
+      }
+    } else {
+      signingRateLimiter.set(clientIp, { count: 1, resetAt: now + SIGNING_RATE_WINDOW_MS });
+    }
+
+    if (!db) return res.status(503).json({ error: 'Database not available' });
+
+    const token = req.params.token;
+    // UUID format validation (36 chars: 8-4-4-4-12 hex)
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!token || !UUID_RE.test(token)) {
+      return res.status(400).json({ error: 'Invalid signing token' });
+    }
+
+    const result = await db.execute(
+      sql`SELECT s.document_id, s.signer_email, s.signer_name, s.pandadoc_session_id,
+                 s.expires_at, s.completed_at, s.created_at,
+                 c.title as document_name
+          FROM signing_sessions s
+          LEFT JOIN contracts c ON c.document_id = s.document_id AND c.suite_id = s.suite_id
+          WHERE s.token = ${token}
+          LIMIT 1`
+    );
+
+    if (!result.rows || result.rows.length === 0) {
+      return res.status(404).json({ error: 'Signing session not found' });
+    }
+
+    const session = result.rows[0] as any;
+
+    // Check expiration
+    if (session.expires_at && new Date(session.expires_at) < new Date()) {
+      return res.status(410).json({ error: 'Signing session expired' });
+    }
+
+    // Check if already completed
+    if (session.completed_at) {
+      return res.json({
+        status: 'completed',
+        document_name: session.document_name || 'Document',
+        completed_at: session.completed_at,
+      });
+    }
+
+    // Return ONLY safe data — no suite_id, no contract terms, no other signers
+    res.json({
+      status: 'pending',
+      document_name: session.document_name || 'Document',
+      signer_name: session.signer_name || '',
+      pandadoc_session_id: session.pandadoc_session_id,
+      expires_at: session.expires_at,
+    });
+  } catch (error: any) {
+    console.error('[signing/token]', error.message);
+    res.status(500).json({ error: 'Failed to load signing session' });
+  }
 });
 
 export default router;

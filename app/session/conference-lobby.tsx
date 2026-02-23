@@ -19,7 +19,8 @@ import {
   MEMBER_DIRECTORY,
 } from '@/data/session';
 import { useDesktop } from '@/lib/useDesktop';
-import { useSupabase } from '@/providers';
+import { useSupabase, useTenant } from '@/providers';
+import { formatDisplayId } from '@/lib/formatters';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
 
 const CONFERENCE_ROOM_IMAGE = require('@/assets/images/conference-room-meeting.jpg');
@@ -78,11 +79,12 @@ export default function ConferenceLobby() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { session, suiteId } = useSupabase();
+  const { tenant } = useTenant();
 
   const userName = session?.user?.user_metadata?.full_name
     ?? session?.user?.email?.split('@')[0]
     ?? 'You';
-  const suiteLabel = suiteId ? `Suite ${suiteId.slice(0, 8)}` : 'Conference Room';
+  const suiteLabel = `Suite ${formatDisplayId(tenant?.displayId, suiteId)}` || 'Conference Room';
 
   const [purpose, setPurpose] = useState<SessionPurpose>('Internal');
   const [participants, setParticipants] = useState<Participant[]>([

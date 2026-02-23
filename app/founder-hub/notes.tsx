@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, TextInput, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
+import { supabase } from '@/lib/supabase';
+import { useTenant } from '@/providers';
 
 const THEME = {
   bg: '#000000',
@@ -18,61 +20,177 @@ const THEME = {
   },
 };
 
-const journalEntries = [
-  {
-    id: '1',
-    date: '2026-01-22',
-    time: '9:15 AM',
-    title: 'Morning reflection on Q1 goals',
-    preview: 'Discussed with Ava about focusing on Grade B expansion. She helped me see that our repair margins are actually our strongest differentiator...',
-    duration: '12 min',
-    tags: ['Strategy', 'Goals'],
-  },
-  {
-    id: '2',
-    date: '2026-01-21',
-    time: '4:30 PM',
-    title: 'ABC Logistics follow-up strategy',
-    preview: 'Ava suggested a softer approach for the overdue payment. Instead of a formal collections notice, she recommended a check-in call mentioning their upcoming order...',
-    duration: '8 min',
-    tags: ['Sales', 'Collections'],
-  },
-  {
-    id: '3',
-    date: '2026-01-20',
-    time: '10:00 AM',
-    title: 'Competitor pricing analysis',
-    preview: 'Brainstormed with Ava about the 8% price drop from competitors on Grade B. She pointed out that our quality documentation and faster turnaround justify premium pricing...',
-    duration: '15 min',
-    tags: ['Pricing', 'Competition'],
-  },
-  {
-    id: '4',
-    date: '2026-01-19',
-    time: '2:45 PM',
-    title: 'New warehouse prospect ideas',
-    preview: 'Ava helped me identify 5 warehouses within 25 miles that might need pallet services. She drafted personalized outreach messages for each based on their industry...',
-    duration: '20 min',
-    tags: ['Sales', 'Outreach'],
-  },
-];
-
-const todayPrompts = [
-  "What's the one thing you want to accomplish this week?",
-  "What customer interaction stood out yesterday?",
-  "What's a risk you should be thinking about?",
-];
-
-const monthlyStats = {
-  totalEntries: 24,
-  totalMinutes: 186,
-  topTags: ['Strategy', 'Sales', 'Operations'],
-  streak: 12,
-};
+interface Note {
+  id: string;
+  title: string;
+  content: string;
+  pinned: boolean;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
 
 export default function NotesScreen() {
+  const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pinned'>('all');
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const fetchNotes = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('founder_hub_notes')
+        .select('*')
+        .order('pinned', { ascending: false })
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Failed to fetch notes:', error);
+        return;
+      }
+      setNotes(data ?? []);
+    } catch (err) {
+      console.error('Failed to load notes:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotes();
+  }, [fetchNotes]);
+
+  // Emit receipt for note CRUD — Law #2
+  const emitNoteReceipt = async (action: string, noteId: string, riskTier: string = 'green') => {
+    if (!tenant?.suiteId) return;
+    try {
+      await supabase.from('receipts').insert({
+        id: `rcpt-note-${action}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        suite_id: tenant.suiteId,
+        action_type: `founder_hub.note.${action}`,
+        risk_tier: riskTier,
+        actor: 'user',
+        outcome: 'success',
+        correlation_id: `corr-note-${Date.now()}`,
+        metadata: { note_id: noteId, action },
+      });
+    } catch (err) {
+      console.warn(`Note ${action} receipt failed:`, err);
+    }
+  };
+
+  const handleCreateNote = async () => {
+    if (!tenant?.suiteId) return;
+    setSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from('founder_hub_notes')
+        .insert({ suite_id: tenant.suiteId, title: '', content: '' })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Failed to create note:', error);
+        return;
+      }
+      if (data) {
+        setNotes((prev) => [data, ...prev]);
+        setEditingNote(data);
+        setEditTitle('');
+        setEditContent('');
+        emitNoteReceipt('create', data.id);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveNote = async () => {
+    if (!editingNote) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('founder_hub_notes')
+        .update({ title: editTitle, content: editContent, updated_at: new Date().toISOString() })
+        .eq('id', editingNote.id)
+        .eq('suite_id', tenant!.suiteId); // Defense-in-depth: explicit tenant filter over RLS-only
+
+      if (error) {
+        console.error('Failed to save note:', error);
+        return;
+      }
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === editingNote.id
+            ? { ...n, title: editTitle, content: editContent, updated_at: new Date().toISOString() }
+            : n
+        )
+      );
+      emitNoteReceipt('update', editingNote.id);
+      setEditingNote(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    const confirmed = typeof window !== 'undefined'
+      ? window.confirm('Delete this note? This cannot be undone.')
+      : true;
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('founder_hub_notes')
+        .delete()
+        .eq('id', noteId)
+        .eq('suite_id', tenant!.suiteId); // Defense-in-depth: explicit tenant filter over RLS-only
+
+      if (error) {
+        console.error('Failed to delete note:', error);
+        return;
+      }
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      if (editingNote?.id === noteId) {
+        setEditingNote(null);
+      }
+      emitNoteReceipt('delete', noteId, 'yellow'); // Delete is YELLOW — irreversible
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+    }
+  };
+
+  const handleTogglePin = async (note: Note) => {
+    try {
+      const { error } = await supabase
+        .from('founder_hub_notes')
+        .update({ pinned: !note.pinned })
+        .eq('id', note.id)
+        .eq('suite_id', tenant!.suiteId); // Defense-in-depth: explicit tenant filter over RLS-only
+
+      if (error) {
+        console.error('Failed to toggle pin:', error);
+        return;
+      }
+      setNotes((prev) =>
+        prev.map((n) => (n.id === note.id ? { ...n, pinned: !n.pinned } : n))
+      );
+      emitNoteReceipt('pin_toggle', note.id);
+    } catch (err) {
+      console.error('Failed to toggle pin:', err);
+    }
+  };
+
+  const openNoteForEditing = (note: Note) => {
+    setEditingNote(note);
+    setEditTitle(note.title);
+    setEditContent(note.content);
+  };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -85,61 +203,145 @@ export default function NotesScreen() {
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
+  const formatTime = (dateStr: string) => {
+    return new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  };
+
+  const filteredNotes = activeTab === 'pinned' ? notes.filter((n) => n.pinned) : notes;
+
+  const pinnedCount = notes.filter((n) => n.pinned).length;
+
   const rightRail = (
     <View style={styles.railContent}>
       <View style={styles.statsCard}>
-        <Text style={styles.statsTitle}>This Month</Text>
+        <Text style={styles.statsTitle}>Your Notes</Text>
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{monthlyStats.totalEntries}</Text>
-            <Text style={styles.statLabel}>Entries</Text>
+            <Text style={styles.statValue}>{notes.length}</Text>
+            <Text style={styles.statLabel}>Total</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{monthlyStats.totalMinutes}</Text>
-            <Text style={styles.statLabel}>Minutes</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{monthlyStats.streak}</Text>
-            <Text style={styles.statLabel}>Day Streak</Text>
+            <Text style={styles.statValue}>{pinnedCount}</Text>
+            <Text style={styles.statLabel}>Pinned</Text>
           </View>
         </View>
-      </View>
-
-      <Text style={styles.railTitle}>Top Topics</Text>
-      <View style={styles.tagsList}>
-        {monthlyStats.topTags.map((tag, idx) => (
-          <View key={idx} style={styles.tagItem}>
-            <Text style={styles.tagText}>{tag}</Text>
-          </View>
-        ))}
       </View>
 
       <View style={styles.railDivider} />
 
-      <Text style={styles.railTitle}>Journal Calendar</Text>
-      <View style={styles.calendarPreview}>
-        <Text style={styles.calendarMonth}>January 2026</Text>
-        <View style={styles.calendarDays}>
-          {[...Array(31)].map((_, idx) => (
-            <View
-              key={idx}
-              style={[
-                styles.calendarDay,
-                (idx < 22) && styles.calendarDayActive,
-              ]}
-            >
-              <Text style={[
-                styles.calendarDayText,
-                (idx < 22) && styles.calendarDayTextActive,
-              ]}>
-                {idx + 1}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </View>
+      <Text style={styles.railTitle}>Quick Actions</Text>
+      <Pressable
+        style={[styles.quickAction, hoveredItem === 'rail-new' && styles.quickActionHover]}
+        onHoverIn={() => setHoveredItem('rail-new')}
+        onHoverOut={() => setHoveredItem(null)}
+        onPress={handleCreateNote}
+      >
+        <Ionicons name="add-circle-outline" size={16} color={THEME.accent} />
+        <Text style={styles.quickActionText}>New note</Text>
+      </Pressable>
     </View>
   );
+
+  if (loading || tenantLoading) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <View style={styles.skeletonTitle} />
+          <View style={styles.skeletonSubtitle} />
+        </View>
+        <View style={styles.skeletonVoice} />
+        <View style={styles.skeletonEntries}>
+          {[1, 2, 3].map((i) => (
+            <View key={i} style={styles.skeletonEntry} />
+          ))}
+        </View>
+      </HubPageShell>
+    );
+  }
+
+  if (!tenant?.onboardingCompleted) {
+    return (
+      <HubPageShell rightRail={<View />}>
+        <View style={styles.header}>
+          <Text style={styles.pageTitle}>Notes & Journal</Text>
+          <Text style={styles.pageSubtitle}>Your business diary powered by Ava</Text>
+        </View>
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="person-circle-outline" size={48} color={THEME.text.muted} />
+          <Text style={styles.emptyStateTitle}>Complete your profile to unlock Notes</Text>
+          <Text style={styles.emptyStateDesc}>
+            Once you finish onboarding, you can capture thoughts, ideas, and journal entries here.
+          </Text>
+        </View>
+      </HubPageShell>
+    );
+  }
+
+  // Edit view
+  if (editingNote) {
+    return (
+      <HubPageShell rightRail={rightRail}>
+        <View style={styles.header}>
+          <View style={styles.editHeader}>
+            <Pressable
+              style={styles.backBtn}
+              onPress={() => setEditingNote(null)}
+              accessibilityLabel="Back to notes list"
+              accessibilityRole="button"
+            >
+              <Ionicons name="arrow-back" size={20} color={THEME.text.secondary} />
+              <Text style={styles.backBtnText}>Back</Text>
+            </Pressable>
+            <View style={styles.editActions}>
+              <Pressable
+                style={[styles.deleteBtn, hoveredItem === 'delete' && styles.deleteBtnHover]}
+                onHoverIn={() => setHoveredItem('delete')}
+                onHoverOut={() => setHoveredItem(null)}
+                onPress={() => handleDeleteNote(editingNote.id)}
+                accessibilityLabel="Delete note"
+                accessibilityRole="button"
+              >
+                <Ionicons name="trash-outline" size={16} color="#f87171" />
+                <Text style={styles.deleteBtnText}>Delete</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.saveBtn, hoveredItem === 'save' && styles.saveBtnHover]}
+                onHoverIn={() => setHoveredItem('save')}
+                onHoverOut={() => setHoveredItem(null)}
+                onPress={handleSaveNote}
+                accessibilityLabel="Save note"
+                accessibilityRole="button"
+              >
+                <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.editForm}>
+          <TextInput
+            style={styles.editTitleInput}
+            value={editTitle}
+            onChangeText={setEditTitle}
+            placeholder="Note title..."
+            placeholderTextColor={THEME.text.muted}
+            accessibilityLabel="Note title"
+          />
+          <TextInput
+            style={styles.editContentInput}
+            value={editContent}
+            onChangeText={setEditContent}
+            placeholder="Start writing..."
+            placeholderTextColor={THEME.text.muted}
+            multiline
+            textAlignVertical="top"
+            accessibilityLabel="Note content"
+          />
+        </View>
+      </HubPageShell>
+    );
+  }
 
   return (
     <HubPageShell rightRail={rightRail}>
@@ -161,7 +363,7 @@ export default function NotesScreen() {
               <View style={styles.voiceText}>
                 <Text style={styles.voiceTitle}>Voice to Note</Text>
                 <Text style={styles.voiceSubtitle}>
-                  Just talk to Ava. She'll capture your thoughts, organize them, and create 
+                  Just talk to Ava. She'll capture your thoughts, organize them, and create
                   searchable journal entries automatically.
                 </Text>
               </View>
@@ -170,33 +372,12 @@ export default function NotesScreen() {
               style={[styles.voiceBtn, hoveredItem === 'voice' && styles.voiceBtnHover]}
               onHoverIn={() => setHoveredItem('voice')}
               onHoverOut={() => setHoveredItem(null)}
+              accessibilityLabel="Start voice recording"
+              accessibilityRole="button"
             >
               <Ionicons name="mic-outline" size={18} color="#FFFFFF" />
               <Text style={styles.voiceBtnText}>Start Recording</Text>
             </Pressable>
-          </View>
-
-          <View style={styles.promptsSection}>
-            <Text style={styles.promptsTitle}>Today's Prompts</Text>
-            <View style={styles.promptsList}>
-              {todayPrompts.map((prompt, idx) => (
-                <Pressable
-                  key={idx}
-                  style={[
-                    styles.promptItem,
-                    hoveredItem === `prompt-${idx}` && styles.promptItemHover,
-                  ]}
-                  onHoverIn={() => setHoveredItem(`prompt-${idx}`)}
-                  onHoverOut={() => setHoveredItem(null)}
-                >
-                  <View style={styles.promptNumber}>
-                    <Text style={styles.promptNumberText}>{idx + 1}</Text>
-                  </View>
-                  <Text style={styles.promptText}>{prompt}</Text>
-                  <Ionicons name="arrow-forward" size={14} color={THEME.text.muted} />
-                </Pressable>
-              ))}
-            </View>
           </View>
         </LinearGradient>
       </View>
@@ -204,71 +385,134 @@ export default function NotesScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Journal Entries</Text>
-          <View style={styles.tabsRow}>
+          <View style={styles.headerActions}>
+            <View style={styles.tabsRow}>
+              <Pressable
+                style={[styles.tab, activeTab === 'all' && styles.tabActive]}
+                onPress={() => setActiveTab('all')}
+                accessibilityLabel="Show all notes"
+                accessibilityRole="button"
+              >
+                <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>All</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.tab, activeTab === 'pinned' && styles.tabActive]}
+                onPress={() => setActiveTab('pinned')}
+                accessibilityLabel="Show pinned notes"
+                accessibilityRole="button"
+              >
+                <Ionicons
+                  name={activeTab === 'pinned' ? 'star' : 'star-outline'}
+                  size={14}
+                  color={activeTab === 'pinned' ? '#000' : THEME.text.muted}
+                />
+                <Text style={[styles.tabText, activeTab === 'pinned' && styles.tabTextActive]}>Pinned</Text>
+              </Pressable>
+            </View>
             <Pressable
-              style={[styles.tab, activeTab === 'all' && styles.tabActive]}
-              onPress={() => setActiveTab('all')}
+              style={[styles.newNoteBtn, hoveredItem === 'new' && styles.newNoteBtnHover]}
+              onHoverIn={() => setHoveredItem('new')}
+              onHoverOut={() => setHoveredItem(null)}
+              onPress={handleCreateNote}
+              accessibilityLabel="Create new note"
+              accessibilityRole="button"
             >
-              <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>All</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.tab, activeTab === 'starred' && styles.tabActive]}
-              onPress={() => setActiveTab('starred')}
-            >
-              <Ionicons
-                name={activeTab === 'starred' ? 'star' : 'star-outline'}
-                size={14}
-                color={activeTab === 'starred' ? '#000' : THEME.text.muted}
-              />
-              <Text style={[styles.tabText, activeTab === 'starred' && styles.tabTextActive]}>Starred</Text>
+              <Ionicons name="add" size={16} color="#FFFFFF" />
+              <Text style={styles.newNoteBtnText}>New Note</Text>
             </Pressable>
           </View>
         </View>
 
+        {filteredNotes.length === 0 && (
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="pencil-outline" size={48} color={THEME.text.muted} />
+            <Text style={styles.emptyStateTitle}>
+              {activeTab === 'pinned' ? 'No pinned notes' : 'Start your first note'}
+            </Text>
+            <Text style={styles.emptyStateDesc}>
+              {activeTab === 'pinned'
+                ? 'Pin important notes to find them quickly.'
+                : 'Capture thoughts, ideas, and journal entries. Ava can help you organize them.'}
+            </Text>
+            {activeTab === 'all' && (
+              <Pressable
+                style={[styles.newNoteBtn, { marginTop: 8 }]}
+                onPress={handleCreateNote}
+                accessibilityLabel="Create first note"
+                accessibilityRole="button"
+              >
+                <Ionicons name="add" size={16} color="#FFFFFF" />
+                <Text style={styles.newNoteBtnText}>New Note</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+
         <View style={styles.entriesList}>
-          {journalEntries.map((entry) => (
+          {filteredNotes.map((note) => (
             <Pressable
-              key={entry.id}
+              key={note.id}
               style={[
                 styles.entryCard,
-                hoveredItem === `entry-${entry.id}` && styles.entryCardHover,
+                hoveredItem === `entry-${note.id}` && styles.entryCardHover,
               ]}
-              onHoverIn={() => setHoveredItem(`entry-${entry.id}`)}
+              onHoverIn={() => setHoveredItem(`entry-${note.id}`)}
               onHoverOut={() => setHoveredItem(null)}
+              onPress={() => openNoteForEditing(note)}
+              accessibilityLabel={`Edit note: ${note.title || 'Untitled'}`}
+              accessibilityRole="button"
             >
               <View style={styles.entryHeader}>
                 <View style={styles.entryMeta}>
-                  <Text style={styles.entryDate}>{formatDate(entry.date)}</Text>
-                  <Text style={styles.entryDot}>•</Text>
-                  <Text style={styles.entryTime}>{entry.time}</Text>
-                  <Text style={styles.entryDot}>•</Text>
-                  <Text style={styles.entryDuration}>{entry.duration}</Text>
+                  <Text style={styles.entryDate}>{formatDate(note.updated_at)}</Text>
+                  <Text style={styles.entryDot}>-</Text>
+                  <Text style={styles.entryTime}>{formatTime(note.updated_at)}</Text>
                 </View>
-                <Pressable style={styles.entryAction}>
-                  <Ionicons name="star-outline" size={16} color={THEME.text.muted} />
-                </Pressable>
+                <View style={styles.entryActions}>
+                  <Pressable
+                    style={styles.entryAction}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      handleTogglePin(note);
+                    }}
+                    accessibilityLabel={note.pinned ? 'Unpin note' : 'Pin note'}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name={note.pinned ? 'star' : 'star-outline'}
+                      size={16}
+                      color={note.pinned ? '#fbbf24' : THEME.text.muted}
+                    />
+                  </Pressable>
+                  <Pressable
+                    style={styles.entryAction}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      handleDeleteNote(note.id);
+                    }}
+                    accessibilityLabel="Delete note"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="trash-outline" size={16} color={THEME.text.muted} />
+                  </Pressable>
+                </View>
               </View>
-              <Text style={styles.entryTitle}>{entry.title}</Text>
-              <Text style={styles.entryPreview} numberOfLines={2}>{entry.preview}</Text>
-              <View style={styles.entryTags}>
-                {entry.tags.map((tag, idx) => (
-                  <View key={idx} style={styles.entryTag}>
-                    <Text style={styles.entryTagText}>{tag}</Text>
-                  </View>
-                ))}
-              </View>
+              <Text style={styles.entryTitle}>{note.title || 'Untitled note'}</Text>
+              <Text style={styles.entryPreview} numberOfLines={2}>
+                {note.content || 'No content yet...'}
+              </Text>
+              {note.tags && note.tags.length > 0 && (
+                <View style={styles.entryTags}>
+                  {note.tags.map((tag, idx) => (
+                    <View key={idx} style={styles.entryTag}>
+                      <Text style={styles.entryTagText}>{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </Pressable>
           ))}
         </View>
-
-        <Pressable
-          style={[styles.loadMoreBtn, hoveredItem === 'load' && styles.loadMoreBtnHover]}
-          onHoverIn={() => setHoveredItem('load')}
-          onHoverOut={() => setHoveredItem(null)}
-        >
-          <Text style={styles.loadMoreText}>View all entries</Text>
-          <Ionicons name="chevron-down" size={16} color={THEME.accent} />
-        </Pressable>
       </View>
     </HubPageShell>
   );
@@ -303,7 +547,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
   },
   voiceLeft: {
     flexDirection: 'row',
@@ -351,51 +594,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  promptsSection: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
-    paddingTop: 20,
-  },
-  promptsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: THEME.text.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 12,
-  },
-  promptsList: {
-    gap: 8,
-  },
-  promptItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  promptItemHover: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  promptNumber: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: THEME.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  promptNumberText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: THEME.accent,
-  },
-  promptText: {
-    flex: 1,
-    fontSize: 14,
-    color: THEME.text.secondary,
-  },
   section: {
     marginBottom: 32,
   },
@@ -404,11 +602,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
+    flexWrap: 'wrap',
+    gap: 12,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: THEME.text.primary,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   tabsRow: {
     flexDirection: 'row',
@@ -437,6 +642,24 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  newNoteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: THEME.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  newNoteBtnHover: {
+    opacity: 0.9,
+    transform: [{ scale: 1.02 }],
+  },
+  newNoteBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   entriesList: {
     gap: 12,
@@ -476,12 +699,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: THEME.text.muted,
   },
-  entryDuration: {
-    fontSize: 12,
-    color: THEME.text.muted,
+  entryActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
   entryAction: {
     padding: 4,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   entryTitle: {
     fontSize: 16,
@@ -509,26 +736,92 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: THEME.accent,
   },
-  loadMoreBtn: {
+  // Edit view
+  editHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    marginTop: 16,
+    justifyContent: 'space-between',
   },
-  loadMoreBtnHover: {
-    backgroundColor: THEME.accentMuted,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingRight: 16,
+    minHeight: 44,
   },
-  loadMoreText: {
+  backBtnText: {
     fontSize: 14,
-    color: THEME.accent,
+    color: THEME.text.secondary,
     fontWeight: '500',
   },
+  editActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.3)',
+    minHeight: 44,
+  },
+  deleteBtnHover: {
+    backgroundColor: 'rgba(248, 113, 113, 0.1)',
+  },
+  deleteBtnText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#f87171',
+  },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: THEME.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minHeight: 44,
+  },
+  saveBtnHover: {
+    opacity: 0.9,
+    transform: [{ scale: 1.02 }],
+  },
+  saveBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  editForm: {
+    gap: 16,
+  },
+  editTitleInput: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: THEME.text.primary,
+    backgroundColor: THEME.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  editContentInput: {
+    fontSize: 15,
+    color: THEME.text.secondary,
+    backgroundColor: THEME.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    minHeight: 300,
+    lineHeight: 22,
+  },
+  // Right rail
   railContent: {
     gap: 24,
   },
@@ -545,7 +838,7 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
   },
   statItem: {
     alignItems: 'center',
@@ -567,60 +860,75 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  tagsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tagItem: {
-    backgroundColor: THEME.accentMuted,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: THEME.accent,
-  },
   railDivider: {
     height: 1,
     backgroundColor: THEME.border,
   },
-  calendarPreview: {
-    backgroundColor: THEME.surface,
-    borderRadius: 10,
-    padding: 14,
-    gap: 12,
-  },
-  calendarMonth: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: THEME.text.primary,
-    textAlign: 'center',
-  },
-  calendarDays: {
+  quickAction: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: THEME.surface,
   },
-  calendarDay: {
-    width: 28,
+  quickActionHover: {
+    backgroundColor: THEME.surfaceHover,
+  },
+  quickActionText: {
+    fontSize: 13,
+    color: THEME.accent,
+    fontWeight: '500',
+  },
+  // Skeleton loading
+  skeletonTitle: {
+    width: 220,
     height: 28,
     borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 8,
+  },
+  skeletonSubtitle: {
+    width: 300,
+    height: 16,
+    borderRadius: 4,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  calendarDayActive: {
-    backgroundColor: THEME.accentMuted,
+  skeletonVoice: {
+    width: '100%',
+    height: 100,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginBottom: 32,
   },
-  calendarDayText: {
-    fontSize: 11,
-    color: THEME.text.muted,
+  skeletonEntries: {
+    gap: 12,
   },
-  calendarDayTextActive: {
-    color: THEME.accent,
+  skeletonEntry: {
+    width: '100%',
+    height: 100,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  // Empty state
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+    gap: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
     fontWeight: '600',
+    color: THEME.text.secondary,
+    textAlign: 'center',
+  },
+  emptyStateDesc: {
+    fontSize: 14,
+    color: THEME.text.muted,
+    textAlign: 'center',
+    maxWidth: 400,
+    lineHeight: 20,
   },
 });
