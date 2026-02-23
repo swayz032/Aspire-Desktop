@@ -281,7 +281,13 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
 
     if (profileError) {
       console.error('Profile creation error:', profileError);
-      // Non-fatal — suite_id is still valid, onboarding form can save later
+      // FATAL — without the profile row, onboarding_completed_at is never set,
+      // causing the auth gate to loop the user back to onboarding indefinitely.
+      return res.status(500).json({
+        error: 'PROFILE_CREATION_FAILED',
+        message: `Failed to create business profile: ${profileError.message || profileError.code || 'unknown error'}`,
+        details: profileError.details || profileError.hint || null,
+      });
     }
 
     // 5. Emit intake receipt (Law #2: Receipt for All — PII redacted per Law #9)
