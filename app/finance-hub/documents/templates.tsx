@@ -23,6 +23,7 @@ import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 import { TemplateCard, type TemplateData, LANE_META, type TemplateLane } from '@/components/finance/documents';
 import { getPandaDocTemplates, type PandaDocTemplate } from '@/lib/api';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { FinnDeskOverlay } from '@/components/finance/FinnDeskOverlay';
 
 const webOnly = (s: Record<string, unknown>) => Platform.OS === 'web' ? s : {};
 
@@ -114,9 +115,17 @@ export default function TemplatesPage() {
     return tabs;
   }, [liveTemplates]);
 
-  const handleUseTemplate = useCallback((_key: string) => {
-    // TODO: Navigate to Ava with template context for Clara to generate from
-  }, []);
+  // Finn overlay state for "Create with Finn"
+  const [showFinnOverlay, setShowFinnOverlay] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateData | null>(null);
+
+  const handleUseTemplate = useCallback((key: string) => {
+    const template = liveTemplates.find(t => t.key === key);
+    if (!template) return;
+    // Open Finn video overlay with template context — auto-connect, Finn is aware
+    setSelectedTemplate(template);
+    setShowFinnOverlay(true);
+  }, [liveTemplates]);
 
   const handleRefresh = useCallback(async () => {
     setLoading(true);
@@ -243,6 +252,16 @@ export default function TemplatesPage() {
           </View>
         </View>
       </View>
+
+      {/* Finn Video Overlay — auto-opens Video tab with template context for Clara */}
+      {showFinnOverlay && selectedTemplate && (
+        <FinnDeskOverlay
+          visible={showFinnOverlay}
+          onClose={() => { setShowFinnOverlay(false); setSelectedTemplate(null); }}
+          initialTab="video"
+          templateContext={{ key: selectedTemplate.key, description: selectedTemplate.description }}
+        />
+      )}
     </FinanceHubShell>
   );
 }

@@ -505,10 +505,38 @@ export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProp
   useEffect(() => {
     fetchFinnContext().then((ctx) => {
       setFinnContext(ctx);
-      const greeting = buildSeedMessage(ctx.snapshot, ctx.exceptions);
-      setChat([{ id: 'm1', from: 'finn', text: greeting }]);
+      if (templateContext) {
+        // Template context: Finn greets with awareness of the selected template
+        setChat([{ id: 'm1', from: 'finn', text: `I see you'd like to create a "${templateContext.description}" document. I'll work with Clara to get that ready. Let me ask you a few questions to fill in the details.` }]);
+      } else {
+        const greeting = buildSeedMessage(ctx.snapshot, ctx.exceptions);
+        setChat([{ id: 'm1', from: 'finn', text: greeting }]);
+      }
     });
   }, []);
+
+  // Auto-connect video when templateContext is provided (user clicked "Create with Finn")
+  const autoConnectAttempted = useRef(false);
+  useEffect(() => {
+    if (templateContext && activeTab === 'video' && videoState === 'idle' && !autoConnectAttempted.current) {
+      autoConnectAttempted.current = true;
+      // Small delay to let the UI render before connecting
+      const timer = setTimeout(() => {
+        setVideoState('connecting');
+        setConnectionStatus('Connecting to Finn...');
+        connectFinnAvatar('finn-video-element', session?.access_token)
+          .then((client) => {
+            anamClientRef.current = client;
+            setVideoState('connected');
+          })
+          .catch(() => {
+            setVideoState('idle');
+            setConnectionStatus('Connection failed — try again');
+          });
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [templateContext, activeTab, videoState, session?.access_token]);
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();

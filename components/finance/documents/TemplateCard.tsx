@@ -141,7 +141,8 @@ function TemplateCardInner({ template, index = 0, onUseTemplate }: TemplateCardP
         )}
         {isAvailable && (
           <View style={styles.useBtn}>
-            <Ionicons name="arrow-forward" size={14} color={Colors.accent.cyan} />
+            <Ionicons name="videocam" size={12} color={Colors.accent.cyan} />
+            <Text style={styles.useBtnText}>Create with Finn</Text>
           </View>
         )}
       </View>
@@ -269,11 +270,17 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   useBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(59,130,246,0.12)',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(59,130,246,0.12)',
+  },
+  useBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.accent.cyan,
   },
 });
