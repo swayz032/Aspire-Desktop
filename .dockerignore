@@ -1,0 +1,8 @@
+node_modules
+.expo
+dist
+android
+ios
+*.tsbuildinfo
+.git
+attached_assets
