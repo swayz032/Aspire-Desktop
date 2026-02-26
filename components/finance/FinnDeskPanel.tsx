@@ -482,9 +482,10 @@ const playSuccessSound = () => {
 type FinnDeskPanelProps = {
   initialTab?: 'voice' | 'video';
   templateContext?: { key: string; description: string } | null;
+  isInOverlay?: boolean;
 };
 
-export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProps = {}) {
+export function FinnDeskPanel({ initialTab, templateContext, isInOverlay }: FinnDeskPanelProps = {}) {
   const [activeTab, setActiveTab] = useState<'voice' | 'video'>(initialTab || 'voice');
   const [videoState, setVideoState] = useState<'idle' | 'connecting' | 'connected'>('idle');
   const [connectionStatus, setConnectionStatus] = useState('');
@@ -790,7 +791,7 @@ export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProp
   };
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isInOverlay && styles.cardOverlay]}>
       <View style={styles.header}>
         <Text style={styles.title}>Finn Desk</Text>
       </View>
@@ -812,7 +813,7 @@ export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProp
         </Pressable>
       </View>
 
-      <View style={styles.surfaceContainer}>
+      <View style={[styles.surfaceContainer, isInOverlay && styles.surfaceContainerOverlay]}>
         {activeTab === 'voice' ? (
           <View style={styles.voiceSurface}>
             <View style={styles.voiceHeader}>
@@ -1043,6 +1044,16 @@ const styles = StyleSheet.create({
       flex: 1,
     }),
   } as any,
+  cardOverlay: {
+    flex: 1,
+    borderRadius: 0,
+    borderWidth: 0,
+    ...(Platform.OS === 'web' ? {
+      maxWidth: undefined,
+      height: '100%',
+      margin: 0,
+    } : {}),
+  } as any,
   header: {
     paddingHorizontal: 16,
     paddingTop: 14,
@@ -1098,6 +1109,11 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     flexShrink: 0,
+  },
+  surfaceContainerOverlay: {
+    height: undefined,
+    flex: 1.2,
+    flexShrink: 1,
   },
   voiceSurface: {
     flex: 1,

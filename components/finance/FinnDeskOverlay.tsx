@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, Pressable, Platform } from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import { View, StyleSheet, Pressable, Platform, useWindowDimensions, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { FinnDeskPanel } from './FinnDeskPanel';
@@ -12,6 +12,36 @@ type Props = {
 };
 
 export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext }: Props) {
+  const { width } = useWindowDimensions();
+
+  const panelStyle = useMemo((): ViewStyle => {
+    if (width >= 1200) {
+      // Desktop: generous modal
+      return {
+        width: '70%' as unknown as number,
+        maxWidth: 900,
+        height: '90vh' as unknown as number,
+        borderRadius: 16,
+      };
+    }
+    if (width >= 900) {
+      // Laptop: wider proportion
+      return {
+        width: '80%' as unknown as number,
+        maxWidth: 900,
+        height: '85vh' as unknown as number,
+        borderRadius: 16,
+      };
+    }
+    // Tablet / small: near-fullscreen
+    return {
+      width: '95%' as unknown as number,
+      maxWidth: undefined,
+      height: '95vh' as unknown as number,
+      borderRadius: 12,
+    };
+  }, [width]);
+
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -27,8 +57,8 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
     <View style={styles.overlay}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.panelContainer}>
-        <View style={styles.panel}>
-          <FinnDeskPanel initialTab={initialTab} templateContext={templateContext} />
+        <View style={[styles.panel, panelStyle]}>
+          <FinnDeskPanel initialTab={initialTab} templateContext={templateContext} isInOverlay />
           <Pressable style={styles.closeBtn} onPress={onClose}>
             <Ionicons name="close" size={20} color={Colors.text.secondary} />
           </Pressable>
@@ -65,10 +95,6 @@ const styles = StyleSheet.create({
     pointerEvents: 'box-none',
   } as any,
   panel: {
-    width: '70%',
-    maxWidth: 800,
-    height: '90vh',
-    borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#1C1C1E',
     position: 'relative',

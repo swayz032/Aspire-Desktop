@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -580,9 +580,17 @@ class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode
   }
 }
 
+/** Breakpoint: below this, KPI cards wrap 2x2 and chart rows stack vertically */
+const COMPACT_BREAKPOINT = 1100;
+/** Breakpoint: below this, KPI cards stack fully and Finn card stacks vertically */
+const NARROW_BREAKPOINT = 800;
+
 function FinanceHubContent() {
   React.useEffect(() => { if (Platform.OS === 'web') injectFinnCss(); }, []);
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
+  const isCompact = windowWidth < COMPACT_BREAKPOINT;
+  const isNarrow = windowWidth < NARROW_BREAKPOINT;
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
@@ -853,14 +861,14 @@ function FinanceHubContent() {
       {hasSnapshot && (
         <>
         <SectionLabel icon="book" label="CHAPTERS" color="#999" ledDelay={1} />
-        <View style={[s.kpiRow, { marginBottom: 16 }]}>
+        <View style={[s.kpiRow, { marginBottom: 16 }, isCompact && s.kpiRowWrap]}>
           {[
             { label: 'Now', subtitle: 'Cash truth', value: formatShortCurrency(snapshot.chapters.now.cashAvailable), icon: 'wallet-outline', color: '#10B981', metricId: 'cash_available' },
             { label: 'Next 7d', subtitle: `Net ${formatShortCurrency(snapshot.chapters.next.netCashFlow7d)}`, value: `${(snapshot.chapters.next.netCashFlow7d ?? 0) >= 0 ? '+' : ''}${formatShortCurrency(snapshot.chapters.next.netCashFlow7d)}`, icon: 'trending-up', color: (snapshot.chapters.next.netCashFlow7d ?? 0) >= 0 ? '#10B981' : '#ef4444', metricId: 'expected_inflows' },
             { label: 'This Month', subtitle: snapshot.chapters.month.period, value: formatShortCurrency(snapshot.chapters.month.netIncome), icon: 'bar-chart-outline', color: (snapshot.chapters.month.netIncome ?? 0) >= 0 ? '#10B981' : '#ef4444', metricId: 'net_income' },
             { label: 'Trust', subtitle: `${snapshot.chapters.reconcile.mismatchCount} mismatches`, value: snapshot.chapters.reconcile.mismatchCount > 0 ? `${snapshot.chapters.reconcile.mismatchCount}` : '\u2713', icon: 'git-compare-outline', color: snapshot.chapters.reconcile.mismatchCount > 0 ? '#F59E0B' : '#10B981', metricId: 'reconciliation' },
           ].map((ch, i) => (
-            <Pressable key={i} onPress={() => setExplainMetric(ch.metricId)} style={{ flex: 1 }}>
+            <Pressable key={i} onPress={() => setExplainMetric(ch.metricId)} style={[s.kpiPressable, isCompact && s.kpiPressableCompact]}>
               <GlassCard style={[{ padding: 14 }, Platform.OS === 'web' && { cursor: 'pointer' }]} tint={{ color: ch.color, position: 'top-left' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                   <Ionicons name={ch.icon as any} size={14} color={ch.color} />
@@ -877,7 +885,7 @@ function FinanceHubContent() {
 
       <SectionLabel icon="wallet" label="YOUR POSITION" color="#999" ledDelay={2} />
 
-      <View style={s.row}>
+      <View style={[s.row, isCompact && s.rowStacked]}>
         <GlassCard style={[s.balanceCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.trendLine(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '50% auto' }]} tint={{ color: '#3B82F6', position: 'top-right' }}>
           <View style={s.balanceHeader}>
             <Pressable onPress={() => setExplainMetric('cash_available')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -958,7 +966,7 @@ function FinanceHubContent() {
         </GlassCard>
 
         {/* Finn Card — Black bg, floating panel left, 3D object right */}
-        <View style={s.finnCardOuter}>
+        <View style={[s.finnCardOuter, isNarrow && s.finnCardOuterStacked]}>
           {/* Floating Panel (left) */}
           <View style={s.finnFloatingPanel}>
             <View style={s.finnPanelInner}>
@@ -1022,7 +1030,7 @@ function FinanceHubContent() {
 
       <SectionLabel icon="pulse" label="QUICK PULSE" color="#999" ledDelay={3} />
 
-      <View style={s.kpiRow}>
+      <View style={[s.kpiRow, isCompact && s.kpiRowWrap]}>
         {kpiCards.map((kpi, i) => {
           const kpiTints = [
             { color: '#3B82F6', position: 'top-left' },
@@ -1031,7 +1039,7 @@ function FinanceHubContent() {
             { color: '#ef4444', position: 'bottom-left' },
           ];
           return (
-          <Pressable key={i} onPress={() => setExplainMetric(kpi.metricId)} style={{ flex: 1 }}>
+          <Pressable key={i} onPress={() => setExplainMetric(kpi.metricId)} style={[s.kpiPressable, isCompact && s.kpiPressableCompact]}>
           <GlassCard style={[s.kpiCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.barChart(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '40% auto', cursor: 'pointer' }]} tint={kpiTints[i]}>
             {i === 0 && <View style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', backgroundColor: '#3B82F6', borderRadius: 2 } as any} />}
             <View style={s.kpiTopRow}>
@@ -1063,8 +1071,8 @@ function FinanceHubContent() {
 
       <SectionLabel icon="flow" label="MONEY FLOW" color="#999" ledDelay={4} />
 
-      <View style={s.row}>
-        <GlassCard style={[s.chartCard, { flex: 2 }]} tint={{ color: '#10B981', position: 'top-right' }}>
+      <View style={[s.row, isCompact && s.rowStacked]}>
+        <GlassCard style={[s.chartCard, { flex: 2 }, isCompact && { flex: undefined }]} tint={{ color: '#10B981', position: 'top-right' }}>
           <View style={s.chartHeader}>
             <View>
               <Text style={s.cardTitle}>Transaction Reports</Text>
@@ -1459,6 +1467,9 @@ const s = StyleSheet.create({
     gap: 12,
     marginBottom: 16,
   },
+  rowStacked: {
+    flexDirection: 'column',
+  },
 
   card: {
     backgroundColor: '#1C1C1E',
@@ -1563,6 +1574,10 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139,92,246,0.15)',
   } as any,
+  finnCardOuterStacked: {
+    flexDirection: 'column',
+    minHeight: undefined,
+  },
   finnFloatingPanel: {
     width: '38%',
     justifyContent: 'center',
@@ -1693,6 +1708,18 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginBottom: 16,
+  },
+  kpiRowWrap: {
+    flexWrap: 'wrap',
+  },
+  kpiPressable: {
+    flex: 1,
+  },
+  kpiPressableCompact: {
+    flexBasis: '45%' as any,
+    flex: undefined,
+    flexGrow: 1,
+    marginBottom: 10,
   },
   kpiCard: {
     flex: 1,
