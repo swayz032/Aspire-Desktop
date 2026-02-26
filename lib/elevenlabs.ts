@@ -42,6 +42,11 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
     voiceId: '6aDn1KB0hjpdcocrUkmq',
     model: 'eleven_turbo_v2_5',
   },
+  sarah: {
+    name: 'Sarah',
+    voiceId: 'DODLEQrClDo8wCz460ld',
+    model: 'eleven_turbo_v2_5',
+  },
 };
 
 export type AgentName = keyof typeof AGENT_VOICES;

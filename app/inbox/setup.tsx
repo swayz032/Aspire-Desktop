@@ -57,14 +57,23 @@ export default function MailboxSetupScreen() {
     }
 
     // Handle Google OAuth callback return
+    let oauthHandled = false;
     if (params.provider === 'google' && params.email) {
       const email = params.email as string;
       setOnboarding(prev => ({
         ...prev,
+        provider: 'GOOGLE' as MailProvider,
         oauthStatus: { connectedEmail: email, scopes: ['gmail.readonly', 'gmail.send', 'gmail.modify', 'gmail.labels'] },
         mailboxes: [{ email, displayName: 'Google Workspace' }],
       }));
       setCurrentStep(2);
+      oauthHandled = true;
+
+      // Resume from existing job if we have one
+      const savedJobId = typeof window !== 'undefined' ? sessionStorage.getItem('mailSetupJobId') : null;
+      if (savedJobId) {
+        setJobId(savedJobId);
+      }
     }
 
     // Handle OAuth error
@@ -72,8 +81,8 @@ export default function MailboxSetupScreen() {
       console.error('OAuth error:', params.error);
     }
 
-    // Handle step param from callback redirect
-    if (params.step) {
+    // Handle step param from callback redirect — only if OAuth didn't already set step
+    if (params.step && !oauthHandled) {
       setCurrentStep(parseInt(params.step as string) || 0);
     }
   }, []);

@@ -27,11 +27,9 @@ const KEY_MAP: Record<string, string> = {
   // Supabase
   service_role_key: 'SUPABASE_SERVICE_ROLE_KEY',
   jwt_secret: 'SUPABASE_JWT_SECRET',
-  // OpenAI
-  api_key: 'OPENAI_API_KEY',
+  // OpenAI + Twilio "api_key" collision handled by GROUP_KEY_MAP below
   // Twilio
   account_sid: 'TWILIO_ACCOUNT_SID',
-  api_key: 'TWILIO_API_KEY',
   api_secret: 'TWILIO_API_SECRET',
   auth_token: 'TWILIO_AUTH_TOKEN',
   // Internal

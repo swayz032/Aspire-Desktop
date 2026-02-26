@@ -32,8 +32,10 @@ function mapSuiteProfileToTenant(profile: any): Tenant {
     updatedAt: profile.updated_at ?? profile.updatedAt ?? new Date().toISOString(),
     // Intake fields from suite_profiles (populated after onboarding)
     industry: profile.industry ?? null,
-    servicesNeeded: profile.services_needed ?? profile.servicesNeeded ?? null,
-    servicesPriority: profile.services_priority ?? profile.servicesPriority ?? null,
+    industrySpecialty: profile.industry_specialty ?? profile.industrySpecialty ?? null,
+    incomeRange: profile.income_range ?? profile.incomeRange ?? null,
+    referralSource: profile.referral_source ?? profile.referralSource ?? null,
+    gender: profile.gender ?? null,
     teamSize: profile.team_size ?? profile.teamSize ?? null,
     entityType: profile.entity_type ?? profile.entityType ?? null,
     yearsInBusiness: profile.years_in_business ?? profile.yearsInBusiness ?? null,

@@ -27,12 +27,24 @@ const EMPTY_CASH: CashPosition = { availableCash: 0, upcomingOutflows7d: 0, expe
 
 const HEADER_HEIGHT = 72;
 
-// Time-of-day greeting
+// Time-of-day greeting (aligned with genesis-gate spec)
 function getGreeting(): string {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (h >= 5 && h < 12) return 'Good morning';
+  if (h >= 12 && h < 17) return 'Good afternoon';
+  if (h >= 17 && h < 21) return 'Good evening';
+  return 'Good night';
+}
+
+// Formal name: Mr./Ms. LastName, or first name if gender unknown
+function getFormalName(ownerName: string | null | undefined, gender: string | null | undefined): string {
+  if (!ownerName?.trim()) return '';
+  const parts = ownerName.trim().split(/\s+/);
+  const lastName = parts.length > 1 ? parts[parts.length - 1] : parts[0];
+  const firstName = parts[0];
+  if (gender === 'male') return `Mr. ${lastName}`;
+  if (gender === 'female') return `Ms. ${lastName}`;
+  return firstName;
 }
 
 // Banner dismiss key with 7-day expiry
@@ -71,18 +83,15 @@ export function DesktopHome() {
     [dynamicItems, supabaseAuthority],
   );
 
-  // Personalized greeting from intake data
+  // Personalized greeting from intake data — formal name (Mr./Ms.) per genesis-gate spec
   const greeting = useMemo(() => {
     const base = getGreeting();
-    if (tenant?.ownerName) {
-      const firstName = tenant.ownerName.split(' ')[0];
-      if (tenant.industry) {
-        return `${base}, ${firstName}. Here's what matters for your ${tenant.industry} business today.`;
-      }
-      return `${base}, ${firstName}.`;
+    const formalName = getFormalName(tenant?.ownerName, tenant?.gender);
+    if (formalName) {
+      return `${base}, ${formalName}.`;
     }
     return `${base}.`;
-  }, [tenant?.ownerName, tenant?.industry]);
+  }, [tenant?.ownerName, tenant?.gender]);
 
   // Show "Complete Your Profile" banner for users who haven't completed full intake
   const showProfileBanner = tenant && tenant.onboardingCompleted && !tenant.industry && !bannerDismissed;

@@ -84,7 +84,7 @@ async function withImapConnection<T>(
   });
 
   const timer = setTimeout(() => {
-    client.close().catch(() => {});
+    (client.close() as unknown as Promise<void>)?.catch(() => {});
   }, IMAP_TIMEOUT_MS);
 
   try {
@@ -221,7 +221,7 @@ export async function listThreads(
           uid: msg.uid,
           seq: msg.seq,
           envelope: msg.envelope,
-          flags: msg.flags,
+          flags: msg.flags ?? new Set<string>(),
           size: msg.size || 0,
           bodyStructure: msg.bodyStructure,
         });
@@ -287,6 +287,7 @@ export async function listThreads(
         // Use first message UID as thread ID (stable across sessions)
         const threadId = `imap-${firstMsg.uid}`;
 
+        const ts = date ? new Date(date).toISOString() : new Date().toISOString();
         threads.push({
           id: threadId,
           type: 'mail',
@@ -295,16 +296,18 @@ export async function listThreads(
           senderName: sender.name,
           senderEmail: sender.email,
           recipients,
-          timestamp: date ? new Date(date).toISOString() : new Date().toISOString(),
+          timestamp: ts,
           suiteId,
           officeId,
           tags: [],
-          priority: 'medium',
-          status: 'active',
+          priority: 'Medium',
+          status: 'Open',
           linkedReceiptIds: [],
           unread,
           messageCount: threadMsgs.length,
           hasAttachments,
+          createdAt: ts,
+          updatedAt: ts,
         });
       }
 
@@ -405,7 +408,7 @@ export async function getThreadDetail(
           let flags = new Set<string>();
           for await (const meta of client.fetch(String(uid), { envelope: true, flags: true, bodyStructure: true, uid: true })) {
             envelope = meta.envelope;
-            flags = meta.flags;
+            flags = meta.flags ?? new Set<string>();
             threadHasAttachments = threadHasAttachments || hasAttachmentParts(meta.bodyStructure);
           }
 
@@ -445,6 +448,7 @@ export async function getThreadDetail(
 
       const uniqueRecipients = [...new Set(allRecipients)];
 
+      const threadTs = lastDate || new Date().toISOString();
       const thread: MailThread = {
         id: threadId,
         type: 'mail',
@@ -453,16 +457,18 @@ export async function getThreadDetail(
         senderName: firstSender.name,
         senderEmail: firstSender.email,
         recipients: uniqueRecipients,
-        timestamp: lastDate || new Date().toISOString(),
+        timestamp: threadTs,
         suiteId,
         officeId,
         tags: [],
-        priority: 'medium',
-        status: 'active',
+        priority: 'Medium',
+        status: 'Open',
         linkedReceiptIds: [],
         unread: threadUnread,
         messageCount: messages.length,
         hasAttachments: threadHasAttachments,
+        createdAt: threadTs,
+        updatedAt: threadTs,
       };
 
       return {
@@ -678,6 +684,6 @@ export async function createDraft(
     const raw = lines.join('\r\n');
 
     const result = await client.append('Drafts', Buffer.from(raw), ['\\Draft']);
-    return { uid: String(result.uid || 'draft') };
+    return { uid: String(result && typeof result === 'object' && 'uid' in result ? result.uid : 'draft') };
   });
 }

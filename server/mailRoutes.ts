@@ -79,7 +79,7 @@ router.get('/api/mail/threads', async (req: Request, res: Response) => {
 router.get('/api/mail/threads/:id', async (req: Request, res: Response) => {
   try {
     const { token, suiteId, officeId } = await getGmailToken(req);
-    const threadId = req.params.id;
+    const threadId = req.params.id as string;
 
     const gmailThread = await getThread(token, threadId);
     const detail = gmailThreadToMailDetail(gmailThread, suiteId, officeId);
@@ -104,7 +104,7 @@ router.get('/api/mail/threads/:id', async (req: Request, res: Response) => {
 router.get('/api/mail/messages/:id', async (req: Request, res: Response) => {
   try {
     const { token, suiteId } = await getGmailToken(req);
-    const messageId = req.params.id;
+    const messageId = req.params.id as string;
 
     const gmailMsg = await getMessage(token, messageId);
 

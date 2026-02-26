@@ -1,9 +1,8 @@
 /**
- * Onboarding Setup Tasks — Maps services_needed → setup tasks in approval_requests
+ * Onboarding Setup Tasks — Generates setup tasks for the Authority Queue
  *
- * When a user completes onboarding, this generates setup tasks that appear
- * in the Authority Queue, guiding them to connect integrations for each
- * selected service.
+ * V3: All services are auto-included for every user. Setup tasks guide
+ * new users to connect integrations for each agent capability.
  *
  * Risk Tier: GREEN (informational setup prompts, no state changes)
  */
@@ -117,17 +116,22 @@ const SERVICE_TASK_MAP: Record<string, SetupTask> = {
 };
 
 /**
- * Generate setup tasks based on selected services.
+ * Generate setup tasks for all services (v3: all services auto-included).
+ * Optionally filter by specific services for backward compatibility.
  * Returns tasks sorted by priority (high → medium → low).
  */
-export function generateSetupTasks(servicesNeeded: string[]): SetupTask[] {
+export function generateSetupTasks(services?: string[]): SetupTask[] {
   const tasks: SetupTask[] = [];
 
-  for (const service of servicesNeeded) {
-    const task = SERVICE_TASK_MAP[service];
-    if (task) {
-      tasks.push(task);
+  if (services && services.length > 0) {
+    // Filtered mode (backward compatibility)
+    for (const service of services) {
+      const task = SERVICE_TASK_MAP[service];
+      if (task) tasks.push(task);
     }
+  } else {
+    // V3 default: all services auto-included
+    tasks.push(...Object.values(SERVICE_TASK_MAP));
   }
 
   const priorityOrder = { high: 0, medium: 1, low: 2 };

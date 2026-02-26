@@ -21,6 +21,39 @@ import { LiveKitConferenceProvider } from '@/components/session/LiveKitConferenc
 import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
 
+/**
+ * LiveKitSync — renders as invisible child INSIDE LiveKitConferenceProvider
+ * so that useParticipants/useTracks/useRoomContext resolve the LiveKitRoom context.
+ * Reports data up via onSync callback.
+ */
+interface LiveKitSyncData {
+  participants: ReturnType<typeof useParticipants>;
+  videoTracks: TrackReferenceOrPlaceholder[];
+  room: ReturnType<typeof useRoomContext> | null;
+}
+
+function LiveKitSync({ onSync }: { onSync: (data: LiveKitSyncData) => void }) {
+  const participants = useParticipants();
+  const videoTracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
+  );
+  let room: ReturnType<typeof useRoomContext> | null = null;
+  try {
+    room = useRoomContext();
+  } catch {
+    // Room not ready yet
+  }
+
+  useEffect(() => {
+    onSync({ participants, videoTracks, room });
+  }, [participants, videoTracks, room]);
+
+  return null;
+}
+
 function WebcamView({ stream }: { stream: MediaStream }) {
   const containerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -343,24 +376,19 @@ export default function ConferenceLive() {
 
   // LiveKit room connection
   const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
+  const [tokenLoading, setTokenLoading] = useState(true);
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
-  // LiveKit hooks — useParticipants/useTracks from @livekit/components-react
-  // These work when wrapped in <LiveKitConferenceProvider>; return empty when not connected
-  let lkParticipants: ReturnType<typeof useParticipants> = [];
-  let lkVideoTracks: TrackReferenceOrPlaceholder[] = [];
-  let lkRoom: ReturnType<typeof useRoomContext> | null = null;
-  try {
-    lkParticipants = useParticipants();
-    lkVideoTracks = useTracks(
-      [
-        { source: Track.Source.Camera, withPlaceholder: true },
-        { source: Track.Source.ScreenShare, withPlaceholder: false },
-      ],
-    );
-    lkRoom = useRoomContext();
-  } catch {
-    // Not inside LiveKitRoom context yet (token not ready)
-  }
+  // LiveKit data — populated by <LiveKitSync> child rendered inside <LiveKitConferenceProvider>
+  const [lkParticipants, setLkParticipants] = useState<ReturnType<typeof useParticipants>>([]);
+  const [lkVideoTracks, setLkVideoTracks] = useState<TrackReferenceOrPlaceholder[]>([]);
+  const [lkRoom, setLkRoom] = useState<ReturnType<typeof useRoomContext> | null>(null);
+
+  const handleLiveKitSync = useCallback((data: LiveKitSyncData) => {
+    setLkParticipants(data.participants);
+    setLkVideoTracks(data.videoTracks);
+    setLkRoom(data.room);
+  }, []);
 
   // Map LiveKit participants to our UI Participant interface
   const participants: Participant[] = lkParticipants.length > 0
@@ -430,19 +458,31 @@ export default function ConferenceLive() {
     const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
     const participantName = (params.participantName as string) || 'You';
 
+    setTokenLoading(true);
+    setTokenError(null);
+
     fetch('/api/livekit/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomName, participantName, suiteId }),
     })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         if (data.token) {
           setLiveKitToken(data.token);
+        } else {
+          setTokenError(data.error || 'No token returned');
         }
       })
       .catch(err => {
         console.error('LiveKit token fetch failed:', err.message);
+        setTokenError(err.message || 'Conference service unavailable');
+      })
+      .finally(() => {
+        setTokenLoading(false);
       });
   }, [suiteId, params.roomName, params.participantName]);
 
@@ -1288,6 +1328,33 @@ export default function ConferenceLive() {
           token={liveKitToken}
           serverUrl={process.env.EXPO_PUBLIC_LIVEKIT_URL || 'wss://aspire-3rdm9zjn.livekit.cloud'}
         >
+        {/* LiveKitSync resolves hooks inside LiveKitRoom context */}
+        {liveKitToken && <LiveKitSync onSync={handleLiveKitSync} />}
+
+        {/* Fail-closed: show explicit error instead of blank screen (Law #3) */}
+        {tokenError && !liveKitToken && (
+          <View style={{ flex: 1, backgroundColor: '#0a0a0c', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+            <Ionicons name="videocam-off-outline" size={48} color="#ef4444" />
+            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>Conference Service Unavailable</Text>
+            <Text style={{ color: '#9ca3af', fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 400 }}>{tokenError}</Text>
+            <Pressable
+              onPress={() => router.back()}
+              style={{ marginTop: 24, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#1f2937', borderRadius: 8 }}
+            >
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>Return to Lobby</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Loading state while token is being fetched */}
+        {tokenLoading && !liveKitToken && !tokenError && (
+          <View style={{ flex: 1, backgroundColor: '#0a0a0c', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#9ca3af', fontSize: 16 }}>Connecting to conference...</Text>
+          </View>
+        )}
+
+        {/* Main conference UI — only rendered when token is ready or loading gracefully */}
+        {(!tokenError || liveKitToken) && !tokenLoading && (
         <View style={desktopStyles.container}>
           <Toast
             visible={toastVisible}
@@ -1496,6 +1563,7 @@ export default function ConferenceLive() {
             icon="call"
           />
         </View>
+        )}
         </LiveKitConferenceProvider>
       </FullscreenSessionShell>
     );

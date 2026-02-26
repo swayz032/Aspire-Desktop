@@ -13,8 +13,10 @@ export interface Tenant extends BaseEntity {
   currency: string;
   // Intake fields (populated from suite_profiles after onboarding)
   industry: string | null;
-  servicesNeeded: string[] | null;
-  servicesPriority: string[] | null;
+  industrySpecialty: string | null;
+  incomeRange: string | null;
+  referralSource: string | null;
+  gender: string | null;
   teamSize: string | null;
   entityType: string | null;
   yearsInBusiness: string | null;

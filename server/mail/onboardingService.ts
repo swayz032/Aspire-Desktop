@@ -638,6 +638,7 @@ export async function listAccounts(suiteId: string): Promise<any[]> {
           canLabels: true,
           canJunk: true,
           canThreads: true,
+          hasImapCredentials: false,
         },
       });
     }

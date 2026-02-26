@@ -63,9 +63,41 @@ export function DesktopHeader({
   // Derive display values from auth context, falling back to props, then defaults
   const businessName = businessNameProp || tenant?.businessName || 'Your Business';
   const role = roleProp || tenant?.role || 'Founder';
-  const suiteId = suiteIdProp || tenant?.displayId || tenant?.suiteId?.slice(0, 8) || '';
+  const suiteDisplayId = tenant?.displayId || suiteIdProp || tenant?.suiteId?.slice(0, 8) || '';
+  const officeDisplayId = tenant?.officeDisplayId || '';
   const userName = tenant?.ownerName || session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'User';
   const userEmail = session?.user?.email || tenant?.ownerEmail || '';
+
+  // Time-of-day greeting with formal name
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    let timeGreeting: string;
+    if (hour >= 5 && hour < 12) timeGreeting = 'Good morning';
+    else if (hour >= 12 && hour < 17) timeGreeting = 'Good afternoon';
+    else if (hour >= 17 && hour < 21) timeGreeting = 'Good evening';
+    else timeGreeting = 'Good night';
+
+    // Formal name: Mr./Ms. LastName or first name if gender unknown
+    const ownerName = tenant?.ownerName || '';
+    const gender = tenant?.gender || null;
+    if (!ownerName.trim()) return timeGreeting;
+    const parts = ownerName.trim().split(/\s+/);
+    const lastName = parts.length > 1 ? parts[parts.length - 1] : parts[0];
+    const firstName = parts[0];
+    let formalName: string;
+    if (gender === 'male') formalName = `Mr. ${lastName}`;
+    else if (gender === 'female') formalName = `Ms. ${lastName}`;
+    else formalName = firstName;
+    return `${timeGreeting}, ${formalName}`;
+  }, [tenant]);
+
+  // Suite identity label (replaces "Founder" role)
+  const suiteIdentity = useMemo(() => {
+    const parts: string[] = [];
+    if (suiteDisplayId) parts.push(`Suite ${suiteDisplayId}`);
+    if (officeDisplayId) parts.push(`Office ${officeDisplayId}`);
+    return parts.join(' \u00b7 ') || 'Suite';
+  }, [suiteDisplayId, officeDisplayId]);
 
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
@@ -261,7 +293,7 @@ export function DesktopHeader({
                 <View style={s.statusDot} />
                 <Text style={s.businessName}>{businessName}</Text>
               </View>
-              <Text style={s.roleText}>{role} • Suite {suiteId}</Text>
+              <Text style={s.roleText}>{suiteIdentity}</Text>
             </View>
             <Ionicons
               name={activePanel === 'suite' ? 'chevron-up' : 'chevron-down'}
@@ -286,7 +318,7 @@ export function DesktopHeader({
                   </View>
                   <View>
                     <Text style={s.sdItemTitle}>{businessName}</Text>
-                    <Text style={s.sdItemSub}>Suite {suiteId} • {role}</Text>
+                    <Text style={s.sdItemSub}>{suiteIdentity}</Text>
                   </View>
                 </View>
                 <Ionicons name="checkmark" size={16} color="#3B82F6" />

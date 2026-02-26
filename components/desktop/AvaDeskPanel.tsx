@@ -834,7 +834,7 @@ export function AvaDeskPanel() {
         businessName: tenant.businessName || undefined,
         industry: tenant.industry || undefined,
         teamSize: tenant.teamSize || undefined,
-        servicesNeeded: tenant.servicesNeeded || undefined,
+        industrySpecialty: tenant.industrySpecialty || undefined,
         businessGoals: tenant.businessGoals || undefined,
         painPoint: tenant.painPoint || undefined,
         preferredChannel: tenant.preferredChannel || undefined,

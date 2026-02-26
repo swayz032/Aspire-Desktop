@@ -170,23 +170,24 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   });
 
   /**
-   * Start a voice session. Begins listening for speech input immediately.
-   * Voice is primary — the mic activates as soon as you start.
+   * Start a voice session. Attempts STT for mic input, but degrades
+   * gracefully to text-input + TTS-output if STT is unavailable.
+   * Agents like Finn use ElevenLabs TTS only (no Deepgram STT).
    */
   const startSession = useCallback(async () => {
     activeRef.current = true;
     processingRef.current = false;
     updateStatus('listening');
 
-    // Start STT immediately — voice is primary
+    // Attempt STT — if unavailable (no Deepgram key, no mic), session
+    // stays active for text input with ElevenLabs TTS output
     try {
       await stt.start();
     } catch {
-      onError?.(new Error('Unable to access microphone'));
-      activeRef.current = false;
-      updateStatus('error');
+      // STT unavailable — session stays active for sendText() + TTS
+      console.warn(`STT unavailable for ${agent} — text input + TTS mode`);
     }
-  }, [suiteId, updateStatus, onError, stt]);
+  }, [agent, suiteId, updateStatus, onError, stt]);
 
   /**
    * End the voice session. Stops listening and any in-progress TTS.

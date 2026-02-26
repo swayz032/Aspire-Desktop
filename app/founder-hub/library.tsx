@@ -59,21 +59,22 @@ export default function LibraryScreen() {
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Generate categories from servicesNeeded (or fallback to defaults)
+  // Generate categories from industry (v3: all services auto-included)
   const dynamicCategories = useMemo(() => {
     const base = [{ id: 'all', label: 'All', count: 0 }];
-    if (tenant?.servicesNeeded && tenant.servicesNeeded.length > 0) {
+    if (tenant?.industry) {
       return [
         ...base,
-        ...tenant.servicesNeeded.map((s) => ({
-          id: s.toLowerCase().replace(/\s+/g, '_'),
-          label: s.charAt(0).toUpperCase() + s.slice(1),
+        {
+          id: tenant.industry.toLowerCase().replace(/[\s&]+/g, '_'),
+          label: tenant.industry,
           count: 0,
-        })),
+        },
+        ...categories.slice(1), // default categories after "All"
       ];
     }
     return categories;
-  }, [tenant?.servicesNeeded]);
+  }, [tenant?.industry]);
 
   useEffect(() => {
     let mounted = true;

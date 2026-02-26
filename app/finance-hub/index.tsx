@@ -599,7 +599,7 @@ function FinanceHubContent() {
   const [supabaseAuthority, setSupabaseAuthority] = useState<AuthorityItem[]>([]);
   const [reviewPreview, setReviewPreview] = useState<{ visible: boolean; type: 'invoice' | 'contract' | 'document'; documentName: string; pandadocDocumentId?: string }>({ visible: false, type: 'document', documentName: '' });
 
-  // Finn voice — voice is primary interaction mode
+  // Finn voice — ElevenLabs TTS output, STT degrades gracefully if unavailable
   const { suiteId, session } = useSupabase();
   const finnVoice = useAgentVoice({
     agent: 'finn',
@@ -1020,18 +1020,6 @@ function FinanceHubContent() {
         </View>
       </View>
 
-      {/* Finn Chat Modal — premium slide-up */}
-      <FinnChatModal visible={showFinnChat} onClose={() => setShowFinnChat(false)} />
-
-      {/* Finn Desk Overlay — full voice/video experience */}
-      {showFinnOverlay && (
-        <FinnDeskOverlay
-          visible={showFinnOverlay}
-          onClose={() => setShowFinnOverlay(false)}
-          initialTab={finnOverlayTab}
-        />
-      )}
-
       <SectionLabel icon="pulse" label="QUICK PULSE" color="#999" ledDelay={3} />
 
       <View style={s.kpiRow}>
@@ -1364,6 +1352,16 @@ function FinanceHubContent() {
       </View>
 
     </FinanceHubShell>
+    {/* Finn Chat Modal — outside shell so position:absolute floats above scroll */}
+    <FinnChatModal visible={showFinnChat} onClose={() => setShowFinnChat(false)} />
+    {/* Finn Desk Overlay — video with Finn popup */}
+    {showFinnOverlay && (
+      <FinnDeskOverlay
+        visible={showFinnOverlay}
+        onClose={() => setShowFinnOverlay(false)}
+        initialTab={finnOverlayTab}
+      />
+    )}
     <ExplainDrawer
       visible={!!explainMetric}
       onClose={() => setExplainMetric(null)}

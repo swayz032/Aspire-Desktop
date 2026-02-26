@@ -53,22 +53,24 @@ export default function EducationScreen() {
   const [savedApplied, setSavedApplied] = useState<SavedItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Generate learning tracks from servicesNeeded
+  // Generate learning tracks from industry (v3: all services auto-included)
   const learningTracks = useMemo(() => {
-    if (tenant?.servicesNeeded && tenant.servicesNeeded.length > 0) {
-      return tenant.servicesNeeded.map((service) => {
-        const key = service.toLowerCase().replace(/\s+/g, '_');
-        const trackInfo = SERVICE_TRACK_MAP[key] ?? { icon: 'book', color: '#3B82F6' };
-        return {
+    if (tenant?.industry) {
+      const key = tenant.industry.toLowerCase().replace(/[\s&]+/g, '_');
+      const trackInfo = SERVICE_TRACK_MAP[key] ?? { icon: 'book', color: '#3B82F6' };
+      // Return industry-specific track + default tracks
+      return [
+        {
           id: key,
-          name: service.charAt(0).toUpperCase() + service.slice(1),
+          name: tenant.industry,
           icon: trackInfo.icon,
           color: trackInfo.color,
-        };
-      });
+        },
+        ...DEFAULT_LEARNING_TRACKS.filter((t: { id: string }) => t.id !== key),
+      ];
     }
     return DEFAULT_LEARNING_TRACKS;
-  }, [tenant?.servicesNeeded]);
+  }, [tenant?.industry]);
 
   useEffect(() => {
     if (learningTracks.length > 0 && !activeTrack) {

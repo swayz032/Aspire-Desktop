@@ -7,6 +7,7 @@ import { Colors } from '@/constants/tokens';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { connectFinnAvatar, type AnamClientInstance } from '@/lib/anam';
+import { speakText } from '@/lib/elevenlabs';
 
 type FileAttachment = {
   id: string;
@@ -574,6 +575,8 @@ export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProp
     setVideoState('connecting');
     setConnectionStatus('Connecting to Finn...');
     playConnectionSound();
+    // Wait for React to render the <video id="finn-video-element"> before streaming
+    await new Promise(resolve => setTimeout(resolve, 100));
     try {
       const client = await connectFinnAvatar('finn-video-element', session?.access_token);
       anamClientRef.current = client;
@@ -754,6 +757,10 @@ export function FinnDeskPanel({ initialTab, templateContext }: FinnDeskPanelProp
                 msg.runId === runId ? { ...msg, text: responseText } : msg
               )
             );
+            // Speak response via ElevenLabs TTS when in voice tab
+            if (activeTab === 'voice' && responseText) {
+              speakText('finn', responseText).catch(() => {});
+            }
           }
           setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
         }, delay);

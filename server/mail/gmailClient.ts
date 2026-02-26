@@ -223,6 +223,9 @@ export function gmailThreadToMailThread(
     (m.labelIds || []).includes('UNREAD'),
   );
 
+  const now = new Date().toISOString();
+  const ts = date ? new Date(date).toISOString() : now;
+
   return {
     id: gmailThread.id,
     type: 'mail',
@@ -231,16 +234,18 @@ export function gmailThreadToMailThread(
     senderName,
     senderEmail,
     recipients,
-    timestamp: date ? new Date(date).toISOString() : new Date().toISOString(),
+    timestamp: ts,
     suiteId,
     officeId,
     tags: [],
-    priority: 'medium',
-    status: 'active',
+    priority: 'Medium',
+    status: 'Open',
     linkedReceiptIds: [],
     unread,
     messageCount: messages.length,
     hasAttachments,
+    createdAt: ts,
+    updatedAt: ts,
   };
 }
 

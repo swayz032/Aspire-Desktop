@@ -170,6 +170,11 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
     const currentTools = Array.isArray(b.currentTools) ? sanitizeArray(b.currentTools) : (typeof b.currentTools === 'string' ? b.currentTools.split(',').map((t: string) => t.trim()).filter(Boolean) : []);
     const toolsPlanning = sanitizeArray(b.toolsPlanning);
     const businessGoals = sanitizeArray(b.businessGoals);
+
+    // V3 marketing fields (migration 064)
+    const industrySpecialty = sanitizeText(b.industrySpecialty);
+    const incomeRange = validateEnum(b.incomeRange, ['under_25k','25k_50k','50k_75k','75k_100k','100k_150k','150k_250k','250k_500k','500k_plus']);
+    const referralSource = validateEnum(b.referralSource, ['google_search','social_media','friend_referral','podcast','blog_article','conference_event','advertisement','app_store','other']);
     const painPoint = sanitizeText(typeof b.painPoint === 'string' ? b.painPoint.slice(0, 1000) : b.painPoint);
 
     // Address fields
@@ -281,10 +286,14 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
         timezone,
         currency,
         fiscal_year_end_month: fiscalYearEndMonth,
+        // V3 marketing fields
+        industry_specialty: industrySpecialty,
+        income_range: incomeRange,
+        referral_source: referralSource,
         // Consent
         consent_personalization: consentPersonalization,
         consent_communications: consentCommunications,
-        intake_schema_version: 2,
+        intake_schema_version: 3,
         intake_receipt_id: receiptId,
         onboarding_completed_at: new Date().toISOString(),
       }, { onConflict: 'suite_id' });
@@ -305,11 +314,11 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       await emitReceipt({
         receiptId, receiptType: 'onboarding.intake_submission', outcome: 'success',
         suiteId, tenantId: suiteId, correlationId, actorType: 'user', actorId: userId, riskTier: 'yellow',
-        actionData: { schema_version: 2, services_count: servicesNeeded.length },
+        actionData: { schema_version: 3, industry_specialty: industrySpecialty, income_range: incomeRange, referral_source: referralSource },
         resultData: {
           fields_completed: Object.entries({
             businessName, industry, teamSize, entityType, yearsInBusiness,
-            servicesNeeded, currentTools, painPoint, salesChannel, customerType,
+            industrySpecialty, incomeRange, referralSource, painPoint, salesChannel, customerType,
             homeAddressLine1, consentPersonalization,
           }).filter(([, v]) => v != null && v !== '' && (!Array.isArray(v) || v.length > 0)).length,
           industry: industry || '<NOT_PROVIDED>',
@@ -345,8 +354,9 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       suiteId,
       officeId: suiteId, // officeId defaults to suiteId for single-office tenants
       industry,
-      servicesNeeded,
-      servicesPriority,
+      industrySpecialty,
+      incomeRange,
+      referralSource,
       businessGoals,
       painPoint,
       customerType,
@@ -381,7 +391,19 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       console.warn('N8N_WEBHOOK_SECRET not set — skipping intake activation webhook (fail-closed)');
     }
 
-    res.json({ suiteId, created: true, receiptId });
+    // Query display IDs for celebration screen (triggers populate them on INSERT)
+    let suiteDisplayId: string | null = null;
+    let officeDisplayId: string | null = null;
+    try {
+      const { data: profileData } = await supabaseAdmin.from('suite_profiles')
+        .select('display_id, office_display_id, business_name')
+        .eq('suite_id', suiteId)
+        .single();
+      suiteDisplayId = profileData?.display_id || null;
+      officeDisplayId = profileData?.office_display_id || null;
+    } catch (_) { /* best-effort — display IDs are cosmetic */ }
+
+    res.json({ suiteId, created: true, receiptId, suiteDisplayId, officeDisplayId, businessName });
   } catch (error: any) {
     console.error('Bootstrap error:', error);
     // Emit failure receipt — Law #2: failures also produce receipts
@@ -471,6 +493,11 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
     const consentPersonalization = b.consentPersonalization === true;
     const consentCommunications = b.consentCommunications === true;
 
+    // V3 marketing fields (migration 064)
+    const industrySpecialty = sanitizeText(b.industrySpecialty);
+    const incomeRange = validateEnum(b.incomeRange, ['under_25k','25k_50k','50k_75k','75k_100k','100k_150k','150k_250k','250k_500k','500k_plus']);
+    const referralSource = validateEnum(b.referralSource, ['google_search','social_media','friend_referral','podcast','blog_article','conference_event','advertisement','app_store','other']);
+
     // Address fields
     const homeAddressLine1 = sanitizeText(b.homeAddressLine1);
     const homeAddressLine2 = sanitizeText(b.homeAddressLine2);
@@ -521,8 +548,13 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
       role_category: roleCategory,
       preferred_channel: preferredChannel,
       fiscal_year_end_month: fiscalYearEndMonth,
+      // V3 marketing fields
+      industry_specialty: industrySpecialty,
+      income_range: incomeRange,
+      referral_source: referralSource,
       consent_personalization: consentPersonalization,
       consent_communications: consentCommunications,
+      intake_schema_version: 3,
       onboarding_completed_at: new Date().toISOString(),
     };
 
@@ -1254,7 +1286,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       business_name: userProfile.businessName,
       industry: userProfile.industry,
       team_size: userProfile.teamSize,
-      services_needed: userProfile.servicesNeeded,
+      industry_specialty: userProfile.industrySpecialty,
       business_goals: userProfile.businessGoals,
       pain_point: userProfile.painPoint,
       preferred_channel: userProfile.preferredChannel,
@@ -1658,7 +1690,7 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
       business_name: userProfile.businessName,
       industry: userProfile.industry,
       team_size: userProfile.teamSize,
-      services_needed: userProfile.servicesNeeded,
+      industry_specialty: userProfile.industrySpecialty,
       business_goals: userProfile.businessGoals,
       pain_point: userProfile.painPoint,
       preferred_channel: userProfile.preferredChannel,
@@ -2051,7 +2083,7 @@ router.delete('/api/calendar/events/:id', async (req: Request, res: Response) =>
 router.patch('/api/calendar/events/:id/complete', async (req: Request, res: Response) => {
   try {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
-    const eventId = req.params.id;
+    const eventId = req.params.id as string;
     if (!eventId || !/^[0-9a-f-]{36}$/i.test(eventId)) {
       return res.status(400).json({ error: 'Invalid event ID' });
     }
@@ -2342,7 +2374,7 @@ router.post('/v1/domains/checkout/start', async (req: Request, res: Response) =>
         tool_used: 'desktop.domain.purchase',
         action: { operation: 'domain_purchase_approval', domain, price },
         result: { approved: true, approved_at: new Date().toISOString() },
-      }).catch(() => {});
+      }).then(() => {}, () => {});
     }
 
     // 4. Register domain via Domain Rail (which calls ResellerClub)
@@ -2383,7 +2415,7 @@ router.post('/v1/domains/checkout/start', async (req: Request, res: Response) =>
         domain_mode: 'buy_domain',
         last_health: { orderId, price, contactId },
         state_updated_at: new Date().toISOString(),
-      }).eq('id', jobId).eq('suite_id', suiteId).catch(() => {});
+      }).eq('id', jobId).eq('suite_id', suiteId).then(() => {}, () => {});
     }
 
     // 6. Receipt (Law #2) — Domain Rail already emits its own receipt, this is the Desktop-side one
@@ -2438,7 +2470,7 @@ router.get('/api/mail/oauth/google/callback', async (req: Request, res: Response
     }
 
     const result = await handleCallback(code, state);
-    res.redirect(`/inbox/setup?step=3&provider=google&email=${encodeURIComponent(result.email)}`);
+    res.redirect(`/inbox/setup?step=2&provider=google&email=${encodeURIComponent(result.email)}`);
   } catch (e: any) {
     console.error('Google OAuth callback error:', e.message);
     // Sanitize error — don't pass raw error messages into redirect URL
@@ -2653,7 +2685,7 @@ router.get('/api/mail/threads/:threadId', async (req: Request, res: Response) =>
   try {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const officeId = (req as any).authenticatedOfficeId || getDefaultOfficeId();
-    const threadId = req.params.threadId;
+    const threadId = req.params.threadId as string;
     if (!threadId) return res.status(400).json({ error: 'Thread ID required' });
 
     const account = req.query.account as string | undefined;
@@ -3517,7 +3549,7 @@ router.get('/api/signing/:token', async (req: Request, res: Response) => {
 
     if (!db) return res.status(503).json({ error: 'Database not available' });
 
-    const token = req.params.token;
+    const token = req.params.token as string;
     // UUID format validation (36 chars: 8-4-4-4-12 hex)
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!token || !UUID_RE.test(token)) {

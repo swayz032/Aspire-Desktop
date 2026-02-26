@@ -16,6 +16,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSupabase } from '@/providers';
 import { supabase } from '@/lib/supabase';
+import { CelebrationModal } from '@/components/CelebrationModal';
+import { PremiumLoadingScreen } from '@/components/PremiumLoadingScreen';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -24,17 +26,103 @@ import { supabase } from '@/lib/supabase';
 const INDUSTRIES = [
   'Construction & Trades',
   'Professional Services',
-  'Healthcare',
-  'Real Estate',
-  'Retail & E-commerce',
-  'Manufacturing',
+  'Healthcare & Wellness',
+  'Technology & Software',
+  'Real Estate & Property Management',
+  'Retail & E-Commerce',
   'Food & Hospitality',
+  'Creative & Marketing',
+  'Education & Training',
   'Transportation & Logistics',
-  'Technology',
-  'Legal',
-  'Financial Services',
-  'Home Services',
+  'Manufacturing',
   'Other',
+];
+
+// Two-level industry → specialty map (12 categories)
+const INDUSTRY_SPECIALTIES: Record<string, string[]> = {
+  'Construction & Trades': [
+    'General Contracting', 'HVAC', 'Plumbing', 'Electrical', 'Roofing',
+    'Painting', 'Landscaping', 'Flooring', 'Masonry', 'Carpentry',
+    'Demolition', 'Excavation', 'Welding', 'Fencing', 'Other',
+  ],
+  'Professional Services': [
+    'Accounting', 'Law', 'Consulting', 'Engineering', 'Architecture',
+    'Real Estate Brokerage', 'Insurance', 'Marketing Agency', 'Recruiting',
+    'IT Services', 'Financial Planning', 'Other',
+  ],
+  'Healthcare & Wellness': [
+    'Medical Practice', 'Dental', 'Chiropractic', 'Physical Therapy',
+    'Mental Health', 'Veterinary', 'Pharmacy', 'Home Health', 'Optometry',
+    'Wellness & Spa', 'Nutrition', 'Other',
+  ],
+  'Technology & Software': [
+    'SaaS', 'Web Development', 'Mobile App Development', 'IT Consulting',
+    'Cybersecurity', 'Data Analytics', 'AI/ML', 'Cloud Services',
+    'Hardware', 'Telecommunications', 'Other',
+  ],
+  'Real Estate & Property Management': [
+    'Residential Sales', 'Commercial Sales', 'Property Management',
+    'Real Estate Investment', 'Appraisal', 'Inspection', 'Title Services',
+    'Mortgage Brokerage', 'Other',
+  ],
+  'Retail & E-Commerce': [
+    'Clothing & Apparel', 'Electronics', 'Home Goods', 'Grocery & Food',
+    'Health & Beauty', 'Pet Supplies', 'Sporting Goods', 'Specialty Retail',
+    'Online Marketplace', 'Other',
+  ],
+  'Food & Hospitality': [
+    'Restaurant', 'Catering', 'Food Truck', 'Bakery', 'Bar & Nightlife',
+    'Coffee Shop', 'Hotel & Lodging', 'Event Venue', 'Cleaning Services',
+    'Other',
+  ],
+  'Creative & Marketing': [
+    'Graphic Design', 'Photography', 'Video Production', 'Content Writing',
+    'Social Media Management', 'PR & Communications', 'Advertising',
+    'Branding', 'UX/UI Design', 'Other',
+  ],
+  'Education & Training': [
+    'Tutoring', 'Online Courses', 'Corporate Training', 'Music & Arts',
+    'Language School', 'Test Prep', 'Driving School', 'Trade School',
+    'Childcare & Preschool', 'Other',
+  ],
+  'Transportation & Logistics': [
+    'Trucking', 'Courier & Delivery', 'Moving Services', 'Freight Brokerage',
+    'Warehousing', 'Fleet Management', 'Auto Repair', 'Towing',
+    'Rideshare & Taxi', 'Other',
+  ],
+  'Manufacturing': [
+    'Metal Fabrication', 'Woodworking', 'Plastics', 'Textiles',
+    'Food Processing', 'Electronics Assembly', 'Chemical', 'Printing',
+    '3D Printing', 'Other',
+  ],
+  'Other': [
+    'Agriculture', 'Mining', 'Nonprofit', 'Government Contracting',
+    'Religious Organization', 'Entertainment', 'Sports & Recreation',
+    'Personal Services', 'Other',
+  ],
+};
+
+const INCOME_RANGES = [
+  { value: 'under_25k', label: 'Under $25K' },
+  { value: '25k_50k', label: '$25K-$50K' },
+  { value: '50k_75k', label: '$50K-$75K' },
+  { value: '75k_100k', label: '$75K-$100K' },
+  { value: '100k_150k', label: '$100K-$150K' },
+  { value: '150k_250k', label: '$150K-$250K' },
+  { value: '250k_500k', label: '$250K-$500K' },
+  { value: '500k_plus', label: '$500K+' },
+];
+
+const REFERRAL_SOURCES = [
+  { value: 'google_search', label: 'Google Search', icon: 'search-outline' },
+  { value: 'social_media', label: 'Social Media', icon: 'logo-twitter' },
+  { value: 'friend_referral', label: 'Friend/Colleague', icon: 'people-outline' },
+  { value: 'podcast', label: 'Podcast', icon: 'mic-outline' },
+  { value: 'blog_article', label: 'Blog/Article', icon: 'newspaper-outline' },
+  { value: 'conference_event', label: 'Conference/Event', icon: 'calendar-outline' },
+  { value: 'advertisement', label: 'Advertisement', icon: 'megaphone-outline' },
+  { value: 'app_store', label: 'App Store', icon: 'phone-portrait-outline' },
+  { value: 'other', label: 'Other', icon: 'ellipsis-horizontal-outline' },
 ];
 
 const TEAM_SIZES = ['Just me', '2-5', '6-15', '16-50', '50+'];
@@ -70,20 +158,7 @@ const YEARS_MAP: Record<string, string> = {
   '10+': '10_plus',
 };
 
-const SERVICES: { id: string; icon: string; title: string; desc: string }[] = [
-  { id: 'Invoicing & Payments', icon: 'card-outline', title: 'Invoicing & Payments', desc: 'Create, send, and track invoices' },
-  { id: 'Bookkeeping', icon: 'calculator-outline', title: 'Bookkeeping', desc: 'Automated expense categorization' },
-  { id: 'Payroll', icon: 'people-outline', title: 'Payroll', desc: 'Run payroll and manage benefits' },
-  { id: 'Email Management', icon: 'mail-outline', title: 'Email Management', desc: 'Triage, draft, and send emails' },
-  { id: 'Scheduling & Calendar', icon: 'calendar-outline', title: 'Scheduling & Calendar', desc: 'Book meetings and manage events' },
-  { id: 'Contract Management', icon: 'document-text-outline', title: 'Contract Management', desc: 'Create and e-sign contracts' },
-  { id: 'Document Generation', icon: 'documents-outline', title: 'Document Generation', desc: 'Generate PDFs and proposals' },
-  { id: 'Client Communication', icon: 'chatbubbles-outline', title: 'Client Communication', desc: 'Manage client conversations' },
-  { id: 'Expense Tracking', icon: 'receipt-outline', title: 'Expense Tracking', desc: 'Track and categorize expenses' },
-  { id: 'Tax Preparation', icon: 'folder-outline', title: 'Tax Preparation', desc: 'Organize docs for tax season' },
-  { id: 'Front Desk & Calls', icon: 'call-outline', title: 'Front Desk & Calls', desc: 'Answer and route business calls' },
-  { id: 'Research & Intelligence', icon: 'search-outline', title: 'Research & Intelligence', desc: 'Vendor search and market data' },
-];
+// SERVICES array removed in v3 — all services auto-included per Genesis Gate
 
 const COUNTRY_CURRENCY: Record<string, string> = {
   US: 'USD', CA: 'CAD', GB: 'GBP', AU: 'AUD', NZ: 'NZD',
@@ -116,7 +191,7 @@ const COUNTRY_TIMEZONES: Record<string, string> = {
   FR: 'Europe/Paris', JP: 'Asia/Tokyo', IN: 'Asia/Kolkata',
 };
 
-const DRAFT_KEY = 'aspire_onboarding_draft_v2';
+const DRAFT_KEY = 'aspire_onboarding_draft_v3';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -154,10 +229,12 @@ interface FormState {
   currency: string;
   homeEditable: boolean;
   businessEditable: boolean;
+  // Step 1 (continued)
+  industrySpecialty: string;
   // Step 3
-  servicesNeeded: string[];
+  incomeRange: string;
+  referralSource: string;
   painPoint: string;
-  currentTools: string;
   consentPersonalization: boolean;
   consentCommunications: boolean;
 }
@@ -179,9 +256,10 @@ const initialFormState: FormState = {
   currency: 'USD',
   homeEditable: false,
   businessEditable: false,
-  servicesNeeded: [],
+  industrySpecialty: '',
+  incomeRange: '',
+  referralSource: '',
   painPoint: '',
-  currentTools: '',
   consentPersonalization: false,
   consentCommunications: false,
 };
@@ -233,8 +311,8 @@ function parseGooglePlace(place: google.maps.places.PlaceResult): {
 
 // Fields safe to persist without consent (non-PII business context only)
 const SAFE_DRAFT_FIELDS: (keyof FormState)[] = [
-  'businessName', 'industry', 'teamSize', 'entityType', 'yearsInBusiness',
-  'timezone', 'currency', 'servicesNeeded', 'painPoint', 'currentTools',
+  'businessName', 'industry', 'industrySpecialty', 'teamSize', 'entityType', 'yearsInBusiness',
+  'timezone', 'currency', 'incomeRange', 'referralSource', 'painPoint',
   'businessAddressSameAsHome', 'consentPersonalization', 'consentCommunications',
   'homeEditable', 'businessEditable',
 ];
@@ -291,6 +369,21 @@ export default function OnboardingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [bootstrappedSuiteId, setBootstrappedSuiteId] = useState<string | null>(null);
 
+  // Double-submission guard (Bug fix: prevents concurrent bootstrap calls)
+  const submittingRef = useRef(false);
+
+  // Celebration flow state (Wave 4)
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationData, setCelebrationData] = useState<{
+    businessName: string;
+    suiteDisplayId: string;
+    officeDisplayId: string;
+  } | null>(null);
+
+  // Premium loading screen state (Wave 4A)
+  const [showLoading, setShowLoading] = useState(false);
+  const [loadingComplete, setLoadingComplete] = useState(false);
+
   // Form state
   const [form, setForm] = useState<FormState>(initialFormState);
 
@@ -326,11 +419,19 @@ export default function OnboardingScreen() {
     }
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Restore draft on mount
+  // Restore draft on mount — validate keys to prevent stale v2 drafts from breaking v3 form
   useEffect(() => {
     const draft = loadDraft();
     if (draft) {
-      setForm((prev) => ({ ...prev, ...draft }));
+      // Filter draft to only known FormState keys, then merge with defaults
+      const validKeys = new Set(Object.keys(initialFormState));
+      const safeDraft: Partial<FormState> = {};
+      for (const [key, value] of Object.entries(draft)) {
+        if (validKeys.has(key)) {
+          (safeDraft as any)[key] = value;
+        }
+      }
+      setForm((prev) => ({ ...prev, ...safeDraft }));
     }
   }, []);
 
@@ -423,6 +524,7 @@ export default function OnboardingScreen() {
   const canProceedStep1 =
     form.businessName.trim() !== '' &&
     form.industry !== '' &&
+    form.industrySpecialty !== '' &&
     form.teamSize !== '' &&
     form.ownerName.trim() !== '' &&
     form.entityType !== '' &&
@@ -443,15 +545,18 @@ export default function OnboardingScreen() {
 
   const canProceedStep2 = hasHomeAddress && hasBusinessAddress;
 
-  const canSubmit =
-    form.servicesNeeded.length > 0 && form.consentPersonalization;
+  const canSubmit = form.consentPersonalization;
 
   // ---------------------------------------------------------------------------
   // Submit
   // ---------------------------------------------------------------------------
 
   const handleComplete = async () => {
+    // Double-submission guard
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
+    setShowLoading(true);
     setError(null);
 
     try {
@@ -464,8 +569,9 @@ export default function OnboardingScreen() {
         teamSize: form.teamSize,
         entityType: ENTITY_TYPE_MAP[form.entityType] || form.entityType,
         yearsInBusiness: YEARS_MAP[form.yearsInBusiness] || form.yearsInBusiness,
-        servicesNeeded: form.servicesNeeded,
-        currentTools: form.currentTools.trim() || null,
+        industrySpecialty: form.industrySpecialty || null,
+        incomeRange: form.incomeRange || null,
+        referralSource: form.referralSource || null,
         painPoint: form.painPoint.trim() || null,
         homeAddressLine1: form.homeAddress.line1,
         homeAddressLine2: form.homeAddress.line2 || null,
@@ -495,6 +601,8 @@ export default function OnboardingScreen() {
         if (!token) {
           setError('Session expired. Please sign in again.');
           setLoading(false);
+          setShowLoading(false);
+          setLoadingComplete(false);
           return;
         }
 
@@ -511,21 +619,37 @@ export default function OnboardingScreen() {
           const errData = await resp.json().catch(() => ({}));
           setError(errData.message || 'Failed to set up your business account.');
           setLoading(false);
+          setShowLoading(false);
+          setLoadingComplete(false);
           return;
         }
 
-        const { suiteId: newSuiteId } = await resp.json();
+        const bootstrapResult = await resp.json();
+        const { suiteId: newSuiteId, suiteDisplayId, officeDisplayId, businessName: bName } = bootstrapResult;
         setBootstrappedSuiteId(newSuiteId);
-        // Wait for session refresh to complete — ensures user_metadata has new suite_id
-        // before auth gate re-evaluates (prevents redirect loop back to onboarding)
-        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError) {
-          console.warn('Session refresh failed after bootstrap:', refreshError.message);
+
+        // Session refresh with retry polling — prevents redirect loop back to onboarding.
+        // Retries up to 3x (500ms intervals) checking /api/onboarding/status for completion.
+        await supabase.auth.refreshSession();
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          try {
+            const statusResp = await fetch('/api/onboarding/status', {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const statusData = await statusResp.json();
+            if (statusData.complete) break;
+          } catch (_) { /* retry */ }
         }
-        // Small delay to allow SupabaseProvider onAuthStateChange to propagate
-        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Store celebration data — loading screen will fade, then celebration shows
+        setCelebrationData({
+          businessName: bName || form.businessName.trim(),
+          suiteDisplayId: suiteDisplayId || '',
+          officeDisplayId: officeDisplayId || '',
+        });
+        setLoadingComplete(true);
         clearDraft();
-        router.replace('/(tabs)');
         return;
       }
 
@@ -534,6 +658,8 @@ export default function OnboardingScreen() {
       if (!token) {
         setError('Session expired. Please sign in again.');
         setLoading(false);
+        setShowLoading(false);
+        setLoadingComplete(false);
         return;
       }
 
@@ -549,18 +675,45 @@ export default function OnboardingScreen() {
       if (!updateResp.ok) {
         const errData = await updateResp.json().catch(() => ({}));
         setError(errData.message || 'Failed to update profile.');
+        setShowLoading(false);
+        setLoadingComplete(false);
         return;
       }
 
+      // Session refresh with retry polling — prevents redirect loop (same pattern as bootstrap)
+      await supabase.auth.refreshSession();
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+          const statusResp = await fetch('/api/onboarding/status', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const statusData = await statusResp.json();
+          if (statusData.complete) break;
+        } catch (_) { /* retry */ }
+      }
       clearDraft();
       router.replace('/(tabs)');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to save onboarding data.';
       setError(msg);
+      setShowLoading(false);
+      setLoadingComplete(false);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Premium loading screen fade-complete → show celebration
+  // ---------------------------------------------------------------------------
+
+  const handleLoadingFadeComplete = useCallback(() => {
+    setShowLoading(false);
+    setLoadingComplete(false);
+    setShowCelebration(true);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Step transitions
@@ -568,24 +721,14 @@ export default function OnboardingScreen() {
 
   const goNext = () => {
     setError(null);
+    setEntityDropdownOpen(false);
     setStep((s) => Math.min(s + 1, 3));
   };
 
   const goBack = () => {
     setError(null);
+    setEntityDropdownOpen(false);
     setStep((s) => Math.max(s - 1, 1));
-  };
-
-  // ---------------------------------------------------------------------------
-  // Toggle service
-  // ---------------------------------------------------------------------------
-
-  const toggleService = (id: string) => {
-    updateForm({
-      servicesNeeded: form.servicesNeeded.includes(id)
-        ? form.servicesNeeded.filter((s) => s !== id)
-        : [...form.servicesNeeded, id],
-    });
   };
 
   // ---------------------------------------------------------------------------
@@ -765,7 +908,7 @@ export default function OnboardingScreen() {
           <TouchableOpacity
             key={ind}
             style={[styles.chip, form.industry === ind && styles.chipSelected]}
-            onPress={() => updateForm({ industry: ind })}
+            onPress={() => updateForm({ industry: ind, industrySpecialty: '' })}
           >
             <Text style={[styles.chipText, form.industry === ind && styles.chipTextSelected]}>
               {ind}
@@ -773,6 +916,26 @@ export default function OnboardingScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Industry Specialty (two-level selector — shows when industry is selected) */}
+      {form.industry && INDUSTRY_SPECIALTIES[form.industry] && (
+        <>
+          <Text style={styles.label}>Specialty</Text>
+          <View style={styles.chipGrid}>
+            {INDUSTRY_SPECIALTIES[form.industry].map((spec) => (
+              <TouchableOpacity
+                key={spec}
+                style={[styles.chip, form.industrySpecialty === spec && styles.chipSelected]}
+                onPress={() => updateForm({ industrySpecialty: spec })}
+              >
+                <Text style={[styles.chipText, form.industrySpecialty === spec && styles.chipTextSelected]}>
+                  {spec}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
 
       {/* Team Size */}
       <Text style={styles.label}>Team Size</Text>
@@ -994,39 +1157,50 @@ export default function OnboardingScreen() {
 
   const renderStep3 = () => (
     <View>
-      <Text style={styles.stepTitle}>Services & Go</Text>
+      <Text style={styles.stepTitle}>Final Details & Go</Text>
       <Text style={styles.stepSubtitle}>
-        Choose what Ava should set up for you. You can always add more later.
+        A few more details so Ava can tailor your experience perfectly.
       </Text>
 
-      {/* Service Cards */}
-      <View style={styles.serviceGrid}>
-        {SERVICES.map((svc) => {
-          const selected = form.servicesNeeded.includes(svc.id);
-          return (
+      {/* Income Range */}
+      <Text style={styles.label}>Annual Income Range</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+        <View style={styles.pillRow}>
+          {INCOME_RANGES.map((ir) => (
             <TouchableOpacity
-              key={svc.id}
-              style={[styles.serviceCard, selected && styles.serviceCardSelected]}
-              onPress={() => toggleService(svc.id)}
-              activeOpacity={0.7}
+              key={ir.value}
+              style={[styles.pill, form.incomeRange === ir.value && styles.pillSelected]}
+              onPress={() => updateForm({ incomeRange: ir.value })}
             >
-              <Ionicons
-                name={svc.icon as keyof typeof Ionicons.glyphMap}
-                size={22}
-                color={selected ? ACCENT : '#888'}
-              />
-              <Text style={[styles.serviceTitle, selected && styles.serviceTitleSelected]}>
-                {svc.title}
+              <Text style={[styles.pillText, form.incomeRange === ir.value && styles.pillTextSelected]}>
+                {ir.label}
               </Text>
-              <Text style={styles.serviceDesc}>{svc.desc}</Text>
-              {selected && (
-                <View style={styles.serviceCheck}>
-                  <Ionicons name="checkmark-circle" size={18} color={ACCENT} />
-                </View>
-              )}
             </TouchableOpacity>
-          );
-        })}
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Referral Source */}
+      <Text style={[styles.label, { marginTop: 18 }]}>How did you hear about Aspire?</Text>
+      <View style={styles.chipGrid}>
+        {REFERRAL_SOURCES.map((rs) => (
+          <TouchableOpacity
+            key={rs.value}
+            style={[styles.chip, form.referralSource === rs.value && styles.chipSelected]}
+            onPress={() => updateForm({ referralSource: rs.value })}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons
+                name={rs.icon as keyof typeof Ionicons.glyphMap}
+                size={14}
+                color={form.referralSource === rs.value ? ACCENT : '#888'}
+              />
+              <Text style={[styles.chipText, form.referralSource === rs.value && styles.chipTextSelected]}>
+                {rs.label}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Biggest Challenge (optional) */}
@@ -1095,8 +1269,38 @@ export default function OnboardingScreen() {
   });
 
   // ---------------------------------------------------------------------------
+  // Celebration modal dismiss → navigate to home
+  // ---------------------------------------------------------------------------
+  const handleEnterAspire = () => {
+    setShowCelebration(false);
+    router.replace('/(tabs)');
+  };
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+
+  // Show premium loading screen during bootstrap API call
+  if (showLoading) {
+    return (
+      <PremiumLoadingScreen
+        isComplete={loadingComplete}
+        onFadeComplete={handleLoadingFadeComplete}
+      />
+    );
+  }
+
+  // Show celebration modal after successful bootstrap
+  if (showCelebration && celebrationData) {
+    return (
+      <CelebrationModal
+        businessName={celebrationData.businessName}
+        suiteDisplayId={celebrationData.suiteDisplayId}
+        officeDisplayId={celebrationData.officeDisplayId}
+        onEnter={handleEnterAspire}
+      />
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -1108,7 +1312,7 @@ export default function OnboardingScreen() {
         <View style={styles.stepIndicatorRow}>
           <Text style={styles.stepIndicator}>Step {step} of 3</Text>
           <Text style={styles.stepName}>
-            {step === 1 ? 'You & Your Business' : step === 2 ? 'Address & Location' : 'Services & Go'}
+            {step === 1 ? 'You & Your Business' : step === 2 ? 'Address & Location' : 'Final Details & Go'}
           </Text>
         </View>
 
@@ -1510,49 +1714,6 @@ const styles = StyleSheet.create({
   },
 
   // Step 3: Service cards
-  serviceGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  serviceCard: {
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 12,
-    padding: 16,
-    width: '48%' as unknown as number,
-    minHeight: 110,
-    position: 'relative',
-  } as ViewStyle,
-  serviceCardSelected: {
-    borderColor: ACCENT,
-    backgroundColor: 'rgba(0, 188, 212, 0.08)',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: `0 0 12px ${ACCENT_GLOW}` } as unknown as ViewStyle)
-      : {}),
-  } as ViewStyle,
-  serviceTitle: {
-    color: TEXT_SECONDARY,
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  serviceTitleSelected: {
-    color: ACCENT,
-  },
-  serviceDesc: {
-    color: TEXT_MUTED,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  serviceCheck: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-  },
-
   // Consent
   consentSection: {
     marginTop: 28,
