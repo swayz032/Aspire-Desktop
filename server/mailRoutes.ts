@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { logger } from './logger';
 import { createTrustSpineReceipt } from './receiptService';
 import { getValidToken, getConnectedEmail } from './mail/googleOAuth';
 import {
@@ -65,9 +66,10 @@ router.get('/api/mail/threads', async (req: Request, res: Response) => {
       threads,
       nextPageToken: gmailData.nextPageToken,
     });
-  } catch (error: any) {
-    console.error('Mail threads error:', error.message);
-    if (error.message.includes('setup required') || error.message.includes('No Google OAuth')) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Mail threads error', { error: msg });
+    if (msg.includes('setup required') || msg.includes('No Google OAuth')) {
       return res.status(401).json({ error: 'Gmail not connected', setupRequired: true });
     }
     res.status(500).json({ error: 'Failed to list threads' });
@@ -93,8 +95,8 @@ router.get('/api/mail/threads/:id', async (req: Request, res: Response) => {
     });
 
     res.json(detail);
-  } catch (error: any) {
-    console.error('Mail thread detail error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Mail thread detail error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to load thread' });
   }
 });
@@ -117,8 +119,8 @@ router.get('/api/mail/messages/:id', async (req: Request, res: Response) => {
     });
 
     res.json(gmailMsg);
-  } catch (error: any) {
-    console.error('Mail message error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Mail message error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to load message' });
   }
 });
@@ -155,8 +157,8 @@ router.post('/api/mail/send', async (req: Request, res: Response) => {
     });
 
     res.json({ messageId: result.id, threadId: result.threadId });
-  } catch (error: any) {
-    console.error('Mail send error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Mail send error', { error: error instanceof Error ? error.message : 'unknown' });
     const suiteId = (req as any).authenticatedSuiteId || '';
     if (suiteId) {
       await createTrustSpineReceipt({
@@ -197,8 +199,8 @@ router.post('/api/mail/draft', async (req: Request, res: Response) => {
     });
 
     res.json({ draftId: result.id });
-  } catch (error: any) {
-    console.error('Mail draft error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Mail draft error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to save draft' });
   }
 });
@@ -210,8 +212,8 @@ router.get('/api/mail/labels', async (req: Request, res: Response) => {
     const { token } = await getGmailToken(req);
     const labels = await listLabels(token);
     res.json({ labels });
-  } catch (error: any) {
-    console.error('Mail labels error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Mail labels error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to load labels' });
   }
 });

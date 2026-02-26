@@ -13,6 +13,8 @@
  * Everything else comes from SM.
  */
 
+import { logger } from './logger';
+
 // Dynamic import — @aws-sdk/client-secrets-manager is loaded lazily so the
 // server doesn't crash when the package isn't installed (e.g., Railway where
 // secrets are set as env vars directly, not via AWS SM).
@@ -93,7 +95,7 @@ export async function loadSecrets(): Promise<void> {
 
   // Local dev without AWS creds — use .env.local
   if (!isProduction && !hasAwsCreds) {
-    console.log('[secrets] Local dev mode — using .env.local (no AWS creds)');
+    logger.info('[secrets] Local dev mode — using .env.local (no AWS creds)');
     return;
   }
 
@@ -101,7 +103,7 @@ export async function loadSecrets(): Promise<void> {
   if (isProduction && !hasAwsCreds) {
     const hasCriticalEnvVars = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (hasCriticalEnvVars) {
-      console.log('[secrets] Production mode — using Railway env vars (no AWS SM needed)');
+      logger.info('[secrets] Production mode — using Railway env vars (no AWS SM needed)');
       return;
     }
     // No AWS creds AND no direct env vars — fail closed (Law #3)
@@ -138,7 +140,7 @@ export async function loadSecrets(): Promise<void> {
       );
 
       if (!result.SecretString) {
-        console.warn(`[secrets] Empty secret string for ${path}`);
+        logger.warn('[secrets] Empty secret string', { path });
         continue;
       }
 
@@ -155,26 +157,24 @@ export async function loadSecrets(): Promise<void> {
         process.env[envVar] = v as string;
         loadedCount++;
       }
-    } catch (err: any) {
-      const msg = `[secrets] Failed to fetch ${path}: ${err.message}`;
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'unknown';
       const criticalGroups = ['stripe', 'supabase', 'internal'];
       const isCritical = criticalGroups.includes(name);
 
       if (isProduction || isCritical) {
         // Fail closed — critical groups required even in dev (Law #3)
-        console.error(msg);
+        logger.error('[secrets] Failed to fetch secret group', { path, error: errMsg });
         throw new Error(`Secrets Manager fetch failed for ${path} — cannot start without credentials`);
       } else {
         // Dev mode non-critical group — warn and continue
-        console.warn(msg);
+        logger.warn('[secrets] Failed to fetch secret group', { path, error: errMsg });
       }
     }
   }
 
   lastFetch = Date.now();
-  console.log(
-    `[secrets] Loaded ${loadedCount} secrets from ${groups.length} SM groups (${env})`
-  );
+  logger.info('[secrets] Secrets loaded from SM', { loadedCount, groupCount: groups.length, env });
 }
 
 /**
@@ -197,7 +197,7 @@ export async function loadSecrets(): Promise<void> {
 export function invalidateSecretsCache(): void {
   lastFetch = 0;
   smClient = null; // Force new client (picks up any credential rotation)
-  console.log('[secrets] Cache invalidated — next loadSecrets() will re-fetch from SM');
+  logger.info('[secrets] Cache invalidated — next loadSecrets() will re-fetch from SM');
 }
 
 /**
@@ -234,17 +234,15 @@ export async function handleProviderAuthError(
   // Only reload if SM is active (otherwise there's nothing to reload)
   if (!isSecretsManagerActive()) return false;
 
-  console.warn(
-    `[secrets] Provider auth error from ${provider} — invalidating cache and reloading from SM`
-  );
+  logger.warn('[secrets] Provider auth error — invalidating cache and reloading from SM', { provider });
   invalidateSecretsCache();
 
   try {
     await loadSecrets();
-    console.log(`[secrets] Secrets reloaded after ${provider} auth error — caller should retry once`);
+    logger.info('[secrets] Secrets reloaded after auth error — caller should retry once', { provider });
     return true;
-  } catch (reloadErr: any) {
-    console.error(`[secrets] Failed to reload secrets after ${provider} auth error:`, reloadErr.message);
+  } catch (reloadErr: unknown) {
+    logger.error('[secrets] Failed to reload secrets after auth error', { provider, error: reloadErr instanceof Error ? reloadErr.message : 'unknown' });
     return false;
   }
 }

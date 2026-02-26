@@ -9,6 +9,7 @@
  */
 import { Router, Request, Response } from 'express';
 import { AccessToken } from 'livekit-server-sdk';
+import { logger } from '../logger';
 
 const router = Router();
 
@@ -46,9 +47,10 @@ router.post('/api/livekit/token', async (req: Request, res: Response) => {
 
     const jwt = await token.toJwt();
     res.json({ token: jwt });
-  } catch (error: any) {
-    console.error('LiveKit token error:', error);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('LiveKit token error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 

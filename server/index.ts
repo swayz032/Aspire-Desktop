@@ -8,24 +8,25 @@ import { sql } from 'drizzle-orm';
 import { setDefaultSuiteId, setDefaultOfficeId } from './suiteContext';
 import { createClient } from '@supabase/supabase-js';
 import { loadSecrets } from './secrets';
+import { logger } from './logger';
 
-let runMigrations: any = null;
-let getStripeSync: any = null;
-let WebhookHandlers: any = null;
-let registerObjectStorageRoutes: any = null;
+let runMigrations: ((opts: { databaseUrl: string }) => Promise<void>) | null = null;
+let getStripeSync: (() => Promise<{ findOrCreateManagedWebhook: (url: string) => Promise<void>; syncBackfill: () => Promise<void> }>) | null = null;
+let WebhookHandlers: { processWebhook: (body: Buffer, sig: string) => Promise<void> } | null = null;
+let registerObjectStorageRoutes: ((app: express.Express) => void) | null = null;
 
 try {
   runMigrations = require('stripe-replit-sync').runMigrations;
   getStripeSync = require('./stripeClient').getStripeSync;
   WebhookHandlers = require('./webhookHandlers').WebhookHandlers;
 } catch (e) {
-  console.warn('Stripe modules not available, skipping Stripe integration');
+  logger.warn('Stripe modules not available, skipping Stripe integration');
 }
 
 try {
   registerObjectStorageRoutes = require('./replit_integrations/object_storage').registerObjectStorageRoutes;
 } catch (e) {
-  console.warn('Object storage module not available, skipping');
+  logger.warn('Object storage module not available, skipping');
 }
 
 const app = express();
@@ -36,13 +37,13 @@ let defaultSuiteId: string = '';
 let defaultOfficeId: string = '';
 
 // Supabase admin client for JWT verification
-console.log('SUPABASE_URL set:', !!process.env.SUPABASE_URL, 'SERVICE_ROLE set:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+logger.info('Supabase config check', { supabase_url_set: !!process.env.SUPABASE_URL, service_role_set: !!process.env.SUPABASE_SERVICE_ROLE_KEY });
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
   : null;
-console.log('supabaseAdmin initialized:', supabaseAdmin !== null);
+logger.info('Supabase admin initialized', { initialized: supabaseAdmin !== null });
 
 // Paths that skip JWT auth (health, public booking, webhooks, static)
 const PUBLIC_PATHS = [
@@ -84,7 +85,7 @@ app.use(async (req, res, next) => {
 
     // Authenticated paths: Law #3 — fail closed if auth unavailable
     if (!supabaseAdmin) {
-      console.error('CRITICAL: Supabase admin client unavailable — auth cannot be verified');
+      logger.error('CRITICAL: Supabase admin client unavailable — auth cannot be verified');
       return res.status(503).json({
         error: 'AUTH_UNAVAILABLE',
         message: 'Authentication service unavailable',
@@ -118,7 +119,7 @@ app.use(async (req, res, next) => {
     // This prevents header-spoofing attacks where a valid JWT holder tries to access another tenant
     const headerSuiteId = req.headers['x-suite-id'] as string | undefined;
     if (headerSuiteId && suiteId && headerSuiteId !== suiteId) {
-      console.error(`TENANT_ISOLATION_VIOLATION: x-suite-id header (${headerSuiteId}) != JWT suite (${suiteId}) [user=${user.id}]`);
+      logger.error('TENANT_ISOLATION_VIOLATION: x-suite-id header mismatch', { header_suite_id: headerSuiteId, jwt_suite_id: suiteId, user_id: user.id });
       // Law #2: emit denial receipt for tenant isolation violation
       try {
         const { createReceipt } = require('./receiptService');
@@ -148,50 +149,50 @@ app.use(async (req, res, next) => {
     next();
   } catch (error) {
     // Law #3: Fail closed on unexpected errors
-    console.error('RLS middleware error:', error);
+    logger.error('RLS middleware error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'AUTH_ERROR', message: 'Authentication check failed' });
   }
 });
 
 async function initStripe() {
   if (!runMigrations || !getStripeSync) {
-    console.warn('Stripe modules not loaded, skipping Stripe sync setup');
+    logger.warn('Stripe modules not loaded, skipping Stripe sync setup');
     return;
   }
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    console.warn('DATABASE_URL not set, skipping Stripe sync setup');
+    logger.warn('DATABASE_URL not set, skipping Stripe sync setup');
     return;
   }
 
   if (!process.env.STRIPE_SECRET_KEY) {
-    console.warn('STRIPE_SECRET_KEY not set, skipping Stripe sync setup');
+    logger.warn('STRIPE_SECRET_KEY not set, skipping Stripe sync setup');
     return;
   }
 
   try {
-    console.log('Initializing Stripe schema...');
+    logger.info('Initializing Stripe schema');
     const migrationPromise = Promise.race([
       runMigrations({ databaseUrl }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Stripe migration timeout')), 10000))
     ]);
     await migrationPromise;
-    console.log('Stripe schema ready');
+    logger.info('Stripe schema ready');
 
     const stripeSync = await getStripeSync();
 
-    console.log('Setting up managed webhook...');
+    logger.info('Setting up managed webhook');
     const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
     await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
 
-    console.log('Syncing Stripe data...');
+    logger.info('Syncing Stripe data');
     stripeSync.syncBackfill().then(() => {
-      console.log('Stripe data synced');
+      logger.info('Stripe data synced');
     }).catch((err: Error) => {
-      console.error('Error syncing Stripe data:', err);
+      logger.error('Error syncing Stripe data', { error: err.message });
     });
   } catch (error) {
-    console.error('Failed to initialize Stripe:', error);
+    logger.error('Failed to initialize Stripe', { error: error instanceof Error ? error.message : 'unknown' });
   }
 }
 
@@ -207,8 +208,8 @@ if (WebhookHandlers) {
         const sig = Array.isArray(signature) ? signature[0] : signature;
         await WebhookHandlers.processWebhook(req.body as Buffer, sig);
         res.status(200).json({ received: true });
-      } catch (error: any) {
-        console.error('Webhook error:', error.message);
+      } catch (error: unknown) {
+        logger.error('Webhook error', { error: error instanceof Error ? error.message : 'unknown' });
         res.status(400).json({ error: 'Webhook processing error' });
       }
     }
@@ -218,9 +219,9 @@ if (WebhookHandlers) {
 try {
   const stripeFinanceWebhook = require('./stripeFinanceWebhook').default;
   app.use(stripeFinanceWebhook);
-  console.log('Stripe finance webhook handler registered');
+  logger.info('Stripe finance webhook handler registered');
 } catch (e) {
-  console.warn('Stripe finance webhook handler not available, skipping');
+  logger.warn('Stripe finance webhook handler not available, skipping');
 }
 
 // CORS — restricted to known origins (D-C4 fix: no wildcards in production)
@@ -245,65 +246,65 @@ app.use(routes);
 try {
   const gustoRoutes = require('./gustoRoutes').default;
   app.use(gustoRoutes);
-  console.log('Gusto routes registered');
+  logger.info('Gusto routes registered');
 } catch (e) {
-  console.warn('Gusto routes not available, skipping');
+  logger.warn('Gusto routes not available, skipping');
 }
 
 try {
   const plaidRoutes = require('./plaidRoutes').default;
   app.use(plaidRoutes);
-  console.log('Plaid routes registered');
+  logger.info('Plaid routes registered');
 } catch (e) {
-  console.warn('Plaid routes not available, skipping');
+  logger.warn('Plaid routes not available, skipping');
 }
 
 try {
   const plaidWebhookHandler = require('./plaidWebhookHandler').default;
   app.use(plaidWebhookHandler);
-  console.log('Plaid webhook handler registered');
+  logger.info('Plaid webhook handler registered');
 } catch (e) {
-  console.warn('Plaid webhook handler not available, skipping');
+  logger.warn('Plaid webhook handler not available, skipping');
 }
 
 try {
   const quickbooksRoutes = require('./quickbooksRoutes').default;
   app.use(quickbooksRoutes);
-  console.log('QuickBooks routes registered');
+  logger.info('QuickBooks routes registered');
 } catch (e) {
-  console.warn('QuickBooks routes not available, skipping');
+  logger.warn('QuickBooks routes not available, skipping');
 }
 
 try {
   const qboWebhookHandler = require('./qboWebhookHandler').default;
   app.use(qboWebhookHandler);
-  console.log('QuickBooks webhook handler registered');
+  logger.info('QuickBooks webhook handler registered');
 } catch (e) {
-  console.warn('QuickBooks webhook handler not available, skipping');
+  logger.warn('QuickBooks webhook handler not available, skipping');
 }
 
 try {
   const gustoWebhookHandler = require('./gustoWebhookHandler').default;
   app.use(gustoWebhookHandler);
-  console.log('Gusto webhook handler registered');
+  logger.info('Gusto webhook handler registered');
 } catch (e) {
-  console.warn('Gusto webhook handler not available, skipping');
+  logger.warn('Gusto webhook handler not available, skipping');
 }
 
 try {
   const stripeConnectRoutes = require('./stripeConnectRoutes').default;
   app.use(stripeConnectRoutes);
-  console.log('Stripe Connect routes registered');
+  logger.info('Stripe Connect routes registered');
 } catch (e) {
-  console.warn('Stripe Connect routes not available, skipping');
+  logger.warn('Stripe Connect routes not available, skipping');
 }
 
 try {
   const financeRoutes = require('./financeRoutes').default;
   app.use(financeRoutes);
-  console.log('Finance storyline routes registered');
+  logger.info('Finance storyline routes registered');
 } catch (e) {
-  console.warn('Finance routes not available, skipping');
+  logger.warn('Finance routes not available, skipping');
 }
 
 try {
@@ -311,42 +312,42 @@ try {
   const { startOutboxWorker } = require('./telephonyEnterpriseRoutes');
   app.use(telephonyEnterpriseRoutes);
   startOutboxWorker();
-  console.log('Telephony enterprise routes registered (15 endpoints + outbox worker)');
+  logger.info('Telephony enterprise routes registered', { endpoints: 15, outbox_worker: true });
 } catch (e) {
-  console.warn('Telephony enterprise routes not available, skipping');
+  logger.warn('Telephony enterprise routes not available, skipping');
 }
 
 // @deprecated — legacy routes kept for transition, will be removed
 try {
   const twilioRoutes = require('./twilioRoutes').default;
   app.use(twilioRoutes);
-  console.log('Twilio telephony routes registered (legacy)');
+  logger.info('Twilio telephony routes registered (legacy)');
 } catch (e) {
-  console.warn('Twilio routes not available, skipping');
+  logger.warn('Twilio routes not available, skipping');
 }
 
 try {
   const mailRoutes = require('./mailRoutes').default;
   app.use(mailRoutes);
-  console.log('PolarisM mail routes registered');
+  logger.info('PolarisM mail routes registered');
 } catch (e) {
-  console.warn('Mail routes not available, skipping');
+  logger.warn('Mail routes not available, skipping');
 }
 
 try {
   const livekitRoutes = require('./routes/livekit').default;
   app.use(livekitRoutes);
-  console.log('LiveKit routes registered');
+  logger.info('LiveKit routes registered');
 } catch (e) {
-  console.warn('LiveKit routes not available, skipping');
+  logger.warn('LiveKit routes not available, skipping');
 }
 
 try {
   const deepgramRoutes = require('./routes/deepgram').default;
   app.use(deepgramRoutes);
-  console.log('Deepgram routes registered');
+  logger.info('Deepgram routes registered');
 } catch (e) {
-  console.warn('Deepgram routes not available, skipping');
+  logger.warn('Deepgram routes not available, skipping');
 }
 
 if (registerObjectStorageRoutes) {
@@ -383,7 +384,7 @@ app.get('/api/health', async (req, res) => {
 
 app.get('/api/ops-snapshot', async (req, res) => {
   try {
-    const snapshot: any = {
+    const snapshot: Record<string, unknown> = {
       cashPosition: { availableCash: 0, upcomingOutflows7d: 0, expectedInflows7d: 0, accountsConnected: 0 },
       providers: { plaid: false, stripe: false, gusto: false, quickbooks: false },
     };
@@ -404,7 +405,7 @@ app.get('/api/ops-snapshot', async (req, res) => {
 
     if (plaidData?.accounts?.length > 0) {
       const accounts = plaidData.accounts;
-      const totalBalance = accounts.reduce((s: number, a: any) => s + (a.balances?.current || 0), 0);
+      const totalBalance = accounts.reduce((s: number, a: Record<string, unknown>) => s + (((a.balances as Record<string, number> | undefined)?.current) || 0), 0);
       snapshot.cashPosition.availableCash = totalBalance;
       snapshot.cashPosition.accountsConnected = accounts.length;
       snapshot.providers.plaid = true;
@@ -420,8 +421,8 @@ app.get('/api/ops-snapshot', async (req, res) => {
     }
 
     res.json(snapshot);
-  } catch (error: any) {
-    console.error('Ops snapshot error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Ops snapshot error', { error: error instanceof Error ? error.message : 'unknown' });
     res.json({
       cashPosition: { availableCash: 0, upcomingOutflows7d: 0, expectedInflows7d: 0, accountsConnected: 0 },
       providers: { plaid: false, stripe: false, gusto: false, quickbooks: false },
@@ -448,28 +449,28 @@ async function loadOAuthTokens() {
   try {
     const { loadGustoTokens } = require('./gustoRoutes');
     await loadGustoTokens();
-  } catch (e: any) {
-    console.warn('Failed to load Gusto tokens:', e.message);
+  } catch (e: unknown) {
+    logger.warn('Failed to load Gusto tokens', { error: e instanceof Error ? e.message : 'unknown' });
   }
   try {
     const { loadPlaidTokens } = require('./plaidRoutes');
     await loadPlaidTokens();
-  } catch (e: any) {
-    console.warn('Failed to load Plaid tokens:', e.message);
+  } catch (e: unknown) {
+    logger.warn('Failed to load Plaid tokens', { error: e instanceof Error ? e.message : 'unknown' });
   }
   try {
     const { loadQBTokens } = require('./quickbooksRoutes');
     await loadQBTokens();
-  } catch (e: any) {
-    console.warn('Failed to load QuickBooks tokens:', e.message);
+  } catch (e: unknown) {
+    logger.warn('Failed to load QuickBooks tokens', { error: e instanceof Error ? e.message : 'unknown' });
   }
-  console.log('OAuth tokens loaded from database');
+  logger.info('OAuth tokens loaded from database');
 
   try {
     const { runInitialSync } = require('./initialSync');
-    runInitialSync(defaultSuiteId, defaultOfficeId).catch((err: any) => console.warn('Initial sync error:', err));
-  } catch (e: any) {
-    console.warn('Initial sync module not available:', e.message);
+    runInitialSync(defaultSuiteId, defaultOfficeId).catch((err: unknown) => logger.warn('Initial sync error', { error: err instanceof Error ? err.message : 'unknown' }));
+  } catch (e: unknown) {
+    logger.warn('Initial sync module not available', { error: e instanceof Error ? e.message : 'unknown' });
   }
 }
 
@@ -478,8 +479,8 @@ async function start() {
   // Must happen BEFORE any code reads process.env for provider keys
   try {
     await loadSecrets();
-  } catch (err: any) {
-    console.error('[FATAL] Secrets loading failed:', err.message);
+  } catch (err: unknown) {
+    logger.error('[FATAL] Secrets loading failed', { error: err instanceof Error ? err.message : 'unknown' });
     if (process.env.NODE_ENV === 'production') {
       process.exit(1);  // Fail closed — server CANNOT start without secrets
     }
@@ -532,17 +533,17 @@ async function start() {
       if (defaultOfficeId) setDefaultOfficeId(defaultOfficeId);
     }
 
-    console.log(`Suite context: ${defaultSuiteId || 'JWT-based'}, Office: ${defaultOfficeId || 'JWT-based'}`);
+    logger.info('Suite context initialized', { suite_id: defaultSuiteId || 'JWT-based', office_id: defaultOfficeId || 'JWT-based' });
 
     await loadOAuthTokens();
     await initStripe();
-  } catch (err: any) {
-    console.error('Startup initialization failed:', err.message);
-    console.warn('Server will continue with JWT-based suite context');
+  } catch (err: unknown) {
+    logger.error('Startup initialization failed', { error: err instanceof Error ? err.message : 'unknown' });
+    logger.warn('Server will continue with JWT-based suite context');
   }
 
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Aspire Desktop server running on port ${PORT}`);
+    logger.info('Aspire Desktop server running', { port: PORT });
   });
 
   // Graceful shutdown (D-C11) — drain connections before exit
@@ -552,17 +553,17 @@ async function start() {
   function gracefulShutdown(signal: string): void {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`[${signal}] Graceful shutdown initiated — draining connections (${SHUTDOWN_TIMEOUT_MS / 1000}s timeout)...`);
+    logger.info('Graceful shutdown initiated', { signal, timeout_s: SHUTDOWN_TIMEOUT_MS / 1000 });
 
     // Stop accepting new connections
     server.close(() => {
-      console.log('[shutdown] All connections drained. Exiting cleanly.');
+      logger.info('All connections drained. Exiting cleanly.');
       process.exit(0);
     });
 
     // Force exit if connections don't drain in time
     setTimeout(() => {
-      console.error('[shutdown] Timeout — forcing exit with in-flight requests lost.');
+      logger.error('Shutdown timeout — forcing exit with in-flight requests lost');
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS);
   }
@@ -573,4 +574,4 @@ async function start() {
 
 export { defaultSuiteId, defaultOfficeId };
 
-start().catch(console.error);
+start().catch((err) => logger.error('Server start failed', { error: err instanceof Error ? err.message : 'unknown' }));

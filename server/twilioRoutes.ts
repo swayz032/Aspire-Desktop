@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
+import { logger } from './logger';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ function getTwilioClient() {
     twilioClient = twilio(accountSid, authToken);
     return twilioClient;
   } catch (e) {
-    console.warn('Twilio SDK not available');
+    logger.warn('Twilio SDK not available');
     return null;
   }
 }
@@ -81,9 +82,10 @@ router.post('/api/calls/initiate', async (req: Request, res: Response) => {
       callSid: call.sid,
       status: call.status,
     });
-  } catch (error: any) {
-    console.error('Call initiation error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Call initiation error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -117,8 +119,8 @@ router.post('/api/calls/webhook', async (req: Request, res: Response) => {
 
     // Twilio expects 200 OK
     res.status(200).send('<Response></Response>');
-  } catch (error: any) {
-    console.error('Twilio webhook error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Twilio webhook error', { error: error instanceof Error ? error.message : 'unknown' });
     // Still return 200 so Twilio doesn't retry indefinitely
     res.status(200).send('<Response></Response>');
   }
@@ -146,9 +148,10 @@ router.get('/api/calls/history', async (req: Request, res: Response) => {
 
     const rows = (result.rows || result) as any[];
     res.json({ calls: rows, total: rows.length });
-  } catch (error: any) {
-    console.error('Call history error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Call history error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 

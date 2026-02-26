@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { createTrustSpineReceipt } from '../receiptService';
 import * as polaris from './polarisClient';
 import { encryptPassword } from './imapClient';
+import { logger } from '../logger';
 
 // ─── State Machine ───
 
@@ -465,7 +466,7 @@ export async function createMailboxOnJob(
   } catch {
     // TOKEN_ENCRYPTION_KEY not set — password won't be stored (IMAP won't work)
     // Non-fatal: mailbox is still created in PolarisM
-    console.warn('[createMailbox] TOKEN_ENCRYPTION_KEY not set — IMAP credentials not stored');
+    logger.warn('[createMailbox] TOKEN_ENCRYPTION_KEY not set — IMAP credentials not stored');
   }
 
   // Store in mail_accounts (with encrypted password for IMAP auth)

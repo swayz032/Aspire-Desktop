@@ -6,6 +6,7 @@ import { createReceipt } from './receiptService';
 import { updateConnectionSyncTime } from './financeTokenStore';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
+import { logger } from './logger';
 
 const configuration = new Configuration({
   basePath: PlaidEnvironments.sandbox,
@@ -41,20 +42,20 @@ async function verifyPlaidWebhook(req: Request): Promise<boolean> {
   const plaidEnv = process.env.PLAID_ENV || 'sandbox';
 
   if (plaidEnv === 'sandbox' || plaidEnv === 'development') {
-    console.warn('Plaid webhook verification skipped in sandbox/development mode');
+    logger.warn('Plaid webhook verification skipped in sandbox/development mode');
     return true;
   }
 
   try {
     const verificationHeader = req.headers['plaid-verification'] as string;
     if (!verificationHeader) {
-      console.error('Missing Plaid-Verification header');
+      logger.error('Missing Plaid-Verification header');
       return false;
     }
 
     const tokenParts = verificationHeader.split('.');
     if (tokenParts.length !== 3) {
-      console.error('Invalid JWT format in Plaid-Verification header');
+      logger.error('Invalid JWT format in Plaid-Verification header');
       return false;
     }
 
@@ -63,7 +64,7 @@ async function verifyPlaidWebhook(req: Request): Promise<boolean> {
     const kid = header.kid;
 
     if (!kid) {
-      console.error('Missing kid in JWT header');
+      logger.error('Missing kid in JWT header');
       return false;
     }
 
@@ -85,7 +86,7 @@ async function verifyPlaidWebhook(req: Request): Promise<boolean> {
     );
 
     if (!isValid) {
-      console.error('Plaid webhook JWT signature verification failed');
+      logger.error('Plaid webhook JWT signature verification failed');
       return false;
     }
 
@@ -96,14 +97,14 @@ async function verifyPlaidWebhook(req: Request): Promise<boolean> {
     const bodyHash = computeBodyHash(bodyString);
 
     if (payload.request_body_sha256 !== bodyHash) {
-      console.error('Plaid webhook body hash mismatch');
+      logger.error('Plaid webhook body hash mismatch');
       return false;
     }
 
-    console.log('Plaid webhook verification passed');
+    logger.info('Plaid webhook verification passed');
     return true;
-  } catch (error: any) {
-    console.error('Plaid webhook verification error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Plaid webhook verification error', { error: error instanceof Error ? error.message : 'unknown' });
     return false;
   }
 }
@@ -126,8 +127,8 @@ async function findConnectionByItemId(itemId: string): Promise<{ id: string; sui
       return { id: row.id, suiteId: row.suite_id, officeId: row.office_id };
     }
     return null;
-  } catch (error: any) {
-    console.error('Failed to find connection by item ID:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to find connection by item ID', { error: error instanceof Error ? error.message : 'unknown' });
     return null;
   }
 }
@@ -157,13 +158,13 @@ async function writeFinanceEvent(params: {
     `);
     const rows = result.rows || result;
     if (rows && (rows as any[]).length > 0) {
-      console.log(`Finance event written: ${params.providerEventId}`);
+      logger.info('Finance event written', { providerEventId: params.providerEventId });
       return true;
     }
-    console.log(`Finance event already exists (idempotent skip): ${params.providerEventId}`);
+    logger.info('Finance event already exists (idempotent skip)', { providerEventId: params.providerEventId });
     return false;
-  } catch (error: any) {
-    console.error('Failed to write finance event:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to write finance event', { error: error instanceof Error ? error.message : 'unknown' });
     return false;
   }
 }
@@ -184,8 +185,8 @@ export async function pullPlaidTransactionsSync(accessToken: string, connectionI
       if (cursorRows && (cursorRows as any[]).length > 0 && (cursorRows as any[])[0].cursor) {
         cursor = (cursorRows as any[])[0].cursor;
       }
-    } catch (e: any) {
-      console.log('No existing sync cursor found, starting fresh');
+    } catch (e: unknown) {
+      logger.info('No existing sync cursor found, starting fresh');
     }
 
     let added = 0;
@@ -314,8 +315,8 @@ export async function pullPlaidTransactionsSync(accessToken: string, connectionI
             VALUES (${suiteId}, ${officeId}, ${connectionId}, 'plaid', 'sync_cursor', ${connectionId}, ${JSON.stringify({ sync_cursor: cursor })})
           `);
         }
-      } catch (e: any) {
-        console.error('Failed to save sync cursor:', e.message);
+      } catch (e: unknown) {
+        logger.error('Failed to save sync cursor', { error: e instanceof Error ? e.message : 'unknown' });
       }
     }
 
@@ -330,10 +331,13 @@ export async function pullPlaidTransactionsSync(accessToken: string, connectionI
 
     await updateConnectionSyncTime(connectionId, 'last_sync_at');
 
-    console.log(`Plaid transactions sync complete: +${added} ~${modified} -${removed}`);
+    logger.info('Plaid transactions sync complete', { added, modified, removed });
     return { added, modified, removed };
-  } catch (error: any) {
-    console.error('Plaid transactions sync error:', error?.response?.data || error.message);
+  } catch (error: unknown) {
+    const errorDetail = error instanceof Error
+      ? ((error as any)?.response?.data || error.message)
+      : 'unknown';
+    logger.error('Plaid transactions sync error', { error: errorDetail });
     throw error;
   }
 }
@@ -395,10 +399,13 @@ export async function fetchPlaidBalances(accessToken: string, connectionId: stri
       metadata: { provider: 'plaid', connectionId, type: 'balance_fetch' },
     });
 
-    console.log(`Plaid balances fetched: ${balanceResults.length} accounts`);
+    logger.info('Plaid balances fetched', { accountCount: balanceResults.length });
     return balanceResults;
-  } catch (error: any) {
-    console.error('Plaid balance fetch error:', error?.response?.data || error.message);
+  } catch (error: unknown) {
+    const errorDetail = error instanceof Error
+      ? ((error as any)?.response?.data || error.message)
+      : 'unknown';
+    logger.error('Plaid balance fetch error', { error: errorDetail });
     throw error;
   }
 }
@@ -409,7 +416,7 @@ router.post('/api/plaid/finance-webhook', async (req: Request, res: Response) =>
   try {
     const isValid = await verifyPlaidWebhook(req);
     if (!isValid) {
-      console.error('Plaid webhook verification failed, rejecting request');
+      logger.error('Plaid webhook verification failed, rejecting request');
       return res.status(401).json({ error: 'Webhook verification failed' });
     }
 
@@ -419,11 +426,11 @@ router.post('/api/plaid/finance-webhook', async (req: Request, res: Response) =>
     const itemId = body.item_id || '';
     const compositeType = `${webhookType}.${webhookCode}`;
 
-    console.log(`Plaid webhook received: ${compositeType} for item ${itemId}`);
+    logger.info('Plaid webhook received', { compositeType, itemId });
 
     const eventType = PLAID_EVENT_MAP[compositeType];
     if (!eventType) {
-      console.log(`Unhandled Plaid webhook type: ${compositeType}, acknowledging`);
+      logger.info('Unhandled Plaid webhook type, acknowledging', { compositeType });
       return res.status(200).json({ received: true, handled: false });
     }
 
@@ -469,15 +476,15 @@ router.post('/api/plaid/finance-webhook', async (req: Request, res: Response) =>
     if (connectionId) {
       try {
         await updateConnectionSyncTime(connectionId, 'last_webhook_at');
-      } catch (e: any) {
-        console.error('Failed to update connection webhook time:', e.message);
+      } catch (e: unknown) {
+        logger.error('Failed to update connection webhook time', { error: e instanceof Error ? e.message : 'unknown' });
       }
     }
 
-    console.log(`Plaid webhook processed: ${compositeType} -> ${eventType} (written: ${written})`);
+    logger.info('Plaid webhook processed', { compositeType, eventType, written });
     res.status(200).json({ received: true, handled: true, eventType, written });
-  } catch (error: any) {
-    console.error('Plaid webhook processing error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Plaid webhook processing error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(200).json({ received: true, error: 'Processing error' });
   }
 });

@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { handleProviderAuthError } from './secrets';
+import { logger } from './logger';
 
 let stripeInstance: Stripe | null = null;
 
@@ -14,7 +15,7 @@ function getSecretKey(): string {
 export async function getUncachableStripeClient(): Promise<Stripe> {
   const secretKey = getSecretKey();
   return new Stripe(secretKey, {
-    apiVersion: '2024-12-18.acacia' as any,
+    apiVersion: '2024-12-18.acacia' as Stripe.LatestApiVersion,
   });
 }
 
@@ -29,7 +30,7 @@ export async function withStripeRetry<T>(
   const client = await getUncachableStripeClient();
   try {
     return await operation(client);
-  } catch (error: any) {
+  } catch (error: unknown) {
     const reloaded = await handleProviderAuthError('stripe', error);
     if (reloaded) {
       // Retry once with fresh credentials
@@ -52,7 +53,7 @@ export async function getStripeSecretKey(): Promise<string> {
   return getSecretKey();
 }
 
-let stripeSync: any = null;
+let stripeSync: { processWebhook: (payload: Buffer, sig: string) => Promise<void>; findOrCreateManagedWebhook: (url: string) => Promise<void>; syncBackfill: () => Promise<void> } | null = null;
 
 export async function getStripeSync() {
   if (!stripeSync) {
@@ -67,7 +68,7 @@ export async function getStripeSync() {
         stripeSecretKey: secretKey,
       });
     } catch (e) {
-      console.log('stripe-replit-sync not available, skipping sync setup');
+      logger.info('stripe-replit-sync not available, skipping sync setup');
       return null;
     }
   }

@@ -2,6 +2,7 @@ import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
 import { getConnectionsByTenant, ConnectionRecord } from './financeTokenStore';
+import { logger } from './logger';
 
 export interface ChapterNow {
   cashAvailable: number;
@@ -86,8 +87,8 @@ export async function computeChapterNow(suiteId: string, officeId: string): Prom
       stripePending,
       lastUpdated: lastUpdated ? new Date(lastUpdated).toISOString() : null,
     };
-  } catch (error: any) {
-    console.error('Failed to compute chapter NOW:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to compute chapter NOW', { error: error instanceof Error ? error.message : 'unknown' });
     return { cashAvailable: 0, bankBalance: 0, stripeAvailable: 0, stripePending: 0, lastUpdated: null };
   }
 }
@@ -175,8 +176,8 @@ export async function computeChapterNext(suiteId: string, officeId: string): Pro
     const netCashFlow7d = expectedInflows7d - expectedOutflows7d;
 
     return { expectedInflows7d, expectedOutflows7d, netCashFlow7d, items };
-  } catch (error: any) {
-    console.error('Failed to compute chapter NEXT:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to compute chapter NEXT', { error: error instanceof Error ? error.message : 'unknown' });
     return { expectedInflows7d: 0, expectedOutflows7d: 0, netCashFlow7d: 0, items: [] };
   }
 }
@@ -225,8 +226,8 @@ export async function computeChapterMonth(suiteId: string, officeId: string): Pr
     const expenses = Number(expenseRows[0]?.total || 0);
 
     return { revenue, expenses, netIncome: revenue - expenses, period };
-  } catch (error: any) {
-    console.error('Failed to compute chapter MONTH:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to compute chapter MONTH', { error: error instanceof Error ? error.message : 'unknown' });
     const now = new Date();
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     return { revenue: 0, expenses: 0, netIncome: 0, period };
@@ -373,8 +374,8 @@ export async function computeChapterReconcile(suiteId: string, officeId: string)
     }
 
     return { mismatches, mismatchCount: mismatches.length };
-  } catch (error: any) {
-    console.error('Failed to compute chapter RECONCILE:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to compute chapter RECONCILE', { error: error instanceof Error ? error.message : 'unknown' });
     return { mismatches: [], mismatchCount: 0 };
   }
 }
@@ -470,8 +471,8 @@ export async function computeChapterActions(
     }
 
     return { proposals, proposalCount: proposals.length };
-  } catch (error: any) {
-    console.error('Failed to compute chapter ACTIONS:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to compute chapter ACTIONS', { error: error instanceof Error ? error.message : 'unknown' });
     return { proposals: [], proposalCount: 0 };
   }
 }
@@ -631,7 +632,7 @@ export async function computeSnapshot(suiteId: string, officeId: string): Promis
     )
   `);
 
-  console.log(`Snapshot computed for ${suiteId}/${officeId} at ${generatedAt}`);
+  logger.info('Snapshot computed', { suiteId, officeId, generatedAt });
 
   return {
     chapters: {

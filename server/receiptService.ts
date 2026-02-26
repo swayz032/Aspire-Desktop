@@ -1,6 +1,7 @@
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
+import { logger } from './logger';
 
 export type ReceiptStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'DENIED';
 export type ActorType = 'USER' | 'SYSTEM' | 'WORKER';
@@ -22,10 +23,10 @@ export interface CreateReceiptParams {
   suiteId: string;
   officeId: string;
   actionType: ReceiptActionType;
-  inputs: any;
-  outputs: any;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
   policyDecisionId?: string;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Receipt {
@@ -54,7 +55,7 @@ function generateReceiptId(): string {
   return crypto.randomBytes(16).toString('hex');
 }
 
-function rowToReceipt(row: any): Receipt {
+function rowToReceipt(row: Record<string, unknown>): Receipt {
   return {
     receiptId: row.receipt_id,
     suiteId: row.suite_id,
@@ -85,18 +86,18 @@ export async function createTrustSpineReceipt(params: TrustSpineReceiptParams): 
     const actorType = params.actorType || 'SYSTEM';
 
     const tenantResult = await db.execute(sql`SELECT tenant_id FROM app.suites WHERE suite_id = ${params.suiteId}::uuid`);
-    const tenantRows = (tenantResult.rows || tenantResult) as any[];
-    const tenantId = tenantRows[0]?.tenant_id || 'unknown';
+    const tenantRows = (tenantResult.rows || tenantResult) as Record<string, unknown>[];
+    const tenantId = (tenantRows[0]?.tenant_id as string) || 'unknown';
 
     await db.execute(sql`
       INSERT INTO receipts (receipt_id, suite_id, tenant_id, receipt_type, status, correlation_id, actor_type, actor_id, office_id, action, result)
       VALUES (${receiptId}, ${params.suiteId}::uuid, ${tenantId}, ${params.receiptType}, ${status}, ${correlationId}, ${actorType}, ${params.actorId || null}, ${params.officeId || null}::uuid, ${JSON.stringify(params.action)}::jsonb, ${JSON.stringify(params.result)}::jsonb)
     `);
 
-    console.log(`Receipt created: ${receiptId} (${params.receiptType}/${status})`);
+    logger.info(`Receipt created: ${receiptId} (${params.receiptType}/${status})`);
     return receiptId;
-  } catch (error: any) {
-    console.error('Failed to create receipt:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to create receipt', { error: error instanceof Error ? error.message : 'unknown' });
     throw error;
   }
 }
@@ -125,12 +126,12 @@ export async function getReceipt(receiptId: string): Promise<Receipt | null> {
       WHERE receipt_id = ${receiptId}
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
-      return rowToReceipt((rows as any[])[0]);
+    if (rows && (rows as Record<string, unknown>[]).length > 0) {
+      return rowToReceipt((rows as Record<string, unknown>[])[0]);
     }
     return null;
-  } catch (error: any) {
-    console.error('Failed to get receipt:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to get receipt', { error: error instanceof Error ? error.message : 'unknown' });
     return null;
   }
 }
@@ -156,10 +157,10 @@ export async function getReceiptsByTenant(suiteId: string, officeId?: string, li
         LIMIT ${queryLimit}
       `);
     }
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, unknown>[];
     return rows.map(rowToReceipt);
-  } catch (error: any) {
-    console.error('Failed to get receipts by tenant:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to get receipts by tenant', { error: error instanceof Error ? error.message : 'unknown' });
     return [];
   }
 }
@@ -172,20 +173,20 @@ export async function verifyReceipt(receiptId: string): Promise<boolean> {
       WHERE receipt_id = ${receiptId}
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
-      const row = (rows as any[])[0];
+    if (rows && (rows as Record<string, unknown>[]).length > 0) {
+      const row = (rows as Record<string, unknown>[])[0];
       if (!row.receipt_hash) {
-        console.log(`Receipt ${receiptId} has no stored hash yet`);
+        logger.info(`Receipt ${receiptId} has no stored hash yet`);
         return true; // Hash not yet computed
       }
       const valid = Buffer.from(row.receipt_hash).equals(Buffer.from(row.computed_hash));
-      console.log(`Receipt ${receiptId} verification: ${valid ? 'PASS' : 'FAIL'}`);
+      logger.info(`Receipt ${receiptId} verification: ${valid ? 'PASS' : 'FAIL'}`);
       return valid;
     }
-    console.log(`Receipt ${receiptId} not found for verification`);
+    logger.info(`Receipt ${receiptId} not found for verification`);
     return false;
-  } catch (error: any) {
-    console.error('Failed to verify receipt:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to verify receipt', { error: error instanceof Error ? error.message : 'unknown' });
     return false;
   }
 }

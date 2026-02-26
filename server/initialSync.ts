@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { loadToken, loadAllTokens } from './tokenStore';
 import { createReceipt } from './receiptService';
 import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
+import { logger } from './logger';
 
 async function upsertConnection(suiteId: string, officeId: string, provider: string, externalAccountId: string): Promise<string> {
   const result = await db.execute(sql`
@@ -31,8 +32,8 @@ async function insertEvent(params: {
   amount: number;
   currency: string;
   status: string;
-  entityRefs: any;
-  metadata: any;
+  entityRefs: Record<string, unknown>;
+  metadata: Record<string, unknown>;
   receiptId: string | null;
 }): Promise<void> {
   const eventId = crypto.randomUUID();
@@ -47,7 +48,7 @@ async function insertEvent(params: {
 async function syncPlaid(suiteId: string, officeId: string, receiptId: string): Promise<void> {
   const tokens = await loadAllTokens('plaid:');
   if (tokens.length === 0) {
-    console.log('Initial sync: Plaid - no tokens found, skipping');
+    logger.info('Initial sync: Plaid - no tokens found, skipping');
     return;
   }
 
@@ -73,7 +74,7 @@ async function syncPlaid(suiteId: string, officeId: string, receiptId: string): 
     try {
       const balanceResponse = await plaidClient.accountsBalanceGet({ access_token: token.access_token });
       const accounts = balanceResponse.data.accounts;
-      const totalBalance = accounts.reduce((sum: number, acc: any) => sum + (acc.balances?.current || 0), 0);
+      const totalBalance = accounts.reduce((sum: number, acc: Record<string, unknown>) => sum + (((acc.balances as Record<string, number> | undefined)?.current) || 0), 0);
 
       await insertEvent({
         suiteId,
@@ -86,13 +87,13 @@ async function syncPlaid(suiteId: string, officeId: string, receiptId: string): 
         amount: Math.round(totalBalance * 100),
         currency: 'USD',
         status: 'posted',
-        entityRefs: { accounts: accounts.map((a: any) => ({ id: a.account_id, name: a.name, type: a.type })) },
-        metadata: { accountCount: accounts.length, balances: accounts.map((a: any) => ({ id: a.account_id, current: a.balances?.current, available: a.balances?.available })) },
+        entityRefs: { accounts: accounts.map((a: Record<string, unknown>) => ({ id: a.account_id, name: a.name, type: a.type })) },
+        metadata: { accountCount: accounts.length, balances: accounts.map((a: Record<string, unknown>) => ({ id: a.account_id, current: (a.balances as Record<string, unknown> | undefined)?.current, available: (a.balances as Record<string, unknown> | undefined)?.available })) },
         receiptId,
       });
       totalAccounts += accounts.length;
-    } catch (err: any) {
-      console.error(`Initial sync: Plaid balance error for item ${token.item_id}:`, err.message);
+    } catch (err: unknown) {
+      logger.error('Initial sync: Plaid balance error', { item_id: token.item_id, error: err instanceof Error ? err.message : 'unknown' });
     }
 
     try {
@@ -127,18 +128,18 @@ async function syncPlaid(suiteId: string, officeId: string, receiptId: string): 
         });
         totalTransactions++;
       }
-    } catch (err: any) {
-      console.error(`Initial sync: Plaid transactions error for item ${token.item_id}:`, err.message);
+    } catch (err: unknown) {
+      logger.error('Initial sync: Plaid transactions error', { item_id: token.item_id, error: err instanceof Error ? err.message : 'unknown' });
     }
   }
 
-  console.log(`Initial sync: Plaid - ${totalAccounts} accounts, ${totalTransactions} transactions synced`);
+  logger.info('Initial sync: Plaid complete', { accounts: totalAccounts, transactions: totalTransactions });
 }
 
 async function syncStripe(suiteId: string, officeId: string, receiptId: string): Promise<void> {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey) {
-    console.log('Initial sync: Stripe - no secret key, skipping');
+    logger.info('Initial sync: Stripe - no secret key, skipping');
     return;
   }
 
@@ -170,8 +171,8 @@ async function syncStripe(suiteId: string, officeId: string, receiptId: string):
       metadata: { available: availableAmount, pending: pendingAmount },
       receiptId,
     });
-  } catch (err: any) {
-    console.error('Initial sync: Stripe balance error:', err.message);
+  } catch (err: unknown) {
+    logger.error('Initial sync: Stripe balance error', { error: err instanceof Error ? err.message : 'unknown' });
   }
 
   try {
@@ -194,8 +195,8 @@ async function syncStripe(suiteId: string, officeId: string, receiptId: string):
       });
       payoutCount++;
     }
-  } catch (err: any) {
-    console.error('Initial sync: Stripe payouts error:', err.message);
+  } catch (err: unknown) {
+    logger.error('Initial sync: Stripe payouts error', { error: err instanceof Error ? err.message : 'unknown' });
   }
 
   try {
@@ -218,8 +219,8 @@ async function syncStripe(suiteId: string, officeId: string, receiptId: string):
       });
       chargeCount++;
     }
-  } catch (err: any) {
-    console.error('Initial sync: Stripe charges error:', err.message);
+  } catch (err: unknown) {
+    logger.error('Initial sync: Stripe charges error', { error: err instanceof Error ? err.message : 'unknown' });
   }
 
   try {
@@ -242,17 +243,17 @@ async function syncStripe(suiteId: string, officeId: string, receiptId: string):
       });
       feeCount++;
     }
-  } catch (err: any) {
-    console.error('Initial sync: Stripe fees error:', err.message);
+  } catch (err: unknown) {
+    logger.error('Initial sync: Stripe fees error', { error: err instanceof Error ? err.message : 'unknown' });
   }
 
-  console.log(`Initial sync: Stripe - ${chargeCount} charges, ${payoutCount} payouts, ${feeCount} fees synced`);
+  logger.info('Initial sync: Stripe complete', { charges: chargeCount, payouts: payoutCount, fees: feeCount });
 }
 
 async function syncQuickBooks(suiteId: string, officeId: string, receiptId: string): Promise<void> {
   const token = await loadToken('quickbooks');
   if (!token || !token.access_token || !token.realm_id) {
-    console.log('Initial sync: QuickBooks - no tokens found, skipping');
+    logger.info('Initial sync: QuickBooks - no tokens found, skipping');
     return;
   }
 
@@ -274,7 +275,7 @@ async function syncQuickBooks(suiteId: string, officeId: string, receiptId: stri
     );
 
     if (!response.ok) {
-      console.error(`Initial sync: QuickBooks P&L request failed: ${response.status}`);
+      logger.error('Initial sync: QuickBooks P&L request failed', { status: response.status });
       return;
     }
 
@@ -309,16 +310,16 @@ async function syncQuickBooks(suiteId: string, officeId: string, receiptId: stri
       receiptId,
     });
 
-    console.log(`Initial sync: QuickBooks - P&L report synced (revenue: ${revenue}, expenses: ${expenses})`);
-  } catch (err: any) {
-    console.error('Initial sync: QuickBooks error:', err.message);
+    logger.info('Initial sync: QuickBooks P&L synced', { revenue, expenses });
+  } catch (err: unknown) {
+    logger.error('Initial sync: QuickBooks error', { error: err instanceof Error ? err.message : 'unknown' });
   }
 }
 
 async function syncGusto(suiteId: string, officeId: string, receiptId: string): Promise<void> {
   const token = await loadToken('gusto');
   if (!token || !token.access_token || !token.company_uuid) {
-    console.log('Initial sync: Gusto - no tokens found, skipping');
+    logger.info('Initial sync: Gusto - no tokens found, skipping');
     return;
   }
 
@@ -336,7 +337,7 @@ async function syncGusto(suiteId: string, officeId: string, receiptId: string): 
     );
 
     if (!response.ok) {
-      console.error(`Initial sync: Gusto payrolls request failed: ${response.status}`);
+      logger.error('Initial sync: Gusto payrolls request failed', { status: response.status });
       return;
     }
 
@@ -369,9 +370,9 @@ async function syncGusto(suiteId: string, officeId: string, receiptId: string): 
       }
     }
 
-    console.log(`Initial sync: Gusto - ${payrollCount} payrolls synced`);
-  } catch (err: any) {
-    console.error('Initial sync: Gusto error:', err.message);
+    logger.info('Initial sync: Gusto complete', { payrolls: payrollCount });
+  } catch (err: unknown) {
+    logger.error('Initial sync: Gusto error', { error: err instanceof Error ? err.message : 'unknown' });
   }
 }
 
@@ -384,32 +385,32 @@ export async function registerConnectionsFromTokens(suiteId: string, officeId: s
           await upsertConnection(suiteId, officeId, 'plaid', token.item_id || 'unknown');
         }
       }
-      console.log(`Registered ${plaidTokens.length} Plaid connection(s)`);
+      logger.info('Registered Plaid connections', { count: plaidTokens.length });
     }
 
     if (process.env.STRIPE_SECRET_KEY) {
       await upsertConnection(suiteId, officeId, 'stripe', 'stripe_account');
-      console.log('Registered Stripe connection');
+      logger.info('Registered Stripe connection');
     }
 
     const qboToken = await loadToken('quickbooks');
     if (qboToken?.access_token && qboToken.realm_id) {
       await upsertConnection(suiteId, officeId, 'qbo', qboToken.realm_id);
-      console.log('Registered QuickBooks connection');
+      logger.info('Registered QuickBooks connection');
     }
 
     const gustoToken = await loadToken('gusto');
     if (gustoToken?.access_token && gustoToken.company_uuid) {
       await upsertConnection(suiteId, officeId, 'gusto', gustoToken.company_uuid);
-      console.log('Registered Gusto connection');
+      logger.info('Registered Gusto connection');
     }
-  } catch (err: any) {
-    console.error('Failed to register connections from tokens:', err.message);
+  } catch (err: unknown) {
+    logger.error('Failed to register connections from tokens', { error: err instanceof Error ? err.message : 'unknown' });
   }
 }
 
 export async function runInitialSync(suiteId: string, officeId: string): Promise<void> {
-  console.log(`Initial sync starting for suite=${suiteId}, office=${officeId}`);
+  logger.info('Initial sync starting', { suite_id: suiteId, office_id: officeId });
 
   const receiptId = await createReceipt({
     suiteId,
@@ -422,27 +423,27 @@ export async function runInitialSync(suiteId: string, officeId: string): Promise
 
   try {
     await syncPlaid(suiteId, officeId, receiptId);
-  } catch (err: any) {
-    console.error('Initial sync: Plaid sync failed:', err.message);
+  } catch (err: unknown) {
+    logger.error('Initial sync: Plaid sync failed', { error: err instanceof Error ? err.message : 'unknown' });
   }
 
   try {
     await syncStripe(suiteId, officeId, receiptId);
-  } catch (err: any) {
-    console.error('Initial sync: Stripe sync failed:', err.message);
+  } catch (err: unknown) {
+    logger.error('Initial sync: Stripe sync failed', { error: err instanceof Error ? err.message : 'unknown' });
   }
 
   try {
     await syncQuickBooks(suiteId, officeId, receiptId);
-  } catch (err: any) {
-    console.error('Initial sync: QuickBooks sync failed:', err.message);
+  } catch (err: unknown) {
+    logger.error('Initial sync: QuickBooks sync failed', { error: err instanceof Error ? err.message : 'unknown' });
   }
 
   try {
     await syncGusto(suiteId, officeId, receiptId);
-  } catch (err: any) {
-    console.error('Initial sync: Gusto sync failed:', err.message);
+  } catch (err: unknown) {
+    logger.error('Initial sync: Gusto sync failed', { error: err instanceof Error ? err.message : 'unknown' });
   }
 
-  console.log('Initial sync completed');
+  logger.info('Initial sync completed');
 }

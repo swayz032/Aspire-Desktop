@@ -8,6 +8,7 @@
  * The client uses Nova-3 model for real-time transcription.
  */
 import { Router, Request, Response } from 'express';
+import { logger } from '../logger';
 
 const router = Router();
 
@@ -27,9 +28,10 @@ router.get('/api/deepgram/token', async (_req: Request, res: Response) => {
       token: DEEPGRAM_API_KEY,
       url: 'wss://api.deepgram.com/v1/listen',
     });
-  } catch (error: any) {
-    console.error('Deepgram token error:', error);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Deepgram token error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 

@@ -6,6 +6,7 @@ import { updateConnectionSyncTime, getConnectionByProvider } from './financeToke
 import { loadToken } from './tokenStore';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
+import { logger } from './logger';
 
 const router = Router();
 
@@ -30,7 +31,7 @@ function computeRawHash(data: any): string {
 function verifyQBOSignature(payload: string, signature: string): boolean {
   const verifierToken = process.env.QBO_WEBHOOK_VERIFIER_TOKEN;
   if (!verifierToken) {
-    console.warn('QBO_WEBHOOK_VERIFIER_TOKEN not set — accepting webhook without signature verification (sandbox mode)');
+    logger.warn('QBO_WEBHOOK_VERIFIER_TOKEN not set — accepting webhook without signature verification (sandbox mode)');
     return true;
   }
 
@@ -39,8 +40,8 @@ function verifyQBOSignature(payload: string, signature: string): boolean {
       .update(payload)
       .digest('base64');
     return hash === signature;
-  } catch (error: any) {
-    console.error('QBO webhook signature verification error:', error.message);
+  } catch (error: unknown) {
+    logger.error('QBO webhook signature verification error', { error: error instanceof Error ? error.message : 'unknown' });
     return false;
   }
 }
@@ -69,13 +70,13 @@ async function writeFinanceEvent(params: {
     `);
     const rows = result.rows || result;
     if (rows && (rows as any[]).length > 0) {
-      console.log(`QBO finance event written: ${params.providerEventId}`);
+      logger.info('QBO finance event written', { providerEventId: params.providerEventId });
       return true;
     }
-    console.log(`QBO finance event already exists (idempotent skip): ${params.providerEventId}`);
+    logger.info('QBO finance event already exists (idempotent skip)', { providerEventId: params.providerEventId });
     return false;
-  } catch (error: any) {
-    console.error('Failed to write QBO finance event:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to write QBO finance event', { error: error instanceof Error ? error.message : 'unknown' });
     return false;
   }
 }
@@ -116,7 +117,7 @@ async function refreshQBOToken(refreshToken: string): Promise<{ accessToken: str
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`QBO token refresh failed ${response.status}: ${errorText.substring(0, 500)}`);
+      logger.error('QBO token refresh failed', { status: response.status, detail: errorText.substring(0, 500) });
       return null;
     }
 
@@ -125,8 +126,8 @@ async function refreshQBOToken(refreshToken: string): Promise<{ accessToken: str
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,
     };
-  } catch (error: any) {
-    console.error('QBO token refresh error:', error.message);
+  } catch (error: unknown) {
+    logger.error('QBO token refresh error', { error: error instanceof Error ? error.message : 'unknown' });
     return null;
   }
 }
@@ -142,7 +143,7 @@ async function qboApiFetch(path: string, accessToken: string, realmId: string, r
   });
 
   if (response.status === 401 && !retried && refreshToken) {
-    console.log('QBO: 401 received, attempting token refresh...');
+    logger.info('QBO: 401 received, attempting token refresh...');
     const refreshed = await refreshQBOToken(refreshToken);
     if (refreshed) {
       return qboApiFetch(path, refreshed.accessToken, realmId, true);
@@ -152,7 +153,7 @@ async function qboApiFetch(path: string, accessToken: string, realmId: string, r
 
   if (!response.ok) {
     const text = await response.text();
-    console.error(`QBO API error ${response.status}: ${text.substring(0, 500)}`);
+    logger.error('QBO API error', { status: response.status, detail: text.substring(0, 500) });
     throw new Error(`QBO API returned ${response.status}`);
   }
 
@@ -165,7 +166,7 @@ export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Pr
 
   const creds = await getQBOCredentials();
   if (!creds) {
-    console.warn('QBO: No credentials available for CDC polling');
+    logger.warn('QBO: No credentials available for CDC polling');
     return { processed: 0 };
   }
 
@@ -203,7 +204,7 @@ export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Pr
 
     const cdcResponse = cdcData?.CDCResponse;
     if (!Array.isArray(cdcResponse)) {
-      console.log('QBO CDC: No changes found');
+      logger.info('QBO CDC: No changes found');
       return { processed: 0 };
     }
 
@@ -278,15 +279,15 @@ export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Pr
           VALUES (${sId}, ${oId}, 'qbo', 'cdc_cursor', 'cdc_cursor', ${JSON.stringify({ last_cdc_poll: nowIso })})
         `);
       }
-    } catch (e: any) {
-      console.error('Failed to save QBO CDC cursor:', e.message);
+    } catch (e: unknown) {
+      logger.error('Failed to save QBO CDC cursor', { error: e instanceof Error ? e.message : 'unknown' });
     }
 
     if (connectionId) {
       try {
         await updateConnectionSyncTime(connectionId, 'last_sync_at');
-      } catch (e: any) {
-        console.error('Failed to update QBO connection sync time:', e.message);
+      } catch (e: unknown) {
+        logger.error('Failed to update QBO connection sync time', { error: e instanceof Error ? e.message : 'unknown' });
       }
     }
 
@@ -299,10 +300,10 @@ export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Pr
       metadata: { provider: 'qbo', connectionId },
     });
 
-    console.log(`QBO CDC poll complete: ${processed} events processed`);
+    logger.info('QBO CDC poll complete', { processed });
     return { processed };
-  } catch (error: any) {
-    console.error('QBO CDC poll error:', error.message);
+  } catch (error: unknown) {
+    logger.error('QBO CDC poll error', { error: error instanceof Error ? error.message : 'unknown' });
     throw error;
   }
 }
@@ -313,7 +314,7 @@ export async function fetchQBOReports(suiteId?: string, officeId?: string): Prom
 
   const creds = await getQBOCredentials();
   if (!creds) {
-    console.warn('QBO: No credentials available for report fetching');
+    logger.warn('QBO: No credentials available for report fetching');
     return { profitAndLoss: null, balanceSheet: null };
   }
 
@@ -353,8 +354,8 @@ export async function fetchQBOReports(suiteId?: string, officeId?: string): Prom
         source: 'report_fetch',
       },
     });
-  } catch (error: any) {
-    console.error('QBO ProfitAndLoss report fetch error:', error.message);
+  } catch (error: unknown) {
+    logger.error('QBO ProfitAndLoss report fetch error', { error: error instanceof Error ? error.message : 'unknown' });
   }
 
   try {
@@ -387,8 +388,8 @@ export async function fetchQBOReports(suiteId?: string, officeId?: string): Prom
         source: 'report_fetch',
       },
     });
-  } catch (error: any) {
-    console.error('QBO BalanceSheet report fetch error:', error.message);
+  } catch (error: unknown) {
+    logger.error('QBO BalanceSheet report fetch error', { error: error instanceof Error ? error.message : 'unknown' });
   }
 
   await createReceipt({
@@ -400,7 +401,7 @@ export async function fetchQBOReports(suiteId?: string, officeId?: string): Prom
     metadata: { provider: 'qbo', connectionId },
   });
 
-  console.log(`QBO reports fetched: P&L=${!!profitAndLoss}, BS=${!!balanceSheet}`);
+  logger.info('QBO reports fetched', { profitAndLoss: !!profitAndLoss, balanceSheet: !!balanceSheet });
   return { profitAndLoss, balanceSheet };
 }
 
@@ -410,14 +411,14 @@ router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
     const rawBody = JSON.stringify(req.body);
 
     if (!verifyQBOSignature(rawBody, signature || '')) {
-      console.error('QBO webhook signature verification failed');
+      logger.error('QBO webhook signature verification failed');
       return res.status(401).json({ error: 'Webhook verification failed' });
     }
 
     const body = req.body;
     const eventNotifications = body.eventNotifications || [];
 
-    console.log(`QBO webhook received: ${eventNotifications.length} notification(s)`);
+    logger.info('QBO webhook received', { notificationCount: eventNotifications.length });
 
     let totalWritten = 0;
 
@@ -437,7 +438,7 @@ router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
 
         const eventType = QBO_EVENT_MAP[entityName];
         if (!eventType) {
-          console.log(`QBO webhook: Unhandled entity type ${entityName}, skipping`);
+          logger.info('QBO webhook: Unhandled entity type, skipping', { entityName });
           continue;
         }
 
@@ -483,16 +484,16 @@ router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
       if (connectionId) {
         try {
           await updateConnectionSyncTime(connectionId, 'last_webhook_at');
-        } catch (e: any) {
-          console.error('Failed to update QBO connection webhook time:', e.message);
+        } catch (e: unknown) {
+          logger.error('Failed to update QBO connection webhook time', { error: e instanceof Error ? e.message : 'unknown' });
         }
       }
     }
 
-    console.log(`QBO webhook processed: ${totalWritten} events written`);
+    logger.info('QBO webhook processed', { totalWritten });
     res.status(200).json({ received: true, handled: true, written: totalWritten });
-  } catch (error: any) {
-    console.error('QBO webhook processing error:', error.message);
+  } catch (error: unknown) {
+    logger.error('QBO webhook processing error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(200).json({ received: true, error: 'Processing error' });
   }
 });

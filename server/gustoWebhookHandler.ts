@@ -6,6 +6,7 @@ import { updateConnectionSyncTime, getConnectionByProvider } from './financeToke
 import { loadToken, saveToken } from './tokenStore';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
+import { logger } from './logger';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ function computeRawHash(data: any): string {
 function verifyGustoSignature(payload: string, signature: string): boolean {
   const webhookSecret = process.env.GUSTO_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.warn('GUSTO_WEBHOOK_SECRET not set — accepting webhook without signature verification (sandbox mode)');
+    logger.warn('GUSTO_WEBHOOK_SECRET not set — accepting webhook without signature verification (sandbox mode)');
     return true;
   }
 
@@ -40,8 +41,8 @@ function verifyGustoSignature(payload: string, signature: string): boolean {
       .update(payload)
       .digest('hex');
     return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature));
-  } catch (error: any) {
-    console.error('Gusto webhook signature verification error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Gusto webhook signature verification error', { error: error instanceof Error ? error.message : 'unknown' });
     return false;
   }
 }
@@ -70,13 +71,13 @@ async function writeFinanceEvent(params: {
     `);
     const rows = result.rows || result;
     if (rows && (rows as any[]).length > 0) {
-      console.log(`Gusto finance event written: ${params.providerEventId}`);
+      logger.info('Gusto finance event written', { providerEventId: params.providerEventId });
       return true;
     }
-    console.log(`Gusto finance event already exists (idempotent skip): ${params.providerEventId}`);
+    logger.info('Gusto finance event already exists (idempotent skip)', { providerEventId: params.providerEventId });
     return false;
-  } catch (error: any) {
-    console.error('Failed to write Gusto finance event:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to write Gusto finance event', { error: error instanceof Error ? error.message : 'unknown' });
     return false;
   }
 }
@@ -84,7 +85,7 @@ async function writeFinanceEvent(params: {
 export async function refreshGustoCompanyToken(): Promise<{ accessToken: string; companyUuid: string } | null> {
   const stored = await loadToken('gusto');
   if (!stored) {
-    console.warn('Gusto: No stored token found for company token refresh');
+    logger.warn('Gusto: No stored token found for company token refresh');
     return null;
   }
 
@@ -97,13 +98,13 @@ export async function refreshGustoCompanyToken(): Promise<{ accessToken: string;
     return { accessToken, companyUuid };
   }
 
-  console.log('Gusto: Company access token expiring or expired, refreshing...');
+  logger.info('Gusto: Company access token expiring or expired, refreshing...');
 
   const clientId = process.env.GUSTO_CLIENT_ID;
   const clientSecret = process.env.GUSTO_CLIENT_SECRET;
 
   if (!clientId || !clientSecret || !refreshTokenValue) {
-    console.error('Gusto: Missing client credentials or refresh token for company token refresh');
+    logger.error('Gusto: Missing client credentials or refresh token for company token refresh');
     return null;
   }
 
@@ -122,7 +123,7 @@ export async function refreshGustoCompanyToken(): Promise<{ accessToken: string;
 
     if (!response.ok) {
       const text = await response.text();
-      console.error(`Gusto company token refresh failed ${response.status}: ${text.substring(0, 300)}`);
+      logger.error('Gusto company token refresh failed', { status: response.status, detail: text.substring(0, 300) });
       return null;
     }
 
@@ -138,10 +139,10 @@ export async function refreshGustoCompanyToken(): Promise<{ accessToken: string;
       expires_at: newExpiresAt,
     });
 
-    console.log('Gusto: Company access token refreshed successfully');
+    logger.info('Gusto: Company access token refreshed successfully');
     return { accessToken: newAccessToken, companyUuid };
-  } catch (error: any) {
-    console.error('Gusto company token refresh error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Gusto company token refresh error', { error: error instanceof Error ? error.message : 'unknown' });
     return null;
   }
 }
@@ -160,7 +161,7 @@ async function gustoApiFetch(url: string, accessToken: string): Promise<any> {
 
   if (!response.ok) {
     const text = await response.text();
-    console.error(`Gusto API error ${response.status}: ${text.substring(0, 500)}`);
+    logger.error('Gusto API error', { status: response.status, detail: text.substring(0, 500) });
     throw new Error(`Gusto API returned ${response.status}`);
   }
 
@@ -168,7 +169,7 @@ async function gustoApiFetch(url: string, accessToken: string): Promise<any> {
   try {
     return JSON.parse(text);
   } catch {
-    console.error('Gusto API returned non-JSON:', text.substring(0, 500));
+    logger.error('Gusto API returned non-JSON', { detail: text.substring(0, 500) });
     throw new Error('Invalid JSON response from Gusto');
   }
 }
@@ -179,13 +180,13 @@ export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): P
 
   const tokenResult = await refreshGustoCompanyToken();
   if (!tokenResult) {
-    console.warn('Gusto: No valid company token for payroll fetch');
+    logger.warn('Gusto: No valid company token for payroll fetch');
     return [];
   }
 
   const { accessToken, companyUuid } = tokenResult;
   if (!companyUuid) {
-    console.warn('Gusto: No company UUID available for payroll fetch');
+    logger.warn('Gusto: No company UUID available for payroll fetch');
     return [];
   }
 
@@ -257,8 +258,8 @@ export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): P
     if (connectionId) {
       try {
         await updateConnectionSyncTime(connectionId, 'last_sync_at');
-      } catch (e: any) {
-        console.error('Failed to update Gusto connection sync time:', e.message);
+      } catch (e: unknown) {
+        logger.error('Failed to update Gusto connection sync time', { error: e instanceof Error ? e.message : 'unknown' });
       }
     }
 
@@ -271,10 +272,10 @@ export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): P
       metadata: { provider: 'gusto', connectionId },
     });
 
-    console.log(`Gusto payrolls fetched: ${results.length} payroll runs`);
+    logger.info('Gusto payrolls fetched', { count: results.length });
     return results;
-  } catch (error: any) {
-    console.error('Gusto payroll fetch error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Gusto payroll fetch error', { error: error instanceof Error ? error.message : 'unknown' });
     throw error;
   }
 }
@@ -329,9 +330,9 @@ router.post('/api/gusto/request-verification', async (_req: Request, res: Respon
     }
 
     res.json({ message: 'Verification token re-requested for all subscriptions', results });
-  } catch (error: any) {
-    console.error('Gusto verification re-request error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    logger.error('Gusto verification re-request error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -379,9 +380,9 @@ router.post('/api/gusto/verify-subscription', async (req: Request, res: Response
     }
 
     res.json({ message: 'Verification attempted', results, verification_token_used: verificationToken });
-  } catch (error: any) {
-    console.error('Gusto verify subscription error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    logger.error('Gusto verify subscription error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -389,10 +390,8 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
   try {
     if (req.body && req.body.verification_token && !req.body.event_type && !req.body.type) {
       capturedVerificationToken = req.body.verification_token;
-      console.log('==========================================================');
-      console.log('GUSTO VERIFICATION TOKEN RECEIVED (redacted from logs for security)');
-      console.log('Visit /api/gusto/webhook-verification-token to retrieve it.');
-      console.log('==========================================================');
+      logger.info('GUSTO VERIFICATION TOKEN RECEIVED (redacted from logs for security)');
+      logger.info('Visit /api/gusto/webhook-verification-token to retrieve it.');
       return res.status(200).json({ received: true, verification_token_captured: true });
     }
 
@@ -400,7 +399,7 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
     const rawBody = JSON.stringify(req.body);
 
     if (!verifyGustoSignature(rawBody, signature || '')) {
-      console.error('Gusto webhook signature verification failed');
+      logger.error('Gusto webhook signature verification failed');
       return res.status(401).json({ error: 'Webhook verification failed' });
     }
 
@@ -409,11 +408,11 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
     const resourceUuid = body.resource_uuid || body.entity_uuid || body.uuid || '';
     const timestamp = body.timestamp || new Date().toISOString();
 
-    console.log(`Gusto webhook received: ${eventType} for resource ${resourceUuid}`);
+    logger.info('Gusto webhook received', { eventType, resourceUuid });
 
     const normalizedType = GUSTO_EVENT_MAP[eventType];
     if (!normalizedType) {
-      console.log(`Unhandled Gusto webhook event type: ${eventType}, acknowledging`);
+      logger.info('Unhandled Gusto webhook event type, acknowledging', { eventType });
       return res.status(200).json({ received: true, handled: false });
     }
 
@@ -458,15 +457,15 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
     if (connectionId) {
       try {
         await updateConnectionSyncTime(connectionId, 'last_webhook_at');
-      } catch (e: any) {
-        console.error('Failed to update Gusto connection webhook time:', e.message);
+      } catch (e: unknown) {
+        logger.error('Failed to update Gusto connection webhook time', { error: e instanceof Error ? e.message : 'unknown' });
       }
     }
 
-    console.log(`Gusto webhook processed: ${eventType} -> ${normalizedType} (written: ${written})`);
+    logger.info('Gusto webhook processed', { eventType, normalizedType, written });
     res.status(200).json({ received: true, handled: true, eventType: normalizedType, written });
-  } catch (error: any) {
-    console.error('Gusto webhook processing error:', error.message);
+  } catch (error: unknown) {
+    logger.error('Gusto webhook processing error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(200).json({ received: true, error: 'Processing error' });
   }
 });

@@ -6,6 +6,7 @@ import { getUncachableStripeClient, getStripePublishableKey } from './stripeClie
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
+import { logger } from './logger';
 
 // Supabase admin client for bootstrap operations (user_metadata updates)
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -23,8 +24,9 @@ router.get('/api/stripe/publishable-key', async (req: Request, res: Response) =>
   try {
     const key = await getStripePublishableKey();
     res.json({ publishableKey: key });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -299,7 +301,7 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       }, { onConflict: 'suite_id' });
 
     if (profileError) {
-      console.error('Profile creation error:', profileError);
+      logger.error('Profile creation error', { error: profileError?.message || profileError?.code || 'unknown' });
       // FATAL — without the profile row, onboarding_completed_at is never set,
       // causing the auth gate to loop the user back to onboarding indefinitely.
       return res.status(500).json({
@@ -332,9 +334,9 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
           business_address: businessAddressLine1 ? '<ADDRESS_REDACTED>' : null,
         },
       });
-    } catch (receiptErr: any) {
+    } catch (receiptErr: unknown) {
       // YELLOW-tier receipt is mandatory — fail closed per Law #3
-      console.error(`Receipt emission failed [${correlationId}]:`, receiptErr.message);
+      logger.error('Receipt emission failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Intake receipt could not be recorded. Operation denied (Law #3: fail closed).' });
     }
 
@@ -344,7 +346,7 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
     });
 
     if (updateError) {
-      console.error('User metadata update error:', updateError);
+      logger.error('User metadata update error', { error: updateError?.message || updateError?.code || 'unknown' });
       return res.status(500).json({ error: 'METADATA_UPDATE_FAILED', message: 'Suite created but metadata update failed' });
     }
 
@@ -383,12 +385,12 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
           },
           body: webhookBody,
           signal: AbortSignal.timeout(5000),
-        }).catch(err => console.warn('n8n intake webhook failed (non-blocking):', err.message));
-      } catch (webhookErr: any) {
-        console.warn('n8n webhook setup failed (non-blocking):', webhookErr.message);
+        }).catch((err: unknown) => logger.warn('n8n intake webhook failed (non-blocking)', { error: err instanceof Error ? err.message : 'unknown' }));
+      } catch (webhookErr: unknown) {
+        logger.warn('n8n webhook setup failed (non-blocking)', { error: webhookErr instanceof Error ? webhookErr.message : 'unknown' });
       }
     } else {
-      console.warn('N8N_WEBHOOK_SECRET not set — skipping intake activation webhook (fail-closed)');
+      logger.warn('N8N_WEBHOOK_SECRET not set — skipping intake activation webhook (fail-closed)');
     }
 
     // Query display IDs for celebration screen (triggers populate them on INSERT)
@@ -404,16 +406,17 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
     } catch (_) { /* best-effort — display IDs are cosmetic */ }
 
     res.json({ suiteId, created: true, receiptId, suiteDisplayId, officeDisplayId, businessName });
-  } catch (error: any) {
-    console.error('Bootstrap error:', error);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Bootstrap error', { correlationId, error: errorMsg });
     // Emit failure receipt — Law #2: failures also produce receipts
     try {
       const failReceiptId = crypto.randomUUID();
-      const errorMsg = sanitizeText(String(error?.message || 'unknown_error')) || 'unknown_error';
+      const sanitizedMsg = sanitizeText(String(errorMsg)) || 'unknown_error';
       // Bootstrap failure — no suite exists yet, so receipt goes to system log only
-      console.error(`[receipt] Bootstrap failed [${correlationId}]: ${errorMsg}`);
-    } catch (failReceiptErr: any) {
-      console.error(`Failure receipt also failed [${correlationId}]:`, (failReceiptErr as Error).message);
+      logger.error('Bootstrap failed', { correlationId, error: sanitizedMsg });
+    } catch (failReceiptErr: unknown) {
+      logger.error('Failure receipt also failed', { correlationId, error: failReceiptErr instanceof Error ? failReceiptErr.message : 'unknown' });
     }
     res.status(500).json({ error: 'BOOTSTRAP_FAILED', message: 'Onboarding could not be completed. Please try again.' });
   }
@@ -568,7 +571,7 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
       .upsert({ suite_id: suiteId, email: userEmail, name: updatePayload.owner_name || 'Owner', ...updatePayload }, { onConflict: 'suite_id' });
 
     if (updateError) {
-      console.error('Profile update error:', updateError);
+      logger.error('Profile update error', { error: updateError?.message || updateError?.code || 'unknown' });
       // Emit failure receipt — Law #2
       try {
         await emitReceipt({
@@ -595,22 +598,23 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
           ...(businessAddressLine1 ? { business_address: '<ADDRESS_REDACTED>' } : {}),
         },
       });
-    } catch (receiptErr: any) {
+    } catch (receiptErr: unknown) {
       // YELLOW-tier receipt is mandatory — fail closed per Law #3
-      console.error(`Profile update receipt failed [${correlationId}]:`, receiptErr.message);
+      logger.error('Profile update receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Profile update receipt could not be recorded (Law #3: fail closed).' });
     }
 
     res.json({ suiteId, updated: true, receiptId });
-  } catch (error: any) {
-    console.error('Profile update error:', error);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Profile update error', { correlationId, error: errorMsg });
     // Emit failure receipt — Law #2 (outer catch — best-effort)
     try {
       await emitReceipt({
         receiptId: crypto.randomUUID(), receiptType: 'onboarding.profile_update', outcome: 'failed',
         suiteId: suiteId || '00000000-0000-0000-0000-000000000000', tenantId: suiteId || 'unknown',
         correlationId, actorType: 'user', actorId: userId || 'unknown', riskTier: 'yellow',
-        resultData: { reason: 'unexpected_error', error_message: error?.message || 'Unknown error' },
+        resultData: { reason: 'unexpected_error', error_message: errorMsg },
       });
     } catch (_receiptErr) { /* best-effort */ }
     res.status(500).json({ error: 'UPDATE_FAILED', message: 'Profile update could not be completed. Please try again.' });
@@ -622,8 +626,8 @@ router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
     const profile = await storage.getSuiteProfile(getParam(req.params.suiteId));
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
     res.json(profile);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -633,8 +637,8 @@ router.get('/api/users/:userId', async (req: Request, res: Response) => {
     const profile = await storage.getSuiteProfile(getParam(req.params.userId));
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
     res.json(profile);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -643,8 +647,8 @@ router.get('/api/users/slug/:slug', async (req: Request, res: Response) => {
     const profile = await storage.getSuiteProfileBySlug(getParam(req.params.slug));
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
     res.json(profile);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -665,13 +669,14 @@ router.post('/api/users', async (req: Request, res: Response) => {
         actionData: { operation: 'create_suite_profile' },
         resultData: { profile_id: profile?.suiteId || profile?.id },
       });
-    } catch (receiptErr: any) {
-      console.error(`Profile create receipt failed [${correlationId}]:`, receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.error('Profile create receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed — receipt required.' });
     }
 
     res.status(201).json(profile);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
     // Law #2: Receipt for failure
     try {
       await emitReceipt({
@@ -679,10 +684,10 @@ router.post('/api/users', async (req: Request, res: Response) => {
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'yellow',
         actionData: { operation: 'create_suite_profile' },
-        resultData: { error: error.message?.substring(0, 200) },
+        resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort failure receipt */ }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -730,14 +735,14 @@ router.patch('/api/users/:userId', async (req: Request, res: Response) => {
                 ${correlationId}, 'user', ${authedUserId}, 'yellow', NOW(),
                 ${JSON.stringify({ fields_updated: updatedFields, field_count: updatedFields.length, via: 'legacy_endpoint' })}::jsonb)
       `);
-    } catch (receiptErr: any) {
-      console.error(`Profile update receipt failed [${correlationId}]:`, (receiptErr as Error).message);
+    } catch (receiptErr: unknown) {
+      logger.error('Profile update receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Profile update receipt could not be recorded (Law #3: fail closed).' });
     }
 
     res.json(profile);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -745,8 +750,8 @@ router.get('/api/users/:userId/services', async (req: Request, res: Response) =>
   try {
     const services = await storage.getServices(getParam(req.params.userId));
     res.json(services);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -754,8 +759,8 @@ router.get('/api/users/:userId/services/active', async (req: Request, res: Respo
   try {
     const services = await storage.getActiveServices(getParam(req.params.userId));
     res.json(services);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -795,23 +800,24 @@ router.post('/api/users/:userId/services', async (req: Request, res: Response) =
         actionData: { operation: 'create_service', stripe_product_id: product.id, service_name: req.body.name?.substring(0, 50) },
         resultData: { service_id: service?.id, stripe_price_id: price.id },
       });
-    } catch (receiptErr: any) {
-      console.error(`Service create receipt failed [${correlationId}]:`, receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.error('Service create receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed — receipt required for Stripe operations.' });
     }
 
     res.status(201).json(service);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
     try {
       await emitReceipt({
         receiptId: crypto.randomUUID(), receiptType: 'service.create', outcome: 'failed',
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'red',
         actionData: { operation: 'create_service' },
-        resultData: { error: error.message?.substring(0, 200) },
+        resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort failure receipt */ }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -833,23 +839,24 @@ router.patch('/api/services/:serviceId', async (req: Request, res: Response) => 
         actionData: { operation: 'update_service', service_id: serviceId, fields_updated: Object.keys(req.body) },
         resultData: { service_id: serviceId },
       });
-    } catch (receiptErr: any) {
-      console.error(`Service update receipt failed [${correlationId}]:`, receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.error('Service update receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed.' });
     }
 
     res.json(service);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
     try {
       await emitReceipt({
         receiptId: crypto.randomUUID(), receiptType: 'service.update', outcome: 'failed',
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'yellow',
         actionData: { operation: 'update_service', service_id: serviceId },
-        resultData: { error: error.message?.substring(0, 200) },
+        resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -870,23 +877,24 @@ router.delete('/api/services/:serviceId', async (req: Request, res: Response) =>
         actionData: { operation: 'delete_service', service_id: serviceId },
         resultData: { deleted: true },
       });
-    } catch (receiptErr: any) {
-      console.error(`Service delete receipt failed [${correlationId}]:`, receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.warn('Service delete receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       // Note: deletion already happened — emit warning but don't fail the response
     }
 
     res.status(204).send();
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
     try {
       await emitReceipt({
         receiptId: crypto.randomUUID(), receiptType: 'service.delete', outcome: 'failed',
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'red',
         actionData: { operation: 'delete_service', service_id: serviceId },
-        resultData: { error: error.message?.substring(0, 200) },
+        resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -894,8 +902,8 @@ router.get('/api/users/:userId/availability', async (req: Request, res: Response
   try {
     const availability = await storage.getAvailability(getParam(req.params.userId));
     res.json(availability);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -919,23 +927,24 @@ router.put('/api/users/:userId/availability', async (req: Request, res: Response
         actionData: { operation: 'set_availability', slot_count: slots.length },
         resultData: { updated_count: availability?.length },
       });
-    } catch (receiptErr: any) {
-      console.error(`Availability receipt failed [${correlationId}]:`, receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.error('Availability receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed.' });
     }
 
     res.json(availability);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
     try {
       await emitReceipt({
         receiptId: crypto.randomUUID(), receiptType: 'availability.update', outcome: 'failed',
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'yellow',
         actionData: { operation: 'set_availability' },
-        resultData: { error: error.message?.substring(0, 200) },
+        resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -943,8 +952,8 @@ router.get('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
   try {
     const settings = await storage.getBufferSettings(getParam(req.params.userId));
     res.json(settings || { beforeBuffer: 0, afterBuffer: 15, minimumNotice: 60, maxAdvanceBooking: 30 });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -964,23 +973,24 @@ router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
         actionData: { operation: 'upsert_buffer_settings', fields: Object.keys(req.body) },
         resultData: { updated: true },
       });
-    } catch (receiptErr: any) {
-      console.error(`Buffer settings receipt failed [${correlationId}]:`, receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.error('Buffer settings receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed.' });
     }
 
     res.json(settings);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
     try {
       await emitReceipt({
         receiptId: crypto.randomUUID(), receiptType: 'buffer_settings.update', outcome: 'failed',
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'yellow',
         actionData: { operation: 'upsert_buffer_settings' },
-        resultData: { error: error.message?.substring(0, 200) },
+        resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -988,8 +998,8 @@ router.get('/api/users/:userId/bookings', async (req: Request, res: Response) =>
   try {
     const bookings = await storage.getBookings(getParam(req.params.userId));
     res.json(bookings);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -997,8 +1007,8 @@ router.get('/api/users/:userId/bookings/upcoming', async (req: Request, res: Res
   try {
     const bookings = await storage.getUpcomingBookings(getParam(req.params.userId));
     res.json(bookings);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -1006,8 +1016,8 @@ router.get('/api/users/:userId/bookings/stats', async (req: Request, res: Respon
   try {
     const stats = await storage.getBookingStats(getParam(req.params.userId));
     res.json(stats);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -1016,8 +1026,8 @@ router.get('/api/bookings/:bookingId', async (req: Request, res: Response) => {
     const booking = await storage.getBooking(getParam(req.params.bookingId));
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
     res.json(booking);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -1039,23 +1049,24 @@ router.post('/api/bookings/:bookingId/cancel', async (req: Request, res: Respons
         actionData: { operation: 'cancel_booking', booking_id: bookingId, reason: req.body.reason?.substring(0, 100) },
         resultData: { cancelled: true, booking_id: bookingId },
       });
-    } catch (receiptErr: any) {
-      console.error(`Booking cancel receipt failed [${correlationId}]:`, receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.warn('Booking cancel receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       // Cancellation already happened — log but don't fail response
     }
 
     res.json(booking);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
     try {
       await emitReceipt({
         receiptId: crypto.randomUUID(), receiptType: 'booking.cancel', outcome: 'failed',
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'yellow',
         actionData: { operation: 'cancel_booking', booking_id: bookingId },
-        resultData: { error: error.message?.substring(0, 200) },
+        resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -1074,8 +1085,8 @@ router.get('/api/book/:slug', async (req: Request, res: Response) => {
       availability,
       bufferSettings: bufferSettings || { beforeBuffer: 0, afterBuffer: 15, minimumNotice: 60, maxAdvanceBooking: 30 },
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -1135,12 +1146,13 @@ router.get('/api/book/:slug/slots', async (req: Request, res: Response) => {
     }
 
     res.json({ slots });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
 router.post('/api/book/:slug/checkout', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-checkout-${crypto.randomUUID()}`;
   try {
     const { serviceId, scheduledAt, clientName, clientEmail, clientPhone, clientNotes } = req.body;
 
@@ -1181,26 +1193,65 @@ router.post('/api/book/:slug/checkout', async (req: Request, res: Response) => {
 
       await storage.updateBooking(booking.id, { stripeCheckoutSessionId: session.id });
 
+      // Law #2: Receipt for booking checkout (RED — financial operation via Stripe)
+      await createTrustSpineReceipt({
+        suiteId: profile.suiteId,
+        receiptType: 'booking.checkout',
+        status: 'SUCCEEDED',
+        correlationId,
+        actorType: 'SYSTEM',
+        action: { operation: 'booking_checkout', service_id: serviceId, amount: service.price, currency: service.currency, risk_tier: 'RED' },
+        result: { booking_id: booking.id, stripe_session_id: session.id, client_email: '<EMAIL_REDACTED>' },
+      }).catch(() => {});
+
       res.json({ checkoutUrl: session.url, bookingId: booking.id });
     } else {
       await storage.updateBooking(booking.id, { status: 'confirmed', paymentStatus: 'free' });
+
+      // Law #2: Receipt for free booking (YELLOW — state change, no payment)
+      await createTrustSpineReceipt({
+        suiteId: profile.suiteId,
+        receiptType: 'booking.checkout',
+        status: 'SUCCEEDED',
+        correlationId,
+        actorType: 'SYSTEM',
+        action: { operation: 'booking_checkout_free', service_id: serviceId, risk_tier: 'YELLOW' },
+        result: { booking_id: booking.id, confirmed: true },
+      }).catch(() => {});
+
       res.json({ bookingId: booking.id, confirmed: true });
     }
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
+    res.status(500).json({ error: errorMsg });
   }
 });
 
 router.post('/api/book/:slug/confirm/:bookingId', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-confirm-${crypto.randomUUID()}`;
   try {
-    const booking = await storage.updateBooking(getParam(req.params.bookingId), {
+    const bookingId = getParam(req.params.bookingId);
+    const booking = await storage.updateBooking(bookingId, {
       status: 'confirmed',
       paymentStatus: 'paid',
     });
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    // Law #2: Receipt for booking confirmation (YELLOW — state change, payment confirmed)
+    const suiteId = (booking as any).suiteId || 'unknown';
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'booking.confirm',
+      status: 'SUCCEEDED',
+      correlationId,
+      actorType: 'SYSTEM',
+      action: { operation: 'confirm_booking', booking_id: bookingId, risk_tier: 'YELLOW' },
+      result: { booking_id: bookingId, confirmed: true, payment_status: 'paid' },
+    }).catch(() => {});
+
     res.json(booking);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -1260,16 +1311,16 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('ElevenLabs TTS error:', response.status, errorText);
+      logger.error('ElevenLabs TTS error', { status: response.status, error: errorText.substring(0, 200) });
       return res.status(500).json({ error: `TTS failed: ${response.status}` });
     }
 
     const audioBuffer = await response.arrayBuffer();
     res.set('Content-Type', 'audio/mpeg');
     res.send(Buffer.from(audioBuffer));
-  } catch (error: any) {
-    console.error('TTS error:', error);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    logger.error('TTS error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -1312,7 +1363,7 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
 
     if (!response.ok || !response.body) {
       const errorText = await response.text();
-      console.error('ElevenLabs TTS stream error:', response.status, errorText);
+      logger.error('ElevenLabs TTS stream error', { status: response.status, error: errorText.substring(0, 200) });
       return res.status(500).json({ error: `TTS stream failed: ${response.status}` });
     }
 
@@ -1327,9 +1378,9 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
       }
     };
     await pump();
-  } catch (error: any) {
-    console.error('TTS stream error:', error);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    logger.error('TTS stream error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -1513,7 +1564,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       orchestratorConsecutiveFailures++;
       orchestratorLastFailureAt = Date.now();
       const errorText = await response.text();
-      console.error(`Orchestrator error [${correlationId}]:`, response.status, errorText);
+      logger.error('Orchestrator error', { correlationId, status: response.status, error: errorText.substring(0, 200) });
 
       // Extract human-readable text from orchestrator error response
       let errorData: any = null;
@@ -1547,9 +1598,9 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
                     pii_filtered: ['dateOfBirth', 'gender', 'homeAddress', 'businessAddress'],
                   })}::jsonb)
         `);
-      } catch (profileReceiptErr: any) {
+      } catch (profileReceiptErr: unknown) {
         // GREEN-tier receipt failure is non-blocking
-        console.warn(`Ava profile receipt failed [${correlationId}]:`, profileReceiptErr.message);
+        logger.warn('Ava profile receipt failed', { correlationId, error: profileReceiptErr instanceof Error ? profileReceiptErr.message : 'unknown' });
       }
     }
 
@@ -1565,12 +1616,12 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       plan: data.plan || null,
       correlation_id: correlationId,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     orchestratorConsecutiveFailures++;
     orchestratorLastFailureAt = Date.now();
 
-    if (error.name === 'AbortError') {
-      console.error(`Orchestrator timeout [${correlationId}]: exceeded ${ORCHESTRATOR_TIMEOUT_MS}ms`);
+    if (error instanceof Error && error.name === 'AbortError') {
+      logger.error('Orchestrator timeout', { correlationId, timeout_ms: ORCHESTRATOR_TIMEOUT_MS });
       return res.status(504).json({
         error: 'ORCHESTRATOR_TIMEOUT',
         message: `Orchestrator request timed out after ${ORCHESTRATOR_TIMEOUT_MS / 1000}s`,
@@ -1578,7 +1629,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       });
     }
 
-    console.error(`Orchestrator intent error [${correlationId}]:`, error.message);
+    logger.error('Orchestrator intent error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
     // Law #3: Fail Closed — return 503, not 200
     res.status(503).json({
       error: 'ORCHESTRATOR_UNAVAILABLE',
@@ -1599,9 +1650,9 @@ router.get('/api/inbox/items', async (_req: Request, res: Response) => {
     `);
     const rows = (result.rows || result) as any[];
     res.json({ items: rows });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Graceful degradation: table may not exist yet
-    console.warn('inbox_items query failed, returning empty:', error.message);
+    logger.warn('inbox_items query failed, returning empty', { error: error instanceof Error ? error.message : 'unknown' });
     res.json({ items: [] });
   }
 });
@@ -1649,9 +1700,9 @@ router.get('/api/authority-queue', async (_req: Request, res: Response) => {
     const recentReceipts = (receiptResult.rows || receiptResult) as any[];
 
     res.json({ pendingApprovals, recentReceipts });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Graceful degradation: tables may not exist yet
-    console.warn('authority-queue query failed, returning empty:', error.message);
+    logger.warn('authority-queue query failed, returning empty', { error: error instanceof Error ? error.message : 'unknown' });
     res.json({ pendingApprovals: [], recentReceipts: [] });
   }
 });
@@ -1713,8 +1764,8 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
         receiptId,
       });
     }
-  } catch (error: any) {
-    console.warn('approve failed:', error.message);
+  } catch (error: unknown) {
+    logger.warn('approve failed', { error: error instanceof Error ? error.message : 'unknown' });
     // Law #3: Fail Closed — return error, not fake success
     res.status(500).json({ error: 'APPROVE_FAILED', message: 'Failed to approve request' });
   }
@@ -1751,8 +1802,8 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
     `);
 
     res.json({ id, status: 'denied', reason, deniedAt: new Date().toISOString(), receiptId });
-  } catch (error: any) {
-    console.warn('deny failed:', error.message);
+  } catch (error: unknown) {
+    logger.warn('deny failed', { error: error instanceof Error ? error.message : 'unknown' });
     // Law #3: Fail Closed — return error, not fake success
     res.status(500).json({ error: 'DENY_FAILED', message: 'Failed to deny request' });
   }
@@ -1839,7 +1890,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Avatar session token error:', response.status, errorText);
+      logger.error('Avatar session token error', { status: response.status, error: errorText.substring(0, 200) });
       return res.status(502).json({ error: 'AVATAR_SESSION_FAILED', message: 'Avatar service temporarily unavailable' });
     }
 
@@ -1850,8 +1901,8 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     // Return only the session token — no API key exposure
     res.json({ sessionToken: data.sessionToken });
-  } catch (error: any) {
-    console.error('Avatar session error:', error);
+  } catch (error: unknown) {
+    logger.error('Avatar session error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'AVATAR_ERROR', message: 'Avatar service error' });
   }
 });
@@ -1916,7 +1967,7 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Ava chat-stream orchestrator error [${correlationId}]:`, response.status, errorText);
+      logger.error('Ava chat-stream orchestrator error', { correlationId, status: response.status, error: errorText.substring(0, 200) });
       // Return a friendly response for Anam to speak
       return res.json({
         response: "I'm having trouble processing that right now. Could you try again?",
@@ -1938,13 +1989,13 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     res.write(`data: ${JSON.stringify({ text: responseText, done: false })}\n\n`);
     res.write(`data: ${JSON.stringify({ text: '', done: true, receipt_id: data.governance?.receipt_ids?.[0] || null })}\n\n`);
     res.end();
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.error(`Ava chat-stream timeout [${correlationId}]`);
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      logger.error('Ava chat-stream timeout', { correlationId });
       res.json({ response: "I'm taking longer than expected. Please try again.", correlation_id: correlationId });
       return;
     }
-    console.error(`Ava chat-stream error [${correlationId}]:`, error.message);
+    logger.error('Ava chat-stream error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
     res.json({ response: "I'm having trouble connecting right now.", correlation_id: correlationId });
   }
 });
@@ -2099,7 +2150,7 @@ router.get('/api/calendar/events', async (req: Request, res: Response) => {
       ORDER BY start_time ASC
       LIMIT 100`);
     res.json({ events: result.rows });
-  } catch (e: any) {
+  } catch (e: unknown) {
     res.status(500).json({ error: 'Failed to fetch calendar events' });
   }
 });
@@ -2152,13 +2203,13 @@ router.post('/api/calendar/events', async (req: Request, res: Response) => {
         VALUES (${receiptId}, 'calendar.event.create', ${receiptAction}::jsonb, ${receiptResult}::jsonb,
                 ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
                 ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
-    } catch (receiptErr: any) {
-      console.error('Calendar receipt write failed (event created):', receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.warn('Calendar receipt write failed (event created)', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
     }
 
     res.status(201).json({ event: result.rows[0], receipt_id: receiptId });
-  } catch (e: any) {
-    console.error('Calendar create error:', e.message);
+  } catch (e: unknown) {
+    logger.error('Calendar create error', { error: e instanceof Error ? e.message : 'unknown' });
     res.status(500).json({ error: 'Failed to create calendar event' });
   }
 });
@@ -2220,13 +2271,13 @@ router.put('/api/calendar/events/:id', async (req: Request, res: Response) => {
         VALUES (${receiptId}, 'calendar.event.update', ${updReceiptAction}::jsonb, ${updReceiptResult}::jsonb,
                 ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
                 ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
-    } catch (receiptErr: any) {
-      console.error('Calendar update receipt write failed:', receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.warn('Calendar update receipt write failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
     }
 
     res.json({ event: result.rows[0], receipt_id: receiptId });
-  } catch (e: any) {
-    console.error('Calendar update error:', e.message);
+  } catch (e: unknown) {
+    logger.error('Calendar update error', { error: e instanceof Error ? e.message : 'unknown' });
     res.status(500).json({ error: 'Failed to update calendar event' });
   }
 });
@@ -2262,13 +2313,13 @@ router.delete('/api/calendar/events/:id', async (req: Request, res: Response) =>
         VALUES (${receiptId}, 'calendar.event.delete', ${delReceiptAction}::jsonb, ${delReceiptResult}::jsonb,
                 ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
                 ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
-    } catch (receiptErr: any) {
-      console.error('Calendar delete receipt write failed:', receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.warn('Calendar delete receipt write failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
     }
 
     res.json({ success: true, receipt_id: receiptId });
-  } catch (e: any) {
-    console.error('Calendar delete error:', e.message);
+  } catch (e: unknown) {
+    logger.error('Calendar delete error', { error: e instanceof Error ? e.message : 'unknown' });
     res.status(500).json({ error: 'Failed to delete calendar event' });
   }
 });
@@ -2311,13 +2362,13 @@ router.patch('/api/calendar/events/:id/complete', async (req: Request, res: Resp
         VALUES (${receiptId}, 'calendar.event.complete', ${completeAction}::jsonb, ${completeResult}::jsonb,
                 ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
                 ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
-    } catch (receiptErr: any) {
-      console.error('Calendar complete receipt write failed:', receiptErr.message);
+    } catch (receiptErr: unknown) {
+      logger.warn('Calendar complete receipt write failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
     }
 
     res.json({ event: result.rows[0], receipt_id: receiptId });
-  } catch (e: any) {
-    console.error('Calendar complete error:', e.message);
+  } catch (e: unknown) {
+    logger.error('Calendar complete error', { error: e instanceof Error ? e.message : 'unknown' });
     res.status(500).json({ error: 'Failed to update event status' });
   }
 });
@@ -2371,8 +2422,8 @@ router.get('/api/calendar/today', async (req: Request, res: Response) => {
     );
 
     res.json({ events: merged });
-  } catch (e: any) {
-    console.error('Calendar today error:', e.message);
+  } catch (e: unknown) {
+    logger.error('Calendar today error', { error: e instanceof Error ? e.message : 'unknown' });
     res.status(500).json({ error: 'Failed to fetch today\'s events' });
   }
 });
@@ -2383,7 +2434,7 @@ router.get('/api/mail/accounts', async (req: Request, res: Response) => {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const accounts = await onboarding.listAccounts(suiteId);
     res.json({ accounts });
-  } catch (e: any) { res.status(500).json({ error: 'Failed to fetch accounts' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Failed to fetch accounts' }); }
 });
 
 // GET /api/mail/receipts — list mail receipts
@@ -2392,7 +2443,7 @@ router.get('/api/mail/receipts', async (req: Request, res: Response) => {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const receipts = await onboarding.listMailReceipts(suiteId);
     res.json({ receipts });
-  } catch (e: any) { res.status(500).json({ error: 'Failed to fetch receipts' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Failed to fetch receipts' }); }
 });
 
 // ─── /v1/* Mail Onboarding API (Local Service) ───
@@ -2403,7 +2454,7 @@ router.get('/v1/inbox/accounts', async (req: Request, res: Response) => {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const accounts = await onboarding.listAccounts(suiteId);
     res.json({ accounts });
-  } catch (e: any) { res.status(500).json({ error: 'Failed to fetch accounts' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Failed to fetch accounts' }); }
 });
 
 // POST /v1/mail/onboarding/start (YELLOW — external service setup)
@@ -2419,8 +2470,21 @@ router.post('/v1/mail/onboarding/start', async (req: Request, res: Response) => 
       return res.status(400).json({ error: 'INVALID_PROVIDER', message: 'provider must be POLARIS or GOOGLE' });
     }
     const result = await onboarding.startOnboarding(suiteId, officeId, provider, context);
+
+    // Law #2: Receipt for mail onboarding start (YELLOW — external service setup)
+    await createTrustSpineReceipt({
+      suiteId,
+      officeId,
+      receiptType: 'mail.onboarding.start',
+      status: 'SUCCEEDED',
+      actorType: 'USER',
+      actorId: (req as any).authenticatedUserId || undefined,
+      action: { operation: 'start_mail_onboarding', provider, risk_tier: 'YELLOW' },
+      result: { job_id: (result as any)?.jobId || (result as any)?.id },
+    }).catch(() => {});
+
     res.json(result);
-  } catch (e: any) { res.status(500).json({ error: 'Onboarding start failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Onboarding start failed' }); }
 });
 
 // GET /v1/mail/onboarding/:jobId
@@ -2430,7 +2494,7 @@ router.get('/v1/mail/onboarding/:jobId', async (req: Request, res: Response) => 
     const jobId = requireJobId(req, res); if (!jobId) return;
     const data = await onboarding.getOnboarding(jobId, suiteId);
     res.json(data);
-  } catch (e: any) { res.status(500).json({ error: 'Failed to fetch onboarding status' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Failed to fetch onboarding status' }); }
 });
 
 // POST /v1/mail/onboarding/:jobId/dns/plan
@@ -2447,7 +2511,7 @@ router.post('/v1/mail/onboarding/:jobId/dns/plan', async (req: Request, res: Res
     }
     const result = await onboarding.generateDnsPlan(jobId, suiteId, domain, mailbox, displayName, domainMode);
     res.json(result);
-  } catch (e: any) { res.status(500).json({ error: 'DNS plan generation failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'DNS plan generation failed' }); }
 });
 
 // POST /v1/mail/onboarding/:jobId/dns/check
@@ -2457,7 +2521,7 @@ router.post('/v1/mail/onboarding/:jobId/dns/check', async (req: Request, res: Re
     const jobId = requireJobId(req, res); if (!jobId) return;
     const result = await onboarding.checkDns(jobId, suiteId);
     res.json(result);
-  } catch (e: any) { res.status(500).json({ error: 'DNS check failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'DNS check failed' }); }
 });
 
 // GET /v1/domains/search — proxy to Domain Rail (needs static IP for ResellerClub)
@@ -2502,7 +2566,7 @@ router.get('/v1/domains/search', async (req: Request, res: Response) => {
     }).catch(() => {});
 
     res.json({ query: q, results });
-  } catch (e: any) { res.status(500).json({ error: 'Domain search failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Domain search failed' }); }
 });
 
 // POST /v1/domains/purchase/request — proxy to Domain Rail (RED tier — explicit authority)
@@ -2523,7 +2587,7 @@ router.post('/v1/domains/purchase/request', async (req: Request, res: Response) 
     }).catch(() => {});
 
     res.status(status).json(data);
-  } catch (e: any) { res.status(500).json({ error: 'Domain purchase request failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Domain purchase request failed' }); }
 });
 
 // POST /v1/domains/checkout/start — Purchase domain via Domain Rail → ResellerClub (RED tier)
@@ -2551,8 +2615,8 @@ router.post('/v1/domains/checkout/start', async (req: Request, res: Response) =>
       const { data: contactData } = await domainRailProxy('GET', '/v1/domains/contacts/default', undefined, suiteId);
       contactId = contactData?.contactId;
       if (!contactId) throw new Error('No contact ID returned');
-    } catch (e: any) {
-      return res.status(503).json({ error: 'RC_CONTACT_MISSING', message: 'Could not discover ResellerClub contact. ' + (e.message?.slice(0, 100) || '') });
+    } catch (e: unknown) {
+      return res.status(503).json({ error: 'RC_CONTACT_MISSING', message: 'Could not discover ResellerClub contact. ' + (e instanceof Error ? e.message.slice(0, 100) : '') });
     }
 
     // 3. Create approval receipt (RED tier — user clicking "Purchase Now" is the approval)
@@ -2630,9 +2694,10 @@ router.post('/v1/domains/checkout/start', async (req: Request, res: Response) =>
     ];
 
     res.json({ status: 'COMPLETED', orderId, domain, amount: price, currency: 'USD', dnsPlan });
-  } catch (e: any) {
-    console.error('[checkout/start]', e.message);
-    res.status(500).json({ error: 'CHECKOUT_FAILED', message: e.message?.slice(0, 200) || 'Domain checkout failed' });
+  } catch (e: unknown) {
+    const errorMsg = e instanceof Error ? e.message : 'unknown';
+    logger.error('Checkout start error', { error: errorMsg });
+    res.status(500).json({ error: 'CHECKOUT_FAILED', message: errorMsg.slice(0, 200) });
   }
 });
 
@@ -2646,7 +2711,7 @@ router.get('/v1/mail/oauth/google/start', async (req: Request, res: Response) =>
     }
     const authUrl = buildAuthUrl(jobId, suiteId);
     res.json({ authUrl });
-  } catch (e: any) { res.status(500).json({ error: 'OAuth initialization failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'OAuth initialization failed' }); }
 });
 
 // GET /api/mail/oauth/google/callback — handle Google OAuth callback
@@ -2665,10 +2730,11 @@ router.get('/api/mail/oauth/google/callback', async (req: Request, res: Response
 
     const result = await handleCallback(code, state);
     res.redirect(`/inbox/setup?step=2&provider=google&email=${encodeURIComponent(result.email)}`);
-  } catch (e: any) {
-    console.error('Google OAuth callback error:', e.message);
+  } catch (e: unknown) {
+    const eMsg = e instanceof Error ? e.message : 'oauth_failed';
+    logger.error('Google OAuth callback error', { error: eMsg });
     // Sanitize error — don't pass raw error messages into redirect URL
-    const safeError = (e.message || 'oauth_failed').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+    const safeError = eMsg.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
     res.redirect('/inbox/setup?error=' + encodeURIComponent(safeError));
   }
 });
@@ -2689,7 +2755,7 @@ router.post('/v1/mail/onboarding/:jobId/checks/run', async (req: Request, res: R
     const { runChecks } = await import('./mail/verificationService');
     const checks = await runChecks(jobId, suiteId, requestedChecks);
     res.json({ checks });
-  } catch (e: any) { res.status(500).json({ error: 'Verification checks failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Verification checks failed' }); }
 });
 
 // POST /v1/mail/eli/policy/apply
@@ -2709,8 +2775,20 @@ router.post('/v1/mail/eli/policy/apply', async (req: Request, res: Response) => 
       return res.status(400).json({ error: 'INVALID_POLICY_KEY', message: `Valid keys: ${validKeys.join(', ')}` });
     }
     await onboarding.applyEliPolicy(jobId, suiteId, policy);
+
+    // Law #2: Receipt for Eli mail policy application (YELLOW — governance config change)
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.eli.policy_applied',
+      status: 'SUCCEEDED',
+      actorType: 'USER',
+      actorId: (req as any).authenticatedUserId || undefined,
+      action: { operation: 'apply_eli_policy', job_id: jobId, policy_keys: policyKeys, risk_tier: 'YELLOW' },
+      result: { applied: true },
+    }).catch(() => {});
+
     res.json({ applied: true });
-  } catch (e: any) { res.status(500).json({ error: 'Policy application failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Policy application failed' }); }
 });
 
 // POST /v1/mail/onboarding/:jobId/activate
@@ -2719,8 +2797,20 @@ router.post('/v1/mail/onboarding/:jobId/activate', async (req: Request, res: Res
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const jobId = requireJobId(req, res); if (!jobId) return;
     const result = await onboarding.activateOnboarding(jobId, suiteId);
+
+    // Law #2: Receipt for mail onboarding activation (YELLOW — activating mail account)
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.onboarding.activated',
+      status: 'SUCCEEDED',
+      actorType: 'USER',
+      actorId: (req as any).authenticatedUserId || undefined,
+      action: { operation: 'activate_mail_onboarding', job_id: jobId, risk_tier: 'YELLOW' },
+      result: { activated: true },
+    }).catch(() => {});
+
     res.json(result);
-  } catch (e: any) { res.status(500).json({ error: 'Activation failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Activation failed' }); }
 });
 
 // GET /v1/receipts (by jobId) — mail receipts filtered by correlation
@@ -2729,7 +2819,7 @@ router.get('/v1/receipts', async (req: Request, res: Response) => {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const receipts = await onboarding.listMailReceipts(suiteId);
     res.json({ receipts });
-  } catch (e: any) { res.status(500).json({ error: 'Receipt retrieval failed' }); }
+  } catch (e: unknown) { res.status(500).json({ error: 'Receipt retrieval failed' }); }
 });
 
 // ─── Mail Thread & Message Routes (Production) ───
@@ -2868,9 +2958,10 @@ router.get('/api/mail/threads', async (req: Request, res: Response) => {
     }).catch(() => {});
 
     return res.json({ threads: imapResult.threads, total: imapResult.total, provider: 'polaris' });
-  } catch (e: any) {
-    console.error('[mail/threads]', e.message);
-    res.status(500).json({ error: 'Failed to fetch threads', message: e.message?.slice(0, 200) });
+  } catch (e: unknown) {
+    const eMsg = e instanceof Error ? e.message : 'unknown';
+    logger.error('Mail threads list error', { error: eMsg });
+    res.status(500).json({ error: 'Failed to fetch threads', message: eMsg.slice(0, 200) });
   }
 });
 
@@ -2918,8 +3009,8 @@ router.get('/api/mail/threads/:threadId', async (req: Request, res: Response) =>
     }).catch(() => {});
 
     return res.json(detail);
-  } catch (e: any) {
-    console.error('[mail/threads/:id]', e.message);
+  } catch (e: unknown) {
+    logger.error('Mail thread detail error', { error: e instanceof Error ? e.message : 'unknown' });
     res.status(500).json({ error: 'Failed to fetch thread' });
   }
 });
@@ -2971,8 +3062,8 @@ router.post('/api/mail/messages/send', async (req: Request, res: Response) => {
     });
 
     return res.json({ sent: true, messageId: result.messageId, provider: 'polaris' });
-  } catch (e: any) {
-    console.error('[mail/send]', e.message);
+  } catch (e: unknown) {
+    logger.error('Mail send error', { error: e instanceof Error ? e.message : 'unknown' });
     res.status(500).json({ error: 'Failed to send message' });
   }
 });
@@ -3020,8 +3111,8 @@ router.post('/api/mail/messages/draft', async (req: Request, res: Response) => {
     }).catch(() => {});
 
     return res.json({ created: true, draftId: result.uid, provider: 'polaris' });
-  } catch (e: any) {
-    console.error('[mail/draft]', e.message);
+  } catch (e: unknown) {
+    logger.error('Mail draft error', { error: e instanceof Error ? e.message : 'unknown' });
     res.status(500).json({ error: 'Failed to create draft' });
   }
 });
@@ -3040,12 +3131,12 @@ router.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
 
     // HMAC verification (Law #3: fail closed on missing/invalid signature)
     if (!PANDADOC_WEBHOOK_SECRET) {
-      console.error('[webhook/pandadoc] Webhook secret not configured — rejecting (fail-closed)');
+      logger.error('PandaDoc webhook secret not configured — rejecting (fail-closed)');
       return res.status(503).json({ error: 'Webhook secret not configured' });
     }
 
     if (!signature) {
-      console.warn('[webhook/pandadoc] Missing X-PandaDoc-Signature header — rejecting');
+      logger.warn('PandaDoc webhook missing X-PandaDoc-Signature header — rejecting');
       return res.status(401).json({ error: 'Missing webhook signature' });
     }
 
@@ -3056,7 +3147,7 @@ router.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
 
     if (expected.length !== signature.length ||
         !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
-      console.warn('[webhook/pandadoc] HMAC signature mismatch — possible forgery');
+      logger.warn('PandaDoc webhook HMAC signature mismatch — possible forgery');
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
 
@@ -3072,9 +3163,7 @@ router.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
     const suiteId = metadata.aspire_suite_id || '';
     const correlationId = metadata.aspire_correlation_id || '';
 
-    console.log(
-      `[webhook/pandadoc] event=${eventType} doc=${docId?.substring(0, 8)} status=${docStatus} suite=${suiteId?.substring(0, 8)}`
-    );
+    logger.info('PandaDoc webhook received', { event: eventType, doc: docId?.substring(0, 8), status: docStatus, suite: suiteId?.substring(0, 8) });
 
     // Idempotency: check processed_webhooks (if DB available)
     if (db && eventId) {
@@ -3083,7 +3172,7 @@ router.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
           sql`SELECT event_id FROM processed_webhooks WHERE event_id = ${eventId} LIMIT 1`
         );
         if (existing.rows && existing.rows.length > 0) {
-          console.log(`[webhook/pandadoc] Duplicate event ${eventId} — skipping`);
+          logger.info('PandaDoc webhook duplicate event — skipping', { eventId });
           return res.status(200).json({ status: 'already_processed' });
         }
 
@@ -3093,9 +3182,9 @@ router.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
               VALUES (${eventId}, 'pandadoc', ${docId}, ${suiteId || null}::uuid, now())
               ON CONFLICT (event_id) DO NOTHING`
         );
-      } catch (dbErr: any) {
+      } catch (dbErr: unknown) {
         // DB error shouldn't block webhook processing — log and continue
-        console.warn('[webhook/pandadoc] DB dedup error:', dbErr.message);
+        logger.warn('PandaDoc webhook DB dedup error', { error: dbErr instanceof Error ? dbErr.message : 'unknown' });
       }
     }
 
@@ -3133,18 +3222,16 @@ router.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
               WHERE document_id = ${docId}
               AND suite_id = ${suiteId}::uuid`
         );
-        console.log(
-          `[webhook/pandadoc] State advanced: doc=${docId.substring(0, 8)} → ${targetState}`
-        );
-      } catch (stateErr: any) {
+        logger.info('PandaDoc webhook state advanced', { doc: docId.substring(0, 8), targetState });
+      } catch (stateErr: unknown) {
         // State update failure doesn't block webhook acknowledgement
-        console.warn('[webhook/pandadoc] State update failed:', stateErr.message);
+        logger.warn('PandaDoc webhook state update failed', { error: stateErr instanceof Error ? stateErr.message : 'unknown' });
       }
     }
 
     res.status(200).json({ status: 'received', event_id: eventId, target_state: targetState || null });
-  } catch (error: any) {
-    console.error('[webhook/pandadoc] Error:', error.message);
+  } catch (error: unknown) {
+    logger.error('PandaDoc webhook error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
@@ -3170,8 +3257,8 @@ router.get('/api/health/pandadoc', async (_req: Request, res: Response) => {
       return res.json({ status: 'healthy', latency_ms: Date.now() });
     }
     return res.status(503).json({ status: 'unhealthy', http_status: resp.status });
-  } catch (error: any) {
-    return res.status(503).json({ status: 'unhealthy', error: error.message });
+  } catch (error: unknown) {
+    return res.status(503).json({ status: 'unhealthy', error: error instanceof Error ? error.message : 'unknown' });
   }
 });
 
@@ -3268,8 +3355,8 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
     );
 
     res.json({ templates: enriched, count: enriched.length });
-  } catch (error: any) {
-    console.error('[contracts/templates]', error.message);
+  } catch (error: unknown) {
+    logger.error('Contracts templates error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to fetch templates' });
   }
 });
@@ -3320,8 +3407,8 @@ router.get('/api/contracts', async (req: Request, res: Response) => {
     const total = countResult.rows?.[0]?.total || 0;
 
     res.json({ contracts, total, page, limit });
-  } catch (error: any) {
-    console.error('[contracts/list]', error.message);
+  } catch (error: unknown) {
+    logger.error('Contracts list error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to list contracts' });
   }
 });
@@ -3359,8 +3446,8 @@ router.get('/api/contracts/:id', async (req: Request, res: Response) => {
     }
 
     res.json({ contract, sessions });
-  } catch (error: any) {
-    console.error('[contracts/detail]', error.message);
+  } catch (error: unknown) {
+    logger.error('Contracts detail error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to get contract' });
   }
 });
@@ -3433,8 +3520,9 @@ router.post('/api/contracts/:id/send', async (req: Request, res: Response) => {
     }).catch(() => {});
 
     res.json({ success: true, contract_state: 'sent' });
-  } catch (error: any) {
-    console.error('[contracts/send]', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Contract send error', { error: errorMsg });
     const sid = req.headers['x-suite-id'] as string;
     if (sid) {
       await createTrustSpineReceipt({
@@ -3442,7 +3530,7 @@ router.post('/api/contracts/:id/send', async (req: Request, res: Response) => {
         receiptType: 'contract.send',
         status: 'FAILED',
         action: { provider: 'pandadoc', operation: 'send' },
-        result: { error: error.message },
+        result: { error: errorMsg },
       }).catch(() => {});
     }
     res.status(500).json({ error: 'Failed to send contract' });
@@ -3515,8 +3603,8 @@ router.post('/api/contracts/:id/session', async (req: Request, res: Response) =>
         sql`INSERT INTO signing_sessions (id, token, document_id, suite_id, signer_email, signer_name, pandadoc_session_id, expires_at, created_at)
             VALUES (${crypto.randomUUID()}::uuid, ${signingToken}, ${document_id}, ${suiteId}::uuid, ${signerEmail}, ${signerName}, ${sessionId}, ${expiresAt}::timestamptz, now())`
       );
-    } catch (dbErr: any) {
-      console.warn('[contracts/session] Failed to store signing session:', dbErr.message);
+    } catch (dbErr: unknown) {
+      logger.warn('Failed to store signing session', { error: dbErr instanceof Error ? dbErr.message : 'unknown' });
     }
 
     // Emit receipt
@@ -3535,8 +3623,9 @@ router.post('/api/contracts/:id/session', async (req: Request, res: Response) =>
       expires_at: expiresAt,
       document_name: title || '',
     });
-  } catch (error: any) {
-    console.error('[contracts/session]', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Contract session create error', { error: errorMsg });
     const sid = req.headers['x-suite-id'] as string;
     if (sid) {
       await createTrustSpineReceipt({
@@ -3544,7 +3633,7 @@ router.post('/api/contracts/:id/session', async (req: Request, res: Response) =>
         receiptType: 'contract.session.create',
         status: 'FAILED',
         action: { provider: 'pandadoc', operation: 'session.create' },
-        result: { error: error.message },
+        result: { error: errorMsg },
       }).catch(() => {});
     }
     res.status(500).json({ error: 'Failed to create signing session' });
@@ -3609,8 +3698,8 @@ router.post('/api/pandadoc/:documentId/preview', async (req: Request, res: Respo
       expires_at: sessionData.expires_at || '',
       preview_url: `https://app.pandadoc.com/s/${sessionData.id}`,
     });
-  } catch (error: any) {
-    console.error('[pandadoc/preview]', error.message);
+  } catch (error: unknown) {
+    logger.error('PandaDoc preview error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to create preview session' });
   }
 });
@@ -3657,8 +3746,9 @@ router.post('/api/contracts/:id/void', async (req: Request, res: Response) => {
     }).catch(() => {});
 
     res.json({ success: true, contract_state: 'expired' });
-  } catch (error: any) {
-    console.error('[contracts/void]', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Contract void error', { error: errorMsg });
     const sid = req.headers['x-suite-id'] as string;
     if (sid) {
       await createTrustSpineReceipt({
@@ -3666,7 +3756,7 @@ router.post('/api/contracts/:id/void', async (req: Request, res: Response) => {
         receiptType: 'contract.void',
         status: 'FAILED',
         action: { provider: 'pandadoc', operation: 'void' },
-        result: { error: error.message },
+        result: { error: errorMsg },
       }).catch(() => {});
     }
     res.status(500).json({ error: 'Failed to void contract' });
@@ -3712,8 +3802,8 @@ router.get('/api/contracts/:id/download', async (req: Request, res: Response) =>
     res.setHeader('Content-Disposition', `attachment; filename="contract-${contractId}.pdf"`);
     const buffer = Buffer.from(await resp.arrayBuffer());
     res.send(buffer);
-  } catch (error: any) {
-    console.error('[contracts/download]', error.message);
+  } catch (error: unknown) {
+    logger.error('Contract download error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to download contract' });
   }
 });
@@ -3788,8 +3878,8 @@ router.get('/api/signing/:token', async (req: Request, res: Response) => {
       pandadoc_session_id: session.pandadoc_session_id,
       expires_at: session.expires_at,
     });
-  } catch (error: any) {
-    console.error('[signing/token]', error.message);
+  } catch (error: unknown) {
+    logger.error('Signing token error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to load signing session' });
   }
 });

@@ -1,6 +1,7 @@
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { getDefaultSuiteId } from './suiteContext';
+import { logger } from './logger';
 
 export interface StoredToken {
   access_token: string;
@@ -28,9 +29,9 @@ export async function saveToken(provider: string, token: StoredToken): Promise<v
         expires_at = COALESCE(${expiresAt}, oauth_tokens.expires_at),
         updated_at = NOW()
     `);
-    console.log(`Token saved for provider: ${provider}`);
-  } catch (error: any) {
-    console.error(`Failed to save token for ${provider}:`, error.message);
+    logger.info('Token saved', { provider });
+  } catch (error: unknown) {
+    logger.error('Failed to save token', { provider, error: error instanceof Error ? error.message : 'unknown' });
   }
 }
 
@@ -45,7 +46,7 @@ export async function loadToken(provider: string): Promise<StoredToken | null> {
     const rows = result.rows || result;
     if (rows && rows.length > 0) {
       const row = rows[0] as any;
-      console.log(`Token loaded for provider: ${provider}`);
+      logger.info('Token loaded', { provider });
       return {
         access_token: row.access_token,
         refresh_token: row.refresh_token,
@@ -56,8 +57,8 @@ export async function loadToken(provider: string): Promise<StoredToken | null> {
       };
     }
     return null;
-  } catch (error: any) {
-    console.error(`Failed to load token for ${provider}:`, error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to load token', { provider, error: error instanceof Error ? error.message : 'unknown' });
     return null;
   }
 }
@@ -66,9 +67,9 @@ export async function deleteToken(provider: string): Promise<void> {
   try {
     const suiteId = getDefaultSuiteId();
     await db.execute(sql`DELETE FROM oauth_tokens WHERE suite_id = ${suiteId} AND provider = ${provider}`);
-    console.log(`Token deleted for provider: ${provider}`);
-  } catch (error: any) {
-    console.error(`Failed to delete token for ${provider}:`, error.message);
+    logger.info('Token deleted', { provider });
+  } catch (error: unknown) {
+    logger.error('Failed to delete token', { provider, error: error instanceof Error ? error.message : 'unknown' });
   }
 }
 
@@ -93,8 +94,8 @@ export async function loadAllTokens(providerPrefix: string): Promise<StoredToken
       }));
     }
     return [];
-  } catch (error: any) {
-    console.error(`Failed to load tokens for ${providerPrefix}:`, error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to load tokens', { providerPrefix, error: error instanceof Error ? error.message : 'unknown' });
     return [];
   }
 }
@@ -103,8 +104,8 @@ export async function deleteAllTokens(providerPrefix: string): Promise<void> {
   try {
     const suiteId = getDefaultSuiteId();
     await db.execute(sql`DELETE FROM oauth_tokens WHERE suite_id = ${suiteId} AND provider LIKE ${providerPrefix + '%'}`);
-    console.log(`All tokens deleted for prefix: ${providerPrefix}`);
-  } catch (error: any) {
-    console.error(`Failed to delete tokens for ${providerPrefix}:`, error.message);
+    logger.info('All tokens deleted', { providerPrefix });
+  } catch (error: unknown) {
+    logger.error('Failed to delete tokens', { providerPrefix, error: error instanceof Error ? error.message : 'unknown' });
   }
 }

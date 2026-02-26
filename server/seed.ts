@@ -1,8 +1,9 @@
 import { db } from './db';
 import { sql } from 'drizzle-orm';
+import { logger } from './logger';
 
 async function seed() {
-  console.log('Seeding database...');
+  logger.info('Seeding database...');
 
   // Create demo suite via Trust Spine's ensure_suite function
   const suiteResult = await db.execute(sql`
@@ -10,7 +11,7 @@ async function seed() {
   `);
   const rows = (suiteResult.rows || suiteResult) as any[];
   const demoSuiteId = rows[0].suite_id;
-  console.log(`Demo suite created: ${demoSuiteId}`);
+  logger.info('Demo suite created', { demoSuiteId });
 
   // Create demo office
   await db.execute(sql`
@@ -18,7 +19,7 @@ async function seed() {
     VALUES (${demoSuiteId}, 'Main Office')
     ON CONFLICT DO NOTHING
   `);
-  console.log('Demo office created');
+  logger.info('Demo office created');
 
   // Create suite profile (business profile)
   await db.execute(sql`
@@ -30,7 +31,7 @@ async function seed() {
       business_name = EXCLUDED.business_name,
       booking_slug = EXCLUDED.booking_slug
   `);
-  console.log('Created demo suite profile');
+  logger.info('Created demo suite profile');
 
   // Create demo services
   await db.execute(sql`
@@ -41,7 +42,7 @@ async function seed() {
       ('10000000-0000-0000-0000-000000000003', ${demoSuiteId}, 'Operations Review', 'Review your current operations and identify improvements', 45, 10000, 'usd', '#f59e0b', true)
     ON CONFLICT (id) DO NOTHING
   `);
-  console.log('Created demo services');
+  logger.info('Created demo services');
 
   // Set RLS context for availability and buffer_settings inserts
   await db.execute(sql`SELECT set_config('app.current_suite_id', ${demoSuiteId}, true)`);
@@ -56,17 +57,17 @@ async function seed() {
       ('20000000-0000-0000-0000-000000000005', ${demoSuiteId}, 5, '09:00', '12:00', true)
     ON CONFLICT (id) DO NOTHING
   `);
-  console.log('Created demo availability');
+  logger.info('Created demo availability');
 
   await db.execute(sql`
     INSERT INTO buffer_settings (id, suite_id, before_buffer, after_buffer, minimum_notice, max_advance_booking)
     VALUES ('30000000-0000-0000-0000-000000000001', ${demoSuiteId}, 0, 15, 60, 30)
     ON CONFLICT (suite_id) DO NOTHING
   `);
-  console.log('Created buffer settings');
+  logger.info('Created buffer settings');
 
-  console.log('Seeding complete!');
+  logger.info('Seeding complete!');
   process.exit(0);
 }
 
-seed().catch(console.error);
+seed().catch((err: unknown) => logger.error('Seed failed', { error: err instanceof Error ? err.message : 'unknown' }));

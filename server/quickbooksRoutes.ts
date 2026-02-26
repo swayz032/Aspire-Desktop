@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { saveToken, loadToken, deleteToken } from './tokenStore';
+import { createTrustSpineReceipt } from './receiptService';
+import { logger } from './logger';
 const QuickBooks = require('node-quickbooks');
 
 const router = Router();
@@ -17,6 +19,43 @@ let qbo: any = null;
 let tokenExpiresAt: Date | null = null;
 const pendingOAuthStates = new Map<string, number>();
 
+// --- Helper: extract suite context from headers ---
+function getSuiteContext(req: Request) {
+  return {
+    suiteId: (req.headers['x-suite-id'] as string) || '',
+    officeId: (req.headers['x-office-id'] as string) || undefined,
+    actorId: (req.headers['x-actor-id'] as string) || (req.headers['x-user-id'] as string) || 'unknown',
+    correlationId: (req.headers['x-correlation-id'] as string) || undefined,
+  };
+}
+
+// --- Helper: emit receipt for QuickBooks operations ---
+async function emitReceipt(
+  req: Request,
+  receiptType: string,
+  status: 'SUCCEEDED' | 'FAILED' | 'DENIED',
+  action: Record<string, unknown>,
+  result: Record<string, unknown>,
+) {
+  const ctx = getSuiteContext(req);
+  if (!ctx.suiteId) return; // Can't create receipt without suite_id
+  try {
+    await createTrustSpineReceipt({
+      suiteId: ctx.suiteId,
+      officeId: ctx.officeId,
+      receiptType,
+      status,
+      correlationId: ctx.correlationId,
+      actorType: 'USER',
+      actorId: ctx.actorId,
+      action,
+      result,
+    });
+  } catch (err) {
+    logger.error('Receipt creation failed', { receiptType, error: err instanceof Error ? err.message : 'unknown' });
+  }
+}
+
 export async function loadQBTokens() {
   const stored = await loadToken('quickbooks');
   if (stored) {
@@ -25,7 +64,7 @@ export async function loadQBTokens() {
     realmId = stored.realm_id || null;
     tokenExpiresAt = stored.expires_at ? new Date(stored.expires_at) : null;
     initQBO();
-    console.log('QuickBooks: Loaded tokens from database');
+    logger.info('QuickBooks: Loaded tokens from database');
   }
 }
 
@@ -75,7 +114,7 @@ function ensureQBO(): any {
 async function doRefreshToken(): Promise<boolean> {
   const creds = getClientCredentials();
   if (!creds || !refreshToken) {
-    console.error('QuickBooks: Missing credentials or refresh token for refresh');
+    logger.error('QuickBooks: Missing credentials or refresh token for refresh');
     return false;
   }
 
@@ -95,7 +134,7 @@ async function doRefreshToken(): Promise<boolean> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`QuickBooks token refresh failed ${response.status}: ${errorText.substring(0, 500)}`);
+      logger.error('QuickBooks token refresh failed', { status: response.status, error: errorText.substring(0, 500) });
       return false;
     }
 
@@ -112,17 +151,18 @@ async function doRefreshToken(): Promise<boolean> {
       expires_at: tokenExpiresAt,
     });
 
-    console.log('QuickBooks: Token refreshed successfully');
+    logger.info('QuickBooks: Token refreshed successfully');
     return true;
-  } catch (error: any) {
-    console.error('QuickBooks token refresh error:', error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks token refresh error', { error: msg });
     return false;
   }
 }
 
 async function qboQueryWithRefresh(method: string, ...args: any[]): Promise<any> {
   if (isTokenExpiringSoon()) {
-    console.log('QuickBooks: Token expiring soon, proactively refreshing...');
+    logger.info('QuickBooks: Token expiring soon, proactively refreshing...');
     await doRefreshToken();
   }
 
@@ -137,7 +177,7 @@ async function qboQueryWithRefresh(method: string, ...args: any[]): Promise<any>
       (err?.fault?.type === 'SERVICE' && errStr.includes('token'));
 
     if (isAuthError || err?.fault?.type === 'SERVICE') {
-      console.log('QuickBooks: API error, attempting token refresh...');
+      logger.info('QuickBooks: API error, attempting token refresh...');
       const refreshed = await doRefreshToken();
       if (refreshed) {
         return await qboQuery(method, ...args);
@@ -160,7 +200,7 @@ function qboQuery(method: string, ...args: any[]): Promise<any> {
 
 async function qboReportWithRefresh(reportMethod: string, params: any): Promise<any> {
   if (isTokenExpiringSoon()) {
-    console.log('QuickBooks: Token expiring soon, proactively refreshing...');
+    logger.info('QuickBooks: Token expiring soon, proactively refreshing...');
     await doRefreshToken();
   }
 
@@ -177,7 +217,7 @@ async function qboReportWithRefresh(reportMethod: string, params: any): Promise<
     return await runReport();
   } catch (err: any) {
     if (err?.fault?.type === 'SERVICE' || err?.fault?.error?.[0]?.code === '3200') {
-      console.log('QuickBooks: Report error, attempting token refresh...');
+      logger.info('QuickBooks: Report error, attempting token refresh...');
       const refreshed = await doRefreshToken();
       if (refreshed) {
         return await runReport();
@@ -245,7 +285,11 @@ router.get('/api/quickbooks/callback', async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`QuickBooks token exchange failed ${response.status}: ${errorText.substring(0, 500)}`);
+      logger.error('QuickBooks token exchange failed', { status: response.status, error: errorText.substring(0, 500) });
+      await emitReceipt(req, 'quickbooks.oauth.connect', 'FAILED',
+        { method: 'GET', path: req.path, risk_tier: 'YELLOW', realm_id: queryRealmId as string },
+        { error: 'Token exchange failed', status: response.status },
+      );
       return res.status(500).json({ error: 'Token exchange failed' });
     }
 
@@ -263,23 +307,46 @@ router.get('/api/quickbooks/callback', async (req: Request, res: Response) => {
       expires_at: tokenExpiresAt,
     });
 
+    await emitReceipt(req, 'quickbooks.oauth.connect', 'SUCCEEDED',
+      { method: 'GET', path: req.path, risk_tier: 'YELLOW', realm_id: realmId },
+      { connected: true },
+    );
+
     res.redirect('/finance-hub/connections?qb=connected');
-  } catch (error: any) {
-    console.error('QuickBooks callback error:', error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks callback error', { error: msg });
+    await emitReceipt(req, 'quickbooks.oauth.connect', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'YELLOW' },
+      { error: msg },
+    );
     res.status(500).json({ error: 'Failed to exchange authorization code' });
   }
 });
 
-router.post('/api/quickbooks/refresh', async (_req: Request, res: Response) => {
+router.post('/api/quickbooks/refresh', async (req: Request, res: Response) => {
   try {
     const success = await doRefreshToken();
     if (success) {
+      await emitReceipt(req, 'quickbooks.token.refresh', 'SUCCEEDED',
+        { method: 'POST', path: req.path, risk_tier: 'GREEN' },
+        { refreshed: true },
+      );
       res.json({ success: true });
     } else {
+      await emitReceipt(req, 'quickbooks.token.refresh', 'FAILED',
+        { method: 'POST', path: req.path, risk_tier: 'GREEN' },
+        { error: 'Token refresh failed' },
+      );
       res.status(500).json({ error: 'Token refresh failed' });
     }
-  } catch (error: any) {
-    console.error('QuickBooks refresh error:', error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks refresh error', { error: msg });
+    await emitReceipt(req, 'quickbooks.token.refresh', 'FAILED',
+      { method: 'POST', path: req.path, risk_tier: 'GREEN' },
+      { error: msg },
+    );
     res.status(500).json({ error: 'Failed to refresh token' });
   }
 });
@@ -291,13 +358,18 @@ router.get('/api/quickbooks/status', (_req: Request, res: Response) => {
   });
 });
 
-router.post('/api/quickbooks/disconnect', async (_req: Request, res: Response) => {
+router.post('/api/quickbooks/disconnect', async (req: Request, res: Response) => {
+  const oldRealmId = realmId;
   accessToken = null;
   refreshToken = null;
   realmId = null;
   qbo = null;
   tokenExpiresAt = null;
   await deleteToken('quickbooks');
+  await emitReceipt(req, 'quickbooks.disconnect', 'SUCCEEDED',
+    { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
+    { disconnected_realm_id: oldRealmId },
+  );
   res.json({ success: true });
 });
 
@@ -305,8 +377,9 @@ router.get('/api/quickbooks/company', async (_req: Request, res: Response) => {
   try {
     const data = await qboQueryWithRefresh('getCompanyInfo', realmId);
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks company error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks company error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch company info' });
   }
 });
@@ -315,8 +388,9 @@ router.get('/api/quickbooks/accounts', async (_req: Request, res: Response) => {
   try {
     const data = await qboQueryWithRefresh('findAccounts', { fetchAll: true });
     res.json({ accounts: data?.QueryResponse?.Account || [] });
-  } catch (error: any) {
-    console.error('QuickBooks accounts error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks accounts error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch accounts' });
   }
 });
@@ -327,8 +401,9 @@ router.get('/api/quickbooks/profit-and-loss', async (req: Request, res: Response
     const endDate = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
     const data = await qboReportWithRefresh('reportProfitAndLoss', { start_date: startDate, end_date: endDate });
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks P&L error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks P&L error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch P&L report' });
   }
 });
@@ -339,8 +414,9 @@ router.get('/api/quickbooks/profit-and-loss-detail', async (req: Request, res: R
     const endDate = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
     const data = await qboReportWithRefresh('reportProfitAndLossDetail', { start_date: startDate, end_date: endDate });
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks P&L Detail error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks P&L Detail error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch P&L detail report' });
   }
 });
@@ -349,8 +425,9 @@ router.get('/api/quickbooks/balance-sheet', async (_req: Request, res: Response)
   try {
     const data = await qboReportWithRefresh('reportBalanceSheet', { date_macro: 'This Fiscal Year-to-date' });
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks Balance Sheet error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks Balance Sheet error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch balance sheet' });
   }
 });
@@ -359,8 +436,9 @@ router.get('/api/quickbooks/cash-flow', async (_req: Request, res: Response) => 
   try {
     const data = await qboReportWithRefresh('reportCashFlow', { date_macro: 'This Fiscal Year-to-date' });
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks Cash Flow error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks Cash Flow error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch cash flow report' });
   }
 });
@@ -369,8 +447,9 @@ router.get('/api/quickbooks/trial-balance', async (_req: Request, res: Response)
   try {
     const data = await qboReportWithRefresh('reportTrialBalance', {});
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks Trial Balance error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks Trial Balance error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch trial balance' });
   }
 });
@@ -384,8 +463,9 @@ router.get('/api/quickbooks/general-ledger', async (req: Request, res: Response)
       end_date: endDate,
     });
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks General Ledger error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks General Ledger error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch general ledger' });
   }
 });
@@ -394,8 +474,9 @@ router.get('/api/quickbooks/aged-receivables', async (_req: Request, res: Respon
   try {
     const data = await qboReportWithRefresh('reportAgedReceivableDetail', {});
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks Aged Receivables error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks Aged Receivables error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch aged receivables' });
   }
 });
@@ -404,8 +485,9 @@ router.get('/api/quickbooks/aged-payables', async (_req: Request, res: Response)
   try {
     const data = await qboReportWithRefresh('reportAgedPayableDetail', {});
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks Aged Payables error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks Aged Payables error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch aged payables' });
   }
 });
@@ -414,8 +496,9 @@ router.get('/api/quickbooks/invoices', async (_req: Request, res: Response) => {
   try {
     const data = await qboQueryWithRefresh('findInvoices', { fetchAll: true });
     res.json({ invoices: data?.QueryResponse?.Invoice || [] });
-  } catch (error: any) {
-    console.error('QuickBooks invoices error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks invoices error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch invoices' });
   }
 });
@@ -424,8 +507,9 @@ router.get('/api/quickbooks/customers', async (_req: Request, res: Response) => 
   try {
     const data = await qboQueryWithRefresh('findCustomers', { fetchAll: true });
     res.json({ customers: data?.QueryResponse?.Customer || [] });
-  } catch (error: any) {
-    console.error('QuickBooks customers error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks customers error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch customers' });
   }
 });
@@ -434,8 +518,9 @@ router.get('/api/quickbooks/vendors', async (_req: Request, res: Response) => {
   try {
     const data = await qboQueryWithRefresh('findVendors', { fetchAll: true });
     res.json({ vendors: data?.QueryResponse?.Vendor || [] });
-  } catch (error: any) {
-    console.error('QuickBooks vendors error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks vendors error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch vendors' });
   }
 });
@@ -444,8 +529,9 @@ router.get('/api/quickbooks/bills', async (_req: Request, res: Response) => {
   try {
     const data = await qboQueryWithRefresh('findBills', { fetchAll: true });
     res.json({ bills: data?.QueryResponse?.Bill || [] });
-  } catch (error: any) {
-    console.error('QuickBooks bills error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks bills error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch bills' });
   }
 });
@@ -454,8 +540,9 @@ router.get('/api/quickbooks/payments', async (_req: Request, res: Response) => {
   try {
     const data = await qboQueryWithRefresh('findPayments', { fetchAll: true });
     res.json({ payments: data?.QueryResponse?.Payment || [] });
-  } catch (error: any) {
-    console.error('QuickBooks payments error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks payments error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch payments' });
   }
 });
@@ -464,8 +551,9 @@ router.get('/api/quickbooks/expenses', async (_req: Request, res: Response) => {
   try {
     const data = await qboQueryWithRefresh('findPurchases', { fetchAll: true });
     res.json({ expenses: data?.QueryResponse?.Purchase || [] });
-  } catch (error: any) {
-    console.error('QuickBooks expenses error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks expenses error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch expenses' });
   }
 });
@@ -474,8 +562,9 @@ router.get('/api/quickbooks/items', async (_req: Request, res: Response) => {
   try {
     const data = await qboQueryWithRefresh('findItems', { fetchAll: true });
     res.json({ items: data?.QueryResponse?.Item || [] });
-  } catch (error: any) {
-    console.error('QuickBooks items error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks items error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch items' });
   }
 });
@@ -484,8 +573,9 @@ router.get('/api/quickbooks/tax-codes', async (_req: Request, res: Response) => 
   try {
     const data = await qboQueryWithRefresh('findTaxCodes', { fetchAll: true });
     res.json({ taxCodes: data?.QueryResponse?.TaxCode || [] });
-  } catch (error: any) {
-    console.error('QuickBooks tax codes error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks tax codes error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch tax codes' });
   }
 });
@@ -494,8 +584,9 @@ router.get('/api/quickbooks/journal-entries', async (_req: Request, res: Respons
   try {
     const data = await qboQueryWithRefresh('findJournalEntries', { fetchAll: true });
     res.json({ journalEntries: data?.QueryResponse?.JournalEntry || [] });
-  } catch (error: any) {
-    console.error('QuickBooks journal entries error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks journal entries error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch journal entries' });
   }
 });
@@ -543,11 +634,20 @@ router.post('/api/quickbooks/journal-entries', async (req: Request, res: Respons
       });
     });
 
+    await emitReceipt(req, 'quickbooks.journal_entry.create', 'SUCCEEDED',
+      { method: 'POST', path: req.path, risk_tier: 'YELLOW', line_count: lines.length, txn_date: txnDate || null },
+      { journal_entry_id: (data as any)?.Id || null },
+    );
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks create journal entry error:', error);
-    const errMsg = error?.response?.data?.Fault?.Error?.[0]?.Detail || error.message || 'Failed to create journal entry';
-    res.status(500).json({ error: errMsg });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    const detailMsg = (error as any)?.response?.data?.Fault?.Error?.[0]?.Detail || msg;
+    logger.error('QuickBooks create journal entry error', { error: detailMsg });
+    await emitReceipt(req, 'quickbooks.journal_entry.create', 'FAILED',
+      { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
+      { error: detailMsg },
+    );
+    res.status(500).json({ error: detailMsg });
   }
 });
 
@@ -560,8 +660,9 @@ router.get('/api/quickbooks/transaction-list', async (req: Request, res: Respons
       end_date: endDate,
     });
     res.json(data);
-  } catch (error: any) {
-    console.error('QuickBooks Transaction List error:', error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('QuickBooks Transaction List error', { error: msg });
     res.status(500).json({ error: 'Failed to fetch transaction list' });
   }
 });

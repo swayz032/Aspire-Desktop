@@ -1,12 +1,13 @@
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
+import { logger } from './logger';
 
 // Law #3: Fail Closed — no hardcoded fallback key. If TOKEN_ENCRYPTION_KEY is not set,
 // token encryption/decryption will fail explicitly rather than using a guessable key.
 const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY;
 if (!ENCRYPTION_KEY) {
-  console.warn('WARNING: TOKEN_ENCRYPTION_KEY not set. Finance token encryption will be unavailable.');
+  logger.warn('TOKEN_ENCRYPTION_KEY not set. Finance token encryption will be unavailable.');
 }
 
 function encrypt(text: string): string {
@@ -76,10 +77,11 @@ export async function createConnection(params: {
     `);
     const rows = result.rows || result;
     const id = (rows as any)[0].id;
-    console.log(`Finance connection created: ${id} for provider ${params.provider}`);
+    logger.info('Finance connection created', { id, provider: params.provider });
     return id;
-  } catch (error: any) {
-    console.error('Failed to create finance connection:', error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Failed to create finance connection', { error: msg });
     throw error;
   }
 }
@@ -96,8 +98,8 @@ export async function getConnection(connectionId: string): Promise<ConnectionRec
       return rowToConnection((rows as any[])[0]);
     }
     return null;
-  } catch (error: any) {
-    console.error('Failed to get finance connection:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to get finance connection', { error: error instanceof Error ? error.message : 'unknown' });
     return null;
   }
 }
@@ -112,8 +114,8 @@ export async function getConnectionsByTenant(suiteId: string, officeId: string):
     `);
     const rows = (result.rows || result) as any[];
     return rows.map(rowToConnection);
-  } catch (error: any) {
-    console.error('Failed to get connections by tenant:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to get connections by tenant', { error: error instanceof Error ? error.message : 'unknown' });
     return [];
   }
 }
@@ -131,8 +133,8 @@ export async function getConnectionByProvider(suiteId: string, officeId: string,
       return rowToConnection((rows as any[])[0]);
     }
     return null;
-  } catch (error: any) {
-    console.error('Failed to get connection by provider:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to get connection by provider', { error: error instanceof Error ? error.message : 'unknown' });
     return null;
   }
 }
@@ -144,9 +146,10 @@ export async function updateConnectionStatus(connectionId: string, status: strin
       SET status = ${status}, updated_at = NOW()
       WHERE id = ${connectionId}
     `);
-    console.log(`Connection ${connectionId} status updated to ${status}`);
-  } catch (error: any) {
-    console.error('Failed to update connection status:', error.message);
+    logger.info('Connection status updated', { connectionId, status });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Failed to update connection status', { error: msg });
     throw error;
   }
 }
@@ -166,9 +169,10 @@ export async function updateConnectionSyncTime(connectionId: string, field: 'las
         WHERE id = ${connectionId}
       `);
     }
-    console.log(`Connection ${connectionId} ${field} updated`);
-  } catch (error: any) {
-    console.error(`Failed to update connection sync time (${field}):`, error.message);
+    logger.info('Connection sync time updated', { connectionId, field });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Failed to update connection sync time', { field, error: msg });
     throw error;
   }
 }
@@ -198,9 +202,10 @@ export async function saveConnectionToken(connectionId: string, accessToken: str
         VALUES (${connectionId}, ${accessTokenEnc}, ${refreshTokenEnc}, ${expiresAt || null})
       `);
     }
-    console.log(`Token saved for connection ${connectionId}`);
-  } catch (error: any) {
-    console.error('Failed to save connection token:', error.message);
+    logger.info('Token saved for connection', { connectionId });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Failed to save connection token', { error: msg });
     throw error;
   }
 }
@@ -225,8 +230,8 @@ export async function loadConnectionToken(connectionId: string): Promise<{ acces
       };
     }
     return null;
-  } catch (error: any) {
-    console.error('Failed to load connection token:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to load connection token', { error: error instanceof Error ? error.message : 'unknown' });
     return null;
   }
 }
@@ -245,9 +250,10 @@ export async function rotateConnectionToken(connectionId: string, newAccessToken
           updated_at = NOW()
       WHERE connection_id = ${connectionId}
     `);
-    console.log(`Token rotated for connection ${connectionId}`);
-  } catch (error: any) {
-    console.error('Failed to rotate connection token:', error.message);
+    logger.info('Token rotated for connection', { connectionId });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Failed to rotate connection token', { error: msg });
     throw error;
   }
 }
@@ -260,9 +266,10 @@ export async function deleteConnection(connectionId: string): Promise<void> {
     await db.execute(sql`
       DELETE FROM finance_connections WHERE id = ${connectionId}
     `);
-    console.log(`Connection ${connectionId} and associated tokens deleted`);
-  } catch (error: any) {
-    console.error('Failed to delete connection:', error.message);
+    logger.info('Connection and associated tokens deleted', { connectionId });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Failed to delete connection', { error: msg });
     throw error;
   }
 }

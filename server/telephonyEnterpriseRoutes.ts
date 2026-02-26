@@ -37,6 +37,7 @@ import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
+import { logger } from './logger';
 
 const router = Router();
 
@@ -222,9 +223,10 @@ router.get('/api/frontdesk/setup', async (req: Request, res: Response) => {
       provisionedStatus: row.provisioned_status,
       country: row.country,
     });
-  } catch (error: any) {
-    console.error('GET /api/frontdesk/setup error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('GET /api/frontdesk/setup error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -318,9 +320,10 @@ router.patch('/api/frontdesk/setup', async (req: Request, res: Response) => {
       setupComplete: row.setup_complete,
       receiptCorrelation: corrId,
     });
-  } catch (error: any) {
-    console.error('PATCH /api/frontdesk/setup error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('PATCH /api/frontdesk/setup error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -367,9 +370,10 @@ router.post('/api/frontdesk/preview-audio', async (req: Request, res: Response) 
     const audioBuffer = await response.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
     res.json({ audioUrl: `data:audio/mpeg;base64,${base64Audio}`, cached: false });
-  } catch (error: any) {
-    console.error('preview-audio error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('preview-audio error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -402,9 +406,10 @@ router.post('/api/frontdesk/numbers/search', async (req: Request, res: Response)
         capabilities: n.capabilities || {},
       })),
     });
-  } catch (error: any) {
-    console.error('numbers/search error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('numbers/search error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -457,9 +462,10 @@ router.post('/api/frontdesk/numbers/purchase', async (req: Request, res: Respons
     }, corrId);
 
     res.json({ outboxJobId: jobId, businessNumber: e164, status: 'provisioning' });
-  } catch (error: any) {
-    console.error('numbers/purchase error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('numbers/purchase error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -482,9 +488,10 @@ router.post('/api/frontdesk/numbers/release', async (req: Request, res: Response
     }, corrId);
 
     res.json({ outboxJobId: jobId, status: 'releasing' });
-  } catch (error: any) {
-    console.error('numbers/release error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('numbers/release error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -510,9 +517,10 @@ router.get('/api/frontdesk/calls', async (req: Request, res: Response) => {
     `);
     const rows = (result.rows || result) as any[];
     res.json({ calls: rows, total: rows.length });
-  } catch (error: any) {
-    console.error('GET /api/frontdesk/calls error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('GET /api/frontdesk/calls error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -559,9 +567,10 @@ router.post('/api/frontdesk/return-call', async (req: Request, res: Response) =>
     }, corrId);
 
     res.json({ outboxJobId: jobId, receiptId });
-  } catch (error: any) {
-    console.error('return-call error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('return-call error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -609,9 +618,10 @@ router.post('/api/frontdesk/outbound-call', async (req: Request, res: Response) 
     }, corrId);
 
     res.json({ outboxJobId: jobId, receiptId });
-  } catch (error: any) {
-    console.error('outbound-call error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('outbound-call error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -634,9 +644,10 @@ router.get('/api/messages/threads', async (req: Request, res: Response) => {
     `);
     const rows = (result.rows || result) as any[];
     res.json({ threads: rows, total: rows.length });
-  } catch (error: any) {
-    console.error('GET /api/messages/threads error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('GET /api/messages/threads error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -660,9 +671,10 @@ router.get('/api/messages/threads/:threadId/messages', async (req: Request, res:
     `);
     const rows = (result.rows || result) as any[];
     res.json({ messages: rows, total: rows.length });
-  } catch (error: any) {
-    console.error('GET /api/messages/threads/:id/messages error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('GET /api/messages/threads/:id/messages error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -728,9 +740,10 @@ router.post('/api/messages/send', async (req: Request, res: Response) => {
     }, corrId);
 
     res.json({ outboxJobId: jobId, receiptId });
-  } catch (error: any) {
-    console.error('messages/send error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('messages/send error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -756,9 +769,10 @@ router.get('/api/voicemail', async (req: Request, res: Response) => {
     `);
     const rows = (result.rows || result) as any[];
     res.json({ voicemails: rows, total: rows.length });
-  } catch (error: any) {
-    console.error('GET /api/voicemail error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('GET /api/voicemail error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -777,9 +791,10 @@ router.get('/api/voicemail/:id', async (req: Request, res: Response) => {
     const rows = (result.rows || result) as any[];
     if (rows.length === 0) return res.status(404).json({ code: 'NOT_FOUND', message: 'Voicemail not found' });
     res.json(rows[0]);
-  } catch (error: any) {
-    console.error('GET /api/voicemail/:id error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('GET /api/voicemail/:id error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -800,9 +815,10 @@ router.get('/api/voicemail/:id/audio', async (req: Request, res: Response) => {
       return res.status(404).json({ code: 'NOT_FOUND', message: 'Recording not found' });
     }
     res.json({ url: rows[0].recording_uri });
-  } catch (error: any) {
-    console.error('GET /api/voicemail/:id/audio error:', error.message);
-    res.status(500).json({ code: 'INTERNAL', message: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('GET /api/voicemail/:id/audio error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
 
@@ -829,7 +845,7 @@ router.post('/api/webhooks/twilio/voice', async (req: Request, res: Response) =>
 
     if (!resolved) {
       // Unknown number — still return 200 to prevent Twilio retry storms
-      console.warn('Webhook for unknown business number:', toNumber);
+      logger.warn('Webhook for unknown business number', { toNumber });
       // Receipt for unknown number (no suite context — write without RLS)
       try {
         await db.execute(sql`
@@ -869,18 +885,19 @@ router.post('/api/webhooks/twilio/voice', async (req: Request, res: Response) =>
     }
 
     res.status(200).send('<Response></Response>');
-  } catch (error: any) {
-    console.error('Webhook /twilio/voice error:', error.message);
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Webhook /twilio/voice error', { error: errMsg });
     // Signature failures return 403 with receipt
-    if (error.message.includes('signature') || error.message.includes('Signature')) {
+    if (errMsg.includes('signature') || errMsg.includes('Signature')) {
       try {
         await db.execute(sql`
           INSERT INTO public.frontdesk_action_receipts (suite_id, actor_type, action_type, correlation_id, payload)
           VALUES ('00000000-0000-0000-0000-000000000000'::uuid, 'system', 'frontdesk.webhook.signature_failed',
-            ${`sig_${Date.now()}`}, ${JSON.stringify({ path: '/twilio/voice', error: error.message })}::jsonb)
+            ${`sig_${Date.now()}`}, ${JSON.stringify({ path: '/twilio/voice', error: errMsg })}::jsonb)
         `);
       } catch (_) { /* best-effort receipt */ }
-      return res.status(403).json({ code: 'INVALID_SIGNATURE', message: error.message });
+      return res.status(403).json({ code: 'INVALID_SIGNATURE', message: errMsg });
     }
     res.status(200).send('<Response></Response>');
   }
@@ -899,7 +916,7 @@ router.post('/api/webhooks/twilio/sms/inbound', async (req: Request, res: Respon
     const resolved = toNumber ? await resolveSuiteByBusinessNumber(toNumber) : null;
 
     if (!resolved) {
-      console.warn('SMS webhook for unknown business number:', toNumber);
+      logger.warn('SMS webhook for unknown business number', { toNumber });
       try {
         await db.execute(sql`
           INSERT INTO public.frontdesk_action_receipts (suite_id, actor_type, action_type, correlation_id, payload)
@@ -933,17 +950,18 @@ router.post('/api/webhooks/twilio/sms/inbound', async (req: Request, res: Respon
     }
 
     res.status(200).send('<Response></Response>');
-  } catch (error: any) {
-    console.error('Webhook /twilio/sms/inbound error:', error.message);
-    if (error.message.includes('signature') || error.message.includes('Signature')) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Webhook /twilio/sms/inbound error', { error: errMsg });
+    if (errMsg.includes('signature') || errMsg.includes('Signature')) {
       try {
         await db.execute(sql`
           INSERT INTO public.frontdesk_action_receipts (suite_id, actor_type, action_type, correlation_id, payload)
           VALUES ('00000000-0000-0000-0000-000000000000'::uuid, 'system', 'frontdesk.webhook.signature_failed',
-            ${`sig_${Date.now()}`}, ${JSON.stringify({ path: '/twilio/sms/inbound', error: error.message })}::jsonb)
+            ${`sig_${Date.now()}`}, ${JSON.stringify({ path: '/twilio/sms/inbound', error: errMsg })}::jsonb)
         `);
       } catch (_) { /* best-effort receipt */ }
-      return res.status(403).json({ code: 'INVALID_SIGNATURE', message: error.message });
+      return res.status(403).json({ code: 'INVALID_SIGNATURE', message: errMsg });
     }
     res.status(200).send('<Response></Response>');
   }
@@ -963,7 +981,7 @@ router.post('/api/webhooks/twilio/sms/status', async (req: Request, res: Respons
     const resolved = fromNumber ? await resolveSuiteByBusinessNumber(fromNumber) : null;
 
     if (!resolved) {
-      console.warn('SMS status for unknown business number:', fromNumber);
+      logger.warn('SMS status for unknown business number', { fromNumber });
       try {
         await db.execute(sql`
           INSERT INTO public.frontdesk_action_receipts (suite_id, actor_type, action_type, correlation_id, payload)
@@ -993,17 +1011,18 @@ router.post('/api/webhooks/twilio/sms/status', async (req: Request, res: Respons
     }
 
     res.status(200).send('<Response></Response>');
-  } catch (error: any) {
-    console.error('Webhook /twilio/sms/status error:', error.message);
-    if (error.message.includes('signature') || error.message.includes('Signature')) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Webhook /twilio/sms/status error', { error: errMsg });
+    if (errMsg.includes('signature') || errMsg.includes('Signature')) {
       try {
         await db.execute(sql`
           INSERT INTO public.frontdesk_action_receipts (suite_id, actor_type, action_type, correlation_id, payload)
           VALUES ('00000000-0000-0000-0000-000000000000'::uuid, 'system', 'frontdesk.webhook.signature_failed',
-            ${`sig_${Date.now()}`}, ${JSON.stringify({ path: '/twilio/sms/status', error: error.message })}::jsonb)
+            ${`sig_${Date.now()}`}, ${JSON.stringify({ path: '/twilio/sms/status', error: errMsg })}::jsonb)
         `);
       } catch (_) { /* best-effort receipt */ }
-      return res.status(403).json({ code: 'INVALID_SIGNATURE', message: error.message });
+      return res.status(403).json({ code: 'INVALID_SIGNATURE', message: errMsg });
     }
     res.status(200).send('<Response></Response>');
   }
@@ -1360,7 +1379,7 @@ async function processOutboxJob(job: any): Promise<void> {
     }
 
     default:
-      console.warn(`Unknown outbox job type: ${job_type}`);
+      logger.warn('Unknown outbox job type', { job_type });
   }
 }
 
@@ -1396,23 +1415,25 @@ async function pollOutbox() {
       try {
         await processOutboxJob(job);
         await db.execute(sql`SELECT public.frontdesk_outbox_complete(${job.job_id}::uuid)`);
-      } catch (err: any) {
-        console.error(`Outbox job ${job.job_id} (${job.job_type}) failed:`, err.message);
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : 'unknown';
+        logger.error('Outbox job failed', { job_id: job.job_id, job_type: job.job_type, error: errMsg });
         const backoff = Math.min(30 * Math.pow(2, job.attempts - 1), 3600);
-        await db.execute(sql`SELECT public.frontdesk_outbox_fail(${job.job_id}::uuid, ${err.message}, ${backoff})`);
+        await db.execute(sql`SELECT public.frontdesk_outbox_fail(${job.job_id}::uuid, ${errMsg}, ${backoff})`);
         // Failure receipt — Law #2: failures must be auditable
         try {
           await writeReceipt(job.suite_id, 'frontdesk.job.failed', {
             job_id: job.job_id, job_type: job.job_type,
-            error: err.message, attempt: job.attempts,
+            error: errMsg, attempt: job.attempts,
           });
         } catch (_) { /* best-effort receipt */ }
       }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Silently skip if tables don't exist yet (migration not run)
-    if (!err.message?.includes('does not exist')) {
-      console.error('Outbox poll error:', err.message);
+    const errMsg = err instanceof Error ? err.message : 'unknown';
+    if (!errMsg.includes('does not exist')) {
+      logger.error('Outbox poll error', { error: errMsg });
     }
   }
 }
@@ -1420,7 +1441,7 @@ async function pollOutbox() {
 /** Start the outbox worker — call from server startup */
 export function startOutboxWorker() {
   if (outboxInterval) return;
-  console.log('Front Desk outbox worker started (poll interval: 2s)');
+  logger.info('Front Desk outbox worker started', { pollInterval: '2s' });
   outboxInterval = setInterval(pollOutbox, OUTBOX_POLL_INTERVAL);
 }
 
@@ -1429,7 +1450,7 @@ export function stopOutboxWorker() {
   if (outboxInterval) {
     clearInterval(outboxInterval);
     outboxInterval = null;
-    console.log('Front Desk outbox worker stopped');
+    logger.info('Front Desk outbox worker stopped');
   }
 }
 

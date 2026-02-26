@@ -6,6 +6,7 @@ import { getConnectionsByTenant } from './financeTokenStore';
 import { computeSnapshot } from './snapshotEngine';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
+import { logger } from './logger';
 
 const router = Router();
 
@@ -83,8 +84,8 @@ router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
       try {
         const freshSnapshot = await computeSnapshot(suiteId, officeId);
         return res.json(freshSnapshot);
-      } catch (computeError: any) {
-        console.warn('Auto-compute snapshot failed, using cached:', computeError.message);
+      } catch (computeError: unknown) {
+        logger.warn('Auto-compute snapshot failed, using cached', { error: computeError instanceof Error ? computeError.message : 'unknown' });
       }
     }
 
@@ -111,9 +112,10 @@ router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
         connected,
       });
     }
-  } catch (error: any) {
-    console.error('Finance snapshot error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Finance snapshot error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -159,9 +161,10 @@ router.get('/api/finance/timeline', async (req: Request, res: Response) => {
     const total = countRows[0]?.total || 0;
 
     res.json({ events, total, limit, offset });
-  } catch (error: any) {
-    console.error('Finance timeline error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Finance timeline error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -216,9 +219,10 @@ router.get('/api/finance/explain', async (req: Request, res: Response) => {
       exclusions: [],
       relatedEvents,
     });
-  } catch (error: any) {
-    console.error('Finance explain error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Finance explain error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -256,9 +260,10 @@ router.get('/api/connections/status', async (req: Request, res: Response) => {
         needsAttention,
       },
     });
-  } catch (error: any) {
-    console.error('Connections status error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Connections status error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -340,9 +345,10 @@ router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
     });
 
     res.json({ steps, entityId: entityId || null });
-  } catch (error: any) {
-    console.error('Finance lifecycle error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Finance lifecycle error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -351,9 +357,10 @@ router.post('/api/finance/compute-snapshot', async (req: Request, res: Response)
     const { suiteId = getDefaultSuiteId(), officeId = getDefaultOfficeId() } = req.body;
     const snapshot = await computeSnapshot(suiteId, officeId);
     res.json(snapshot);
-  } catch (error: any) {
-    console.error('Compute snapshot error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Compute snapshot error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -407,7 +414,7 @@ router.post('/api/finance/proposals', async (req: Request, res: Response) => {
       UPDATE finance_events SET receipt_id = ${receiptId} WHERE event_id = ${eventId}
     `);
 
-    console.log(`Proposal created: ${eventId} (${intentSummary}) [${riskTier}]`);
+    logger.info('Proposal created', { eventId, title: intentSummary, riskTier });
 
     res.status(201).json({
       eventId,
@@ -422,9 +429,10 @@ router.post('/api/finance/proposals', async (req: Request, res: Response) => {
       occurredAt,
       receiptId,
     });
-  } catch (error: any) {
-    console.error('Create proposal error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Create proposal error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -503,7 +511,7 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
       UPDATE finance_events SET receipt_id = ${receiptId} WHERE event_id = ${execEventId}
     `);
 
-    console.log(`Action executed: ${execEventId} for proposal ${proposalId}`);
+    logger.info('Action executed', { execEventId, proposalId });
 
     res.status(201).json({
       executionEventId: execEventId,
@@ -513,9 +521,10 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
       executedAt,
       receiptId,
     });
-  } catch (error: any) {
-    console.error('Execute action error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Execute action error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -630,9 +639,10 @@ router.get('/api/finance/exceptions', async (req: Request, res: Response) => {
       exceptions,
       correlation_id: correlationId,
     });
-  } catch (error: any) {
-    console.error('Finance exceptions error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Finance exceptions error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -674,9 +684,10 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
     });
 
     res.json({ items, total: items.length, domain });
-  } catch (error: any) {
-    console.error('Authority queue error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Authority queue error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -723,12 +734,13 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
       metadata: { event_type: 'authority.item.approved', proposalTitle: checkRows[0].metadata?.title },
     });
 
-    console.log(`Authority item approved: ${eventId} by ${approvedBy}`);
+    logger.info('Authority item approved', { eventId, approvedBy });
 
     res.json({ id: eventId, status: 'approved', approvedBy, receiptId, correlation_id: correlationId });
-  } catch (error: any) {
-    console.error('Authority approve error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Authority approve error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -775,12 +787,13 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
       metadata: { event_type: 'authority.item.denied', proposalTitle: checkRows[0].metadata?.title },
     });
 
-    console.log(`Authority item denied: ${eventId} by ${deniedBy}`);
+    logger.info('Authority item denied', { eventId, deniedBy });
 
     res.json({ id: eventId, status: 'denied', deniedBy, reason, receiptId, correlation_id: correlationId });
-  } catch (error: any) {
-    console.error('Authority deny error:', error.message);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Authority deny error', { error: msg });
+    res.status(500).json({ error: msg });
   }
 });
 

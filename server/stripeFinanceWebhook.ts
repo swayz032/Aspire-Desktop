@@ -6,6 +6,7 @@ import { createReceipt } from './receiptService';
 import { updateConnectionSyncTime, getConnectionByProvider } from './financeTokenStore';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
+import { logger } from './logger';
 
 const STRIPE_EVENT_MAP: Record<string, string> = {
   'invoice.sent': 'invoice_sent',
@@ -127,8 +128,8 @@ async function writeFinanceEvent(params: {
       return (rows as any[])[0].event_id;
     }
     return null;
-  } catch (error: any) {
-    console.error('Failed to write finance event:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to write finance event', { error: error instanceof Error ? error.message : 'unknown' });
     throw error;
   }
 }
@@ -140,7 +141,7 @@ export async function fetchPayoutReconciliation(payoutId: string, suiteId?: stri
     const oId = officeId || getDefaultOfficeId();
 
     const payout = await stripe.payouts.retrieve(payoutId);
-    console.log(`Fetching reconciliation for payout ${payoutId}, amount: ${payout.amount}`);
+    logger.info('Fetching reconciliation for payout', { payoutId, amount: payout.amount });
 
     const balanceTransactions = await stripe.balanceTransactions.list({
       payout: payoutId,
@@ -174,9 +175,9 @@ export async function fetchPayoutReconciliation(payoutId: string, suiteId?: stri
       });
     }
 
-    console.log(`Payout reconciliation complete: ${balanceTransactions.data.length} balance transactions for payout ${payoutId}`);
-  } catch (error: any) {
-    console.error('Failed to fetch payout reconciliation:', error.message);
+    logger.info('Payout reconciliation complete', { payoutId, balanceTransactionCount: balanceTransactions.data.length });
+  } catch (error: unknown) {
+    logger.error('Failed to fetch payout reconciliation', { error: error instanceof Error ? error.message : 'unknown' });
     throw error;
   }
 }
@@ -224,10 +225,10 @@ export async function checkSettlementState(suiteId?: string, officeId?: string):
       });
     }
 
-    console.log(`Settlement state: available=${totalAvailable}, pending=${totalPending}`);
+    logger.info('Settlement state retrieved', { totalAvailable, totalPending });
     return { available, pending };
-  } catch (error: any) {
-    console.error('Failed to check settlement state:', error.message);
+  } catch (error: unknown) {
+    logger.error('Failed to check settlement state', { error: error instanceof Error ? error.message : 'unknown' });
     throw error;
   }
 }
@@ -245,7 +246,7 @@ router.post(
 
       if (webhookSecret) {
         if (!signature) {
-          console.error('Missing stripe-signature header');
+          logger.error('Missing stripe-signature header');
           return res.status(400).json({ error: 'Missing signature' });
         }
         try {
@@ -253,16 +254,16 @@ router.post(
           const sig = Array.isArray(signature) ? signature[0] : signature;
           // Explicit 300s tolerance for replay protection (D-C5 fix)
           event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret, 300);
-        } catch (err: any) {
-          console.error('Stripe webhook signature verification failed:', err.message);
+        } catch (err: unknown) {
+          logger.error('Stripe webhook signature verification failed', { error: err instanceof Error ? err.message : 'unknown' });
           return res.status(400).json({ error: 'Signature verification failed' });
         }
       } else {
-        console.warn('STRIPE_WEBHOOK_SECRET not set — accepting webhook without signature verification (sandbox mode)');
+        logger.warn('STRIPE_WEBHOOK_SECRET not set — accepting webhook without signature verification (sandbox mode)');
         try {
           event = JSON.parse(typeof req.body === 'string' ? req.body : req.body.toString());
-        } catch (err: any) {
-          console.error('Failed to parse webhook body:', err.message);
+        } catch (err: unknown) {
+          logger.error('Failed to parse webhook body', { error: err instanceof Error ? err.message : 'unknown' });
           return res.status(400).json({ error: 'Invalid JSON body' });
         }
       }
@@ -271,7 +272,7 @@ router.post(
       const normalizedType = STRIPE_EVENT_MAP[stripeEventType];
 
       if (!normalizedType) {
-        console.log(`Unhandled Stripe event type: ${stripeEventType}, skipping`);
+        logger.info('Unhandled Stripe event type, skipping', { stripeEventType });
         return res.status(200).json({ received: true, skipped: true });
       }
 
@@ -300,7 +301,7 @@ router.post(
 
       if (eventId === null) {
         // ON CONFLICT DO NOTHING returned no row — duplicate/replay event
-        console.warn(`Stripe webhook replay detected: event ${event.id} already processed (idempotency guard)`);
+        logger.warn('Stripe webhook replay detected', { stripeEventId: event.id });
         return res.status(200).json({ received: true, duplicate: true });
       }
       if (eventId) {
@@ -317,8 +318,8 @@ router.post(
           await db.execute(sql`
             UPDATE finance_events SET receipt_id = ${receiptId} WHERE event_id = ${eventId}::uuid
           `);
-        } catch (receiptErr: any) {
-          console.error('Failed to create receipt for finance event:', receiptErr.message);
+        } catch (receiptErr: unknown) {
+          logger.error('Failed to create receipt for finance event', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
         }
 
         const fee = extractFee(stripeEventType, dataObject);
@@ -336,8 +337,8 @@ router.post(
               entityRefs: { ...entityRefs, fee_source_event: event.id },
               rawHash: computeRawHash({ event_id: event.id, fee }),
             });
-          } catch (feeErr: any) {
-            console.error('Failed to write fee event:', feeErr.message);
+          } catch (feeErr: unknown) {
+            logger.error('Failed to write fee event', { error: feeErr instanceof Error ? feeErr.message : 'unknown' });
           }
         }
       }
@@ -345,23 +346,23 @@ router.post(
       if (stripeEventType.startsWith('payout.') && dataObject.id) {
         try {
           await fetchPayoutReconciliation(dataObject.id, getDefaultSuiteId(), getDefaultOfficeId());
-        } catch (reconErr: any) {
-          console.error('Payout reconciliation failed:', reconErr.message);
+        } catch (reconErr: unknown) {
+          logger.error('Payout reconciliation failed', { error: reconErr instanceof Error ? reconErr.message : 'unknown' });
         }
       }
 
       if (connectionId) {
         try {
           await updateConnectionSyncTime(connectionId, 'last_webhook_at');
-        } catch (syncErr: any) {
-          console.error('Failed to update connection webhook time:', syncErr.message);
+        } catch (syncErr: unknown) {
+          logger.error('Failed to update connection webhook time', { error: syncErr instanceof Error ? syncErr.message : 'unknown' });
         }
       }
 
-      console.log(`Stripe finance webhook processed: ${stripeEventType} -> ${normalizedType} (event: ${event.id})`);
+      logger.info('Stripe finance webhook processed', { stripeEventType, normalizedType, stripeEventId: event.id });
       return res.status(200).json({ received: true });
-    } catch (error: any) {
-      console.error('Stripe finance webhook error:', error.message);
+    } catch (error: unknown) {
+      logger.error('Stripe finance webhook error', { error: error instanceof Error ? error.message : 'unknown' });
       return res.status(500).json({ error: 'Webhook processing error' });
     }
   }

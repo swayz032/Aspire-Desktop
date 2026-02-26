@@ -1,5 +1,6 @@
 import { getStripeSync } from './stripeClient';
 import { storage } from './storage';
+import type Stripe from 'stripe';
 
 export class WebhookHandlers {
   static async processWebhook(payload: Buffer, signature: string): Promise<void> {
@@ -14,7 +15,7 @@ export class WebhookHandlers {
     await sync.processWebhook(payload, signature);
   }
 
-  static async handleCheckoutComplete(session: any): Promise<void> {
+  static async handleCheckoutComplete(session: Stripe.Checkout.Session): Promise<void> {
     const bookingId = session.metadata?.bookingId;
     if (bookingId) {
       await storage.updateBooking(bookingId, {
@@ -25,7 +26,7 @@ export class WebhookHandlers {
     }
   }
 
-  static async handlePaymentFailed(paymentIntent: any): Promise<void> {
+  static async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     const bookingId = paymentIntent.metadata?.bookingId;
     if (bookingId) {
       await storage.updateBooking(bookingId, {
