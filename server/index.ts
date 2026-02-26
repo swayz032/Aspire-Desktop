@@ -353,8 +353,32 @@ if (registerObjectStorageRoutes) {
   registerObjectStorageRoutes(app);
 }
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Enhanced health check (D-C15 + B-H10) — checks DB connectivity
+app.get('/api/health', async (req, res) => {
+  const checks: Record<string, boolean> = {
+    server: true,
+  };
+
+  // Check database connectivity
+  try {
+    await db.execute(sql`SELECT 1`);
+    checks.database = true;
+  } catch {
+    checks.database = false;
+  }
+
+  // Check Supabase admin client
+  checks.supabase_admin = supabaseAdmin !== null;
+
+  const allHealthy = Object.values(checks).every(Boolean);
+  const status = allHealthy ? 'ok' : 'degraded';
+
+  res.status(allHealthy ? 200 : 503).json({
+    status,
+    service: 'aspire-desktop',
+    timestamp: new Date().toISOString(),
+    checks,
+  });
 });
 
 app.get('/api/ops-snapshot', async (req, res) => {
@@ -517,9 +541,34 @@ async function start() {
     console.warn('Server will continue with JWT-based suite context');
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Aspire Desktop server running on port ${PORT}`);
   });
+
+  // Graceful shutdown (D-C11) — drain connections before exit
+  const SHUTDOWN_TIMEOUT_MS = 30_000;
+  let shuttingDown = false;
+
+  function gracefulShutdown(signal: string): void {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[${signal}] Graceful shutdown initiated — draining connections (${SHUTDOWN_TIMEOUT_MS / 1000}s timeout)...`);
+
+    // Stop accepting new connections
+    server.close(() => {
+      console.log('[shutdown] All connections drained. Exiting cleanly.');
+      process.exit(0);
+    });
+
+    // Force exit if connections don't drain in time
+    setTimeout(() => {
+      console.error('[shutdown] Timeout — forcing exit with in-flight requests lost.');
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
 export { defaultSuiteId, defaultOfficeId };
