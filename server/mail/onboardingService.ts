@@ -118,7 +118,7 @@ export async function startOnboarding(
   officeId: string,
   provider: 'POLARIS' | 'GOOGLE',
   context?: any,
-): Promise<{ jobId: string; correlationId: string }> {
+): Promise<{ jobId: string; correlationId: string; provider: string; state: string }> {
   const correlationId = `corr_${crypto.randomUUID()}`;
 
   try {
@@ -145,7 +145,7 @@ export async function startOnboarding(
       await transitionState(jobId, suiteId, 'GOOGLE_OAUTH_PENDING');
     }
 
-    return { jobId, correlationId };
+    return { jobId, correlationId, provider, state: provider === 'GOOGLE' ? 'GOOGLE_OAUTH_PENDING' : 'INIT' };
   } catch (err: any) {
     // Failure receipt — Law #2: receipt even on failure
     await createTrustSpineReceipt({

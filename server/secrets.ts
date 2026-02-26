@@ -54,6 +54,13 @@ const KEY_MAP: Record<string, string> = {
   tavily_key: 'TAVILY_API_KEY',
   brave_key: 'BRAVE_API_KEY',
   google_maps_key: 'GOOGLE_MAPS_API_KEY',
+  // Google OAuth (Eli inbox — Gmail integration)
+  google_client_id: 'GOOGLE_CLIENT_ID',
+  google_client_secret: 'GOOGLE_CLIENT_SECRET',
+  // PolarisM (Aspire Business Email provisioning)
+  polaris_username: 'POLARIS_USERNAME',
+  polaris_password: 'POLARIS_PASSWORD',
+  polaris_base_url: 'POLARIS_BASE_URL',
 };
 
 // Per-group key mappings (some SM groups have colliding key names like "api_key")

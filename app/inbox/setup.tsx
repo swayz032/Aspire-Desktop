@@ -147,7 +147,7 @@ export default function MailboxSetupScreen() {
       const result = await mailApi.startOnboarding(provider);
       const newJobId = result.jobId;
       setJobId(newJobId);
-      setOnboarding(result);
+      setOnboarding(prev => ({ ...prev, ...result, provider }));
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('mailSetupJobId', newJobId);
       }
