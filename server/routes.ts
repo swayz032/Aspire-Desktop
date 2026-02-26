@@ -3408,7 +3408,12 @@ router.get('/api/contracts', async (req: Request, res: Response) => {
 
     res.json({ contracts, total, page, limit });
   } catch (error: unknown) {
-    logger.error('Contracts list error', { error: error instanceof Error ? error.message : 'unknown' });
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Contracts list error', { error: msg });
+    // Graceful degradation: return empty list instead of 500 when DB/table isn't ready
+    if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('connect')) {
+      return res.json({ contracts: [], total: 0, page: 1, limit: 20, configured: false });
+    }
     res.status(500).json({ error: 'Failed to list contracts' });
   }
 });
