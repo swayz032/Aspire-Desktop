@@ -49,7 +49,6 @@ const PUBLIC_PATHS = [
   '/api/health',
   '/api/stripe/webhook',
   '/api/book/',             // Public booking pages
-  '/api/ops-snapshot',
   '/api/sandbox/health',
   '/api/webhooks/twilio/',  // Twilio webhooks (signature-validated, no JWT)
   '/api/mail/oauth/google/callback', // Google redirects here without JWT
@@ -114,6 +113,30 @@ app.use(async (req, res, next) => {
     }
 
     const suiteId = user.user_metadata?.suite_id || defaultSuiteId;
+
+    // Law #6 defense-in-depth: if x-suite-id header is present, it MUST match JWT-derived suite_id
+    // This prevents header-spoofing attacks where a valid JWT holder tries to access another tenant
+    const headerSuiteId = req.headers['x-suite-id'] as string | undefined;
+    if (headerSuiteId && suiteId && headerSuiteId !== suiteId) {
+      console.error(`TENANT_ISOLATION_VIOLATION: x-suite-id header (${headerSuiteId}) != JWT suite (${suiteId}) [user=${user.id}]`);
+      // Law #2: emit denial receipt for tenant isolation violation
+      try {
+        const { createReceipt } = require('./receiptService');
+        await createReceipt({
+          suiteId: 'system',
+          officeId: 'system',
+          actionType: 'auth.tenant_mismatch',
+          inputs: { header_suite_id: headerSuiteId, jwt_suite_id: suiteId, user_id: user.id },
+          outputs: { reason: 'TENANT_ISOLATION_VIOLATION' },
+          metadata: { source: 'rls_guard', risk_tier: 'red' },
+        });
+      } catch (_receiptErr) { /* best-effort */ }
+      return res.status(403).json({
+        error: 'TENANT_ISOLATION_VIOLATION',
+        message: 'x-suite-id header does not match authenticated tenant (Law #6)',
+      });
+    }
+
     if (suiteId) {
       await db.execute(sql`SELECT set_config('app.current_suite_id', ${suiteId}, true)`);
     }
@@ -200,12 +223,17 @@ try {
   console.warn('Stripe finance webhook handler not available, skipping');
 }
 
-app.use(cors({ origin: '*' }));
+// CORS — restricted to known origins (D-C4 fix: no wildcards in production)
+const CORS_ALLOWED_ORIGINS = (process.env.ASPIRE_CORS_ORIGINS || 'https://www.aspireos.app,https://aspireos.app,http://localhost:5000,http://localhost:5173,http://localhost:3000').split(',');
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production'
+    ? CORS_ALLOWED_ORIGINS
+    : true, // Allow all in dev for convenience
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-Id', 'X-Suite-Id'],
+}));
 app.use((req, res, next) => {
-  res.removeHeader('X-Frame-Options');
-  res.removeHeader('Content-Security-Policy');
-  res.setHeader('X-Frame-Options', 'ALLOWALL');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');

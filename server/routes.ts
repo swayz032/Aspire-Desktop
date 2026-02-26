@@ -649,10 +649,39 @@ router.get('/api/users/slug/:slug', async (req: Request, res: Response) => {
 });
 
 router.post('/api/users', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-create-profile-${crypto.randomUUID()}`;
+  const suiteId = (req as any).authenticatedSuiteId || req.body?.suiteId || 'unknown';
+  const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
     const profile = await storage.createSuiteProfile(req.body);
+
+    // Law #2: Receipt for profile creation (YELLOW — state change)
+    const receiptId = crypto.randomUUID();
+    try {
+      await emitReceipt({
+        receiptId, receiptType: 'profile.create', outcome: 'success',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'create_suite_profile' },
+        resultData: { profile_id: profile?.suiteId || profile?.id },
+      });
+    } catch (receiptErr: any) {
+      console.error(`Profile create receipt failed [${correlationId}]:`, receiptErr.message);
+      return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed — receipt required.' });
+    }
+
     res.status(201).json(profile);
   } catch (error: any) {
+    // Law #2: Receipt for failure
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'profile.create', outcome: 'failed',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'create_suite_profile' },
+        resultData: { error: error.message?.substring(0, 200) },
+      });
+    } catch (_) { /* best-effort failure receipt */ }
     res.status(500).json({ error: error.message });
   }
 });
@@ -673,7 +702,7 @@ router.patch('/api/users/:userId', async (req: Request, res: Response) => {
     return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot update another tenant\'s profile.' });
   }
 
-  const correlationId = `corr-profile-update-${crypto.randomUUID()}`;
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-profile-update-${crypto.randomUUID()}`;
   try {
     // Sanitize all string fields before passing to storage
     const sanitizedBody: Record<string, any> = {};
@@ -731,13 +760,16 @@ router.get('/api/users/:userId/services/active', async (req: Request, res: Respo
 });
 
 router.post('/api/users/:userId/services', async (req: Request, res: Response) => {
+  const suiteId = getParam(req.params.userId);
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-create-service-${crypto.randomUUID()}`;
+  const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
     const stripe = await getUncachableStripeClient();
 
     const product = await stripe.products.create({
       name: req.body.name,
       description: req.body.description || '',
-      metadata: { suiteId: getParam(req.params.userId) },
+      metadata: { suiteId },
     });
 
     const price = await stripe.prices.create({
@@ -748,32 +780,112 @@ router.post('/api/users/:userId/services', async (req: Request, res: Response) =
 
     const service = await storage.createService({
       ...req.body,
-      suiteId: getParam(req.params.userId),
+      suiteId,
       stripeProductId: product.id,
       stripePriceId: price.id,
     });
 
+    // Law #2: Receipt for service creation (RED — Stripe financial operation)
+    const receiptId = crypto.randomUUID();
+    try {
+      await emitReceipt({
+        receiptId, receiptType: 'service.create', outcome: 'success',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'red',
+        actionData: { operation: 'create_service', stripe_product_id: product.id, service_name: req.body.name?.substring(0, 50) },
+        resultData: { service_id: service?.id, stripe_price_id: price.id },
+      });
+    } catch (receiptErr: any) {
+      console.error(`Service create receipt failed [${correlationId}]:`, receiptErr.message);
+      return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed — receipt required for Stripe operations.' });
+    }
+
     res.status(201).json(service);
   } catch (error: any) {
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'service.create', outcome: 'failed',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'red',
+        actionData: { operation: 'create_service' },
+        resultData: { error: error.message?.substring(0, 200) },
+      });
+    } catch (_) { /* best-effort failure receipt */ }
     res.status(500).json({ error: error.message });
   }
 });
 
 router.patch('/api/services/:serviceId', async (req: Request, res: Response) => {
+  const serviceId = getParam(req.params.serviceId);
+  const suiteId = (req as any).authenticatedSuiteId || 'unknown';
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-update-service-${crypto.randomUUID()}`;
+  const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
-    const service = await storage.updateService(getParam(req.params.serviceId), req.body);
+    const service = await storage.updateService(serviceId, req.body);
     if (!service) return res.status(404).json({ error: 'Service not found' });
+
+    // Law #2: Receipt for service update (YELLOW — state change)
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'service.update', outcome: 'success',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'update_service', service_id: serviceId, fields_updated: Object.keys(req.body) },
+        resultData: { service_id: serviceId },
+      });
+    } catch (receiptErr: any) {
+      console.error(`Service update receipt failed [${correlationId}]:`, receiptErr.message);
+      return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed.' });
+    }
+
     res.json(service);
   } catch (error: any) {
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'service.update', outcome: 'failed',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'update_service', service_id: serviceId },
+        resultData: { error: error.message?.substring(0, 200) },
+      });
+    } catch (_) { /* best-effort */ }
     res.status(500).json({ error: error.message });
   }
 });
 
 router.delete('/api/services/:serviceId', async (req: Request, res: Response) => {
+  const serviceId = getParam(req.params.serviceId);
+  const suiteId = (req as any).authenticatedSuiteId || 'unknown';
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-delete-service-${crypto.randomUUID()}`;
+  const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
-    await storage.deleteService(getParam(req.params.serviceId));
+    await storage.deleteService(serviceId);
+
+    // Law #2: Receipt for service deletion (RED — irreversible state change)
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'service.delete', outcome: 'success',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'red',
+        actionData: { operation: 'delete_service', service_id: serviceId },
+        resultData: { deleted: true },
+      });
+    } catch (receiptErr: any) {
+      console.error(`Service delete receipt failed [${correlationId}]:`, receiptErr.message);
+      // Note: deletion already happened — emit warning but don't fail the response
+    }
+
     res.status(204).send();
   } catch (error: any) {
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'service.delete', outcome: 'failed',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'red',
+        actionData: { operation: 'delete_service', service_id: serviceId },
+        resultData: { error: error.message?.substring(0, 200) },
+      });
+    } catch (_) { /* best-effort */ }
     res.status(500).json({ error: error.message });
   }
 });
@@ -788,14 +900,41 @@ router.get('/api/users/:userId/availability', async (req: Request, res: Response
 });
 
 router.put('/api/users/:userId/availability', async (req: Request, res: Response) => {
+  const suiteId = getParam(req.params.userId);
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-set-availability-${crypto.randomUUID()}`;
+  const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
     const slots = req.body.slots.map((slot: any) => ({
       ...slot,
-      suiteId: getParam(req.params.userId),
+      suiteId,
     }));
-    const availability = await storage.setAvailability(getParam(req.params.userId), slots);
+    const availability = await storage.setAvailability(suiteId, slots);
+
+    // Law #2: Receipt for availability update (YELLOW — scheduling state change)
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'availability.update', outcome: 'success',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'set_availability', slot_count: slots.length },
+        resultData: { updated_count: availability?.length },
+      });
+    } catch (receiptErr: any) {
+      console.error(`Availability receipt failed [${correlationId}]:`, receiptErr.message);
+      return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed.' });
+    }
+
     res.json(availability);
   } catch (error: any) {
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'availability.update', outcome: 'failed',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'set_availability' },
+        resultData: { error: error.message?.substring(0, 200) },
+      });
+    } catch (_) { /* best-effort */ }
     res.status(500).json({ error: error.message });
   }
 });
@@ -810,10 +949,37 @@ router.get('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
 });
 
 router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Response) => {
+  const suiteId = getParam(req.params.userId);
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-buffer-settings-${crypto.randomUUID()}`;
+  const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
-    const settings = await storage.upsertBufferSettings(getParam(req.params.userId), req.body);
+    const settings = await storage.upsertBufferSettings(suiteId, req.body);
+
+    // Law #2: Receipt for buffer settings update (YELLOW — scheduling config change)
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'buffer_settings.update', outcome: 'success',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'upsert_buffer_settings', fields: Object.keys(req.body) },
+        resultData: { updated: true },
+      });
+    } catch (receiptErr: any) {
+      console.error(`Buffer settings receipt failed [${correlationId}]:`, receiptErr.message);
+      return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Law #3: fail closed.' });
+    }
+
     res.json(settings);
   } catch (error: any) {
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'buffer_settings.update', outcome: 'failed',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'upsert_buffer_settings' },
+        resultData: { error: error.message?.substring(0, 200) },
+      });
+    } catch (_) { /* best-effort */ }
     res.status(500).json({ error: error.message });
   }
 });
@@ -856,11 +1022,39 @@ router.get('/api/bookings/:bookingId', async (req: Request, res: Response) => {
 });
 
 router.post('/api/bookings/:bookingId/cancel', async (req: Request, res: Response) => {
+  const bookingId = getParam(req.params.bookingId);
+  const suiteId = (req as any).authenticatedSuiteId || 'unknown';
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-cancel-booking-${crypto.randomUUID()}`;
+  const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
-    const booking = await storage.cancelBooking(getParam(req.params.bookingId), req.body.reason);
+    const booking = await storage.cancelBooking(bookingId, req.body.reason);
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    // Law #2: Receipt for booking cancellation (YELLOW — schedule state change, may trigger refund)
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'booking.cancel', outcome: 'success',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'cancel_booking', booking_id: bookingId, reason: req.body.reason?.substring(0, 100) },
+        resultData: { cancelled: true, booking_id: bookingId },
+      });
+    } catch (receiptErr: any) {
+      console.error(`Booking cancel receipt failed [${correlationId}]:`, receiptErr.message);
+      // Cancellation already happened — log but don't fail response
+    }
+
     res.json(booking);
   } catch (error: any) {
+    try {
+      await emitReceipt({
+        receiptId: crypto.randomUUID(), receiptType: 'booking.cancel', outcome: 'failed',
+        suiteId, tenantId: suiteId, correlationId,
+        actorType: 'user', actorId, riskTier: 'yellow',
+        actionData: { operation: 'cancel_booking', booking_id: bookingId },
+        resultData: { error: error.message?.substring(0, 200) },
+      });
+    } catch (_) { /* best-effort */ }
     res.status(500).json({ error: error.message });
   }
 });
@@ -1931,7 +2125,7 @@ router.post('/api/calendar/events', async (req: Request, res: Response) => {
     const validType = validateEnum(event_type, [...CALENDAR_EVENT_TYPES]) || 'meeting';
     const validSource = validateEnum(source, [...CALENDAR_SOURCES]) || 'manual';
 
-    const correlationId = `corr-cal-create-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const correlationId = (req.headers['x-correlation-id'] as string) || `corr-cal-create-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const cleanDesc = sanitizeText(description);
     const cleanLoc = sanitizeText(location);
@@ -1994,7 +2188,7 @@ router.put('/api/calendar/events/:id', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'INVALID_INPUT', message: 'Invalid event_type' });
     }
 
-    const correlationId = `corr-cal-update-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const correlationId = (req.headers['x-correlation-id'] as string) || `corr-cal-update-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const result = await db.execute(sql`
       UPDATE calendar_events SET
@@ -2046,7 +2240,7 @@ router.delete('/api/calendar/events/:id', async (req: Request, res: Response) =>
       return res.status(400).json({ error: 'INVALID_ID', message: 'Valid event UUID required' });
     }
 
-    const correlationId = `corr-cal-delete-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const correlationId = (req.headers['x-correlation-id'] as string) || `corr-cal-delete-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const result = await db.execute(sql`
       DELETE FROM calendar_events
@@ -2106,7 +2300,7 @@ router.patch('/api/calendar/events/:id/complete', async (req: Request, res: Resp
     }
 
     // Emit receipt (Law #2)
-    const correlationId = `corr-cal-complete-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const correlationId = (req.headers['x-correlation-id'] as string) || `corr-cal-complete-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const receiptId = crypto.randomBytes(16).toString('hex');
     const completeAction = JSON.stringify({ type: 'calendar.event.complete', event_id: eventId, new_status: targetStatus });
     const completeResult = JSON.stringify({ outcome: 'success', previous_status: 'pending' });

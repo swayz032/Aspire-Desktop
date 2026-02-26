@@ -2,15 +2,94 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
 import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
 import { useDesktop } from '@/lib/useDesktop';
+
+/**
+ * Global Error Boundary — prevents white screen on uncaught errors.
+ * Shows a recovery UI with reload button instead of a blank page.
+ */
+class GlobalErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  state: { hasError: boolean; error: Error | null } = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[Aspire] Fatal render error:', error.message, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={errorStyles.container}>
+          <Text style={errorStyles.title}>Something went wrong</Text>
+          <Text style={errorStyles.message}>
+            {this.state.error?.message || 'An unexpected error occurred.'}
+          </Text>
+          <TouchableOpacity
+            style={errorStyles.button}
+            onPress={() => {
+              if (Platform.OS === 'web') {
+                window.location.reload();
+              } else {
+                this.setState({ hasError: false, error: null });
+              }
+            }}
+          >
+            <Text style={errorStyles.buttonText}>Reload Aspire</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const errorStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  title: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  message: {
+    color: '#6e6e73',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+    maxWidth: 400,
+  },
+  button: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 10,
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
 
 function useWebDesktopSetup() {
   useEffect(() => {
@@ -229,19 +308,21 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <SupabaseProvider>
-      <TenantProvider>
-        <SessionProvider>
-          <AvaDockProvider>
-            <MicStateProvider>
-              <AppNavigator />
-            </MicStateProvider>
-          </AvaDockProvider>
-        </SessionProvider>
-      </TenantProvider>
-      </SupabaseProvider>
-    </GestureHandlerRootView>
+    <GlobalErrorBoundary>
+      <GestureHandlerRootView style={styles.container}>
+        <SupabaseProvider>
+        <TenantProvider>
+          <SessionProvider>
+            <AvaDockProvider>
+              <MicStateProvider>
+                <AppNavigator />
+              </MicStateProvider>
+            </AvaDockProvider>
+          </SessionProvider>
+        </TenantProvider>
+        </SupabaseProvider>
+      </GestureHandlerRootView>
+    </GlobalErrorBoundary>
   );
 }
 

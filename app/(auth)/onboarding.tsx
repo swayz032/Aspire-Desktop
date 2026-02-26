@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,38 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSupabase } from '@/providers';
 import { supabase } from '@/lib/supabase';
 import { CelebrationModal } from '@/components/CelebrationModal';
-import { PremiumLoadingScreen } from '@/components/PremiumLoadingScreen';
+
+// Lazy-load PremiumLoadingScreen — it imports @react-three/fiber + three.js (heavy 3D libs).
+// Static import would execute these modules at bundle init for ALL users, even those
+// who never see onboarding. If the 3D libs crash at module init, the entire app white-screens.
+const PremiumLoadingScreen = React.lazy(() =>
+  import('@/components/PremiumLoadingScreen').then(m => ({ default: m.PremiumLoadingScreen }))
+);
+
+// Simple fallback while PremiumLoadingScreen loads (or if it crashes)
+function LoadingFallback() {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#0a0a0a', alignItems: 'center', justifyContent: 'center' }}>
+      <ActivityIndicator size="large" color="#3B82F6" />
+      <Text style={{ color: '#6e6e73', marginTop: 16, fontSize: 14 }}>Setting up your workspace...</Text>
+    </View>
+  );
+}
+
+// Error boundary to catch three.js / R3F crashes without white-screening the app
+class LoadingErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error) {
+    console.warn('[PremiumLoadingScreen] 3D render failed, using fallback:', error.message);
+  }
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1281,12 +1312,18 @@ export default function OnboardingScreen() {
   // ---------------------------------------------------------------------------
 
   // Show premium loading screen during bootstrap API call
+  // Wrapped in ErrorBoundary + Suspense — if the 3D libs crash, we show a simple fallback
+  // instead of white-screening the entire app.
   if (showLoading) {
     return (
-      <PremiumLoadingScreen
-        isComplete={loadingComplete}
-        onFadeComplete={handleLoadingFadeComplete}
-      />
+      <LoadingErrorBoundary fallback={<LoadingFallback />}>
+        <Suspense fallback={<LoadingFallback />}>
+          <PremiumLoadingScreen
+            isComplete={loadingComplete}
+            onFadeComplete={handleLoadingFadeComplete}
+          />
+        </Suspense>
+      </LoadingErrorBoundary>
     );
   }
 

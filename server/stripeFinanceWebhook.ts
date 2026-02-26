@@ -251,7 +251,8 @@ router.post(
         try {
           const stripe = getStripeClient();
           const sig = Array.isArray(signature) ? signature[0] : signature;
-          event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+          // Explicit 300s tolerance for replay protection (D-C5 fix)
+          event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret, 300);
         } catch (err: any) {
           console.error('Stripe webhook signature verification failed:', err.message);
           return res.status(400).json({ error: 'Signature verification failed' });
@@ -297,6 +298,11 @@ router.post(
         rawHash,
       });
 
+      if (eventId === null) {
+        // ON CONFLICT DO NOTHING returned no row — duplicate/replay event
+        console.warn(`Stripe webhook replay detected: event ${event.id} already processed (idempotency guard)`);
+        return res.status(200).json({ received: true, duplicate: true });
+      }
       if (eventId) {
         try {
           const receiptId = await createReceipt({
