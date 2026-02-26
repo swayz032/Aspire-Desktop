@@ -89,9 +89,13 @@ export async function speakText(
         voiceId: getVoiceId(agent),
       }),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.error(`[TTS] ElevenLabs returned ${resp.status} for agent "${agent}"`);
+      return null;
+    }
     return await resp.blob();
-  } catch {
+  } catch (err) {
+    console.error('[TTS] ElevenLabs request failed:', err instanceof Error ? err.message : err);
     return null;
   }
 }

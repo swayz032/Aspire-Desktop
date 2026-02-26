@@ -583,9 +583,19 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay }: Finn
       anamClientRef.current = client;
       setVideoState('connected');
       playSuccessSound();
-    } catch (_e) {
+    } catch (e) {
       setVideoState('idle');
-      Alert.alert('Connection Failed', 'Unable to connect to Finn video. Please try again.');
+      const msg = e instanceof Error ? e.message : String(e);
+      const isConfigError = /not configured|503|AVATAR_NOT_CONFIGURED/i.test(msg);
+      if (isConfigError) {
+        Alert.alert(
+          'Video Not Available',
+          'Finn video is not yet configured for this environment. Voice mode is available now.',
+        );
+      } else {
+        Alert.alert('Connection Failed', 'Unable to connect to Finn video. Please try again.');
+      }
+      console.error('[FinnDeskPanel] Video connection failed:', msg);
     }
   }, [session?.access_token]);
 

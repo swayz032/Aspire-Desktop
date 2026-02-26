@@ -279,7 +279,7 @@ export const AVAILABLE_STAFF = [
   { id: 'staff-nora', name: 'Nora', role: 'Conference Host', avatarColor: '#EC4899' },
   { id: 'staff-sarah', name: 'Sarah', role: 'Front Desk', avatarColor: '#14B8A6' },
   { id: 'staff-tec', name: 'Tec', role: 'Documents Specialist', avatarColor: '#F97316' },
-  { id: 'staff-finn', name: 'Finn', role: 'Finance Manager', avatarColor: '#3B82F6' },
+  { id: 'staff-finn', name: 'Finn', role: 'Financial Intelligence', avatarColor: '#3B82F6' },
   { id: 'staff-teressa', name: 'Teressa', role: 'Bookkeeper', avatarColor: '#A78BFA' },
   { id: 'staff-milo', name: 'Milo', role: 'Payroll Specialist', avatarColor: '#FB923C' },
 ];

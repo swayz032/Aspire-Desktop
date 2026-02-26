@@ -135,7 +135,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
         await audio.play();
       } else {
-        // TTS unavailable — still return to listening (Law #3: don't silently degrade)
+        // TTS returned null — log for diagnostics, still return to listening
+        console.warn(`[useAgentVoice] TTS returned no audio for agent "${agent}". Check ElevenLabs config/key.`);
         processingRef.current = false;
         if (activeRef.current) {
           updateStatus('listening');

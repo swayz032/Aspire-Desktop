@@ -17,7 +17,7 @@ const STAFF_ROSTER = [
   { id: 'staff-nora', name: 'Nora', role: 'Conference', avatar: '', status: 'active' },
   { id: 'staff-adam', name: 'Adam', role: 'Research', avatar: '', status: 'active' },
   { id: 'staff-tec', name: 'Tec', role: 'Documents', avatar: '', status: 'active' },
-  { id: 'staff-finn', name: 'Finn', role: 'Money Desk', avatar: '', status: 'active' },
+  { id: 'staff-finn', name: 'Finn', role: 'Financial Intelligence', avatar: '', status: 'active' },
   { id: 'staff-milo', name: 'Milo', role: 'Payroll', avatar: '', status: 'active' },
   { id: 'staff-teressa', name: 'Teressa', role: 'Bookkeeping', avatar: '', status: 'active' },
   { id: 'staff-clara', name: 'Clara', role: 'Legal', avatar: '', status: 'active' },
