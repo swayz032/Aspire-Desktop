@@ -317,14 +317,7 @@ try {
   logger.warn('Telephony enterprise routes not available, skipping');
 }
 
-// @deprecated — legacy routes kept for transition, will be removed
-try {
-  const twilioRoutes = require('./twilioRoutes').default;
-  app.use(twilioRoutes);
-  logger.info('Twilio telephony routes registered (legacy)');
-} catch (e) {
-  logger.warn('Twilio routes not available, skipping');
-}
+// twilioRoutes.ts removed — all telephony now handled by telephonyEnterpriseRoutes.ts (17 endpoints)
 
 try {
   const mailRoutes = require('./mailRoutes').default;
