@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/tokens';
 import { useSupabase, useTenant } from '@/providers';
 import { getInitials, getAvatarColor } from '@/utils/avatar';
+import { SettingsPanel, SettingsSectionId } from '@/components/settings/SettingsPanel';
 
 interface Notification {
   id: string;
@@ -107,6 +108,16 @@ export function DesktopHeader({
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
   const [notifFilter, setNotifFilter] = useState<'all' | 'unread'>('all');
 
+  // Settings panel overlay state
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSectionId>('account');
+
+  const openSettings = (section: SettingsSectionId) => {
+    setSettingsSection(section);
+    setSettingsVisible(true);
+  };
+  const closeSettings = () => setSettingsVisible(false);
+
   const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
   const filteredNotifications = useMemo(() => {
@@ -125,6 +136,22 @@ export function DesktopHeader({
   const markRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   };
+
+  // Profile panel open/close animation (opacity + translateY)
+  const profilePanelAnim = useRef(new Animated.Value(0)).current;
+  const profilePanelVisible = activePanel === 'profile';
+
+  useEffect(() => {
+    if (profilePanelVisible) {
+      Animated.timing(profilePanelAnim, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      profilePanelAnim.setValue(0);
+    }
+  }, [profilePanelVisible]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || activePanel === 'none') return;
@@ -211,52 +238,98 @@ export function DesktopHeader({
 
   const renderProfilePanel = () => {
     let lastSection = '';
+
+    const animatedStyle = {
+      opacity: profilePanelAnim,
+      transform: [
+        {
+          translateY: profilePanelAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [-8, 0],
+          }),
+        },
+      ],
+    };
+
     return (
-      <View style={[s.panelDropdown, s.profileDropdown]} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
-        <View style={s.profileHeader}>
+      <Animated.View
+        style={[s.panelDropdown, s.profileDropdown, animatedStyle]}
+        {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}
+      >
+        {/* --- Profile header: avatar + identity --- */}
+        <View
+          style={s.profileHeader}
+          accessibilityRole="summary"
+          accessibilityLabel={`Profile for ${userName}, role ${role}`}
+        >
           <View style={[s.profileHeaderRing, { borderColor: avatarColor }]}>
-            <View style={[s.profileHeaderAvatar, { backgroundColor: `${avatarColor}25` }]}>
-              <Text style={[s.profileHeaderInitials, { color: avatarColor }]}>{userInitials}</Text>
+            <View style={[s.profileHeaderAvatar, { backgroundColor: `${avatarColor}18` }]}>
+              <Text
+                style={[s.profileHeaderInitials, { color: avatarColor }]}
+                accessibilityElementsHidden
+              >
+                {userInitials}
+              </Text>
             </View>
           </View>
           <View style={s.profileHeaderInfo}>
-            <Text style={s.profileHeaderName}>{userName}</Text>
+            <Text style={s.profileHeaderName} numberOfLines={1}>{userName}</Text>
+            <Text style={s.profileHeaderSub}>Manage your account</Text>
           </View>
           <View style={s.profileBadge}>
             <Text style={s.profileBadgeText}>{role}</Text>
           </View>
         </View>
 
-        <View style={s.panelDivider} />
+        <View style={s.panelDivider} accessibilityElementsHidden />
 
+        {/* --- Menu items --- */}
         <ScrollView style={s.profileScroll} showsVerticalScrollIndicator={false}>
           {PROFILE_MENU.map((item) => {
             const showDivider = lastSection !== '' && lastSection !== item.section;
             lastSection = item.section || '';
             return (
               <React.Fragment key={item.id}>
-                {showDivider && <View style={s.panelDivider} />}
+                {showDivider && (
+                  <View style={s.menuSectionDivider} accessibilityElementsHidden />
+                )}
                 <Pressable
-                  style={({ hovered }: any) => [
+                  accessibilityRole="button"
+                  accessibilityLabel={item.label}
+                  style={({ hovered, pressed }: any) => [
                     s.profileMenuItem,
-                    hovered && s.profileMenuItemHover,
-                    item.destructive && s.profileMenuItemDestructive,
+                    hovered && !item.destructive && s.profileMenuItemHover,
+                    hovered && item.destructive && s.profileMenuItemDestructiveHover,
+                    pressed && s.profileMenuItemPressed,
                   ]}
                   onPress={async () => {
                     setActivePanel('none');
                     if (item.id === 'signout') {
                       await signOut();
                       router.replace('/(auth)/login' as any);
+                    } else {
+                      // Open settings panel at the corresponding section
+                      openSettings(item.id as SettingsSectionId);
                     }
                   }}
                 >
                   <View style={s.profileMenuLeft}>
-                    <Ionicons
-                      name={item.icon}
-                      size={18}
-                      color={item.destructive ? '#ef4444' : '#a1a1a6'}
-                    />
-                    <Text style={[s.profileMenuLabel, item.destructive && s.profileMenuLabelDestructive]}>
+                    <View style={[
+                      s.menuIconWrap,
+                      item.destructive && s.menuIconWrapDestructive,
+                    ]}>
+                      <Ionicons
+                        name={item.icon}
+                        size={18}
+                        color={item.destructive ? '#ef4444' : Colors.text.tertiary}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        s.profileMenuLabel,
+                        item.destructive && s.profileMenuLabelDestructive,
+                      ]}
+                    >
                       {item.label}
                     </Text>
                   </View>
@@ -265,18 +338,21 @@ export function DesktopHeader({
                       <Text style={s.menuBadgeText}>{item.badge}</Text>
                     </View>
                   ) : !item.destructive ? (
-                    <Ionicons name="chevron-forward" size={14} color="#48484a" />
+                    <Ionicons name="chevron-forward" size={14} color={Colors.text.disabled} />
                   ) : null}
                 </Pressable>
               </React.Fragment>
             );
           })}
+          {/* Bottom breathing room */}
+          <View style={{ height: 6 }} />
         </ScrollView>
-      </View>
+      </Animated.View>
     );
   };
 
   return (
+    <>
     <View style={s.container}>
       <View style={s.leftSection} />
 
@@ -393,6 +469,12 @@ export function DesktopHeader({
         </View>
       </View>
     </View>
+    <SettingsPanel
+      visible={settingsVisible}
+      onClose={closeSettings}
+      initialSection={settingsSection}
+    />
+    </>
   );
 }
 
@@ -759,13 +841,14 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 16,
+    paddingTop: 18,
+    paddingBottom: 16,
     gap: 12,
   },
   profileHeaderRing: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     borderWidth: 2,
     borderColor: '#3B82F6',
     alignItems: 'center',
@@ -773,70 +856,108 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   profileHeaderAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
   profileHeaderInitials: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
   profileHeaderInfo: {
     flex: 1,
+    gap: 2,
   },
   profileHeaderName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#f2f2f2',
-    letterSpacing: -0.2,
+    color: Colors.text.bright,
+    letterSpacing: -0.3,
+  },
+  /* Subtext below name — replaces removed email line */
+  profileHeaderSub: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: Colors.text.muted,
+    letterSpacing: 0,
   },
   profileBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    backgroundColor: 'rgba(59, 130, 246, 0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.2)',
+    borderColor: 'rgba(59, 130, 246, 0.18)',
   },
   profileBadgeText: {
     fontSize: 11,
     fontWeight: '600',
     color: '#3B82F6',
+    letterSpacing: 0.2,
   },
 
   profileScroll: {
     maxHeight: 360,
   },
+  /* Lighter section divider with vertical breathing room */
+  menuSectionDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginHorizontal: 16,
+    marginVertical: 4,
+  },
   profileMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 11,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     marginHorizontal: 6,
     marginVertical: 1,
     borderRadius: 8,
-    ...(Platform.OS === 'web' ? { transition: 'background-color 0.12s ease-out', cursor: 'pointer' } : {}),
+    minHeight: 40, /* Minimum click target for desktop */
+    ...(Platform.OS === 'web' ? {
+      transition: 'background-color 0.14s ease-out, transform 0.1s ease-out',
+      cursor: 'pointer',
+    } : {}),
   } as any,
   profileMenuItemHover: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
-  profileMenuItemDestructive: {},
+  profileMenuItemDestructiveHover: {
+    backgroundColor: 'rgba(239, 68, 68, 0.06)',
+  },
+  profileMenuItemPressed: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
   profileMenuLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
+  /* Icon container for consistent alignment */
+  menuIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuIconWrapDestructive: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
   profileMenuLabel: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#d1d1d6',
+    color: Colors.text.secondary,
   },
   profileMenuLabelDestructive: {
     color: '#ef4444',
+    fontWeight: '500',
   },
   menuBadge: {
     paddingHorizontal: 7,

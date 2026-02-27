@@ -20,14 +20,20 @@ export function getInitials(name: string): string {
     .join('');
 }
 
+/**
+ * Premium avatar palette — curated for dark backgrounds (#131315).
+ * Each entry: [solid, fill at ~22% opacity for circle background].
+ * Ordered to maximise perceptual distance between adjacent colours
+ * so that side-by-side avatars (e.g. conference tiles) look distinct.
+ */
 const AVATAR_COLORS = [
   '#3B82F6', // blue
+  '#F59E0B', // amber  (warm, max distance from blue)
   '#8B5CF6', // violet
-  '#06B6D4', // cyan
   '#10B981', // emerald
-  '#F59E0B', // amber
-  '#EF4444', // red
   '#EC4899', // pink
+  '#06B6D4', // cyan
+  '#EF4444', // red
   '#6366F1', // indigo
 ];
 

@@ -536,7 +536,7 @@ export function AvaDeskPanel() {
         });
         if (resp.ok) {
           const data = await resp.json();
-          const greeting = data.response?.text || data.text || data.response;
+          const greeting = data.response || data.text;
           if (greeting && typeof greeting === 'string') {
             setChat([{ id: `greeting_${Date.now()}`, from: 'ava', text: greeting }]);
           }
@@ -711,6 +711,26 @@ export function AvaDeskPanel() {
       // Anam SDK: fetch session token → create client (CUSTOMER_CLIENT_V1) → stream to <video>
       const client = await connectAnamAvatar('anam-video-element', session?.access_token);
       anamClientRef.current = client;
+
+      // Anam SDK event listeners for reliable state tracking (per Anam docs)
+      try {
+        client.addListener('CONNECTION_ESTABLISHED' as any, () => {
+          console.log('[Anam] WebRTC connection established');
+        });
+        client.addListener('VIDEO_PLAY_STARTED' as any, () => {
+          console.log('[Anam] Video stream playing');
+          setVideoState('connected');
+        });
+        client.addListener('CONNECTION_CLOSED' as any, () => {
+          console.log('[Anam] Connection closed');
+          setVideoState('idle');
+          setConnectionStatus('');
+          anamClientRef.current = null;
+        });
+      } catch {
+        // SDK version may not support all events — degrade gracefully
+      }
+
       clearConnectionTimeouts();
       playSuccessSound();
       setVideoState('connected');
