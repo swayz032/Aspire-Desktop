@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/tokens';
 import { useSupabase, useTenant } from '@/providers';
-
-const USER_PROFILE = require('@/assets/images/user-profile.jpg');
+import { getInitials, getAvatarColor } from '@/utils/avatar';
 
 interface Notification {
   id: string;
@@ -57,16 +57,20 @@ export function DesktopHeader({
   role: roleProp,
   suiteId: suiteIdProp,
 }: DesktopHeaderProps) {
-  const { session } = useSupabase();
+  const { session, signOut } = useSupabase();
   const { tenant } = useTenant();
+  const router = useRouter();
 
   // Derive display values from auth context, falling back to props, then defaults
   const businessName = businessNameProp || tenant?.businessName || 'Your Business';
   const role = roleProp || tenant?.role || 'Founder';
   const suiteDisplayId = tenant?.displayId || suiteIdProp || tenant?.suiteId?.slice(0, 8) || '';
   const officeDisplayId = tenant?.officeDisplayId || '';
-  const userName = tenant?.ownerName || session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'User';
-  const userEmail = session?.user?.email || tenant?.ownerEmail || '';
+  const userName = tenant?.ownerName || session?.user?.user_metadata?.full_name || 'User';
+
+  // Initials-based avatar (replaces stock photo)
+  const userInitials = useMemo(() => getInitials(userName), [userName]);
+  const avatarColor = useMemo(() => getAvatarColor(userName), [userName]);
 
   // Time-of-day greeting with formal name
   const greeting = useMemo(() => {
@@ -210,12 +214,13 @@ export function DesktopHeader({
     return (
       <View style={[s.panelDropdown, s.profileDropdown]} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
         <View style={s.profileHeader}>
-          <View style={s.profileHeaderRing}>
-            <Image source={USER_PROFILE} style={s.profileHeaderImg} />
+          <View style={[s.profileHeaderRing, { borderColor: avatarColor }]}>
+            <View style={[s.profileHeaderAvatar, { backgroundColor: `${avatarColor}25` }]}>
+              <Text style={[s.profileHeaderInitials, { color: avatarColor }]}>{userInitials}</Text>
+            </View>
           </View>
           <View style={s.profileHeaderInfo}>
             <Text style={s.profileHeaderName}>{userName}</Text>
-            <Text style={s.profileHeaderEmail}>{userEmail}</Text>
           </View>
           <View style={s.profileBadge}>
             <Text style={s.profileBadgeText}>{role}</Text>
@@ -237,7 +242,13 @@ export function DesktopHeader({
                     hovered && s.profileMenuItemHover,
                     item.destructive && s.profileMenuItemDestructive,
                   ]}
-                  onPress={() => setActivePanel('none')}
+                  onPress={async () => {
+                    setActivePanel('none');
+                    if (item.id === 'signout') {
+                      await signOut();
+                      router.replace('/(auth)/login' as any);
+                    }
+                  }}
                 >
                   <View style={s.profileMenuLeft}>
                     <Ionicons
@@ -372,8 +383,10 @@ export function DesktopHeader({
               activePanel === 'profile' && s.profileButtonActive,
             ]}
           >
-            <View style={[s.profileRing, activePanel === 'profile' && s.profileRingActive]}>
-              <Image source={USER_PROFILE} style={s.profileImage} />
+            <View style={[s.profileRing, { borderColor: avatarColor }, activePanel === 'profile' && s.profileRingActive]}>
+              <View style={[s.profileImagePlaceholder, { backgroundColor: `${avatarColor}25` }]}>
+                <Text style={[s.profileImageInitials, { color: avatarColor }]}>{userInitials}</Text>
+              </View>
             </View>
           </Pressable>
           {activePanel === 'profile' && renderProfilePanel()}
@@ -553,7 +566,18 @@ const s = StyleSheet.create({
   profileRingActive: {
     borderColor: '#60A5FA',
   },
-  profileImage: { width: 26, height: 26, borderRadius: 13 },
+  profileImagePlaceholder: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileImageInitials: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
 
   panelDropdown: {
     position: 'absolute',
@@ -748,10 +772,17 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  profileHeaderImg: {
+  profileHeaderAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileHeaderInitials: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
   profileHeaderInfo: {
     flex: 1,
@@ -761,11 +792,6 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: '#f2f2f2',
     letterSpacing: -0.2,
-  },
-  profileHeaderEmail: {
-    fontSize: 12,
-    color: '#6e6e73',
-    marginTop: 2,
   },
   profileBadge: {
     paddingHorizontal: 8,

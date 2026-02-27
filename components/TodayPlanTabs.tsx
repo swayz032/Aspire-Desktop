@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,11 +22,35 @@ interface TodayPlanItem {
 export function TodayPlanTabs({ planItems }: { planItems: TodayPlanItem[] }) {
   const router = useRouter();
   const displayedPlan = planItems.slice(0, 4);
+  const [isInboxSetup, setIsInboxSetup] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      try {
+        const resp = await fetch('/api/onboarding/status');
+        if (resp.ok) {
+          const data = await resp.json();
+          setIsInboxSetup(!!data.inbox_configured || !!data.email_connected);
+        }
+      } catch {
+        // Silent fail — show CTA as fallback
+      }
+    };
+    checkOnboarding();
+  }, []);
 
   return (
     <Card variant="elevated" style={styles.container}>
       {displayedPlan.length > 0 ? (
         <TodayPlanContent items={displayedPlan} router={router} />
+      ) : isInboxSetup ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="sunny-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
+          <Text style={styles.emptyHeadline}>Your plan builds as your day progresses</Text>
+          <Text style={styles.emptyBody}>
+            Incoming emails, calls, and invoices will populate your action list here.
+          </Text>
+        </View>
       ) : (
         <View style={styles.emptyContainer}>
           <Ionicons name="sunny-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
@@ -36,7 +60,7 @@ export function TodayPlanTabs({ planItems }: { planItems: TodayPlanItem[] }) {
           </Text>
           <TouchableOpacity
             style={styles.emptyCta}
-            onPress={() => router.push('/inbox' as any)}
+            onPress={() => router.push('/inbox/setup' as any)}
             activeOpacity={0.8}
           >
             <Text style={styles.emptyCtaText}>Set up your inbox</Text>

@@ -46,11 +46,16 @@ export default function LoginScreen() {
         if (suiteId) {
           const { data: profile } = await supabase
             .from('suite_profiles')
-            .select('onboarding_completed_at')
+            .select('onboarding_completed_at, owner_name, business_name, industry')
             .eq('suite_id', suiteId)
             .single();
 
-          if (!profile?.onboarding_completed_at) {
+          if (
+            !profile?.onboarding_completed_at ||
+            !profile?.owner_name ||
+            !profile?.business_name ||
+            !profile?.industry
+          ) {
             router.replace('/(auth)/onboarding' as any);
             return;
           }

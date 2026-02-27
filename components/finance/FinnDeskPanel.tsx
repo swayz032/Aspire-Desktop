@@ -1,13 +1,98 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Alert, ActivityIndicator, type ViewStyle } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/tokens';
+import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { connectFinnAvatar, type AnamClientInstance } from '@/lib/anam';
 import { speakText } from '@/lib/elevenlabs';
+import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
+
+/* ── Web-only keyframe animations for immersive mode ─────── */
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const styleId = 'finn-immersive-keyframes';
+  if (!document.getElementById(styleId)) {
+    const el = document.createElement('style');
+    el.id = styleId;
+    el.textContent = `
+      @keyframes finnBreathePulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 24px rgba(59,130,246,0.25), 0 0 48px rgba(59,130,246,0.1); }
+        50% { transform: scale(1.06); box-shadow: 0 0 36px rgba(59,130,246,0.4), 0 0 72px rgba(59,130,246,0.15); }
+      }
+      @keyframes finnRingPulse {
+        0% { transform: scale(1); opacity: 0.5; }
+        100% { transform: scale(1.8); opacity: 0; }
+      }
+      @keyframes finnConnectGlow {
+        0%, 100% { opacity: 0.7; }
+        50% { opacity: 1; }
+      }
+      @keyframes finnFloatBarEntry {
+        0% { transform: translateY(32px); opacity: 0; }
+        100% { transform: translateY(0); opacity: 1; }
+      }
+      @keyframes finnAmbientShift {
+        0%, 100% { opacity: 0.06; }
+        50% { opacity: 0.14; }
+      }
+      @keyframes finnStatusDotPulse {
+        0%, 100% { box-shadow: 0 0 4px rgba(52,199,89,0.3); }
+        50% { box-shadow: 0 0 10px rgba(52,199,89,0.6), 0 0 20px rgba(52,199,89,0.2); }
+      }
+      .finn-floating-pill {
+        transition: background-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+      }
+      .finn-floating-pill:hover {
+        background-color: rgba(255,255,255,0.2) !important;
+        transform: scale(1.04);
+        box-shadow: 0 2px 20px rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.12);
+      }
+      .finn-floating-pill:active {
+        transform: scale(0.96);
+      }
+      .finn-end-call-pill {
+        transition: background-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+      }
+      .finn-end-call-pill:hover {
+        background-color: rgba(220,38,38,0.95) !important;
+        transform: scale(1.04);
+        box-shadow: 0 4px 24px rgba(239,68,68,0.4), 0 0 48px rgba(239,68,68,0.15);
+      }
+      .finn-end-call-pill:active {
+        transform: scale(0.92);
+      }
+      .finn-chat-pill-active {
+        background-color: rgba(59,130,246,0.3) !important;
+        box-shadow: 0 0 16px rgba(59,130,246,0.25), inset 0 1px 0 rgba(59,130,246,0.2) !important;
+      }
+      .finn-connect-btn {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        animation: finnConnectGlow 2.4s ease-in-out infinite;
+      }
+      .finn-connect-btn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 8px 32px rgba(59,130,246,0.5), 0 0 64px rgba(59,130,246,0.2) !important;
+      }
+      .finn-connect-btn:active {
+        transform: scale(0.96);
+      }
+      .finn-retry-btn {
+        transition: background-color 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
+      }
+      .finn-retry-btn:hover {
+        background-color: rgba(255,255,255,0.12) !important;
+        border-color: rgba(255,255,255,0.22) !important;
+        transform: scale(1.03);
+      }
+      .finn-retry-btn:active {
+        transform: scale(0.96);
+      }
+    `;
+    document.head.appendChild(el);
+  }
+}
 
 type FileAttachment = {
   id: string;
@@ -483,12 +568,18 @@ type FinnDeskPanelProps = {
   initialTab?: 'voice' | 'video';
   templateContext?: { key: string; description: string } | null;
   isInOverlay?: boolean;
+  /** When true, renders immersive video-only mode (no tabs, full-bleed video, floating controls). */
+  videoOnly?: boolean;
+  /** Callback to close the parent overlay. Used by the End Call floating button. */
+  onEndCall?: () => void;
 };
 
-export function FinnDeskPanel({ initialTab, templateContext, isInOverlay }: FinnDeskPanelProps = {}) {
-  const [activeTab, setActiveTab] = useState<'voice' | 'video'>(initialTab || 'voice');
+export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoOnly, onEndCall }: FinnDeskPanelProps = {}) {
+  const [activeTab, setActiveTab] = useState<'voice' | 'video'>(videoOnly ? 'video' : (initialTab || 'voice'));
+  const [showChatOverlay, setShowChatOverlay] = useState(false);
   const [videoState, setVideoState] = useState<'idle' | 'connecting' | 'connected'>('idle');
   const [connectionStatus, setConnectionStatus] = useState('');
+  const [videoError, setVideoError] = useState<string | null>(null);
   const anamClientRef = useRef<AnamClientInstance | null>(null);
 
   const [isSessionActive, setIsSessionActive] = useState(false);
@@ -550,8 +641,23 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay }: Finn
     onStatusChange: (voiceStatus) => {
       setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
-    onResponse: (text) => {
-      console.log('Finn response:', text);
+    onTranscript: (text) => {
+      // Voice transcript → chat (user message with voice indicator)
+      setChat(prev => [...prev, {
+        id: `voice_user_${Date.now()}`,
+        from: 'user',
+        text: `\uD83C\uDFA4 ${text}`,
+      }]);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    },
+    onResponse: (text, receiptId) => {
+      // Voice response → chat (Finn message synced from voice)
+      setChat(prev => [...prev, {
+        id: `voice_finn_${Date.now()}`,
+        from: 'finn',
+        text: text,
+      }]);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     },
     onError: (error) => {
       console.error('Finn voice error:', error);
@@ -574,6 +680,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay }: Finn
 
   const handleConnectToFinn = useCallback(async () => {
     setVideoState('connecting');
+    setVideoError(null);
     setConnectionStatus('Connecting to Finn...');
     playConnectionSound();
     // Wait for React to render the <video id="finn-video-element"> before streaming
@@ -582,18 +689,16 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay }: Finn
       const client = await connectFinnAvatar('finn-video-element', session?.access_token);
       anamClientRef.current = client;
       setVideoState('connected');
+      setVideoError(null);
       playSuccessSound();
     } catch (e) {
       setVideoState('idle');
       const msg = e instanceof Error ? e.message : String(e);
       const isConfigError = /not configured|503|AVATAR_NOT_CONFIGURED/i.test(msg);
       if (isConfigError) {
-        Alert.alert(
-          'Video Not Available',
-          'Finn video is not yet configured for this environment. Voice mode is available now.',
-        );
+        setVideoError('Video is not yet available for this environment. Voice mode is ready to use.');
       } else {
-        Alert.alert('Connection Failed', 'Unable to connect to Finn video. Please try again.');
+        setVideoError('Unable to connect to Finn video. Please try again.');
       }
       console.error('[FinnDeskPanel] Video connection failed:', msg);
     }
@@ -800,6 +905,296 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay }: Finn
     }
   };
 
+  /* ── Immersive video-only layout (FaceTime-style) ────────── */
+
+  // Breathing pulse animation for the pre-connect icon
+  const breatheAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (videoOnly && videoState === 'idle' && !videoError) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(breatheAnim, { toValue: 1.06, duration: 1400, useNativeDriver: false }),
+          Animated.timing(breatheAnim, { toValue: 1, duration: 1400, useNativeDriver: false }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    } else {
+      breatheAnim.setValue(1);
+    }
+  }, [videoOnly, videoState, videoError, breatheAnim]);
+
+  // Floating bar slide-in animation
+  const floatBarAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (videoOnly && videoState === 'connected') {
+      floatBarAnim.setValue(0);
+      Animated.spring(floatBarAnim, {
+        toValue: 1,
+        damping: 18,
+        stiffness: 120,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [videoOnly, videoState, floatBarAnim]);
+
+  // Connected status dot pulse
+  const statusDotAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (videoOnly && videoState === 'connected') {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(statusDotAnim, { toValue: 1.6, duration: 1000, useNativeDriver: false }),
+          Animated.timing(statusDotAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+  }, [videoOnly, videoState, statusDotAnim]);
+
+  if (videoOnly) {
+    const handleEndCallImmersive = () => {
+      handleEndFinnSession();
+      onEndCall?.();
+    };
+
+    const floatBarTranslateY = floatBarAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [40, 0],
+    });
+
+    return (
+      <View style={[styles.card, styles.cardOverlay, immersiveStyles.root]}>
+        {/* Full-bleed video surface */}
+        <View style={immersiveStyles.videoFill}>
+          {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
+            <video
+              id="finn-video-element"
+              autoPlay
+              playsInline
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: videoState === 'connected' ? 'block' : 'none',
+                backgroundColor: '#000',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                zIndex: 1,
+              }}
+            />
+          )}
+
+          {/* Pre-connect states (idle / connecting / error) */}
+          {videoState !== 'connected' && (
+            <ImageBackground
+              source={{ uri: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=800' }}
+              style={immersiveStyles.preConnectBg}
+              imageStyle={{ opacity: 0.12 }}
+            >
+              {/* Animated ambient gradient overlay for visual life */}
+              <View
+                style={[
+                  immersiveStyles.ambientOverlay,
+                  Platform.OS === 'web' ? {
+                    animation: 'finnAmbientShift 6s ease-in-out infinite',
+                  } as unknown as ViewStyle : {},
+                ]}
+              />
+              <LinearGradient
+                colors={['rgba(0,0,0,0.8)', 'rgba(0,0,0,0.2)', 'transparent']}
+                locations={[0, 0.5, 1]}
+                style={immersiveStyles.gradientTop}
+              />
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.85)']}
+                locations={[0, 0.5, 1]}
+                style={immersiveStyles.gradientBottom}
+              />
+
+              {videoState === 'connecting' ? (
+                <View style={immersiveStyles.centerContent}>
+                  {/* Connecting spinner with status ring */}
+                  <View style={immersiveStyles.connectingRing}>
+                    <ActivityIndicator size="large" color={Colors.accent.cyan} />
+                  </View>
+                  <Text style={immersiveStyles.statusText}>{connectionStatus}</Text>
+                  <Text style={immersiveStyles.statusSubtext}>Establishing secure connection</Text>
+                </View>
+              ) : videoError ? (
+                <View style={immersiveStyles.centerContent}>
+                  <View style={immersiveStyles.errorIcon}>
+                    <Ionicons name="videocam-off-outline" size={28} color="#FF9500" />
+                  </View>
+                  <Text style={immersiveStyles.errorTitle}>Video Not Available</Text>
+                  <Text style={immersiveStyles.errorDetail}>{videoError}</Text>
+                  <View style={immersiveStyles.errorActions}>
+                    <Pressable
+                      style={[
+                        immersiveStyles.retryBtn,
+                        Platform.OS === 'web' ? { className: 'finn-retry-btn' } as unknown as ViewStyle : {},
+                      ]}
+                      onPress={() => { setVideoError(null); handleConnectToFinn(); }}
+                      accessibilityLabel="Retry video connection"
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="refresh" size={14} color={Colors.text.secondary} />
+                      <Text style={immersiveStyles.retryBtnText}>Retry</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <View style={immersiveStyles.centerContent}>
+                  {/* Breathing icon with expanding ring pulse */}
+                  <View style={immersiveStyles.connectIconOuter}>
+                    {Platform.OS === 'web' && (
+                      <View
+                        style={[
+                          immersiveStyles.connectIconRing,
+                          { animation: 'finnRingPulse 2.4s ease-out infinite' } as unknown as ViewStyle,
+                        ]}
+                      />
+                    )}
+                    <Animated.View
+                      style={[
+                        immersiveStyles.connectIcon,
+                        { transform: [{ scale: breatheAnim }] },
+                        Platform.OS === 'web' ? {
+                          animation: 'finnBreathePulse 2.8s ease-in-out infinite',
+                        } as unknown as ViewStyle : {},
+                      ]}
+                    >
+                      <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
+                    </Animated.View>
+                  </View>
+                  <View style={immersiveStyles.connectTextGroup}>
+                    <Text style={immersiveStyles.connectTitle}>Video with Finn</Text>
+                    <Text style={immersiveStyles.connectSubtitle}>Start a face-to-face financial session</Text>
+                  </View>
+                  <Pressable
+                    style={[
+                      immersiveStyles.connectBtn,
+                      Platform.OS === 'web' ? {
+                        className: 'finn-connect-btn',
+                        boxShadow: '0 6px 24px rgba(59,130,246,0.35), 0 0 48px rgba(59,130,246,0.12)',
+                      } as unknown as ViewStyle : {},
+                    ]}
+                    onPress={handleConnectToFinn}
+                    accessibilityLabel="Connect to Finn video"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="videocam" size={18} color="#fff" />
+                    <Text style={immersiveStyles.connectBtnText}>Connect to Finn</Text>
+                  </Pressable>
+                </View>
+              )}
+            </ImageBackground>
+          )}
+
+          {/* Bottom gradient scrim for readability over any video content */}
+          {videoState === 'connected' && (
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.7)']}
+              locations={[0, 0.4, 1]}
+              style={immersiveStyles.videoScrim}
+              pointerEvents="none"
+            />
+          )}
+
+          {/* Connected status indicator (top-left) */}
+          {videoState === 'connected' && (
+            <View style={immersiveStyles.connectedBadge}>
+              <Animated.View
+                style={[
+                  immersiveStyles.connectedDot,
+                  { transform: [{ scale: statusDotAnim }] },
+                  Platform.OS === 'web' ? {
+                    animation: 'finnStatusDotPulse 2s ease-in-out infinite',
+                  } as unknown as ViewStyle : {},
+                ]}
+              />
+              <Text style={immersiveStyles.connectedLabel}>Live</Text>
+            </View>
+          )}
+
+          {/* Floating bottom bar -- visible when connected, animated entry */}
+          {videoState === 'connected' && (
+            <Animated.View
+              style={[
+                immersiveStyles.floatingBar,
+                {
+                  opacity: floatBarAnim,
+                  transform: [{ translateY: floatBarTranslateY }],
+                },
+                Platform.OS === 'web' ? {
+                  animation: 'finnFloatBarEntry 0.5s cubic-bezier(0.22,1,0.36,1) forwards',
+                } as unknown as ViewStyle : {},
+              ]}
+            >
+              {/* Chat toggle (left) */}
+              <Pressable
+                style={[
+                  immersiveStyles.floatingPill,
+                  showChatOverlay && immersiveStyles.floatingPillActive,
+                  Platform.OS === 'web' ? {
+                    className: `finn-floating-pill${showChatOverlay ? ' finn-chat-pill-active' : ''}`,
+                  } as unknown as ViewStyle : {},
+                ]}
+                onPress={() => setShowChatOverlay(!showChatOverlay)}
+                accessibilityLabel={showChatOverlay ? 'Close chat' : 'Open chat'}
+                accessibilityRole="button"
+              >
+                <Ionicons
+                  name={showChatOverlay ? 'chatbubble' : 'chatbubble-outline'}
+                  size={18}
+                  color={showChatOverlay ? Colors.accent.cyan : '#fff'}
+                />
+                <Text style={[
+                  immersiveStyles.floatingPillText,
+                  showChatOverlay && immersiveStyles.floatingPillTextActive,
+                ]}>Chat</Text>
+              </Pressable>
+
+              {/* End Call (center) */}
+              <Pressable
+                style={[
+                  immersiveStyles.endCallPill,
+                  Platform.OS === 'web' ? {
+                    className: 'finn-end-call-pill',
+                    boxShadow: '0 4px 16px rgba(239,68,68,0.3), 0 0 32px rgba(239,68,68,0.1)',
+                  } as unknown as ViewStyle : {},
+                ]}
+                onPress={handleEndCallImmersive}
+                accessibilityLabel="End video call"
+                accessibilityRole="button"
+              >
+                <Ionicons name="call" size={18} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+                <Text style={immersiveStyles.endCallText}>End Call</Text>
+              </Pressable>
+
+              {/* Spacer for symmetry (right) */}
+              <View style={immersiveStyles.floatingPillSpacer} />
+            </Animated.View>
+          )}
+
+          {/* Chat overlay -- slides up from bottom */}
+          <FinnVideoChatOverlay
+            visible={showChatOverlay}
+            onClose={() => setShowChatOverlay(false)}
+            chat={chat}
+            input={input}
+            onChangeInput={setInput}
+            onSend={onSend}
+            scrollRef={scrollRef}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  /* ── Standard tabbed layout (unchanged) ────────────────── */
   return (
     <View style={[styles.card, isInOverlay && styles.cardOverlay]}>
       <View style={styles.header}>
@@ -931,6 +1326,30 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay }: Finn
                   <View style={{ alignItems: 'center', gap: 12 }}>
                     <ActivityIndicator size="large" color={Colors.accent.cyan} />
                     <Text style={{ color: Colors.text.secondary, fontSize: 14 }}>{connectionStatus}</Text>
+                  </View>
+                ) : videoError ? (
+                  <View style={{ alignItems: 'center', gap: 14, paddingHorizontal: 32 }}>
+                    <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,149,0,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="videocam-off-outline" size={28} color="#FF9500" />
+                    </View>
+                    <Text style={{ color: Colors.text.secondary, fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Video Not Available</Text>
+                    <Text style={{ color: Colors.text.muted, fontSize: 13, textAlign: 'center', lineHeight: 18 }}>{videoError}</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                      <Pressable
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.06)' }}
+                        onPress={() => { setVideoError(null); handleConnectToFinn(); }}
+                      >
+                        <Ionicons name="refresh" size={14} color={Colors.text.secondary} />
+                        <Text style={{ color: Colors.text.secondary, fontSize: 13, fontWeight: '500' }}>Retry</Text>
+                      </Pressable>
+                      <Pressable
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 20, backgroundColor: Colors.accent.cyan }}
+                        onPress={() => setActiveTab('voice')}
+                      >
+                        <Ionicons name="mic" size={14} color="#fff" />
+                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Use Voice</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 ) : (
                   <View style={{ alignItems: 'center', gap: 16 }}>
@@ -1279,5 +1698,355 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.accent.cyan,
+  },
+});
+
+/* ── Immersive video-only styles ─────────────────────────── */
+
+const FLOATING_PILL_BG = 'rgba(255, 255, 255, 0.14)';
+const FLOATING_PILL_BORDER = 'rgba(255, 255, 255, 0.1)';
+const END_CALL_BG = '#DC2626';
+const END_CALL_BORDER = 'rgba(255, 255, 255, 0.08)';
+
+const immersiveStyles = StyleSheet.create({
+  root: {
+    backgroundColor: '#000',
+  },
+
+  videoFill: {
+    flex: 1,
+    backgroundColor: '#000',
+    position: 'relative',
+    overflow: 'hidden',
+  } as Record<string, unknown>,
+
+  /* Pre-connect background (idle / connecting / error) */
+  preConnectBg: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  } as Record<string, unknown>,
+
+  /* Animated ambient gradient overlay for subtle visual life over the bg image */
+  ambientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(59, 130, 246, 0.06)',
+    zIndex: 0,
+  } as Record<string, unknown>,
+
+  gradientTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 140,
+    zIndex: 1,
+  } as Record<string, unknown>,
+
+  gradientBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 160,
+    zIndex: 1,
+  } as Record<string, unknown>,
+
+  centerContent: {
+    alignItems: 'center',
+    gap: Spacing.xl,
+    paddingHorizontal: Spacing.xxxl,
+    zIndex: 2,
+  },
+
+  /* Connecting state */
+  connectingRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  statusText: {
+    color: Colors.text.primary,
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+
+  statusSubtext: {
+    color: Colors.text.muted,
+    fontSize: 12,
+    fontWeight: '400',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    marginTop: -Spacing.sm,
+  } as Record<string, unknown>,
+
+  /* Error state -- elegant, not clinical */
+  errorIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255, 149, 0, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 149, 0, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  errorTitle: {
+    color: Colors.text.primary,
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+
+  errorDetail: {
+    color: Colors.text.tertiary,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+    maxWidth: 280,
+  },
+
+  errorActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    minHeight: 44,
+  },
+
+  retryBtnText: {
+    color: Colors.text.secondary,
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+
+  /* Idle connect state -- invitation feel */
+  connectIconOuter: {
+    width: 88,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  } as Record<string, unknown>,
+
+  connectIconRing: {
+    position: 'absolute',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 2,
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+  } as Record<string, unknown>,
+
+  connectIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(59, 130, 246, 0.25)',
+  },
+
+  connectTextGroup: {
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+
+  connectTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+  },
+
+  connectSubtitle: {
+    color: Colors.text.tertiary,
+    fontSize: 13,
+    fontWeight: '400',
+    letterSpacing: 0.1,
+  },
+
+  connectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.accent.cyan,
+    borderRadius: BorderRadius.xl + BorderRadius.sm,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    minHeight: 48,
+    marginTop: Spacing.sm,
+  },
+
+  connectBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+
+  /* Bottom gradient scrim over video behind floating bar */
+  videoScrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 160,
+    zIndex: 5,
+  } as Record<string, unknown>,
+
+  /* Connected status badge (top-left) */
+  connectedBadge: {
+    position: 'absolute',
+    top: Spacing.xl,
+    left: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    zIndex: 10,
+    ...(Platform.OS === 'web'
+      ? {
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+        }
+      : {}),
+  } as Record<string, unknown>,
+
+  connectedDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: Colors.semantic.success,
+  },
+
+  connectedLabel: {
+    color: Colors.text.secondary,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  } as Record<string, unknown>,
+
+  /* Floating bottom control bar (over video) */
+  floatingBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.xxl,
+    paddingBottom: Spacing.xxxl,
+    paddingTop: Spacing.xl,
+    zIndex: 10,
+  } as Record<string, unknown>,
+
+  /* Glass-morphism floating pill (Chat toggle) */
+  floatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.full,
+    backgroundColor: FLOATING_PILL_BG,
+    borderWidth: 1,
+    borderColor: FLOATING_PILL_BORDER,
+    minHeight: 46,
+    minWidth: 46,
+    ...(Platform.OS === 'web'
+      ? {
+          backdropFilter: 'blur(24px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)',
+          cursor: 'pointer',
+        }
+      : {}),
+  } as Record<string, unknown>,
+
+  /* Active state for chat pill when overlay is open */
+  floatingPillActive: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+  },
+
+  floatingPillText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+
+  floatingPillTextActive: {
+    color: Colors.accent.cyan,
+  },
+
+  /* End Call pill -- deep red with depth */
+  endCallPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xxl,
+    borderRadius: BorderRadius.full,
+    backgroundColor: END_CALL_BG,
+    borderWidth: 1,
+    borderColor: END_CALL_BORDER,
+    minHeight: 46,
+    ...(Platform.OS === 'web'
+      ? {
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          boxShadow: '0 4px 16px rgba(239,68,68,0.3), inset 0 1px 0 rgba(255,255,255,0.06)',
+          cursor: 'pointer',
+        }
+      : {}),
+  } as Record<string, unknown>,
+
+  endCallText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+
+  /* Invisible spacer to balance the floating bar layout */
+  floatingPillSpacer: {
+    width: 88,
   },
 });

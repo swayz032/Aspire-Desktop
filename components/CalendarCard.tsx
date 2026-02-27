@@ -140,15 +140,8 @@ export function CalendarCard({ events }: CalendarCardProps) {
               <Ionicons name="calendar-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
               <Text style={styles.emptyHeadline}>No meetings today</Text>
               <Text style={styles.emptyBody}>
-                Set your availability so clients can book appointments, or connect your calendar to sync.
+                Ask Ava to manage your calendar or connect Google Calendar to sync.
               </Text>
-              <TouchableOpacity
-                style={styles.emptyCta}
-                onPress={() => router.push('/more/bookings' as any)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.emptyCtaText}>Set availability</Text>
-              </TouchableOpacity>
             </View>
           )}
           {selectedEvents.length > 3 && (
@@ -306,19 +299,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 17,
     marginBottom: 12,
-  },
-  emptyCta: {
-    backgroundColor: Colors.accent.cyanLight,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.accent.cyan,
-  },
-  emptyCtaText: {
-    color: Colors.accent.cyan,
-    fontSize: 13,
-    fontWeight: '600',
   },
   seeFullButton: {
     flexDirection: 'row',

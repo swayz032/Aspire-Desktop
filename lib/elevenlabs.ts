@@ -1,11 +1,12 @@
 /**
- * ElevenLabs TTS Configuration — Voice Output Only
+ * ElevenLabs Voice Configuration — STT + TTS
  *
- * ElevenLabs provides text-to-speech for Aspire agents.
+ * ElevenLabs provides both speech-to-text (Scribe) and text-to-speech for Aspire agents.
  * It is NOT the agent brain — all intelligence comes from the
  * LangGraph orchestrator via OpenAI SDK skill packs (Law #1: Single Brain).
  *
- * Flow: User speaks → Deepgram STT → Orchestrator → Skill Pack → response text → ElevenLabs TTS → User hears
+ * Flow: User speaks → ElevenLabs STT (Scribe) → Orchestrator → Skill Pack → response text → ElevenLabs TTS → User hears
+ * Exception: Nora uses Deepgram STT (conference transcription via LiveKit)
  */
 
 export interface VoiceConfig {

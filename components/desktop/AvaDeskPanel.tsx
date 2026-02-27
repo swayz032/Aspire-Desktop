@@ -60,6 +60,12 @@ function buildActivityFromResponse(data: {
     }));
   }
 
+  // Conversational response — no real action was taken, skip activity timeline
+  const hasAction = data.route?.skill_pack || data.action || (data.governance?.receipt_ids && data.governance.receipt_ids.length > 0);
+  if (!hasAction) {
+    return [];
+  }
+
   // Synthesize from pipeline metadata
   const events: Omit<AvaActivityEvent, 'ts'>[] = [
     { type: 'thinking', message: 'Processing intent...', icon: 'sparkles' },
@@ -450,9 +456,7 @@ const actStyles = StyleSheet.create({
   },
 });
 
-const seedChat: ChatMsg[] = [
-  { id: 'm1', from: 'ava', text: 'Good morning. What would you like me to do?' },
-];
+const seedChat: ChatMsg[] = [];
 
 
 const playConnectionSound = () => {
@@ -514,6 +518,35 @@ export function AvaDeskPanel() {
 
   // W4: Authority queue polling — provides context to orchestrator (approvals shown in Authority Queue, not chat)
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+
+  // Fetch a dynamic greeting from the orchestrator on mount (replaces hardcoded seedChat)
+  useEffect(() => {
+    if (!suiteId || !session?.access_token) return;
+    const fetchGreeting = async () => {
+      try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'X-Suite-Id': suiteId,
+          'Authorization': `Bearer ${session.access_token}`,
+        };
+        const resp = await fetch('/api/orchestrator/intent', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ agent: 'ava', text: '__greeting__', channel: 'chat' }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const greeting = data.response?.text || data.text || data.response;
+          if (greeting && typeof greeting === 'string') {
+            setChat([{ id: `greeting_${Date.now()}`, from: 'ava', text: greeting }]);
+          }
+        }
+      } catch {
+        // Silent fail — no greeting is better than a stale one
+      }
+    };
+    fetchGreeting();
+  }, [suiteId, session?.access_token]);
 
   useEffect(() => {
     const fetchApprovals = async () => {
@@ -861,7 +894,7 @@ export function AvaDeskPanel() {
       }
 
       const data = await resp.json();
-      const responseText = data.response || 'I processed your request.';
+      const responseText = data.response || data.text || 'I processed your request.';
       const activityEvents = buildActivityFromResponse(data);
 
       // If video connected, pipe response to Anam avatar (Cara speaks with Emma voice)
@@ -872,6 +905,23 @@ export function AvaDeskPanel() {
         } catch (talkErr) {
           console.warn('Anam talk failed:', talkErr);
         }
+      }
+
+      // Conversational response — no pipeline activity, show text immediately
+      if (activityEvents.length === 0) {
+        setActiveRuns((prev) => {
+          const run = prev[runId];
+          if (!run) return prev;
+          return { ...prev, [runId]: { ...run, events: [], status: 'completed', finalText: responseText } };
+        });
+        setIsConversing(false);
+        setChat((prev) =>
+          prev.map((msg) =>
+            msg.runId === runId ? { ...msg, text: responseText } : msg
+          )
+        );
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+        return;
       }
 
       // Animate real activity events with staggered timing
@@ -1002,7 +1052,8 @@ export function AvaDeskPanel() {
                   height: '100%',
                   objectFit: 'cover',
                   borderRadius: 0,
-                  display: videoState === 'connected' ? 'block' : 'none',
+                  opacity: videoState === 'connected' ? 1 : 0,
+                  pointerEvents: videoState === 'connected' ? 'auto' : 'none',
                   backgroundColor: '#000',
                   position: 'absolute',
                   top: 0,
@@ -1112,8 +1163,9 @@ export function AvaDeskPanel() {
         >
           {chat.map((msg, idx) => {
             const run = msg.runId ? activeRuns[msg.runId] : null;
+            // Only show activity timeline if there are real events (conversational responses return empty)
             const showActivity = run && run.events.length > 0;
-            const showMessage = !msg.runId || (run && run.status === 'completed');
+            const showMessage = !msg.runId || (run && (run.status === 'completed' || run.events.length === 0));
 
             return (
               <View key={msg.id}>

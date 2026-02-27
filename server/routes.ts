@@ -132,12 +132,17 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
   // leaving onboarding_completed_at unset and causing the auth gate to loop.
   const existingSuiteId = (req as any).authenticatedSuiteId;
   if (existingSuiteId && existingSuiteId !== getDefaultSuiteId()) {
-    // Verify profile actually exists with onboarding_completed_at set
+    // Verify profile actually exists with all required onboarding fields complete
     const { data: existingProfile } = await supabaseAdmin!.from('suite_profiles')
-      .select('onboarding_completed_at')
+      .select('onboarding_completed_at, owner_name, business_name, industry')
       .eq('suite_id', existingSuiteId)
       .single();
-    if (existingProfile?.onboarding_completed_at) {
+    if (
+      existingProfile?.onboarding_completed_at &&
+      existingProfile?.owner_name &&
+      existingProfile?.business_name &&
+      existingProfile?.industry
+    ) {
       return res.json({ suiteId: existingSuiteId, created: false });
     }
     // Profile missing or incomplete — fall through to create/update it
@@ -437,10 +442,16 @@ router.get('/api/onboarding/status', async (req: Request, res: Response) => {
   }
   const { data } = await supabaseAdmin
     .from('suite_profiles')
-    .select('onboarding_completed_at')
+    .select('onboarding_completed_at, owner_name, business_name, industry')
     .eq('suite_id', suiteId)
     .single();
-  return res.json({ complete: !!data?.onboarding_completed_at });
+  const complete = !!(
+    data?.onboarding_completed_at &&
+    data?.owner_name &&
+    data?.business_name &&
+    data?.industry
+  );
+  return res.json({ complete });
 });
 
 /**
@@ -1384,6 +1395,69 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
   }
 });
 
+// ─── ElevenLabs STT — Speech-to-Text via server proxy (no API key on client) ───
+router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
+  try {
+    const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!ELEVENLABS_API_KEY) {
+      return res.status(503).json({ error: 'Speech recognition service not configured' });
+    }
+
+    // Expect raw audio body (audio/webm, audio/wav, etc.) or base64 in JSON
+    let audioBuffer: Buffer;
+
+    if (req.is('application/json')) {
+      // JSON body with base64 audio
+      const { audio, encoding } = req.body;
+      if (!audio) {
+        return res.status(400).json({ error: 'Missing audio data' });
+      }
+      audioBuffer = Buffer.from(audio, encoding || 'base64');
+    } else {
+      // Raw binary audio body
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      audioBuffer = Buffer.concat(chunks);
+    }
+
+    if (audioBuffer.length === 0) {
+      return res.status(400).json({ error: 'Empty audio data' });
+    }
+
+    // Cap audio size at 25MB (ElevenLabs limit)
+    if (audioBuffer.length > 25 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Audio file too large (max 25MB)' });
+    }
+
+    // Use ElevenLabs Speech-to-Text API
+    const formData = new FormData();
+    formData.append('file', new Blob([audioBuffer], { type: 'audio/webm' }), 'audio.webm');
+    formData.append('model_id', 'scribe_v1');
+
+    const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('ElevenLabs STT error', { status: response.status, error: errorText.substring(0, 200) });
+      return res.status(500).json({ error: `STT failed: ${response.status}` });
+    }
+
+    const result = await response.json() as { text?: string; language_code?: string };
+    res.json({ text: result.text || '', language: result.language_code || 'en' });
+  } catch (error: unknown) {
+    logger.error('STT error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+  }
+});
+
 /**
  * Sandbox Health Check — Verify provider sandbox API keys are configured
  * Does NOT log or expose key values (Law #9: Never log secrets)
@@ -1506,9 +1580,9 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     }
 
     const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
-    const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string || getDefaultSuiteId();
+    const suiteId = (req as any).authenticatedSuiteId;
     if (!suiteId) {
-      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required. Complete onboarding first.' });
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
     }
 
     // Circuit breaker check — Law #3: fail fast when orchestrator is known-down
@@ -1708,10 +1782,10 @@ router.get('/api/authority-queue', async (_req: Request, res: Response) => {
 });
 
 router.post('/api/authority-queue/:id/approve', async (req: Request, res: Response) => {
-  // Law #3: Fail Closed — require suite context for state-changing operations
-  const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string || getDefaultSuiteId();
+  // Law #3: Fail Closed — require authenticated suite context for state-changing operations
+  const suiteId = (req as any).authenticatedSuiteId;
   if (!suiteId) {
-    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required. Complete onboarding first.' });
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
 
   const userId = (req as any).authenticatedUserId;
@@ -1772,10 +1846,10 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
 });
 
 router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response) => {
-  // Law #3: Fail Closed — require suite context for state-changing operations
-  const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string || getDefaultSuiteId();
+  // Law #3: Fail Closed — require authenticated suite context for state-changing operations
+  const suiteId = (req as any).authenticatedSuiteId;
   if (!suiteId) {
-    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required. Complete onboarding first.' });
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
 
   const userId = (req as any).authenticatedUserId;
@@ -1816,12 +1890,12 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
  */
 router.post('/api/authority-queue/:id/execute', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string || getDefaultSuiteId();
+  const suiteId = (req as any).authenticatedSuiteId;
   const userId = (req as any).authenticatedUserId;
   const officeId = getDefaultOfficeId();
 
   if (!suiteId) {
-    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required' });
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
 
   try {
@@ -1923,10 +1997,10 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     }
 
     const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
-    const suiteId = (req as any).authenticatedSuiteId || req.headers['x-suite-id'] as string || getDefaultSuiteId();
+    const suiteId = (req as any).authenticatedSuiteId;
 
     if (!suiteId) {
-      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context required' });
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
     }
 
     // Build profile context for Ava avatar personalization (PII-filtered — Law #9)
@@ -3410,11 +3484,10 @@ router.get('/api/contracts', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Contracts list error', { error: msg });
-    // Graceful degradation: return empty list instead of 500 when DB/table isn't ready
-    if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('connect')) {
-      return res.json({ contracts: [], total: 0, page: 1, limit: 20, configured: false });
-    }
-    res.status(500).json({ error: 'Failed to list contracts' });
+    // Graceful degradation: contracts table doesn't exist yet (feature not launched).
+    // Return empty state for ANY database error on this endpoint to prevent 500s
+    // from breaking the entire Documents page.
+    return res.json({ contracts: [], total: 0, page: 1, limit: 20, configured: false });
   }
 });
 

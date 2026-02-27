@@ -1,7 +1,11 @@
 /**
  * useAgentVoice — Orchestrator-Routed Voice Hook
  *
- * Full voice pipeline: Mic → Deepgram STT → Orchestrator (LangGraph) → Skill Pack → ElevenLabs TTS → Speaker
+ * Full voice pipeline: Mic → STT → Orchestrator (LangGraph) → Skill Pack → ElevenLabs TTS → Speaker
+ *
+ * STT Provider Routing:
+ *   - Finn, Ava, Eli, Sarah: ElevenLabs STT (Scribe via /api/elevenlabs/stt)
+ *   - Nora: Deepgram STT (conference transcription via LiveKit)
  *
  * Law #1: Single Brain — LangGraph orchestrator decides, not any provider.
  * Law #3: Fail Closed — orchestrator errors return 503, not 200.
@@ -13,8 +17,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { type AgentName, speakText, getVoiceId } from '../lib/elevenlabs';
 import { useDeepgramSTT } from './useDeepgramSTT';
+import { useElevenLabsSTT } from './useElevenLabsSTT';
 
 export type VoiceStatus = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
+
+/** Agents that use Deepgram STT (LiveKit conference). All others use ElevenLabs. */
+const DEEPGRAM_STT_AGENTS: string[] = ['nora'];
 
 interface UseAgentVoiceOptions {
   agent: AgentName;
@@ -61,6 +69,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const activeRef = useRef(false);
   // Prevent duplicate sends while processing
   const processingRef = useRef(false);
+
+  const useDeepgram = DEEPGRAM_STT_AGENTS.includes(agent);
 
   const updateStatus = useCallback((newStatus: VoiceStatus) => {
     setStatus(newStatus);
@@ -120,10 +130,19 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       updateStatus('speaking');
 
       const audioBlob = await speakText(agent, responseText);
-      if (audioBlob && activeRef.current) {
+      if (audioBlob && audioBlob.size > 0 && activeRef.current) {
         const url = URL.createObjectURL(audioBlob);
         const audio = new Audio(url);
         audioRef.current = audio;
+
+        audio.onerror = (e) => {
+          console.error('[useAgentVoice] Audio decode/playback error:', e);
+          URL.revokeObjectURL(url);
+          processingRef.current = false;
+          if (activeRef.current) {
+            updateStatus('listening');
+          }
+        };
 
         audio.onended = () => {
           URL.revokeObjectURL(url);
@@ -133,10 +152,20 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           }
         };
 
-        await audio.play();
+        try {
+          await audio.play();
+        } catch (playError: any) {
+          console.error('[useAgentVoice] Autoplay blocked:', playError?.message);
+          URL.revokeObjectURL(url);
+          processingRef.current = false;
+          if (activeRef.current) {
+            updateStatus('listening');
+          }
+        }
       } else {
-        // TTS returned null — log for diagnostics, still return to listening
-        console.warn(`[useAgentVoice] TTS returned no audio for agent "${agent}". Check ElevenLabs config/key.`);
+        if (!audioBlob) {
+          console.error('[useAgentVoice] TTS returned null for agent "%s". Check ELEVENLABS_API_KEY.', agent);
+        }
         processingRef.current = false;
         if (activeRef.current) {
           updateStatus('listening');
@@ -160,27 +189,36 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const sendTextRef = useRef(sendText);
   sendTextRef.current = sendText;
 
-  // Integrate Deepgram STT — voice is the PRIMARY interaction mode
-  const stt = useDeepgramSTT({
-    onUtterance: useCallback((text: string) => {
-      // Only send if session is active and not already processing
-      if (activeRef.current && !processingRef.current) {
-        sendTextRef.current(text);
-      }
-    }, []),
+  // STT utterance handler — shared between both providers
+  const handleUtterance = useCallback((text: string) => {
+    if (activeRef.current && !processingRef.current) {
+      sendTextRef.current(text);
+    }
+  }, []);
+
+  // Deepgram STT — for Nora (conference transcription via LiveKit)
+  const deepgramStt = useDeepgramSTT({
+    onUtterance: useDeepgram ? handleUtterance : undefined,
   });
+
+  // ElevenLabs STT — for Finn, Ava, Eli, Sarah (voice-first agents)
+  const elevenLabsStt = useElevenLabsSTT({
+    onUtterance: useDeepgram ? undefined : handleUtterance,
+  });
+
+  // Select the active STT provider
+  const stt = useDeepgram ? deepgramStt : elevenLabsStt;
 
   /**
    * Start a voice session. Attempts STT for mic input, but degrades
    * gracefully to text-input + TTS-output if STT is unavailable.
-   * Agents like Finn use ElevenLabs TTS only (no Deepgram STT).
    */
   const startSession = useCallback(async () => {
     activeRef.current = true;
     processingRef.current = false;
     updateStatus('listening');
 
-    // Attempt STT — if unavailable (no Deepgram key, no mic), session
+    // Attempt STT — if unavailable (no API key, no mic), session
     // stays active for text input with ElevenLabs TTS output
     try {
       await stt.start();
@@ -188,7 +226,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       // STT unavailable — session stays active for sendText() + TTS
       console.warn(`STT unavailable for ${agent} — text input + TTS mode`);
     }
-  }, [agent, suiteId, updateStatus, onError, stt]);
+  }, [agent, updateStatus, stt]);
 
   /**
    * End the voice session. Stops listening and any in-progress TTS.

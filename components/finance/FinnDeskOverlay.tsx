@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { View, StyleSheet, Pressable, Platform, useWindowDimensions, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/tokens';
+import { Colors, Spacing } from '@/constants/tokens';
 import { FinnDeskPanel } from './FinnDeskPanel';
 
 type Props = {
@@ -14,9 +14,15 @@ type Props = {
 export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext }: Props) {
   const { width } = useWindowDimensions();
 
+  /*
+   * When the overlay is opened with initialTab="video", render FinnDeskPanel
+   * in immersive video-only mode (FaceTime-style: no tabs, full-bleed video,
+   * floating controls, slide-up chat overlay).
+   */
+  const isVideoOnly = initialTab === 'video';
+
   const panelStyle = useMemo((): ViewStyle => {
     if (width >= 1200) {
-      // Desktop: generous modal
       return {
         width: '70%' as unknown as number,
         maxWidth: 900,
@@ -25,7 +31,6 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
       };
     }
     if (width >= 900) {
-      // Laptop: wider proportion
       return {
         width: '80%' as unknown as number,
         maxWidth: 900,
@@ -33,7 +38,6 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
         borderRadius: 16,
       };
     }
-    // Tablet / small: near-fullscreen
     return {
       width: '95%' as unknown as number,
       maxWidth: undefined,
@@ -55,12 +59,24 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
 
   return (
     <View style={styles.overlay}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close overlay" />
       <View style={styles.panelContainer}>
         <View style={[styles.panel, panelStyle]}>
-          <FinnDeskPanel initialTab={initialTab} templateContext={templateContext} isInOverlay />
-          <Pressable style={styles.closeBtn} onPress={onClose}>
-            <Ionicons name="close" size={20} color={Colors.text.secondary} />
+          <FinnDeskPanel
+            initialTab={initialTab}
+            templateContext={templateContext}
+            isInOverlay
+            videoOnly={isVideoOnly}
+            onEndCall={onClose}
+          />
+          {/* Close button floats above the panel content */}
+          <Pressable
+            style={[styles.closeBtn, isVideoOnly && styles.closeBtnImmersive]}
+            onPress={onClose}
+            accessibilityLabel="Close Finn overlay"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={20} color={isVideoOnly ? '#fff' : Colors.text.secondary} />
           </Pressable>
         </View>
       </View>
@@ -104,18 +120,30 @@ const styles = StyleSheet.create({
   } as any,
   closeBtn: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    top: Spacing.md,
+    right: Spacing.md,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 20,
+    /* Ensure 44x44 minimum tap target */
+    minWidth: 44,
+    minHeight: 44,
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'background-color 0.15s ease',
     } : {}),
-  } as any,
+  } as Record<string, unknown>,
+  /* In immersive video-only mode, the close button uses a
+     semi-transparent backdrop-blur pill so it floats above the video. */
+  closeBtnImmersive: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    ...(Platform.OS === 'web' ? {
+      backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)',
+    } : {}),
+  } as Record<string, unknown>,
 });
