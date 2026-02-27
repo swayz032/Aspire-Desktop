@@ -66,10 +66,22 @@ export default function ConnectionsScreen() {
   const checkAllStatuses = useCallback(async () => {
     try {
       const [plaidRes, qbRes, gustoRes, stripeRes] = await Promise.all([
-        fetch('/api/plaid/status').then(r => r.json()).catch(() => ({ connected: false })),
-        fetch('/api/quickbooks/status').then(r => r.json()).catch(() => ({ connected: false })),
-        fetch('/api/gusto/status').then(r => r.json()).catch(() => ({ connected: false })),
-        fetch('/api/stripe-connect/status').then(r => r.json()).catch(() => ({ connected: false })),
+        fetch('/api/plaid/status').then(r => r.json()).catch((e) => {
+          console.warn('[Connections] Plaid status check failed:', e?.message || e);
+          return { connected: false };
+        }),
+        fetch('/api/quickbooks/status').then(r => r.json()).catch((e) => {
+          console.warn('[Connections] QuickBooks status check failed:', e?.message || e);
+          return { connected: false };
+        }),
+        fetch('/api/gusto/status').then(r => r.json()).catch((e) => {
+          console.warn('[Connections] Gusto status check failed:', e?.message || e);
+          return { connected: false };
+        }),
+        fetch('/api/stripe-connect/status').then(r => r.json()).catch((e) => {
+          console.warn('[Connections] Stripe status check failed:', e?.message || e);
+          return { connected: false };
+        }),
       ]);
 
       setProviders({

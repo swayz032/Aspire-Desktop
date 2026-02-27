@@ -200,8 +200,8 @@ export default function DocumentLibraryPage() {
 
   const keyExtractor = useCallback((item: ContractCardData) => item.id, []);
 
-  const handleAskClara = useCallback(() => {
-    // Navigate to main Ava desk -- Clara is invoked through Ava
+  const handleAskFinn = useCallback(() => {
+    // Navigate to main Ava desk -- Finn is invoked through Ava
     router.push('/(tabs)' as any);
   }, [router]);
 
@@ -221,7 +221,7 @@ export default function DocumentLibraryPage() {
           : {},
       ]}
       accessibilityRole="summary"
-      accessibilityLabel="Document hub is being prepared. Ask Clara to draft your first document."
+      accessibilityLabel="Document hub is being prepared. Ask Finn to draft your first document."
     >
       {/* Luminous accent gradient along top edge */}
       <View
@@ -336,7 +336,7 @@ export default function DocumentLibraryPage() {
           ]}
         >
           Contracts, proposals, and agreements will live here.{'\n'}
-          Clara can draft, review, and manage your legal{'\n'}
+          Finn can help you draft, review, and manage your legal{'\n'}
           documents end-to-end.
         </Text>
 
@@ -388,7 +388,7 @@ export default function DocumentLibraryPage() {
           accessibilityElementsHidden
         />
 
-        {/* Clara CTA -- premium button with glow */}
+        {/* Finn CTA -- premium button with glow */}
         <Pressable
           style={({ pressed }) => [
             styles.premiumCta,
@@ -404,12 +404,12 @@ export default function DocumentLibraryPage() {
               : {},
             pressed && { opacity: 0.88, transform: [{ scale: 0.98 }] },
           ]}
-          onPress={handleAskClara}
+          onPress={handleAskFinn}
           accessibilityRole="button"
-          accessibilityLabel="Ask Clara to draft a document"
+          accessibilityLabel="Ask Finn to draft a document"
         >
           <Ionicons name="sparkles" size={16} color="#fff" />
-          <Text style={styles.premiumCtaText}>Ask Clara to Draft</Text>
+          <Text style={styles.premiumCtaText}>Ask Finn to Draft</Text>
           <Ionicons name="arrow-forward" size={14} color="rgba(255,255,255,0.65)" />
         </Pressable>
 
@@ -422,7 +422,7 @@ export default function DocumentLibraryPage() {
               : {},
           ]}
         >
-          Clara will guide you through the entire process
+          Finn will guide you through the entire process
         </Text>
       </View>
     </View>
@@ -439,13 +439,13 @@ export default function DocumentLibraryPage() {
           </View>
           {!notConfigured && (
             <Pressable
-              style={[styles.claraCta, webOnly({ cursor: 'pointer', transition: 'all 0.2s ease' })]}
-              onPress={handleAskClara}
+              style={[styles.finnCta, webOnly({ cursor: 'pointer', transition: 'all 0.2s ease' })]}
+              onPress={handleAskFinn}
               accessibilityRole="button"
-              accessibilityLabel="Ask Clara to draft a document"
+              accessibilityLabel="Ask Finn to draft a document"
             >
               <Ionicons name="sparkles" size={16} color="#fff" />
-              <Text style={styles.claraCtaText}>Ask Clara to Draft</Text>
+              <Text style={styles.finnCtaText}>Ask Finn to Draft</Text>
             </Pressable>
           )}
         </View>
@@ -576,17 +576,17 @@ export default function DocumentLibraryPage() {
                     <Text style={styles.stateSubtext}>
                       {searchQuery
                         ? 'Try adjusting your search or filter'
-                        : 'Ask Clara to draft your first contract'}
+                        : 'Ask Finn to draft your first contract'}
                     </Text>
                     {!searchQuery && (
                       <Pressable
                         style={[styles.emptyCtaBtn, webOnly({ cursor: 'pointer' })]}
-                        onPress={handleAskClara}
+                        onPress={handleAskFinn}
                         accessibilityRole="button"
-                        accessibilityLabel="Ask Clara to draft a document"
+                        accessibilityLabel="Ask Finn to draft a document"
                       >
                         <Ionicons name="sparkles" size={14} color={Colors.accent.cyan} />
-                        <Text style={styles.emptyCtaText}>Ask Clara to Draft</Text>
+                        <Text style={styles.emptyCtaText}>Ask Finn to Draft</Text>
                       </Pressable>
                     )}
                   </View>
@@ -638,7 +638,7 @@ const styles = StyleSheet.create({
     color: Colors.text.muted,
     marginTop: 4,
   },
-  claraCta: {
+  finnCta: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.accent.cyan,
@@ -647,7 +647,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 6,
   },
-  claraCtaText: {
+  finnCtaText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',

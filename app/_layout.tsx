@@ -165,7 +165,7 @@ function useAuthGate() {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === ('(auth)' as any);
-    const inPublicGroup = segments[0] === ('sign' as any) || segments[0] === ('book' as any);
+    const inPublicGroup = segments[0] === ('sign' as any) || segments[0] === ('book' as any) || segments[0] === ('join' as any);
     const onOnboarding = segments[1] === ('onboarding' as any);
 
     if (!session && !inAuthGroup && !inPublicGroup) {
@@ -284,6 +284,13 @@ function AppNavigator() {
         />
         <Stack.Screen
           name="sign"
+          options={{
+            headerShown: false,
+            presentation: 'card'
+          }}
+        />
+        <Stack.Screen
+          name="join"
           options={{
             headerShown: false,
             presentation: 'card'

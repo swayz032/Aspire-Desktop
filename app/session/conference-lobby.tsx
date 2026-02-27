@@ -14,7 +14,7 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { Colors, Spacing, Typography, BorderRadius, Canvas } from '@/constants/tokens';
 import { Toast } from '@/components/session/Toast';
 import { BottomSheet } from '@/components/session/BottomSheet';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
@@ -26,7 +26,7 @@ import { useSupabase, useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { formatDisplayId } from '@/lib/formatters';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
-import { InviteSheet } from '@/components/session/InviteSheet';
+import { UnifiedSessionModal } from '@/components/session/UnifiedSessionModal';
 
 // ─── Pulsing dot for pending/invited participants ────────────────────────────
 function PulsingDot({ color }: { color: string }) {
@@ -48,6 +48,100 @@ function PulsingDot({ color }: { color: string }) {
       accessibilityElementsHidden
     />
   );
+}
+
+// ─── Web-only hover & animation CSS ─────────────────────────────────────────
+
+function injectLobbyKeyframes() {
+  if (Platform.OS !== 'web') return;
+  if (document.getElementById('aspire-lobby-keyframes')) return;
+  const style = document.createElement('style');
+  style.id = 'aspire-lobby-keyframes';
+  style.textContent = `
+    @keyframes lobbyStartGlow {
+      0%, 100% { box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset; }
+      50% { box-shadow: 0 4px 28px rgba(37, 99, 235, 0.55), 0 0 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.15) inset; }
+    }
+    .lobby-start-btn {
+      animation: lobbyStartGlow 2.8s ease-in-out infinite;
+      transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+      cursor: pointer;
+    }
+    .lobby-start-btn:hover {
+      transform: translateY(-2px) !important;
+      box-shadow: 0 6px 32px rgba(37, 99, 235, 0.55), 0 0 48px rgba(59, 130, 246, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.2) inset !important;
+      animation: none;
+    }
+    .lobby-start-btn:active {
+      transform: translateY(0) scale(0.98) !important;
+    }
+    .lobby-join-btn {
+      transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+      cursor: pointer;
+    }
+    .lobby-join-btn:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 6px 24px rgba(37, 99, 235, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.15) inset !important;
+    }
+    .lobby-join-btn:active {
+      transform: translateY(0) scale(0.98) !important;
+    }
+    .lobby-flip-card {
+      transition: box-shadow 0.3s ease !important;
+    }
+    .lobby-flip-card:hover {
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06) inset !important;
+    }
+    .lobby-authority-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+      cursor: default;
+    }
+    .lobby-authority-card:hover {
+      transform: translateY(-2px) !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
+      border-color: ${Colors.border.strong} !important;
+    }
+    .lobby-approve-btn {
+      transition: all 0.15s ease !important;
+      cursor: pointer;
+    }
+    .lobby-approve-btn:hover {
+      box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35) !important;
+      transform: translateY(-1px);
+    }
+    .lobby-approve-btn:active {
+      transform: translateY(0) scale(0.97);
+    }
+    .lobby-deny-btn {
+      transition: all 0.15s ease !important;
+      cursor: pointer;
+    }
+    .lobby-deny-btn:hover {
+      background-color: ${Colors.background.elevated} !important;
+      border-color: ${Colors.border.strong} !important;
+    }
+    .lobby-exit-btn {
+      transition: all 0.15s ease !important;
+      cursor: pointer;
+    }
+    .lobby-exit-btn:hover {
+      background-color: ${Colors.background.elevated} !important;
+      border-color: ${Colors.border.strong} !important;
+      transform: scale(1.05);
+    }
+    .lobby-exit-btn:active { transform: scale(0.95); }
+    .lobby-menu-btn {
+      transition: all 0.15s ease !important;
+      cursor: pointer;
+    }
+    .lobby-menu-btn:hover {
+      background-color: ${Colors.background.elevated} !important;
+      border-color: ${Colors.border.strong} !important;
+      transform: scale(1.05);
+    }
+    .lobby-menu-btn:active { transform: scale(0.95); }
+  `;
+  document.head.appendChild(style);
 }
 
 const CONFERENCE_ROOM_IMAGE = require('@/assets/images/conference-room-meeting.jpg');
@@ -110,6 +204,9 @@ export default function ConferenceLobby() {
   const { tenant } = useTenant();
   const { authenticatedFetch } = useAuthFetch();
 
+  // Inject web hover CSS once
+  useEffect(() => { injectLobbyKeyframes(); }, []);
+
   const userName = session?.user?.user_metadata?.full_name
     ?? session?.user?.email?.split('@')[0]
     ?? 'You';
@@ -128,7 +225,6 @@ export default function ConferenceLobby() {
   
   const [showStartSessionModal, setShowStartSessionModal] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
-  const [showInviteSheet, setShowInviteSheet] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [isConferenceReady, setIsConferenceReady] = useState<boolean | null>(null);
   const conferenceCheckTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -345,6 +441,7 @@ export default function ConferenceLobby() {
           style={({ pressed }) => [styles.exitButton, pressed && styles.pressedOpacity]}
           accessibilityLabel="Exit conference lobby"
           accessibilityRole="button"
+          {...(Platform.OS === 'web' ? { className: 'lobby-exit-btn' } as Record<string, string> : {})}
         >
           <Ionicons name="close" size={20} color={Colors.text.secondary} />
         </Pressable>
@@ -360,6 +457,7 @@ export default function ConferenceLobby() {
             onPress={() => setMenuVisible(true)}
             accessibilityLabel="Open room options"
             accessibilityRole="button"
+            {...(Platform.OS === 'web' ? { className: 'lobby-menu-btn' } as Record<string, string> : {})}
           >
             <Ionicons name="ellipsis-horizontal" size={20} color={Colors.text.secondary} />
           </Pressable>
@@ -390,13 +488,14 @@ export default function ConferenceLobby() {
           <View style={styles.flipCardContainer}>
 
             {/* FRONT CARD - Idle Mode (Team Meeting Image + Start Session) */}
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.flipCard,
                 styles.flipCardFront,
                 frontAnimatedStyle
               ]}
               pointerEvents={isSessionActive ? 'none' : 'auto'}
+              {...(Platform.OS === 'web' ? { className: 'lobby-flip-card' } as Record<string, string> : {})}
             >
               <View style={styles.sessionPreviewCard}>
                 <ImageBackground 
@@ -436,7 +535,13 @@ export default function ConferenceLobby() {
                     </View>
 
                     {/* Start Session Button */}
-                    <Pressable style={styles.joinButton} onPress={handleStartNewSession}>
+                    <Pressable
+                      style={styles.joinButton}
+                      onPress={handleStartNewSession}
+                      accessibilityLabel="Start new session"
+                      accessibilityRole="button"
+                      {...(Platform.OS === 'web' ? { className: 'lobby-start-btn' } as Record<string, string> : {})}
+                    >
                       <Ionicons name="play" size={16} color="#FFFFFF" />
                       <Text style={styles.joinButtonText}>Start Session</Text>
                     </Pressable>
@@ -446,13 +551,14 @@ export default function ConferenceLobby() {
             </Animated.View>
 
             {/* BACK CARD - Live Mode (Meeting Room + Join Session) */}
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.flipCard,
                 styles.flipCardBack,
                 backAnimatedStyle
               ]}
               pointerEvents={isSessionActive ? 'auto' : 'none'}
+              {...(Platform.OS === 'web' ? { className: 'lobby-flip-card' } as Record<string, string> : {})}
             >
               <View style={styles.sessionPreviewCard}>
                 <ImageBackground 
@@ -513,7 +619,15 @@ export default function ConferenceLobby() {
                     </View>
 
                     {/* Join Button */}
-                    <Pressable style={[styles.joinButton, isJoining && { opacity: 0.6 }]} onPress={handleStartSession} disabled={isJoining}>
+                    <Pressable
+                      style={[styles.joinButton, isJoining && { opacity: 0.6 }]}
+                      onPress={handleStartSession}
+                      disabled={isJoining}
+                      accessibilityLabel={isJoining ? 'Checking conference status' : 'Join session'}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: isJoining }}
+                      {...(Platform.OS === 'web' ? { className: 'lobby-join-btn' } as Record<string, string> : {})}
+                    >
                       <Ionicons name={isJoining ? "hourglass" : "videocam"} size={16} color="#FFFFFF" />
                       <Text style={styles.joinButtonText}>{isJoining ? 'Checking...' : 'Join Session'}</Text>
                     </Pressable>
@@ -559,12 +673,13 @@ export default function ConferenceLobby() {
               const isPending = item.status === 'pending';
               
               return (
-                <View 
-                  key={item.id} 
+                <View
+                  key={item.id}
                   style={[
                     styles.authorityCard,
                     !isPending && styles.authorityCardResolved,
                   ]}
+                  {...(Platform.OS === 'web' ? { className: 'lobby-authority-card' } as Record<string, string> : {})}
                 >
                   <View style={styles.authorityCardContent}>
                     {/* Document Thumbnail, Image, or Icon */}
@@ -610,16 +725,22 @@ export default function ConferenceLobby() {
                   {/* Actions */}
                   {isPending ? (
                     <View style={styles.authorityActions}>
-                      <Pressable 
+                      <Pressable
                         style={styles.denyBtn}
                         onPress={() => handleDeny(item.id)}
+                        accessibilityLabel={`Deny ${item.title}`}
+                        accessibilityRole="button"
+                        {...(Platform.OS === 'web' ? { className: 'lobby-deny-btn' } as Record<string, string> : {})}
                       >
                         <Ionicons name="close-circle-outline" size={16} color={Colors.text.secondary} />
                         <Text style={styles.denyText}>Deny</Text>
                       </Pressable>
-                      <Pressable 
+                      <Pressable
                         style={styles.approveBtn}
                         onPress={() => handleApprove(item.id)}
+                        accessibilityLabel={`Approve ${item.title}`}
+                        accessibilityRole="button"
+                        {...(Platform.OS === 'web' ? { className: 'lobby-approve-btn' } as Record<string, string> : {})}
                       >
                         <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
                         <Text style={styles.approveText}>Approve</Text>
@@ -650,161 +771,16 @@ export default function ConferenceLobby() {
 
       </ScrollView>
 
-      {/* Premium Start Session Modal */}
-      {showStartSessionModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBackdrop}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowStartSessionModal(false)} />
-          </View>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalTitleRow}>
-                <View style={styles.modalIcon}>
-                  <Ionicons name="videocam" size={20} color={Colors.accent.cyan} />
-                </View>
-                <View>
-                  <Text style={styles.modalTitle}>Start New Session</Text>
-                  <Text style={styles.modalSubtitle}>Configure your meeting preferences</Text>
-                </View>
-              </View>
-              <Pressable style={styles.modalClose} onPress={() => setShowStartSessionModal(false)}>
-                <Ionicons name="close" size={20} color={Colors.text.muted} />
-              </Pressable>
-            </View>
-
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {/* Meeting Purpose Selection */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalSectionTitle}>Meeting Purpose</Text>
-                <View style={styles.purposeGrid}>
-                  {PURPOSE_OPTIONS.map((option) => (
-                    <Pressable
-                      key={option.id}
-                      style={({ pressed }) => [
-                        styles.purposeOption,
-                        purpose === option.id && styles.purposeOptionActive,
-                        pressed && styles.pressedOpacity,
-                      ]}
-                      onPress={() => setPurpose(option.id)}
-                      accessibilityLabel={`${option.label} meeting purpose`}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: purpose === option.id }}
-                    >
-                      <View style={[
-                        styles.purposeIconBox,
-                        purpose === option.id && styles.purposeIconBoxActive,
-                      ]}>
-                        <Ionicons 
-                          name={option.icon} 
-                          size={20} 
-                          color={purpose === option.id ? '#FFFFFF' : Colors.text.muted} 
-                        />
-                      </View>
-                      <Text style={[
-                        styles.purposeOptionText,
-                        purpose === option.id && styles.purposeOptionTextActive,
-                      ]}>
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              {/* Participants Section */}
-              <View style={styles.modalSection}>
-                <View style={styles.modalSectionHeader}>
-                  <Text style={styles.modalSectionTitle}>Participants</Text>
-                  <Text style={styles.participantCount}>{participants.length} added</Text>
-                </View>
-                
-                <View style={styles.participantsContainer}>
-                  {participants.map((participant) => (
-                    <View key={participant.id} style={styles.modalParticipantRow}>
-                      <View style={[styles.modalParticipantAvatar, { backgroundColor: participant.avatarColor }]}>
-                        <Text style={styles.modalParticipantInitial}>{participant.name.charAt(0)}</Text>
-                      </View>
-                      <View style={styles.modalParticipantInfo}>
-                        <Text style={styles.modalParticipantName}>{participant.name}</Text>
-                        <Text style={styles.modalParticipantRole}>{participant.role}</Text>
-                      </View>
-                      {/* Participant status badges — pulsing dot + type icon */}
-                      {participant.status === 'invited' && (
-                        <View
-                          style={styles.invitedBadge}
-                          accessibilityLabel={`${participant.name} invited${participant.inviteType === 'external' ? ', external guest' : participant.inviteType === 'cross-suite' ? ', cross-suite user' : ''}`}
-                        >
-                          <PulsingDot color={Colors.semantic.warning} />
-                          {participant.inviteType === 'external' && (
-                            <Ionicons name="globe-outline" size={12} color={Colors.semantic.warning} accessibilityElementsHidden />
-                          )}
-                          {participant.inviteType === 'cross-suite' && (
-                            <Ionicons name="business-outline" size={12} color={Colors.accent.cyan} accessibilityElementsHidden />
-                          )}
-                          <Text style={styles.invitedBadgeText}>Invited</Text>
-                        </View>
-                      )}
-                      {participant.id === 'you' ? (
-                        <View style={styles.youBadge}>
-                          <Text style={styles.youBadgeText}>You</Text>
-                        </View>
-                      ) : (
-                        <Pressable
-                          style={({ pressed }) => [styles.removeParticipantBtn, pressed && styles.pressedOpacity]}
-                          onPress={() => handleRemoveParticipant(participant.id)}
-                          accessibilityLabel={`Remove ${participant.name}`}
-                          accessibilityRole="button"
-                        >
-                          <Ionicons name="close" size={14} color={Colors.text.muted} />
-                        </Pressable>
-                      )}
-                    </View>
-                  ))}
-                </View>
-
-                {/* Add Participant Button — opens InviteSheet */}
-                <View style={styles.addParticipantWrapper}>
-                  <Pressable
-                    style={({ pressed }) => [styles.addParticipantBtn, pressed && styles.pressedOpacity]}
-                    onPress={() => setShowInviteSheet(true)}
-                    accessibilityLabel="Add participants to session"
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="add-circle" size={18} color={Colors.accent.cyan} accessibilityElementsHidden />
-                    <Text style={styles.addParticipantText}>Add Participants</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <Pressable 
-                style={styles.cancelBtn}
-                onPress={() => setShowStartSessionModal(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.confirmBtn, isJoining && { opacity: 0.6 }]}
-                onPress={handleConfirmStartSession}
-                disabled={isJoining}
-              >
-                <Ionicons name={isJoining ? "hourglass" : "play"} size={16} color="#FFFFFF" />
-                <Text style={styles.confirmBtnText}>{isJoining ? 'Checking...' : 'Start Session'}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      )}
-
-      <InviteSheet
-        visible={showInviteSheet}
-        onClose={() => setShowInviteSheet(false)}
-        roomName={roomName}
-        hostName={userName}
+      {/* Unified Start Session + Invite Modal (replaces old inline modal + InviteSheet) */}
+      <UnifiedSessionModal
+        visible={showStartSessionModal}
+        onClose={() => setShowStartSessionModal(false)}
+        onStartSession={handleConfirmStartSession}
+        isJoining={isJoining}
         purpose={purpose}
-        correlationId={correlationId}
-        onInviteMember={(userId, name, inviteType) => {
+        onPurposeChange={setPurpose}
+        participants={participants}
+        onAddParticipant={(userId, name, inviteType) => {
           if (!participants.find(p => p.id === userId)) {
             if (Platform.OS !== 'web') {
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -820,7 +796,7 @@ export default function ConferenceLobby() {
             showToast(`${name} invited`, 'success');
           }
         }}
-        onInviteGuest={(name, contact) => {
+        onAddGuest={(name, contact) => {
           const guestId = `guest-${Date.now()}`;
           if (Platform.OS !== 'web') {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -835,6 +811,10 @@ export default function ConferenceLobby() {
           }]);
           showToast(`${name} invited`, 'success');
         }}
+        onRemoveParticipant={handleRemoveParticipant}
+        roomName={roomName}
+        hostName={userName}
+        correlationId={correlationId}
       />
 
       <BottomSheet
@@ -981,13 +961,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     justifyContent: 'space-between',
-  },
-  idleHorizontalGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
   },
   sessionTopRow: {
     flexDirection: 'row',
@@ -1146,114 +1119,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 18,
   },
-  startButton: {
-    position: 'absolute',
-    bottom: 28,
-    right: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    boxShadow: '0 6px 24px rgba(37, 99, 235, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
-  } as ViewStyle,
-  startButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
-  },
-  sessionParticipantCount: {
-    fontSize: 13,
-    color: Colors.text.secondary,
-  },
-  sessionAgenda: {
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.04)',
-  },
-  agendaLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.text.muted,
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  agendaItem: {
-    fontSize: 13,
-    color: Colors.text.secondary,
-    marginBottom: 4,
-    lineHeight: 18,
-  },
-  noraReadyBadge: {
-    position: 'absolute',
-    bottom: 24,
-    left: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: 'rgba(6, 182, 212, 0.08)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.15)',
-  },
-  noraReadyText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: Colors.accent.cyan,
-  },
-  joinSessionButton: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: Colors.accent.cyan,
-    borderRadius: 8,
-  },
-  joinSessionText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#000000',
-  },
-  // Quick Actions (legacy - can be removed)
-  quickActionsLegacy: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.accent.cyan,
-  },
-
-  // Quick Actions
-  quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 12,
-  },
-  quickAction: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.background.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  quickActionActive: {
-    backgroundColor: 'rgba(6, 182, 212, 0.15)',
-    borderColor: Colors.accent.cyan,
-  },
-
   // Authority Section (Full Width)
   authoritySection: {
     marginBottom: 32,
@@ -1440,513 +1305,6 @@ const styles = StyleSheet.create({
   resolvedText: {
     fontSize: 12,
     fontWeight: '600',
-  },
-
-  // Bottom Row
-  bottomRow: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  purposeSection: {
-    flex: 1,
-  },
-  participantsSection: {
-    flex: 1,
-  },
-
-  // Sections
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.text.muted,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: Colors.background.secondary,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  addButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.accent.cyan,
-  },
-
-  // Purpose Pills
-  purposePills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  purposePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: Colors.background.secondary,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  purposePillActive: {
-    backgroundColor: 'rgba(6, 182, 212, 0.12)',
-    borderColor: Colors.accent.cyan,
-  },
-  purposePillText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.text.muted,
-  },
-  purposePillTextActive: {
-    color: Colors.text.primary,
-  },
-
-  // Participants
-  participantsList: {
-    gap: 8,
-  },
-  participantRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.background.secondary,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  participantAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  participantInitial: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  participantInfo: {
-    flex: 1,
-  },
-  participantName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text.primary,
-  },
-  participantRole: {
-    fontSize: 11,
-    color: Colors.text.muted,
-    marginTop: 1,
-  },
-  statusBadge: {
-    backgroundColor: 'rgba(6, 182, 212, 0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginRight: 8,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.accent.cyan,
-  },
-  removeBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.background.tertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Picker
-  pickerDropdown: {
-    backgroundColor: Colors.background.elevated,
-    borderRadius: 12,
-    marginTop: 8,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-  },
-  pickerTitle: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.text.muted,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  pickerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 10,
-  },
-  pickerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#8B5CF6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  pickerInitial: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.text.primary,
-  },
-  pickerInfo: {
-    flex: 1,
-  },
-  pickerName: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.text.primary,
-  },
-  pickerRole: {
-    fontSize: 10,
-    color: Colors.text.muted,
-  },
-
-  // Start Session Modal
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 100,
-  },
-  modalBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-  },
-  modalContainer: {
-    width: 520,
-    maxWidth: '90%',
-    maxHeight: '85%',
-    backgroundColor: '#141416',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    overflow: 'hidden',
-    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
-  } as ViewStyle,
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  modalTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  modalIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(6, 182, 212, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.2)',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.text.primary,
-  },
-  modalSubtitle: {
-    fontSize: 13,
-    color: Colors.text.muted,
-    marginTop: 2,
-  },
-  modalClose: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: Colors.background.tertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBody: {
-    padding: 24,
-    gap: 20,
-    flex: 1,
-  },
-  modalSection: {
-    gap: 12,
-  },
-  modalSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  modalSectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.text.secondary,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  participantCount: {
-    fontSize: 12,
-    color: Colors.text.muted,
-  },
-  purposeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  purposeOption: {
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    backgroundColor: Colors.background.tertiary,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    minWidth: 90,
-  },
-  purposeOptionActive: {
-    backgroundColor: 'rgba(37, 99, 235, 0.12)',
-    borderColor: '#2563EB',
-  },
-  purposeIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: Colors.background.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  purposeIconBoxActive: {
-    backgroundColor: '#2563EB',
-  },
-  purposeOptionText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.text.muted,
-  },
-  purposeOptionTextActive: {
-    color: Colors.text.primary,
-  },
-  participantsContainer: {
-    gap: 8,
-  },
-  moreParticipantsText: {
-    fontSize: 12,
-    color: Colors.text.muted,
-    textAlign: 'center',
-    paddingVertical: 4,
-  },
-  addParticipantWrapper: {
-    position: 'relative',
-  },
-  dropdownScroll: {
-    maxHeight: 180,
-  },
-  modalParticipantRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.background.tertiary,
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  modalParticipantAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  modalParticipantInitial: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  modalParticipantInfo: {
-    flex: 1,
-  },
-  modalParticipantName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text.primary,
-  },
-  modalParticipantRole: {
-    fontSize: 11,
-    color: Colors.text.muted,
-    marginTop: 1,
-  },
-  invitedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    marginRight: 8,
-  },
-  // invitedDot replaced by PulsingDot animated component
-  invitedBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.semantic.warning,
-  },
-  youBadge: {
-    backgroundColor: 'rgba(6, 182, 212, 0.12)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  youBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.accent.cyan,
-  },
-  removeParticipantBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.background.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addParticipantBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: Colors.background.tertiary,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    borderStyle: 'dashed',
-  },
-  addParticipantText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.accent.cyan,
-  },
-  modalPickerDropdown: {
-    position: 'absolute',
-    bottom: 48,
-    left: 0,
-    right: 0,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    zIndex: 100,
-    boxShadow: '0 -8px 32px rgba(0, 0, 0, 0.5)',
-  } as ViewStyle,
-  modalPickerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 8,
-  },
-  modalPickerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#8B5CF6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  modalPickerInitial: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.text.primary,
-  },
-  modalPickerInfo: {
-    flex: 1,
-  },
-  modalPickerName: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.text.primary,
-  },
-  modalPickerRole: {
-    fontSize: 10,
-    color: Colors.text.muted,
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-    padding: 24,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.06)',
-    backgroundColor: '#0F0F10',
-  },
-  cancelBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: Colors.background.secondary,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  cancelBtnText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text.secondary,
-  },
-  confirmBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#2563EB',
-    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
-  } as ViewStyle,
-  confirmBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 
   // Shared pressed feedback — opacity 0.7 per design spec

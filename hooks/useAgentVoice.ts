@@ -137,6 +137,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
         audio.onerror = (e) => {
           console.error('[useAgentVoice] Audio decode/playback error:', e);
+          onError?.(new Error('Audio playback failed — response shown in chat.'));
           URL.revokeObjectURL(url);
           processingRef.current = false;
           if (activeRef.current) {
@@ -156,6 +157,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           await audio.play();
         } catch (playError: any) {
           console.error('[useAgentVoice] Autoplay blocked:', playError?.message);
+          onError?.(new Error('Audio blocked by browser — tap to retry.'));
           URL.revokeObjectURL(url);
           processingRef.current = false;
           if (activeRef.current) {
@@ -165,10 +167,16 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       } else {
         if (!audioBlob) {
           console.error('[useAgentVoice] TTS returned null for agent "%s". Check ELEVENLABS_API_KEY.', agent);
+          onError?.(new Error('Voice synthesis unavailable — response shown in chat.'));
         }
         processingRef.current = false;
         if (activeRef.current) {
-          updateStatus('listening');
+          updateStatus('error');
+          setTimeout(() => {
+            if (activeRef.current) {
+              updateStatus('listening');
+            }
+          }, 2000);
         }
       }
     } catch (error) {

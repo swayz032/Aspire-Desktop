@@ -94,6 +94,11 @@ export async function speakText(
       console.error(`[TTS] ElevenLabs returned ${resp.status} for agent "${agent}"`);
       return null;
     }
+    const contentType = resp.headers.get('content-type') || '';
+    if (!contentType.includes('audio/')) {
+      console.error('[TTS] Server returned non-audio content-type:', contentType);
+      return null;
+    }
     return await resp.blob();
   } catch (err) {
     console.error('[TTS] ElevenLabs request failed:', err instanceof Error ? err.message : err);

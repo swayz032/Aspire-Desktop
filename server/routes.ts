@@ -1288,8 +1288,10 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     const { agent, text, voiceId } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
+      logger.warn('[TTS] ELEVENLABS_API_KEY is missing — voice synthesis disabled');
       return res.status(500).json({ error: 'Voice synthesis service not configured' });
     }
+    logger.info('[TTS] Request', { agent, textLength: text?.length ?? 0 });
 
     const resolvedVoiceId = voiceId || VOICE_IDS[agent];
     if (!resolvedVoiceId) {
@@ -1327,6 +1329,7 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     }
 
     const audioBuffer = await response.arrayBuffer();
+    logger.info('[TTS] Success', { agent, bytes: audioBuffer.byteLength });
     res.set('Content-Type', 'audio/mpeg');
     res.send(Buffer.from(audioBuffer));
   } catch (error: unknown) {
@@ -3483,6 +3486,7 @@ router.get('/api/contracts', async (req: Request, res: Response) => {
     res.json({ contracts, total, page, limit });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
+    console.error('[Contracts] Database query failed:', (error as Error)?.message || error);
     logger.error('Contracts list error', { error: msg });
     // Graceful degradation: contracts table doesn't exist yet (feature not launched).
     // Return empty state for ANY database error on this endpoint to prevent 500s

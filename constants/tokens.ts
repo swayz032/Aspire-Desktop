@@ -218,3 +218,80 @@ export const Animation = {
     stiffness: 150,
   },
 } as const;
+
+/**
+ * Canvas Mode tokens — immersion layers, motion design, and visual depth
+ * for the 3-tier canvas system (Off / Depth / Canvas).
+ *
+ * Spring config: damping 22 + stiffness 260 + mass 0.9 yields a snappy
+ * but organic response curve (~180ms settle, <5% overshoot).
+ */
+export const Canvas = {
+  /** Shadow scale multipliers and parallax bounds per immersion tier */
+  depth: {
+    elevationOff: 0,
+    elevationDepth: 2,
+    elevationCanvas: 4,
+    shadowScaleDepth: 1.2,
+    shadowScaleCanvas: 1.5,
+    parallaxMax: 4,
+  },
+
+  /** Duration targets (ms) and spring physics for all canvas animations */
+  motion: {
+    stageEnter: 180,
+    stageExit: 140,
+    runwayStep: 160,
+    lensOpen: 120,
+    lensClose: 100,
+    palette: 200,
+    stagger: 50,
+    modeTransition: 250,
+    spring: { damping: 22, stiffness: 260, mass: 0.9 },
+  },
+
+  /** Radial vignette overlay — subtle depth cueing at screen edges */
+  vignette: {
+    opacity: 0.15,
+    spread: 0.7,
+    color: 'rgba(0,0,0,0.15)',
+  },
+
+  /** Focus halo ring for active/selected canvas elements */
+  halo: {
+    width: 2,
+    color: 'rgba(59,130,246,0.4)',
+    blurRadius: 8,
+    activeColor: 'rgba(59,130,246,0.6)',
+  },
+
+  /** Stage overlay panel (draft / authority / receipt sidebars) */
+  stage: {
+    backdropBlur: 12,
+    panelGap: 16,
+    borderRadius: 20,
+    overlayBg: 'rgba(0,0,0,0.6)',
+  },
+
+  /** 3-position immersion toggle pill */
+  toggle: {
+    pillHeight: 32,
+    pillPadding: 3,
+    indicatorRadius: 14,
+    bg: 'rgba(255,255,255,0.06)',
+    activeBg: 'rgba(59,130,246,0.15)',
+    activeText: '#3B82F6',
+    inactiveText: '#6e6e73',
+  },
+
+  /** Horizontal execution runway — step indicators + connectors */
+  runway: {
+    stepSize: 28,
+    stepGap: 8,
+    activeColor: '#3B82F6',
+    completeColor: '#34c759',
+    pendingColor: '#6e6e73',
+    errorColor: '#ff3b30',
+    connectorHeight: 2,
+  },
+} as const;

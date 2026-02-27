@@ -4,13 +4,33 @@
  * Renders a real LiveKit video track for a participant.
  * Falls back to AvatarTileSurface when video is off.
  *
+ * Split into guard (LiveKitVideoTile) + connected component
+ * (LiveKitVideoTileConnected) to prevent crash when participant
+ * is undefined — LiveKit hooks require a non-null participant or
+ * a wrapping ParticipantContext.
+ *
  * Uses:
  * - useIsSpeaking() for speaking indicator
  * - useConnectionQualityIndicator() for quality dot
  * - TrackReferenceOrPlaceholder for video attachment
+ *
+ * Wave 4 Polish:
+ * - Multi-layer breathing ring (inner border + outer glow with offset timing)
+ * - Smooth speaking border opacity transition (fade in/out, not hard cut)
+ * - Connection quality bar micro-animation (spring height changes)
  */
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, ViewStyle } from 'react-native';
+import ReAnimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withSequence,
+  withSpring,
+  Easing,
+  interpolateColor,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -18,8 +38,9 @@ import {
   useConnectionQualityIndicator,
 } from '@livekit/components-react';
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
+import type { Participant } from 'livekit-client';
 import { Track, ConnectionQuality } from 'livekit-client';
-import { Colors } from '@/constants/tokens';
+import { Colors, Spacing, Animation } from '@/constants/tokens';
 import { AvatarTileSurface } from '@/components/session/AvatarTileSurface';
 
 interface LiveKitVideoTileProps {
@@ -121,7 +142,7 @@ function getQualityColor(quality: ConnectionQuality): string {
     case ConnectionQuality.Lost:
       return Colors.semantic.error;
     default:
-      return '#A1A1AA';
+      return Colors.text.muted;
   }
 }
 
@@ -140,49 +161,257 @@ function getQualityBars(quality: ConnectionQuality): number {
   }
 }
 
-export function LiveKitVideoTile({
+/* -------------------------------------------------------------------------- */
+/*  AnimatedQualityBar                                                        */
+/*  Single quality bar that springs to target height on quality change.        */
+/* -------------------------------------------------------------------------- */
+
+function AnimatedQualityBar({
+  index,
+  active,
+  color,
+}: {
+  index: number;
+  active: boolean;
+  color: string;
+}) {
+  const targetHeight = 4 + index * 2;
+  const heightAnim = useSharedValue(active ? targetHeight : 2);
+
+  useEffect(() => {
+    heightAnim.value = withSpring(active ? targetHeight : 2, {
+      damping: Animation.spring.damping,
+      stiffness: Animation.spring.stiffness,
+    });
+  }, [active, targetHeight]);
+
+  // Color transition: 0 = inactive (border.strong), 1 = active (qualityColor)
+  const colorProgress = useSharedValue(active ? 1 : 0);
+  useEffect(() => {
+    colorProgress.value = withTiming(active ? 1 : 0, { duration: Animation.normal });
+  }, [active]);
+
+  const barStyle = useAnimatedStyle(() => ({
+    height: heightAnim.value,
+    backgroundColor: interpolateColor(
+      colorProgress.value,
+      [0, 1],
+      [Colors.border.strong, color],
+    ),
+  }));
+
+  return (
+    <ReAnimated.View
+      style={[tileStyles.qualityBar, barStyle]}
+      accessibilityElementsHidden
+    />
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  ConnectingTileFallback                                                    */
+/*  Premium avatar tile shown while participant is null (room connecting).     */
+/*  Multi-layer breathing ring: inner border pulse + outer glow ring          */
+/*  with offset timing for organic depth.                                     */
+/* -------------------------------------------------------------------------- */
+
+function ConnectingTileFallback({
+  name,
+  isLocal,
+  size,
+}: {
+  name: string;
+  isLocal: boolean;
+  size: 'normal' | 'small' | 'spotlight';
+}) {
+  // Inner ring: 0.35 -> 0.7 opacity, 1600ms cycle
+  const innerOpacity = useSharedValue(0.35);
+  // Outer ring: 0.15 -> 0.45 opacity, 2000ms cycle (offset phase for organic feel)
+  const outerOpacity = useSharedValue(0.15);
+  // Connecting status dot
+  const dotOpacity = useSharedValue(0.3);
+
+  useEffect(() => {
+    // Inner ring — slightly faster pulse
+    innerOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.7, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.35, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+      false,
+    );
+
+    // Outer ring — slower, offset phase creates depth illusion
+    outerOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.45, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.15, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+      false,
+    );
+
+    // Status dot
+    dotOpacity.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.3, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+      false,
+    );
+  }, []);
+
+  const innerStyle = useAnimatedStyle(() => ({ opacity: innerOpacity.value }));
+  const outerStyle = useAnimatedStyle(() => ({ opacity: outerOpacity.value }));
+  const dotStyle = useAnimatedStyle(() => ({ opacity: dotOpacity.value }));
+
+  const isSmall = size === 'small';
+
+  return (
+    <View
+      style={[
+        tileStyles.container,
+        isSmall && tileStyles.containerSmall,
+        size === 'spotlight' && tileStyles.containerSpotlight,
+      ]}
+      accessibilityLabel={`${name}, connecting`}
+      accessibilityRole="image"
+    >
+      {/* Avatar surface */}
+      <AvatarTileSurface
+        name={name}
+        seed={isLocal ? 'local-self' : name}
+        accentColor={isLocal ? '#2D3748' : '#374151'}
+        size={size}
+        videoOff={true}
+        style={tileStyles.avatarFill}
+      />
+
+      {/* Outer breathing ring — wider, softer glow (box-shadow on web) */}
+      <ReAnimated.View
+        style={[
+          fallbackStyles.outerBreathRing,
+          isSmall && { borderRadius: Spacing.sm },
+          outerStyle,
+        ]}
+        accessibilityElementsHidden
+      />
+
+      {/* Inner breathing ring — tight border glow */}
+      <ReAnimated.View
+        style={[
+          fallbackStyles.innerBreathRing,
+          isSmall && { borderRadius: Spacing.sm },
+          innerStyle,
+        ]}
+        accessibilityElementsHidden
+      />
+
+      {/* Bottom gradient with name + connecting status */}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.7)']}
+        style={tileStyles.bottomOverlay}
+      >
+        <View style={tileStyles.bottomRow}>
+          <View style={tileStyles.nameContainer}>
+            <Text
+              style={[tileStyles.name, isSmall && tileStyles.nameSmall]}
+              numberOfLines={1}
+            >
+              {name}
+            </Text>
+            {isLocal && (
+              <View style={tileStyles.youBadge}>
+                <Ionicons name="star" size={8} color={Colors.semantic.warning} />
+              </View>
+            )}
+          </View>
+          <View style={fallbackStyles.connectingRow}>
+            <ReAnimated.View style={[fallbackStyles.connectingDot, dotStyle]} />
+            {!isSmall && (
+              <Text style={fallbackStyles.connectingText}>Connecting</Text>
+            )}
+          </View>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  LiveKitVideoTileConnected                                                 */
+/*  Inner component that receives guaranteed non-null participant.            */
+/*  All LiveKit hooks live here — safe from the undefined crash.              */
+/*                                                                            */
+/*  Wave 4: Animated speaking border (smooth opacity fade), animated          */
+/*  quality bars (spring height + color interpolation).                       */
+/* -------------------------------------------------------------------------- */
+
+function LiveKitVideoTileConnected({
   trackRef,
+  participant,
   name: nameProp,
   isActiveSpeaker = false,
   isLocal = false,
   size = 'normal',
-  webcamStream,
-}: LiveKitVideoTileProps) {
-  const participant = trackRef?.participant ?? undefined;
-  const displayName = nameProp || participant?.name || participant?.identity || 'Unknown';
-
-  // LiveKit hooks — safe to call with null participant (return defaults)
+}: {
+  trackRef: TrackReferenceOrPlaceholder;
+  participant: Participant;
+  name: string;
+  isActiveSpeaker: boolean;
+  isLocal: boolean;
+  size: 'normal' | 'small' | 'spotlight';
+}) {
   const isSpeaking = useIsSpeaking(participant);
   const { quality } = useConnectionQualityIndicator({ participant });
 
   // Check if video track is available and enabled
-  const publication = trackRef?.publication;
+  const publication = trackRef.publication;
   const hasVideo = publication?.track != null && !publication.isMuted;
 
   const isSmall = size === 'small';
   const isSpotlight = size === 'spotlight';
 
   // Check if audio is muted
-  const audioPublication = participant?.getTrackPublication(Track.Source.Microphone);
+  const audioPublication = participant.getTrackPublication(Track.Source.Microphone);
   const isMuted = audioPublication ? audioPublication.isMuted : true;
 
   const qualityColor = getQualityColor(quality);
   const qualityBars = getQualityBars(quality);
 
+  // Smooth speaking border opacity — fades in over 200ms, fades out over 300ms
+  const speakingOpacity = useSharedValue(0);
+  useEffect(() => {
+    speakingOpacity.value = withTiming(
+      (isSpeaking || isActiveSpeaker) ? 1 : 0,
+      { duration: (isSpeaking || isActiveSpeaker) ? 200 : 300 },
+    );
+  }, [isSpeaking, isActiveSpeaker]);
+
+  const speakingBorderStyle = useAnimatedStyle(() => ({
+    opacity: speakingOpacity.value,
+    borderColor: isSpeaking ? Colors.semantic.success : Colors.accent.cyan,
+  }));
+
   return (
-    <View style={[
-      tileStyles.container,
-      isSmall && tileStyles.containerSmall,
-      isSpotlight && tileStyles.containerSpotlight,
-      (isSpeaking || isActiveSpeaker) && { borderColor: isSpeaking ? Colors.semantic.success : Colors.accent.cyan, borderWidth: 2 },
-    ]}>
-      {/* Video track or avatar when video is off / not yet connected */}
-      {hasVideo && trackRef ? (
+    <View
+      style={[
+        tileStyles.container,
+        isSmall && tileStyles.containerSmall,
+        isSpotlight && tileStyles.containerSpotlight,
+      ]}
+      accessibilityLabel={`${nameProp}${isSpeaking ? ', speaking' : ''}${isMuted ? ', muted' : ''}`}
+      accessibilityRole="image"
+    >
+      {/* Video track or avatar when video is off */}
+      {hasVideo ? (
         <LiveKitVideoView trackRef={trackRef} />
       ) : (
         <AvatarTileSurface
-          name={displayName}
-          seed={participant?.identity || 'unknown'}
+          name={nameProp}
+          seed={participant.identity || 'unknown'}
           accentColor={isLocal ? '#2D3748' : '#374151'}
           size={isSmall ? 'small' : isSpotlight ? 'spotlight' : 'normal'}
           videoOff={true}
@@ -190,10 +419,12 @@ export function LiveKitVideoTile({
         />
       )}
 
-      {/* Speaking glow overlay */}
-      {isSpeaking && (
-        <View style={tileStyles.speakingBorder} />
-      )}
+      {/* Speaking glow overlay — animated opacity for smooth transition */}
+      <ReAnimated.View
+        style={[tileStyles.speakingBorder, speakingBorderStyle]}
+        pointerEvents="none"
+        accessibilityElementsHidden
+      />
 
       {/* Bottom gradient overlay with name + indicators */}
       <LinearGradient
@@ -203,7 +434,7 @@ export function LiveKitVideoTile({
         <View style={tileStyles.bottomRow}>
           <View style={tileStyles.nameContainer}>
             <Text style={[tileStyles.name, isSmall && tileStyles.nameSmall]} numberOfLines={1}>
-              {displayName}
+              {nameProp}
             </Text>
             {isLocal && (
               <View style={tileStyles.youBadge}>
@@ -212,24 +443,28 @@ export function LiveKitVideoTile({
             )}
           </View>
           <View style={tileStyles.indicators}>
-            {/* Connection quality bars */}
-            <View style={tileStyles.qualityContainer}>
+            {/* Connection quality bars — animated height per bar */}
+            <View
+              style={tileStyles.qualityContainer}
+              accessibilityLabel={`Connection quality: ${quality === ConnectionQuality.Excellent ? 'excellent' : quality === ConnectionQuality.Good ? 'good' : quality === ConnectionQuality.Poor ? 'poor' : quality === ConnectionQuality.Lost ? 'lost' : 'unknown'}`}
+              accessibilityRole="image"
+            >
               {[0, 1, 2, 3].map((i) => (
-                <View
+                <AnimatedQualityBar
                   key={i}
-                  style={[
-                    tileStyles.qualityBar,
-                    { height: 4 + i * 2 },
-                    i < qualityBars
-                      ? { backgroundColor: qualityColor }
-                      : { backgroundColor: '#3C3C3E' },
-                  ]}
+                  index={i}
+                  active={i < qualityBars}
+                  color={qualityColor}
                 />
               ))}
             </View>
             {/* Muted indicator */}
             {isMuted && (
-              <View style={tileStyles.mutedBadge}>
+              <View
+                style={tileStyles.mutedBadge}
+                accessibilityLabel="Microphone muted"
+                accessibilityRole="image"
+              >
                 <Ionicons name="mic-off" size={10} color={Colors.semantic.error} />
               </View>
             )}
@@ -240,16 +475,62 @@ export function LiveKitVideoTile({
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/*  LiveKitVideoTile (exported guard)                                         */
+/*  Checks participant existence BEFORE rendering connected component.        */
+/*  No LiveKit hooks are called at this level.                                */
+/* -------------------------------------------------------------------------- */
+
+export function LiveKitVideoTile({
+  trackRef,
+  name: nameProp,
+  isActiveSpeaker = false,
+  isLocal = false,
+  size = 'normal',
+  webcamStream: _webcamStream,
+}: LiveKitVideoTileProps) {
+  const participant = trackRef?.participant;
+  const displayName = nameProp || participant?.name || participant?.identity || 'Unknown';
+
+  // Guard: no participant means room hasn't connected this peer yet.
+  // Render premium fallback — no LiveKit hooks called.
+  if (!participant) {
+    return (
+      <ConnectingTileFallback
+        name={displayName}
+        isLocal={isLocal}
+        size={size}
+      />
+    );
+  }
+
+  // Connected path — participant is guaranteed non-null
+  return (
+    <LiveKitVideoTileConnected
+      trackRef={trackRef!}
+      participant={participant}
+      name={displayName}
+      isActiveSpeaker={isActiveSpeaker}
+      isLocal={isLocal}
+      size={size}
+    />
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Styles                                                                    */
+/* -------------------------------------------------------------------------- */
+
 const tileStyles = StyleSheet.create({
   container: {
     flex: 1,
     borderRadius: 10,
     overflow: 'hidden',
-    backgroundColor: '#141414',
+    backgroundColor: Colors.background.elevated,
     position: 'relative',
   },
   containerSmall: {
-    borderRadius: 8,
+    borderRadius: Spacing.sm,
   },
   containerSpotlight: {
     borderRadius: 10,
@@ -266,15 +547,17 @@ const tileStyles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 2,
     borderColor: Colors.semantic.success,
-  },
+    // Web-only outer glow for speaking state
+    boxShadow: `inset 0 0 8px rgba(52, 199, 89, 0.2), 0 0 12px rgba(52, 199, 89, 0.15)`,
+  } as ViewStyle,
   bottomOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     paddingHorizontal: 10,
-    paddingVertical: 8,
-    paddingTop: 20,
+    paddingVertical: Spacing.sm,
+    paddingTop: Spacing.xl,
   },
   bottomRow: {
     flexDirection: 'row',
@@ -284,29 +567,29 @@ const tileStyles = StyleSheet.create({
   nameContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: Spacing.xs,
     flex: 1,
   },
   name: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#D4D4D8',
+    color: Colors.text.secondary,
   },
   nameSmall: {
     fontSize: 11,
   },
   youBadge: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(212, 160, 23, 0.3)',
+    width: Spacing.lg,
+    height: Spacing.lg,
+    borderRadius: Spacing.sm,
+    backgroundColor: Colors.semantic.warningLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   indicators: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.sm - 2,
   },
   qualityContainer: {
     flexDirection: 'row',
@@ -319,11 +602,55 @@ const tileStyles = StyleSheet.create({
     borderRadius: 1,
   },
   mutedBadge: {
-    width: 20,
-    height: 20,
+    width: Spacing.xl,
+    height: Spacing.xl,
     borderRadius: 10,
-    backgroundColor: 'rgba(255, 59, 48, 0.3)',
+    backgroundColor: Colors.semantic.errorLight,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+});
+
+const fallbackStyles = StyleSheet.create({
+  // Inner breathing ring — tight border, brighter glow
+  innerBreathRing: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.accent.cyanMedium,
+  },
+  // Outer breathing ring — wider glow via box-shadow (web), slightly inset on native
+  outerBreathRing: {
+    position: 'absolute',
+    top: -1,
+    left: -1,
+    right: -1,
+    bottom: -1,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: Colors.accent.cyanLight,
+    // Web-only: diffuse outer glow
+    boxShadow: `0 0 16px ${Colors.accent.cyanLight}, 0 0 32px rgba(59, 130, 246, 0.08)`,
+  } as ViewStyle,
+  connectingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  connectingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.accent.cyan,
+  },
+  connectingText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: Colors.text.muted,
+    letterSpacing: 0.3,
   },
 });

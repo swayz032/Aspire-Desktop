@@ -12,6 +12,8 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
+import { ImmersionLayer } from '@/components/canvas/ImmersionLayer';
+import { VignetteOverlay } from '@/components/canvas/VignetteOverlay';
 import { getAuthorityQueue, getCalendarEvents, getCashPosition } from '@/lib/api';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import { useTenant, useSupabase } from '@/providers';
@@ -218,6 +220,7 @@ export function DesktopHome() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <VignetteOverlay />
         <View style={styles.grid}>
           {/* Personalized greeting */}
           <Text style={styles.greeting}>{greeting}</Text>
@@ -248,6 +251,7 @@ export function DesktopHome() {
             </View>
           )}
 
+          <ImmersionLayer depth={1}>
           <View style={styles.threeColWrapper}>
             <View style={styles.leftCol}>
               <View style={styles.section}>
@@ -286,7 +290,9 @@ export function DesktopHome() {
               </View>
             </View>
           </View>
+          </ImmersionLayer>
 
+          <ImmersionLayer depth={2}>
           <View style={styles.authoritySection}>
             <SectionHeader
               title="Authority Queue"
@@ -358,6 +364,7 @@ export function DesktopHome() {
               </View>
             )}
           </View>
+          </ImmersionLayer>
         </View>
       </ScrollView>
 
