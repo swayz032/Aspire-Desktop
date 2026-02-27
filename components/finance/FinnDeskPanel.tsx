@@ -875,7 +875,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
             );
             // Speak response via ElevenLabs TTS when in voice tab
             if (activeTab === 'voice' && responseText) {
-              speakText('finn', responseText).catch(() => {});
+              speakText('finn', responseText, session?.access_token).catch(() => {});
             }
           }
           setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);

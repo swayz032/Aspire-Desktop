@@ -10,7 +10,7 @@ import { getMfaStatus, isMfaVerifiedRecently, verifyMfaCode, generateMfaSecret, 
 
 const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
 
-type ProviderStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
+type ProviderStatus = 'connected' | 'disconnected' | 'connecting' | 'error' | 'unavailable';
 
 interface ProviderState {
   plaid: { status: ProviderStatus; detail: string; lastSync: string | null };
@@ -65,45 +65,47 @@ export default function ConnectionsScreen() {
 
   const checkAllStatuses = useCallback(async () => {
     try {
+      const safeFetchStatus = async (url: string, label: string) => {
+        try {
+          const r = await fetch(url);
+          if (!r.ok) {
+            console.warn(`[Connections] ${label} status returned ${r.status}`);
+            return { connected: false, _unavailable: true, _error: `Server returned ${r.status}` };
+          }
+          return await r.json();
+        } catch (e: any) {
+          console.warn(`[Connections] ${label} status check failed:`, e?.message || e);
+          return { connected: false, _unavailable: true, _error: e?.message || 'Service unreachable' };
+        }
+      };
+
       const [plaidRes, qbRes, gustoRes, stripeRes] = await Promise.all([
-        fetch('/api/plaid/status').then(r => r.json()).catch((e) => {
-          console.warn('[Connections] Plaid status check failed:', e?.message || e);
-          return { connected: false };
-        }),
-        fetch('/api/quickbooks/status').then(r => r.json()).catch((e) => {
-          console.warn('[Connections] QuickBooks status check failed:', e?.message || e);
-          return { connected: false };
-        }),
-        fetch('/api/gusto/status').then(r => r.json()).catch((e) => {
-          console.warn('[Connections] Gusto status check failed:', e?.message || e);
-          return { connected: false };
-        }),
-        fetch('/api/stripe-connect/status').then(r => r.json()).catch((e) => {
-          console.warn('[Connections] Stripe status check failed:', e?.message || e);
-          return { connected: false };
-        }),
+        safeFetchStatus('/api/plaid/status', 'Plaid'),
+        safeFetchStatus('/api/quickbooks/status', 'QuickBooks'),
+        safeFetchStatus('/api/gusto/status', 'Gusto'),
+        safeFetchStatus('/api/stripe-connect/status', 'Stripe'),
       ]);
 
       setProviders({
         plaid: {
-          status: plaidRes.connected ? 'connected' : 'disconnected',
-          detail: plaidRes.connected ? 'Bank accounts linked' : 'Banking & transactions',
+          status: plaidRes.connected ? 'connected' : plaidRes._unavailable ? 'unavailable' : 'disconnected',
+          detail: plaidRes.connected ? 'Bank accounts linked' : plaidRes._unavailable ? 'Service temporarily unavailable' : 'Banking & transactions',
           lastSync: plaidRes.connected ? 'Just now' : null,
         },
         quickbooks: {
-          status: qbRes.connected ? 'connected' : 'disconnected',
-          detail: qbRes.connected ? 'Syncing financial data' : 'Accounting & bookkeeping',
+          status: qbRes.connected ? 'connected' : qbRes._unavailable ? 'unavailable' : 'disconnected',
+          detail: qbRes.connected ? 'Syncing financial data' : qbRes._unavailable ? 'Service temporarily unavailable' : 'Accounting & bookkeeping',
           lastSync: qbRes.connected ? 'Just now' : null,
           realmId: qbRes.realmId || null,
         },
         gusto: {
-          status: gustoRes.connected ? 'connected' : 'disconnected',
-          detail: gustoRes.connected ? 'Payroll data syncing' : 'Payroll & HR',
+          status: gustoRes.connected ? 'connected' : gustoRes._unavailable ? 'unavailable' : 'disconnected',
+          detail: gustoRes.connected ? 'Payroll data syncing' : gustoRes._unavailable ? 'Service temporarily unavailable' : 'Payroll & HR',
           lastSync: gustoRes.connected ? 'Just now' : null,
         },
         stripe: {
-          status: stripeRes.connected ? 'connected' : 'disconnected',
-          detail: stripeRes.connected ? 'Payments active' : 'Payments & invoicing',
+          status: stripeRes.connected ? 'connected' : stripeRes._unavailable ? 'unavailable' : 'disconnected',
+          detail: stripeRes.connected ? 'Payments active' : stripeRes._unavailable ? 'Service temporarily unavailable' : 'Payments & invoicing',
           lastSync: stripeRes.connected ? 'Just now' : null,
           accountId: stripeRes.accountId || null,
         },
@@ -724,10 +726,10 @@ export default function ConnectionsScreen() {
               <View style={s.providerMeta}>
                 <View style={s.nameRow}>
                   <Text style={s.providerName}>{config.name}</Text>
-                  <View style={[s.statusPill, { backgroundColor: isConnected ? 'rgba(52,211,153,0.15)' : 'rgba(161,161,166,0.12)' }]}>
-                    <View style={[s.statusDot, { backgroundColor: isConnected ? '#34D399' : Colors.text.muted }]} />
-                    <Text style={[s.statusLabel, { color: isConnected ? '#34D399' : Colors.text.muted }]}>
-                      {isConnected ? 'Connected' : 'Not connected'}
+                  <View style={[s.statusPill, { backgroundColor: isConnected ? 'rgba(52,211,153,0.15)' : state.status === 'unavailable' ? 'rgba(255,149,0,0.12)' : 'rgba(161,161,166,0.12)' }]}>
+                    <View style={[s.statusDot, { backgroundColor: isConnected ? '#34D399' : state.status === 'unavailable' ? '#FF9500' : Colors.text.muted }]} />
+                    <Text style={[s.statusLabel, { color: isConnected ? '#34D399' : state.status === 'unavailable' ? '#FF9500' : Colors.text.muted }]}>
+                      {isConnected ? 'Connected' : state.status === 'unavailable' ? 'Unavailable' : 'Not connected'}
                     </Text>
                   </View>
                 </View>

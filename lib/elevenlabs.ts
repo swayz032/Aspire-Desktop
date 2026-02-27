@@ -79,11 +79,16 @@ export function getVoiceConfig(agent: AgentName): VoiceConfig {
 export async function speakText(
   agent: AgentName,
   text: string,
+  accessToken?: string,
 ): Promise<Blob | null> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
     const resp = await fetch('/api/elevenlabs/tts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         agent,
         text,
@@ -113,11 +118,16 @@ export async function speakText(
 export async function streamSpeak(
   agent: AgentName,
   text: string,
+  accessToken?: string,
 ): Promise<ReadableStream<Uint8Array> | null> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
     const resp = await fetch('/api/elevenlabs/tts/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         agent,
         text,

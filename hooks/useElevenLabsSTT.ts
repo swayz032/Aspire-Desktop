@@ -14,6 +14,8 @@ interface UseElevenLabsSTTOptions {
   onUtterance?: (text: string) => void;
   /** Silence threshold in ms before sending accumulated audio (default: 1500) */
   silenceTimeout?: number;
+  /** JWT access token for authenticated API calls */
+  accessToken?: string;
 }
 
 interface UseElevenLabsSTTResult {
@@ -35,6 +37,8 @@ export function useElevenLabsSTT(
   const onUtteranceRef = useRef(options.onUtterance);
   onUtteranceRef.current = options.onUtterance;
   const silenceTimeout = options.silenceTimeout ?? 1500;
+  const accessTokenRef = useRef(options.accessToken);
+  accessTokenRef.current = options.accessToken;
 
   const [transcript, setTranscript] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -67,9 +71,13 @@ export function useElevenLabsSTT(
         new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
       );
 
+      const sttHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (accessTokenRef.current) {
+        sttHeaders['Authorization'] = `Bearer ${accessTokenRef.current}`;
+      }
       const resp = await fetch('/api/elevenlabs/stt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sttHeaders,
         body: JSON.stringify({ audio: base64, encoding: 'base64' }),
       });
 

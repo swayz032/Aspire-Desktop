@@ -97,6 +97,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@babel/plugin-syntax-import-meta": "^7.10.4",
+    "@testing-library/react-native": "^13.3.3",
     "@types/google.maps": "^3.58.1",
     "@types/jest": "^30.0.0",
     "@types/nodemailer": "^7.0.10",

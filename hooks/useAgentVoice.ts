@@ -46,6 +46,8 @@ interface UseAgentVoiceReturn {
   startSession: () => Promise<void>;
   endSession: () => void;
   sendText: (text: string) => Promise<void>;
+  /** Replay last audio that was blocked by browser autoplay policy. */
+  replayLastAudio: () => Promise<boolean>;
 }
 
 /**
@@ -69,6 +71,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const activeRef = useRef(false);
   // Prevent duplicate sends while processing
   const processingRef = useRef(false);
+  // Store last audio URL for replay on autoplay block
+  const lastAudioUrlRef = useRef<string | null>(null);
 
   const useDeepgram = DEEPGRAM_STT_AGENTS.includes(agent);
 
@@ -129,7 +133,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       // Speak the response via TTS
       updateStatus('speaking');
 
-      const audioBlob = await speakText(agent, responseText);
+      const audioBlob = await speakText(agent, responseText, accessToken);
       if (audioBlob && audioBlob.size > 0 && activeRef.current) {
         const url = URL.createObjectURL(audioBlob);
         const audio = new Audio(url);
@@ -157,8 +161,9 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           await audio.play();
         } catch (playError: any) {
           console.error('[useAgentVoice] Autoplay blocked:', playError?.message);
+          // Store URL for replay on user gesture instead of revoking
+          lastAudioUrlRef.current = url;
           onError?.(new Error('Audio blocked by browser — tap to retry.'));
-          URL.revokeObjectURL(url);
           processingRef.current = false;
           if (activeRef.current) {
             updateStatus('listening');
@@ -212,10 +217,47 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   // ElevenLabs STT — for Finn, Ava, Eli, Sarah (voice-first agents)
   const elevenLabsStt = useElevenLabsSTT({
     onUtterance: useDeepgram ? undefined : handleUtterance,
+    accessToken,
   });
 
   // Select the active STT provider
   const stt = useDeepgram ? deepgramStt : elevenLabsStt;
+
+  /**
+   * Replay the last TTS audio that was blocked by browser autoplay policy.
+   * Must be called from a user gesture handler (click/tap) to satisfy autoplay.
+   * Returns true if replay succeeded, false if no audio was stored.
+   */
+  const replayLastAudio = useCallback(async (): Promise<boolean> => {
+    const url = lastAudioUrlRef.current;
+    if (!url) return false;
+
+    try {
+      updateStatus('speaking');
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        lastAudioUrlRef.current = null;
+        processingRef.current = false;
+        if (activeRef.current) updateStatus('listening');
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        lastAudioUrlRef.current = null;
+        processingRef.current = false;
+        if (activeRef.current) updateStatus('listening');
+      };
+      await audio.play();
+      return true;
+    } catch {
+      URL.revokeObjectURL(url);
+      lastAudioUrlRef.current = null;
+      processingRef.current = false;
+      if (activeRef.current) updateStatus('listening');
+      return false;
+    }
+  }, [updateStatus]);
 
   /**
    * Start a voice session. Attempts STT for mic input, but degrades
@@ -247,6 +289,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       audioRef.current.pause();
       audioRef.current = null;
     }
+    // Clean up any stored autoplay-blocked audio
+    if (lastAudioUrlRef.current) {
+      URL.revokeObjectURL(lastAudioUrlRef.current);
+      lastAudioUrlRef.current = null;
+    }
     setTranscript('');
     setLastReceiptId(null);
     updateStatus('idle');
@@ -269,5 +316,6 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     startSession,
     endSession,
     sendText,
+    replayLastAudio,
   };
 }
