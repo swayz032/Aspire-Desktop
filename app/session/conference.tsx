@@ -517,9 +517,11 @@ export default function ConferenceSession() {
       <InviteSheet
         visible={inviteSheetVisible}
         onClose={() => setInviteSheetVisible(false)}
+        roomName="CR-01"
+        hostName="You"
+        purpose="Internal"
         onInviteMember={handleInviteMember}
         onInviteGuest={handleInviteGuest}
-        onCopyLink={handleCopyLink}
       />
 
       <StaffCommandSheet

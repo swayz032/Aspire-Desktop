@@ -53,6 +53,7 @@ const PUBLIC_PATHS = [
   '/api/sandbox/health',
   '/api/webhooks/twilio/',  // Twilio webhooks (signature-validated, no JWT)
   '/api/mail/oauth/google/callback', // Google redirects here without JWT
+  '/api/conference/join/',  // Join code resolution — guests authenticate via short-lived code, not JWT
 ];
 
 // /v1/ paths that REQUIRE auth (Law #3: Fail Closed — default deny)

@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Image, ImageBackground, ViewStyle } from 'react-native';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSpring, 
+import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Image, ImageBackground, ViewStyle, LayoutAnimation, Platform } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withRepeat,
+  withTiming,
+  withSequence,
   interpolate,
-  Extrapolation
+  Extrapolation,
+  Easing,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -16,12 +20,35 @@ import { BottomSheet } from '@/components/session/BottomSheet';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
 import {
   SessionPurpose,
-  MEMBER_DIRECTORY,
 } from '@/data/session';
 import { useDesktop } from '@/lib/useDesktop';
 import { useSupabase, useTenant } from '@/providers';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { formatDisplayId } from '@/lib/formatters';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
+import { InviteSheet } from '@/components/session/InviteSheet';
+
+// ─── Pulsing dot for pending/invited participants ────────────────────────────
+function PulsingDot({ color }: { color: string }) {
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.3, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+      false,
+    );
+  }, []);
+  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View
+      style={[{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }, animStyle]}
+      accessibilityElementsHidden
+    />
+  );
+}
 
 const CONFERENCE_ROOM_IMAGE = require('@/assets/images/conference-room-meeting.jpg');
 const TEAM_MEETING_IMAGE = require('@/assets/images/executive-conference.jpg');
@@ -47,6 +74,7 @@ interface Participant {
   role: string;
   avatarColor: string;
   status: 'ready' | 'invited' | 'joining';
+  inviteType?: 'internal' | 'cross-suite' | 'external';
 }
 
 interface AuthorityItem {
@@ -80,6 +108,7 @@ export default function ConferenceLobby() {
   const isDesktop = useDesktop();
   const { session, suiteId } = useSupabase();
   const { tenant } = useTenant();
+  const { authenticatedFetch } = useAuthFetch();
 
   const userName = session?.user?.user_metadata?.full_name
     ?? session?.user?.email?.split('@')[0]
@@ -90,7 +119,6 @@ export default function ConferenceLobby() {
   const [participants, setParticipants] = useState<Participant[]>([
     { id: 'you', name: userName, role: 'Founder', avatarColor: Colors.accent.cyan, status: 'ready' },
   ]);
-  const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [authorityItems, setAuthorityItems] = useState<AuthorityItem[]>(INITIAL_AUTHORITY_QUEUE);
   
@@ -100,6 +128,10 @@ export default function ConferenceLobby() {
   
   const [showStartSessionModal, setShowStartSessionModal] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
+  const [showInviteSheet, setShowInviteSheet] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+  const [isConferenceReady, setIsConferenceReady] = useState<boolean | null>(null);
+  const conferenceCheckTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const flipProgress = useSharedValue(0);
 
   // Sync animation with state - single source of truth
@@ -162,11 +194,67 @@ export default function ConferenceLobby() {
     };
   });
 
+  const roomName = `suite-${suiteId || 'dev'}-conference`;
+
+  // Session-level correlation ID for tracing all conference actions
+  // Generated once per component mount, threaded through InviteSheet → API calls → receipts
+  const [correlationId] = useState(() => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID();
+    }
+    // Fallback for environments without crypto.randomUUID
+    return `conf-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  });
+
+  // Pre-join validation: check if LiveKit is configured before starting a session
+  // Law #3: Fail Closed — 5s timeout prevents indefinite hang
+  const checkConferenceReady = async (): Promise<boolean> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    // Store timeout ID in ref so unmount cleanup can clear it
+    conferenceCheckTimeoutRef.current = timeoutId;
+    try {
+      setIsJoining(true);
+      const resp = await authenticatedFetch('/api/livekit/status', {
+        signal: controller.signal,
+      });
+      if (!resp.ok) {
+        showToast('Conference service is not available', 'error');
+        return false;
+      }
+      const data = await resp.json();
+      setIsConferenceReady(data.configured);
+      if (!data.configured) {
+        showToast('Conference service is not available', 'error');
+        return false;
+      }
+      return true;
+    } catch {
+      showToast('Conference service is not available', 'error');
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+      conferenceCheckTimeoutRef.current = null;
+      setIsJoining(false);
+    }
+  };
+
+  // Cleanup timer on unmount to prevent orphaned setTimeout
+  useEffect(() => {
+    return () => {
+      if (conferenceCheckTimeoutRef.current) {
+        clearTimeout(conferenceCheckTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleStartNewSession = () => {
     setShowStartSessionModal(true);
   };
-  
-  const handleConfirmStartSession = () => {
+
+  const handleConfirmStartSession = async () => {
+    const ready = await checkConferenceReady();
+    if (!ready) return;
     setShowStartSessionModal(false);
     setIsSessionActive(true);
     showToast('Session started successfully', 'success');
@@ -183,23 +271,14 @@ export default function ConferenceLobby() {
     setToastVisible(true);
   };
 
-  const handleAddMember = (member: typeof MEMBER_DIRECTORY[0]) => {
-    if (!participants.find(p => p.id === member.id)) {
-      setParticipants([...participants, {
-        id: member.id,
-        name: member.name,
-        role: member.role,
-        avatarColor: '#8B5CF6',
-        status: 'invited',
-      }]);
-      showToast(`${member.name} invited`, 'success');
-    }
-    setShowMemberPicker(false);
-  };
+  // handleAddMember is now handled by InviteSheet callbacks
 
   const handleRemoveParticipant = (id: string) => {
     if (id !== 'you') {
       const participant = participants.find(p => p.id === id);
+      if (Platform.OS !== 'web') {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      }
       setParticipants(participants.filter(p => p.id !== id));
       showToast(`${participant?.name} removed`, 'info');
     }
@@ -235,11 +314,14 @@ export default function ConferenceLobby() {
     }
   };
 
-  const handleStartSession = () => {
+  const handleStartSession = async () => {
+    const ready = await checkConferenceReady();
+    if (!ready) return;
     router.push({
       pathname: '/session/conference-live' as any,
       params: {
         purpose,
+        roomName,
         participantIds: participants.map(p => p.id).join(','),
       }
     });
@@ -258,7 +340,12 @@ export default function ConferenceLobby() {
 
       {/* Header Bar */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.push('/(tabs)')} style={styles.exitButton}>
+        <Pressable
+          onPress={() => router.push('/(tabs)')}
+          style={({ pressed }) => [styles.exitButton, pressed && styles.pressedOpacity]}
+          accessibilityLabel="Exit conference lobby"
+          accessibilityRole="button"
+        >
           <Ionicons name="close" size={20} color={Colors.text.secondary} />
         </Pressable>
         
@@ -268,7 +355,12 @@ export default function ConferenceLobby() {
         </View>
         
         <View style={styles.headerActions}>
-          <Pressable style={styles.menuButton} onPress={() => setMenuVisible(true)}>
+          <Pressable
+            style={({ pressed }) => [styles.menuButton, pressed && styles.pressedOpacity]}
+            onPress={() => setMenuVisible(true)}
+            accessibilityLabel="Open room options"
+            accessibilityRole="button"
+          >
             <Ionicons name="ellipsis-horizontal" size={20} color={Colors.text.secondary} />
           </Pressable>
         </View>
@@ -421,9 +513,9 @@ export default function ConferenceLobby() {
                     </View>
 
                     {/* Join Button */}
-                    <Pressable style={styles.joinButton} onPress={handleStartSession}>
-                      <Ionicons name="videocam" size={16} color="#FFFFFF" />
-                      <Text style={styles.joinButtonText}>Join Session</Text>
+                    <Pressable style={[styles.joinButton, isJoining && { opacity: 0.6 }]} onPress={handleStartSession} disabled={isJoining}>
+                      <Ionicons name={isJoining ? "hourglass" : "videocam"} size={16} color="#FFFFFF" />
+                      <Text style={styles.joinButtonText}>{isJoining ? 'Checking...' : 'Join Session'}</Text>
                     </Pressable>
                   </LinearGradient>
                 </ImageBackground>
@@ -453,27 +545,15 @@ export default function ConferenceLobby() {
 
           {/* Authority Queue - Horizontal Scrollable */}
           {authorityItems.length === 0 ? (
-            <View style={{ alignItems: 'center', paddingVertical: 24, paddingHorizontal: 24 }}>
-              <Ionicons name="checkmark-circle-outline" size={28} color={Colors.accent.cyan} style={{ marginBottom: 8 }} />
-              <Text style={{ color: Colors.text.primary, fontSize: 14, fontWeight: '600', textAlign: 'center', marginBottom: 4 }}>No approvals needed</Text>
-              <Text style={{ color: Colors.text.muted, fontSize: 12, textAlign: 'center', lineHeight: 17 }}>
+            <View style={styles.authorityEmptyState}>
+              <Ionicons name="checkmark-circle-outline" size={28} color={Colors.accent.cyan} style={{ marginBottom: Spacing.sm }} accessibilityElementsHidden />
+              <Text style={styles.authorityEmptyTitle}>No approvals needed</Text>
+              <Text style={styles.authorityEmptySubtitle}>
                 When documents or actions need your sign-off before the session, they'll appear here.
               </Text>
             </View>
           ) : (
-          <View
-            style={{
-              flexDirection: 'row',
-              gap: 16,
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              paddingLeft: 24,
-              paddingRight: 24,
-              paddingBottom: 8,
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#3B3B3D transparent',
-            } as any}
-          >
+          <View style={styles.authorityScrollRow}>
             {authorityItems.map((item, index) => {
               const riskConfig = getRiskConfig(item.risk);
               const isPending = item.status === 'pending';
@@ -600,11 +680,15 @@ export default function ConferenceLobby() {
                   {PURPOSE_OPTIONS.map((option) => (
                     <Pressable
                       key={option.id}
-                      style={[
+                      style={({ pressed }) => [
                         styles.purposeOption,
                         purpose === option.id && styles.purposeOptionActive,
+                        pressed && styles.pressedOpacity,
                       ]}
                       onPress={() => setPurpose(option.id)}
+                      accessibilityLabel={`${option.label} meeting purpose`}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: purpose === option.id }}
                     >
                       <View style={[
                         styles.purposeIconBox,
@@ -644,14 +728,32 @@ export default function ConferenceLobby() {
                         <Text style={styles.modalParticipantName}>{participant.name}</Text>
                         <Text style={styles.modalParticipantRole}>{participant.role}</Text>
                       </View>
+                      {/* Participant status badges — pulsing dot + type icon */}
+                      {participant.status === 'invited' && (
+                        <View
+                          style={styles.invitedBadge}
+                          accessibilityLabel={`${participant.name} invited${participant.inviteType === 'external' ? ', external guest' : participant.inviteType === 'cross-suite' ? ', cross-suite user' : ''}`}
+                        >
+                          <PulsingDot color={Colors.semantic.warning} />
+                          {participant.inviteType === 'external' && (
+                            <Ionicons name="globe-outline" size={12} color={Colors.semantic.warning} accessibilityElementsHidden />
+                          )}
+                          {participant.inviteType === 'cross-suite' && (
+                            <Ionicons name="business-outline" size={12} color={Colors.accent.cyan} accessibilityElementsHidden />
+                          )}
+                          <Text style={styles.invitedBadgeText}>Invited</Text>
+                        </View>
+                      )}
                       {participant.id === 'you' ? (
                         <View style={styles.youBadge}>
                           <Text style={styles.youBadgeText}>You</Text>
                         </View>
                       ) : (
-                        <Pressable 
-                          style={styles.removeParticipantBtn}
+                        <Pressable
+                          style={({ pressed }) => [styles.removeParticipantBtn, pressed && styles.pressedOpacity]}
                           onPress={() => handleRemoveParticipant(participant.id)}
+                          accessibilityLabel={`Remove ${participant.name}`}
+                          accessibilityRole="button"
                         >
                           <Ionicons name="close" size={14} color={Colors.text.muted} />
                         </Pressable>
@@ -660,38 +762,17 @@ export default function ConferenceLobby() {
                   ))}
                 </View>
 
-                {/* Add Participant Button with Dropdown */}
+                {/* Add Participant Button — opens InviteSheet */}
                 <View style={styles.addParticipantWrapper}>
-                  <Pressable 
-                    style={styles.addParticipantBtn}
-                    onPress={() => setShowMemberPicker(!showMemberPicker)}
+                  <Pressable
+                    style={({ pressed }) => [styles.addParticipantBtn, pressed && styles.pressedOpacity]}
+                    onPress={() => setShowInviteSheet(true)}
+                    accessibilityLabel="Add participants to session"
+                    accessibilityRole="button"
                   >
-                    <Ionicons name={showMemberPicker ? "chevron-up" : "add-circle"} size={18} color={Colors.accent.cyan} />
-                    <Text style={styles.addParticipantText}>{showMemberPicker ? "Close" : "Add Participants"}</Text>
+                    <Ionicons name="add-circle" size={18} color={Colors.accent.cyan} accessibilityElementsHidden />
+                    <Text style={styles.addParticipantText}>Add Participants</Text>
                   </Pressable>
-
-                  {showMemberPicker && (
-                    <View style={styles.modalPickerDropdown}>
-                      <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
-                        {MEMBER_DIRECTORY.filter(m => !participants.find(p => p.id === m.id)).slice(0, 5).map((member) => (
-                          <Pressable 
-                            key={member.id}
-                            style={styles.modalPickerItem}
-                            onPress={() => handleAddMember(member)}
-                          >
-                            <View style={styles.modalPickerAvatar}>
-                              <Text style={styles.modalPickerInitial}>{member.name.charAt(0)}</Text>
-                            </View>
-                            <View style={styles.modalPickerInfo}>
-                              <Text style={styles.modalPickerName}>{member.name}</Text>
-                              <Text style={styles.modalPickerRole}>{member.role}</Text>
-                            </View>
-                            <Ionicons name="add-circle" size={18} color={Colors.accent.cyan} />
-                          </Pressable>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  )}
                 </View>
               </View>
             </ScrollView>
@@ -703,17 +784,58 @@ export default function ConferenceLobby() {
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </Pressable>
-              <Pressable 
-                style={styles.confirmBtn}
+              <Pressable
+                style={[styles.confirmBtn, isJoining && { opacity: 0.6 }]}
                 onPress={handleConfirmStartSession}
+                disabled={isJoining}
               >
-                <Ionicons name="play" size={16} color="#FFFFFF" />
-                <Text style={styles.confirmBtnText}>Start Session</Text>
+                <Ionicons name={isJoining ? "hourglass" : "play"} size={16} color="#FFFFFF" />
+                <Text style={styles.confirmBtnText}>{isJoining ? 'Checking...' : 'Start Session'}</Text>
               </Pressable>
             </View>
           </View>
         </View>
       )}
+
+      <InviteSheet
+        visible={showInviteSheet}
+        onClose={() => setShowInviteSheet(false)}
+        roomName={roomName}
+        hostName={userName}
+        purpose={purpose}
+        correlationId={correlationId}
+        onInviteMember={(userId, name, inviteType) => {
+          if (!participants.find(p => p.id === userId)) {
+            if (Platform.OS !== 'web') {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            }
+            setParticipants(prev => [...prev, {
+              id: userId,
+              name,
+              role: 'Member',
+              avatarColor: inviteType === 'cross-suite' ? '#3B82F6' : '#8B5CF6',
+              status: 'invited',
+              inviteType: inviteType || 'internal',
+            }]);
+            showToast(`${name} invited`, 'success');
+          }
+        }}
+        onInviteGuest={(name, contact) => {
+          const guestId = `guest-${Date.now()}`;
+          if (Platform.OS !== 'web') {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          }
+          setParticipants(prev => [...prev, {
+            id: guestId,
+            name,
+            role: contact || 'External Guest',
+            avatarColor: '#10B981',
+            status: 'invited',
+            inviteType: 'external',
+          }]);
+          showToast(`${name} invited`, 'success');
+        }}
+      />
 
       <BottomSheet
         visible={menuVisible}
@@ -1692,6 +1814,22 @@ const styles = StyleSheet.create({
     color: Colors.text.muted,
     marginTop: 1,
   },
+  invitedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    marginRight: 8,
+  },
+  // invitedDot replaced by PulsingDot animated component
+  invitedBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.semantic.warning,
+  },
   youBadge: {
     backgroundColor: 'rgba(6, 182, 212, 0.12)',
     paddingHorizontal: 10,
@@ -1810,4 +1948,42 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+
+  // Shared pressed feedback — opacity 0.7 per design spec
+  pressedOpacity: {
+    opacity: 0.7,
+  },
+
+  // Authority empty state (replaces inline styles)
+  authorityEmptyState: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.xxl,
+  },
+  authorityEmptyTitle: {
+    ...Typography.captionMedium,
+    color: Colors.text.primary,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
+  },
+  authorityEmptySubtitle: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+
+  // Authority horizontal scroll row (replaces inline styles)
+  authorityScrollRow: {
+    flexDirection: 'row',
+    gap: Spacing.lg,
+    paddingLeft: Spacing.xxl,
+    paddingRight: Spacing.xxl,
+    paddingBottom: Spacing.sm,
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    scrollbarWidth: 'thin',
+    scrollbarColor: `${Colors.border.strong} transparent`,
+  } as ViewStyle,
 });

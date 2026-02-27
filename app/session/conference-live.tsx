@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Animated, StatusBar, useWindowDimensions, ScrollView, TextInput, Alert, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Animated, StatusBar, useWindowDimensions, ScrollView, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -15,8 +15,9 @@ import { Image } from 'expo-image';
 import { Platform } from 'react-native';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useParticipants, useTracks, useRoomContext } from '@livekit/components-react';
-import { Track, ConnectionState } from 'livekit-client';
+import { Track } from 'livekit-client';
 import { LiveKitConferenceProvider } from '@/components/session/LiveKitConferenceProvider';
 import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
@@ -452,39 +453,49 @@ export default function ConferenceLive() {
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId } = useSupabase();
+  // Law #3: Fail Closed — all API requests must include JWT auth
+  const { authenticatedFetch } = useAuthFetch();
 
   // Fetch LiveKit token and connect to room on mount
+  // AbortController prevents stale setState on unmount (Law #3: Fail Closed)
   useEffect(() => {
     const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
     const participantName = (params.participantName as string) || 'You';
+    const controller = new AbortController();
 
     setTokenLoading(true);
     setTokenError(null);
 
-    fetch('/api/livekit/token', {
+    authenticatedFetch('/api/livekit/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomName, participantName, suiteId }),
+      signal: controller.signal,
     })
       .then(res => {
         if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
         return res.json();
       })
       .then(data => {
+        if (controller.signal.aborted) return;
         if (data.token) {
           setLiveKitToken(data.token);
         } else {
           setTokenError(data.error || 'No token returned');
         }
       })
-      .catch(err => {
-        console.error('LiveKit token fetch failed:', err.message);
+      .catch((err: Error) => {
+        if (err.name === 'AbortError') return;
         setTokenError(err.message || 'Conference service unavailable');
       })
       .finally(() => {
-        setTokenLoading(false);
+        if (!controller.signal.aborted) {
+          setTokenLoading(false);
+        }
       });
-  }, [suiteId, params.roomName, params.participantName]);
+
+    return () => { controller.abort(); };
+  }, [suiteId, params.roomName, params.participantName, authenticatedFetch]);
 
   // Connection/disconnection is handled automatically by <LiveKitConferenceProvider>
   // when token prop changes. No manual connect/disconnect needed.
@@ -499,11 +510,10 @@ export default function ConferenceLive() {
       else if (voiceStatus === 'thinking') setAvaState('thinking');
       else setAvaState('idle');
     },
-    onResponse: (text) => {
-      console.log('Nora response:', text);
+    onResponse: (_text) => {
+      // Nora responses handled via voice pipeline — no client-side logging
     },
-    onError: (error) => {
-      console.error('Nora voice error:', error);
+    onError: (_error) => {
       setAvaState('idle');
     },
   });
@@ -516,9 +526,8 @@ export default function ConferenceLive() {
     } else {
       try {
         await noraVoice.startSession();
-      } catch (error) {
-        console.error('Failed to start Nora voice session:', error);
-        Alert.alert('Connection Error', 'Unable to connect to Nora. Please try again.');
+      } catch (_e) {
+        showToast('Unable to connect to Nora. Please try again.', 'error');
       }
     }
   }, [noraVoice]);
@@ -1331,18 +1340,48 @@ export default function ConferenceLive() {
         {/* LiveKitSync resolves hooks inside LiveKitRoom context */}
         {liveKitToken && <LiveKitSync onSync={handleLiveKitSync} />}
 
-        {/* Fail-closed: show explicit error instead of blank screen (Law #3) */}
+        {/* Fail-closed: show explicit error with retry instead of blank screen (Law #3) */}
         {tokenError && !liveKitToken && (
           <View style={{ flex: 1, backgroundColor: '#0a0a0c', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
             <Ionicons name="videocam-off-outline" size={48} color="#ef4444" />
             <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>Conference Service Unavailable</Text>
             <Text style={{ color: '#9ca3af', fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 400 }}>{tokenError}</Text>
-            <Pressable
-              onPress={() => router.back()}
-              style={{ marginTop: 24, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#1f2937', borderRadius: 8 }}
-            >
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>Return to Lobby</Text>
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
+              <Pressable
+                onPress={() => {
+                  setTokenError(null);
+                  setTokenLoading(true);
+                  const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
+                  const participantName = (params.participantName as string) || 'You';
+                  authenticatedFetch('/api/livekit/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomName, participantName, suiteId }),
+                  })
+                    .then(res => {
+                      if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
+                      return res.json();
+                    })
+                    .then(data => {
+                      if (data.token) setLiveKitToken(data.token);
+                      else setTokenError(data.error || 'No token returned');
+                    })
+                    .catch((err: Error) => {
+                      setTokenError(err.message || 'Conference service unavailable');
+                    })
+                    .finally(() => setTokenLoading(false));
+                }}
+                style={{ paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#2563EB', borderRadius: 8 }}
+              >
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Retry Connection</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.back()}
+                style={{ paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#1f2937', borderRadius: 8 }}
+              >
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>Return to Lobby</Text>
+              </Pressable>
+            </View>
           </View>
         )}
 
