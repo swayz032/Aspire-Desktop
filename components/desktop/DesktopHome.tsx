@@ -14,6 +14,8 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { ImmersionLayer } from '@/components/canvas/ImmersionLayer';
 import { VignetteOverlay } from '@/components/canvas/VignetteOverlay';
+import { CanvasWorkspace } from '@/components/canvas/CanvasWorkspace';
+import { useImmersion } from '@/lib/immersionStore';
 import { getAuthorityQueue, getCalendarEvents, getCashPosition } from '@/lib/api';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import { useTenant, useSupabase } from '@/providers';
@@ -64,6 +66,7 @@ function isBannerDismissed(): boolean {
 
 export function DesktopHome() {
   const router = useRouter();
+  const { mode } = useImmersion();
   const { tenant } = useTenant();
   const { session } = useSupabase();
   const [liveCashData, setLiveCashData] = useState<CashPosition>(EMPTY_CASH);
@@ -213,14 +216,24 @@ export function DesktopHome() {
     })();
   }, []);
 
+  // ── Canvas mode: entirely separate workspace ──
+  if (mode === 'canvas') {
+    return (
+      <DesktopShell>
+        <CanvasWorkspace />
+      </DesktopShell>
+    );
+  }
+
+  // ── Off / Depth mode: standard homepage layout ──
   return (
     <DesktopShell>
+      <VignetteOverlay />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <VignetteOverlay />
         <View style={styles.grid}>
           {/* Personalized greeting */}
           <Text style={styles.greeting}>{greeting}</Text>

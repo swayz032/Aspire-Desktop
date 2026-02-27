@@ -172,6 +172,6 @@ export function ImmersionLayer({
 
 const styles = StyleSheet.create({
   wrapper: {
-    flex: 1,
+    // No flex: 1 — wrapper must not alter layout sizing inside ScrollView
   },
 });

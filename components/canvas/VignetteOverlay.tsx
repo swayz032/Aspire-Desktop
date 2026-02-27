@@ -66,7 +66,7 @@ export function VignetteOverlay(): React.ReactElement | null {
   if (Platform.OS === 'web') {
     return (
       <Animated.View
-        style={[styles.overlay, { opacity }, webStyles.radialBg]}
+        style={[styles.overlay, webOverlayStyle, { opacity }, webStyles.radialBg]}
         pointerEvents="none"
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
@@ -99,8 +99,21 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1,
+    // Native: absolute fill within parent
   },
 });
+
+// Web override: use fixed positioning to cover the full viewport
+const webOverlayStyle = Platform.OS === 'web'
+  ? ({
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 1,
+    } as unknown as ViewStyle)
+  : {};
 
 // Web-only styles — radial gradient background
 const webStyles = {

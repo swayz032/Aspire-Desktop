@@ -7,3 +7,4 @@ export { LiveLens } from './LiveLens';
 export { CommandPalette } from './CommandPalette';
 export { DryRunDisplay } from './DryRunDisplay';
 export { TileContextMenu } from './TileContextMenu';
+export { CanvasWorkspace } from './CanvasWorkspace';
