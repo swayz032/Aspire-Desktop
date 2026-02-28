@@ -156,9 +156,12 @@ export async function handleCallback(
   const expiresAt = new Date(Date.now() + (expires_in || 3600) * 1000).toISOString();
 
   // UPSERT oauth_tokens
+  // Scopes must be formatted as a Postgres array literal — drizzle sql`` expands JS arrays
+  // as individual params ($5,$6,...) which breaks ::text[] cast
+  const scopesLiteral = `{${SCOPES.join(',')}}`;
   await db.execute(sql`
     INSERT INTO oauth_tokens (suite_id, provider, access_token, refresh_token, email, scopes, token_type, expires_at)
-    VALUES (${suiteId}::uuid, 'google', ${access_token}, ${refresh_token || null}, ${email}, ${SCOPES}::text[], 'Bearer', ${expiresAt}::timestamptz)
+    VALUES (${suiteId}::uuid, 'google', ${access_token}, ${refresh_token || null}, ${email}, ${scopesLiteral}::text[], 'Bearer', ${expiresAt}::timestamptz)
     ON CONFLICT (suite_id, provider)
     DO UPDATE SET
       access_token = EXCLUDED.access_token,
