@@ -300,7 +300,7 @@ describe('Visual Regression: Structural Rendering', () => {
       setMode('off');
       const { toJSON } = render(
         <LiveLens
-          tileId="invoice"
+          tileId="conference_call"
           anchorPosition={ANCHOR}
           onClose={jest.fn()}
           onOpenStage={jest.fn()}
@@ -313,7 +313,7 @@ describe('Visual Regression: Structural Rendering', () => {
       setMode('depth');
       const { toJSON } = render(
         <LiveLens
-          tileId="invoice"
+          tileId="conference_call"
           anchorPosition={ANCHOR}
           onClose={jest.fn()}
           onOpenStage={jest.fn()}
@@ -326,7 +326,7 @@ describe('Visual Regression: Structural Rendering', () => {
       setMode('canvas');
       const { toJSON } = render(
         <LiveLens
-          tileId="invoice"
+          tileId="conference_call"
           anchorPosition={ANCHOR}
           onClose={jest.fn()}
           onOpenStage={jest.fn()}
@@ -352,7 +352,7 @@ describe('Visual Regression: Structural Rendering', () => {
       setMode('canvas');
       const { toJSON } = render(
         <LiveLens
-          tileId="invoice"
+          tileId="conference_call"
           anchorPosition={ANCHOR}
           onClose={jest.fn()}
           onOpenStage={jest.fn()}
@@ -383,7 +383,7 @@ describe('Visual Regression: Structural Rendering', () => {
       mockImmersionState = {
         ...mockImmersionState,
         stageOpen: true,
-        stagedTileId: 'invoice',
+        stagedTileId: 'conference_call',
       };
       const { toJSON } = render(<Stage />);
       expect(toJSON()).toBeNull();
@@ -394,7 +394,7 @@ describe('Visual Regression: Structural Rendering', () => {
       mockImmersionState = {
         ...mockImmersionState,
         stageOpen: true,
-        stagedTileId: 'invoice',
+        stagedTileId: 'conference_call',
         runwayState: 'IDLE',
       };
       const { toJSON } = render(<Stage />);
@@ -461,8 +461,8 @@ describe('Visual Regression: Structural Rendering', () => {
     it('renders with valid tile and verb', () => {
       const { toJSON } = render(
         <DryRunDisplay
-          tileId="invoice"
-          verbId="create"
+          tileId="conference_call"
+          verbId="start_conference"
           riskTier="yellow"
           onProceed={jest.fn()}
           onCancel={jest.fn()}
@@ -474,8 +474,8 @@ describe('Visual Regression: Structural Rendering', () => {
     it('renders preview banner text', () => {
       const { toJSON } = render(
         <DryRunDisplay
-          tileId="invoice"
-          verbId="create"
+          tileId="conference_call"
+          verbId="start_conference"
           riskTier="yellow"
           onProceed={jest.fn()}
           onCancel={jest.fn()}
@@ -489,7 +489,7 @@ describe('Visual Regression: Structural Rendering', () => {
       const { toJSON } = render(
         <DryRunDisplay
           tileId="nonexistent"
-          verbId="create"
+          verbId="start_conference"
           riskTier="yellow"
           onProceed={jest.fn()}
           onCancel={jest.fn()}
@@ -501,8 +501,8 @@ describe('Visual Regression: Structural Rendering', () => {
     it('renders risk-tier border via container borderColor', () => {
       const { toJSON } = render(
         <DryRunDisplay
-          tileId="invoice"
-          verbId="create"
+          tileId="conference_call"
+          verbId="start_conference"
           riskTier="red"
           onProceed={jest.fn()}
           onCancel={jest.fn()}
@@ -521,16 +521,16 @@ describe('Visual Regression: Structural Rendering', () => {
     it('renders verb list for known tile', () => {
       const { toJSON } = render(
         <TileContextMenu
-          tileId="invoice"
+          tileId="conference_call"
           position={{ x: 200, y: 200 }}
           onClose={jest.fn()}
           onSelectVerb={jest.fn()}
         />,
       );
       const json = JSON.stringify(toJSON());
-      expect(json).toContain('Create Invoice');
-      expect(json).toContain('Send Invoice');
-      expect(json).toContain('Void Invoice');
+      expect(json).toContain('Start Conference');
+      expect(json).toContain('Draft Agenda');
+      expect(json).toContain('Invite Attendees');
     });
 
     it('returns null for unknown tile (deny-by-default)', () => {
@@ -548,7 +548,7 @@ describe('Visual Regression: Structural Rendering', () => {
     it('has menu accessibility role', () => {
       const { toJSON } = render(
         <TileContextMenu
-          tileId="invoice"
+          tileId="conference_call"
           position={{ x: 200, y: 200 }}
           onClose={jest.fn()}
           onSelectVerb={jest.fn()}
@@ -561,7 +561,7 @@ describe('Visual Regression: Structural Rendering', () => {
     it('renders menuitem roles for each verb', () => {
       const { toJSON } = render(
         <TileContextMenu
-          tileId="invoice"
+          tileId="conference_call"
           position={{ x: 200, y: 200 }}
           onClose={jest.fn()}
           onSelectVerb={jest.fn()}
@@ -570,7 +570,7 @@ describe('Visual Regression: Structural Rendering', () => {
       const json = JSON.stringify(toJSON());
       // Count occurrences of "menuitem" accessibilityRole
       const matches = json.match(/"accessibilityRole":"menuitem"/g);
-      expect(matches).toHaveLength(3); // invoice has 3 verbs
+      expect(matches).toHaveLength(3); // conference_call has 3 verbs
     });
   });
 });
@@ -832,8 +832,8 @@ describe('Visual Regression: Snapshots', () => {
       (tier) => {
         const { toJSON } = render(
           <DryRunDisplay
-            tileId="invoice"
-            verbId="create"
+            tileId="conference_call"
+            verbId="start_conference"
             riskTier={tier}
             onProceed={jest.fn()}
             onCancel={jest.fn()}
@@ -848,7 +848,7 @@ describe('Visual Regression: Snapshots', () => {
   // TileContextMenu snapshots for different tiles
   // -------------------------------------------------------------------------
   describe('TileContextMenu snapshots', () => {
-    it.each(['invoice', 'calendar', 'payment'])(
+    it.each(['conference_call', 'calendar', 'finance_hub'])(
       'matches snapshot for tile %s',
       (tileId) => {
         const { toJSON } = render(

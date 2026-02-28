@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
 import { DesktopShell } from './DesktopShell';
 import { AvaDeskPanel } from './AvaDeskPanel';
@@ -11,11 +11,20 @@ import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
+import { Colors, Spacing, BorderRadius, Canvas } from '@/constants/tokens';
 import { ImmersionLayer } from '@/components/canvas/ImmersionLayer';
 import { VignetteOverlay } from '@/components/canvas/VignetteOverlay';
-import { CanvasWorkspace } from '@/components/canvas/CanvasWorkspace';
-import { useImmersion } from '@/lib/immersionStore';
+import { Stage } from '@/components/canvas/Stage';
+import { LiveLens } from '@/components/canvas/LiveLens';
+import { RunwayDisplay } from '@/components/canvas/RunwayDisplay';
+import { CommandPalette } from '@/components/canvas/CommandPalette';
+import { TileContextMenu } from '@/components/canvas/TileContextMenu';
+import { CanvasTileWrapper } from '@/components/canvas/CanvasTileWrapper';
+import { useImmersion, setStageOpen, setLensOpen } from '@/lib/immersionStore';
+import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
+import { useBreakpoint } from '@/lib/useDesktop';
+import { playSound } from '@/lib/soundManager';
+import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { getAuthorityQueue, getCalendarEvents, getCashPosition } from '@/lib/api';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import { useTenant, useSupabase } from '@/providers';
@@ -66,7 +75,9 @@ function isBannerDismissed(): boolean {
 
 export function DesktopHome() {
   const router = useRouter();
-  const { mode } = useImmersion();
+  const { mode, stageOpen, runwayState } = useImmersion();
+  const { isTablet, isLaptop, width, mounted: bpMounted } = useBreakpoint();
+  useGlobalKeyboard();
   const { tenant } = useTenant();
   const { session } = useSupabase();
   const [liveCashData, setLiveCashData] = useState<CashPosition>(EMPTY_CASH);
@@ -86,6 +97,46 @@ export function DesktopHome() {
   const allAuthorityItems = useMemo(
     () => [...dynamicItems, ...supabaseAuthority],
     [dynamicItems, supabaseAuthority],
+  );
+
+  // ── Canvas interaction state ──
+  const [hoveredTile, setHoveredTile] = useState<string | null>(null);
+  const [hoverAnchor, setHoverAnchor] = useState<{
+    x: number; y: number; width: number; height: number;
+  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    tileId: string; position: { x: number; y: number };
+  } | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleTilePress = useCallback((tileId: string) => {
+    setStageOpen(true, tileId);
+    playSound('stage_open');
+    emitCanvasEvent('stage_open', { tile_id: tileId });
+  }, []);
+
+  const handleTileHoverIn = useCallback(
+    (tileId: string, anchor: { x: number; y: number; width: number; height: number }) => {
+      setHoveredTile(tileId);
+      setHoverAnchor(anchor);
+      setLensOpen(true, tileId);
+      emitCanvasEvent('lens_open', { tile_id: tileId });
+    },
+    [],
+  );
+
+  const handleTileHoverOut = useCallback(() => {
+    setHoveredTile(null);
+    setHoverAnchor(null);
+    setLensOpen(false);
+    emitCanvasEvent('lens_close', {});
+  }, []);
+
+  const handleContextMenu = useCallback(
+    (tileId: string, position: { x: number; y: number }) => {
+      setContextMenu({ tileId, position });
+    },
+    [],
   );
 
   // Personalized greeting from intake data — formal name (Mr./Ms.) per genesis-gate spec
@@ -216,16 +267,22 @@ export function DesktopHome() {
     })();
   }, []);
 
-  // ── Canvas mode: entirely separate workspace ──
-  if (mode === 'canvas') {
-    return (
-      <DesktopShell>
-        <CanvasWorkspace />
-      </DesktopShell>
-    );
-  }
+  // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
+  const leftWidth = isTablet ? 0 : isLaptop ? Canvas.layout.leftColLaptop : Canvas.layout.leftColDesktop;
+  const rightWidth = isTablet
+    ? Canvas.layout.rightColTablet
+    : isLaptop
+      ? Canvas.layout.rightColLaptop
+      : Canvas.layout.rightColDesktop;
+  const showThreeCol = !isTablet;
+  const columnGap = isTablet
+    ? Canvas.layout.gapTablet
+    : isLaptop
+      ? Canvas.layout.gapLaptop
+      : Canvas.layout.gapDesktop;
+  const isWide = width >= 1920;
 
-  // ── Off / Depth mode: standard homepage layout ──
+  // ── All modes use same layout — Canvas is a rendering layer, not a workspace ──
   return (
     <DesktopShell>
       <VignetteOverlay />
@@ -234,9 +291,14 @@ export function DesktopHome() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.grid}>
-          {/* Personalized greeting */}
-          <Text style={styles.greeting}>{greeting}</Text>
+        <View style={[
+          styles.grid,
+          isWide && styles.gridWideConstrain,
+        ]}>
+          {/* Content header row — greeting left, toggle in DesktopHeader */}
+          <View style={styles.contentHeaderRow}>
+            <Text style={styles.greeting}>{greeting}</Text>
+          </View>
 
           {/* "Complete Your Profile" banner for users missing intake fields */}
           {showProfileBanner && (
@@ -265,47 +327,113 @@ export function DesktopHome() {
           )}
 
           <ImmersionLayer depth={1}>
-          <View style={styles.threeColWrapper}>
-            <View style={styles.leftCol}>
-              <View style={styles.section}>
-                <SectionHeader title="Interaction Mode" />
-                <InteractionModePanel options={INTERACTION_MODES} />
-              </View>
+          <View style={[styles.threeColWrapper, { gap: columnGap }]}>
+            {showThreeCol && (
+            <View style={[styles.leftCol, { width: leftWidth }]}>
+              <CanvasTileWrapper
+                tileId="conference_call"
+                mode={mode}
+                onPress={handleTilePress}
+                onHoverIn={handleTileHoverIn}
+                onHoverOut={handleTileHoverOut}
+                onContextMenu={handleContextMenu}
+              >
+                <View style={styles.section}>
+                  <SectionHeader title="Interaction Mode" />
+                  <InteractionModePanel options={INTERACTION_MODES} />
+                </View>
+              </CanvasTileWrapper>
 
-              <View style={[styles.section, styles.flexSection]}>
-                <SectionHeader
-                  title="Today's Plan"
-                  subtitle={`${planItems.length} tasks`}
-                  actionLabel="See all"
-                  onAction={() => router.push('/session/plan' as any)}
-                />
-                <TodayPlanTabs planItems={planItems} />
-              </View>
+              <CanvasTileWrapper
+                tileId="inbox_setup"
+                mode={mode}
+                onPress={handleTilePress}
+                onHoverIn={handleTileHoverIn}
+                onHoverOut={handleTileHoverOut}
+                onContextMenu={handleContextMenu}
+              >
+                <View style={[styles.section, styles.flexSection]}>
+                  <SectionHeader
+                    title="Today's Plan"
+                    subtitle={`${planItems.length} tasks`}
+                    actionLabel="See all"
+                    onAction={() => router.push('/session/plan' as any)}
+                  />
+                  <TodayPlanTabs planItems={planItems} />
+                </View>
+              </CanvasTileWrapper>
             </View>
+            )}
+
+            {/* Tablet: left column content stacks above center */}
+            {!showThreeCol && (
+              <View style={styles.tabletTopRow}>
+                <CanvasTileWrapper
+                  tileId="conference_call"
+                  mode={mode}
+                  onPress={handleTilePress}
+                  onHoverIn={handleTileHoverIn}
+                  onHoverOut={handleTileHoverOut}
+                  onContextMenu={handleContextMenu}
+                >
+                  <View style={styles.section}>
+                    <SectionHeader title="Interaction Mode" />
+                    <InteractionModePanel options={INTERACTION_MODES} />
+                  </View>
+                </CanvasTileWrapper>
+              </View>
+            )}
 
             <View style={styles.centerCol}>
+              {/* Ava is the brain — NOT wrapped as a tile */}
               <AvaDeskPanel />
             </View>
 
-            <View style={styles.rightCol}>
-              <View style={styles.section}>
-                <SectionHeader title="Ops Snapshot" />
-                <OpsSnapshotTabs
-                  cashData={liveCashData}
-                  pipelineStages={pipelineStages}
-                  businessScore={businessScore}
-                />
-              </View>
+            <View style={[styles.rightCol, { width: rightWidth }]}>
+              <CanvasTileWrapper
+                tileId="finance_hub"
+                mode={mode}
+                onPress={handleTilePress}
+                onHoverIn={handleTileHoverIn}
+                onHoverOut={handleTileHoverOut}
+                onContextMenu={handleContextMenu}
+              >
+                <View style={styles.section}>
+                  <SectionHeader title="Ops Snapshot" />
+                  <OpsSnapshotTabs
+                    cashData={liveCashData}
+                    pipelineStages={pipelineStages}
+                    businessScore={businessScore}
+                  />
+                </View>
+              </CanvasTileWrapper>
 
-              <View style={[styles.section, styles.flexSection]}>
-                <SectionHeader title="Calendar" />
-                <CalendarCard events={calendarEvents as any} />
-              </View>
+              <CanvasTileWrapper
+                tileId="calendar"
+                mode={mode}
+                onPress={handleTilePress}
+                onHoverIn={handleTileHoverIn}
+                onHoverOut={handleTileHoverOut}
+                onContextMenu={handleContextMenu}
+              >
+                <View style={[styles.section, styles.flexSection]}>
+                  <SectionHeader title="Calendar" />
+                  <CalendarCard events={calendarEvents as any} />
+                </View>
+              </CanvasTileWrapper>
             </View>
           </View>
           </ImmersionLayer>
 
           <ImmersionLayer depth={2}>
+          <CanvasTileWrapper
+            tileId="authority_queue"
+            mode={mode}
+            onPress={handleTilePress}
+            onHoverIn={handleTileHoverIn}
+            onHoverOut={handleTileHoverOut}
+            onContextMenu={handleContextMenu}
+          >
           <View style={styles.authoritySection}>
             <SectionHeader
               title="Authority Queue"
@@ -313,18 +441,7 @@ export function DesktopHome() {
               onAction={() => router.push('/inbox' as any)}
             />
             {allAuthorityItems.length > 0 ? (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  gap: 12,
-                  overflowX: 'auto',
-                  overflowY: 'hidden',
-                  paddingVertical: 4,
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: '#3B3B3D transparent',
-                  alignItems: 'stretch',
-                } as any}
-              >
+              <View style={styles.authorityScrollRow}>
                 {allAuthorityItems.map((item) => (
                   <View key={item.id} style={styles.authorityCardWrapper}>
                     <AuthorityQueueCard
@@ -377,9 +494,35 @@ export function DesktopHome() {
               </View>
             )}
           </View>
+          </CanvasTileWrapper>
           </ImmersionLayer>
         </View>
       </ScrollView>
+
+      {/* ── Canvas overlay components — rendered outside ScrollView ── */}
+      {mode !== 'off' && (
+        <>
+          {hoveredTile && hoverAnchor && !stageOpen && (
+            <LiveLens
+              tileId={hoveredTile}
+              anchorPosition={hoverAnchor}
+              onClose={handleTileHoverOut}
+            />
+          )}
+          {contextMenu && (
+            <TileContextMenu
+              tileId={contextMenu.tileId}
+              position={contextMenu.position}
+              onClose={() => setContextMenu(null)}
+            />
+          )}
+          <Stage />
+          {runwayState !== 'IDLE' && (
+            <RunwayDisplay currentState={runwayState} />
+          )}
+          <CommandPalette />
+        </>
+      )}
 
       <DocumentPreviewModal
         visible={reviewPreview.visible}
@@ -397,21 +540,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: Spacing.xxl,
     minHeight: Platform.OS === 'web' ? 'calc(100vh - 120px)' as any : undefined,
   },
   grid: {
     flexDirection: 'column',
-    gap: 16,
+    gap: Spacing.lg,
   },
+  gridWideConstrain: {
+    maxWidth: Canvas.layout.wideMaxWidth,
+    alignSelf: 'center',
+    width: '100%',
+  } as any,
   threeColWrapper: {
     flexDirection: 'row',
-    gap: 16,
+    gap: Spacing.lg,
     alignItems: 'stretch',
   },
   leftCol: {
-    width: 280,
-    gap: 16,
+    width: Canvas.layout.leftColDesktop,
+    gap: Spacing.lg,
     flexShrink: 0,
     display: 'flex',
     flexDirection: 'column',
@@ -424,39 +572,43 @@ const styles = StyleSheet.create({
     } : {}),
   } as any,
   rightCol: {
-    width: 320,
-    gap: 16,
+    width: Canvas.layout.rightColDesktop,
+    gap: Spacing.lg,
     flexShrink: 0,
     display: 'flex',
     flexDirection: 'column',
   },
   section: {
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: '#2C2C2E',
-    ...(Platform.OS === 'web' ? {
-      backgroundColor: '#1C1C1E',
-    } : {
-      backgroundColor: '#1C1C1E',
-    }),
-  } as any,
+    borderColor: Colors.surface.cardBorder,
+    backgroundColor: Colors.surface.card,
+  },
   flexSection: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
   },
   authoritySection: {
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: '#2C2C2E',
+    borderColor: Colors.surface.cardBorder,
+    backgroundColor: Colors.surface.card,
     minHeight: 400,
+  },
+  authorityScrollRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    paddingVertical: Spacing.xs,
+    alignItems: 'stretch',
     ...(Platform.OS === 'web' ? {
-      backgroundColor: '#1C1C1E',
-    } : {
-      backgroundColor: '#1C1C1E',
-    }),
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      scrollbarWidth: 'thin',
+      scrollbarColor: '#3B3B3D transparent',
+    } : {}),
   } as any,
   authorityCardWrapper: {
     width: 300,
@@ -472,14 +624,14 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
   },
   authorityEmptyIcon: {
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   authorityEmptyHeadline: {
     color: Colors.text.primary,
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: Spacing.xs + 2, // 6px — between xs(4) and sm(8) scale points
   },
   authorityEmptyBody: {
     color: Colors.text.tertiary,
@@ -488,11 +640,20 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     maxWidth: 480,
   },
+  contentHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tabletTopRow: {
+    width: '100%',
+    marginBottom: Spacing.md,
+  } as any,
   greeting: {
     color: Colors.text.primary,
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: Spacing.xs,
   },
   profileBanner: {
     flexDirection: 'row',
@@ -501,9 +662,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 188, 212, 0.08)',
     borderWidth: 1,
     borderColor: 'rgba(0, 188, 212, 0.20)',
-    borderRadius: 12,
+    borderRadius: BorderRadius.lg,
     padding: 14,
-    gap: 12,
+    gap: Spacing.md,
   },
   profileBannerContent: {
     flexDirection: 'row',
@@ -528,13 +689,13 @@ const styles = StyleSheet.create({
   profileBannerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: Spacing.md,
   },
   profileBannerButton: {
     backgroundColor: '#00BCD4',
-    borderRadius: 8,
+    borderRadius: BorderRadius.md,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: Spacing.sm,
   },
   profileBannerButtonText: {
     color: '#fff',

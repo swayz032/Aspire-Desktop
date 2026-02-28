@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 // Tile Manifest — deny-by-default registry (Law #3: Fail Closed)
 // Unknown tile ID → null. Unknown verb → empty array. No exceptions.
+// Spec: Canvas Mode Appendix B — tiles map to homepage sections.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -30,45 +31,154 @@ export interface TileEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Static v1 manifest — 6 tiles
+// Static v2 manifest — 6 tiles mapped to homepage sections (Appendix B)
 // ---------------------------------------------------------------------------
 
 const TILES: readonly TileEntry[] = [
   {
-    id: 'invoice',
-    desk: 'quinn',
-    label: 'Invoice',
-    icon: 'receipt-outline',
-    defaultVerb: 'create',
+    id: 'conference_call',
+    desk: 'sarah',
+    label: 'Conference Call',
+    icon: 'people-outline',
+    defaultVerb: 'start_conference',
     verbs: [
       {
-        id: 'create',
-        label: 'Create Invoice',
+        id: 'start_conference',
+        label: 'Start Conference',
         riskTier: 'yellow',
         lensFields: [
-          { key: 'amount', label: 'Amount', type: 'currency' },
-          { key: 'client', label: 'Client', type: 'text' },
-          { key: 'description', label: 'Description', type: 'text' },
-          { key: 'due_date', label: 'Due Date', type: 'date' },
+          { key: 'last_receipt', label: 'Last Receipt', type: 'text' },
+          { key: 'authority_count', label: 'Pending Approvals', type: 'text' },
+          { key: 'setup_status', label: 'Setup Status', type: 'status' },
         ],
       },
       {
-        id: 'send',
-        label: 'Send Invoice',
+        id: 'draft_agenda',
+        label: 'Draft Agenda',
+        riskTier: 'green',
+        lensFields: [
+          { key: 'title', label: 'Title', type: 'text' },
+          { key: 'attendees', label: 'Attendees', type: 'text' },
+        ],
+      },
+      {
+        id: 'invite_attendees',
+        label: 'Invite Attendees',
         riskTier: 'yellow',
         lensFields: [
-          { key: 'recipient', label: 'Recipient', type: 'email' },
-          { key: 'amount', label: 'Amount', type: 'currency' },
+          { key: 'attendees', label: 'Attendees', type: 'text' },
+          { key: 'meeting_time', label: 'Time', type: 'date' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'return_calls',
+    desk: 'sarah',
+    label: 'Return Calls',
+    icon: 'call-outline',
+    defaultVerb: 'draft_callback_plan',
+    verbs: [
+      {
+        id: 'draft_callback_plan',
+        label: 'Draft Callback Plan',
+        riskTier: 'green',
+        lensFields: [
+          { key: 'last_receipt', label: 'Last Receipt', type: 'text' },
+          { key: 'authority_count', label: 'Pending Approvals', type: 'text' },
+          { key: 'phone_setup', label: 'Phone Setup', type: 'status' },
+        ],
+      },
+      {
+        id: 'request_approval',
+        label: 'Request Approval',
+        riskTier: 'yellow',
+        lensFields: [
+          { key: 'callback_to', label: 'Call To', type: 'text' },
+          { key: 'reason', label: 'Reason', type: 'text' },
+        ],
+      },
+      {
+        id: 'start_call',
+        label: 'Start Call',
+        riskTier: 'yellow',
+        lensFields: [
+          { key: 'recipient', label: 'Recipient', type: 'text' },
+          { key: 'phone', label: 'Phone', type: 'text' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'finance_hub',
+    desk: 'finn',
+    label: 'Finance Hub',
+    icon: 'wallet-outline',
+    defaultVerb: 'draft_cash_report',
+    verbs: [
+      {
+        id: 'draft_cash_report',
+        label: 'Draft Cash Report',
+        riskTier: 'green',
+        lensFields: [
+          { key: 'last_receipt', label: 'Last Receipt', type: 'text' },
+          { key: 'authority_count', label: 'Pending Approvals', type: 'text' },
+          { key: 'connection_health', label: 'Connections', type: 'status' },
+        ],
+      },
+      {
+        id: 'connect_accounts',
+        label: 'Connect Accounts',
+        riskTier: 'yellow',
+        lensFields: [
+          { key: 'provider', label: 'Provider', type: 'text' },
           { key: 'status', label: 'Status', type: 'status' },
         ],
       },
       {
-        id: 'void',
-        label: 'Void Invoice',
-        riskTier: 'red',
+        id: 'draft_forecast',
+        label: 'Draft Forecast',
+        riskTier: 'yellow',
         lensFields: [
-          { key: 'invoice_id', label: 'Invoice ID', type: 'text' },
-          { key: 'reason', label: 'Reason', type: 'text' },
+          { key: 'period', label: 'Period', type: 'text' },
+          { key: 'confidence', label: 'Confidence', type: 'text' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'inbox_setup',
+    desk: 'eli',
+    label: 'Inbox Setup',
+    icon: 'mail-outline',
+    defaultVerb: 'start_setup',
+    verbs: [
+      {
+        id: 'start_setup',
+        label: 'Start Setup',
+        riskTier: 'yellow',
+        lensFields: [
+          { key: 'setup_status', label: 'Setup Status', type: 'status' },
+          { key: 'last_receipt', label: 'Last Receipt', type: 'text' },
+          { key: 'authority_count', label: 'Pending Approvals', type: 'text' },
+        ],
+      },
+      {
+        id: 'verify_dns',
+        label: 'Verify DNS',
+        riskTier: 'green',
+        lensFields: [
+          { key: 'domain', label: 'Domain', type: 'text' },
+          { key: 'status', label: 'DNS Status', type: 'status' },
+        ],
+      },
+      {
+        id: 'draft_welcome_email',
+        label: 'Draft Welcome Email',
+        riskTier: 'yellow',
+        lensFields: [
+          { key: 'template', label: 'Template', type: 'text' },
+          { key: 'to', label: 'To', type: 'email' },
         ],
       },
     ],
@@ -101,121 +211,37 @@ const TILES: readonly TileEntry[] = [
     ],
   },
   {
-    id: 'email',
-    desk: 'eli',
-    label: 'Email',
-    icon: 'mail-outline',
-    defaultVerb: 'compose',
+    id: 'authority_queue',
+    desk: 'quinn',
+    label: 'Authority Queue',
+    icon: 'shield-checkmark-outline',
+    defaultVerb: 'review',
     verbs: [
       {
-        id: 'compose',
-        label: 'Compose Email',
-        riskTier: 'yellow',
-        lensFields: [
-          { key: 'to', label: 'To', type: 'email' },
-          { key: 'subject', label: 'Subject', type: 'text' },
-          { key: 'body', label: 'Body', type: 'text' },
-        ],
-      },
-      {
-        id: 'view',
-        label: 'View Inbox',
+        id: 'review',
+        label: 'Review Queue',
         riskTier: 'green',
         lensFields: [
-          { key: 'folder', label: 'Folder', type: 'text' },
+          { key: 'item_count', label: 'Items', type: 'text' },
+          { key: 'priority', label: 'Priority', type: 'status' },
         ],
       },
-    ],
-  },
-  {
-    id: 'contract',
-    desk: 'clara',
-    label: 'Contract',
-    icon: 'document-text-outline',
-    defaultVerb: 'create',
-    verbs: [
       {
-        id: 'create',
-        label: 'Create Contract',
+        id: 'approve',
+        label: 'Approve Item',
         riskTier: 'yellow',
         lensFields: [
-          { key: 'template', label: 'Template', type: 'text' },
-          { key: 'client', label: 'Client', type: 'text' },
-          { key: 'value', label: 'Contract Value', type: 'currency' },
+          { key: 'item', label: 'Item', type: 'text' },
+          { key: 'risk_tier', label: 'Risk Tier', type: 'status' },
         ],
       },
       {
-        id: 'send_for_signature',
-        label: 'Send for Signature',
-        riskTier: 'red',
-        lensFields: [
-          { key: 'signer', label: 'Signer', type: 'text' },
-          { key: 'signer_email', label: 'Signer Email', type: 'email' },
-          { key: 'document', label: 'Document', type: 'text' },
-        ],
-      },
-      {
-        id: 'view',
-        label: 'View Contracts',
-        riskTier: 'green',
-        lensFields: [
-          { key: 'status', label: 'Status', type: 'status' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'payment',
-    desk: 'finn',
-    label: 'Payment',
-    icon: 'card-outline',
-    defaultVerb: 'send',
-    verbs: [
-      {
-        id: 'send',
-        label: 'Send Payment',
-        riskTier: 'red',
-        lensFields: [
-          { key: 'amount', label: 'Amount', type: 'currency' },
-          { key: 'recipient', label: 'Recipient', type: 'text' },
-          { key: 'description', label: 'Description', type: 'text' },
-        ],
-      },
-      {
-        id: 'request',
-        label: 'Request Payment',
+        id: 'deny',
+        label: 'Deny Item',
         riskTier: 'yellow',
         lensFields: [
-          { key: 'amount', label: 'Amount', type: 'currency' },
-          { key: 'from', label: 'From', type: 'text' },
-          { key: 'due_date', label: 'Due Date', type: 'date' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'document',
-    desk: 'tec',
-    label: 'Document',
-    icon: 'folder-outline',
-    defaultVerb: 'generate',
-    verbs: [
-      {
-        id: 'generate',
-        label: 'Generate Document',
-        riskTier: 'yellow',
-        lensFields: [
-          { key: 'type', label: 'Document Type', type: 'text' },
-          { key: 'title', label: 'Title', type: 'text' },
-          { key: 'format', label: 'Format', type: 'text' },
-        ],
-      },
-      {
-        id: 'view',
-        label: 'View Documents',
-        riskTier: 'green',
-        lensFields: [
-          { key: 'category', label: 'Category', type: 'text' },
+          { key: 'item', label: 'Item', type: 'text' },
+          { key: 'reason', label: 'Reason', type: 'text' },
         ],
       },
     ],

@@ -32,6 +32,7 @@ export interface ImmersionState {
   lensOpen: boolean;
   lensTileId: string | null;
   commandPaletteOpen: boolean;
+  contextMenuOpen: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +50,7 @@ const DEFAULT_STATE: ImmersionState = {
   lensOpen: false,
   lensTileId: null,
   commandPaletteOpen: false,
+  contextMenuOpen: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -181,8 +183,31 @@ export function setCommandPaletteOpen(open: boolean): void {
   notify();
 }
 
+export function setContextMenuOpen(open: boolean): void {
+  if (state.contextMenuOpen === open) return;
+  state = { ...state, contextMenuOpen: open };
+  notify();
+}
+
 export function setFpsMovingAvg(fps: number): void {
   state = { ...state, fpsMovingAvg: fps };
+  notify();
+}
+
+/**
+ * Close all Canvas overlays in one batch. Used during mode transitions
+ * to avoid orphaned overlays when Canvas is unmounted.
+ */
+export function closeAllOverlays(): void {
+  state = {
+    ...state,
+    stageOpen: false,
+    stagedTileId: null,
+    lensOpen: false,
+    lensTileId: null,
+    commandPaletteOpen: false,
+    contextMenuOpen: false,
+  };
   notify();
 }
 

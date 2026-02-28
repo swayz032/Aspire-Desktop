@@ -688,34 +688,40 @@ describe('Manifest Integrity', () => {
     }
   });
 
-  it('payment.send is RED tier (financial, irreversible)', () => {
-    const paymentTile = getTile('payment');
-    expect(paymentTile).not.toBeNull();
-    const sendVerb = paymentTile!.verbs.find((v) => v.id === 'send');
-    expect(sendVerb).toBeDefined();
-    expect(sendVerb!.riskTier).toBe('red');
+  it('conference_call.start_conference is YELLOW tier (requires confirmation)', () => {
+    const tile = getTile('conference_call');
+    expect(tile).not.toBeNull();
+    const verb = tile!.verbs.find((v) => v.id === 'start_conference');
+    expect(verb).toBeDefined();
+    expect(verb!.riskTier).toBe('yellow');
   });
 
-  it('invoice.void is RED tier (financial, irreversible)', () => {
-    const invoiceTile = getTile('invoice');
-    expect(invoiceTile).not.toBeNull();
-    const voidVerb = invoiceTile!.verbs.find((v) => v.id === 'void');
-    expect(voidVerb).toBeDefined();
-    expect(voidVerb!.riskTier).toBe('red');
+  it('return_calls.start_call is YELLOW tier (requires confirmation)', () => {
+    const tile = getTile('return_calls');
+    expect(tile).not.toBeNull();
+    const verb = tile!.verbs.find((v) => v.id === 'start_call');
+    expect(verb).toBeDefined();
+    expect(verb!.riskTier).toBe('yellow');
   });
 
-  it('contract.send_for_signature is RED tier (legal binding)', () => {
-    const contractTile = getTile('contract');
-    expect(contractTile).not.toBeNull();
-    const signVerb = contractTile!.verbs.find((v) => v.id === 'send_for_signature');
-    expect(signVerb).toBeDefined();
-    expect(signVerb!.riskTier).toBe('red');
+  it('authority_queue.approve is YELLOW tier (governance action)', () => {
+    const tile = getTile('authority_queue');
+    expect(tile).not.toBeNull();
+    const verb = tile!.verbs.find((v) => v.id === 'approve');
+    expect(verb).toBeDefined();
+    expect(verb!.riskTier).toBe('yellow');
   });
 
-  it('no RED tier verb is missing lensFields (user must see what they authorize)', () => {
+  it('deprecated v1 tile IDs return null (deny-by-default migration)', () => {
+    expect(getTile('payment')).toBeNull();
+    expect(getTile('invoice')).toBeNull();
+    expect(getTile('contract')).toBeNull();
+  });
+
+  it('no YELLOW or RED tier verb is missing lensFields (user must see what they authorize)', () => {
     for (const tile of allTiles) {
       for (const verb of tile.verbs) {
-        if (verb.riskTier === 'red') {
+        if (verb.riskTier === 'yellow' || verb.riskTier === 'red') {
           expect(verb.lensFields.length).toBeGreaterThan(0);
         }
       }

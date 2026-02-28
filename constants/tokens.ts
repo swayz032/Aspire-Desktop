@@ -235,6 +235,17 @@ export const Canvas = {
     shadowScaleDepth: 1.2,
     shadowScaleCanvas: 1.5,
     parallaxMax: 4,
+    /** Web box-shadow values per mode (layered for realism) */
+    webShadowDepth: '0 1px 2px rgba(0,0,0,0.24), 0 2px 6px rgba(0,0,0,0.12)',
+    webShadowCanvas: '0 2px 4px rgba(0,0,0,0.28), 0 4px 12px rgba(0,0,0,0.16), 0 8px 24px rgba(0,0,0,0.08)',
+  },
+
+  /** Mode transition timing — spec Appendix A: 150ms ease-in-out */
+  modeTransition: {
+    durationMs: 150,
+    easing: 'ease-in-out',
+    /** CSS transition shorthand for web mode switching */
+    css: 'box-shadow 150ms ease-in-out, border-color 150ms ease-in-out, opacity 150ms ease-in-out',
   },
 
   /** Duration targets (ms) and spring physics for all canvas animations */
@@ -247,14 +258,27 @@ export const Canvas = {
     palette: 200,
     stagger: 50,
     modeTransition: 250,
+    /** Entrance choreography stagger (ms between tiles) */
+    tileStagger: 60,
+    /** Header entrance spring — heavier, more deliberate */
+    headerSpring: { damping: 26, stiffness: 220, mass: 1.0 },
+    /** Tile entrance spring — slightly snappier than header */
     spring: { damping: 22, stiffness: 260, mass: 0.9 },
+    /** Runway entrance spring — gentle slide-up */
+    runwaySpring: { damping: 24, stiffness: 200, mass: 1.1 },
   },
 
   /** Radial vignette overlay — subtle depth cueing at screen edges */
   vignette: {
-    opacity: 0.15,
+    /** Per-mode opacity: depth is barely perceptible, canvas is atmospheric */
+    opacityDepth: 0.10,
+    opacityCanvas: 0.22,
+    /** Legacy single value — kept for backward compat */
+    opacity: 0.18,
     spread: 0.7,
-    color: 'rgba(0,0,0,0.15)',
+    color: 'rgba(0,0,0,0.18)',
+    colorDepth: 'rgba(0,0,0,0.10)',
+    colorCanvas: 'rgba(0,0,0,0.22)',
   },
 
   /** Focus halo ring for active/selected canvas elements */
@@ -263,6 +287,21 @@ export const Canvas = {
     color: 'rgba(59,130,246,0.4)',
     blurRadius: 8,
     activeColor: 'rgba(59,130,246,0.6)',
+    /** Per-desk accent tints — subtle identity on hover, not overwhelming */
+    desk: {
+      sarah: { ring: 'rgba(147,130,246,0.28)', glow: 'rgba(147,130,246,0.10)', hex: '#9382F6' },
+      finn: { ring: 'rgba(52,199,89,0.28)', glow: 'rgba(52,199,89,0.10)', hex: '#34C759' },
+      eli: { ring: 'rgba(245,158,11,0.28)', glow: 'rgba(245,158,11,0.10)', hex: '#F59E0B' },
+      nora: { ring: 'rgba(8,145,178,0.28)', glow: 'rgba(8,145,178,0.10)', hex: '#0891B2' },
+      quinn: { ring: 'rgba(59,130,246,0.28)', glow: 'rgba(59,130,246,0.10)', hex: '#3B82F6' },
+    } as Record<string, { ring: string; glow: string; hex: string }>,
+    /** Glass glow layers for premium feel */
+    innerBlur: 6,
+    outerBlur: 20,
+    outerSpread: 2,
+    transitionMs: 320,
+    /** Cubic bezier for organic glow ramp */
+    easing: 'cubic-bezier(0.19, 1, 0.22, 1)',
   },
 
   /** Stage overlay panel (draft / authority / receipt sidebars) */
@@ -293,5 +332,66 @@ export const Canvas = {
     pendingColor: '#6e6e73',
     errorColor: '#ff3b30',
     connectorHeight: 2,
+  },
+
+  /** Workspace layout — tile dimensions, grid spacing, content regions */
+  workspace: {
+    /** Deep dark background — darker than app background for depth separation */
+    bg: '#060608',
+    /** Tile card dimensions */
+    tileWidth: 268,
+    tileHeight: 228,
+    tileBorderRadius: 22,
+    tilePadding: 24,
+    /** Glass surface */
+    tileBg: 'rgba(14,14,18,0.78)',
+    tileBorderColor: 'rgba(255,255,255,0.07)',
+    tileBorderHover: 'rgba(255,255,255,0.12)',
+    /** Grid layout */
+    gridGap: 22,
+    gridMaxWidth: 880,
+    /** Content region padding */
+    contentPaddingH: 48,
+    contentPaddingV: 36,
+    /** Header section */
+    headerGap: 12,
+    headerBottomMargin: 44,
+    /** Runway section */
+    runwayTopMargin: 44,
+    runwayMaxWidth: 620,
+    /** Dot grid atmosphere */
+    dotGridOpacity: 0.03,
+    dotGridSpacing: 32,
+    /** Cursor spotlight */
+    spotlightRadius: 900,
+    spotlightOpacity: 0.02,
+  },
+
+  /** Responsive layout constraints per viewport tier */
+  layout: {
+    /** Max content width on wide displays (1920+) to prevent over-stretching */
+    wideMaxWidth: 1600,
+    /** Gap between columns per breakpoint */
+    gapTablet: 12,
+    gapLaptop: 12,
+    gapDesktop: 16,
+    gapWide: 16,
+    /** Column widths per breakpoint */
+    leftColLaptop: 260,
+    leftColDesktop: 280,
+    rightColTablet: 280,
+    rightColLaptop: 280,
+    rightColDesktop: 320,
+  },
+
+  /** Tile typography sub-tokens */
+  tileType: {
+    label: { fontSize: 17, fontWeight: '700' as const, letterSpacing: -0.2 },
+    deskTag: { fontSize: 9.5, fontWeight: '700' as const, letterSpacing: 2.0 },
+    verbLabel: { fontSize: 12, fontWeight: '500' as const },
+    riskPill: { fontSize: 8.5, fontWeight: '800' as const, letterSpacing: 0.8 },
+    verbCount: { fontSize: 11, fontWeight: '400' as const },
+    headerTitle: { fontSize: 13, fontWeight: '600' as const, letterSpacing: 4.5 },
+    headerSub: { fontSize: 12, fontWeight: '400' as const, letterSpacing: 0.4 },
   },
 } as const;

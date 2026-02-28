@@ -779,9 +779,9 @@ exports[`Visual Regression: Snapshots DryRunDisplay snapshots matches snapshot f
       }
     >
       <Text
-        testID="icon-receipt-outline"
+        testID="icon-people-outline"
       >
-        receipt-outline
+        people-outline
       </Text>
       <View
         style={
@@ -800,7 +800,7 @@ exports[`Visual Regression: Snapshots DryRunDisplay snapshots matches snapshot f
             }
           }
         >
-          Create Invoice
+          Start Conference
         </Text>
         <Text
           style={
@@ -815,7 +815,7 @@ exports[`Visual Regression: Snapshots DryRunDisplay snapshots matches snapshot f
           }
         >
           via 
-          quinn
+          sarah
         </Text>
       </View>
       <View
@@ -1294,9 +1294,9 @@ exports[`Visual Regression: Snapshots DryRunDisplay snapshots matches snapshot f
       }
     >
       <Text
-        testID="icon-receipt-outline"
+        testID="icon-people-outline"
       >
-        receipt-outline
+        people-outline
       </Text>
       <View
         style={
@@ -1315,7 +1315,7 @@ exports[`Visual Regression: Snapshots DryRunDisplay snapshots matches snapshot f
             }
           }
         >
-          Create Invoice
+          Start Conference
         </Text>
         <Text
           style={
@@ -1330,7 +1330,7 @@ exports[`Visual Regression: Snapshots DryRunDisplay snapshots matches snapshot f
           }
         >
           via 
-          quinn
+          sarah
         </Text>
       </View>
       <View
@@ -1809,9 +1809,9 @@ exports[`Visual Regression: Snapshots DryRunDisplay snapshots matches snapshot f
       }
     >
       <Text
-        testID="icon-receipt-outline"
+        testID="icon-people-outline"
       >
-        receipt-outline
+        people-outline
       </Text>
       <View
         style={
@@ -1830,7 +1830,7 @@ exports[`Visual Regression: Snapshots DryRunDisplay snapshots matches snapshot f
             }
           }
         >
-          Create Invoice
+          Start Conference
         </Text>
         <Text
           style={
@@ -1845,7 +1845,7 @@ exports[`Visual Regression: Snapshots DryRunDisplay snapshots matches snapshot f
           }
         >
           via 
-          quinn
+          sarah
         </Text>
       </View>
       <View
@@ -2252,7 +2252,6 @@ exports[`Visual Regression: Snapshots ImmersionLayer snapshots matches snapshot 
   style={
     {
       "elevation": 4,
-      "flex": 1,
       "shadowColor": "#000",
       "shadowOffset": {
         "height": 4,
@@ -2285,9 +2284,7 @@ exports[`Visual Regression: Snapshots ImmersionLayer snapshots matches snapshot 
 <View
   style={
     [
-      {
-        "flex": 1,
-      },
+      {},
       {
         "elevation": 2,
         "shadowColor": "#000",
@@ -6397,9 +6394,9 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
 </View>
 `;
 
-exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot for tile invoice 1`] = `
+exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot for tile conference_call 1`] = `
 <View
-  accessibilityLabel="Actions for Invoice"
+  accessibilityLabel="Actions for Conference Call"
   accessibilityRole="menu"
   collapsable={false}
   style={
@@ -6432,7 +6429,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
   }
 >
   <View
-    accessibilityLabel="Create Invoice — yellow risk"
+    accessibilityLabel="Start Conference — yellow risk"
     accessibilityRole="menuitem"
     accessibilityState={
       {
@@ -6499,7 +6496,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
         ]
       }
     >
-      Create Invoice
+      Start Conference
     </Text>
     <View
       style={
@@ -6534,7 +6531,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
     </View>
   </View>
   <View
-    accessibilityLabel="Send Invoice — yellow risk"
+    accessibilityLabel="Draft Agenda — green risk"
     accessibilityRole="menuitem"
     accessibilityState={
       {
@@ -6596,7 +6593,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
         ]
       }
     >
-      Send Invoice
+      Draft Agenda
     </Text>
     <View
       style={
@@ -6607,7 +6604,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
             "paddingVertical": 1,
           },
           {
-            "backgroundColor": "rgba(212, 160, 23, 0.15)",
+            "backgroundColor": "rgba(52, 199, 89, 0.15)",
           },
         ]
       }
@@ -6621,17 +6618,17 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
               "textTransform": "capitalize",
             },
             {
-              "color": "#d4a017",
+              "color": "#34c759",
             },
           ]
         }
       >
-        yellow
+        green
       </Text>
     </View>
   </View>
   <View
-    accessibilityLabel="Void Invoice — red risk"
+    accessibilityLabel="Invite Attendees — yellow risk"
     accessibilityRole="menuitem"
     accessibilityState={
       {
@@ -6693,7 +6690,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
         ]
       }
     >
-      Void Invoice
+      Invite Attendees
     </Text>
     <View
       style={
@@ -6704,7 +6701,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
             "paddingVertical": 1,
           },
           {
-            "backgroundColor": "rgba(255, 59, 48, 0.15)",
+            "backgroundColor": "rgba(212, 160, 23, 0.15)",
           },
         ]
       }
@@ -6718,21 +6715,21 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
               "textTransform": "capitalize",
             },
             {
-              "color": "#ff3b30",
+              "color": "#d4a017",
             },
           ]
         }
       >
-        red
+        yellow
       </Text>
     </View>
   </View>
 </View>
 `;
 
-exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot for tile payment 1`] = `
+exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot for tile finance_hub 1`] = `
 <View
-  accessibilityLabel="Actions for Payment"
+  accessibilityLabel="Actions for Finance Hub"
   accessibilityRole="menu"
   collapsable={false}
   style={
@@ -6765,7 +6762,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
   }
 >
   <View
-    accessibilityLabel="Send Payment — red risk"
+    accessibilityLabel="Draft Cash Report — green risk"
     accessibilityRole="menuitem"
     accessibilityState={
       {
@@ -6832,7 +6829,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
         ]
       }
     >
-      Send Payment
+      Draft Cash Report
     </Text>
     <View
       style={
@@ -6843,7 +6840,7 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
             "paddingVertical": 1,
           },
           {
-            "backgroundColor": "rgba(255, 59, 48, 0.15)",
+            "backgroundColor": "rgba(52, 199, 89, 0.15)",
           },
         ]
       }
@@ -6857,17 +6854,17 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
               "textTransform": "capitalize",
             },
             {
-              "color": "#ff3b30",
+              "color": "#34c759",
             },
           ]
         }
       >
-        red
+        green
       </Text>
     </View>
   </View>
   <View
-    accessibilityLabel="Request Payment — yellow risk"
+    accessibilityLabel="Connect Accounts — yellow risk"
     accessibilityRole="menuitem"
     accessibilityState={
       {
@@ -6929,7 +6926,104 @@ exports[`Visual Regression: Snapshots TileContextMenu snapshots matches snapshot
         ]
       }
     >
-      Request Payment
+      Connect Accounts
+    </Text>
+    <View
+      style={
+        [
+          {
+            "borderRadius": 4,
+            "paddingHorizontal": 6,
+            "paddingVertical": 1,
+          },
+          {
+            "backgroundColor": "rgba(212, 160, 23, 0.15)",
+          },
+        ]
+      }
+    >
+      <Text
+        style={
+          [
+            {
+              "fontSize": 10,
+              "fontWeight": "600",
+              "textTransform": "capitalize",
+            },
+            {
+              "color": "#d4a017",
+            },
+          ]
+        }
+      >
+        yellow
+      </Text>
+    </View>
+  </View>
+  <View
+    accessibilityLabel="Draft Forecast — yellow risk"
+    accessibilityRole="menuitem"
+    accessibilityState={
+      {
+        "busy": undefined,
+        "checked": undefined,
+        "disabled": undefined,
+        "expanded": undefined,
+        "selected": false,
+      }
+    }
+    accessibilityValue={
+      {
+        "max": undefined,
+        "min": undefined,
+        "now": undefined,
+        "text": undefined,
+      }
+    }
+    accessible={true}
+    collapsable={false}
+    focusable={true}
+    onBlur={[Function]}
+    onClick={[Function]}
+    onFocus={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      [
+        {
+          "alignItems": "center",
+          "borderRadius": 8,
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+          "minHeight": 36,
+          "paddingHorizontal": 12,
+          "paddingVertical": 10,
+        },
+        false,
+        undefined,
+      ]
+    }
+  >
+    <Text
+      numberOfLines={1}
+      style={
+        [
+          {
+            "color": "#d1d1d6",
+            "flex": 1,
+            "fontSize": 14,
+            "fontWeight": "400",
+            "marginRight": 8,
+          },
+          false,
+        ]
+      }
+    >
+      Draft Forecast
     </Text>
     <View
       style={
@@ -6987,10 +7081,10 @@ exports[`Visual Regression: Snapshots VignetteOverlay snapshots matches snapshot
   <View
     colors={
       [
-        "rgba(0,0,0,0.12)",
+        "rgba(0,0,0,0.14)",
         "transparent",
         "transparent",
-        "rgba(0,0,0,0.12)",
+        "rgba(0,0,0,0.14)",
       ]
     }
     locations={
@@ -7036,10 +7130,10 @@ exports[`Visual Regression: Snapshots VignetteOverlay snapshots matches snapshot
   <View
     colors={
       [
-        "rgba(0,0,0,0.12)",
+        "rgba(0,0,0,0.08)",
         "transparent",
         "transparent",
-        "rgba(0,0,0,0.12)",
+        "rgba(0,0,0,0.08)",
       ]
     }
     locations={

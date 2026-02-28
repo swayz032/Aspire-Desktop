@@ -31,10 +31,12 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 // Constants
 // ---------------------------------------------------------------------------
 
-const TRANSITION_MS = Canvas.motion.modeTransition; // 250ms
+// Spec Appendix A: mode transitions at 150ms ease-in-out
+const TRANSITION_MS = Canvas.modeTransition.durationMs;
 
-// CSS radial gradient for web — more performant than LinearGradient for radial
-const WEB_VIGNETTE_BG = `radial-gradient(ellipse at center, transparent 50%, ${Canvas.vignette.color} 100%)`;
+// CSS radial gradient per mode — depth is barely perceptible, canvas is atmospheric
+const WEB_VIGNETTE_DEPTH = `radial-gradient(ellipse at center, transparent 55%, ${Canvas.vignette.colorDepth} 100%)`;
+const WEB_VIGNETTE_CANVAS = `radial-gradient(ellipse at center, transparent 45%, ${Canvas.vignette.colorCanvas} 100%)`;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -45,28 +47,43 @@ export function VignetteOverlay(): React.ReactElement | null {
   const opacity = useRef(new Animated.Value(0)).current;
   const isVisible = mode === 'depth' || mode === 'canvas';
 
+  // Per-mode target opacity: depth is very subtle, canvas is more atmospheric
+  const targetOpacity = mode === 'canvas'
+    ? Canvas.vignette.opacityCanvas
+    : mode === 'depth'
+      ? Canvas.vignette.opacityDepth
+      : 0;
+
   useEffect(() => {
     if (reducedMotion) {
       // Skip animation, snap to target
-      opacity.setValue(isVisible ? Canvas.vignette.opacity : 0);
+      opacity.setValue(targetOpacity);
       return;
     }
 
     Animated.timing(opacity, {
-      toValue: isVisible ? Canvas.vignette.opacity : 0,
+      toValue: targetOpacity,
       duration: TRANSITION_MS,
       useNativeDriver: true,
     }).start();
-  }, [isVisible, opacity]);
+  }, [targetOpacity, opacity]);
 
   // Don't mount at all when permanently off (avoids unnecessary layer)
   if (mode === 'off') return null;
+
+  // Select gradient variant based on mode — depth uses wider transparent center
+  const webBg = mode === 'canvas' ? WEB_VIGNETTE_CANVAS : WEB_VIGNETTE_DEPTH;
 
   // Web: CSS radial gradient (GPU composited, no extra canvas/svg)
   if (Platform.OS === 'web') {
     return (
       <Animated.View
-        style={[styles.overlay, webOverlayStyle, { opacity }, webStyles.radialBg]}
+        style={[
+          styles.overlay,
+          webOverlayStyle,
+          { opacity },
+          { background: webBg } as unknown as ViewStyle,
+        ]}
         pointerEvents="none"
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
@@ -75,6 +92,8 @@ export function VignetteOverlay(): React.ReactElement | null {
   }
 
   // Native: expo-linear-gradient approximation (top/bottom edge darkening)
+  // Depth mode uses lighter edge colors than canvas
+  const edgeColor = mode === 'canvas' ? 'rgba(0,0,0,0.14)' : 'rgba(0,0,0,0.08)';
   return (
     <Animated.View
       style={[styles.overlay, { opacity }]}
@@ -83,7 +102,7 @@ export function VignetteOverlay(): React.ReactElement | null {
       importantForAccessibility="no-hide-descendants"
     >
       <LinearGradient
-        colors={['rgba(0,0,0,0.12)', 'transparent', 'transparent', 'rgba(0,0,0,0.12)']}
+        colors={[edgeColor, 'transparent', 'transparent', edgeColor]}
         locations={[0, 0.25, 0.75, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -115,9 +134,5 @@ const webOverlayStyle = Platform.OS === 'web'
     } as unknown as ViewStyle)
   : {};
 
-// Web-only styles — radial gradient background
-const webStyles = {
-  radialBg: {
-    background: WEB_VIGNETTE_BG,
-  } as unknown as ViewStyle,
-};
+// Web gradient is now applied inline per mode (depth vs canvas variant).
+// No static webStyles needed — gradient string is dynamic.

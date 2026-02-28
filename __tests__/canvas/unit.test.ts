@@ -410,16 +410,16 @@ describe('tileManifest', () => {
   // getTile
   // -----------------------------------------------------------------------
   describe('getTile', () => {
-    it('returns valid TileEntry for "invoice"', () => {
-      const tile = getTile('invoice');
+    it('returns valid TileEntry for "conference_call"', () => {
+      const tile = getTile('conference_call');
       expect(tile).not.toBeNull();
-      expect(tile!.id).toBe('invoice');
-      expect(tile!.desk).toBe('quinn');
-      expect(tile!.label).toBe('Invoice');
-      expect(tile!.icon).toBe('receipt-outline');
+      expect(tile!.id).toBe('conference_call');
+      expect(tile!.desk).toBe('sarah');
+      expect(tile!.label).toBe('Conference Call');
+      expect(tile!.icon).toBe('people-outline');
       expect(tile!.verbs).toBeDefined();
       expect(tile!.verbs.length).toBe(3);
-      expect(tile!.defaultVerb).toBe('create');
+      expect(tile!.defaultVerb).toBe('start_conference');
     });
 
     it('returns null for unknown tile (deny-by-default)', () => {
@@ -438,14 +438,21 @@ describe('tileManifest', () => {
       expect(getTile('<script>alert(1)</script>')).toBeNull();
     });
 
+    it('returns null for deprecated v1 tile IDs (deny-by-default)', () => {
+      const v1Ids = ['invoice', 'email', 'contract', 'payment', 'document'];
+      for (const id of v1Ids) {
+        expect(getTile(id)).toBeNull();
+      }
+    });
+
     it('returns each of the 6 known tiles', () => {
       const expectedIds = [
-        'invoice',
+        'conference_call',
+        'return_calls',
+        'finance_hub',
+        'inbox_setup',
         'calendar',
-        'email',
-        'contract',
-        'payment',
-        'document',
+        'authority_queue',
       ];
       for (const id of expectedIds) {
         expect(getTile(id)).not.toBeNull();
@@ -472,12 +479,12 @@ describe('tileManifest', () => {
       const ids = getAllTiles().map((t) => t.id);
       expect(ids).toEqual(
         expect.arrayContaining([
-          'invoice',
+          'conference_call',
+          'return_calls',
+          'finance_hub',
+          'inbox_setup',
           'calendar',
-          'email',
-          'contract',
-          'payment',
-          'document',
+          'authority_queue',
         ]),
       );
     });
@@ -487,11 +494,25 @@ describe('tileManifest', () => {
   // getTileVerbs
   // -----------------------------------------------------------------------
   describe('getTileVerbs', () => {
-    it('returns 3 verbs for invoice (create, send, void)', () => {
-      const verbs = getTileVerbs('invoice');
+    it('returns 3 verbs for conference_call (start_conference, draft_agenda, invite_attendees)', () => {
+      const verbs = getTileVerbs('conference_call');
       expect(verbs).toHaveLength(3);
       const verbIds = verbs.map((v) => v.id);
-      expect(verbIds).toEqual(['create', 'send', 'void']);
+      expect(verbIds).toEqual(['start_conference', 'draft_agenda', 'invite_attendees']);
+    });
+
+    it('returns 3 verbs for return_calls (draft_callback_plan, request_approval, start_call)', () => {
+      const verbs = getTileVerbs('return_calls');
+      expect(verbs).toHaveLength(3);
+      const verbIds = verbs.map((v) => v.id);
+      expect(verbIds).toEqual(['draft_callback_plan', 'request_approval', 'start_call']);
+    });
+
+    it('returns 3 verbs for finance_hub (draft_cash_report, connect_accounts, draft_forecast)', () => {
+      const verbs = getTileVerbs('finance_hub');
+      expect(verbs).toHaveLength(3);
+      const verbIds = verbs.map((v) => v.id);
+      expect(verbIds).toEqual(['draft_cash_report', 'connect_accounts', 'draft_forecast']);
     });
 
     it('returns empty array for unknown tile', () => {
@@ -503,8 +524,8 @@ describe('tileManifest', () => {
     });
 
     it('returns a copy (not the original verbs array)', () => {
-      const verbs1 = getTileVerbs('invoice');
-      const verbs2 = getTileVerbs('invoice');
+      const verbs1 = getTileVerbs('conference_call');
+      const verbs2 = getTileVerbs('conference_call');
       expect(verbs1).not.toBe(verbs2);
     });
   });
@@ -513,21 +534,21 @@ describe('tileManifest', () => {
   // searchVerbs
   // -----------------------------------------------------------------------
   describe('searchVerbs', () => {
-    it('returns results matching "invoice" (tile label match)', () => {
-      const results = searchVerbs('invoice');
+    it('returns results matching "conference" (tile label match)', () => {
+      const results = searchVerbs('conference');
       expect(results.length).toBeGreaterThan(0);
       // Tile label match returns ALL verbs of that tile
       for (const r of results) {
-        expect(r.tile.id).toBe('invoice');
+        expect(r.tile.id).toBe('conference_call');
       }
-      // Invoice has 3 verbs so tile label match yields all 3
+      // Conference Call has 3 verbs so tile label match yields all 3
       expect(results).toHaveLength(3);
     });
 
     it('is case-insensitive', () => {
       const results = searchVerbs('Create');
       expect(results.length).toBeGreaterThan(0);
-      // Should find Create Invoice, Create Event, Create Contract, etc.
+      // Should find Create Event in calendar tile
       const labels = results.map((r) => r.verb.label);
       expect(labels.some((l) => l.includes('Create'))).toBe(true);
     });
@@ -536,24 +557,31 @@ describe('tileManifest', () => {
       expect(searchVerbs('')).toEqual([]);
     });
 
-    it('returns payment verbs when searching "payment"', () => {
-      const results = searchVerbs('payment');
+    it('returns finance_hub verbs when searching "finance"', () => {
+      const results = searchVerbs('finance');
       expect(results.length).toBeGreaterThan(0);
-      // Tile label "Payment" matches, so all payment verbs are returned
+      // Tile label "Finance Hub" matches, so all finance_hub verbs are returned
       for (const r of results) {
-        expect(r.tile.id).toBe('payment');
+        expect(r.tile.id).toBe('finance_hub');
       }
     });
 
-    it('returns results for verb label search "Send"', () => {
-      const results = searchVerbs('Send');
+    it('returns results for verb label search "Draft"', () => {
+      const results = searchVerbs('Draft');
       expect(results.length).toBeGreaterThan(0);
       const labels = results.map((r) => r.verb.label);
-      expect(labels.some((l) => l.toLowerCase().includes('send'))).toBe(true);
+      expect(labels.some((l) => l.toLowerCase().includes('draft'))).toBe(true);
     });
 
     it('returns empty array for nonsense query', () => {
       expect(searchVerbs('zzzzzzzzzzz')).toEqual([]);
+    });
+
+    it('returns empty for deprecated v1 tile IDs', () => {
+      // "invoice", "payment", "document" are no longer tile labels
+      expect(searchVerbs('invoice')).toEqual([]);
+      expect(searchVerbs('payment')).toEqual([]);
+      expect(searchVerbs('document')).toEqual([]);
     });
   });
 
@@ -584,25 +612,39 @@ describe('tileManifest', () => {
       }
     });
 
-    it('invoice.void is RED tier', () => {
-      const tile = getTile('invoice')!;
-      const voidVerb = tile.verbs.find((v) => v.id === 'void');
-      expect(voidVerb).toBeDefined();
-      expect(voidVerb!.riskTier).toBe('red');
+    it('conference_call.start_conference is YELLOW tier', () => {
+      const tile = getTile('conference_call')!;
+      const verb = tile.verbs.find((v) => v.id === 'start_conference');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('yellow');
     });
 
-    it('contract.send_for_signature is RED tier', () => {
-      const tile = getTile('contract')!;
-      const signVerb = tile.verbs.find((v) => v.id === 'send_for_signature');
-      expect(signVerb).toBeDefined();
-      expect(signVerb!.riskTier).toBe('red');
+    it('conference_call.draft_agenda is GREEN tier', () => {
+      const tile = getTile('conference_call')!;
+      const verb = tile.verbs.find((v) => v.id === 'draft_agenda');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('green');
     });
 
-    it('payment.send is RED tier', () => {
-      const tile = getTile('payment')!;
-      const sendVerb = tile.verbs.find((v) => v.id === 'send');
-      expect(sendVerb).toBeDefined();
-      expect(sendVerb!.riskTier).toBe('red');
+    it('return_calls.draft_callback_plan is GREEN tier', () => {
+      const tile = getTile('return_calls')!;
+      const verb = tile.verbs.find((v) => v.id === 'draft_callback_plan');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('green');
+    });
+
+    it('return_calls.start_call is YELLOW tier', () => {
+      const tile = getTile('return_calls')!;
+      const verb = tile.verbs.find((v) => v.id === 'start_call');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('yellow');
+    });
+
+    it('finance_hub.draft_cash_report is GREEN tier', () => {
+      const tile = getTile('finance_hub')!;
+      const verb = tile.verbs.find((v) => v.id === 'draft_cash_report');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('green');
     });
 
     it('calendar.view is GREEN tier', () => {
@@ -612,11 +654,39 @@ describe('tileManifest', () => {
       expect(viewVerb!.riskTier).toBe('green');
     });
 
-    it('invoice.create is YELLOW tier', () => {
-      const tile = getTile('invoice')!;
-      const createVerb = tile.verbs.find((v) => v.id === 'create');
-      expect(createVerb).toBeDefined();
-      expect(createVerb!.riskTier).toBe('yellow');
+    it('calendar.create_event is YELLOW tier', () => {
+      const tile = getTile('calendar')!;
+      const verb = tile.verbs.find((v) => v.id === 'create_event');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('yellow');
+    });
+
+    it('authority_queue.review is GREEN tier', () => {
+      const tile = getTile('authority_queue')!;
+      const verb = tile.verbs.find((v) => v.id === 'review');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('green');
+    });
+
+    it('authority_queue.approve is YELLOW tier', () => {
+      const tile = getTile('authority_queue')!;
+      const verb = tile.verbs.find((v) => v.id === 'approve');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('yellow');
+    });
+
+    it('inbox_setup.start_setup is YELLOW tier', () => {
+      const tile = getTile('inbox_setup')!;
+      const verb = tile.verbs.find((v) => v.id === 'start_setup');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('yellow');
+    });
+
+    it('inbox_setup.verify_dns is GREEN tier', () => {
+      const tile = getTile('inbox_setup')!;
+      const verb = tile.verbs.find((v) => v.id === 'verify_dns');
+      expect(verb).toBeDefined();
+      expect(verb!.riskTier).toBe('green');
     });
   });
 
@@ -875,7 +945,7 @@ describe('canvasTelemetry', () => {
   // -----------------------------------------------------------------------
   describe('emitCanvasEvent + queue', () => {
     it('adds event to the queue', () => {
-      realTelemetry.emitCanvasEvent('stage_open', { tileId: 'invoice' });
+      realTelemetry.emitCanvasEvent('stage_open', { tileId: 'conference_call' });
       const q = realTelemetry.getTelemetryQueue();
       expect(q).toHaveLength(1);
       expect(q[0].event).toBe('stage_open');
@@ -1106,14 +1176,14 @@ describe('immersionStore', () => {
   // -----------------------------------------------------------------------
   describe('setStageOpen', () => {
     it('opens stage with tileId', () => {
-      store.setStageOpen(true, 'invoice');
+      store.setStageOpen(true, 'conference_call');
       const s = store.getImmersionState();
       expect(s.stageOpen).toBe(true);
-      expect(s.stagedTileId).toBe('invoice');
+      expect(s.stagedTileId).toBe('conference_call');
     });
 
     it('closes stage and clears tileId', () => {
-      store.setStageOpen(true, 'invoice');
+      store.setStageOpen(true, 'conference_call');
       store.setStageOpen(false);
       const s = store.getImmersionState();
       expect(s.stageOpen).toBe(false);
@@ -1121,9 +1191,9 @@ describe('immersionStore', () => {
     });
 
     it('preserves existing tileId when opening without specifying new one', () => {
-      store.setStageOpen(true, 'invoice');
+      store.setStageOpen(true, 'conference_call');
       store.setStageOpen(true); // no tileId — keeps existing
-      expect(store.getImmersionState().stagedTileId).toBe('invoice');
+      expect(store.getImmersionState().stagedTileId).toBe('conference_call');
     });
   });
 
@@ -1238,13 +1308,154 @@ describe('immersionStore', () => {
   describe('initImmersionScope', () => {
     it('resets state to defaults when scope changes', () => {
       store.setImmersionMode('canvas');
-      store.setStageOpen(true, 'invoice');
+      store.setStageOpen(true, 'conference_call');
       store.initImmersionScope('suite-123', 'office-1');
       const s = store.getImmersionState();
       // Should reset to defaults (no persisted data in test env)
       expect(s.stageOpen).toBe(false);
       expect(s.stagedTileId).toBeNull();
       expect(s.runwayState).toBe('IDLE');
+    });
+  });
+});
+
+// ============================================================================
+// 6) Layout Invariant — Canvas is a rendering layer, not a separate workspace
+// ============================================================================
+
+describe('Layout Invariant: same section count in all 3 modes', () => {
+  it('tileManifest has exactly 6 tiles regardless of mode', () => {
+    // The tile manifest is mode-agnostic — all 6 homepage sections
+    // exist in all 3 immersion modes (off, depth, canvas).
+    // Canvas mode only changes how tiles are rendered (halo, hover, context menu),
+    // it does NOT add or remove tiles from the layout.
+    const tiles = getAllTiles();
+    expect(tiles).toHaveLength(6);
+  });
+
+  it('all 6 tile IDs match the homepage section layout', () => {
+    // These are the exact tile IDs used by CanvasTileWrapper in DesktopHome.tsx
+    const homepageSections = [
+      'conference_call',
+      'return_calls',
+      'finance_hub',
+      'inbox_setup',
+      'calendar',
+      'authority_queue',
+    ];
+
+    const manifestIds = getAllTiles().map((t) => t.id);
+    for (const sectionId of homepageSections) {
+      expect(manifestIds).toContain(sectionId);
+    }
+    // No extra tiles beyond what the homepage uses
+    expect(manifestIds).toHaveLength(homepageSections.length);
+  });
+
+  it('every tile is available via getTile (deny-by-default does not block valid tiles)', () => {
+    const tiles = getAllTiles();
+    for (const tile of tiles) {
+      const lookup = getTile(tile.id);
+      expect(lookup).not.toBeNull();
+      expect(lookup!.id).toBe(tile.id);
+    }
+  });
+
+  it('tile desks map to the correct agent for each homepage section', () => {
+    expect(getTile('conference_call')!.desk).toBe('sarah');
+    expect(getTile('return_calls')!.desk).toBe('sarah');
+    expect(getTile('finance_hub')!.desk).toBe('finn');
+    expect(getTile('inbox_setup')!.desk).toBe('eli');
+    expect(getTile('calendar')!.desk).toBe('nora');
+    expect(getTile('authority_queue')!.desk).toBe('quinn');
+  });
+});
+
+// ============================================================================
+// 7) CanvasTileWrapper behavior per mode
+// ============================================================================
+
+describe('CanvasTileWrapper', () => {
+  // The component imports View/Pressable/StyleSheet from react-native, which is
+  // minimally mocked in this test file (Platform only). We test the component
+  // via jest.isolateModules with a richer mock to verify mode-dependent behavior.
+
+  let CanvasTileWrapperModule: typeof import('@/components/canvas/CanvasTileWrapper');
+
+  beforeAll(() => {
+    jest.isolateModules(() => {
+      // Provide a richer react-native mock for the component under test
+      jest.doMock('react-native', () => {
+        const R = jest.requireActual('react');
+        const RN = {
+          Platform: { OS: 'web' },
+          View: R.forwardRef((props: Record<string, unknown>, ref: unknown) =>
+            R.createElement('div', { ...props, ref, 'data-rn': 'View' }),
+          ),
+          Pressable: (props: Record<string, unknown>) =>
+            R.createElement('div', { ...props, 'data-rn': 'Pressable' }),
+          StyleSheet: {
+            create: (s: Record<string, unknown>) => s,
+            absoluteFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+          },
+        };
+        return RN;
+      });
+
+      // Also mock immersionStore since CanvasTileWrapper imports ImmersionMode type
+      jest.doMock('@/lib/immersionStore', () => ({}));
+
+      CanvasTileWrapperModule = require('@/components/canvas/CanvasTileWrapper');
+    });
+  });
+
+  it('exports CanvasTileWrapper as a function', () => {
+    expect(typeof CanvasTileWrapperModule.CanvasTileWrapper).toBe('function');
+  });
+
+  it('CanvasTileWrapperProps interface requires tileId, mode, children', () => {
+    // Type-level check: the component accepts the required props.
+    // This is a compile-time guarantee but we verify the function signature.
+    const fn = CanvasTileWrapperModule.CanvasTileWrapper;
+    // Function should accept an object with tileId, mode, children
+    expect(fn.length).toBe(1); // single props object
+  });
+
+  describe('off mode: pure passthrough', () => {
+    it('in off mode, the wrapper renders children directly (fragment)', () => {
+      const React = jest.requireActual('react');
+      const RTR = jest.requireActual('react-test-renderer');
+      const { CanvasTileWrapper } = CanvasTileWrapperModule;
+      const tree = RTR.create(
+        React.createElement(CanvasTileWrapper, {
+          tileId: 'conference_call',
+          mode: 'off',
+          children: React.createElement('span', null, 'test'),
+        }),
+      );
+      const json = JSON.stringify(tree.toJSON());
+      // Off mode should NOT have accessibilityRole="button" or onPress
+      expect(json).not.toContain('"accessibilityRole"');
+    });
+  });
+
+  describe('depth mode: pressable wrapper', () => {
+    it('in depth mode, the component function exists and accepts props', () => {
+      // Depth/canvas modes use hooks (useRef, useCallback) which require
+      // a proper React render context. Verifying export shape + off mode
+      // passthrough is sufficient for unit tests; full render tests are in
+      // visual-regression.test.tsx.
+      const fn = CanvasTileWrapperModule.CanvasTileWrapper;
+      expect(typeof fn).toBe('function');
+      expect(fn.length).toBe(1); // single props object
+    });
+  });
+
+  describe('canvas mode: full interaction layer', () => {
+    it('canvas mode component is exported and callable', () => {
+      // Canvas mode rendering tested in visual-regression.test.tsx
+      // with proper React render context. Unit test verifies export.
+      expect(typeof CanvasTileWrapperModule.CanvasTileWrapper).toBe('function');
     });
   });
 });

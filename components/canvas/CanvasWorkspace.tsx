@@ -1,3 +1,10 @@
+/**
+ * @deprecated Replaced by rendering-layer architecture in DesktopHome.tsx.
+ * Canvas Mode now wraps existing homepage sections with CanvasTileWrapper
+ * instead of replacing the entire homepage with a separate workspace.
+ * This file is kept for reference only — do not import or use.
+ * See: .serena/memories/canvas-mode/spec-compliance-correction.md
+ */
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Animated,
@@ -49,59 +56,99 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
     style.id = KEYFRAME_ID;
     style.textContent = `
       @keyframes canvasTileBreathe {
-        0%, 100% { opacity: 0.4; }
-        50% { opacity: 0.7; }
+        0%, 100% { opacity: 0.35; }
+        50% { opacity: 0.6; }
       }
       @keyframes canvasGridReveal {
         0% { opacity: 0; }
         100% { opacity: 1; }
       }
       @keyframes canvasSpotlightPulse {
-        0%, 100% { opacity: 0.6; }
+        0%, 100% { opacity: 0.7; }
         50% { opacity: 1; }
       }
+      @keyframes canvasHeaderDotPulse {
+        0%, 100% { box-shadow: 0 0 8px rgba(59,130,246,0.4), 0 0 3px rgba(59,130,246,0.7); }
+        50% { box-shadow: 0 0 14px rgba(59,130,246,0.55), 0 0 5px rgba(59,130,246,0.9); }
+      }
+
+      /* Tile card — premium easing with layered transitions */
       .canvas-tile {
-        transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-                    border-color 0.28s ease-out,
-                    box-shadow 0.35s ease-out;
+        transition: transform 0.32s cubic-bezier(0.19, 1, 0.22, 1),
+                    border-color 0.32s ease-out,
+                    box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1);
         cursor: pointer;
+        will-change: transform;
       }
       .canvas-tile:hover {
-        transform: translateY(-6px) scale(1.015);
+        transform: translateY(-8px) scale(1.018);
       }
       .canvas-tile:active {
-        transform: translateY(-2px) scale(0.995);
-        transition-duration: 0.08s;
+        transform: translateY(-3px) scale(0.992);
+        transition-duration: 0.1s;
       }
+
+      /* Ambient underglow breathing — slow, organic */
       .canvas-tile-glow {
-        animation: canvasTileBreathe 5s ease-in-out infinite;
+        animation: canvasTileBreathe 6s ease-in-out infinite;
         pointer-events: none;
       }
+
+      /* Background grid — gentle reveal */
       .canvas-grid-bg {
-        animation: canvasGridReveal 1.2s ease-out forwards;
+        animation: canvasGridReveal 1.4s ease-out forwards;
       }
+
+      /* Cursor spotlight — slow pulse for life */
       .canvas-spotlight {
-        animation: canvasSpotlightPulse 4s ease-in-out infinite;
+        animation: canvasSpotlightPulse 5s ease-in-out infinite;
         pointer-events: none;
+        will-change: opacity;
       }
+
+      /* Header status dot — living pulse */
+      .canvas-header-dot {
+        animation: canvasHeaderDotPulse 3s ease-in-out infinite;
+      }
+
+      /* Desk tag — refined hover */
       .canvas-desk-tag {
-        transition: background-color 0.2s ease-out, color 0.2s ease-out;
+        transition: background-color 0.24s ease-out, color 0.24s ease-out;
       }
       .canvas-tile:hover .canvas-desk-tag {
-        background-color: rgba(255,255,255,0.08);
+        background-color: rgba(255,255,255,0.07);
       }
+
+      /* Verb row — fade up on hover */
       .canvas-verb-row {
-        transition: opacity 0.2s ease-out;
-        opacity: 0.7;
+        transition: opacity 0.24s ease-out, transform 0.24s cubic-bezier(0.19, 1, 0.22, 1);
+        opacity: 0.6;
+        transform: translateY(0px);
       }
       .canvas-tile:hover .canvas-verb-row {
         opacity: 1;
+        transform: translateY(-1px);
       }
+
+      /* Icon ring — breathe on hover */
       .canvas-tile-icon-ring {
-        transition: box-shadow 0.3s ease-out, transform 0.3s ease-out;
+        transition: box-shadow 0.35s ease-out, transform 0.35s cubic-bezier(0.19, 1, 0.22, 1);
       }
       .canvas-tile:hover .canvas-tile-icon-ring {
-        transform: scale(1.08);
+        transform: scale(1.06);
+      }
+
+      /* Reduced motion — strip animations */
+      @media (prefers-reduced-motion: reduce) {
+        .canvas-tile { transition-duration: 0.01s !important; }
+        .canvas-tile:hover { transform: none !important; }
+        .canvas-tile:active { transform: none !important; }
+        .canvas-tile-glow { animation: none !important; opacity: 0.45 !important; }
+        .canvas-grid-bg { animation: none !important; opacity: 1 !important; }
+        .canvas-spotlight { animation: none !important; }
+        .canvas-header-dot { animation: none !important; }
+        .canvas-tile-icon-ring { transition-duration: 0.01s !important; }
+        .canvas-verb-row { transition-duration: 0.01s !important; }
       }
     `;
     document.head.appendChild(style);
@@ -216,22 +263,21 @@ function CanvasTile({
     [tile.id, onContextMenu],
   );
 
-  // Glass card web styles
+  // Glass card web styles — multi-layer shadow for depth, refined blur
   const webGlassStyle: ViewStyle = Platform.OS === 'web'
     ? ({
-        backdropFilter: 'blur(24px) saturate(1.4)',
-        WebkitBackdropFilter: 'blur(24px) saturate(1.4)',
-        boxShadow: `
-          0 4px 32px rgba(0,0,0,0.45),
-          0 0 0 1px rgba(255,255,255,0.03),
-          inset 0 1px 0 rgba(255,255,255,0.05)
-        `,
-      } as unknown as ViewStyle)
-    : {};
-
-  const webHoverGlowStyle: ViewStyle = Platform.OS === 'web'
-    ? ({
-        // Hover glow injected via CSS class .canvas-tile:hover
+        backdropFilter: 'blur(20px) saturate(1.5)',
+        WebkitBackdropFilter: 'blur(20px) saturate(1.5)',
+        boxShadow: [
+          // Ambient shadow — broad, soft diffusion
+          `0 8px 40px rgba(0,0,0,0.5)`,
+          // Contact shadow — tight, grounds the card
+          `0 2px 8px rgba(0,0,0,0.3)`,
+          // Edge highlight — 1px inner top for glass lip
+          `inset 0 1px 0 rgba(255,255,255,0.06)`,
+          // Subtle edge ring
+          `0 0 0 0.5px rgba(255,255,255,0.04)`,
+        ].join(', '),
       } as unknown as ViewStyle)
     : {};
 
@@ -267,24 +313,24 @@ function CanvasTile({
             : {})}
         />
 
-        {/* Icon ring */}
+        {/* Icon ring — desk accent border + soft glow */}
         <View
-          style={[tileStyles.iconRing, { borderColor: `${accent}30` }]}
+          style={[tileStyles.iconRing, { borderColor: `${accent}25` }]}
           {...(Platform.OS === 'web'
             ? {
                 className: 'canvas-tile-icon-ring',
                 style: [
                   tileStyles.iconRing,
-                  { borderColor: `${accent}30` },
-                  { boxShadow: `0 0 20px ${accent}15` } as unknown as ViewStyle,
+                  { borderColor: `${accent}25` },
+                  { boxShadow: `0 0 24px ${accent}12, inset 0 0 12px ${accent}06` } as unknown as ViewStyle,
                 ],
               } as unknown as Record<string, unknown>
             : {})}
         >
-          <View style={[tileStyles.iconCircle, { backgroundColor: `${accent}12` }]}>
+          <View style={[tileStyles.iconCircle, { backgroundColor: `${accent}0D` }]}>
             <Ionicons
               name={tile.icon as keyof typeof Ionicons.glyphMap}
-              size={26}
+              size={24}
               color={accent}
             />
           </View>
@@ -347,63 +393,63 @@ function CanvasTile({
 
 const tileStyles = StyleSheet.create({
   card: {
-    width: 260,
-    height: 220,
-    borderRadius: 20,
+    width: Canvas.workspace.tileWidth,
+    height: Canvas.workspace.tileHeight,
+    borderRadius: Canvas.workspace.tileBorderRadius,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    backgroundColor: 'rgba(16,16,20,0.8)',
-    padding: 24,
+    borderColor: Canvas.workspace.tileBorderColor,
+    backgroundColor: Canvas.workspace.tileBg,
+    padding: Canvas.workspace.tilePadding,
     overflow: 'hidden',
     position: 'relative',
     alignItems: 'flex-start',
     justifyContent: 'flex-start',
-    gap: 12,
+    gap: 10,
   },
   underglow: {
     position: 'absolute',
-    bottom: -40,
-    left: '20%' as any,
-    right: '20%' as any,
-    height: 60,
-    borderRadius: 30,
-    opacity: 0.06,
+    bottom: -44,
+    left: '18%' as any,
+    right: '18%' as any,
+    height: 64,
+    borderRadius: 32,
+    opacity: 0.07,
     ...(Platform.OS === 'web'
-      ? { filter: 'blur(30px)' } as unknown as ViewStyle
+      ? { filter: 'blur(36px)' } as unknown as ViewStyle
       : {}),
   },
   iconRing: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 52,
+    height: 52,
+    borderRadius: 15,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 13,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#F2F2F2',
-    letterSpacing: -0.3,
+    fontSize: Canvas.tileType.label.fontSize,
+    fontWeight: Canvas.tileType.label.fontWeight,
+    letterSpacing: Canvas.tileType.label.letterSpacing,
+    color: Colors.text.bright,
     marginTop: 2,
   },
   deskTag: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: 'rgba(255,255,255,0.035)',
   },
   deskText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.8,
+    fontSize: Canvas.tileType.deskTag.fontSize,
+    fontWeight: Canvas.tileType.deskTag.fontWeight,
+    letterSpacing: Canvas.tileType.deskTag.letterSpacing,
   },
   verbRow: {
     flexDirection: 'row',
@@ -412,28 +458,28 @@ const tileStyles = StyleSheet.create({
     marginTop: 'auto' as any,
   },
   verbLabel: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: Canvas.tileType.verbLabel.fontSize,
+    fontWeight: Canvas.tileType.verbLabel.fontWeight,
     color: Colors.text.tertiary,
     flex: 1,
   },
   riskPill: {
     paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingVertical: 2.5,
     borderRadius: 4,
   },
   riskText: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontSize: Canvas.tileType.riskPill.fontSize,
+    fontWeight: Canvas.tileType.riskPill.fontWeight,
+    letterSpacing: Canvas.tileType.riskPill.letterSpacing,
   },
   verbCount: {
-    fontSize: 11,
-    fontWeight: '400',
+    fontSize: Canvas.tileType.verbCount.fontSize,
+    fontWeight: Canvas.tileType.verbCount.fontWeight,
     color: Colors.text.muted,
     position: 'absolute',
-    bottom: 24,
-    right: 24,
+    bottom: Canvas.workspace.tilePadding,
+    right: Canvas.workspace.tilePadding,
   },
 });
 
@@ -475,16 +521,19 @@ export function CanvasWorkspace(): React.ReactElement {
     tileAnims.forEach((a) => a.setValue(0));
 
     // Stagger: header → tiles → runway
+    // Header uses heavier spring for deliberate, authoritative entrance
     const headerSpring = Animated.spring(headerAnim, {
       toValue: 1,
-      damping: 24,
-      stiffness: 200,
-      mass: 0.8,
+      damping: Canvas.motion.headerSpring.damping,
+      stiffness: Canvas.motion.headerSpring.stiffness,
+      mass: Canvas.motion.headerSpring.mass,
       useNativeDriver: true,
     });
 
+    // Tiles stagger at 60ms intervals — fast enough to feel connected,
+    // slow enough to read the left-to-right reveal
     const tileStagger = Animated.stagger(
-      70,
+      Canvas.motion.tileStagger,
       tileAnims.map((anim) =>
         Animated.spring(anim, {
           toValue: 1,
@@ -496,19 +545,20 @@ export function CanvasWorkspace(): React.ReactElement {
       ),
     );
 
+    // Runway slides up gently after tiles settle
     const runwaySpring = Animated.spring(runwayAnim, {
       toValue: 1,
-      damping: 20,
-      stiffness: 180,
-      mass: 1,
+      damping: Canvas.motion.runwaySpring.damping,
+      stiffness: Canvas.motion.runwaySpring.stiffness,
+      mass: Canvas.motion.runwaySpring.mass,
       useNativeDriver: true,
     });
 
     Animated.sequence([
       headerSpring,
-      Animated.delay(60),
+      Animated.delay(40),
       tileStagger,
-      Animated.delay(100),
+      Animated.delay(80),
       runwaySpring,
     ]).start();
 

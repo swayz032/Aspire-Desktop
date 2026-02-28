@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Animated,
   View,
@@ -36,6 +36,7 @@ interface LiveLensProps {
 // ---------------------------------------------------------------------------
 
 const MAX_WIDTH = 320;
+const EDGE_MARGIN = 12;
 
 function getPlaceholder(type: TileLensField['type']): string {
   switch (type) {
@@ -77,32 +78,53 @@ export function LiveLens({
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
-  // Only active in canvas mode
-  if (mode !== 'canvas') return null;
+  // Resolve tile data (deny-by-default) — hooks must run unconditionally
+  const tile = useMemo(() => getTile(tileId), [tileId]);
+  const defaultVerb = useMemo(() => {
+    if (!tile) return null;
+    return tile.verbs.find((v) => v.id === tile.defaultVerb) ?? tile.verbs[0] ?? null;
+  }, [tile]);
 
-  const tile = getTile(tileId);
-  if (!tile) return null;
-
-  const defaultVerb = tile.verbs.find((v) => v.id === tile.defaultVerb) ?? tile.verbs[0];
-  if (!defaultVerb) return null;
+  // Should render?
+  const shouldRender = mode === 'canvas' && tile !== null && defaultVerb !== null;
 
   // Position: above or below anchor depending on viewport space
-  const viewportHeight = Platform.OS === 'web' && typeof window !== 'undefined'
-    ? window.innerHeight
-    : 800;
-  const spaceBelow = viewportHeight - (anchorPosition.y + anchorPosition.height);
-  const showAbove = spaceBelow < 280;
+  // Also check right edge to avoid overflow
+  const positionStyle = useMemo<ViewStyle>(() => {
+    if (!shouldRender) return { position: 'absolute', top: 0, left: 0 };
 
-  const positionStyle: ViewStyle = {
-    position: 'absolute',
-    left: Math.max(8, anchorPosition.x),
-    ...(showAbove
-      ? { bottom: viewportHeight - anchorPosition.y + 8 }
-      : { top: anchorPosition.y + anchorPosition.height + 8 }),
-  };
+    const viewportHeight = Platform.OS === 'web' && typeof window !== 'undefined'
+      ? window.innerHeight
+      : 800;
+    const viewportWidth = Platform.OS === 'web' && typeof window !== 'undefined'
+      ? window.innerWidth
+      : 1200;
+
+    const spaceBelow = viewportHeight - (anchorPosition.y + anchorPosition.height);
+    const showAbove = spaceBelow < 280;
+
+    // Horizontal: prefer aligning with tile left edge, but clamp to viewport
+    let left = anchorPosition.x;
+    if (left + MAX_WIDTH + EDGE_MARGIN > viewportWidth) {
+      left = viewportWidth - MAX_WIDTH - EDGE_MARGIN;
+    }
+    if (left < EDGE_MARGIN) {
+      left = EDGE_MARGIN;
+    }
+
+    return {
+      position: 'absolute',
+      left,
+      ...(showAbove
+        ? { bottom: viewportHeight - anchorPosition.y + 8 }
+        : { top: anchorPosition.y + anchorPosition.height + 8 }),
+    };
+  }, [shouldRender, anchorPosition]);
 
   // Entrance animation
   useEffect(() => {
+    if (!shouldRender) return;
+
     Animated.parallel([
       Animated.timing(scaleAnim, {
         toValue: 1,
@@ -115,7 +137,7 @@ export function LiveLens({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [scaleAnim, opacityAnim]);
+  }, [shouldRender, scaleAnim, opacityAnim]);
 
   // Close with animation
   const handleClose = useCallback(() => {
@@ -147,6 +169,9 @@ export function LiveLens({
     [handleClose, onOpenStage],
   );
 
+  // Early return AFTER all hooks
+  if (!shouldRender) return null;
+
   return (
     <Animated.View
       style={[
@@ -159,7 +184,7 @@ export function LiveLens({
         },
       ]}
       accessibilityRole="summary"
-      accessibilityLabel={`Quick preview: ${tile.label}`}
+      accessibilityLabel={`Quick preview: ${tile!.label}`}
       {...(Platform.OS === 'web' ? { onKeyDown: handleKeyDown } as Record<string, unknown> : {})}
     >
       {/* Halo ring */}
@@ -173,25 +198,25 @@ export function LiveLens({
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Ionicons
-            name={tile.icon as keyof typeof Ionicons.glyphMap}
+            name={tile!.icon as keyof typeof Ionicons.glyphMap}
             size={18}
             color={Colors.accent.cyan}
           />
-          <Text style={styles.headerLabel}>{tile.label}</Text>
+          <Text style={styles.headerLabel}>{tile!.label}</Text>
         </View>
-        <View style={[styles.riskBadge, { backgroundColor: getRiskBg(defaultVerb.riskTier) }]}>
-          <Text style={[styles.riskBadgeText, { color: getRiskColor(defaultVerb.riskTier) }]}>
-            {defaultVerb.riskTier.toUpperCase()}
+        <View style={[styles.riskBadge, { backgroundColor: getRiskBg(defaultVerb!.riskTier) }]}>
+          <Text style={[styles.riskBadgeText, { color: getRiskColor(defaultVerb!.riskTier) }]}>
+            {defaultVerb!.riskTier.toUpperCase()}
           </Text>
         </View>
       </View>
 
       {/* Verb label */}
-      <Text style={styles.verbLabel}>{defaultVerb.label}</Text>
+      <Text style={styles.verbLabel}>{defaultVerb!.label}</Text>
 
       {/* Lens fields */}
       <View style={styles.fieldsContainer}>
-        {defaultVerb.lensFields.map((field) => (
+        {defaultVerb!.lensFields.map((field) => (
           <View key={field.key} style={styles.fieldRow}>
             <Text style={styles.fieldLabel}>{field.label}</Text>
             <Text style={styles.fieldValue}>{getPlaceholder(field.type)}</Text>

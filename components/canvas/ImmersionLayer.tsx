@@ -5,7 +5,6 @@ import {
   StyleSheet,
   View,
   type ViewStyle,
-  type GestureResponderEvent,
 } from 'react-native';
 import { Canvas, Shadows } from '@/constants/tokens';
 import { useImmersion } from '@/lib/immersionStore';
@@ -124,13 +123,30 @@ export function ImmersionLayer({
   }, [mode, depthScale, animateToTarget]);
 
   // ---------------------------------------------------------------------------
-  // Shadow style per mode
+  // Shadow style per mode — uses token-based web box-shadows for precision,
+  // falls back to RN shadow props for native. Off mode = no shadow overhead.
   // ---------------------------------------------------------------------------
 
   const shadowStyle = useMemo((): ViewStyle => {
     if (mode === 'off') return {};
+
+    if (Platform.OS === 'web') {
+      // Web: use layered box-shadows from Canvas.depth tokens for premium feel
+      if (mode === 'depth') {
+        return {
+          boxShadow: Canvas.depth.webShadowDepth,
+          transition: Canvas.modeTransition.css,
+        } as unknown as ViewStyle;
+      }
+      // Canvas mode — deeper, more atmospheric shadows
+      return {
+        boxShadow: Canvas.depth.webShadowCanvas,
+        transition: Canvas.modeTransition.css,
+      } as unknown as ViewStyle;
+    }
+
+    // Native: use RN shadow props from Shadows tokens
     if (mode === 'depth') return Shadows.md;
-    // Canvas mode — deeper shadows
     return Shadows.lg;
   }, [mode]);
 

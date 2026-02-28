@@ -7,4 +7,6 @@ export { LiveLens } from './LiveLens';
 export { CommandPalette } from './CommandPalette';
 export { DryRunDisplay } from './DryRunDisplay';
 export { TileContextMenu } from './TileContextMenu';
-export { CanvasWorkspace } from './CanvasWorkspace';
+export { CanvasTileWrapper } from './CanvasTileWrapper';
+// @deprecated — CanvasWorkspace replaced by rendering-layer in DesktopHome
+// export { CanvasWorkspace } from './CanvasWorkspace';

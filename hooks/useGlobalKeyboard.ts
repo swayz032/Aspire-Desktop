@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import {
   getImmersionState,
   setCommandPaletteOpen,
+  setContextMenuOpen,
   setLensOpen,
   setStageOpen,
   setRunwayState,
@@ -96,7 +97,14 @@ export function useGlobalKeyboard(): void {
           return;
         }
 
-        // Priority 2: LiveLens
+        // Priority 2: ContextMenu
+        if (state.contextMenuOpen) {
+          e.preventDefault();
+          setContextMenuOpen(false);
+          return;
+        }
+
+        // Priority 3: LiveLens
         if (state.lensOpen) {
           e.preventDefault();
           setLensOpen(false);
@@ -104,7 +112,7 @@ export function useGlobalKeyboard(): void {
           return;
         }
 
-        // Priority 3: Stage
+        // Priority 4: Stage
         if (state.stageOpen) {
           e.preventDefault();
           setStageOpen(false);

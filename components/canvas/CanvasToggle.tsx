@@ -51,6 +51,24 @@ const INDICATOR_HEIGHT = PILL_HEIGHT - PILL_PADDING * 2;
 const SPRING = Canvas.motion.spring;
 
 // ---------------------------------------------------------------------------
+// Reduced-motion detection (web only, singleton)
+// ---------------------------------------------------------------------------
+
+let reducedMotion = false;
+
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  try {
+    const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reducedMotion = mql.matches;
+    mql.addEventListener('change', (e) => {
+      reducedMotion = e.matches;
+    });
+  } catch {
+    // silent
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -58,10 +76,15 @@ export function CanvasToggle(): React.ReactElement {
   const { mode } = useImmersion();
   const indicatorX = useRef(new Animated.Value(getModeOffset(mode))).current;
 
-  // Slide the indicator when mode changes
+  // Slide the indicator when mode changes — snap when reduced-motion is active
   useEffect(() => {
+    const target = getModeOffset(mode);
+    if (reducedMotion) {
+      indicatorX.setValue(target);
+      return;
+    }
     Animated.spring(indicatorX, {
-      toValue: getModeOffset(mode),
+      toValue: target,
       damping: SPRING.damping,
       stiffness: SPRING.stiffness,
       mass: SPRING.mass,

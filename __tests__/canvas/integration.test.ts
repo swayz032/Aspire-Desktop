@@ -139,7 +139,7 @@ describe('Integration: Cmd+K -> Search -> Select -> Stage Opens', () => {
     telemetry.resetSessionMetrics();
   });
 
-  it('full flow: Cmd+K opens palette, search finds invoice, selection opens Stage', () => {
+  it('full flow: Cmd+K opens palette, search finds conference, selection opens Stage', () => {
     // Step 1: Set mode to canvas (Cmd+K only works when mode is not 'off')
     store.setImmersionMode('canvas');
 
@@ -148,10 +148,10 @@ describe('Integration: Cmd+K -> Search -> Select -> Stage Opens', () => {
     telemetry.emitCanvasEvent('command_palette_open', {});
     expect(store.getImmersionState().commandPaletteOpen).toBe(true);
 
-    // Step 3: User searches for "invoice"
-    const results = tileManifest.searchVerbs('invoice');
+    // Step 3: User searches for "conference"
+    const results = tileManifest.searchVerbs('conference');
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].tile.id).toBe('invoice');
+    expect(results[0].tile.id).toBe('conference_call');
 
     // Step 4: User selects the first verb -- open Stage with that tile
     const selectedTile = results[0].tile;
@@ -163,12 +163,12 @@ describe('Integration: Cmd+K -> Search -> Select -> Stage Opens', () => {
     const state = store.getImmersionState();
     expect(state.commandPaletteOpen).toBe(false);
     expect(state.stageOpen).toBe(true);
-    expect(state.stagedTileId).toBe('invoice');
+    expect(state.stagedTileId).toBe('conference_call');
   });
 
   it('search returns correct verb details for downstream use', () => {
-    const results = tileManifest.searchVerbs('create');
-    // "Create" matches multiple tiles
+    const results = tileManifest.searchVerbs('draft');
+    // "Draft" matches multiple tiles (draft_agenda, draft_callback_plan, draft_cash_report, etc.)
     expect(results.length).toBeGreaterThanOrEqual(3);
 
     // Each result includes tile and verb objects
@@ -224,15 +224,15 @@ describe('Integration: Tile -> LiveLens -> Stage', () => {
     store.setImmersionMode('canvas');
 
     // Step 1: Hover over invoice tile -> lens opens
-    store.setLensOpen(true, 'invoice');
-    telemetry.emitCanvasEvent('lens_open', { tileId: 'invoice' });
+    store.setLensOpen(true, 'conference_call');
+    telemetry.emitCanvasEvent('lens_open', { tileId: 'conference_call' });
 
     let state = store.getImmersionState();
     expect(state.lensOpen).toBe(true);
-    expect(state.lensTileId).toBe('invoice');
+    expect(state.lensTileId).toBe('conference_call');
 
     // Step 2: Verify lens can show correct fields from manifest
-    const tile = tileManifest.getTile('invoice');
+    const tile = tileManifest.getTile('conference_call');
     expect(tile).not.toBeNull();
     const defaultVerb = tile!.verbs.find((v) => v.id === tile!.defaultVerb);
     expect(defaultVerb).toBeDefined();
@@ -240,14 +240,14 @@ describe('Integration: Tile -> LiveLens -> Stage', () => {
 
     // Step 3: Enter key opens Stage, lens closes
     store.setLensOpen(false);
-    store.setStageOpen(true, 'invoice');
+    store.setStageOpen(true, 'conference_call');
     telemetry.emitCanvasEvent('lens_close', {});
-    telemetry.emitCanvasEvent('stage_open', { tileId: 'invoice' });
+    telemetry.emitCanvasEvent('stage_open', { tileId: 'conference_call' });
 
     state = store.getImmersionState();
     expect(state.lensOpen).toBe(false);
     expect(state.stageOpen).toBe(true);
-    expect(state.stagedTileId).toBe('invoice');
+    expect(state.stagedTileId).toBe('conference_call');
   });
 
   it('lens fields match tile manifest for calendar tile', () => {
@@ -265,7 +265,7 @@ describe('Integration: Tile -> LiveLens -> Stage', () => {
   });
 
   it('closing lens before opening Stage leaves Stage closed', () => {
-    store.setLensOpen(true, 'invoice');
+    store.setLensOpen(true, 'conference_call');
     store.setLensOpen(false);
 
     const state = store.getImmersionState();
@@ -275,7 +275,7 @@ describe('Integration: Tile -> LiveLens -> Stage', () => {
   });
 
   it('telemetry queue records lens_open and lens_close events', () => {
-    telemetry.emitCanvasEvent('lens_open', { tileId: 'email' });
+    telemetry.emitCanvasEvent('lens_open', { tileId: 'inbox_setup' });
     telemetry.emitCanvasEvent('lens_close', {});
 
     const queue = telemetry.getTelemetryQueue();
@@ -307,7 +307,7 @@ describe('Integration: Stage -> Runway lifecycle', () => {
 
   it('happy path: Stage opens, runway walks IDLE through RECEIPT_READY', () => {
     // Open Stage
-    store.setStageOpen(true, 'invoice');
+    store.setStageOpen(true, 'conference_call');
     store.setRunwayState('IDLE');
 
     // Walk through the full happy path
@@ -418,7 +418,7 @@ describe('Integration: Stage -> Runway lifecycle', () => {
   });
 
   it('store.runwayState stays in sync throughout runway lifecycle', () => {
-    store.setStageOpen(true, 'payment');
+    store.setStageOpen(true, 'finance_hub');
     store.setRunwayState('IDLE');
 
     const steps: Array<{
@@ -438,7 +438,7 @@ describe('Integration: Stage -> Runway lifecycle', () => {
     }
 
     expect(store.getImmersionState().runwayState).toBe('DRAFT_READY');
-    expect(store.getImmersionState().stagedTileId).toBe('payment');
+    expect(store.getImmersionState().stagedTileId).toBe('finance_hub');
   });
 });
 
@@ -898,7 +898,7 @@ describe('Integration: Full pipeline end-to-end', () => {
     store.setCommandPaletteOpen(true);
     telemetry.emitCanvasEvent('command_palette_open', {});
 
-    const results = tileManifest.searchVerbs('payment');
+    const results = tileManifest.searchVerbs('finance');
     expect(results.length).toBeGreaterThan(0);
 
     // 3. Select verb -> close palette, open Stage
@@ -927,7 +927,7 @@ describe('Integration: Full pipeline end-to-end', () => {
     // 5. Verify final state
     expect(store.getImmersionState().runwayState).toBe('RECEIPT_READY');
     expect(store.getImmersionState().stageOpen).toBe(true);
-    expect(store.getImmersionState().stagedTileId).toBe('payment');
+    expect(store.getImmersionState().stagedTileId).toBe('finance_hub');
 
     // 6. Verify telemetry audit trail
     const queue = telemetry.getTelemetryQueue();
