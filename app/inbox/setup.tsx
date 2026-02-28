@@ -42,8 +42,64 @@ export default function MailboxSetupScreen() {
   const [selectedDomainResult, setSelectedDomainResult] = useState<DomainSearchResult | null>(null);
   const [purchaseStatus, setPurchaseStatus] = useState<string | null>(null);
 
+  // Auto-run checks after Google OAuth return
+  const autoRunChecksForGoogle = useCallback(async (jId: string) => {
+    setChecksRunning(true);
+    try {
+      const data = await mailApi.runChecks(jId);
+      setOnboarding(prev => ({ ...prev, checks: data.checks }));
+      fetchReceipts(jId);
+      // If all checks pass, auto-advance to step 3 (Enable Eli)
+      const allPassed = data.checks?.every((c: any) => c.status === 'PASS' || c.status === 'SKIP');
+      if (allPassed) {
+        setCurrentStep(3);
+      }
+    } catch (e) {
+      console.error('Auto-check failed:', e);
+      // Non-fatal — user can still click "Run All Checks" manually
+    }
+    setChecksRunning(false);
+  }, []);
+
   useEffect(() => {
     const savedJobId = typeof window !== 'undefined' ? sessionStorage.getItem('mailSetupJobId') : null;
+
+    // Detect Google OAuth callback return FIRST — takes priority over resumeFromJob
+    const isOAuthReturn = params.provider === 'google' && params.email;
+
+    if (isOAuthReturn) {
+      const email = params.email as string;
+      setOnboarding(prev => ({
+        ...prev,
+        provider: 'GOOGLE' as MailProvider,
+        oauthStatus: { connectedEmail: email, scopes: ['gmail.readonly', 'gmail.send', 'gmail.modify', 'gmail.labels'] },
+        mailboxes: [{ email, displayName: 'Google Workspace' }],
+      }));
+      setCurrentStep(2);
+
+      // Use saved jobId — do NOT call resumeFromJob (it would clobber our OAuth state)
+      if (savedJobId) {
+        setJobId(savedJobId);
+        fetchReceipts(savedJobId);
+        // Auto-run verification checks so user doesn't get stuck
+        autoRunChecksForGoogle(savedJobId);
+      }
+      return; // Skip all other initialization — OAuth return is fully handled
+    }
+
+    // Handle OAuth error return
+    if (params.error) {
+      const errorMsg = String(params.error).replace(/_/g, ' ');
+      setOnboarding(prev => ({ ...prev, lastError: errorMsg }));
+      // Recover jobId so user can retry from step 1
+      if (savedJobId) {
+        setJobId(savedJobId);
+        resumeFromJob(savedJobId);
+      }
+      return;
+    }
+
+    // Normal page load (no OAuth return) — resume from saved job
     if (savedJobId) {
       setJobId(savedJobId);
       resumeFromJob(savedJobId);
@@ -56,33 +112,8 @@ export default function MailboxSetupScreen() {
       setLoading(false);
     }
 
-    // Handle Google OAuth callback return
-    let oauthHandled = false;
-    if (params.provider === 'google' && params.email) {
-      const email = params.email as string;
-      setOnboarding(prev => ({
-        ...prev,
-        provider: 'GOOGLE' as MailProvider,
-        oauthStatus: { connectedEmail: email, scopes: ['gmail.readonly', 'gmail.send', 'gmail.modify', 'gmail.labels'] },
-        mailboxes: [{ email, displayName: 'Google Workspace' }],
-      }));
-      setCurrentStep(2);
-      oauthHandled = true;
-
-      // Resume from existing job if we have one
-      const savedJobId = typeof window !== 'undefined' ? sessionStorage.getItem('mailSetupJobId') : null;
-      if (savedJobId) {
-        setJobId(savedJobId);
-      }
-    }
-
-    // Handle OAuth error
-    if (params.error) {
-      console.error('OAuth error:', params.error);
-    }
-
-    // Handle step param from callback redirect — only if OAuth didn't already set step
-    if (params.step && !oauthHandled) {
+    // Handle step param from non-OAuth callback redirect
+    if (params.step) {
       setCurrentStep(parseInt(params.step as string) || 0);
     }
   }, []);
