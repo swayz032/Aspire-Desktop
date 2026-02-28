@@ -1636,6 +1636,8 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       headers: {
         'Content-Type': 'application/json',
         'X-Suite-Id': suiteId,
+        'X-Office-Id': getDefaultOfficeId() || suiteId,
+        'X-Actor-Id': (req as any).authenticatedUserId || '',
         'X-Correlation-Id': correlationId,
       },
       body: JSON.stringify({
@@ -1775,15 +1777,15 @@ router.get('/api/authority-queue', async (_req: Request, res: Response) => {
     `);
     const pendingApprovals = (approvalResult.rows || approvalResult) as any[];
 
-    // Query recent completed receipts — aligned with orchestrator schema
+    // Query recent completed receipts — aligned with trust_spine_bundle schema
     const receiptResult = await db.execute(sql`
       SELECT receipt_id AS id,
-             action AS type,
-             COALESCE(action, 'Action') AS title,
-             result AS status,
+             receipt_type AS type,
+             COALESCE(receipt_type, 'Action') AS title,
+             status,
              created_at AS "completedAt"
       FROM receipts
-      WHERE result = 'success'
+      WHERE status = 'SUCCEEDED'
       ORDER BY created_at DESC
       LIMIT 10
     `);
@@ -2026,14 +2028,16 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
 
     const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
 
-    // Auth bridge: prefer JWT-derived suiteId, fall back to session store for Anam brain routing
+    // Auth bridge: prefer JWT-derived suiteId/userId, fall back to session store for Anam brain routing
     let suiteId = (req as any).authenticatedSuiteId;
-    if (!suiteId && session_id) {
+    let userId = (req as any).authenticatedUserId;
+    if ((!suiteId || !userId) && session_id) {
       // CUSTOMER_CLIENT_V1 callback — Anam sends session_id, look up stored context
       const sessionCtx = anamSessionStore.get(session_id);
       if (sessionCtx) {
-        suiteId = sessionCtx.suiteId;
-        logger.info('Anam brain routing: resolved suite from session store', { correlationId });
+        if (!suiteId) suiteId = sessionCtx.suiteId;
+        if (!userId) userId = sessionCtx.userId;
+        logger.info('Anam brain routing: resolved context from session store', { correlationId });
       }
     }
 
@@ -2063,6 +2067,8 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
       headers: {
         'Content-Type': 'application/json',
         'X-Suite-Id': suiteId,
+        'X-Office-Id': getDefaultOfficeId() || suiteId,
+        'X-Actor-Id': userId || 'anam-brain-routing',
         'X-Correlation-Id': correlationId,
       },
       body: JSON.stringify({
