@@ -17,6 +17,19 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
 
 const router = Router();
 
+// ─── Anam Session Store (CUSTOMER_CLIENT_V1 Auth Bridge) ───
+// When a user starts an Anam avatar session, we store their auth context.
+// When Anam's brain routing calls /api/ava/chat-stream (without JWT), we look up
+// the user's suite_id from this store. TTL: 30 minutes, cleanup every 5 minutes.
+const anamSessionStore = new Map<string, { userId: string; suiteId: string; createdAt: number }>();
+
+setInterval(() => {
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  for (const [key, val] of anamSessionStore) {
+    if (val.createdAt < cutoff) anamSessionStore.delete(key);
+  }
+}, 5 * 60 * 1000);
+
 const getParam = (param: string | string[]): string =>
   Array.isArray(param) ? param[0] : param;
 
@@ -1976,6 +1989,18 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       return res.status(502).json({ error: 'AVATAR_NO_TOKEN', message: 'Avatar service returned invalid response' });
     }
 
+    // Store user context for CUSTOMER_CLIENT_V1 brain routing auth bridge.
+    // When Anam calls /api/ava/chat-stream, it sends the session_id — we look up the suite context.
+    const suiteId = (req as any).authenticatedSuiteId;
+    if (suiteId && data.sessionToken) {
+      anamSessionStore.set(data.sessionToken, {
+        userId,
+        suiteId,
+        createdAt: Date.now(),
+      });
+      logger.info('Anam session stored for brain routing', { userId, persona: requestedPersona || 'ava' });
+    }
+
     // Return only the session token — no API key exposure
     res.json({ sessionToken: data.sessionToken });
   } catch (error: unknown) {
@@ -2000,9 +2025,20 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     }
 
     const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
-    const suiteId = (req as any).authenticatedSuiteId;
+
+    // Auth bridge: prefer JWT-derived suiteId, fall back to session store for Anam brain routing
+    let suiteId = (req as any).authenticatedSuiteId;
+    if (!suiteId && session_id) {
+      // CUSTOMER_CLIENT_V1 callback — Anam sends session_id, look up stored context
+      const sessionCtx = anamSessionStore.get(session_id);
+      if (sessionCtx) {
+        suiteId = sessionCtx.suiteId;
+        logger.info('Anam brain routing: resolved suite from session store', { correlationId });
+      }
+    }
 
     if (!suiteId) {
+      logger.warn('Ava chat-stream: no suite context available', { correlationId, hasSessionId: !!session_id });
       return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
     }
 

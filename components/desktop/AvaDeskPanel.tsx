@@ -504,6 +504,7 @@ export function AvaDeskPanel() {
   const [chat, setChat] = useState<ChatMsg[]>(seedChat);
   const [input, setInput] = useState('');
   const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRun>>({});
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const connectingAnim = useRef(new Animated.Value(0)).current;
@@ -511,6 +512,12 @@ export function AvaDeskPanel() {
   const scrollRef = useRef<ScrollView>(null);
   const connectionTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
+
+  /** Show a voice/video error banner that auto-clears after 5s */
+  const showVoiceError = useCallback((msg: string) => {
+    setVoiceError(msg);
+    setTimeout(() => setVoiceError(null), 5000);
+  }, []);
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();
@@ -594,6 +601,17 @@ export function AvaDeskPanel() {
     onError: (error) => {
       console.error('Ava voice error:', error);
       setIsSessionActive(false);
+      // Classify and surface the error to the user
+      const msg = error.message || String(error);
+      if (/autoplay|not allowed|play\(\)/i.test(msg)) {
+        showVoiceError('Tap anywhere on the page, then try again.');
+      } else if (/permission|denied|not found.*microphone|getUserMedia/i.test(msg)) {
+        showVoiceError('Microphone access denied. Check browser permissions.');
+      } else if (/tts|voice.*unavailable|synthesis|elevenlabs/i.test(msg)) {
+        showVoiceError('Voice unavailable — responses shown in chat.');
+      } else {
+        showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
+      }
     },
   });
 
@@ -604,11 +622,16 @@ export function AvaDeskPanel() {
       try {
         await avaVoice.startSession();
       } catch (error) {
-        console.error('Failed to start Ava voice session:', error);
-        Alert.alert('Connection Error', 'Unable to connect to Ava. Please try again.');
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('Failed to start Ava voice session:', msg);
+        if (/permission|denied|getUserMedia/i.test(msg)) {
+          showVoiceError('Microphone access denied. Check browser permissions.');
+        } else {
+          showVoiceError(`Voice session failed: ${msg.length > 60 ? msg.slice(0, 60) + '...' : msg}`);
+        }
       }
     }
-  }, [avaVoice]);
+  }, [avaVoice, showVoiceError]);
 
   useEffect(() => {
     if (isSessionActive) {
@@ -740,8 +763,23 @@ export function AvaDeskPanel() {
       anamClientRef.current = null;
       setVideoState('idle');
       setConnectionStatus('');
-      console.error('Video connection failed:', error);
-      Alert.alert('Connection Failed', 'Unable to start video session. Please try again.');
+      const msg = error?.message || String(error);
+      console.error('Video connection failed:', msg);
+
+      // Classify error with actionable message
+      if (/not configured|503|AVATAR_NOT_CONFIGURED/i.test(msg)) {
+        showVoiceError('Ava video not configured for this environment. Voice mode is ready.');
+      } else if (/not found in DOM/i.test(msg)) {
+        showVoiceError('Video element not ready. Please try again.');
+      } else if (/401|auth|token/i.test(msg)) {
+        showVoiceError('Authentication failed. Please sign in again.');
+      } else if (/network|fetch|ERR_/i.test(msg)) {
+        showVoiceError('Network error. Check your connection and try again.');
+      } else if (/timeout/i.test(msg)) {
+        showVoiceError('Connection timed out. Please try again.');
+      } else {
+        showVoiceError(msg.length > 100 ? msg.slice(0, 100) + '...' : msg);
+      }
     }
   }, [videoState, clearConnectionTimeouts]);
 
@@ -1017,6 +1055,29 @@ export function AvaDeskPanel() {
       </View>
 
       <View style={[styles.surfaceContainer, mode === 'video' && videoState === 'connected' && styles.surfaceContainerExpanded]}>
+        {/* Voice/Video error banner — surfaces errors that were previously swallowed */}
+        {voiceError && (
+          <Pressable
+            onPress={() => setVoiceError(null)}
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.15)',
+              borderLeftWidth: 3,
+              borderLeftColor: '#EF4444',
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              marginHorizontal: 12,
+              marginTop: 4,
+              borderRadius: 8,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Ionicons name="alert-circle" size={16} color="#EF4444" />
+            <Text style={{ color: '#FCA5A5', fontSize: 12, flex: 1 }}>{voiceError}</Text>
+            <Ionicons name="close" size={14} color="#FCA5A5" />
+          </Pressable>
+        )}
         {mode === 'voice' ? (
           <View style={styles.voiceSurface}>
             <View style={styles.voiceHeader}>

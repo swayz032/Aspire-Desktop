@@ -122,11 +122,25 @@ export async function connectAnamAvatar(
   videoElementId: string,
   accessToken?: string,
 ): Promise<AnamClientInstance> {
+  // DOM validation — fail fast with actionable message
+  if (typeof document !== 'undefined') {
+    const el = document.getElementById(videoElementId);
+    if (!el) {
+      throw new Error(`Video element #${videoElementId} not found in DOM. Ensure the <video> tag is rendered before connecting.`);
+    }
+  }
+
   clearConversationHistory();
   const sessionToken = await fetchAnamSessionToken(accessToken);
   const client = createAnamClient(sessionToken);
   setupMessageHistoryListener(client);
-  await client.streamToVideoElement(videoElementId);
+
+  try {
+    await client.streamToVideoElement(videoElementId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Anam stream failed for #${videoElementId}: ${msg}`);
+  }
   return client;
 }
 
@@ -205,10 +219,24 @@ export async function connectFinnAvatar(
   videoElementId: string,
   accessToken?: string,
 ): Promise<AnamClientInstance> {
+  // DOM validation — fail fast with actionable message
+  if (typeof document !== 'undefined') {
+    const el = document.getElementById(videoElementId);
+    if (!el) {
+      throw new Error(`Video element #${videoElementId} not found in DOM. Ensure the <video> tag is rendered before connecting.`);
+    }
+  }
+
   clearFinnConversationHistory();
   const sessionToken = await fetchFinnSessionToken(accessToken);
   const client = createAnamClient(sessionToken);
   setupFinnMessageHistoryListener(client);
-  await client.streamToVideoElement(videoElementId);
+
+  try {
+    await client.streamToVideoElement(videoElementId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Anam stream failed for #${videoElementId}: ${msg}`);
+  }
   return client;
 }

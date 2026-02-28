@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectFinnAvatar, type AnamClientInstance } from '@/lib/anam';
+import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance } from '@/lib/anam';
 import { speakText } from '@/lib/elevenlabs';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
 
@@ -588,11 +588,24 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   const [input, setInput] = useState('');
   const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRun>>({});
   const [finnContext, setFinnContext] = useState<{ snapshot: SnapshotData | null; exceptions: ExceptionData | null }>({ snapshot: null, exceptions: null });
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const voiceLineAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef<ScrollView>(null);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
+  const connectionTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const clearConnectionTimeouts = useCallback(() => {
+    connectionTimeouts.current.forEach(clearTimeout);
+    connectionTimeouts.current = [];
+  }, []);
+
+  /** Show a voice/video error banner that auto-clears after 5s */
+  const showVoiceError = useCallback((msg: string) => {
+    setVoiceError(msg);
+    setTimeout(() => setVoiceError(null), 5000);
+  }, []);
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();
@@ -616,22 +629,25 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   useEffect(() => {
     if (templateContext && activeTab === 'video' && videoState === 'idle' && !autoConnectAttempted.current) {
       autoConnectAttempted.current = true;
+      const elementId = videoOnly ? 'finn-video-immersive' : 'finn-video-sidebar';
       const timer = setTimeout(() => {
         setVideoState('connecting');
         setConnectionStatus('Connecting to Finn...');
-        connectFinnAvatar('finn-video-element', session?.access_token)
+        connectFinnAvatar(elementId, session?.access_token)
           .then((client) => {
             anamClientRef.current = client;
             setVideoState('connected');
           })
-          .catch(() => {
+          .catch((e) => {
             setVideoState('idle');
-            setConnectionStatus('Connection failed — try again');
+            const msg = e instanceof Error ? e.message : String(e);
+            setConnectionStatus('');
+            showVoiceError(`Auto-connect failed: ${msg}`);
           });
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [templateContext, activeTab, videoState, session?.access_token]);
+  }, [templateContext, activeTab, videoState, videoOnly, session?.access_token, showVoiceError]);
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const finnVoice = useAgentVoice({
@@ -662,6 +678,17 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
     onError: (error) => {
       console.error('Finn voice error:', error);
       setIsSessionActive(false);
+      // Classify and surface the error to the user
+      const msg = error.message || String(error);
+      if (/autoplay|not allowed|play\(\)/i.test(msg)) {
+        showVoiceError('Tap anywhere on the page, then try again.');
+      } else if (/permission|denied|not found.*microphone|getUserMedia/i.test(msg)) {
+        showVoiceError('Microphone access denied. Check browser permissions.');
+      } else if (/tts|voice.*unavailable|synthesis|elevenlabs/i.test(msg)) {
+        showVoiceError('Voice unavailable — responses shown in chat.');
+      } else {
+        showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
+      }
     },
   });
 
@@ -679,39 +706,95 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   }, [finnVoice]);
 
   const handleConnectToFinn = useCallback(async () => {
+    if (videoState !== 'idle') return;
+
+    clearConnectionTimeouts();
     setVideoState('connecting');
     setVideoError(null);
     setConnectionStatus('Connecting to Finn...');
     playConnectionSound();
-    // Wait for React to render the <video id="finn-video-element"> before streaming
+
+    const elementId = videoOnly ? 'finn-video-immersive' : 'finn-video-sidebar';
+
+    const t1 = setTimeout(() => {
+      setConnectionStatus('Establishing secure video...');
+    }, 800);
+
+    // 15s timeout fallback (Law #3: Fail Closed)
+    const t2 = setTimeout(() => {
+      setVideoState('idle');
+      setConnectionStatus('');
+      anamClientRef.current = null;
+      setVideoError('Connection timed out after 15s. Check your network and try again.');
+    }, 15000);
+
+    connectionTimeouts.current = [t1, t2];
+
+    // Wait for React to render the <video> element before streaming
     await new Promise(resolve => setTimeout(resolve, 100));
+
     try {
-      const client = await connectFinnAvatar('finn-video-element', session?.access_token);
+      const client = await connectFinnAvatar(elementId, session?.access_token);
       anamClientRef.current = client;
+
+      // SDK event listeners for reliable state tracking (mirrors Ava's pattern)
+      try {
+        client.addListener('CONNECTION_ESTABLISHED' as any, () => {
+          console.log('[Anam/Finn] WebRTC connection established');
+        });
+        client.addListener('VIDEO_PLAY_STARTED' as any, () => {
+          console.log('[Anam/Finn] Video stream playing');
+          setVideoState('connected');
+        });
+        client.addListener('CONNECTION_CLOSED' as any, () => {
+          console.log('[Anam/Finn] Connection closed');
+          setVideoState('idle');
+          setConnectionStatus('');
+          anamClientRef.current = null;
+        });
+      } catch {
+        // SDK version may not support all events — degrade gracefully
+      }
+
+      clearConnectionTimeouts();
+      playSuccessSound();
       setVideoState('connected');
       setVideoError(null);
-      playSuccessSound();
+      setConnectionStatus('');
     } catch (e) {
+      clearConnectionTimeouts();
+      anamClientRef.current = null;
       setVideoState('idle');
+      setConnectionStatus('');
       const msg = e instanceof Error ? e.message : String(e);
-      const isConfigError = /not configured|503|AVATAR_NOT_CONFIGURED/i.test(msg);
-      if (isConfigError) {
-        setVideoError('Video is not yet available for this environment. Voice mode is ready to use.');
-      } else {
-        setVideoError('Unable to connect to Finn video. Please try again.');
-      }
       console.error('[FinnDeskPanel] Video connection failed:', msg);
+
+      // Classify error with actionable message
+      if (/not configured|503|AVATAR_NOT_CONFIGURED/i.test(msg)) {
+        setVideoError('Finn video not configured for this environment. Voice mode is ready.');
+      } else if (/not found in DOM/i.test(msg)) {
+        setVideoError('Video element not ready. Please try again.');
+      } else if (/401|auth|token/i.test(msg)) {
+        setVideoError('Authentication failed. Please sign in again.');
+      } else if (/network|fetch|ERR_/i.test(msg)) {
+        setVideoError('Network error. Check your connection and try again.');
+      } else {
+        setVideoError(msg.length > 100 ? msg.slice(0, 100) + '...' : msg);
+      }
     }
-  }, [session?.access_token]);
+  }, [videoState, videoOnly, clearConnectionTimeouts, session?.access_token]);
 
   const handleEndFinnSession = useCallback(() => {
+    clearConnectionTimeouts();
     if (anamClientRef.current) {
       try { anamClientRef.current.stopStreaming(); } catch (_e) { /* noop */ }
       anamClientRef.current = null;
     }
+    clearFinnConversationHistory();
     setVideoState('idle');
     setConnectionStatus('');
-  }, []);
+    setVideoError(null);
+  }, [clearConnectionTimeouts]);
 
   useEffect(() => {
     if (isSessionActive) {
@@ -767,6 +850,8 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   useEffect(() => {
     return () => {
       runTimers.current.forEach(clearTimeout);
+      connectionTimeouts.current.forEach(clearTimeout);
+      connectionTimeouts.current = [];
       if (anamClientRef.current) {
         try { anamClientRef.current.stopStreaming(); } catch (_e) { /* noop */ }
       }
@@ -875,7 +960,10 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
             );
             // Speak response via ElevenLabs TTS when in voice tab
             if (activeTab === 'voice' && responseText) {
-              speakText('finn', responseText, session?.access_token).catch(() => {});
+              speakText('finn', responseText, session?.access_token).catch((err) => {
+                showVoiceError('Voice playback failed — response shown in chat.');
+                console.error('[FinnDeskPanel] TTS error:', err);
+              });
             }
           }
           setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -966,26 +1054,48 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
 
     return (
       <View style={[styles.card, styles.cardOverlay, immersiveStyles.root]}>
+        {/* Error banner for immersive mode */}
+        {voiceError && (
+          <Pressable
+            onPress={() => setVoiceError(null)}
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: 16,
+              right: 16,
+              zIndex: 50,
+              backgroundColor: 'rgba(239,68,68,0.85)',
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderRadius: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Ionicons name="alert-circle" size={16} color="#fff" />
+            <Text style={{ color: '#fff', fontSize: 13, flex: 1 }}>{voiceError}</Text>
+            <Ionicons name="close" size={14} color="rgba(255,255,255,0.7)" />
+          </Pressable>
+        )}
         {/* Full-bleed video surface */}
         <View style={immersiveStyles.videoFill}>
           {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
-            <video
-              id="finn-video-element"
-              autoPlay
-              playsInline
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                opacity: videoState === 'connected' ? 1 : 0,
-                transition: 'opacity 0.3s ease-in-out',
-                backgroundColor: '#000',
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                zIndex: 1,
-              }}
-            />
+            <div style={{ position: 'absolute', inset: '0', overflow: 'hidden', zIndex: 1, borderRadius: 'inherit' }}>
+              <video
+                id="finn-video-immersive"
+                autoPlay
+                playsInline
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  opacity: videoState === 'connected' ? 1 : 0,
+                  transition: 'opacity 0.3s ease-in-out',
+                  backgroundColor: '#000',
+                }}
+              />
+            </div>
           )}
 
           {/* Pre-connect states (idle / connecting / error) */}
@@ -1220,6 +1330,29 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       </View>
 
       <View style={[styles.surfaceContainer, isInOverlay && styles.surfaceContainerOverlay]}>
+        {/* Voice/Video error banner — surfaces errors that were previously swallowed */}
+        {voiceError && (
+          <Pressable
+            onPress={() => setVoiceError(null)}
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.15)',
+              borderLeftWidth: 3,
+              borderLeftColor: '#EF4444',
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              marginHorizontal: 12,
+              marginTop: 4,
+              borderRadius: 8,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Ionicons name="alert-circle" size={16} color="#EF4444" />
+            <Text style={{ color: '#FCA5A5', fontSize: 12, flex: 1 }}>{voiceError}</Text>
+            <Ionicons name="close" size={14} color="#FCA5A5" />
+          </Pressable>
+        )}
         {activeTab === 'voice' ? (
           <View style={styles.voiceSurface}>
             <View style={styles.voiceHeader}>
@@ -1270,23 +1403,21 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
         ) : (
           <View style={styles.videoSurface}>
             {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
-              <video
-                id="finn-video-element"
-                autoPlay
-                playsInline
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  opacity: videoState === 'connected' ? 1 : 0,
-                transition: 'opacity 0.3s ease-in-out',
-                  backgroundColor: '#000',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  zIndex: 1,
-                }}
-              />
+              <div style={{ position: 'absolute', inset: '0', overflow: 'hidden', zIndex: 1, borderRadius: 'inherit' }}>
+                <video
+                  id="finn-video-sidebar"
+                  autoPlay
+                  playsInline
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    opacity: videoState === 'connected' ? 1 : 0,
+                    transition: 'opacity 0.3s ease-in-out',
+                    backgroundColor: '#000',
+                  }}
+                />
+              </div>
             )}
             {videoState === 'connected' ? (
               <View style={{ flex: 1 }}>
@@ -1479,6 +1610,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 0,
     borderWidth: 0,
+    overflow: 'hidden',
     ...(Platform.OS === 'web' ? {
       maxWidth: undefined,
       height: '100%',
