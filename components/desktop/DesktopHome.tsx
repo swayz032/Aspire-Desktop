@@ -507,6 +507,10 @@ export function DesktopHome() {
               tileId={hoveredTile}
               anchorPosition={hoverAnchor}
               onClose={handleTileHoverOut}
+              onOpenStage={() => {
+                handleTileHoverOut();
+                handleTilePress(hoveredTile);
+              }}
             />
           )}
           {contextMenu && (
@@ -514,6 +518,12 @@ export function DesktopHome() {
               tileId={contextMenu.tileId}
               position={contextMenu.position}
               onClose={() => setContextMenu(null)}
+              onSelectVerb={(verbId: string) => {
+                setContextMenu(null);
+                setStageOpen(true, contextMenu.tileId);
+                playSound('stage_open');
+                emitCanvasEvent('stage_open', { tile_id: contextMenu.tileId, verb_id: verbId, source: 'context_menu' });
+              }}
             />
           )}
           <Stage />
