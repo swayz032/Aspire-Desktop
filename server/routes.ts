@@ -1296,6 +1296,37 @@ const VOICE_IDS: Record<string, string> = {
   sarah: 'DODLEQrClDo8wCz460ld',
 };
 
+/**
+ * Parse ElevenLabs API error responses into actionable client messages.
+ * ElevenLabs returns: { detail: { type, code, message, request_id } }
+ */
+function parseElevenLabsError(body: string, httpStatus: number): { code: string; clientMessage: string; httpStatus: number } {
+  try {
+    const parsed = JSON.parse(body);
+    const detail = parsed?.detail;
+    if (detail && typeof detail === 'object') {
+      const code = detail.code || detail.type || 'unknown';
+      const map: Record<string, string> = {
+        rate_limit_exceeded: 'Voice service is busy — try again in a moment.',
+        concurrent_limit_exceeded: 'Too many voice requests — please wait.',
+        insufficient_credits: 'Voice credits exhausted. Check your ElevenLabs plan.',
+        invalid_api_key: 'Voice service authentication failed.',
+        missing_api_key: 'Voice service not configured.',
+        voice_not_found: 'Voice not available. Try a different agent.',
+        text_too_long: 'Response too long for voice — shown in chat instead.',
+        system_busy: 'Voice service temporarily unavailable.',
+        service_unavailable: 'Voice service temporarily unavailable.',
+      };
+      return {
+        code,
+        clientMessage: map[code] || detail.message || `Voice error: ${code}`,
+        httpStatus: httpStatus === 429 ? 429 : httpStatus >= 500 ? 503 : 400,
+      };
+    }
+  } catch { /* not JSON */ }
+  return { code: 'unknown', clientMessage: `Voice synthesis failed (${httpStatus})`, httpStatus };
+}
+
 router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
   try {
     const { agent, text, voiceId } = req.body;
@@ -1326,7 +1357,7 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
         },
         body: JSON.stringify({
           text: text.trim(),
-          model_id: 'eleven_turbo_v2_5',
+          model_id: 'eleven_flash_v2_5',
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.75,
@@ -1336,9 +1367,10 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
-      logger.error('ElevenLabs TTS error', { status: response.status, error: errorText.substring(0, 200) });
-      return res.status(500).json({ error: `TTS failed: ${response.status}` });
+      const errorBody = await response.text();
+      logger.error('ElevenLabs TTS error', { status: response.status, error: errorBody.substring(0, 200) });
+      const parsed = parseElevenLabsError(errorBody, response.status);
+      return res.status(parsed.httpStatus).json({ error: parsed.clientMessage, code: parsed.code });
     }
 
     const audioBuffer = await response.arrayBuffer();
@@ -1379,7 +1411,7 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
         },
         body: JSON.stringify({
           text: text.trim(),
-          model_id: 'eleven_turbo_v2_5',
+          model_id: 'eleven_flash_v2_5',
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.75,
@@ -1389,9 +1421,10 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     );
 
     if (!response.ok || !response.body) {
-      const errorText = await response.text();
-      logger.error('ElevenLabs TTS stream error', { status: response.status, error: errorText.substring(0, 200) });
-      return res.status(500).json({ error: `TTS stream failed: ${response.status}` });
+      const errorBody = await response.text();
+      logger.error('ElevenLabs TTS stream error', { status: response.status, error: errorBody.substring(0, 200) });
+      const parsed = parseElevenLabsError(errorBody, response.status);
+      return res.status(parsed.httpStatus).json({ error: parsed.clientMessage, code: parsed.code });
     }
 
     res.set('Content-Type', 'audio/mpeg');
@@ -1461,9 +1494,10 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      logger.error('ElevenLabs STT error', { status: response.status, error: errorText.substring(0, 200) });
-      return res.status(500).json({ error: `STT failed: ${response.status}` });
+      const errorBody = await response.text();
+      logger.error('ElevenLabs STT error', { status: response.status, error: errorBody.substring(0, 200) });
+      const parsed = parseElevenLabsError(errorBody, response.status);
+      return res.status(parsed.httpStatus).json({ error: parsed.clientMessage, code: parsed.code });
     }
 
     const result = await response.json() as { text?: string; language_code?: string };

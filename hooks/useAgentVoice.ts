@@ -3,6 +3,10 @@
  *
  * Full voice pipeline: Mic → STT → Orchestrator (LangGraph) → Skill Pack → ElevenLabs TTS → Speaker
  *
+ * TTS Transport (ordered by preference):
+ *   1. WebSocket multi-context — persistent connection, barge-in, ~75ms Flash v2.5
+ *   2. HTTP streaming fallback — /api/elevenlabs/tts/stream (if WS unavailable)
+ *
  * STT Provider Routing:
  *   - Finn, Ava, Eli, Sarah: ElevenLabs STT (Scribe via /api/elevenlabs/stt)
  *   - Nora: Deepgram STT (conference transcription via LiveKit)
@@ -15,7 +19,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { type AgentName, speakText, getVoiceId } from '../lib/elevenlabs';
+import { type AgentName, streamSpeak, getVoiceId, getVoiceConfig } from '../lib/elevenlabs';
+import { TtsWebSocket } from '../lib/tts-websocket';
 import { useDeepgramSTT } from './useDeepgramSTT';
 import { useElevenLabsSTT } from './useElevenLabsSTT';
 
@@ -53,10 +58,15 @@ interface UseAgentVoiceReturn {
 /**
  * Voice interaction hook that routes through the orchestrator.
  *
- * startSession() begins listening via STT (voice is primary).
+ * startSession() establishes a persistent WebSocket TTS connection and
+ * begins listening via STT (voice is primary).
+ *
  * When speech is detected, it sends the transcript to the orchestrator.
  * The orchestrator routes to the correct skill pack and returns response text.
- * TTS speaks the response using the agent's voice.
+ * TTS speaks the response using the agent's voice via multi-context WebSocket.
+ *
+ * Barge-in: if user speaks while agent is talking, the current TTS context
+ * is closed and a new one starts for the interruption response.
  *
  * The loop: Listen → Transcribe → Think → Speak → Listen again.
  */
@@ -73,6 +83,12 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const processingRef = useRef(false);
   // Store last audio URL for replay on autoplay block
   const lastAudioUrlRef = useRef<string | null>(null);
+  // WebSocket TTS connection (persistent for session duration)
+  const ttsWsRef = useRef<TtsWebSocket | null>(null);
+  // Current TTS context ID (for barge-in tracking)
+  const currentContextRef = useRef<string | null>(null);
+  // Audio chunks accumulated per context
+  const audioChunksRef = useRef<Map<string, Uint8Array[]>>(new Map());
 
   const useDeepgram = DEEPGRAM_STT_AGENTS.includes(agent);
 
@@ -81,15 +97,150 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     onStatusChange?.(newStatus);
   }, [onStatusChange]);
 
+  // Stable refs for callbacks used in TtsWebSocket (avoids recreation)
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const updateStatusRef = useRef(updateStatus);
+  updateStatusRef.current = updateStatus;
+
+  /**
+   * Play accumulated audio chunks for a completed TTS context.
+   * Creates a single blob from all chunks and plays via Audio element.
+   */
+  const playContextAudio = useCallback((contextId: string) => {
+    const chunks = audioChunksRef.current.get(contextId);
+    audioChunksRef.current.delete(contextId);
+
+    // Only play if this is still the active context
+    if (contextId !== currentContextRef.current) return;
+
+    if (!chunks || chunks.length === 0 || !activeRef.current) {
+      processingRef.current = false;
+      if (activeRef.current) updateStatus('listening');
+      return;
+    }
+
+    // Merge chunks into a single audio blob
+    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+    if (totalLength === 0) {
+      processingRef.current = false;
+      if (activeRef.current) updateStatus('listening');
+      return;
+    }
+
+    const audioBlob = new Blob(chunks, { type: 'audio/mpeg' });
+    const url = URL.createObjectURL(audioBlob);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
+    audio.onerror = () => {
+      console.error('[useAgentVoice] Audio playback error for context', contextId);
+      onError?.(new Error('Audio playback failed — response shown in chat.'));
+      URL.revokeObjectURL(url);
+      processingRef.current = false;
+      if (activeRef.current) updateStatus('listening');
+    };
+
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      processingRef.current = false;
+      if (activeRef.current) updateStatus('listening');
+    };
+
+    audio.play().catch((playError: any) => {
+      console.error('[useAgentVoice] Autoplay blocked:', playError?.message);
+      lastAudioUrlRef.current = url;
+      onError?.(new Error('Audio blocked by browser — tap to retry.'));
+      processingRef.current = false;
+      if (activeRef.current) updateStatus('listening');
+    });
+  }, [updateStatus, onError]);
+
+  /**
+   * Speak response text via HTTP streaming TTS.
+   * Used as fallback when WebSocket TTS is unavailable.
+   */
+  const speakViaHttpStream = useCallback(async (responseText: string) => {
+    const stream = await streamSpeak(agent, responseText, accessToken);
+    if (stream && activeRef.current) {
+      const reader = stream.getReader();
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        totalBytes += value.length;
+      }
+
+      if (totalBytes === 0 || !activeRef.current) {
+        processingRef.current = false;
+        if (activeRef.current) updateStatus('listening');
+        return;
+      }
+
+      const audioBlob = new Blob(chunks, { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(audioBlob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onerror = () => {
+        onError?.(new Error('Audio playback failed — response shown in chat.'));
+        URL.revokeObjectURL(url);
+        processingRef.current = false;
+        if (activeRef.current) updateStatus('listening');
+      };
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        processingRef.current = false;
+        if (activeRef.current) updateStatus('listening');
+      };
+
+      try {
+        await audio.play();
+      } catch (playError: any) {
+        lastAudioUrlRef.current = url;
+        onError?.(new Error('Audio blocked by browser — tap to retry.'));
+        processingRef.current = false;
+        if (activeRef.current) updateStatus('listening');
+      }
+    } else {
+      if (!stream) {
+        console.error('[useAgentVoice] HTTP TTS stream returned null. Check ELEVENLABS_API_KEY.');
+        onError?.(new Error('Voice synthesis unavailable — response shown in chat.'));
+      }
+      processingRef.current = false;
+      if (activeRef.current) {
+        updateStatus('error');
+        setTimeout(() => { if (activeRef.current) updateStatus('listening'); }, 2000);
+      }
+    }
+  }, [agent, accessToken, updateStatus, onError]);
+
   /**
    * Send text to the orchestrator and speak the response.
-   * Core pipeline: text → orchestrator → TTS.
+   * Core pipeline: text → orchestrator → TTS (WebSocket preferred, HTTP fallback).
    */
   const sendText = useCallback(async (text: string) => {
     if (!text.trim()) return;
 
-    // Prevent overlapping sends
-    if (processingRef.current) return;
+    // Barge-in: if already processing, stop current audio and close context
+    if (processingRef.current) {
+      // Stop current playback
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      // Close current TTS context
+      if (currentContextRef.current && ttsWsRef.current?.isConnected) {
+        ttsWsRef.current.closeContext(currentContextRef.current);
+        audioChunksRef.current.delete(currentContextRef.current);
+        currentContextRef.current = null;
+      }
+    }
+
     processingRef.current = true;
 
     setTranscript(text);
@@ -98,7 +249,6 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
     try {
       // Route through orchestrator — the Single Brain (Law #1)
-      // Server middleware handles suite_id from JWT (Law #6)
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
@@ -115,6 +265,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           agent,
           text,
           voiceId: getVoiceId(agent),
+          channel: 'voice',
         }),
       });
 
@@ -130,73 +281,38 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       setLastReceiptId(receiptId);
       onResponse?.(responseText, receiptId);
 
-      // Speak the response via TTS
+      // Speak the response
       updateStatus('speaking');
 
-      const audioBlob = await speakText(agent, responseText, accessToken);
-      if (audioBlob && audioBlob.size > 0 && activeRef.current) {
-        const url = URL.createObjectURL(audioBlob);
-        const audio = new Audio(url);
-        audioRef.current = audio;
+      // Prefer WebSocket TTS (persistent connection, barge-in ready)
+      if (ttsWsRef.current?.isConnected) {
+        const ctxId = ttsWsRef.current.nextContextId();
+        currentContextRef.current = ctxId;
+        audioChunksRef.current.set(ctxId, []);
 
-        audio.onerror = (e) => {
-          console.error('[useAgentVoice] Audio decode/playback error:', e);
-          onError?.(new Error('Audio playback failed — response shown in chat.'));
-          URL.revokeObjectURL(url);
-          processingRef.current = false;
-          if (activeRef.current) {
-            updateStatus('listening');
-          }
-        };
+        // Send text and flush for immediate generation
+        ttsWsRef.current.speak(responseText, ctxId);
+        ttsWsRef.current.flush(ctxId);
 
-        audio.onended = () => {
-          URL.revokeObjectURL(url);
-          processingRef.current = false;
-          if (activeRef.current) {
-            updateStatus('listening');
-          }
-        };
-
-        try {
-          await audio.play();
-        } catch (playError: any) {
-          console.error('[useAgentVoice] Autoplay blocked:', playError?.message);
-          // Store URL for replay on user gesture instead of revoking
-          lastAudioUrlRef.current = url;
-          onError?.(new Error('Audio blocked by browser — tap to retry.'));
-          processingRef.current = false;
-          if (activeRef.current) {
-            updateStatus('listening');
-          }
-        }
+        // Audio arrives via onAudio callback → accumulated in audioChunksRef
+        // Playback triggered by onContextDone callback → playContextAudio()
       } else {
-        if (!audioBlob) {
-          console.error('[useAgentVoice] TTS returned null for agent "%s". Check ELEVENLABS_API_KEY.', agent);
-          onError?.(new Error('Voice synthesis unavailable — response shown in chat.'));
-        }
-        processingRef.current = false;
-        if (activeRef.current) {
-          updateStatus('error');
-          setTimeout(() => {
-            if (activeRef.current) {
-              updateStatus('listening');
-            }
-          }, 2000);
-        }
+        // Fallback: HTTP streaming TTS
+        console.warn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
+        await speakViaHttpStream(responseText);
       }
     } catch (error) {
       processingRef.current = false;
       const err = error instanceof Error ? error : new Error(String(error));
       onError?.(err);
       updateStatus('error');
-      // Recover to listening after error
       setTimeout(() => {
         if (activeRef.current) {
           updateStatus('listening');
         }
       }, 2000);
     }
-  }, [agent, suiteId, accessToken, onTranscript, onResponse, onError, updateStatus]);
+  }, [agent, suiteId, accessToken, onTranscript, onResponse, onError, updateStatus, speakViaHttpStream, playContextAudio]);
 
   // Stable ref for sendText to avoid re-creating STT hook
   const sendTextRef = useRef(sendText);
@@ -204,7 +320,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
   // STT utterance handler — shared between both providers
   const handleUtterance = useCallback((text: string) => {
-    if (activeRef.current && !processingRef.current) {
+    if (activeRef.current) {
+      // Allow barge-in: sendText handles stopping current playback
       sendTextRef.current(text);
     }
   }, []);
@@ -260,31 +377,78 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   }, [updateStatus]);
 
   /**
-   * Start a voice session. Attempts STT for mic input, but degrades
-   * gracefully to text-input + TTS-output if STT is unavailable.
+   * Start a voice session. Establishes WebSocket TTS connection and
+   * begins STT listening. Degrades gracefully if either is unavailable.
    */
   const startSession = useCallback(async () => {
     activeRef.current = true;
     processingRef.current = false;
     updateStatus('listening');
 
+    // Connect WebSocket TTS (persistent for session)
+    const voiceConfig = getVoiceConfig(agent);
+    const ttsWs = new TtsWebSocket({
+      voiceId: voiceConfig.voiceId,
+      model: voiceConfig.model,
+      onAudio: (contextId, chunk) => {
+        // Accumulate audio chunks for the context
+        const existing = audioChunksRef.current.get(contextId);
+        if (existing) {
+          existing.push(chunk);
+        }
+      },
+      onContextDone: (contextId) => {
+        // Context finished generating — play accumulated audio
+        playContextAudio(contextId);
+      },
+      onConnected: () => {
+        console.log(`[useAgentVoice] WebSocket TTS connected for ${agent}`);
+      },
+      onError: (err) => {
+        console.error('[useAgentVoice] WebSocket TTS error:', err.message);
+        // Don't surface WS errors as user-facing — HTTP fallback handles it
+      },
+      onClose: () => {
+        console.warn('[useAgentVoice] WebSocket TTS disconnected — HTTP fallback active');
+        ttsWsRef.current = null;
+      },
+    });
+
+    try {
+      await ttsWs.connect();
+      ttsWsRef.current = ttsWs;
+    } catch (wsErr) {
+      // WebSocket TTS unavailable — HTTP streaming fallback will be used
+      console.warn(`[useAgentVoice] WebSocket TTS unavailable for ${agent} — using HTTP fallback:`, wsErr);
+    }
+
     // Attempt STT — if unavailable (no API key, no mic), session
-    // stays active for text input with ElevenLabs TTS output
+    // stays active for text input with TTS output
     try {
       await stt.start();
     } catch {
-      // STT unavailable — session stays active for sendText() + TTS
       console.warn(`STT unavailable for ${agent} — text input + TTS mode`);
     }
-  }, [agent, updateStatus, stt]);
+  }, [agent, updateStatus, stt, playContextAudio]);
 
   /**
-   * End the voice session. Stops listening and any in-progress TTS.
+   * End the voice session. Closes WebSocket TTS, stops STT, and
+   * stops any in-progress audio playback.
    */
   const endSession = useCallback(() => {
     activeRef.current = false;
     processingRef.current = false;
+    currentContextRef.current = null;
+    audioChunksRef.current.clear();
+
+    // Close WebSocket TTS
+    if (ttsWsRef.current) {
+      ttsWsRef.current.close();
+      ttsWsRef.current = null;
+    }
+
     stt.stop();
+
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;

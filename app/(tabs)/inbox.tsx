@@ -18,6 +18,7 @@ import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { EliVoiceChatPanel, type EliMessage } from '@/components/inbox/EliVoiceChatPanel';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
 const inboxHero = require('@/assets/images/inbox-hero.jpg');
@@ -764,6 +765,9 @@ export default function InboxScreen() {
   const [eliOpen, setEliOpen] = useState(false);
   const [eliVoiceActive, setEliVoiceActive] = useState(false);
   const [eliTranscript, setEliTranscript] = useState('');
+  const [eliMessages, setEliMessages] = useState<EliMessage[]>([
+    { id: '1', from: 'eli', text: 'Hey! I\'ve been sorting through your inbox. What would you like me to help with?', ts: Date.now() },
+  ]);
   const [showMailSetupModal, setShowMailSetupModal] = useState(false);
   const [mailSetupChecked, setMailSetupChecked] = useState(false);
   const [hasActiveMailbox, setHasActiveMailbox] = useState(false);
@@ -786,8 +790,8 @@ export default function InboxScreen() {
       setEliTranscript(text);
     },
     onResponse: (text) => {
-      console.log('Eli response:', text);
       setEliTranscript(text);
+      setEliMessages(prev => [...prev, { id: String(Date.now()), from: 'eli', text, ts: Date.now() }]);
     },
     onError: (error) => {
       console.error('Eli voice error:', error);
@@ -811,6 +815,15 @@ export default function InboxScreen() {
         console.error('Failed to start Eli voice session:', error);
         Alert.alert('Connection Error', 'Unable to connect to Eli. Please try again.');
       }
+    }
+  }, [eliVoice]);
+
+  const handleEliSendMessage = useCallback(async (text: string) => {
+    setEliMessages(prev => [...prev, { id: String(Date.now()), from: 'user', text, ts: Date.now() }]);
+    try {
+      await eliVoice.sendText(text);
+    } catch (_e) {
+      // Error handled by onError callback
     }
   }, [eliVoice]);
 
@@ -1272,58 +1285,17 @@ export default function InboxScreen() {
         </TouchableOpacity>
       </Animated.View>
 
-      {eliOpen && (
-        <View style={[styles.eliPanel, eliVoiceActive && { height: 280 }]}>
-          <View style={styles.eliPanelHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Image source={eliAvatar} style={styles.eliPanelAvatar} />
-              <Text style={styles.eliPanelTitle}>Eli · Voice & Chat Agent</Text>
-              {eliVoiceActive && (
-                <View style={styles.eliActiveBadge}>
-                  <View style={styles.eliActiveDot} />
-                  <Text style={styles.eliActiveText}>Live</Text>
-                </View>
-              )}
-            </View>
-            <TouchableOpacity onPress={() => { if (eliVoiceActive) { eliVoice.endSession(); } setEliOpen(false); }}>
-              <Ionicons name="close" size={20} color={Colors.text.secondary} />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.eliPanelStat}>{eliTriagedCount} items triaged today</Text>
-          {eliVoiceActive && eliTranscript ? (
-            <View style={styles.eliTranscriptBox}>
-              <Ionicons name="chatbubble-ellipses" size={14} color={Colors.accent.cyan} />
-              <Text style={styles.eliTranscriptText} numberOfLines={3}>{eliTranscript}</Text>
-            </View>
-          ) : null}
-          <View style={styles.eliInputRow}>
-            <View style={[styles.eliInputWrapper, { flex: 1 }]}>
-              <TextInput
-                style={styles.eliInput}
-                placeholder="Ask Eli anything..."
-                placeholderTextColor={Colors.text.muted}
-                editable={false}
-              />
-            </View>
-            <Animated.View style={{ transform: [{ scale: eliMicPulse }] }}>
-              <TouchableOpacity
-                onPress={handleEliMicPress}
-                style={[
-                  styles.eliMicButton,
-                  eliVoiceActive && styles.eliMicButtonActive,
-                ]}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={eliVoiceActive ? 'mic' : 'mic-outline'}
-                  size={20}
-                  color={eliVoiceActive ? '#fff' : Colors.accent.cyan}
-                />
-              </TouchableOpacity>
-            </Animated.View>
-          </View>
-        </View>
-      )}
+      <EliVoiceChatPanel
+        visible={eliOpen}
+        onClose={() => { if (eliVoiceActive) { eliVoice.endSession(); } setEliOpen(false); }}
+        voiceActive={eliVoiceActive}
+        transcript={eliTranscript}
+        triagedCount={eliTriagedCount}
+        onMicPress={handleEliMicPress}
+        onSendMessage={handleEliSendMessage}
+        micPulseAnim={eliMicPulse}
+        messages={eliMessages}
+      />
     </View>
   );
 
@@ -2399,110 +2371,6 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: Colors.semantic.success,
-  },
-  eliPanel: {
-    position: 'absolute',
-    bottom: 80,
-    right: 24,
-    width: 320,
-    height: 200,
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,
-    padding: Spacing.lg,
-    zIndex: 101,
-    ...Shadows.lg,
-  },
-  eliPanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  eliPanelAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    marginRight: Spacing.sm,
-  },
-  eliPanelTitle: {
-    ...Typography.headline,
-    color: Colors.text.primary,
-    fontWeight: '600',
-    marginLeft: Spacing.sm,
-  },
-  eliPanelStat: {
-    ...Typography.caption,
-    color: Colors.text.secondary,
-    marginBottom: Spacing.lg,
-  },
-  eliInputWrapper: {
-    backgroundColor: Colors.surface.input,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.surface.inputBorder,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  eliInput: {
-    ...Typography.caption,
-    color: Colors.text.primary,
-  },
-  eliInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  eliMicButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.surface.input,
-    borderWidth: 1,
-    borderColor: Colors.accent.cyan,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eliMicButtonActive: {
-    backgroundColor: Colors.accent.cyan,
-    borderColor: Colors.accent.cyan,
-  },
-  eliActiveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginLeft: Spacing.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.accent.cyanLight,
-  },
-  eliActiveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.accent.cyan,
-  },
-  eliActiveText: {
-    ...Typography.micro,
-    color: Colors.accent.cyan,
-    fontWeight: '700',
-  },
-  eliTranscriptBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-    backgroundColor: Colors.background.tertiary,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  eliTranscriptText: {
-    ...Typography.small,
-    color: Colors.text.secondary,
-    flex: 1,
-    lineHeight: 18,
   },
   skeletonCard: {
     backgroundColor: Colors.surface.card,

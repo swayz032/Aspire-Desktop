@@ -26,27 +26,27 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
   ava: {
     name: 'Ava',
     voiceId: 'uYXf8XasLslADfZ2MB4u',
-    model: 'eleven_turbo_v2_5',
+    model: 'eleven_flash_v2_5',
   },
   eli: {
     name: 'Eli',
     voiceId: 'c6kFzbpMaJ8UMD5P6l72',
-    model: 'eleven_turbo_v2_5',
+    model: 'eleven_flash_v2_5',
   },
   finn: {
     name: 'Finn',
     voiceId: 's3TPKV1kjDlVtZbl4Ksh',
-    model: 'eleven_turbo_v2_5',
+    model: 'eleven_flash_v2_5',
   },
   nora: {
     name: 'Nora',
     voiceId: '6aDn1KB0hjpdcocrUkmq',
-    model: 'eleven_turbo_v2_5',
+    model: 'eleven_flash_v2_5',
   },
   sarah: {
     name: 'Sarah',
     voiceId: 'DODLEQrClDo8wCz460ld',
-    model: 'eleven_turbo_v2_5',
+    model: 'eleven_flash_v2_5',
   },
 };
 

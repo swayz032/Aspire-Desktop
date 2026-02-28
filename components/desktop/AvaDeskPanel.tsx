@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Ani
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/tokens';
+import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance } from '@/lib/anam';
@@ -731,6 +732,9 @@ export function AvaDeskPanel() {
     connectionTimeouts.current = [t1, t2];
 
     try {
+      // Wait for React to render the <video> element before streaming
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       // Anam SDK: fetch session token → create client (CUSTOMER_CLIENT_V1) → stream to <video>
       const client = await connectAnamAvatar('anam-video-element', session?.access_token);
       anamClientRef.current = client;
@@ -1195,7 +1199,17 @@ export function AvaDeskPanel() {
                       <View style={styles.avaAvatarIdle}>
                         <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
                       </View>
-                      <Text style={styles.connectionStatusText}>{connectionStatus}</Text>
+                      {Platform.OS === 'web' ? (
+                        <ShimmeringText
+                          text={connectionStatus}
+                          duration={2}
+                          color={Colors.text.muted}
+                          shimmerColor={Colors.accent.cyan}
+                          style={{ fontSize: 14, fontWeight: '500', marginTop: 16 }}
+                        />
+                      ) : (
+                        <Text style={styles.connectionStatusText}>{connectionStatus}</Text>
+                      )}
                     </>
                   ) : (
                     <>
@@ -1269,7 +1283,19 @@ export function AvaDeskPanel() {
                         <Text style={styles.msgText}>{msg.text}</Text>
                       ) : null}
                       {msg.runId && run && run.status === 'running' && !msg.text && (
-                        <ThinkingDots />
+                        Platform.OS === 'web' ? (
+                          <View style={actStyles.thinkingDotsRow}>
+                            <ShimmeringText
+                              text="Thinking..."
+                              duration={1.5}
+                              color={Colors.text.muted}
+                              shimmerColor={Colors.accent.cyan}
+                              style={{ fontSize: 13, fontWeight: '500' }}
+                            />
+                          </View>
+                        ) : (
+                          <ThinkingDots />
+                        )
                       )}
                     </View>
                   </View>

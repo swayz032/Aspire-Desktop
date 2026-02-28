@@ -9,6 +9,7 @@ import { setDefaultSuiteId, setDefaultOfficeId } from './suiteContext';
 import { createClient } from '@supabase/supabase-js';
 import { loadSecrets } from './secrets';
 import { logger } from './logger';
+import { setupTtsWebSocket } from './wsTts';
 
 let runMigrations: ((opts: { databaseUrl: string }) => Promise<void>) | null = null;
 let getStripeSync: (() => Promise<{ findOrCreateManagedWebhook: (url: string) => Promise<void>; syncBackfill: () => Promise<void> }>) | null = null;
@@ -540,6 +541,16 @@ async function start() {
   const server = app.listen(PORT, '0.0.0.0', () => {
     logger.info('Aspire Desktop server running', { port: PORT });
   });
+
+  // Mount multi-context WebSocket TTS proxy on the HTTP server
+  // Provides persistent WS connection for low-latency voice with barge-in support
+  try {
+    setupTtsWebSocket(server);
+  } catch (err: unknown) {
+    logger.warn('WebSocket TTS proxy setup failed — HTTP streaming fallback active', {
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+  }
 
   // Graceful shutdown (D-C11) — drain connections before exit
   const SHUTDOWN_TIMEOUT_MS = 30_000;

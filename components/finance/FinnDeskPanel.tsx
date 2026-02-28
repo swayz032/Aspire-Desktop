@@ -4,6 +4,7 @@ import { ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
+import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance } from '@/lib/anam';
@@ -1131,7 +1132,17 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                   <View style={immersiveStyles.connectingRing}>
                     <ActivityIndicator size="large" color={Colors.accent.cyan} />
                   </View>
-                  <Text style={immersiveStyles.statusText}>{connectionStatus}</Text>
+                  {Platform.OS === 'web' ? (
+                    <ShimmeringText
+                      text={connectionStatus}
+                      duration={2}
+                      color={Colors.text.muted}
+                      shimmerColor={Colors.accent.cyan}
+                      style={{ fontSize: 15, fontWeight: '600', letterSpacing: -0.2 }}
+                    />
+                  ) : (
+                    <Text style={immersiveStyles.statusText}>{connectionStatus}</Text>
+                  )}
                   <Text style={immersiveStyles.statusSubtext}>Establishing secure connection</Text>
                 </View>
               ) : videoError ? (
@@ -1458,7 +1469,17 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                 {videoState === 'connecting' ? (
                   <View style={{ alignItems: 'center', gap: 12 }}>
                     <ActivityIndicator size="large" color={Colors.accent.cyan} />
-                    <Text style={{ color: Colors.text.secondary, fontSize: 14 }}>{connectionStatus}</Text>
+                    {Platform.OS === 'web' ? (
+                      <ShimmeringText
+                        text={connectionStatus}
+                        duration={2}
+                        color={Colors.text.muted}
+                        shimmerColor={Colors.accent.cyan}
+                        style={{ fontSize: 14, fontWeight: '500' }}
+                      />
+                    ) : (
+                      <Text style={{ color: Colors.text.secondary, fontSize: 14 }}>{connectionStatus}</Text>
+                    )}
                   </View>
                 ) : videoError ? (
                   <View style={{ alignItems: 'center', gap: 14, paddingHorizontal: 32 }}>
@@ -1555,7 +1576,19 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                         <Text style={styles.msgText}>{msg.text}</Text>
                       ) : null}
                       {msg.runId && run && run.status === 'running' && !msg.text && (
-                        <ThinkingDots />
+                        Platform.OS === 'web' ? (
+                          <View style={actStyles.thinkingDotsRow}>
+                            <ShimmeringText
+                              text="Thinking..."
+                              duration={1.5}
+                              color={Colors.text.muted}
+                              shimmerColor={Colors.accent.cyan}
+                              style={{ fontSize: 13, fontWeight: '500' }}
+                            />
+                          </View>
+                        ) : (
+                          <ThinkingDots />
+                        )
                       )}
                     </View>
                   </View>
