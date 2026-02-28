@@ -751,8 +751,14 @@ export function AvaDeskPanel() {
         showVoiceError('Ava video not configured for this environment. Voice mode is ready.');
       } else if (/not found in DOM/i.test(msg)) {
         showVoiceError('Video element not ready. Please try again.');
-      } else if (/401|auth|token/i.test(msg)) {
+      } else if (/AUTH_REQUIRED|401.*avatar/i.test(msg)) {
         showVoiceError('Authentication failed. Please sign in again.');
+      } else if (/AVATAR_SESSION_FAILED|Anam API/i.test(msg)) {
+        showVoiceError('Avatar service temporarily unavailable. Voice mode is ready.');
+      } else if (/Authentication failed when starting|CLIENT_ERROR_CODE_AUTHENTICATION/i.test(msg)) {
+        showVoiceError('Anam avatar auth error. Check Anam account/plan status.');
+      } else if (/sign up for a plan|NO_PLAN_FOUND|usage limit|spend cap/i.test(msg)) {
+        showVoiceError('Anam plan limit reached. Check Anam account billing.');
       } else if (/network|fetch|ERR_/i.test(msg)) {
         showVoiceError('Network error. Check your connection and try again.');
       } else if (/timeout/i.test(msg)) {

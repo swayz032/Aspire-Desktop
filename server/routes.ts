@@ -2110,18 +2110,35 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     }
 
     const ANAM_API_KEY = process.env.ANAM_API_KEY;
-    const ANAM_PERSONA_ID = process.env.ANAM_PERSONA_ID;
-    const ANAM_FINN_PERSONA_ID = process.env.ANAM_FINN_PERSONA_ID;
+
+    if (!ANAM_API_KEY) {
+      return res.status(503).json({ error: 'AVATAR_NOT_CONFIGURED', message: 'Avatar API key not configured' });
+    }
 
     // Determine which persona — Finn or Ava (default)
+    // Use EPHEMERAL persona config (not stateful ID) to avoid legacy token type.
+    // Anam SDK v4.8 rejects legacy tokens — ephemeral returns type: "ephemeral".
     const requestedPersona = req.body?.persona;
-    const personaId = requestedPersona === 'finn' ? ANAM_FINN_PERSONA_ID : ANAM_PERSONA_ID;
 
-    if (!ANAM_API_KEY || !personaId) {
-      // Law #3: Fail Closed
-      const agent = requestedPersona === 'finn' ? 'Finn' : 'Ava';
-      return res.status(503).json({ error: 'AVATAR_NOT_CONFIGURED', message: `${agent} avatar not configured` });
-    }
+    // Ava: Cara avatar + Hope voice, Finn: custom avatar + voice
+    // llmId: CUSTOMER_CLIENT_V1 routes all conversation to /api/ava/chat-stream (Law #1: Single Brain)
+    const AVA_CONFIG = {
+      name: 'Ava',
+      avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
+      voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
+      llmId: 'CUSTOMER_CLIENT_V1',
+      systemPrompt: 'You are Ava, a professional AI assistant for Aspire business operations.',
+    };
+    const FINN_CONFIG = {
+      name: 'Finn',
+      avatarId: req.body?.avatarId || '45ddc55c-14a9-4b25-8e28-f6c1ce39ccc5',
+      voiceId: req.body?.voiceId || '7db5f408-833c-49ce-97aa-eaec17077a4c',
+      llmId: 'CUSTOMER_CLIENT_V1',
+      systemPrompt: 'You are Finn, the Aspire finance and money desk specialist.',
+    };
+
+    const personaConfig = requestedPersona === 'finn' ? FINN_CONFIG : AVA_CONFIG;
+    const agent = requestedPersona === 'finn' ? 'Finn' : 'Ava';
 
     const response = await fetch('https://api.anam.ai/v1/auth/session-token', {
       method: 'POST',
@@ -2129,23 +2146,32 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         'Authorization': `Bearer ${ANAM_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        personaConfig: {
-          id: personaId,
-        },
-      }),
+      body: JSON.stringify({ personaConfig }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      logger.error('Avatar session token error', { status: response.status, error: errorText.substring(0, 200) });
-      return res.status(502).json({ error: 'AVATAR_SESSION_FAILED', message: 'Avatar service temporarily unavailable' });
+      logger.error('Anam session token API error', {
+        status: response.status,
+        persona: agent,
+        avatarId: personaConfig.avatarId,
+        error: errorText.substring(0, 500),
+        apiKeyPrefix: ANAM_API_KEY.substring(0, 8) + '...',
+      });
+      return res.status(502).json({
+        error: 'AVATAR_SESSION_FAILED',
+        message: `Avatar service error (Anam API ${response.status})`,
+        anamStatus: response.status,
+      });
     }
 
     const data = await response.json() as { sessionToken?: string };
     if (!data.sessionToken) {
+      logger.error('Anam returned no session token', { responseKeys: Object.keys(data), persona: requestedPersona || 'ava' });
       return res.status(502).json({ error: 'AVATAR_NO_TOKEN', message: 'Avatar service returned invalid response' });
     }
+
+    logger.info('Anam session token obtained', { persona: requestedPersona || 'ava', tokenLength: data.sessionToken.length });
 
     // Store user context for CUSTOMER_CLIENT_V1 brain routing auth bridge.
     // When Anam calls /api/ava/chat-stream, it sends the session_id — we look up the suite context.
