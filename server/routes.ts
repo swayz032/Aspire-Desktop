@@ -123,6 +123,76 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// ─── Server-Side Signup (Private Beta) ───
+// Creates user with email auto-confirmed (no email verification in beta).
+// Validates invite code server-side before creating the account.
+// PUBLIC endpoint — rate-limited via the invite code rate limiter above.
+const signupRateLimit = new Map<string, { count: number; resetAt: number }>();
+
+router.post('/api/auth/signup', async (req: Request, res: Response) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+
+  // Rate limit: 3 signups per minute per IP
+  const rl = signupRateLimit.get(ip);
+  if (rl && now < rl.resetAt) {
+    if (rl.count >= 3) {
+      return res.status(429).json({ error: 'Too many signup attempts. Please wait a minute.' });
+    }
+    rl.count++;
+  } else {
+    signupRateLimit.set(ip, { count: 1, resetAt: now + 60_000 });
+  }
+
+  const { email, password, inviteCode } = req.body || {};
+
+  if (!email || !password || !inviteCode) {
+    return res.status(400).json({ error: 'Email, password, and invite code are required.' });
+  }
+
+  if (typeof email !== 'string' || typeof password !== 'string' || typeof inviteCode !== 'string') {
+    return res.status(400).json({ error: 'Invalid input types.' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  }
+
+  // Validate invite code
+  const expectedCode = process.env.ASPIRE_INVITE_CODE;
+  if (!expectedCode || inviteCode.trim().toLowerCase() !== expectedCode.trim().toLowerCase()) {
+    return res.status(403).json({ error: 'Invalid invite code.' });
+  }
+
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Auth service unavailable.' });
+  }
+
+  try {
+    // Create user with email auto-confirmed (beta — no email verification)
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email: email.trim(),
+      password,
+      email_confirm: true,
+    });
+
+    if (error) {
+      // Supabase returns specific error for duplicate email
+      if (error.message?.includes('already been registered') || error.message?.includes('already exists')) {
+        return res.status(409).json({ error: 'An account with this email already exists. Try signing in.' });
+      }
+      return res.status(400).json({ error: error.message });
+    }
+
+    logger.info('Beta signup: user created', { userId: data.user?.id, email: email.trim() });
+    return res.json({ success: true, userId: data.user?.id });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'unknown';
+    logger.error('Signup error', { error: msg });
+    return res.status(500).json({ error: 'Account creation failed. Please try again.' });
+  }
+});
+
 /**
  * Emit a receipt to the Trust Spine receipts table.
  * Maps desktop-friendly params to the actual receipts schema:

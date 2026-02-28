@@ -112,48 +112,37 @@ export default function LoginScreen() {
     setError(null);
 
     try {
-      // Step 1: Validate invite code server-side
-      const codeRes = await fetch('/api/auth/validate-invite-code', {
+      // Server-side signup: validates invite code + creates user (email auto-confirmed)
+      const signupRes = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: inviteCode.trim() }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          inviteCode: inviteCode.trim(),
+        }),
       });
 
-      const codeData = await codeRes.json();
+      const signupData = await signupRes.json();
 
-      if (!codeRes.ok || !codeData.valid) {
-        setError(codeData.error || 'Invalid invite code.');
+      if (!signupRes.ok || !signupData.success) {
+        setError(signupData.error || 'Signup failed.');
         return;
       }
 
-      // Step 2: Create account via Supabase
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      // Account created and auto-confirmed — sign in immediately
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
 
-      if (signUpError) {
-        setError(signUpError.message);
+      if (signInError) {
+        setError(signInError.message);
         return;
       }
 
-      // Supabase may require email confirmation depending on settings.
-      // If a session is returned, the user is immediately logged in.
-      if (data.session) {
-        router.replace('/(auth)/onboarding' as any);
-      } else if (data.user && !data.session) {
-        // Email confirmation required
-        setSuccessMessage(
-          'Account created! Check your email to confirm, then sign in.'
-        );
-        setMode('signin');
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          useNativeDriver: false,
-          tension: 300,
-          friction: 30,
-        }).start();
-      }
+      // New user → go to onboarding
+      router.replace('/(auth)/onboarding' as any);
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
     } finally {

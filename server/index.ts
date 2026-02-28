@@ -57,6 +57,7 @@ const PUBLIC_PATHS = [
   '/api/conference/join/',  // Join code resolution — guests authenticate via short-lived code, not JWT
   '/api/ava/chat-stream',   // Anam CUSTOMER_CLIENT_V1 callback — auth via session store, not JWT
   '/api/auth/validate-invite-code', // Private beta invite gate — rate-limited, no JWT needed
+  '/api/auth/signup',               // Private beta signup — rate-limited, invite code validated server-side
 ];
 
 // /v1/ paths that REQUIRE auth (Law #3: Fail Closed — default deny)
@@ -425,6 +426,141 @@ app.get('/api/ops-snapshot', async (req, res) => {
       providers: { plaid: false, stripe: false, gusto: false, quickbooks: false },
     });
   }
+});
+
+// ─── Public Landing Page (Google OAuth verification requirement) ───
+// Google requires: HTTP 200 at root, product description, privacy + terms links.
+// Unauthenticated visitors see this. Authenticated users get the SPA.
+const LANDING_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aspire — Governed AI Execution for Small Business</title>
+  <meta name="description" content="Aspire is a governed AI execution platform that helps small business professionals automate invoicing, contracts, scheduling, email, and more — with full audit trails and human approval for every action.">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#e0e0e0;min-height:100vh;display:flex;flex-direction:column}
+    .hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;text-align:center}
+    .logo{width:72px;height:72px;border-radius:36px;background:#00BCD4;display:flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 0 30px rgba(0,188,212,0.3)}
+    .logo span{font-size:32px;font-weight:700;color:#fff}
+    h1{font-size:36px;font-weight:700;color:#fff;margin-bottom:12px}
+    .tagline{font-size:18px;color:#999;max-width:520px;line-height:1.6;margin-bottom:40px}
+    .features{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:700px;margin-bottom:48px}
+    .feat{background:#141414;border:1px solid #222;border-radius:10px;padding:16px 20px;font-size:14px;color:#bbb}
+    .cta{display:inline-block;background:#00BCD4;color:#fff;font-size:16px;font-weight:600;padding:14px 40px;border-radius:10px;text-decoration:none;transition:opacity .2s}
+    .cta:hover{opacity:0.85}
+    .beta-badge{display:inline-block;background:rgba(0,188,212,0.15);border:1px solid rgba(0,188,212,0.3);color:#00BCD4;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;margin-bottom:24px}
+    footer{border-top:1px solid #1a1a1a;padding:32px 24px;text-align:center}
+    footer a{color:#00BCD4;text-decoration:none;margin:0 16px;font-size:14px}
+    footer a:hover{text-decoration:underline}
+    .contact{color:#666;font-size:13px;margin-top:16px}
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="logo"><span>A</span></div>
+    <span class="beta-badge">Private Beta</span>
+    <h1>Aspire</h1>
+    <p class="tagline">Governed AI execution for small business professionals. Automate invoicing, contracts, scheduling, email, and bookkeeping — with full audit trails and human approval for every action.</p>
+    <div class="features">
+      <div class="feat">Invoicing &amp; Payments</div>
+      <div class="feat">Contracts &amp; E-Signatures</div>
+      <div class="feat">Email &amp; Calendar</div>
+      <div class="feat">Bookkeeping</div>
+      <div class="feat">Voice AI Assistant</div>
+      <div class="feat">Full Audit Trail</div>
+    </div>
+    <a href="/login" class="cta">Sign In to Aspire</a>
+  </div>
+  <footer>
+    <div>
+      <a href="/privacy-policy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
+    </div>
+    <p class="contact">Contact: support@aspireos.app &bull; Aspire OS &copy; 2026</p>
+  </footer>
+</body>
+</html>`;
+
+const PRIVACY_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Aspire</title>
+  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#ccc;padding:48px 24px;max-width:720px;margin:0 auto;line-height:1.8}h1{color:#fff;margin-bottom:8px}h2{color:#fff;margin-top:32px;margin-bottom:8px}.updated{color:#666;margin-bottom:32px;font-size:14px}a{color:#00BCD4}p{margin-bottom:16px}</style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: February 28, 2026</p>
+  <p>Aspire OS ("Aspire", "we", "us") operates the aspireos.app platform. This policy describes how we collect, use, and protect your information.</p>
+  <h2>Information We Collect</h2>
+  <p>We collect information you provide when creating an account (email address, name, business name, industry) and information generated through your use of the platform (invoices, contracts, calendar events, email drafts, receipts, and audit logs).</p>
+  <h2>How We Use Your Information</h2>
+  <p>We use your information to provide and improve the Aspire platform, process your business operations (invoicing, scheduling, email, contracts), maintain audit trails and receipts for governance compliance, and communicate with you about your account.</p>
+  <h2>Data Storage &amp; Security</h2>
+  <p>Your data is stored securely using Supabase (PostgreSQL) with row-level security (RLS) ensuring strict tenant isolation. All state-changing operations produce immutable audit receipts. We encrypt sensitive data at rest and in transit using industry-standard TLS 1.3.</p>
+  <h2>Third-Party Services</h2>
+  <p>Aspire integrates with third-party services to provide functionality: Stripe (payments), PandaDoc (contracts), Google (calendar/email), ElevenLabs (voice), and others. Each integration is governed by capability tokens with limited scope and short expiry. We share only the minimum data necessary for each operation.</p>
+  <h2>Your Rights</h2>
+  <p>You may request access to, correction of, or deletion of your personal data at any time by contacting support@aspireos.app. We will respond within 30 days.</p>
+  <h2>Data Retention</h2>
+  <p>We retain your data for as long as your account is active. Audit receipts are retained for compliance purposes. Upon account deletion, personal data is removed within 30 days; anonymized audit records may be retained.</p>
+  <h2>Contact</h2>
+  <p>For privacy inquiries: <a href="mailto:support@aspireos.app">support@aspireos.app</a></p>
+  <p><a href="/">Back to Aspire</a></p>
+</body>
+</html>`;
+
+const TERMS_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terms of Service — Aspire</title>
+  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#ccc;padding:48px 24px;max-width:720px;margin:0 auto;line-height:1.8}h1{color:#fff;margin-bottom:8px}h2{color:#fff;margin-top:32px;margin-bottom:8px}.updated{color:#666;margin-bottom:32px;font-size:14px}a{color:#00BCD4}p{margin-bottom:16px}</style>
+</head>
+<body>
+  <h1>Terms of Service</h1>
+  <p class="updated">Last updated: February 28, 2026</p>
+  <p>These Terms of Service ("Terms") govern your access to and use of the Aspire platform operated by Aspire OS ("Aspire", "we", "us").</p>
+  <h2>Acceptance of Terms</h2>
+  <p>By accessing or using Aspire, you agree to be bound by these Terms. If you do not agree, do not use the platform.</p>
+  <h2>Description of Service</h2>
+  <p>Aspire is a governed AI execution platform for small business professionals. The platform provides AI-assisted automation for invoicing, contracts, scheduling, email management, bookkeeping, and other business operations. All actions are governed by approval workflows and produce immutable audit receipts.</p>
+  <h2>Account Responsibilities</h2>
+  <p>You are responsible for maintaining the security of your account credentials. You agree to provide accurate information during registration. You are responsible for all activity under your account. Aspire is currently in private beta — access requires an invite code.</p>
+  <h2>Acceptable Use</h2>
+  <p>You agree not to use Aspire for any unlawful purpose, attempt to gain unauthorized access to other accounts or systems, interfere with the operation of the platform, or reverse-engineer the platform's software.</p>
+  <h2>Financial Operations</h2>
+  <p>Aspire facilitates financial operations (invoicing, payments) through third-party providers. You are responsible for the accuracy of financial data you provide. Aspire is not a financial institution and does not hold funds on your behalf.</p>
+  <h2>Intellectual Property</h2>
+  <p>The Aspire platform, including its software, design, and branding, is owned by Aspire OS. Your business data remains your property. You grant Aspire a limited license to process your data as necessary to provide the service.</p>
+  <h2>Limitation of Liability</h2>
+  <p>Aspire is provided "as is" during the beta period. We are not liable for any indirect, incidental, or consequential damages arising from your use of the platform. Our total liability shall not exceed the fees paid by you in the 12 months preceding the claim.</p>
+  <h2>Termination</h2>
+  <p>Either party may terminate at any time. Upon termination, your access will be revoked and your data will be handled per our Privacy Policy.</p>
+  <h2>Changes to Terms</h2>
+  <p>We may update these Terms. Continued use after changes constitutes acceptance.</p>
+  <h2>Contact</h2>
+  <p>Questions about these Terms: <a href="mailto:support@aspireos.app">support@aspireos.app</a></p>
+  <p><a href="/">Back to Aspire</a></p>
+</body>
+</html>`;
+
+// Serve public landing page at root (unauthenticated — no JWT check)
+app.get('/', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(LANDING_HTML);
+});
+
+app.get('/privacy-policy', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(PRIVACY_HTML);
+});
+
+app.get('/terms', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(TERMS_HTML);
 });
 
 const publicPath = path.join(process.cwd(), 'public');
