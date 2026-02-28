@@ -7,7 +7,7 @@ import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance } from '@/lib/anam';
+import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
 import { speakText } from '@/lib/elevenlabs';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
 
@@ -300,16 +300,7 @@ function FinnActivityInline({ run }: { run: ActiveRun }) {
   });
 
   if (!isRunning && !expanded) {
-    return (
-      <Animated.View style={[actStyles.completedLine, { opacity: fadeAnim }]}>
-        <View style={actStyles.completedDot} />
-        <Text style={actStyles.completedText}>Completed</Text>
-        <Text style={actStyles.completedSep}>·</Text>
-        <Pressable onPress={() => setExpanded(true)}>
-          <Text style={actStyles.detailsToggle}>View details</Text>
-        </Pressable>
-      </Animated.View>
-    );
+    return null;
   }
 
   return (
@@ -333,19 +324,6 @@ function FinnActivityInline({ run }: { run: ActiveRun }) {
               size={12}
               color={Colors.accent.cyan}
             />
-          </Pressable>
-        </View>
-      )}
-
-      {!isRunning && expanded && (
-        <View style={actStyles.statusBar}>
-          <View style={actStyles.statusLeft}>
-            <View style={actStyles.completedDot} />
-            <Text style={actStyles.completedText}>Completed</Text>
-          </View>
-          <Pressable onPress={() => setExpanded(false)} style={actStyles.toggleBtn}>
-            <Text style={actStyles.detailsToggle}>Hide details</Text>
-            <Ionicons name="chevron-up" size={12} color={Colors.accent.cyan} />
           </Pressable>
         </View>
       )}
@@ -735,27 +713,23 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
     await new Promise(resolve => setTimeout(resolve, 100));
 
     try {
-      const client = await connectFinnAvatar(elementId, session?.access_token);
-      anamClientRef.current = client;
-
-      // SDK event listeners for reliable state tracking (mirrors Ava's pattern)
-      try {
-        client.addListener('CONNECTION_ESTABLISHED' as any, () => {
+      const connectOptions: AnamConnectOptions = {
+        onConnectionEstablished: () => {
           console.log('[Anam/Finn] WebRTC connection established');
-        });
-        client.addListener('VIDEO_PLAY_STARTED' as any, () => {
+        },
+        onVideoStarted: () => {
           console.log('[Anam/Finn] Video stream playing');
           setVideoState('connected');
-        });
-        client.addListener('CONNECTION_CLOSED' as any, () => {
+        },
+        onConnectionClosed: () => {
           console.log('[Anam/Finn] Connection closed');
           setVideoState('idle');
           setConnectionStatus('');
           anamClientRef.current = null;
-        });
-      } catch {
-        // SDK version may not support all events — degrade gracefully
-      }
+        },
+      };
+      const client = await connectFinnAvatar(elementId, session?.access_token, connectOptions);
+      anamClientRef.current = client;
 
       clearConnectionTimeouts();
       playSuccessSound();

@@ -1,5 +1,5 @@
 /**
- * Anam Avatar SDK Integration
+ * Anam Avatar SDK Integration (v4.8)
  *
  * Aspire uses Anam for visual avatar rendering (Cara) + voice output (Hope).
  * The LLM brain is 100% Aspire's own orchestrator (GPT-5 via LangGraph).
@@ -26,7 +26,7 @@
  *   4. User speaks → Anam STT → /api/ava/chat-stream → Orchestrator → response → Cara speaks (Hope voice)
  */
 
-import { createClient } from '@anam-ai/js-sdk';
+import { createClient, AnamEvent } from '@anam-ai/js-sdk';
 
 export type AnamClientInstance = ReturnType<typeof createClient>;
 
@@ -35,6 +35,17 @@ export interface AnamMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+}
+
+/** Options for connecting Anam avatars with event callbacks */
+export interface AnamConnectOptions {
+  onSessionReady?: () => void;
+  onInterrupted?: () => void;
+  onMessageStream?: (text: string, role: string) => void;
+  onWarning?: (message: string) => void;
+  onConnectionEstablished?: () => void;
+  onVideoStarted?: () => void;
+  onConnectionClosed?: () => void;
 }
 
 /** In-memory conversation history for the current session */
@@ -92,26 +103,136 @@ export function createAnamClient(sessionToken: string): AnamClientInstance {
   });
 }
 
-/**
- * Set up MESSAGE_HISTORY_UPDATED listener for conversation continuity.
- * Stores messages so the orchestrator has full context for multi-turn reasoning.
- */
-export function setupMessageHistoryListener(client: AnamClientInstance): void {
-  try {
-    // Listen for message history updates from Anam SDK
-    client.addListener('MESSAGE_HISTORY_UPDATED' as any, (event: any) => {
-      if (event?.messages && Array.isArray(event.messages)) {
-        conversationHistory = event.messages.map((msg: any) => ({
-          role: msg.role || 'user',
-          content: msg.content || '',
-          timestamp: msg.timestamp || Date.now(),
-        }));
-      }
-    });
-  } catch {
-    // SDK version may not support this event — degrade gracefully
-    console.warn('Anam MESSAGE_HISTORY_UPDATED listener not available');
+// ─── SDK v4.8 Wrapper Functions ─────────────────────────────
+
+export function interruptPersona(client: AnamClientInstance): void {
+  if (client && typeof (client as any).interruptPersona === 'function') {
+    (client as any).interruptPersona();
   }
+}
+
+export function sendUserMessage(client: AnamClientInstance, text: string): void {
+  if (client && typeof (client as any).sendUserMessage === 'function') {
+    (client as any).sendUserMessage(text);
+  }
+}
+
+export function muteAnamInput(client: AnamClientInstance): void {
+  if (client && typeof (client as any).muteInputAudio === 'function') {
+    (client as any).muteInputAudio();
+  }
+}
+
+export function unmuteAnamInput(client: AnamClientInstance): void {
+  if (client && typeof (client as any).unmuteInputAudio === 'function') {
+    (client as any).unmuteInputAudio();
+  }
+}
+
+export function getAnamInputAudioState(client: AnamClientInstance): boolean {
+  if (client && typeof (client as any).getInputAudioState === 'function') {
+    return (client as any).getInputAudioState();
+  }
+  return false;
+}
+
+export function getActiveAnamSessionId(client: AnamClientInstance): string | null {
+  if (client && typeof (client as any).getActiveSessionId === 'function') {
+    return (client as any).getActiveSessionId();
+  }
+  return null;
+}
+
+export function createAnamTalkStream(client: AnamClientInstance): unknown {
+  if (client && typeof (client as any).createTalkMessageStream === 'function') {
+    return (client as any).createTalkMessageStream();
+  }
+  return null;
+}
+
+export function finnTalk(client: AnamClientInstance, text: string): void {
+  if (client && typeof (client as any).talk === 'function') {
+    (client as any).talk(text);
+  }
+}
+
+// ─── Event Listener Setup ─────────────────────────────────
+
+/**
+ * Set up ALL Anam SDK event listeners using AnamEvent enum.
+ * Replaces the old setupMessageHistoryListener with comprehensive event coverage.
+ */
+export function setupAllEventListeners(
+  client: AnamClientInstance,
+  historyTarget: 'ava' | 'finn',
+  options?: AnamConnectOptions,
+): void {
+  // Message history
+  client.addListener(AnamEvent.MESSAGE_HISTORY_UPDATED, (event: any) => {
+    if (event?.messages && Array.isArray(event.messages)) {
+      const mapped = event.messages.map((msg: any) => ({
+        role: msg.role || 'user',
+        content: msg.content || '',
+        timestamp: msg.timestamp || Date.now(),
+      }));
+      if (historyTarget === 'ava') {
+        conversationHistory = mapped;
+      } else {
+        finnConversationHistory = mapped;
+      }
+    }
+  });
+
+  // Connection events
+  client.addListener(AnamEvent.CONNECTION_ESTABLISHED, () => {
+    console.log(`[Anam ${historyTarget}] Connection established`);
+    options?.onConnectionEstablished?.();
+  });
+
+  client.addListener(AnamEvent.VIDEO_PLAY_STARTED, () => {
+    console.log(`[Anam ${historyTarget}] Video play started`);
+    options?.onVideoStarted?.();
+  });
+
+  client.addListener(AnamEvent.CONNECTION_CLOSED, () => {
+    console.log(`[Anam ${historyTarget}] Connection closed`);
+    options?.onConnectionClosed?.();
+  });
+
+  // Session ready
+  client.addListener(AnamEvent.SESSION_READY, () => {
+    console.log(`[Anam ${historyTarget}] Session ready`);
+    options?.onSessionReady?.();
+  });
+
+  // Message streaming
+  client.addListener(AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED, (event: any) => {
+    if (event?.content) {
+      options?.onMessageStream?.(event.content, event.role || 'assistant');
+    }
+  });
+
+  // Interruption
+  client.addListener(AnamEvent.TALK_STREAM_INTERRUPTED, () => {
+    console.log(`[Anam ${historyTarget}] Talk stream interrupted`);
+    options?.onInterrupted?.();
+  });
+
+  // Audio events
+  client.addListener(AnamEvent.INPUT_AUDIO_STREAM_STARTED, () => {
+    console.log(`[Anam ${historyTarget}] Input audio stream started`);
+  });
+
+  client.addListener(AnamEvent.AUDIO_STREAM_STARTED, () => {
+    console.log(`[Anam ${historyTarget}] Audio stream started`);
+  });
+
+  // Warnings
+  client.addListener(AnamEvent.SERVER_WARNING, (event: any) => {
+    const msg = event?.message || 'Unknown warning';
+    console.warn(`[Anam ${historyTarget}] Server warning: ${msg}`);
+    options?.onWarning?.(msg);
+  });
 }
 
 /**
@@ -121,6 +242,7 @@ export function setupMessageHistoryListener(client: AnamClientInstance): void {
 export async function connectAnamAvatar(
   videoElementId: string,
   accessToken?: string,
+  options?: AnamConnectOptions,
 ): Promise<AnamClientInstance> {
   // DOM validation — fail fast with actionable message
   if (typeof document !== 'undefined') {
@@ -133,7 +255,7 @@ export async function connectAnamAvatar(
   clearConversationHistory();
   const sessionToken = await fetchAnamSessionToken(accessToken);
   const client = createAnamClient(sessionToken);
-  setupMessageHistoryListener(client);
+  setupAllEventListeners(client, 'ava', options);
 
   try {
     await client.streamToVideoElement(videoElementId);
@@ -194,30 +316,12 @@ export async function fetchFinnSessionToken(accessToken?: string): Promise<strin
 }
 
 /**
- * Set up MESSAGE_HISTORY_UPDATED listener for Finn's conversation.
- */
-export function setupFinnMessageHistoryListener(client: AnamClientInstance): void {
-  try {
-    client.addListener('MESSAGE_HISTORY_UPDATED' as any, (event: any) => {
-      if (event?.messages && Array.isArray(event.messages)) {
-        finnConversationHistory = event.messages.map((msg: any) => ({
-          role: msg.role || 'user',
-          content: msg.content || '',
-          timestamp: msg.timestamp || Date.now(),
-        }));
-      }
-    });
-  } catch {
-    console.warn('Anam MESSAGE_HISTORY_UPDATED listener not available for Finn');
-  }
-}
-
-/**
  * Full connect flow for Finn avatar: fetch token → create client → setup listeners → stream.
  */
 export async function connectFinnAvatar(
   videoElementId: string,
   accessToken?: string,
+  options?: AnamConnectOptions,
 ): Promise<AnamClientInstance> {
   // DOM validation — fail fast with actionable message
   if (typeof document !== 'undefined') {
@@ -230,7 +334,7 @@ export async function connectFinnAvatar(
   clearFinnConversationHistory();
   const sessionToken = await fetchFinnSessionToken(accessToken);
   const client = createAnamClient(sessionToken);
-  setupFinnMessageHistoryListener(client);
+  setupAllEventListeners(client, 'finn', options);
 
   try {
     await client.streamToVideoElement(videoElementId);

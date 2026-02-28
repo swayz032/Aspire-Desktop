@@ -6,7 +6,7 @@ import { Colors } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance } from '@/lib/anam';
+import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
@@ -232,16 +232,7 @@ function AvaActivityInline({ run }: { run: ActiveRun }) {
   });
 
   if (!isRunning && !expanded) {
-    return (
-      <Animated.View style={[actStyles.completedLine, { opacity: fadeAnim }]}>
-        <View style={actStyles.completedDot} />
-        <Text style={actStyles.completedText}>Completed</Text>
-        <Text style={actStyles.completedSep}>·</Text>
-        <Pressable onPress={() => setExpanded(true)}>
-          <Text style={actStyles.detailsToggle}>View details</Text>
-        </Pressable>
-      </Animated.View>
-    );
+    return null;
   }
 
   return (
@@ -265,19 +256,6 @@ function AvaActivityInline({ run }: { run: ActiveRun }) {
               size={12}
               color={Colors.accent.cyan}
             />
-          </Pressable>
-        </View>
-      )}
-
-      {!isRunning && expanded && (
-        <View style={actStyles.statusBar}>
-          <View style={actStyles.statusLeft}>
-            <View style={actStyles.completedDot} />
-            <Text style={actStyles.completedText}>Completed</Text>
-          </View>
-          <Pressable onPress={() => setExpanded(false)} style={actStyles.toggleBtn}>
-            <Text style={actStyles.detailsToggle}>Hide details</Text>
-            <Ionicons name="chevron-up" size={12} color={Colors.accent.cyan} />
           </Pressable>
         </View>
       )}
@@ -736,27 +714,25 @@ export function AvaDeskPanel() {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Anam SDK: fetch session token → create client (CUSTOMER_CLIENT_V1) → stream to <video>
-      const client = await connectAnamAvatar('anam-video-element', session?.access_token);
-      anamClientRef.current = client;
-
-      // Anam SDK event listeners for reliable state tracking (per Anam docs)
-      try {
-        client.addListener('CONNECTION_ESTABLISHED' as any, () => {
+      const connectOptions: AnamConnectOptions = {
+        onConnectionEstablished: () => {
           console.log('[Anam] WebRTC connection established');
-        });
-        client.addListener('VIDEO_PLAY_STARTED' as any, () => {
+        },
+        onVideoStarted: () => {
           console.log('[Anam] Video stream playing');
           setVideoState('connected');
-        });
-        client.addListener('CONNECTION_CLOSED' as any, () => {
+        },
+        onConnectionClosed: () => {
           console.log('[Anam] Connection closed');
           setVideoState('idle');
           setConnectionStatus('');
           anamClientRef.current = null;
-        });
-      } catch {
-        // SDK version may not support all events — degrade gracefully
-      }
+        },
+      };
+      const client = await connectAnamAvatar('anam-video-element', session?.access_token, connectOptions);
+      anamClientRef.current = client;
+
+      // Event listeners are now registered inside connectAnamAvatar via setupAllEventListeners
 
       clearConnectionTimeouts();
       playSuccessSound();

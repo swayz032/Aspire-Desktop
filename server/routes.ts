@@ -2010,7 +2010,9 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        personaId,
+        personaConfig: {
+          id: personaId,
+        },
       }),
     });
 

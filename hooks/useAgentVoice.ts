@@ -89,6 +89,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const currentContextRef = useRef<string | null>(null);
   // Audio chunks accumulated per context
   const audioChunksRef = useRef<Map<string, Uint8Array[]>>(new Map());
+  // Keep-alive timer for TTS WebSocket (prevents idle disconnect)
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const useDeepgram = DEEPGRAM_STT_AGENTS.includes(agent);
 
@@ -417,6 +419,14 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     try {
       await ttsWs.connect();
       ttsWsRef.current = ttsWs;
+
+      // Start keep-alive pings to prevent idle WebSocket disconnect
+      keepAliveRef.current = setInterval(() => {
+        if (ttsWsRef.current?.isConnected) {
+          const ctxId = currentContextRef.current || 'keepalive';
+          ttsWsRef.current.keepAlive(ctxId);
+        }
+      }, 30_000);
     } catch (wsErr) {
       // WebSocket TTS unavailable — HTTP streaming fallback will be used
       console.warn(`[useAgentVoice] WebSocket TTS unavailable for ${agent} — using HTTP fallback:`, wsErr);
@@ -440,6 +450,12 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     processingRef.current = false;
     currentContextRef.current = null;
     audioChunksRef.current.clear();
+
+    // Stop keep-alive timer
+    if (keepAliveRef.current) {
+      clearInterval(keepAliveRef.current);
+      keepAliveRef.current = null;
+    }
 
     // Close WebSocket TTS
     if (ttsWsRef.current) {
@@ -469,6 +485,16 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       endSession();
     }
   }, [accessToken, endSession]);
+
+  // Cleanup keep-alive timer on unmount
+  useEffect(() => {
+    return () => {
+      if (keepAliveRef.current) {
+        clearInterval(keepAliveRef.current);
+        keepAliveRef.current = null;
+      }
+    };
+  }, []);
 
   return {
     status,
