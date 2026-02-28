@@ -56,6 +56,7 @@ const PUBLIC_PATHS = [
   '/api/mail/oauth/google/callback', // Google redirects here without JWT
   '/api/conference/join/',  // Join code resolution — guests authenticate via short-lived code, not JWT
   '/api/ava/chat-stream',   // Anam CUSTOMER_CLIENT_V1 callback — auth via session store, not JWT
+  '/api/auth/validate-invite-code', // Private beta invite gate — rate-limited, no JWT needed
 ];
 
 // /v1/ paths that REQUIRE auth (Law #3: Fail Closed — default deny)
@@ -380,7 +381,7 @@ app.get('/api/health', async (req, res) => {
 
 app.get('/api/ops-snapshot', async (req, res) => {
   try {
-    const snapshot: Record<string, unknown> = {
+    const snapshot = {
       cashPosition: { availableCash: 0, upcomingOutflows7d: 0, expectedInflows7d: 0, accountsConnected: 0 },
       providers: { plaid: false, stripe: false, gusto: false, quickbooks: false },
     };

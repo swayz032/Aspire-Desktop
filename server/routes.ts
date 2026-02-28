@@ -73,6 +73,56 @@ function sortKeys(obj: any): any {
   return obj;
 }
 
+// ─── Invite Code Validation (Private Beta Gate) ───
+// Rate-limited: 5 attempts per minute per IP to prevent brute force.
+// This is a PUBLIC endpoint (no JWT required — user isn't authenticated yet).
+const inviteCodeRateLimit = new Map<string, { count: number; resetAt: number }>();
+
+router.post('/api/auth/validate-invite-code', (req: Request, res: Response) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+
+  // Rate limit: 5 attempts per 60 seconds per IP
+  const rl = inviteCodeRateLimit.get(ip);
+  if (rl && now < rl.resetAt) {
+    if (rl.count >= 5) {
+      return res.status(429).json({
+        valid: false,
+        error: 'Too many attempts. Please wait a minute and try again.',
+      });
+    }
+    rl.count++;
+  } else {
+    inviteCodeRateLimit.set(ip, { count: 1, resetAt: now + 60_000 });
+  }
+
+  const { code } = req.body || {};
+  if (!code || typeof code !== 'string') {
+    return res.status(400).json({ valid: false, error: 'Invite code is required.' });
+  }
+
+  const expectedCode = process.env.ASPIRE_INVITE_CODE;
+  if (!expectedCode) {
+    logger.error('ASPIRE_INVITE_CODE env var not set — invite validation will always fail');
+    return res.status(500).json({ valid: false, error: 'Invite system not configured.' });
+  }
+
+  const valid = code.trim().toLowerCase() === expectedCode.trim().toLowerCase();
+  if (!valid) {
+    return res.status(403).json({ valid: false, error: 'Invalid invite code.' });
+  }
+
+  return res.json({ valid: true });
+});
+
+// Cleanup rate limit maps every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now();
+  for (const [key, val] of inviteCodeRateLimit) {
+    if (cutoff >= val.resetAt) inviteCodeRateLimit.delete(key);
+  }
+}, 5 * 60 * 1000);
+
 /**
  * Emit a receipt to the Trust Spine receipts table.
  * Maps desktop-friendly params to the actual receipts schema:
@@ -691,7 +741,7 @@ router.post('/api/users', async (req: Request, res: Response) => {
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'yellow',
         actionData: { operation: 'create_suite_profile' },
-        resultData: { profile_id: profile?.suiteId || profile?.id },
+        resultData: { profile_id: profile?.suiteId },
       });
     } catch (receiptErr: unknown) {
       logger.error('Profile create receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
@@ -1482,7 +1532,7 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
 
     // Use ElevenLabs Speech-to-Text API
     const formData = new FormData();
-    formData.append('file', new Blob([audioBuffer], { type: 'audio/webm' }), 'audio.webm');
+    formData.append('file', new Blob([new Uint8Array(audioBuffer)], { type: 'audio/webm' }), 'audio.webm');
     formData.append('model_id', 'scribe_v1');
 
     const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
