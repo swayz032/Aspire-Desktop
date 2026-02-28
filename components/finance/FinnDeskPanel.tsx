@@ -977,7 +977,8 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
-                display: videoState === 'connected' ? 'block' : 'none',
+                opacity: videoState === 'connected' ? 1 : 0,
+                transition: 'opacity 0.3s ease-in-out',
                 backgroundColor: '#000',
                 position: 'absolute',
                 top: 0,
@@ -1277,7 +1278,8 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                   width: '100%',
                   height: '100%',
                   objectFit: 'cover',
-                  display: videoState === 'connected' ? 'block' : 'none',
+                  opacity: videoState === 'connected' ? 1 : 0,
+                transition: 'opacity 0.3s ease-in-out',
                   backgroundColor: '#000',
                   position: 'absolute',
                   top: 0,
@@ -1311,7 +1313,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
             ) : (
               <ImageBackground
                 source={{ uri: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=800' }}
-                style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}
                 imageStyle={{ opacity: 0.2 }}
               >
                 <LinearGradient
@@ -1722,7 +1724,11 @@ const immersiveStyles = StyleSheet.create({
 
   /* Pre-connect background (idle / connecting / error) */
   preConnectBg: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
   } as Record<string, unknown>,

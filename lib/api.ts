@@ -203,6 +203,7 @@ export interface PandaDocTemplate {
   fields: Array<{ name: string; type: string; field_id: string; assigned_to: string | null }>;
   roles: Array<{ id: string; name: string }>;
   images: number;
+  preview_image_url: string | null;
   content_placeholders: number;
   has_pricing: boolean;
 }

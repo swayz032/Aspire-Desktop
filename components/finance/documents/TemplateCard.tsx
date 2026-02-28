@@ -4,7 +4,7 @@
  * for templates that lack a PandaDoc UUID.
  */
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, Text, Image, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
@@ -30,6 +30,7 @@ export interface TemplateData {
   roles?: string[];
   has_pricing?: boolean;
   date_modified?: string;
+  preview_image_url?: string | null;
 }
 
 interface TemplateCardProps {
@@ -82,6 +83,22 @@ function TemplateCardInner({ template, index = 0, onUseTemplate }: TemplateCardP
         } as any : {},
       ]}
     >
+      {/* Template preview image */}
+      {template.preview_image_url ? (
+        <View style={styles.previewImageWrap}>
+          <Image
+            source={{ uri: template.preview_image_url }}
+            style={styles.previewImage}
+            resizeMode="cover"
+          />
+          <View style={styles.previewFade} />
+        </View>
+      ) : (
+        <View style={[styles.previewPlaceholder, { backgroundColor: risk.bg }]}>
+          <Ionicons name="document-text-outline" size={28} color={risk.color} />
+        </View>
+      )}
+
       {/* Coming Soon overlay */}
       {!isAvailable && (
         <View style={styles.comingSoonOverlay}>
@@ -158,11 +175,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CARD_BORDER,
     borderRadius: 14,
-    padding: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    paddingTop: 0,
     minHeight: 180,
     justifyContent: 'space-between',
     position: 'relative',
     overflow: 'hidden',
+  },
+  previewImageWrap: {
+    marginHorizontal: -18,
+    height: 120,
+    overflow: 'hidden',
+    borderTopLeftRadius: 13,
+    borderTopRightRadius: 13,
+    marginBottom: 14,
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  previewFade: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 40,
+    backgroundColor: 'transparent',
+  },
+  previewPlaceholder: {
+    marginHorizontal: -18,
+    height: 80,
+    borderTopLeftRadius: 13,
+    borderTopRightRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
   },
   cardDisabled: {
     opacity: 0.55,

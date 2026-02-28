@@ -60,6 +60,7 @@ function toTemplateData(templates: PandaDocTemplate[]): TemplateData[] {
     roles: t.roles.map(r => r.name),
     has_pricing: t.has_pricing,
     date_modified: t.date_modified,
+    preview_image_url: t.preview_image_url,
   }));
 }
 

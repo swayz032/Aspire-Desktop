@@ -3410,6 +3410,7 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
             })),
             roles: (detail.roles || []).map((r: any) => ({ id: r.id, name: r.name })),
             images: (detail.images || []).length,
+            preview_image_url: detail.images?.[0]?.urls?.[0] || null,
             content_placeholders: (detail.content_placeholders || []).length,
             has_pricing: Boolean(detail.pricing?.quotes?.length),
           };
@@ -3424,6 +3425,7 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
             fields: [],
             roles: [],
             images: 0,
+            preview_image_url: null,
             content_placeholders: 0,
             has_pricing: false,
           };
