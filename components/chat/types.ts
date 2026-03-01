@@ -37,7 +37,7 @@ export type AgentId =
  * Sourced from Canvas.halo.desk tokens + existing component hardcodes.
  */
 export const AGENT_COLORS: Record<AgentId, string> = {
-  ava: '#A855F7',     // purple
+  ava: '#3B82F6',     // Aspire blue
   finn: '#10B981',    // green (chat/canvas) — note: FinnDeskPanel uses #3B82F6 (blue) in some places
   eli: '#F59E0B',     // amber
   nora: '#0891B2',    // teal

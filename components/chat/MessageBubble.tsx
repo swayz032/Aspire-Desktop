@@ -155,7 +155,11 @@ export const MessageBubble = React.memo(function MessageBubble({
   const avatarSource = AGENT_AVATARS[agent];
   const hasAttachments =
     message.attachments && message.attachments.length > 0;
-  const hasActivity = activityEvents && activityEvents.length > 0;
+  // Ava uses ChainOfThought for reasoning; suppress inline activity timeline boxes.
+  const hasActivity =
+    agent !== 'ava' &&
+    activityEvents &&
+    activityEvents.length > 0;
 
   // Fade-in on mount
   useEffect(() => {

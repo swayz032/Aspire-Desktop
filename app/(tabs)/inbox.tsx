@@ -823,12 +823,13 @@ export default function InboxScreen() {
   const [showMailboxDropdown, setShowMailboxDropdown] = useState(false);
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
-  const { suiteId } = useSupabase();
+  const { suiteId, session } = useSupabase();
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const eliVoice = useAgentVoice({
     agent: 'eli',
     suiteId: suiteId ?? undefined,
+    accessToken: session?.access_token,
     onStatusChange: (voiceStatus) => {
       setEliVoiceActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
       if (voiceStatus === 'idle') setEliTranscript('');
@@ -853,6 +854,10 @@ export default function InboxScreen() {
       Alert.alert('Voice Unavailable', 'Voice is only available on the web version.');
       return;
     }
+    if (!session?.access_token) {
+      Alert.alert('Authentication Required', 'Please sign in again to talk to Eli.');
+      return;
+    }
     if (eliVoice.isActive) {
       eliVoice.endSession();
     } else {
@@ -863,16 +868,37 @@ export default function InboxScreen() {
         Alert.alert('Connection Error', 'Unable to connect to Eli. Please try again.');
       }
     }
-  }, [eliVoice]);
+  }, [eliVoice, session?.access_token]);
 
   const handleEliSendMessage = useCallback(async (text: string) => {
     setEliMessages(prev => [...prev, { id: String(Date.now()), from: 'user', text, ts: Date.now() }]);
+    if (!session?.access_token) {
+      setEliMessages(prev => [
+        ...prev,
+        {
+          id: String(Date.now() + 1),
+          from: 'eli',
+          text: 'Your session expired. Please sign in again so I can access your inbox.',
+          ts: Date.now(),
+        },
+      ]);
+      return;
+    }
     try {
       await eliVoice.sendText(text);
-    } catch (_e) {
-      // Error handled by onError callback
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setEliMessages(prev => [
+        ...prev,
+        {
+          id: String(Date.now() + 2),
+          from: 'eli',
+          text: `I couldn't process that: ${msg}`,
+          ts: Date.now(),
+        },
+      ]);
     }
-  }, [eliVoice]);
+  }, [eliVoice, session?.access_token]);
 
   // ── Fetch full thread detail when clicking an email ──
   const fetchMailDetail = useCallback(async (threadId: string) => {

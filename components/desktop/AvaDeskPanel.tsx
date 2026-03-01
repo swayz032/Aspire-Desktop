@@ -13,7 +13,6 @@ import {
   type ActiveRun,
   type FileAttachment,
   MessageBubble,
-  ActivityTimeline,
   ThinkingIndicator,
   ChainOfThought,
   ChainOfThoughtHeader,
@@ -982,6 +981,13 @@ export function AvaDeskPanel() {
               </View>
             );
           })}
+          {isConversing && (
+            <ThinkingIndicator
+              agent="ava"
+              text="Ava is thinking..."
+              style={{ marginTop: 4, marginBottom: 8 }}
+            />
+          )}
         </ScrollView>
 
         <View style={styles.inputRow}>
