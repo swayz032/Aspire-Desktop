@@ -9,6 +9,7 @@ import {
   Platform,
   Animated,
   ViewStyle,
+  TextStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '@/constants/tokens';
@@ -30,7 +31,7 @@ type Props = {
   input: string;
   onChangeInput: (text: string) => void;
   onSend: () => void;
-  scrollRef: React.RefObject<ScrollView>;
+  scrollRef: React.RefObject<ScrollView | null>;
 };
 
 /* ── Constants ─────────────────────────────────── */
@@ -57,10 +58,16 @@ const STYLE_ID = 'finn-video-chat-overlay-css';
 /* ── Web-only CSS class helper ─────────────────── */
 
 const WEB_EMPTY = {} as ViewStyle;
+const WEB_EMPTY_TEXT = {} as TextStyle;
 
 function wc(className: string): ViewStyle {
   if (Platform.OS !== 'web') return WEB_EMPTY;
   return { className } as unknown as ViewStyle;
+}
+
+function wcText(className: string): TextStyle {
+  if (Platform.OS !== 'web') return WEB_EMPTY_TEXT;
+  return { className } as unknown as TextStyle;
 }
 
 /* ── Web CSS keyframes (injected once) ──────────── */
@@ -361,7 +368,7 @@ export function FinnVideoChatOverlay({
             onChangeText={onChangeInput}
             placeholder="Message Finn..."
             placeholderTextColor={Colors.text.muted}
-            style={[styles.input, wc('finn-chat-input')]}
+            style={[styles.input, wcText('finn-chat-input')]}
             onSubmitEditing={handleSend}
             returnKeyType="send"
             accessibilityLabel="Chat message input"
@@ -700,7 +707,7 @@ const styles = StyleSheet.create({
           transition: 'border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease',
         }
       : {}),
-  } as Record<string, unknown>,
+  } as TextStyle,
 
   sendBtn: {
     width: 34,

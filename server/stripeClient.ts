@@ -53,7 +53,7 @@ export async function getStripeSecretKey(): Promise<string> {
   return getSecretKey();
 }
 
-let stripeSync: { processWebhook: (payload: Buffer, sig: string) => Promise<void>; findOrCreateManagedWebhook: (url: string) => Promise<void>; syncBackfill: () => Promise<void> } | null = null;
+let stripeSync: { processWebhook: (payload: Buffer, sig: string) => Promise<void>; findOrCreateManagedWebhook: (url: string) => Promise<any>; syncBackfill: () => Promise<any> } | null = null;
 
 export async function getStripeSync() {
   if (!stripeSync) {

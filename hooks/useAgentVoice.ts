@@ -29,6 +29,14 @@ export type VoiceStatus = 'idle' | 'listening' | 'thinking' | 'speaking' | 'erro
 /** Agents that use Deepgram STT (LiveKit conference). All others use ElevenLabs. */
 const DEEPGRAM_STT_AGENTS: string[] = ['nora'];
 
+interface AgentActivityEvent {
+  type: 'thinking' | 'tool_call' | 'step' | 'done' | 'error';
+  message: string;
+  icon: string;
+  timestamp: number;
+  agent?: string;
+}
+
 interface UseAgentVoiceOptions {
   agent: AgentName;
   /** Suite ID for tenant isolation (Law #6). Required. */
@@ -39,6 +47,8 @@ interface UseAgentVoiceOptions {
   onResponse?: (text: string, receiptId?: string) => void;
   onStatusChange?: (status: VoiceStatus) => void;
   onError?: (error: Error) => void;
+  /** Wave 6: Callback for streaming agent activity events (Canvas Chat Mode). */
+  onActivityEvent?: (event: AgentActivityEvent) => void;
 }
 
 interface UseAgentVoiceReturn {
@@ -130,7 +140,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       return;
     }
 
-    const audioBlob = new Blob(chunks, { type: 'audio/mpeg' });
+    const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
     const url = URL.createObjectURL(audioBlob);
     const audio = new Audio(url);
     audioRef.current = audio;
@@ -182,7 +192,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         return;
       }
 
-      const audioBlob = new Blob(chunks, { type: 'audio/mpeg' });
+      const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
       const url = URL.createObjectURL(audioBlob);
       const audio = new Audio(url);
       audioRef.current = audio;
@@ -260,6 +270,42 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       if (accessToken) {
         headers['Authorization'] = `Bearer ${accessToken}`;
       }
+
+      // Wave 6: If onActivityEvent callback is provided, use SSE streaming
+      if (options.onActivityEvent) {
+        const eventSource = new EventSource(
+          `/api/orchestrator/intent?stream=true&agent=${agent}&text=${encodeURIComponent(text)}&suiteId=${suiteId || ''}`
+        );
+
+        eventSource.onmessage = (msg) => {
+          try {
+            const event = JSON.parse(msg.data);
+            if (event.type === 'response') {
+              // Final response received
+              const responseText = event.data.response || event.data.text || 'I couldn\'t process that request.';
+              const receiptId = event.data.receipt_id || null;
+              setLastResponse(responseText);
+              setLastReceiptId(receiptId);
+              onResponse?.(responseText, receiptId);
+              eventSource.close();
+            } else {
+              // Activity event (thinking/tool_call/step/done/error)
+              options.onActivityEvent?.(event);
+            }
+          } catch (e) {
+            console.error('[useAgentVoice] Failed to parse SSE event:', e);
+          }
+        };
+
+        eventSource.onerror = () => {
+          eventSource.close();
+          throw new Error('SSE stream failed');
+        };
+
+        // Don't continue to regular fetch - streaming handles it
+        return;
+      }
+
       const resp = await fetch('/api/orchestrator/intent', {
         method: 'POST',
         headers,
@@ -314,7 +360,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         }
       }, 2000);
     }
-  }, [agent, suiteId, accessToken, onTranscript, onResponse, onError, updateStatus, speakViaHttpStream, playContextAudio]);
+  }, [agent, suiteId, accessToken, onTranscript, onResponse, onError, updateStatus, speakViaHttpStream, playContextAudio, options.onActivityEvent]);
 
   // Stable ref for sendText to avoid re-creating STT hook
   const sendTextRef = useRef(sendText);

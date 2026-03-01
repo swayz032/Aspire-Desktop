@@ -73,8 +73,8 @@ async function syncPlaid(suiteId: string, officeId: string, receiptId: string): 
 
     try {
       const balanceResponse = await plaidClient.accountsBalanceGet({ access_token: token.access_token });
-      const accounts = balanceResponse.data.accounts;
-      const totalBalance = accounts.reduce((sum: number, acc: Record<string, unknown>) => sum + (((acc.balances as Record<string, number> | undefined)?.current) || 0), 0);
+      const accounts: any[] = balanceResponse.data.accounts as any[];
+      const totalBalance = accounts.reduce((sum: number, acc: any) => sum + (acc.balances?.current || 0), 0);
 
       await insertEvent({
         suiteId,
@@ -87,8 +87,8 @@ async function syncPlaid(suiteId: string, officeId: string, receiptId: string): 
         amount: Math.round(totalBalance * 100),
         currency: 'USD',
         status: 'posted',
-        entityRefs: { accounts: accounts.map((a: Record<string, unknown>) => ({ id: a.account_id, name: a.name, type: a.type })) },
-        metadata: { accountCount: accounts.length, balances: accounts.map((a: Record<string, unknown>) => ({ id: a.account_id, current: (a.balances as Record<string, unknown> | undefined)?.current, available: (a.balances as Record<string, unknown> | undefined)?.available })) },
+        entityRefs: { accounts: accounts.map((a: any) => ({ id: a.account_id, name: a.name, type: a.type })) },
+        metadata: { accountCount: accounts.length, balances: accounts.map((a: any) => ({ id: a.account_id, current: a.balances?.current, available: a.balances?.available })) },
         receiptId,
       });
       totalAccounts += accounts.length;

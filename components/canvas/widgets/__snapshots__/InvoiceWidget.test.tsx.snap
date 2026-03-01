@@ -1,0 +1,1593 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`InvoiceWidget renders with correct structure 1`] = `
+<View
+  style={
+    {
+      "backgroundColor": "#2A2A2A",
+      "flex": 1,
+    }
+  }
+>
+  <RCTScrollView
+    contentContainerStyle={
+      {
+        "padding": 16,
+        "paddingBottom": 80,
+      }
+    }
+    data={
+      [
+        {
+          "amount": 500000,
+          "client_name": "Acme Corporation",
+          "created_at": "2026-02-14T06:31:12.201Z",
+          "due_date": "2026-02-24T06:31:12.201Z",
+          "id": "1",
+          "invoice_number": "2024-001",
+          "status": "PAID",
+        },
+        {
+          "amount": 750000,
+          "client_name": "TechStart Inc",
+          "created_at": "2026-02-26T06:31:12.201Z",
+          "due_date": "2026-03-08T06:31:12.201Z",
+          "id": "2",
+          "invoice_number": "2024-002",
+          "status": "PENDING",
+        },
+        {
+          "amount": 325000,
+          "client_name": "Global Solutions LLC",
+          "created_at": "2026-01-30T06:31:12.201Z",
+          "due_date": "2026-02-19T06:31:12.201Z",
+          "id": "3",
+          "invoice_number": "2024-003",
+          "status": "OVERDUE",
+        },
+        {
+          "amount": 1200000,
+          "client_name": "Premier Consulting Group",
+          "created_at": "2026-02-28T06:31:12.201Z",
+          "due_date": "2026-03-15T06:31:12.201Z",
+          "id": "4",
+          "invoice_number": "2024-004",
+          "status": "PENDING",
+        },
+        {
+          "amount": 825000,
+          "client_name": "Summit Enterprises",
+          "created_at": "2026-02-17T06:31:12.201Z",
+          "due_date": "2026-02-27T06:31:12.201Z",
+          "id": "5",
+          "invoice_number": "2024-005",
+          "status": "PAID",
+        },
+      ]
+    }
+    getItem={[Function]}
+    getItemCount={[Function]}
+    initialNumToRender={6}
+    keyExtractor={[Function]}
+    maxToRenderPerBatch={6}
+    onContentSizeChange={[Function]}
+    onLayout={[Function]}
+    onMomentumScrollBegin={[Function]}
+    onMomentumScrollEnd={[Function]}
+    onScroll={[Function]}
+    onScrollBeginDrag={[Function]}
+    onScrollEndDrag={[Function]}
+    removeClippedSubviews={false}
+    renderItem={[Function]}
+    scrollEventThrottle={0.0001}
+    showsVerticalScrollIndicator={false}
+    stickyHeaderIndices={[]}
+    viewabilityConfigCallbackPairs={[]}
+    windowSize={5}
+  >
+    <View>
+      <View
+        onFocusCapture={[Function]}
+        onLayout={[Function]}
+        style={null}
+      >
+        <View
+          accessibilityState={
+            {
+              "busy": undefined,
+              "checked": undefined,
+              "disabled": undefined,
+              "expanded": undefined,
+              "selected": undefined,
+            }
+          }
+          accessibilityValue={
+            {
+              "max": undefined,
+              "min": undefined,
+              "now": undefined,
+              "text": undefined,
+            }
+          }
+          accessible={true}
+          collapsable={false}
+          focusable={true}
+          onBlur={[Function]}
+          onClick={[Function]}
+          onFocus={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            [
+              {
+                "backgroundColor": "#2A2A2A",
+                "borderColor": "rgba(255,255,255,0.08)",
+                "borderRadius": 12,
+                "borderWidth": 1,
+                "elevation": 4,
+                "flexDirection": "row",
+                "gap": 12,
+                "justifyContent": "space-between",
+                "marginBottom": 8,
+                "padding": 16,
+                "shadowColor": "#000000",
+                "shadowOffset": {
+                  "height": 2,
+                  "width": 0,
+                },
+                "shadowOpacity": 0.3,
+                "shadowRadius": 8,
+              },
+              false,
+            ]
+          }
+        >
+          <View
+            style={
+              {
+                "flex": 1,
+                "gap": 4,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 14,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              #
+              2024-001
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 13,
+                  "fontWeight": "500",
+                }
+              }
+            >
+              Acme Corporation
+            </Text>
+            <Text
+              style={
+                {
+                  "color": "rgba(255, 255, 255, 0.5)",
+                  "fontSize": 12,
+                }
+              }
+            >
+              Due 
+              Feb 24, 2026
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "alignItems": "flex-end",
+                "gap": 8,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 16,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              $5,000.00
+            </Text>
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 6,
+                    "borderWidth": 1,
+                    "flexDirection": "row",
+                    "gap": 4,
+                    "paddingHorizontal": 8,
+                    "paddingVertical": 4,
+                  },
+                  {
+                    "backgroundColor": "rgba(16,185,129,0.15)",
+                    "borderColor": "#10B981",
+                  },
+                ]
+              }
+            >
+              <RNSVGSvgView
+                align="xMidYMid"
+                bbHeight={14}
+                bbWidth={14}
+                fill="none"
+                focusable={false}
+                height={14}
+                meetOrSlice={0}
+                minX={0}
+                minY={0}
+                style={
+                  [
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 0,
+                    },
+                    {
+                      "flex": 0,
+                      "height": 14,
+                      "width": 14,
+                    },
+                  ]
+                }
+                vbHeight={24}
+                vbWidth={24}
+                width={14}
+              >
+                <RNSVGGroup
+                  fill={null}
+                  propList={
+                    [
+                      "fill",
+                    ]
+                  }
+                >
+                  <RNSVGCircle
+                    cx="12"
+                    cy="12"
+                    fill={
+                      {
+                        "payload": 4279286145,
+                        "type": 0,
+                      }
+                    }
+                    opacity={0.2}
+                    propList={
+                      [
+                        "fill",
+                      ]
+                    }
+                    r="9"
+                  />
+                  <RNSVGCircle
+                    cx="12"
+                    cy="12"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                      ]
+                    }
+                    r="9"
+                    stroke={
+                      {
+                        "payload": 4279286145,
+                        "type": 0,
+                      }
+                    }
+                    strokeWidth="2"
+                  />
+                  <RNSVGPath
+                    d="M8 12l3 3 5-6"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                        "strokeLinecap",
+                        "strokeLinejoin",
+                      ]
+                    }
+                    stroke={
+                      {
+                        "payload": 4279286145,
+                        "type": 0,
+                      }
+                    }
+                    strokeLinecap={1}
+                    strokeLinejoin={1}
+                    strokeWidth="2.5"
+                  />
+                </RNSVGGroup>
+              </RNSVGSvgView>
+              <Text
+                style={
+                  [
+                    {
+                      "fontSize": 12,
+                      "fontWeight": "600",
+                      "letterSpacing": 0.3,
+                    },
+                    {
+                      "color": "#10B981",
+                    },
+                  ]
+                }
+              >
+                Paid
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+      <View
+        onFocusCapture={[Function]}
+        onLayout={[Function]}
+        style={null}
+      >
+        <View
+          accessibilityState={
+            {
+              "busy": undefined,
+              "checked": undefined,
+              "disabled": undefined,
+              "expanded": undefined,
+              "selected": undefined,
+            }
+          }
+          accessibilityValue={
+            {
+              "max": undefined,
+              "min": undefined,
+              "now": undefined,
+              "text": undefined,
+            }
+          }
+          accessible={true}
+          collapsable={false}
+          focusable={true}
+          onBlur={[Function]}
+          onClick={[Function]}
+          onFocus={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            [
+              {
+                "backgroundColor": "#2A2A2A",
+                "borderColor": "rgba(255,255,255,0.08)",
+                "borderRadius": 12,
+                "borderWidth": 1,
+                "elevation": 4,
+                "flexDirection": "row",
+                "gap": 12,
+                "justifyContent": "space-between",
+                "marginBottom": 8,
+                "padding": 16,
+                "shadowColor": "#000000",
+                "shadowOffset": {
+                  "height": 2,
+                  "width": 0,
+                },
+                "shadowOpacity": 0.3,
+                "shadowRadius": 8,
+              },
+              false,
+            ]
+          }
+        >
+          <View
+            style={
+              {
+                "flex": 1,
+                "gap": 4,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 14,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              #
+              2024-002
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 13,
+                  "fontWeight": "500",
+                }
+              }
+            >
+              TechStart Inc
+            </Text>
+            <Text
+              style={
+                {
+                  "color": "rgba(255, 255, 255, 0.5)",
+                  "fontSize": 12,
+                }
+              }
+            >
+              Due 
+              Mar 8, 2026
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "alignItems": "flex-end",
+                "gap": 8,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 16,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              $7,500.00
+            </Text>
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 6,
+                    "borderWidth": 1,
+                    "flexDirection": "row",
+                    "gap": 4,
+                    "paddingHorizontal": 8,
+                    "paddingVertical": 4,
+                  },
+                  {
+                    "backgroundColor": "rgba(251,191,36,0.15)",
+                    "borderColor": "#FBB924",
+                  },
+                ]
+              }
+            >
+              <RNSVGSvgView
+                align="xMidYMid"
+                bbHeight={14}
+                bbWidth={14}
+                fill="none"
+                focusable={false}
+                height={14}
+                meetOrSlice={0}
+                minX={0}
+                minY={0}
+                style={
+                  [
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 0,
+                    },
+                    {
+                      "flex": 0,
+                      "height": 14,
+                      "width": 14,
+                    },
+                  ]
+                }
+                vbHeight={24}
+                vbWidth={24}
+                width={14}
+              >
+                <RNSVGGroup
+                  fill={null}
+                  propList={
+                    [
+                      "fill",
+                    ]
+                  }
+                >
+                  <RNSVGCircle
+                    cx="12"
+                    cy="12"
+                    fill={
+                      {
+                        "payload": 4294687012,
+                        "type": 0,
+                      }
+                    }
+                    opacity={0.2}
+                    propList={
+                      [
+                        "fill",
+                      ]
+                    }
+                    r="9"
+                  />
+                  <RNSVGCircle
+                    cx="12"
+                    cy="12"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                      ]
+                    }
+                    r="9"
+                    stroke={
+                      {
+                        "payload": 4294687012,
+                        "type": 0,
+                      }
+                    }
+                    strokeWidth="2"
+                  />
+                  <RNSVGPath
+                    d="M12 7v5l3 3"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                        "strokeLinecap",
+                        "strokeLinejoin",
+                      ]
+                    }
+                    stroke={
+                      {
+                        "payload": 4294687012,
+                        "type": 0,
+                      }
+                    }
+                    strokeLinecap={1}
+                    strokeLinejoin={1}
+                    strokeWidth="2"
+                  />
+                </RNSVGGroup>
+              </RNSVGSvgView>
+              <Text
+                style={
+                  [
+                    {
+                      "fontSize": 12,
+                      "fontWeight": "600",
+                      "letterSpacing": 0.3,
+                    },
+                    {
+                      "color": "#FBB924",
+                    },
+                  ]
+                }
+              >
+                Pending
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+      <View
+        onFocusCapture={[Function]}
+        onLayout={[Function]}
+        style={null}
+      >
+        <View
+          accessibilityState={
+            {
+              "busy": undefined,
+              "checked": undefined,
+              "disabled": undefined,
+              "expanded": undefined,
+              "selected": undefined,
+            }
+          }
+          accessibilityValue={
+            {
+              "max": undefined,
+              "min": undefined,
+              "now": undefined,
+              "text": undefined,
+            }
+          }
+          accessible={true}
+          collapsable={false}
+          focusable={true}
+          onBlur={[Function]}
+          onClick={[Function]}
+          onFocus={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            [
+              {
+                "backgroundColor": "#2A2A2A",
+                "borderColor": "rgba(255,255,255,0.08)",
+                "borderRadius": 12,
+                "borderWidth": 1,
+                "elevation": 4,
+                "flexDirection": "row",
+                "gap": 12,
+                "justifyContent": "space-between",
+                "marginBottom": 8,
+                "padding": 16,
+                "shadowColor": "#000000",
+                "shadowOffset": {
+                  "height": 2,
+                  "width": 0,
+                },
+                "shadowOpacity": 0.3,
+                "shadowRadius": 8,
+              },
+              false,
+            ]
+          }
+        >
+          <View
+            style={
+              {
+                "flex": 1,
+                "gap": 4,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 14,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              #
+              2024-003
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 13,
+                  "fontWeight": "500",
+                }
+              }
+            >
+              Global Solutions LLC
+            </Text>
+            <Text
+              style={
+                {
+                  "color": "rgba(255, 255, 255, 0.5)",
+                  "fontSize": 12,
+                }
+              }
+            >
+              Due 
+              Feb 19, 2026
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "alignItems": "flex-end",
+                "gap": 8,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 16,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              $3,250.00
+            </Text>
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 6,
+                    "borderWidth": 1,
+                    "flexDirection": "row",
+                    "gap": 4,
+                    "paddingHorizontal": 8,
+                    "paddingVertical": 4,
+                  },
+                  {
+                    "backgroundColor": "rgba(239,68,68,0.15)",
+                    "borderColor": "#EF4444",
+                  },
+                ]
+              }
+            >
+              <RNSVGSvgView
+                align="xMidYMid"
+                bbHeight={14}
+                bbWidth={14}
+                fill="none"
+                focusable={false}
+                height={14}
+                meetOrSlice={0}
+                minX={0}
+                minY={0}
+                style={
+                  [
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 0,
+                    },
+                    {
+                      "flex": 0,
+                      "height": 14,
+                      "width": 14,
+                    },
+                  ]
+                }
+                vbHeight={24}
+                vbWidth={24}
+                width={14}
+              >
+                <RNSVGGroup
+                  fill={null}
+                  propList={
+                    [
+                      "fill",
+                    ]
+                  }
+                >
+                  <RNSVGPath
+                    d="M12 2L2 20h20L12 2z"
+                    fill={
+                      {
+                        "payload": 4293870660,
+                        "type": 0,
+                      }
+                    }
+                    opacity={0.2}
+                    propList={
+                      [
+                        "fill",
+                      ]
+                    }
+                  />
+                  <RNSVGPath
+                    d="M12 2L2 20h20L12 2z"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                        "strokeLinejoin",
+                      ]
+                    }
+                    stroke={
+                      {
+                        "payload": 4293870660,
+                        "type": 0,
+                      }
+                    }
+                    strokeLinejoin={1}
+                    strokeWidth="2"
+                  />
+                  <RNSVGPath
+                    d="M12 9v4"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                        "strokeLinecap",
+                      ]
+                    }
+                    stroke={
+                      {
+                        "payload": 4293870660,
+                        "type": 0,
+                      }
+                    }
+                    strokeLinecap={1}
+                    strokeWidth="2.5"
+                  />
+                  <RNSVGCircle
+                    cx="12"
+                    cy="16"
+                    fill={
+                      {
+                        "payload": 4293870660,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "fill",
+                      ]
+                    }
+                    r="1"
+                  />
+                </RNSVGGroup>
+              </RNSVGSvgView>
+              <Text
+                style={
+                  [
+                    {
+                      "fontSize": 12,
+                      "fontWeight": "600",
+                      "letterSpacing": 0.3,
+                    },
+                    {
+                      "color": "#EF4444",
+                    },
+                  ]
+                }
+              >
+                Overdue
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+      <View
+        onFocusCapture={[Function]}
+        onLayout={[Function]}
+        style={null}
+      >
+        <View
+          accessibilityState={
+            {
+              "busy": undefined,
+              "checked": undefined,
+              "disabled": undefined,
+              "expanded": undefined,
+              "selected": undefined,
+            }
+          }
+          accessibilityValue={
+            {
+              "max": undefined,
+              "min": undefined,
+              "now": undefined,
+              "text": undefined,
+            }
+          }
+          accessible={true}
+          collapsable={false}
+          focusable={true}
+          onBlur={[Function]}
+          onClick={[Function]}
+          onFocus={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            [
+              {
+                "backgroundColor": "#2A2A2A",
+                "borderColor": "rgba(255,255,255,0.08)",
+                "borderRadius": 12,
+                "borderWidth": 1,
+                "elevation": 4,
+                "flexDirection": "row",
+                "gap": 12,
+                "justifyContent": "space-between",
+                "marginBottom": 8,
+                "padding": 16,
+                "shadowColor": "#000000",
+                "shadowOffset": {
+                  "height": 2,
+                  "width": 0,
+                },
+                "shadowOpacity": 0.3,
+                "shadowRadius": 8,
+              },
+              false,
+            ]
+          }
+        >
+          <View
+            style={
+              {
+                "flex": 1,
+                "gap": 4,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 14,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              #
+              2024-004
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 13,
+                  "fontWeight": "500",
+                }
+              }
+            >
+              Premier Consulting Group
+            </Text>
+            <Text
+              style={
+                {
+                  "color": "rgba(255, 255, 255, 0.5)",
+                  "fontSize": 12,
+                }
+              }
+            >
+              Due 
+              Mar 15, 2026
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "alignItems": "flex-end",
+                "gap": 8,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 16,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              $12,000.00
+            </Text>
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 6,
+                    "borderWidth": 1,
+                    "flexDirection": "row",
+                    "gap": 4,
+                    "paddingHorizontal": 8,
+                    "paddingVertical": 4,
+                  },
+                  {
+                    "backgroundColor": "rgba(251,191,36,0.15)",
+                    "borderColor": "#FBB924",
+                  },
+                ]
+              }
+            >
+              <RNSVGSvgView
+                align="xMidYMid"
+                bbHeight={14}
+                bbWidth={14}
+                fill="none"
+                focusable={false}
+                height={14}
+                meetOrSlice={0}
+                minX={0}
+                minY={0}
+                style={
+                  [
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 0,
+                    },
+                    {
+                      "flex": 0,
+                      "height": 14,
+                      "width": 14,
+                    },
+                  ]
+                }
+                vbHeight={24}
+                vbWidth={24}
+                width={14}
+              >
+                <RNSVGGroup
+                  fill={null}
+                  propList={
+                    [
+                      "fill",
+                    ]
+                  }
+                >
+                  <RNSVGCircle
+                    cx="12"
+                    cy="12"
+                    fill={
+                      {
+                        "payload": 4294687012,
+                        "type": 0,
+                      }
+                    }
+                    opacity={0.2}
+                    propList={
+                      [
+                        "fill",
+                      ]
+                    }
+                    r="9"
+                  />
+                  <RNSVGCircle
+                    cx="12"
+                    cy="12"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                      ]
+                    }
+                    r="9"
+                    stroke={
+                      {
+                        "payload": 4294687012,
+                        "type": 0,
+                      }
+                    }
+                    strokeWidth="2"
+                  />
+                  <RNSVGPath
+                    d="M12 7v5l3 3"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                        "strokeLinecap",
+                        "strokeLinejoin",
+                      ]
+                    }
+                    stroke={
+                      {
+                        "payload": 4294687012,
+                        "type": 0,
+                      }
+                    }
+                    strokeLinecap={1}
+                    strokeLinejoin={1}
+                    strokeWidth="2"
+                  />
+                </RNSVGGroup>
+              </RNSVGSvgView>
+              <Text
+                style={
+                  [
+                    {
+                      "fontSize": 12,
+                      "fontWeight": "600",
+                      "letterSpacing": 0.3,
+                    },
+                    {
+                      "color": "#FBB924",
+                    },
+                  ]
+                }
+              >
+                Pending
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+      <View
+        onFocusCapture={[Function]}
+        onLayout={[Function]}
+        style={null}
+      >
+        <View
+          accessibilityState={
+            {
+              "busy": undefined,
+              "checked": undefined,
+              "disabled": undefined,
+              "expanded": undefined,
+              "selected": undefined,
+            }
+          }
+          accessibilityValue={
+            {
+              "max": undefined,
+              "min": undefined,
+              "now": undefined,
+              "text": undefined,
+            }
+          }
+          accessible={true}
+          collapsable={false}
+          focusable={true}
+          onBlur={[Function]}
+          onClick={[Function]}
+          onFocus={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            [
+              {
+                "backgroundColor": "#2A2A2A",
+                "borderColor": "rgba(255,255,255,0.08)",
+                "borderRadius": 12,
+                "borderWidth": 1,
+                "elevation": 4,
+                "flexDirection": "row",
+                "gap": 12,
+                "justifyContent": "space-between",
+                "marginBottom": 8,
+                "padding": 16,
+                "shadowColor": "#000000",
+                "shadowOffset": {
+                  "height": 2,
+                  "width": 0,
+                },
+                "shadowOpacity": 0.3,
+                "shadowRadius": 8,
+              },
+              false,
+            ]
+          }
+        >
+          <View
+            style={
+              {
+                "flex": 1,
+                "gap": 4,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 14,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              #
+              2024-005
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 13,
+                  "fontWeight": "500",
+                }
+              }
+            >
+              Summit Enterprises
+            </Text>
+            <Text
+              style={
+                {
+                  "color": "rgba(255, 255, 255, 0.5)",
+                  "fontSize": 12,
+                }
+              }
+            >
+              Due 
+              Feb 27, 2026
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "alignItems": "flex-end",
+                "gap": 8,
+              }
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 16,
+                  "fontWeight": "700",
+                  "letterSpacing": 0.3,
+                }
+              }
+            >
+              $8,250.00
+            </Text>
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 6,
+                    "borderWidth": 1,
+                    "flexDirection": "row",
+                    "gap": 4,
+                    "paddingHorizontal": 8,
+                    "paddingVertical": 4,
+                  },
+                  {
+                    "backgroundColor": "rgba(16,185,129,0.15)",
+                    "borderColor": "#10B981",
+                  },
+                ]
+              }
+            >
+              <RNSVGSvgView
+                align="xMidYMid"
+                bbHeight={14}
+                bbWidth={14}
+                fill="none"
+                focusable={false}
+                height={14}
+                meetOrSlice={0}
+                minX={0}
+                minY={0}
+                style={
+                  [
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 0,
+                    },
+                    {
+                      "flex": 0,
+                      "height": 14,
+                      "width": 14,
+                    },
+                  ]
+                }
+                vbHeight={24}
+                vbWidth={24}
+                width={14}
+              >
+                <RNSVGGroup
+                  fill={null}
+                  propList={
+                    [
+                      "fill",
+                    ]
+                  }
+                >
+                  <RNSVGCircle
+                    cx="12"
+                    cy="12"
+                    fill={
+                      {
+                        "payload": 4279286145,
+                        "type": 0,
+                      }
+                    }
+                    opacity={0.2}
+                    propList={
+                      [
+                        "fill",
+                      ]
+                    }
+                    r="9"
+                  />
+                  <RNSVGCircle
+                    cx="12"
+                    cy="12"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                      ]
+                    }
+                    r="9"
+                    stroke={
+                      {
+                        "payload": 4279286145,
+                        "type": 0,
+                      }
+                    }
+                    strokeWidth="2"
+                  />
+                  <RNSVGPath
+                    d="M8 12l3 3 5-6"
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    propList={
+                      [
+                        "stroke",
+                        "strokeWidth",
+                        "strokeLinecap",
+                        "strokeLinejoin",
+                      ]
+                    }
+                    stroke={
+                      {
+                        "payload": 4279286145,
+                        "type": 0,
+                      }
+                    }
+                    strokeLinecap={1}
+                    strokeLinejoin={1}
+                    strokeWidth="2.5"
+                  />
+                </RNSVGGroup>
+              </RNSVGSvgView>
+              <Text
+                style={
+                  [
+                    {
+                      "fontSize": 12,
+                      "fontWeight": "600",
+                      "letterSpacing": 0.3,
+                    },
+                    {
+                      "color": "#10B981",
+                    },
+                  ]
+                }
+              >
+                Paid
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    </View>
+  </RCTScrollView>
+  <View
+    style={
+      {
+        "backgroundColor": "#1E1E1E",
+        "borderTopColor": "rgba(255, 255, 255, 0.15)",
+        "borderTopWidth": 1,
+        "bottom": 0,
+        "flexDirection": "row",
+        "gap": 8,
+        "left": 0,
+        "padding": 16,
+        "position": "absolute",
+        "right": 0,
+      }
+    }
+  >
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "borderColor": "rgba(255, 255, 255, 0.15)",
+          "borderRadius": 8,
+          "borderWidth": 1,
+          "flex": 1,
+          "height": 40,
+          "justifyContent": "center",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#FFFFFF",
+            "fontSize": 14,
+            "fontWeight": "600",
+          }
+        }
+      >
+        View All
+      </Text>
+    </View>
+    <View
+      accessibilityLabel="Create new invoice"
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#3B82F6",
+          "borderRadius": 8,
+          "flex": 1,
+          "flexDirection": "row",
+          "gap": 6,
+          "height": 40,
+          "justifyContent": "center",
+        }
+      }
+    >
+      <Text
+        allowFontScaling={false}
+        selectable={false}
+        style={
+          [
+            {
+              "color": "#FFFFFF",
+              "fontSize": 18,
+            },
+            undefined,
+            {
+              "fontFamily": "ionicons",
+              "fontStyle": "normal",
+              "fontWeight": "normal",
+            },
+            {},
+          ]
+        }
+      >
+        
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#FFFFFF",
+            "fontSize": 14,
+            "fontWeight": "600",
+          }
+        }
+      >
+        Create Invoice
+      </Text>
+    </View>
+  </View>
+</View>
+`;

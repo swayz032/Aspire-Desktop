@@ -431,7 +431,7 @@ describe('Integration: Stage -> Runway lifecycle', () => {
 
     let current: import('@/lib/runwayMachine').RunwayState = 'IDLE';
     for (const step of steps) {
-      const next = runway.transition(current, step.event)!;
+      const next: import('@/lib/runwayMachine').RunwayState = runway.transition(current, step.event)!;
       store.setRunwayState(next);
       expect(store.getImmersionState().runwayState).toBe(next);
       current = next;
@@ -919,7 +919,7 @@ describe('Integration: Full pipeline end-to-end', () => {
       'EXECUTION_COMPLETE',
     ];
     for (const event of events) {
-      const next = runway.transition(current, event)!;
+      const next: import('@/lib/runwayMachine').RunwayState = runway.transition(current, event)!;
       store.setRunwayState(next);
       current = next;
     }

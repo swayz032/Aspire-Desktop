@@ -57,21 +57,21 @@ function generateReceiptId(): string {
 
 function rowToReceipt(row: Record<string, unknown>): Receipt {
   return {
-    receiptId: row.receipt_id,
-    suiteId: row.suite_id,
-    tenantId: row.tenant_id,
-    officeId: row.office_id || null,
-    receiptType: row.receipt_type,
-    status: row.status,
-    correlationId: row.correlation_id,
-    actorType: row.actor_type,
-    actorId: row.actor_id || null,
-    action: row.action || {},
-    result: row.result || {},
-    createdAt: new Date(row.created_at),
-    hashAlg: row.hash_alg,
-    receiptHash: row.receipt_hash || null,
-    signature: row.signature || null,
+    receiptId: row.receipt_id as string,
+    suiteId: row.suite_id as string,
+    tenantId: row.tenant_id as string,
+    officeId: (row.office_id as string | null) || null,
+    receiptType: row.receipt_type as string,
+    status: row.status as ReceiptStatus,
+    correlationId: row.correlation_id as string,
+    actorType: row.actor_type as ActorType,
+    actorId: (row.actor_id as string | null) || null,
+    action: (row.action as Record<string, unknown>) || {},
+    result: (row.result as Record<string, unknown>) || {},
+    createdAt: new Date(row.created_at as string | number | Date),
+    hashAlg: row.hash_alg as string,
+    receiptHash: (row.receipt_hash as string | null) || null,
+    signature: (row.signature as string | null) || null,
   };
 }
 
@@ -179,7 +179,7 @@ export async function verifyReceipt(receiptId: string): Promise<boolean> {
         logger.info(`Receipt ${receiptId} has no stored hash yet`);
         return true; // Hash not yet computed
       }
-      const valid = Buffer.from(row.receipt_hash).equals(Buffer.from(row.computed_hash));
+      const valid = Buffer.from(row.receipt_hash as string).equals(Buffer.from(row.computed_hash as string));
       logger.info(`Receipt ${receiptId} verification: ${valid ? 'PASS' : 'FAIL'}`);
       return valid;
     }

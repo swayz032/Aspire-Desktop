@@ -11,6 +11,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
 import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
 import { useDesktop } from '@/lib/useDesktop';
+import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 
 /**
  * Global Error Boundary — prevents white screen on uncaught errors.
@@ -322,7 +323,9 @@ export default function RootLayout() {
           <SessionProvider>
             <AvaDockProvider>
               <MicStateProvider>
-                <AppNavigator />
+                <CanvasDragDropProvider>
+                  <AppNavigator />
+                </CanvasDragDropProvider>
               </MicStateProvider>
             </AvaDockProvider>
           </SessionProvider>

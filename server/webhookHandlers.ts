@@ -12,7 +12,9 @@ export class WebhookHandlers {
     }
 
     const sync = await getStripeSync();
-    await sync.processWebhook(payload, signature);
+    if (sync) {
+      await sync.processWebhook(payload, signature);
+    }
   }
 
   static async handleCheckoutComplete(session: Stripe.Checkout.Session): Promise<void> {

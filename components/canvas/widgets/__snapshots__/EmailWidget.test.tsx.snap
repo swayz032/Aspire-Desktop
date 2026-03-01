@@ -1,0 +1,890 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`EmailWidget renders with correct structure 1`] = `
+<View
+  style={
+    {
+      "backgroundColor": "#2A2A2A",
+      "flex": 1,
+    }
+  }
+>
+  <RCTScrollView
+    contentContainerStyle={
+      {
+        "padding": 16,
+        "paddingBottom": 80,
+      }
+    }
+    data={
+      [
+        {
+          "id": "1",
+          "is_read": false,
+          "preview_text": "Hi team, I wanted to schedule our quarterly financial review for next week. Please let me know your availability.",
+          "sender_email": "sarah@example.com",
+          "sender_name": "Sarah Johnson",
+          "subject": "Q1 Financial Review Meeting",
+          "timestamp": "2026-03-01T06:26:12.030Z",
+        },
+        {
+          "id": "2",
+          "is_read": true,
+          "preview_text": "Your invoice #2024-001 for $5,000 has been marked as paid. Thank you for your business!",
+          "sender_email": "mike@example.com",
+          "sender_name": "Mike Chen",
+          "subject": "Invoice #2024-001 Paid",
+          "timestamp": "2026-03-01T04:31:12.030Z",
+        },
+        {
+          "id": "3",
+          "is_read": true,
+          "preview_text": "I have reviewed the latest contract and have a few amendments I would like to propose. Can we schedule a call?",
+          "sender_email": "emily@example.com",
+          "sender_name": "Emily Rodriguez",
+          "subject": "Contract Amendment Request",
+          "timestamp": "2026-02-28T06:31:12.030Z",
+        },
+        {
+          "id": "4",
+          "is_read": false,
+          "preview_text": "Excited to share our new project proposal with you. Attached are the scope, timeline, and budget details.",
+          "sender_email": "david@example.com",
+          "sender_name": "David Park",
+          "subject": "New Project Proposal",
+          "timestamp": "2026-02-27T06:31:12.030Z",
+        },
+      ]
+    }
+    getItem={[Function]}
+    getItemCount={[Function]}
+    initialNumToRender={6}
+    keyExtractor={[Function]}
+    maxToRenderPerBatch={6}
+    onContentSizeChange={[Function]}
+    onLayout={[Function]}
+    onMomentumScrollBegin={[Function]}
+    onMomentumScrollEnd={[Function]}
+    onScroll={[Function]}
+    onScrollBeginDrag={[Function]}
+    onScrollEndDrag={[Function]}
+    removeClippedSubviews={false}
+    renderItem={[Function]}
+    scrollEventThrottle={0.0001}
+    showsVerticalScrollIndicator={false}
+    stickyHeaderIndices={[]}
+    viewabilityConfigCallbackPairs={[]}
+    windowSize={5}
+  >
+    <View>
+      <View
+        onFocusCapture={[Function]}
+        onLayout={[Function]}
+        style={null}
+      >
+        <View
+          accessibilityState={
+            {
+              "busy": undefined,
+              "checked": undefined,
+              "disabled": undefined,
+              "expanded": undefined,
+              "selected": undefined,
+            }
+          }
+          accessibilityValue={
+            {
+              "max": undefined,
+              "min": undefined,
+              "now": undefined,
+              "text": undefined,
+            }
+          }
+          accessible={true}
+          collapsable={false}
+          focusable={true}
+          onBlur={[Function]}
+          onClick={[Function]}
+          onFocus={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            [
+              {
+                "backgroundColor": "#2A2A2A",
+                "borderColor": "rgba(255,255,255,0.08)",
+                "borderRadius": 12,
+                "borderWidth": 1,
+                "elevation": 4,
+                "flexDirection": "row",
+                "gap": 12,
+                "marginBottom": 8,
+                "padding": 12,
+                "position": "relative",
+                "shadowColor": "#000000",
+                "shadowOffset": {
+                  "height": 2,
+                  "width": 0,
+                },
+                "shadowOpacity": 0.3,
+                "shadowRadius": 8,
+              },
+              false,
+            ]
+          }
+        >
+          <View
+            style={
+              {
+                "backgroundColor": "#3B82F6",
+                "borderRadius": 4,
+                "height": 8,
+                "left": 8,
+                "position": "absolute",
+                "top": 16,
+                "width": 8,
+              }
+            }
+          />
+          <View
+            style={
+              [
+                {
+                  "alignItems": "center",
+                  "borderRadius": 20,
+                  "height": 40,
+                  "justifyContent": "center",
+                  "width": 40,
+                },
+                {
+                  "backgroundColor": "#06B6D4",
+                },
+              ]
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 14,
+                  "fontWeight": "600",
+                  "letterSpacing": 0.5,
+                }
+              }
+            >
+              SJ
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "flex": 1,
+                "gap": 4,
+              }
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "justifyContent": "space-between",
+                }
+              }
+            >
+              <Text
+                numberOfLines={1}
+                style={
+                  {
+                    "color": "#FFFFFF",
+                    "flex": 1,
+                    "fontSize": 14,
+                    "fontWeight": "600",
+                    "marginRight": 8,
+                  }
+                }
+              >
+                Sarah Johnson
+              </Text>
+              <Text
+                style={
+                  {
+                    "color": "rgba(255, 255, 255, 0.5)",
+                    "fontSize": 12,
+                  }
+                }
+              >
+                5m ago
+              </Text>
+            </View>
+            <Text
+              numberOfLines={1}
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 13,
+                  "fontWeight": "500",
+                }
+              }
+            >
+              Q1 Financial Review Meeting
+            </Text>
+            <Text
+              numberOfLines={2}
+              style={
+                {
+                  "color": "rgba(255, 255, 255, 0.7)",
+                  "fontSize": 12,
+                  "lineHeight": 16,
+                }
+              }
+            >
+              Hi team, I wanted to schedule our quarterly financial review for next week. Please let me know your availability.
+            </Text>
+          </View>
+        </View>
+      </View>
+      <View
+        onFocusCapture={[Function]}
+        onLayout={[Function]}
+        style={null}
+      >
+        <View
+          accessibilityState={
+            {
+              "busy": undefined,
+              "checked": undefined,
+              "disabled": undefined,
+              "expanded": undefined,
+              "selected": undefined,
+            }
+          }
+          accessibilityValue={
+            {
+              "max": undefined,
+              "min": undefined,
+              "now": undefined,
+              "text": undefined,
+            }
+          }
+          accessible={true}
+          collapsable={false}
+          focusable={true}
+          onBlur={[Function]}
+          onClick={[Function]}
+          onFocus={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            [
+              {
+                "backgroundColor": "#2A2A2A",
+                "borderColor": "rgba(255,255,255,0.08)",
+                "borderRadius": 12,
+                "borderWidth": 1,
+                "elevation": 4,
+                "flexDirection": "row",
+                "gap": 12,
+                "marginBottom": 8,
+                "padding": 12,
+                "position": "relative",
+                "shadowColor": "#000000",
+                "shadowOffset": {
+                  "height": 2,
+                  "width": 0,
+                },
+                "shadowOpacity": 0.3,
+                "shadowRadius": 8,
+              },
+              false,
+            ]
+          }
+        >
+          <View
+            style={
+              [
+                {
+                  "alignItems": "center",
+                  "borderRadius": 20,
+                  "height": 40,
+                  "justifyContent": "center",
+                  "width": 40,
+                },
+                {
+                  "backgroundColor": "#8B5CF6",
+                },
+              ]
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 14,
+                  "fontWeight": "600",
+                  "letterSpacing": 0.5,
+                }
+              }
+            >
+              MC
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "flex": 1,
+                "gap": 4,
+              }
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "justifyContent": "space-between",
+                }
+              }
+            >
+              <Text
+                numberOfLines={1}
+                style={
+                  {
+                    "color": "#FFFFFF",
+                    "flex": 1,
+                    "fontSize": 14,
+                    "fontWeight": "600",
+                    "marginRight": 8,
+                  }
+                }
+              >
+                Mike Chen
+              </Text>
+              <Text
+                style={
+                  {
+                    "color": "rgba(255, 255, 255, 0.5)",
+                    "fontSize": 12,
+                  }
+                }
+              >
+                2h ago
+              </Text>
+            </View>
+            <Text
+              numberOfLines={1}
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 13,
+                  "fontWeight": "500",
+                }
+              }
+            >
+              Invoice #2024-001 Paid
+            </Text>
+            <Text
+              numberOfLines={2}
+              style={
+                {
+                  "color": "rgba(255, 255, 255, 0.7)",
+                  "fontSize": 12,
+                  "lineHeight": 16,
+                }
+              }
+            >
+              Your invoice #2024-001 for $5,000 has been marked as paid. Thank you for your business!
+            </Text>
+          </View>
+        </View>
+      </View>
+      <View
+        onFocusCapture={[Function]}
+        onLayout={[Function]}
+        style={null}
+      >
+        <View
+          accessibilityState={
+            {
+              "busy": undefined,
+              "checked": undefined,
+              "disabled": undefined,
+              "expanded": undefined,
+              "selected": undefined,
+            }
+          }
+          accessibilityValue={
+            {
+              "max": undefined,
+              "min": undefined,
+              "now": undefined,
+              "text": undefined,
+            }
+          }
+          accessible={true}
+          collapsable={false}
+          focusable={true}
+          onBlur={[Function]}
+          onClick={[Function]}
+          onFocus={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            [
+              {
+                "backgroundColor": "#2A2A2A",
+                "borderColor": "rgba(255,255,255,0.08)",
+                "borderRadius": 12,
+                "borderWidth": 1,
+                "elevation": 4,
+                "flexDirection": "row",
+                "gap": 12,
+                "marginBottom": 8,
+                "padding": 12,
+                "position": "relative",
+                "shadowColor": "#000000",
+                "shadowOffset": {
+                  "height": 2,
+                  "width": 0,
+                },
+                "shadowOpacity": 0.3,
+                "shadowRadius": 8,
+              },
+              false,
+            ]
+          }
+        >
+          <View
+            style={
+              [
+                {
+                  "alignItems": "center",
+                  "borderRadius": 20,
+                  "height": 40,
+                  "justifyContent": "center",
+                  "width": 40,
+                },
+                {
+                  "backgroundColor": "#EF4444",
+                },
+              ]
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 14,
+                  "fontWeight": "600",
+                  "letterSpacing": 0.5,
+                }
+              }
+            >
+              ER
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "flex": 1,
+                "gap": 4,
+              }
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "justifyContent": "space-between",
+                }
+              }
+            >
+              <Text
+                numberOfLines={1}
+                style={
+                  {
+                    "color": "#FFFFFF",
+                    "flex": 1,
+                    "fontSize": 14,
+                    "fontWeight": "600",
+                    "marginRight": 8,
+                  }
+                }
+              >
+                Emily Rodriguez
+              </Text>
+              <Text
+                style={
+                  {
+                    "color": "rgba(255, 255, 255, 0.5)",
+                    "fontSize": 12,
+                  }
+                }
+              >
+                Yesterday
+              </Text>
+            </View>
+            <Text
+              numberOfLines={1}
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 13,
+                  "fontWeight": "500",
+                }
+              }
+            >
+              Contract Amendment Request
+            </Text>
+            <Text
+              numberOfLines={2}
+              style={
+                {
+                  "color": "rgba(255, 255, 255, 0.7)",
+                  "fontSize": 12,
+                  "lineHeight": 16,
+                }
+              }
+            >
+              I have reviewed the latest contract and have a few amendments I would like to propose. Can we schedule a call?
+            </Text>
+          </View>
+        </View>
+      </View>
+      <View
+        onFocusCapture={[Function]}
+        onLayout={[Function]}
+        style={null}
+      >
+        <View
+          accessibilityState={
+            {
+              "busy": undefined,
+              "checked": undefined,
+              "disabled": undefined,
+              "expanded": undefined,
+              "selected": undefined,
+            }
+          }
+          accessibilityValue={
+            {
+              "max": undefined,
+              "min": undefined,
+              "now": undefined,
+              "text": undefined,
+            }
+          }
+          accessible={true}
+          collapsable={false}
+          focusable={true}
+          onBlur={[Function]}
+          onClick={[Function]}
+          onFocus={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            [
+              {
+                "backgroundColor": "#2A2A2A",
+                "borderColor": "rgba(255,255,255,0.08)",
+                "borderRadius": 12,
+                "borderWidth": 1,
+                "elevation": 4,
+                "flexDirection": "row",
+                "gap": 12,
+                "marginBottom": 8,
+                "padding": 12,
+                "position": "relative",
+                "shadowColor": "#000000",
+                "shadowOffset": {
+                  "height": 2,
+                  "width": 0,
+                },
+                "shadowOpacity": 0.3,
+                "shadowRadius": 8,
+              },
+              false,
+            ]
+          }
+        >
+          <View
+            style={
+              {
+                "backgroundColor": "#3B82F6",
+                "borderRadius": 4,
+                "height": 8,
+                "left": 8,
+                "position": "absolute",
+                "top": 16,
+                "width": 8,
+              }
+            }
+          />
+          <View
+            style={
+              [
+                {
+                  "alignItems": "center",
+                  "borderRadius": 20,
+                  "height": 40,
+                  "justifyContent": "center",
+                  "width": 40,
+                },
+                {
+                  "backgroundColor": "#06B6D4",
+                },
+              ]
+            }
+          >
+            <Text
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 14,
+                  "fontWeight": "600",
+                  "letterSpacing": 0.5,
+                }
+              }
+            >
+              DP
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "flex": 1,
+                "gap": 4,
+              }
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "justifyContent": "space-between",
+                }
+              }
+            >
+              <Text
+                numberOfLines={1}
+                style={
+                  {
+                    "color": "#FFFFFF",
+                    "flex": 1,
+                    "fontSize": 14,
+                    "fontWeight": "600",
+                    "marginRight": 8,
+                  }
+                }
+              >
+                David Park
+              </Text>
+              <Text
+                style={
+                  {
+                    "color": "rgba(255, 255, 255, 0.5)",
+                    "fontSize": 12,
+                  }
+                }
+              >
+                2d ago
+              </Text>
+            </View>
+            <Text
+              numberOfLines={1}
+              style={
+                {
+                  "color": "#FFFFFF",
+                  "fontSize": 13,
+                  "fontWeight": "500",
+                }
+              }
+            >
+              New Project Proposal
+            </Text>
+            <Text
+              numberOfLines={2}
+              style={
+                {
+                  "color": "rgba(255, 255, 255, 0.7)",
+                  "fontSize": 12,
+                  "lineHeight": 16,
+                }
+              }
+            >
+              Excited to share our new project proposal with you. Attached are the scope, timeline, and budget details.
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </RCTScrollView>
+  <View
+    style={
+      {
+        "backgroundColor": "#1E1E1E",
+        "borderTopColor": "rgba(255, 255, 255, 0.15)",
+        "borderTopWidth": 1,
+        "bottom": 0,
+        "flexDirection": "row",
+        "gap": 8,
+        "left": 0,
+        "padding": 16,
+        "position": "absolute",
+        "right": 0,
+      }
+    }
+  >
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "borderColor": "rgba(255, 255, 255, 0.15)",
+          "borderRadius": 8,
+          "borderWidth": 1,
+          "flex": 1,
+          "height": 40,
+          "justifyContent": "center",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#FFFFFF",
+            "fontSize": 14,
+            "fontWeight": "600",
+          }
+        }
+      >
+        View All
+      </Text>
+    </View>
+    <View
+      accessibilityLabel="Compose new email"
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#3B82F6",
+          "borderRadius": 8,
+          "flex": 1,
+          "flexDirection": "row",
+          "gap": 6,
+          "height": 40,
+          "justifyContent": "center",
+        }
+      }
+    >
+      <Text
+        allowFontScaling={false}
+        selectable={false}
+        style={
+          [
+            {
+              "color": "#FFFFFF",
+              "fontSize": 16,
+            },
+            undefined,
+            {
+              "fontFamily": "ionicons",
+              "fontStyle": "normal",
+              "fontWeight": "normal",
+            },
+            {},
+          ]
+        }
+      >
+        
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#FFFFFF",
+            "fontSize": 14,
+            "fontWeight": "600",
+          }
+        }
+      >
+        Compose
+      </Text>
+    </View>
+  </View>
+</View>
+`;
