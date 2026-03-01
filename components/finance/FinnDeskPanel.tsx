@@ -796,7 +796,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                   width: '100%',
                   height: '100%',
                   objectFit: 'cover',
-                  objectPosition: 'center 30%',  // Keep face visible when cropping
+                  objectPosition: 'center 40%',
                   opacity: videoState === 'connected' ? 1 : 0,
                   transition: 'opacity 0.3s ease-in-out',
                   backgroundColor: '#000',

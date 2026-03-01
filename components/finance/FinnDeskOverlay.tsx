@@ -22,6 +22,31 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
   const isVideoOnly = initialTab === 'video';
 
   const panelStyle = useMemo((): ViewStyle => {
+    if (isVideoOnly) {
+      if (width >= 1200) {
+        return {
+          width: '88%' as unknown as number,
+          maxWidth: 1280,
+          height: '72vh' as unknown as number,
+          borderRadius: 20,
+        };
+      }
+      if (width >= 900) {
+        return {
+          width: '92%' as unknown as number,
+          maxWidth: 1100,
+          height: '65vh' as unknown as number,
+          borderRadius: 18,
+        };
+      }
+      return {
+        width: '96%' as unknown as number,
+        maxWidth: undefined,
+        height: '60vh' as unknown as number,
+        borderRadius: 14,
+      };
+    }
+
     if (width >= 1200) {
       return {
         width: '70%' as unknown as number,
@@ -44,7 +69,7 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
       height: '95vh' as unknown as number,
       borderRadius: 12,
     };
-  }, [width]);
+  }, [width, isVideoOnly]);
 
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') return;
@@ -102,7 +127,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
   } as any,
   panelContainer: {
     flex: 1,
@@ -112,10 +137,10 @@ const styles = StyleSheet.create({
   } as any,
   panel: {
     overflow: 'hidden',
-    backgroundColor: '#1C1C1E',
+    backgroundColor: '#0a0a0a',
     position: 'relative',
     ...(Platform.OS === 'web' ? {
-      boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)',
+      boxShadow: '0 32px 64px -16px rgba(0,0,0,0.7), 0 16px 32px -8px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06), 0 0 80px rgba(59,130,246,0.06)',
     } : {}),
   } as any,
   closeBtn: {
