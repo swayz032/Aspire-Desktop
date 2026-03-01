@@ -20,7 +20,10 @@ import { RunwayDisplay } from '@/components/canvas/RunwayDisplay';
 import { CommandPalette } from '@/components/canvas/CommandPalette';
 import { TileContextMenu } from '@/components/canvas/TileContextMenu';
 import { CanvasTileWrapper } from '@/components/canvas/CanvasTileWrapper';
-import { useImmersion, setStageOpen, setLensOpen } from '@/lib/immersionStore';
+import { useImmersion, setStageOpen, setLensOpen, setImmersionMode } from '@/lib/immersionStore';
+import { CanvasWorkspace } from '@/components/canvas/CanvasWorkspace';
+import { subscribe as subscribeCanvas, getMode as getCanvasMode } from '@/lib/chatCanvasStore';
+import type { CanvasMode } from '@/lib/chatCanvasStore';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useBreakpoint } from '@/lib/useDesktop';
 import { playSound } from '@/lib/soundManager';
@@ -93,6 +96,17 @@ export function DesktopHome() {
     documentName?: string;
     pandadocDocumentId?: string;
   }>({ visible: false, type: 'document' });
+  // ── Canvas mode state (chat vs canvas workspace) ──
+  const [canvasMode, setCanvasMode] = useState<CanvasMode>(getCanvasMode());
+
+  useEffect(() => {
+    const unsubscribe = subscribeCanvas((state) => {
+      setCanvasMode(state.mode);
+      setImmersionMode(state.mode === 'canvas' ? 'canvas' : 'off');
+    });
+    return unsubscribe;
+  }, []);
+
   const dynamicItems = useDynamicAuthorityQueue();
   const allAuthorityItems = useMemo(
     () => [...dynamicItems, ...supabaseAuthority],
@@ -282,265 +296,271 @@ export function DesktopHome() {
       : Canvas.layout.gapDesktop;
   const isWide = width >= 1920;
 
-  // ── All modes use same layout — Canvas is a rendering layer, not a workspace ──
+  // ── Conditional render: CanvasWorkspace (canvas mode) vs dashboard (chat mode) ──
   return (
     <DesktopShell>
-      <VignetteOverlay />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={[
-          styles.grid,
-          isWide && styles.gridWideConstrain,
-        ]}>
-          {/* Content header row — greeting left, toggle in DesktopHeader */}
-          <View style={styles.contentHeaderRow}>
-            <Text style={styles.greeting}>{greeting}</Text>
-          </View>
-
-          {/* "Complete Your Profile" banner for users missing intake fields */}
-          {showProfileBanner && (
-            <View style={styles.profileBanner}>
-              <View style={styles.profileBannerContent}>
-                <Ionicons name="sparkles" size={20} color="#00BCD4" />
-                <View style={styles.profileBannerText}>
-                  <Text style={styles.profileBannerTitle}>Complete your profile</Text>
-                  <Text style={styles.profileBannerBody}>
-                    Unlock personalized industry insights, curated resources, and smarter Ava conversations.
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.profileBannerActions}>
-                <Pressable
-                  style={styles.profileBannerButton}
-                  onPress={() => router.push('/(auth)/onboarding' as any)}
-                >
-                  <Text style={styles.profileBannerButtonText}>Complete Profile</Text>
-                </Pressable>
-                <Pressable onPress={dismissBanner}>
-                  <Ionicons name="close" size={18} color="#888" />
-                </Pressable>
-              </View>
-            </View>
-          )}
-
-          <ImmersionLayer depth={1}>
-          <View style={[styles.threeColWrapper, { gap: columnGap }]}>
-            {showThreeCol && (
-            <View style={[styles.leftCol, { width: leftWidth }]}>
-              <CanvasTileWrapper
-                tileId="conference_call"
-                mode={mode}
-                onPress={handleTilePress}
-                onHoverIn={handleTileHoverIn}
-                onHoverOut={handleTileHoverOut}
-                onContextMenu={handleContextMenu}
-              >
-                <View style={styles.section}>
-                  <SectionHeader title="Interaction Mode" />
-                  <InteractionModePanel options={INTERACTION_MODES} />
-                </View>
-              </CanvasTileWrapper>
-
-              <CanvasTileWrapper
-                tileId="inbox_setup"
-                mode={mode}
-                onPress={handleTilePress}
-                onHoverIn={handleTileHoverIn}
-                onHoverOut={handleTileHoverOut}
-                onContextMenu={handleContextMenu}
-              >
-                <View style={[styles.section, styles.flexSection]}>
-                  <SectionHeader
-                    title="Today's Plan"
-                    subtitle={`${planItems.length} tasks`}
-                    actionLabel="See all"
-                    onAction={() => router.push('/session/plan' as any)}
-                  />
-                  <TodayPlanTabs planItems={planItems} />
-                </View>
-              </CanvasTileWrapper>
-            </View>
-            )}
-
-            {/* Tablet: left column content stacks above center */}
-            {!showThreeCol && (
-              <View style={styles.tabletTopRow}>
-                <CanvasTileWrapper
-                  tileId="conference_call"
-                  mode={mode}
-                  onPress={handleTilePress}
-                  onHoverIn={handleTileHoverIn}
-                  onHoverOut={handleTileHoverOut}
-                  onContextMenu={handleContextMenu}
-                >
-                  <View style={styles.section}>
-                    <SectionHeader title="Interaction Mode" />
-                    <InteractionModePanel options={INTERACTION_MODES} />
-                  </View>
-                </CanvasTileWrapper>
-              </View>
-            )}
-
-            <View style={styles.centerCol}>
-              {/* Ava is the brain — NOT wrapped as a tile */}
-              <AvaDeskPanel />
-            </View>
-
-            <View style={[styles.rightCol, { width: rightWidth }]}>
-              <CanvasTileWrapper
-                tileId="finance_hub"
-                mode={mode}
-                onPress={handleTilePress}
-                onHoverIn={handleTileHoverIn}
-                onHoverOut={handleTileHoverOut}
-                onContextMenu={handleContextMenu}
-              >
-                <View style={styles.section}>
-                  <SectionHeader title="Ops Snapshot" />
-                  <OpsSnapshotTabs
-                    cashData={liveCashData}
-                    pipelineStages={pipelineStages}
-                    businessScore={businessScore}
-                  />
-                </View>
-              </CanvasTileWrapper>
-
-              <CanvasTileWrapper
-                tileId="calendar"
-                mode={mode}
-                onPress={handleTilePress}
-                onHoverIn={handleTileHoverIn}
-                onHoverOut={handleTileHoverOut}
-                onContextMenu={handleContextMenu}
-              >
-                <View style={[styles.section, styles.flexSection]}>
-                  <SectionHeader title="Calendar" />
-                  <CalendarCard events={calendarEvents as any} />
-                </View>
-              </CanvasTileWrapper>
-            </View>
-          </View>
-          </ImmersionLayer>
-
-          <ImmersionLayer depth={2}>
-          <CanvasTileWrapper
-            tileId="authority_queue"
-            mode={mode}
-            onPress={handleTilePress}
-            onHoverIn={handleTileHoverIn}
-            onHoverOut={handleTileHoverOut}
-            onContextMenu={handleContextMenu}
-          >
-          <View style={styles.authoritySection}>
-            <SectionHeader
-              title="Authority Queue"
-              actionLabel="View all"
-              onAction={() => router.push('/inbox' as any)}
-            />
-            {allAuthorityItems.length > 0 ? (
-              <View style={styles.authorityScrollRow}>
-                {allAuthorityItems.map((item) => (
-                  <View key={item.id} style={styles.authorityCardWrapper}>
-                    <AuthorityQueueCard
-                      item={item}
-                      onAction={async (action) => {
-                        if (action === 'join') {
-                          router.push('/session/conference-live' as any);
-                        } else if (action === 'approve') {
-                          // W6: Approve chains into orchestrator resume via Desktop server
-                          try {
-                            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                            if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                            const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
-                            if (res.ok) {
-                              // Remove from local state — approval is done
-                              setSupabaseAuthority((prev) => prev.filter((a) => a.id !== item.id));
-                            }
-                          } catch (e) { /* approve failed — user can retry */ }
-                        } else if (action === 'deny') {
-                          try {
-                            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                            if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                            await fetch(`/api/authority-queue/${item.id}/deny`, { method: 'POST', headers });
-                            setSupabaseAuthority((prev) => prev.filter((a) => a.id !== item.id));
-                          } catch (e) { /* deny failed */ }
-                        } else if (action === 'review') {
-                          // Open real PandaDoc preview for contracts, static preview for others
-                          const docType = item.type === 'invoice' ? 'invoice' as const
-                            : item.type === 'contract' ? 'contract' as const
-                            : 'document' as const;
-                          setReviewPreview({
-                            visible: true,
-                            type: docType,
-                            documentName: item.title,
-                            pandadocDocumentId: item.pandadocDocumentId,
-                          });
-                        }
-                      }}
-                    />
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <View style={styles.authorityEmpty}>
-                <Ionicons name="shield-checkmark-outline" size={24} color={Colors.accent.cyan} style={styles.authorityEmptyIcon} />
-                <Text style={styles.authorityEmptyHeadline}>Your approval queue is clear</Text>
-                <Text style={styles.authorityEmptyBody}>
-                  When agents need your sign-off — invoices over $500, contracts, payments — they land here. Every action leaves a receipt.
-                </Text>
-              </View>
-            )}
-          </View>
-          </CanvasTileWrapper>
-          </ImmersionLayer>
-        </View>
-      </ScrollView>
-
-      {/* ── Canvas overlay components — rendered outside ScrollView ── */}
-      {mode !== 'off' && (
+      {canvasMode === 'canvas' ? (
+        <CanvasWorkspace />
+      ) : (
         <>
-          {hoveredTile && hoverAnchor && !stageOpen && (
-            <LiveLens
-              tileId={hoveredTile}
-              anchorPosition={hoverAnchor}
-              onClose={handleTileHoverOut}
-              onOpenStage={() => {
-                handleTileHoverOut();
-                handleTilePress(hoveredTile);
-              }}
-            />
+          <VignetteOverlay />
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[
+              styles.grid,
+              isWide && styles.gridWideConstrain,
+            ]}>
+              {/* Content header row — greeting left, toggle in DesktopHeader */}
+              <View style={styles.contentHeaderRow}>
+                <Text style={styles.greeting}>{greeting}</Text>
+              </View>
+
+              {/* "Complete Your Profile" banner for users missing intake fields */}
+              {showProfileBanner && (
+                <View style={styles.profileBanner}>
+                  <View style={styles.profileBannerContent}>
+                    <Ionicons name="sparkles" size={20} color="#00BCD4" />
+                    <View style={styles.profileBannerText}>
+                      <Text style={styles.profileBannerTitle}>Complete your profile</Text>
+                      <Text style={styles.profileBannerBody}>
+                        Unlock personalized industry insights, curated resources, and smarter Ava conversations.
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.profileBannerActions}>
+                    <Pressable
+                      style={styles.profileBannerButton}
+                      onPress={() => router.push('/(auth)/onboarding' as any)}
+                    >
+                      <Text style={styles.profileBannerButtonText}>Complete Profile</Text>
+                    </Pressable>
+                    <Pressable onPress={dismissBanner}>
+                      <Ionicons name="close" size={18} color="#888" />
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              <ImmersionLayer depth={1}>
+              <View style={[styles.threeColWrapper, { gap: columnGap }]}>
+                {showThreeCol && (
+                <View style={[styles.leftCol, { width: leftWidth }]}>
+                  <CanvasTileWrapper
+                    tileId="conference_call"
+                    mode={mode}
+                    onPress={handleTilePress}
+                    onHoverIn={handleTileHoverIn}
+                    onHoverOut={handleTileHoverOut}
+                    onContextMenu={handleContextMenu}
+                  >
+                    <View style={styles.section}>
+                      <SectionHeader title="Interaction Mode" />
+                      <InteractionModePanel options={INTERACTION_MODES} />
+                    </View>
+                  </CanvasTileWrapper>
+
+                  <CanvasTileWrapper
+                    tileId="inbox_setup"
+                    mode={mode}
+                    onPress={handleTilePress}
+                    onHoverIn={handleTileHoverIn}
+                    onHoverOut={handleTileHoverOut}
+                    onContextMenu={handleContextMenu}
+                  >
+                    <View style={[styles.section, styles.flexSection]}>
+                      <SectionHeader
+                        title="Today's Plan"
+                        subtitle={`${planItems.length} tasks`}
+                        actionLabel="See all"
+                        onAction={() => router.push('/session/plan' as any)}
+                      />
+                      <TodayPlanTabs planItems={planItems} />
+                    </View>
+                  </CanvasTileWrapper>
+                </View>
+                )}
+
+                {/* Tablet: left column content stacks above center */}
+                {!showThreeCol && (
+                  <View style={styles.tabletTopRow}>
+                    <CanvasTileWrapper
+                      tileId="conference_call"
+                      mode={mode}
+                      onPress={handleTilePress}
+                      onHoverIn={handleTileHoverIn}
+                      onHoverOut={handleTileHoverOut}
+                      onContextMenu={handleContextMenu}
+                    >
+                      <View style={styles.section}>
+                        <SectionHeader title="Interaction Mode" />
+                        <InteractionModePanel options={INTERACTION_MODES} />
+                      </View>
+                    </CanvasTileWrapper>
+                  </View>
+                )}
+
+                <View style={styles.centerCol}>
+                  {/* Ava is the brain — NOT wrapped as a tile */}
+                  <AvaDeskPanel />
+                </View>
+
+                <View style={[styles.rightCol, { width: rightWidth }]}>
+                  <CanvasTileWrapper
+                    tileId="finance_hub"
+                    mode={mode}
+                    onPress={handleTilePress}
+                    onHoverIn={handleTileHoverIn}
+                    onHoverOut={handleTileHoverOut}
+                    onContextMenu={handleContextMenu}
+                  >
+                    <View style={styles.section}>
+                      <SectionHeader title="Ops Snapshot" />
+                      <OpsSnapshotTabs
+                        cashData={liveCashData}
+                        pipelineStages={pipelineStages}
+                        businessScore={businessScore}
+                      />
+                    </View>
+                  </CanvasTileWrapper>
+
+                  <CanvasTileWrapper
+                    tileId="calendar"
+                    mode={mode}
+                    onPress={handleTilePress}
+                    onHoverIn={handleTileHoverIn}
+                    onHoverOut={handleTileHoverOut}
+                    onContextMenu={handleContextMenu}
+                  >
+                    <View style={[styles.section, styles.flexSection]}>
+                      <SectionHeader title="Calendar" />
+                      <CalendarCard events={calendarEvents as any} />
+                    </View>
+                  </CanvasTileWrapper>
+                </View>
+              </View>
+              </ImmersionLayer>
+
+              <ImmersionLayer depth={2}>
+              <CanvasTileWrapper
+                tileId="authority_queue"
+                mode={mode}
+                onPress={handleTilePress}
+                onHoverIn={handleTileHoverIn}
+                onHoverOut={handleTileHoverOut}
+                onContextMenu={handleContextMenu}
+              >
+              <View style={styles.authoritySection}>
+                <SectionHeader
+                  title="Authority Queue"
+                  actionLabel="View all"
+                  onAction={() => router.push('/inbox' as any)}
+                />
+                {allAuthorityItems.length > 0 ? (
+                  <View style={styles.authorityScrollRow}>
+                    {allAuthorityItems.map((item) => (
+                      <View key={item.id} style={styles.authorityCardWrapper}>
+                        <AuthorityQueueCard
+                          item={item}
+                          onAction={async (action) => {
+                            if (action === 'join') {
+                              router.push('/session/conference-live' as any);
+                            } else if (action === 'approve') {
+                              // W6: Approve chains into orchestrator resume via Desktop server
+                              try {
+                                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                                if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
+                                if (res.ok) {
+                                  // Remove from local state — approval is done
+                                  setSupabaseAuthority((prev) => prev.filter((a) => a.id !== item.id));
+                                }
+                              } catch (e) { /* approve failed — user can retry */ }
+                            } else if (action === 'deny') {
+                              try {
+                                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                                if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                await fetch(`/api/authority-queue/${item.id}/deny`, { method: 'POST', headers });
+                                setSupabaseAuthority((prev) => prev.filter((a) => a.id !== item.id));
+                              } catch (e) { /* deny failed */ }
+                            } else if (action === 'review') {
+                              // Open real PandaDoc preview for contracts, static preview for others
+                              const docType = item.type === 'invoice' ? 'invoice' as const
+                                : item.type === 'contract' ? 'contract' as const
+                                : 'document' as const;
+                              setReviewPreview({
+                                visible: true,
+                                type: docType,
+                                documentName: item.title,
+                                pandadocDocumentId: item.pandadocDocumentId,
+                              });
+                            }
+                          }}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.authorityEmpty}>
+                    <Ionicons name="shield-checkmark-outline" size={24} color={Colors.accent.cyan} style={styles.authorityEmptyIcon} />
+                    <Text style={styles.authorityEmptyHeadline}>Your approval queue is clear</Text>
+                    <Text style={styles.authorityEmptyBody}>
+                      When agents need your sign-off — invoices over $500, contracts, payments — they land here. Every action leaves a receipt.
+                    </Text>
+                  </View>
+                )}
+              </View>
+              </CanvasTileWrapper>
+              </ImmersionLayer>
+            </View>
+          </ScrollView>
+
+          {/* ── Canvas overlay components — rendered outside ScrollView ── */}
+          {mode !== 'off' && (
+            <>
+              {hoveredTile && hoverAnchor && !stageOpen && (
+                <LiveLens
+                  tileId={hoveredTile}
+                  anchorPosition={hoverAnchor}
+                  onClose={handleTileHoverOut}
+                  onOpenStage={() => {
+                    handleTileHoverOut();
+                    handleTilePress(hoveredTile);
+                  }}
+                />
+              )}
+              {contextMenu && (
+                <TileContextMenu
+                  tileId={contextMenu.tileId}
+                  position={contextMenu.position}
+                  onClose={() => setContextMenu(null)}
+                  onSelectVerb={(verbId: string) => {
+                    setContextMenu(null);
+                    setStageOpen(true, contextMenu.tileId);
+                    playSound('stage_open');
+                    emitCanvasEvent('stage_open', { tile_id: contextMenu.tileId, verb_id: verbId, source: 'context_menu' });
+                  }}
+                />
+              )}
+              <Stage />
+              {runwayState !== 'IDLE' && (
+                <RunwayDisplay currentState={runwayState} />
+              )}
+              <CommandPalette />
+            </>
           )}
-          {contextMenu && (
-            <TileContextMenu
-              tileId={contextMenu.tileId}
-              position={contextMenu.position}
-              onClose={() => setContextMenu(null)}
-              onSelectVerb={(verbId: string) => {
-                setContextMenu(null);
-                setStageOpen(true, contextMenu.tileId);
-                playSound('stage_open');
-                emitCanvasEvent('stage_open', { tile_id: contextMenu.tileId, verb_id: verbId, source: 'context_menu' });
-              }}
-            />
-          )}
-          <Stage />
-          {runwayState !== 'IDLE' && (
-            <RunwayDisplay currentState={runwayState} />
-          )}
-          <CommandPalette />
+
+          <DocumentPreviewModal
+            visible={reviewPreview.visible}
+            onClose={() => setReviewPreview(prev => ({ ...prev, visible: false }))}
+            type={reviewPreview.type}
+            documentName={reviewPreview.documentName}
+            pandadocDocumentId={reviewPreview.pandadocDocumentId}
+          />
         </>
       )}
-
-      <DocumentPreviewModal
-        visible={reviewPreview.visible}
-        onClose={() => setReviewPreview(prev => ({ ...prev, visible: false }))}
-        type={reviewPreview.type}
-        documentName={reviewPreview.documentName}
-        pandadocDocumentId={reviewPreview.pandadocDocumentId}
-      />
     </DesktopShell>
   );
 }

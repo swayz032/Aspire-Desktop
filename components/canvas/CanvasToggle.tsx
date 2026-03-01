@@ -28,7 +28,6 @@ interface ModeConfig {
 
 const MODES: ModeConfig[] = [
   { mode: 'off', icon: 'eye-off-outline', label: 'Off' },
-  { mode: 'depth', icon: 'eye-outline', label: 'Depth' },
   { mode: 'canvas', icon: 'layers-outline', label: 'Canvas' },
 ];
 
