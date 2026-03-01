@@ -7,12 +7,15 @@ import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, type AnamMessage, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput, streamResponseToAvatar } from '@/lib/anam';
+import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
 import { speakText } from '@/lib/elevenlabs';
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import {
   ThinkingIndicator,
-  ActivityTimeline,
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtContent,
+  ChainOfThoughtStep,
   buildActivityFromResponse,
   type AgentActivityEvent,
   type OrchestratorResponse,
@@ -244,7 +247,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   const scrollRef = useRef<ScrollView>(null);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
   const connectionTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const isProcessingVoice = useRef(false);
+  const anamStreamMessageIdRef = useRef<string | null>(null);
 
   const clearConnectionTimeouts = useCallback(() => {
     connectionTimeouts.current.forEach(clearTimeout);
@@ -392,54 +395,43 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
           console.log('[Anam/Finn] Video stream playing');
           setVideoState('connected');
         },
-        onConnectionClosed: () => {
-          console.log('[Anam/Finn] Connection closed');
+        onConnectionClosed: (reason, details) => {
+          console.log('[Anam/Finn] Connection closed', reason ? { reason, details } : undefined);
           setVideoState('idle');
           setConnectionStatus('');
           anamClientRef.current = null;
         },
-        onUserMessage: async (userMessage: string, messageHistory: AnamMessage[]) => {
-          if (isProcessingVoice.current) return;
-          isProcessingVoice.current = true;
-
+        onUserMessage: async (userMessage: string) => {
           setChat(prev => [...prev, {
             id: `anam_user_${Date.now()}`,
             from: 'user',
             text: `\uD83C\uDFA4 ${userMessage}`,
           }]);
+          anamStreamMessageIdRef.current = null;
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+        },
+        onMessageStream: (text, role) => {
+          if (!text?.trim()) return;
+          const normalizedRole = String(role || '').toLowerCase();
+          if (!['assistant', 'persona'].includes(normalizedRole)) return;
 
-          try {
-            const resp = await fetch('/api/ava/chat-stream', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
-              },
-              body: JSON.stringify({ message: userMessage, agent: 'finn', message_history: messageHistory.slice(-10) }),
-            });
-            const text = await resp.text();
-            const match = text.match(/data:\s*(\{.*?"done"\s*:\s*false.*?\})/);
-            const parsed = match ? JSON.parse(match[1]) : null;
-            const responseText = parsed?.text || text.replace(/data:.*?\n/g, '').trim() || 'I processed your request.';
-
+          const currentId = anamStreamMessageIdRef.current;
+          if (!currentId) {
+            const id = `anam_finn_${Date.now()}`;
+            anamStreamMessageIdRef.current = id;
             setChat(prev => [...prev, {
-              id: `anam_finn_${Date.now()}`,
+              id,
               from: 'finn',
-              text: responseText,
+              text,
             }]);
-            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-
-            if (anamClientRef.current) {
-              await streamResponseToAvatar(anamClientRef.current, responseText);
-            }
-          } catch (err) {
-            console.error('[Anam/Finn] Voice flow error:', err);
-            if (anamClientRef.current) {
-              try { finnTalk(anamClientRef.current, "I had trouble processing that. Could you try again?"); } catch (_) {}
-            }
-          } finally {
-            isProcessingVoice.current = false;
+          } else {
+            setChat(prev => prev.map(msg => (
+              msg.id === currentId
+                ? { ...msg, text: `${msg.text}${text}` }
+                : msg
+            )));
           }
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
         },
       };
       const client = await connectFinnAvatar(elementId, session?.access_token, connectOptions);
@@ -1020,6 +1012,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
             visible={showChatOverlay}
             onClose={() => setShowChatOverlay(false)}
             chat={chat}
+            activeRuns={activeRuns}
             input={input}
             onChangeInput={setInput}
             onSend={onSend}
@@ -1285,7 +1278,33 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                     </View>
                     <View style={styles.msgContent}>
                       {showActivity && (
-                        <ActivityTimeline events={run.events} agent="finn" />
+                        <ChainOfThought
+                          agent="finn"
+                          isStreaming={run.status === 'running'}
+                          defaultOpen={run.status === 'running'}
+                          style={{ marginBottom: 6 }}
+                        >
+                          <ChainOfThoughtHeader stepCount={run.events.length}>
+                            {run.status === 'running' ? 'Thinking...' : 'Chain of Thought'}
+                          </ChainOfThoughtHeader>
+                          <ChainOfThoughtContent>
+                            {run.events.map((event, idx) => (
+                              <ChainOfThoughtStep
+                                key={event.id}
+                                label={event.label}
+                                icon={event.icon as any}
+                                status={
+                                  event.status === 'completed' || event.type === 'done'
+                                    ? 'complete'
+                                    : event.status === 'active'
+                                    ? 'active'
+                                    : 'pending'
+                                }
+                                isLast={idx === run.events.length - 1}
+                              />
+                            ))}
+                          </ChainOfThoughtContent>
+                        </ChainOfThought>
                       )}
                       {showMessage && msg.text ? (
                         <Text style={styles.msgText}>{msg.text}</Text>
@@ -1411,7 +1430,7 @@ const styles = StyleSheet.create({
   },
   surfaceContainerOverlay: {
     height: undefined,
-    flex: 1.2,
+    flex: 1,
     flexShrink: 1,
   },
   voiceSurface: {
@@ -1588,12 +1607,8 @@ const immersiveStyles = StyleSheet.create({
     backgroundColor: '#000',
     position: 'relative',
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? {
-      maxHeight: '70vh',
-      aspectRatio: '16/9',
-      alignSelf: 'center',
-      width: '100%',
-    } : {}),
+    width: '100%' as unknown as number,
+    height: '100%' as unknown as number,
   } as Record<string, unknown>,
 
   /* Pre-connect background (idle / connecting / error) */

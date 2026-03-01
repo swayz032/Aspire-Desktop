@@ -13,13 +13,15 @@
  */
 
 import { useState, useCallback } from 'react';
-import { useAgentVoice, type VoiceStatus } from '@/hooks/useAgentVoice';
+import { useAgentVoice, type VoiceStatus, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
 import {
+  addActivityEvent,
   setActiveAgent,
   setPersonaState,
   type AgentName,
 } from '@/lib/chatCanvasStore';
 import { useSupabase } from '@/providers';
+import type { BrowserScreenshotEvent } from '@/hooks/useBrowserStream';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,6 +40,14 @@ interface UseCanvasVoiceReturn {
   status: VoiceStatus;
   /** Last error from voice pipeline (if any) */
   error: Error | null;
+  /** Latest structured diagnostics (max 10 retained). */
+  diagnostics: VoiceDiagnosticEvent[];
+  latestDiagnostic: VoiceDiagnosticEvent | null;
+  clearDiagnostics: () => void;
+  /** Replay cached TTS audio after autoplay block. */
+  replayLastAudio: () => Promise<boolean>;
+  /** Browser screenshot events from live Adam/Ava stream. */
+  browserEvents: BrowserScreenshotEvent[];
 }
 
 // ---------------------------------------------------------------------------
@@ -69,11 +79,14 @@ export function useCanvasVoice(agent: AgentName): UseCanvasVoiceReturn {
   const { session, suiteId } = useSupabase();
 
   const [voiceError, setVoiceError] = useState<Error | null>(null);
+  const [diagnostics, setDiagnostics] = useState<VoiceDiagnosticEvent[]>([]);
+  const [browserEvents, setBrowserEvents] = useState<BrowserScreenshotEvent[]>([]);
 
   const {
     status,
     startSession: voiceStart,
     endSession: voiceEnd,
+    replayLastAudio,
   } = useAgentVoice({
     agent,
     suiteId: suiteId ?? undefined,
@@ -86,10 +99,45 @@ export function useCanvasVoice(agent: AgentName): UseCanvasVoiceReturn {
       setVoiceError(err);
       setPersonaState('idle');
     },
+    onActivityEvent: (event) => {
+      if (event.type === 'browser_screenshot' && event.data) {
+        const data = event.data as Record<string, unknown>;
+        const screenshotEvent: BrowserScreenshotEvent = {
+          screenshot_url: (data.screenshot_url as string) ?? '',
+          screenshot_id: (data.screenshot_id as string) ?? '',
+          page_url: (data.page_url as string) ?? '',
+          page_title: (data.page_title as string) ?? '',
+          timestamp: event.timestamp || Date.now(),
+          viewport_width: (data.viewport_width as number) ?? 1280,
+          viewport_height: (data.viewport_height as number) ?? 800,
+        };
+        setBrowserEvents((prev) => [...prev, screenshotEvent].slice(-50));
+        return;
+      }
+      if (
+        event.type === 'thinking' ||
+        event.type === 'tool_call' ||
+        event.type === 'step' ||
+        event.type === 'done' ||
+        event.type === 'error'
+      ) {
+        addActivityEvent({
+          type: event.type,
+          message: event.message || '',
+          icon: event.icon || event.type,
+          agent: (event.agent as AgentName | undefined) || agent,
+        });
+      }
+    },
+    onDiagnostic: (diag) => {
+      setDiagnostics((prev) => [...prev, diag].slice(-10));
+    },
   });
 
   const startSession = useCallback(async () => {
     setVoiceError(null);
+    setDiagnostics([]);
+    setBrowserEvents([]);
     setActiveAgent(agent);
     setPersonaState('listening');
     await voiceStart();
@@ -98,7 +146,12 @@ export function useCanvasVoice(agent: AgentName): UseCanvasVoiceReturn {
   const endSession = useCallback(() => {
     voiceEnd();
     setPersonaState('idle');
+    setBrowserEvents([]);
   }, [voiceEnd]);
+
+  const clearDiagnostics = useCallback(() => {
+    setDiagnostics([]);
+  }, []);
 
   return {
     startSession,
@@ -107,5 +160,10 @@ export function useCanvasVoice(agent: AgentName): UseCanvasVoiceReturn {
     isProcessing: status === 'thinking',
     status,
     error: voiceError,
+    diagnostics,
+    latestDiagnostic: diagnostics.length > 0 ? diagnostics[diagnostics.length - 1] : null,
+    clearDiagnostics,
+    replayLastAudio,
+    browserEvents,
   };
 }

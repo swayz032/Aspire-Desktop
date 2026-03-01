@@ -4,12 +4,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
-import { MessageBubble, ThinkingIndicator, type AgentChatMessage } from '@/components/chat';
+import {
+  MessageBubble,
+  ThinkingIndicator,
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtContent,
+  ChainOfThoughtStep,
+  type AgentActivityEvent,
+  type AgentChatMessage,
+} from '@/components/chat';
 
 type ChatMsg = {
   id: string;
   from: 'finn' | 'user';
   text: string;
+  runId?: string;
 };
 
 type Props = {
@@ -19,9 +29,11 @@ type Props = {
 
 export function FinnChatModal({ visible, onClose }: Props) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [activeRuns, setActiveRuns] = useState<Record<string, { events: AgentActivityEvent[]; status: 'running' | 'completed' }>>({});
   const [input, setInput] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const currentRunIdRef = useRef<string | null>(null);
   const { suiteId, session } = useSupabase();
 
   const finnVoice = useAgentVoice({
@@ -29,8 +41,38 @@ export function FinnChatModal({ visible, onClose }: Props) {
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
     onResponse: (text) => {
-      setMessages(prev => [...prev, { id: `finn_${Date.now()}`, from: 'finn', text }]);
+      const runId = currentRunIdRef.current || undefined;
+      setMessages(prev => [...prev, { id: `finn_${Date.now()}`, from: 'finn', text, runId }]);
+      if (runId) {
+        setActiveRuns(prev => ({ ...prev, [runId]: { ...(prev[runId] || { events: [] }), status: 'completed' } }));
+      }
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    },
+    onActivityEvent: (event) => {
+      const runId = currentRunIdRef.current;
+      if (!runId) return;
+      const mapped: AgentActivityEvent = {
+        id: `finn_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: (event.type as AgentActivityEvent['type']) || 'step',
+        label: event.message || 'Working...',
+        status:
+          event.type === 'done'
+            ? 'completed'
+            : event.type === 'error'
+            ? 'error'
+            : event.type === 'thinking'
+            ? 'active'
+            : 'completed',
+        timestamp: event.timestamp || Date.now(),
+        icon: event.icon as any,
+      };
+      setActiveRuns(prev => {
+        const run = prev[runId] || { events: [], status: 'running' as const };
+        return {
+          ...prev,
+          [runId]: { ...run, events: [...run.events, mapped] },
+        };
+      });
     },
     onError: (_err) => {},
   });
@@ -46,6 +88,9 @@ export function FinnChatModal({ visible, onClose }: Props) {
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
     if (!trimmed) return;
+    const runId = `run_${Date.now()}`;
+    currentRunIdRef.current = runId;
+    setActiveRuns(prev => ({ ...prev, [runId]: { events: [], status: 'running' } }));
     setMessages(prev => [...prev, { id: `user_${Date.now()}`, from: 'user', text: trimmed }]);
     finnVoice.sendText(trimmed);
     setInput('');
@@ -95,6 +140,8 @@ export function FinnChatModal({ visible, onClose }: Props) {
             </View>
           ) : (
             messages.map((msg) => {
+              const run = msg.runId ? activeRuns[msg.runId] : null;
+              const isRunning = !!msg.runId && !!run && run.status === 'running';
               const chatMessage: AgentChatMessage = {
                 id: msg.id,
                 from: msg.from,
@@ -102,12 +149,42 @@ export function FinnChatModal({ visible, onClose }: Props) {
                 timestamp: Date.now(),
               };
               return (
-                <MessageBubble
-                  key={msg.id}
-                  message={chatMessage}
-                  agent="finn"
-                  showTimestamp={false}
-                />
+                <View key={msg.id}>
+                  {run && run.events.length > 0 && (
+                    <ChainOfThought
+                      agent="finn"
+                      isStreaming={isRunning}
+                      defaultOpen={isRunning}
+                      style={{ marginBottom: 6 }}
+                    >
+                      <ChainOfThoughtHeader stepCount={run.events.length}>
+                        {isRunning ? 'Thinking...' : 'Chain of Thought'}
+                      </ChainOfThoughtHeader>
+                      <ChainOfThoughtContent>
+                        {run.events.map((event, idx) => (
+                          <ChainOfThoughtStep
+                            key={event.id}
+                            label={event.label}
+                            icon={event.icon as any}
+                            status={
+                              event.status === 'completed' || event.type === 'done'
+                                ? 'complete'
+                                : event.status === 'active'
+                                ? 'active'
+                                : 'pending'
+                            }
+                            isLast={idx === run.events.length - 1}
+                          />
+                        ))}
+                      </ChainOfThoughtContent>
+                    </ChainOfThought>
+                  )}
+                  <MessageBubble
+                    message={chatMessage}
+                    agent="finn"
+                    showTimestamp={false}
+                  />
+                </View>
               );
             })
           )}

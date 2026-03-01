@@ -1895,7 +1895,7 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
       },
       body: JSON.stringify({
         text,
-        agent: 'ava',
+        agent: parsedAgent.value,
         requested_agent: parsedAgent.value,
         channel: typeof req.query.channel === 'string' ? req.query.channel : 'chat',
       }),
@@ -2021,7 +2021,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       },
       body: JSON.stringify({
         text: text.trim(),
-        agent: 'ava',
+        agent: requestedAgent,
         requested_agent: requestedAgent,
         voice_id: voiceId,
         channel: channel || 'voice',
@@ -2082,6 +2082,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       receipt_id: data.governance?.receipt_ids?.[0] || null,
       receipt_ids: data.governance?.receipt_ids || [],
       resolved_agent: requestedAgent,
+      media: Array.isArray(data.media) ? data.media : [],
       action: data.plan?.task_type || null,
       governance: data.governance || null,
       risk_tier: data.risk?.tier || null,
@@ -2511,7 +2512,7 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
       },
       body: JSON.stringify({
         text: message.trim(),
-        agent: 'ava',
+        agent: requestedAgent,
         requested_agent: requestedAgent,
         channel: 'avatar',
         session_id,
@@ -2559,6 +2560,57 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
       correlation_id: correlationId,
       error: 'ORCHESTRATOR_UNAVAILABLE',
     });
+  }
+});
+
+// Bind active Anam session_id -> authenticated suite/user context.
+// Used after SDK SESSION_READY so CUSTOMER_CLIENT_V1 callbacks can resolve auth.
+router.post('/api/anam/session/bind', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).authenticatedUserId;
+    const suiteId = (req as any).authenticatedSuiteId;
+    if (!userId || !suiteId) {
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required for avatar session binding' });
+    }
+
+    const rawSessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId.trim() : '';
+    if (!rawSessionId) {
+      return res.status(400).json({ error: 'MISSING_SESSION_ID', message: 'sessionId is required' });
+    }
+
+    const parsedAgent = parseRequestedAgent(req.body?.persona);
+    const persona = parsedAgent.value;
+    const now = Date.now();
+
+    setAnamSessionContext(rawSessionId, {
+      userId,
+      suiteId,
+      persona,
+      createdAt: now,
+    });
+
+    // Optional: also alias by raw token if client provides it.
+    const rawSessionToken = typeof req.body?.sessionToken === 'string' ? req.body.sessionToken.trim() : '';
+    if (rawSessionToken) {
+      setAnamSessionContext(rawSessionToken, {
+        userId,
+        suiteId,
+        persona,
+        createdAt: now,
+      });
+    }
+
+    logger.info('Anam session bound for callback auth bridge', {
+      userId,
+      suiteId,
+      persona,
+      sessionIdLength: rawSessionId.length,
+    });
+
+    return res.json({ ok: true });
+  } catch (error: unknown) {
+    logger.error('Anam session bind error', { error: error instanceof Error ? error.message : 'unknown' });
+    return res.status(500).json({ error: 'ANAM_BIND_FAILED', message: 'Failed to bind avatar session' });
   }
 });
 
@@ -2997,6 +3049,34 @@ router.get('/api/mail/accounts', async (req: Request, res: Response) => {
     const accounts = await onboarding.listAccounts(suiteId);
     res.json({ accounts });
   } catch (e: unknown) { res.status(500).json({ error: 'Failed to fetch accounts' }); }
+});
+
+// DELETE /api/mail/accounts/:accountId — disconnect/remove mailbox account
+router.delete('/api/mail/accounts/:accountId', async (req: Request, res: Response) => {
+  try {
+    const suiteId = requireAuth(req, res); if (!suiteId) return;
+    const accountId = String(req.params.accountId || '').trim();
+    if (!accountId) return res.status(400).json({ error: 'accountId is required' });
+
+    const result = await onboarding.removeAccount(suiteId, accountId);
+    if (!result.removed) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
+    await createTrustSpineReceipt({
+      suiteId,
+      receiptType: 'mail.account.removed',
+      status: 'SUCCEEDED',
+      actorType: 'USER',
+      actorId: (req as any).authenticatedUserId || undefined,
+      action: { operation: 'remove_mail_account', account_id: accountId, risk_tier: 'YELLOW' },
+      result: { removed: true },
+    }).catch(() => {});
+
+    res.json({ removed: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: 'Failed to remove account' });
+  }
 });
 
 // GET /api/mail/receipts — list mail receipts

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Linking, Alert, Image, ImageBackground } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -6,7 +6,7 @@ import { Colors } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, type AnamMessage, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput, streamResponseToAvatar } from '@/lib/anam';
+import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
 import {
   type AgentChatMessage,
   type AgentActivityEvent,
@@ -106,7 +106,7 @@ export function AvaDeskPanel() {
   const scrollRef = useRef<ScrollView>(null);
   const connectionTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
-  const isProcessingVoice = useRef(false);
+  const anamStreamMessageIdRef = useRef<string | null>(null);
 
   /** Show a voice/video error banner that auto-clears after 5s */
   const showVoiceError = useCallback((msg: string) => {
@@ -118,7 +118,7 @@ export function AvaDeskPanel() {
   const { suiteId, session } = useSupabase();
   const { tenant } = useTenant();
 
-  // W4: Authority queue polling — provides context to orchestrator (approvals shown in Authority Queue, not chat)
+  // W4: Authority queue polling â€” provides context to orchestrator (approvals shown in Authority Queue, not chat)
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
 
   // Fetch a dynamic greeting from the orchestrator on mount (replaces hardcoded seedChat)
@@ -144,7 +144,7 @@ export function AvaDeskPanel() {
           }
         }
       } catch {
-        // Silent fail — no greeting is better than a stale one
+        // Silent fail â€” no greeting is better than a stale one
       }
     };
     fetchGreeting();
@@ -168,7 +168,7 @@ export function AvaDeskPanel() {
     return () => clearInterval(interval);
   }, [session?.access_token]);
 
-  // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
+  // Orchestrator-routed voice: STT â†’ Orchestrator â†’ TTS (Law #1: Single Brain)
   const avaVoice = useAgentVoice({
     agent: 'ava',
     suiteId: suiteId ?? undefined,
@@ -177,7 +177,7 @@ export function AvaDeskPanel() {
       setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
     onTranscript: (text) => {
-      // W5: Voice transcript → chat (user message with voice indicator)
+      // W5: Voice transcript â†’ chat (user message with voice indicator)
       setChat(prev => [...prev, {
         id: `voice_user_${Date.now()}`,
         from: 'user',
@@ -185,7 +185,7 @@ export function AvaDeskPanel() {
       }]);
     },
     onResponse: (text, receiptId) => {
-      // W5: Voice response → chat (Ava message synced from voice)
+      // W5: Voice response â†’ chat (Ava message synced from voice)
       setChat(prev => [...prev, {
         id: `voice_ava_${Date.now()}`,
         from: 'ava',
@@ -203,7 +203,7 @@ export function AvaDeskPanel() {
       } else if (/permission|denied|not found.*microphone|getUserMedia/i.test(msg)) {
         showVoiceError('Microphone access denied. Check browser permissions.');
       } else if (/tts|voice.*unavailable|synthesis|elevenlabs/i.test(msg)) {
-        showVoiceError('Voice unavailable — responses shown in chat.');
+        showVoiceError('Voice unavailable â€” responses shown in chat.');
       } else {
         showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
       }
@@ -315,7 +315,7 @@ export function AvaDeskPanel() {
       setConnectionStatus('Establishing secure video...');
     }, 800);
 
-    // Timeout fallback — 15s for SDK WebRTC handshake (Law #3: Fail Closed)
+    // Timeout fallback â€” 15s for SDK WebRTC handshake (Law #3: Fail Closed)
     const t2 = setTimeout(() => {
       setVideoState('idle');
       setConnectionStatus('');
@@ -329,7 +329,7 @@ export function AvaDeskPanel() {
       // Wait for React to render the <video> element before streaming
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Anam SDK: fetch session token → create client (CUSTOMER_CLIENT_V1) → stream to <video>
+      // Anam SDK: fetch session token â†’ create client (CUSTOMER_CLIENT_V1) â†’ stream to <video>
       const connectOptions: AnamConnectOptions = {
         onConnectionEstablished: () => {
           console.log('[Anam] WebRTC connection established');
@@ -338,57 +338,44 @@ export function AvaDeskPanel() {
           console.log('[Anam] Video stream playing');
           setVideoState('connected');
         },
-        onConnectionClosed: () => {
-          console.log('[Anam] Connection closed');
+        onConnectionClosed: (reason, details) => {
+          console.log('[Anam] Connection closed', reason ? { reason, details } : undefined);
           setVideoState('idle');
           setConnectionStatus('');
           anamClientRef.current = null;
         },
-        onUserMessage: async (userMessage: string, messageHistory: AnamMessage[]) => {
-          if (isProcessingVoice.current) return;
-          isProcessingVoice.current = true;
-
+        onUserMessage: async (userMessage: string) => {
           // Show user message in chat
           setChat(prev => [...prev, {
             id: `anam_user_${Date.now()}`,
             from: 'user',
             text: `\uD83C\uDFA4 ${userMessage}`,
           }]);
+          anamStreamMessageIdRef.current = null;
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+        },
+        onMessageStream: (text, role) => {
+          if (!text?.trim()) return;
+          const normalizedRole = String(role || '').toLowerCase();
+          if (!['assistant', 'persona'].includes(normalizedRole)) return;
 
-          try {
-            const resp = await fetch('/api/ava/chat-stream', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
-              },
-              body: JSON.stringify({ message: userMessage, message_history: messageHistory.slice(-10) }),
-            });
-            const text = await resp.text();
-            // Parse SSE response — endpoint returns text/event-stream with data: JSON lines
-            const match = text.match(/data:\s*(\{.*?"done"\s*:\s*false.*?\})/);
-            const parsed = match ? JSON.parse(match[1]) : null;
-            const responseText = parsed?.text || text.replace(/data:.*?\n/g, '').trim() || 'I processed your request.';
-
+          const currentId = anamStreamMessageIdRef.current;
+          if (!currentId) {
+            const id = `anam_ava_${Date.now()}`;
+            anamStreamMessageIdRef.current = id;
             setChat(prev => [...prev, {
-              id: `anam_ava_${Date.now()}`,
+              id,
               from: 'ava',
-              text: responseText,
+              text,
             }]);
-            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-
-            // Make avatar speak the response
-            if (anamClientRef.current) {
-              await streamResponseToAvatar(anamClientRef.current, responseText);
-            }
-          } catch (err) {
-            console.error('[Anam/Ava] Voice flow error:', err);
-            if (anamClientRef.current) {
-              try { (anamClientRef.current as any).talk?.("I had trouble processing that. Could you try again?"); } catch (_) {}
-            }
-          } finally {
-            isProcessingVoice.current = false;
+          } else {
+            setChat(prev => prev.map(msg => (
+              msg.id === currentId
+                ? { ...msg, text: `${msg.text}${text}` }
+                : msg
+            )));
           }
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
         },
       };
       const client = await connectAnamAvatar('anam-video-element', session?.access_token, connectOptions);
@@ -464,7 +451,7 @@ export function AvaDeskPanel() {
     };
   }, []);
 
-  // W6: Approve-then-execute — chains approval into orchestrator resume, surfaces narration in chat
+  // W6: Approve-then-execute â€” chains approval into orchestrator resume, surfaces narration in chat
   const approveAndExecute = useCallback(async (approvalId: string) => {
     const runId = `run_approve_${Date.now()}`;
     const now = Date.now();
@@ -582,7 +569,7 @@ export function AvaDeskPanel() {
     });
 
     try {
-      // Law #1: Single Brain — route through orchestrator
+      // Law #1: Single Brain â€” route through orchestrator
       // Law #6: X-Suite-Id for tenant isolation
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -590,7 +577,7 @@ export function AvaDeskPanel() {
       if (suiteId) headers['X-Suite-Id'] = suiteId;
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
 
-      // Build user profile context for Ava personalization (no PII — Law #9)
+      // Build user profile context for Ava personalization (no PII â€” Law #9)
       const userProfile = tenant ? {
         ownerName: tenant.ownerName || undefined,
         businessName: tenant.businessName || undefined,
@@ -625,9 +612,10 @@ export function AvaDeskPanel() {
       const data = await resp.json();
       const responseText = data.response || data.text || 'I processed your request.';
       const activityEvents = buildActivityFromResponse(data, 'ava');
+      const mediaItems = Array.isArray((data as any).media) ? (data as any).media : [];
 
       // If video connected, pipe response to Anam avatar (Cara speaks with Emma voice)
-      // Anam handles voice output — our LLM drives what she says (Law #1: Single Brain)
+      // Anam handles voice output â€” our LLM drives what she says (Law #1: Single Brain)
       if (mode === 'video' && videoState === 'connected' && anamClientRef.current) {
         try {
           anamClientRef.current.talk(responseText);
@@ -636,7 +624,7 @@ export function AvaDeskPanel() {
         }
       }
 
-      // Conversational response — no pipeline activity, show text immediately
+      // Conversational response â€” no pipeline activity, show text immediately
       if (activityEvents.length === 0) {
         setActiveRuns((prev) => {
           const run = prev[runId];
@@ -646,7 +634,7 @@ export function AvaDeskPanel() {
         setIsConversing(false);
         setChat((prev) =>
           prev.map((msg) =>
-            msg.runId === runId ? { ...msg, text: responseText } : msg
+            msg.runId === runId ? { ...msg, text: responseText, media: mediaItems } : msg
           )
         );
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -671,12 +659,12 @@ export function AvaDeskPanel() {
       setIsConversing(false);
       setChat((prev) =>
         prev.map((msg) =>
-          msg.runId === runId ? { ...msg, text: responseText } : msg
+          msg.runId === runId ? { ...msg, text: responseText, media: mediaItems } : msg
         )
       );
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     } catch (error: unknown) {
-      // Law #3: Fail Closed — show error, don't guess
+      // Law #3: Fail Closed â€” show error, don't guess
       const rawMessage = error instanceof Error ? error.message : String(error || 'Unknown error');
       const lower = rawMessage.toLowerCase();
       const userFacingMessage =
@@ -730,7 +718,7 @@ export function AvaDeskPanel() {
       </View>
 
       <View style={[styles.surfaceContainer, mode === 'video' && videoState === 'connected' && styles.surfaceContainerExpanded]}>
-        {/* Voice/Video error banner — surfaces errors that were previously swallowed */}
+        {/* Voice/Video error banner â€” surfaces errors that were previously swallowed */}
         {voiceError && (
           <Pressable
             onPress={() => setVoiceError(null)}
@@ -932,7 +920,7 @@ export function AvaDeskPanel() {
             const showActivity = run && run.events.length > 0;
             const isRunning = msg.runId && run && run.status === 'running';
 
-            // User messages — simple bubble
+            // User messages â€” simple bubble
             if (msg.from === 'user') {
               return (
                 <View key={msg.id}>
@@ -941,7 +929,7 @@ export function AvaDeskPanel() {
               );
             }
 
-            // Agent messages — Chain of Thought (single component replaces 3 separate ones)
+            // Agent messages â€” Chain of Thought (single component replaces 3 separate ones)
             return (
               <View key={msg.id}>
                 {showActivity && (
@@ -1544,3 +1532,5 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
 });
+
+

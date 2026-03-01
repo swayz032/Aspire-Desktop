@@ -65,6 +65,16 @@ export interface FileAttachment {
   size?: number;
 }
 
+/** Inline media item returned by orchestrator/model (e.g. web image result). */
+export interface ChatMediaItem {
+  type: 'image';
+  url: string;
+  alt?: string;
+  source?: string;
+  width?: number;
+  height?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Activity Events
 // ---------------------------------------------------------------------------
@@ -136,6 +146,8 @@ export interface AgentChatMessage {
   timestamp?: number;
   /** File attachments on this message. */
   attachments?: FileAttachment[];
+  /** Inline rich media on this message (e.g. web images). */
+  media?: ChatMediaItem[];
   /** Links this message to an ActiveRun for activity timeline display. */
   runId?: string;
   /** The specific agent that produced this message (useful when `from` is generic). */
@@ -177,4 +189,5 @@ export interface OrchestratorResponse {
     approvals_required?: string[];
     receipt_ids?: string[];
   };
+  media?: ChatMediaItem[];
 }

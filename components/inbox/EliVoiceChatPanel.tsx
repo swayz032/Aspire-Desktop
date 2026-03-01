@@ -29,8 +29,17 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Canvas } from '@/constants/tokens';
-import { MessageBubble, ThinkingIndicator, ChatInputBar } from '@/components/chat';
-import type { AgentChatMessage } from '@/components/chat';
+import {
+  MessageBubble,
+  ThinkingIndicator,
+  ChatInputBar,
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtContent,
+  ChainOfThoughtStep,
+  type AgentActivityEvent,
+  type AgentChatMessage,
+} from '@/components/chat';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,6 +62,7 @@ interface EliVoiceChatPanelProps {
   onSendMessage: (text: string) => void;
   micPulseAnim: Animated.Value;
   messages: EliMessage[];
+  activeRun?: { events: AgentActivityEvent[]; status: 'running' | 'completed' } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +104,7 @@ export function EliVoiceChatPanel({
   onSendMessage,
   micPulseAnim: _micPulseAnim,
   messages,
+  activeRun,
 }: EliVoiceChatPanelProps) {
   // micPulseAnim kept for backward compat -- ChatInputBar handles its own pulse internally.
   void _micPulseAnim;
@@ -211,6 +222,36 @@ export function EliVoiceChatPanel({
         {agentMessages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} agent="eli" />
         ))}
+
+        {activeRun && activeRun.events.length > 0 && (
+          <ChainOfThought
+            agent="eli"
+            isStreaming={activeRun.status === 'running'}
+            defaultOpen={activeRun.status === 'running'}
+            style={{ marginBottom: 8 }}
+          >
+            <ChainOfThoughtHeader stepCount={activeRun.events.length}>
+              {activeRun.status === 'running' ? 'Thinking...' : 'Chain of Thought'}
+            </ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              {activeRun.events.map((event, idx) => (
+                <ChainOfThoughtStep
+                  key={event.id}
+                  label={event.label}
+                  icon={event.icon as any}
+                  status={
+                    event.status === 'completed' || event.type === 'done'
+                      ? 'complete'
+                      : event.status === 'active'
+                      ? 'active'
+                      : 'pending'
+                  }
+                  isLast={idx === activeRun.events.length - 1}
+                />
+              ))}
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        )}
 
         {/* Thinking indicator */}
         {isThinking && (

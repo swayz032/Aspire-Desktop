@@ -1,5 +1,5 @@
-/**
- * WebPreview — SDK-quality Browser Preview Panel
+﻿/**
+ * WebPreview â€” SDK-quality Browser Preview Panel
  *
  * AI Elements SDK-inspired browser chrome with:
  * - Navigation bar: back/forward/reload + URL field + console toggle
@@ -107,7 +107,7 @@ function getAgentColor(agent?: AgentType): string {
 }
 
 // ---------------------------------------------------------------------------
-// NavButton — individual navigation button
+// NavButton â€” individual navigation button
 // ---------------------------------------------------------------------------
 
 function NavButton({
@@ -142,7 +142,7 @@ function NavButton({
 }
 
 // ---------------------------------------------------------------------------
-// NavigationBar — back/forward/reload + URL + console toggle
+// NavigationBar â€” back/forward/reload + URL + console toggle
 // ---------------------------------------------------------------------------
 
 function NavigationBar({
@@ -197,7 +197,7 @@ function NavigationBar({
       <View style={s.urlFieldContainer}>
         <Ionicons name="lock-closed" size={12} color="rgba(255,255,255,0.3)" style={s.urlLock} />
         <TextInput
-          style={s.urlInput}
+          style={s.urlInput as any}
           value={inputUrl}
           onChangeText={setInputUrl}
           onSubmitEditing={handleSubmit}
@@ -231,7 +231,7 @@ function NavigationBar({
 }
 
 // ---------------------------------------------------------------------------
-// ConsolePanel — collapsible log panel
+// ConsolePanel â€” collapsible log panel
 // ---------------------------------------------------------------------------
 
 function ConsolePanel({
@@ -305,7 +305,7 @@ function ConsolePanel({
 }
 
 // ---------------------------------------------------------------------------
-// EventCard — activity feed card (preserved from original)
+// EventCard â€” activity feed card (preserved from original)
 // ---------------------------------------------------------------------------
 
 interface EventCardProps {
@@ -357,7 +357,7 @@ function EventCard({ event, isLatest, onUrlClick }: EventCardProps) {
 }
 
 // ---------------------------------------------------------------------------
-// ActivityFeed — extracted for reuse in HybridWebPreview
+// ActivityFeed â€” extracted for reuse in HybridWebPreview
 // ---------------------------------------------------------------------------
 
 export interface ActivityFeedProps {
@@ -393,7 +393,7 @@ export function ActivityFeed({ activityEvents, onUrlClick }: ActivityFeedProps) 
 }
 
 // ---------------------------------------------------------------------------
-// PreviewBody — iframe (web) or activity feed fallback
+// PreviewBody â€” iframe (web) or activity feed fallback
 // ---------------------------------------------------------------------------
 
 function PreviewBody({
@@ -407,7 +407,25 @@ function PreviewBody({
   activityEvents: AgentActivityEvent[];
   onUrlClick?: (url: string) => void;
 }) {
-  // No URL — show activity feed or empty state
+  const [iframeLoading, setIframeLoading] = useState(false);
+  const [iframeBlocked, setIframeBlocked] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !url) return;
+    setIframeBlocked(false);
+    setIframeLoading(true);
+    const timeout = setTimeout(() => {
+      setIframeLoading((loading) => {
+        if (loading) {
+          setIframeBlocked(true);
+          return false;
+        }
+        return loading;
+      });
+    }, 6500);
+    return () => clearTimeout(timeout);
+  }, [url]);
+
   if (!url) {
     if (activityEvents.length > 0) {
       return <ActivityFeed activityEvents={activityEvents} onUrlClick={onUrlClick} />;
@@ -421,14 +439,38 @@ function PreviewBody({
     );
   }
 
-  // Web: sandboxed iframe
   if (Platform.OS === 'web') {
+    if (iframeBlocked) {
+      return (
+        <View style={s.emptyBody}>
+          <Ionicons name="warning-outline" size={38} color="rgba(96,165,250,0.75)" />
+          <Text style={s.emptyTitle}>Site cannot be embedded</Text>
+          <Text style={s.emptySub}>This domain blocked preview. Live agent screenshots will appear during web tasks.</Text>
+          {activityEvents.length > 0 && (
+            <View style={{ width: '100%', maxHeight: 220 }}>
+              <ActivityFeed activityEvents={activityEvents} onUrlClick={onUrlClick} />
+            </View>
+          )}
+        </View>
+      );
+    }
+
     const sandbox = getSandboxPolicy(trustLevel);
     return (
       <View style={s.iframeContainer}>
+        {iframeLoading && (
+          <View style={s.iframeLoadingOverlay}>
+            <Text style={s.iframeLoadingText}>Loading preview...</Text>
+          </View>
+        )}
         <iframe
           src={url}
           sandbox={sandbox}
+          onLoad={() => setIframeLoading(false)}
+          onError={() => {
+            setIframeLoading(false);
+            setIframeBlocked(true);
+          }}
           style={{
             width: '100%',
             height: '100%',
@@ -441,7 +483,6 @@ function PreviewBody({
     );
   }
 
-  // Native: WebView
   return (
     <WebView
       source={{ uri: url }}
@@ -653,6 +694,23 @@ const s = StyleSheet.create({
     flex: 1,
     ...(Platform.OS === 'web' ? {} : {}),
   },
+  iframeLoadingOverlay: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 3,
+    backgroundColor: 'rgba(15,23,42,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.35)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  iframeLoadingText: {
+    color: '#BFDBFE',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   emptyBody: {
     flex: 1,
     alignItems: 'center',
@@ -820,3 +878,4 @@ const s = StyleSheet.create({
     backgroundColor: CanvasTokens.background.surface,
   },
 });
+

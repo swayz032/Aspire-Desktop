@@ -39,13 +39,13 @@ export interface AnamMessage {
 
 /** Options for connecting Anam avatars with event callbacks */
 export interface AnamConnectOptions {
-  onSessionReady?: () => void;
+  onSessionReady?: (sessionId?: string) => void;
   onInterrupted?: () => void;
   onMessageStream?: (text: string, role: string) => void;
   onWarning?: (message: string) => void;
   onConnectionEstablished?: () => void;
   onVideoStarted?: () => void;
-  onConnectionClosed?: () => void;
+  onConnectionClosed?: (reason?: string, details?: string) => void;
   onUserMessage?: (message: string, messageHistory: AnamMessage[]) => void;
 }
 
@@ -144,6 +144,48 @@ export function getActiveAnamSessionId(client: AnamClientInstance): string | nul
   return null;
 }
 
+function extractSessionId(payload: unknown): string | null {
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload.trim();
+  }
+  if (payload && typeof payload === 'object') {
+    const obj = payload as Record<string, unknown>;
+    const candidate =
+      (typeof obj.sessionId === 'string' && obj.sessionId) ||
+      (typeof obj.session_id === 'string' && obj.session_id) ||
+      (typeof obj.id === 'string' && obj.id) ||
+      '';
+    const trimmed = candidate.trim();
+    return trimmed || null;
+  }
+  return null;
+}
+
+async function bindAnamSession(
+  sessionId: string | null | undefined,
+  accessToken: string | undefined,
+  persona: 'ava' | 'finn',
+): Promise<void> {
+  const normalized = typeof sessionId === 'string' ? sessionId.trim() : '';
+  if (!normalized || !accessToken) return;
+  try {
+    const resp = await fetch('/api/anam/session/bind', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ sessionId: normalized, persona }),
+    });
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '');
+      console.warn(`[Anam ${persona}] Session bind failed (${resp.status})`, detail.slice(0, 180));
+    }
+  } catch (error) {
+    console.warn(`[Anam ${persona}] Failed to bind session context`, error);
+  }
+}
+
 export function createAnamTalkStream(client: AnamClientInstance): unknown {
   if (client && typeof (client as any).createTalkMessageStream === 'function') {
     return (client as any).createTalkMessageStream();
@@ -220,8 +262,8 @@ export function setupAllEventListeners(
   client.addListener(AnamEvent.MESSAGE_HISTORY_UPDATED, (event: any) => {
     const msgArray = event?.messages || (Array.isArray(event) ? event : null);
     if (msgArray && Array.isArray(msgArray)) {
-      const mapped = msgArray.map((msg: any) => ({
-        role: msg.role === 'user' ? 'user' : 'assistant' as const,
+      const mapped: AnamMessage[] = msgArray.map((msg: any) => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content || '',
         timestamp: msg.timestamp || Date.now(),
       }));
@@ -250,15 +292,18 @@ export function setupAllEventListeners(
     options?.onVideoStarted?.();
   });
 
-  client.addListener(AnamEvent.CONNECTION_CLOSED, () => {
-    console.log(`[Anam ${historyTarget}] Connection closed`);
-    options?.onConnectionClosed?.();
+  client.addListener(AnamEvent.CONNECTION_CLOSED, (reason: unknown, details: unknown) => {
+    const reasonText = typeof reason === 'string' ? reason : undefined;
+    const detailsText = typeof details === 'string' ? details : undefined;
+    console.log(`[Anam ${historyTarget}] Connection closed`, reasonText ? { reason: reasonText } : undefined);
+    options?.onConnectionClosed?.(reasonText, detailsText);
   });
 
   // Session ready
-  client.addListener(AnamEvent.SESSION_READY, () => {
-    console.log(`[Anam ${historyTarget}] Session ready`);
-    options?.onSessionReady?.();
+  client.addListener(AnamEvent.SESSION_READY, (event: any) => {
+    const sessionId = extractSessionId(event);
+    console.log(`[Anam ${historyTarget}] Session ready`, sessionId ? { sessionId } : undefined);
+    options?.onSessionReady?.(sessionId ?? undefined);
   });
 
   // Message streaming
@@ -311,10 +356,25 @@ export async function connectAnamAvatar(
   clearConversationHistory();
   const sessionToken = await fetchAnamSessionToken(accessToken);
   const client = createAnamClient(sessionToken);
-  setupAllEventListeners(client, 'ava', options);
+  const boundSessionIds = new Set<string>();
+  const bindIfNeeded = async (sessionId: string | null | undefined) => {
+    const normalized = typeof sessionId === 'string' ? sessionId.trim() : '';
+    if (!normalized || boundSessionIds.has(normalized)) return;
+    boundSessionIds.add(normalized);
+    await bindAnamSession(normalized, accessToken, 'ava');
+  };
+
+  setupAllEventListeners(client, 'ava', {
+    ...options,
+    onSessionReady: async (sessionId?: string) => {
+      await bindIfNeeded(sessionId);
+      options?.onSessionReady?.(sessionId);
+    },
+  });
 
   try {
     await client.streamToVideoElement(videoElementId);
+    await bindIfNeeded(getActiveAnamSessionId(client));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Anam stream failed for #${videoElementId}: ${msg}`);
@@ -390,10 +450,25 @@ export async function connectFinnAvatar(
   clearFinnConversationHistory();
   const sessionToken = await fetchFinnSessionToken(accessToken);
   const client = createAnamClient(sessionToken);
-  setupAllEventListeners(client, 'finn', options);
+  const boundSessionIds = new Set<string>();
+  const bindIfNeeded = async (sessionId: string | null | undefined) => {
+    const normalized = typeof sessionId === 'string' ? sessionId.trim() : '';
+    if (!normalized || boundSessionIds.has(normalized)) return;
+    boundSessionIds.add(normalized);
+    await bindAnamSession(normalized, accessToken, 'finn');
+  };
+
+  setupAllEventListeners(client, 'finn', {
+    ...options,
+    onSessionReady: async (sessionId?: string) => {
+      await bindIfNeeded(sessionId);
+      options?.onSessionReady?.(sessionId);
+    },
+  });
 
   try {
     await client.streamToVideoElement(videoElementId);
+    await bindIfNeeded(getActiveAnamSessionId(client));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Anam stream failed for #${videoElementId}: ${msg}`);

@@ -648,6 +648,38 @@ export async function listAccounts(suiteId: string): Promise<any[]> {
   return accounts;
 }
 
+export async function removeAccount(suiteId: string, accountId: string): Promise<{ removed: boolean }> {
+  if (!accountId || typeof accountId !== 'string') {
+    return { removed: false };
+  }
+
+  // Synthetic ID used by listAccounts() for Google OAuth connection.
+  if (accountId === 'google-oauth') {
+    const result = await db.execute(sql`
+      DELETE FROM oauth_tokens
+      WHERE suite_id = ${suiteId}::uuid
+        AND provider = 'google'
+    `);
+    const rowCount = (result as any)?.rowCount ?? 0;
+    return { removed: rowCount > 0 };
+  }
+
+  if (!/^[0-9a-fA-F-]{36}$/.test(accountId)) {
+    return { removed: false };
+  }
+
+  // Polaris / mail_accounts: soft-delete by marking inactive.
+  const result = await db.execute(sql`
+    UPDATE app.mail_accounts
+    SET status = 'inactive', updated_at = now()
+    WHERE suite_id = ${suiteId}::uuid
+      AND account_id = ${accountId}::uuid
+      AND status <> 'inactive'
+  `);
+  const rowCount = (result as any)?.rowCount ?? 0;
+  return { removed: rowCount > 0 };
+}
+
 export async function listMailReceipts(suiteId: string): Promise<any[]> {
   const result = await db.execute(sql`
     SELECT receipt_id, receipt_type, status, action, result, created_at

@@ -175,7 +175,7 @@ export function ChatCanvas({
           <View style={styles.panelSurface}>
             {hasBrowserEvents ? (
               <HybridWebPreview
-                activityEvents={webPreviewProps.activityEvents}
+                activityEvents={webPreviewProps.activityEvents || []}
                 browserEvents={allBrowserEvents}
                 isBrowserLoading={isBrowserLoading}
                 browserError={browserError}

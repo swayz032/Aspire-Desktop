@@ -155,6 +155,7 @@ export const MessageBubble = React.memo(function MessageBubble({
   const avatarSource = AGENT_AVATARS[agent];
   const hasAttachments =
     message.attachments && message.attachments.length > 0;
+  const hasMedia = !!message.media && message.media.length > 0;
   // Ava uses ChainOfThought for reasoning; suppress inline activity timeline boxes.
   const hasActivity =
     agent !== 'ava' &&
@@ -262,6 +263,30 @@ export const MessageBubble = React.memo(function MessageBubble({
               {message.attachments!.map((att) => (
                 <AttachmentChip key={att.id} name={att.name} kind={att.kind} />
               ))}
+            </View>
+          )}
+
+          {/* Inline web images */}
+          {hasMedia && (
+            <View style={s.mediaList}>
+              {message.media!
+                .filter((m) => m.type === 'image' && /^https?:\/\//i.test(m.url))
+                .slice(0, 3)
+                .map((m, idx) => (
+                  <View key={`${m.url}_${idx}`} style={s.mediaItem}>
+                    <Image
+                      source={{ uri: m.url }}
+                      style={s.mediaImage}
+                      resizeMode="cover"
+                      accessibilityLabel={m.alt || 'Assistant image result'}
+                    />
+                    {(m.alt || m.source) && (
+                      <Text style={s.mediaCaption} numberOfLines={2}>
+                        {m.alt || m.source}
+                      </Text>
+                    )}
+                  </View>
+                ))}
             </View>
           )}
         </View>
@@ -434,6 +459,28 @@ const s = StyleSheet.create({
     ...Typography.small,
     color: Colors.text.tertiary,
     flex: 1,
+  },
+  mediaList: {
+    marginTop: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  mediaItem: {
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    backgroundColor: Colors.background.tertiary,
+  },
+  mediaImage: {
+    width: '100%' as unknown as number,
+    height: 180,
+    backgroundColor: Colors.background.tertiary,
+  },
+  mediaCaption: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
   },
 
   // Inline timeline

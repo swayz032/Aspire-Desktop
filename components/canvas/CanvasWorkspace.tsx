@@ -19,6 +19,7 @@ import {
   View,
   Text,
   Pressable,
+  Alert,
   StyleSheet,
   Platform,
   useWindowDimensions,
@@ -272,6 +273,20 @@ export function CanvasWorkspace(): React.ReactElement {
   // Responsive content max width
   const contentMaxWidth = isWide ? 1600 : isDesktop ? 1400 : isLaptop ? 1200 : undefined;
 
+  const copyLatestDiagnostic = useCallback(async () => {
+    if (!avaVoice.latestDiagnostic) return;
+    const payload = JSON.stringify(avaVoice.latestDiagnostic, null, 2);
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(payload);
+      } else {
+        Alert.alert('Diagnostic', payload);
+      }
+    } catch {
+      Alert.alert('Diagnostic', payload);
+    }
+  }, [avaVoice.latestDiagnostic]);
+
   return (
     <View ref={Platform.OS === 'web' ? (setNodeRef as any) : undefined} style={ws.root}>
       {/* Layer 0: Deep background (creates depth behind canvas) */}
@@ -361,25 +376,58 @@ export function CanvasWorkspace(): React.ReactElement {
                   trustLevel: 'internal',
                 }}
                 personaElement={
-                  <Pressable
-                    onPress={() => {
-                      if (avaVoice.status === 'idle') {
-                        avaVoice.startSession();
-                      } else {
-                        avaVoice.endSession();
-                      }
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={avaVoice.status === 'idle' ? 'Start talking to Ava' : 'End voice session'}
-                  >
-                    <Persona
-                      state={personaState}
-                      variant="obsidian"
-                      style={{ width: 240, height: 240 }}
-                    />
-                  </Pressable>
+                  <View style={ws.personaVoiceWrap}>
+                    <Pressable
+                      onPress={() => {
+                        if (avaVoice.status === 'idle') {
+                          avaVoice.startSession();
+                        } else {
+                          avaVoice.endSession();
+                        }
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={avaVoice.status === 'idle' ? 'Start talking to Ava' : 'End voice session'}
+                    >
+                      <Persona
+                        state={personaState}
+                        variant="obsidian"
+                        style={{ width: 240, height: 240 }}
+                      />
+                    </Pressable>
+
+                    {avaVoice.latestDiagnostic && (
+                      <View style={ws.diagnosticBanner}>
+                        <Text style={ws.diagnosticTitle}>
+                          Voice issue: {avaVoice.latestDiagnostic.stage.toUpperCase()} • {avaVoice.latestDiagnostic.code}
+                        </Text>
+                        <Text style={ws.diagnosticMsg} numberOfLines={3}>
+                          {avaVoice.latestDiagnostic.message}
+                        </Text>
+                        <Text style={ws.diagnosticTrace} numberOfLines={1}>
+                          Trace: {avaVoice.latestDiagnostic.traceId}
+                        </Text>
+                        <View style={ws.diagnosticActions}>
+                          <Pressable style={ws.diagBtn} onPress={copyLatestDiagnostic}>
+                            <Text style={ws.diagBtnText}>Copy Debug</Text>
+                          </Pressable>
+                          {avaVoice.latestDiagnostic.stage === 'autoplay' && (
+                            <Pressable
+                              style={[ws.diagBtn, ws.diagBtnPrimary]}
+                              onPress={() => { avaVoice.replayLastAudio(); }}
+                            >
+                              <Text style={[ws.diagBtnText, ws.diagBtnPrimaryText]}>Retry Audio</Text>
+                            </Pressable>
+                          )}
+                          <Pressable style={ws.diagBtn} onPress={avaVoice.clearDiagnostics}>
+                            <Text style={ws.diagBtnText}>Dismiss</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+                  </View>
                 }
-                streamEnabled
+                streamEnabled={false}
+                browserEvents={avaVoice.browserEvents}
               />
             </View>
           ) : (
@@ -436,7 +484,7 @@ export function CanvasWorkspace(): React.ReactElement {
 
       {/* Trash can for drag-to-delete */}
       {subMode === 'canvas' && dragState.isDragging && (
-        <CanvasTrashCan />
+        <CanvasTrashCan state="active" />
       )}
 
       {/* Snap ghost */}
@@ -636,6 +684,69 @@ const ws = StyleSheet.create({
     width: '100%',
     maxWidth: CanvasTokens.workspace.gridMaxWidth,
     alignSelf: 'center',
+  },
+  personaVoiceWrap: {
+    alignItems: 'center',
+    gap: 12,
+    width: '100%',
+    maxWidth: 760,
+  },
+  diagnosticBanner: {
+    width: '100%',
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.35)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 6px 24px rgba(15,23,42,0.45), 0 0 18px rgba(59,130,246,0.18)',
+        } as unknown as ViewStyle)
+      : {}),
+  },
+  diagnosticTitle: {
+    color: '#DBEAFE',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  diagnosticMsg: {
+    color: '#BFDBFE',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  diagnosticTrace: {
+    color: '#93C5FD',
+    fontSize: 11,
+    marginBottom: 8,
+  },
+  diagnosticActions: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  diagBtn: {
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.45)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'pointer' } as unknown as ViewStyle)
+      : {}),
+  },
+  diagBtnPrimary: {
+    borderColor: '#2563EB',
+    backgroundColor: 'rgba(37, 99, 235, 0.25)',
+  },
+  diagBtnText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  diagBtnPrimaryText: {
+    color: '#DBEAFE',
   },
 
   canvasArea: {

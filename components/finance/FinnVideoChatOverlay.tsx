@@ -13,7 +13,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '@/constants/tokens';
-import { MessageBubble, type AgentChatMessage } from '@/components/chat';
+import {
+  MessageBubble,
+  ThinkingIndicator,
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtContent,
+  ChainOfThoughtStep,
+  type AgentChatMessage,
+  type AgentActivityEvent,
+} from '@/components/chat';
 
 /* ── Types ─────────────────────────────────────── */
 
@@ -29,6 +38,7 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   chat: ChatMsg[];
+  activeRuns: Record<string, { events: AgentActivityEvent[]; status: 'running' | 'completed' }>;
   input: string;
   onChangeInput: (text: string) => void;
   onSend: () => void;
@@ -178,6 +188,7 @@ export function FinnVideoChatOverlay({
   visible,
   onClose,
   chat,
+  activeRuns,
   input,
   onChangeInput,
   onSend,
@@ -319,6 +330,10 @@ export function FinnVideoChatOverlay({
             </View>
           ) : (
             chat.map((msg) => {
+              const run = msg.runId ? activeRuns[msg.runId] : null;
+              const showActivity = !!run && run.events.length > 0;
+              const showMessage = !msg.runId || (run && run.status === 'completed');
+              const isRunning = !!msg.runId && !!run && run.status === 'running';
               const chatMessage: AgentChatMessage = {
                 id: msg.id,
                 from: msg.from,
@@ -330,11 +345,45 @@ export function FinnVideoChatOverlay({
                   key={msg.id}
                   style={[wc('finn-chat-msg-row')]}
                 >
-                  <MessageBubble
-                    message={chatMessage}
-                    agent="finn"
-                    showTimestamp={false}
-                  />
+                  {showActivity && (
+                    <ChainOfThought
+                      agent="finn"
+                      isStreaming={isRunning}
+                      defaultOpen={isRunning}
+                      style={{ marginBottom: 6 }}
+                    >
+                      <ChainOfThoughtHeader stepCount={run.events.length}>
+                        {isRunning ? 'Thinking...' : 'Chain of Thought'}
+                      </ChainOfThoughtHeader>
+                      <ChainOfThoughtContent>
+                        {run.events.map((event, idx) => (
+                          <ChainOfThoughtStep
+                            key={event.id}
+                            label={event.label}
+                            icon={event.icon as any}
+                            status={
+                              event.status === 'completed' || event.type === 'done'
+                                ? 'complete'
+                                : event.status === 'active'
+                                ? 'active'
+                                : 'pending'
+                            }
+                            isLast={idx === run.events.length - 1}
+                          />
+                        ))}
+                      </ChainOfThoughtContent>
+                    </ChainOfThought>
+                  )}
+                  {showMessage ? (
+                    <MessageBubble
+                      message={chatMessage}
+                      agent="finn"
+                      showTimestamp={false}
+                    />
+                  ) : null}
+                  {isRunning && !msg.text && (
+                    <ThinkingIndicator agent="finn" text="Finn is thinking..." />
+                  )}
                 </View>
               );
             })

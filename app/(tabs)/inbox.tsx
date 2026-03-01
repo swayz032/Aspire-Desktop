@@ -19,6 +19,7 @@ import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { EliVoiceChatPanel, type EliMessage } from '@/components/inbox/EliVoiceChatPanel';
+import type { AgentActivityEvent } from '@/components/chat';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
 const inboxHero = require('@/assets/images/inbox-hero.jpg');
@@ -31,6 +32,40 @@ function getMailBody(item: MailThread, detail?: MailDetail | null): string {
     return detail.messages.map(m => m.content).join('\n\n---\n\n');
   }
   return (item as any).body || item.preview;
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function formatEmailContent(value: string): string {
+  if (!value) return '';
+  let text = decodeHtmlEntities(value);
+
+  // Convert common block separators first so body remains readable.
+  text = text
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n');
+
+  // Strip remaining HTML tags and noisy inline style/script blocks.
+  text = text
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, '');
+
+  // Normalize whitespace/newlines.
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
 }
 
 interface ComposeState {
@@ -609,7 +644,7 @@ function MailPreview({ item, detail, loading: detailLoading, onReply, onReplyAll
               <Text style={fp.timestamp}>{formatRelativeTime(msg.timestamp)}</Text>
             </View>
             <View style={[fp.mailBodyArea, { marginTop: Spacing.md }]}>
-              <Text style={fp.mailBodyText}>{msg.content}</Text>
+              <Text style={fp.mailBodyText}>{formatEmailContent(msg.content) || 'No readable email body available.'}</Text>
             </View>
             {msg.attachments?.length > 0 && (
               <View style={fp.attachmentsRow}>
@@ -809,6 +844,7 @@ export default function InboxScreen() {
   const [eliMessages, setEliMessages] = useState<EliMessage[]>([
     { id: '1', from: 'eli', text: 'Hey! I\'ve been sorting through your inbox. What would you like me to help with?', ts: Date.now() },
   ]);
+  const [eliRun, setEliRun] = useState<{ events: AgentActivityEvent[]; status: 'running' | 'completed' } | null>(null);
   // ── Mail detail + compose state ──
   const [mailDetail, setMailDetail] = useState<MailDetail | null>(null);
   const [mailDetailLoading, setMailDetailLoading] = useState(false);
@@ -821,6 +857,7 @@ export default function InboxScreen() {
   const [mailAccounts, setMailAccounts] = useState<any[]>([]);
   const [selectedMailbox, setSelectedMailbox] = useState<string | null>(null);
   const [showMailboxDropdown, setShowMailboxDropdown] = useState(false);
+  const [removingMailboxId, setRemovingMailboxId] = useState<string | null>(null);
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();
@@ -840,14 +877,40 @@ export default function InboxScreen() {
     onResponse: (text) => {
       setEliTranscript(text);
       setEliMessages(prev => [...prev, { id: String(Date.now()), from: 'eli', text, ts: Date.now() }]);
+      setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
+    },
+    onActivityEvent: (event) => {
+      const mapped: AgentActivityEvent = {
+        id: `eli_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: (event.type as AgentActivityEvent['type']) || 'step',
+        label: event.message || 'Working...',
+        status:
+          event.type === 'done'
+            ? 'completed'
+            : event.type === 'error'
+            ? 'error'
+            : event.type === 'thinking'
+            ? 'active'
+            : 'completed',
+        timestamp: event.timestamp || Date.now(),
+        icon: event.icon as any,
+      };
+      setEliRun(prev => {
+        if (!prev) return { events: [mapped], status: 'running' };
+        return { ...prev, events: [...prev.events, mapped] };
+      });
     },
     onError: (error) => {
       console.error('Eli voice error:', error);
       setEliVoiceActive(false);
+      setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
     },
   });
 
   const eliMicPulse = useRef(new Animated.Value(1)).current;
+
+  const selectedMailboxAccount = mailAccounts.find((a: any) => a.id === selectedMailbox) || mailAccounts[0];
+  const selectedMailboxEmail = selectedMailboxAccount?.email as string | undefined;
 
   const handleEliMicPress = useCallback(async () => {
     if (Platform.OS !== 'web') {
@@ -872,6 +935,7 @@ export default function InboxScreen() {
 
   const handleEliSendMessage = useCallback(async (text: string) => {
     setEliMessages(prev => [...prev, { id: String(Date.now()), from: 'user', text, ts: Date.now() }]);
+    setEliRun({ events: [], status: 'running' });
     if (!session?.access_token) {
       setEliMessages(prev => [
         ...prev,
@@ -882,6 +946,7 @@ export default function InboxScreen() {
           ts: Date.now(),
         },
       ]);
+      setEliRun(null);
       return;
     }
     try {
@@ -897,6 +962,7 @@ export default function InboxScreen() {
           ts: Date.now(),
         },
       ]);
+      setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
     }
   }, [eliVoice, session?.access_token]);
 
@@ -905,7 +971,10 @@ export default function InboxScreen() {
     setMailDetailLoading(true);
     setMailDetail(null);
     try {
-      const res = await authenticatedFetch(`/api/mail/threads/${threadId}`);
+      const params = new URLSearchParams();
+      if (selectedMailboxEmail) params.set('account', selectedMailboxEmail);
+      const qs = params.toString();
+      const res = await authenticatedFetch(`/api/mail/threads/${threadId}${qs ? `?${qs}` : ''}`);
       if (res.ok) {
         const data = await res.json();
         setMailDetail(data);
@@ -914,7 +983,7 @@ export default function InboxScreen() {
       console.error('Failed to load thread detail', e);
     }
     setMailDetailLoading(false);
-  }, [authenticatedFetch]);
+  }, [authenticatedFetch, selectedMailboxEmail]);
 
   // ── Compose helpers ──
   const openCompose = useCallback((mode: ComposeState['mode'] = 'new', thread?: MailThread) => {
@@ -946,6 +1015,7 @@ export default function InboxScreen() {
           to: compose.to,
           subject: compose.subject,
           body: compose.body,
+          account: selectedMailboxEmail,
           replyToThreadId: compose.replyToThreadId,
         }),
       });
@@ -959,7 +1029,7 @@ export default function InboxScreen() {
       Alert.alert('Error', 'Failed to send email. Please try again.');
     }
     setComposeSending(false);
-  }, [compose, authenticatedFetch]);
+  }, [compose, authenticatedFetch, selectedMailboxEmail]);
 
   const handleSmartReply = useCallback(async (text: string, thread: MailThread) => {
     setComposeSending(true);
@@ -971,6 +1041,7 @@ export default function InboxScreen() {
           to: thread.senderEmail,
           subject: `Re: ${thread.subject}`,
           body: text,
+          account: selectedMailboxEmail,
           replyToThreadId: thread.id,
         }),
       });
@@ -983,7 +1054,24 @@ export default function InboxScreen() {
       Alert.alert('Error', 'Failed to send reply.');
     }
     setComposeSending(false);
-  }, [authenticatedFetch]);
+  }, [authenticatedFetch, selectedMailboxEmail]);
+
+  const loadMailThreads = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (selectedMailboxEmail) params.set('account', selectedMailboxEmail);
+      const qs = params.toString();
+      const mailRes = await authenticatedFetch(`/api/mail/threads${qs ? `?${qs}` : ''}`);
+      if (mailRes.ok) {
+        const mailData = await mailRes.json();
+        setMailThreads(mailData.threads ?? []);
+      } else {
+        setMailThreads([]);
+      }
+    } catch {
+      setMailThreads([]);
+    }
+  }, [authenticatedFetch, selectedMailboxEmail]);
 
   const breathAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef<ScrollView>(null);
@@ -993,17 +1081,7 @@ export default function InboxScreen() {
 
     async function loadData() {
       // Mail threads from PolarisM via Domain Rail
-      try {
-        const mailRes = await authenticatedFetch('/api/mail/threads');
-        if (mailRes.ok) {
-          const mailData = await mailRes.json();
-          if (!cancelled) setMailThreads(mailData.threads ?? []);
-        } else if (!cancelled) {
-          setMailThreads([]);
-        }
-      } catch {
-        if (!cancelled) setMailThreads([]);
-      }
+      await loadMailThreads();
 
       // Office items from Supabase inbox_items table
       try {
@@ -1038,7 +1116,15 @@ export default function InboxScreen() {
 
     loadData();
     return () => { cancelled = true; };
-  }, []);
+  }, [loadMailThreads]);
+
+  useEffect(() => {
+    if (activeTab === 'mail' && hasActiveMailbox) {
+      loadMailThreads();
+      setSelectedId(null);
+      setMailDetail(null);
+    }
+  }, [activeTab, hasActiveMailbox, selectedMailbox, loadMailThreads]);
 
   useEffect(() => {
     if (activeTab !== 'mail') {
@@ -1050,10 +1136,18 @@ export default function InboxScreen() {
     if (activeTab === 'mail' && !mailSetupChecked) {
       (async () => {
         try {
-          const data = await authenticatedFetch('/api/mail/accounts').then(r => r.json());
+          const accountsRes = await authenticatedFetch('/api/mail/accounts');
+          if (!accountsRes.ok) {
+            setMailAccounts([]);
+            setHasActiveMailbox(false);
+            setShowMailSetupModal(true);
+            setMailSetupChecked(true);
+            return;
+          }
+          const data = await accountsRes.json();
           const accounts = data.accounts || [];
           setMailAccounts(accounts);
-          const active = accounts.find((a: any) => a.status === 'ACTIVE');
+          const active = accounts.find((a: any) => a.status === 'ACTIVE') || accounts[0];
           if (active) {
             setHasActiveMailbox(true);
             setSelectedMailbox(active.id);
@@ -1183,6 +1277,46 @@ export default function InboxScreen() {
     setSelectedId(null);
   };
 
+  const handleRemoveMailbox = useCallback((accountId: string, accountEmail: string) => {
+    if (!accountId) return;
+    Alert.alert(
+      'Remove mailbox',
+      `Disconnect ${accountEmail}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingMailboxId(accountId);
+            try {
+              const res = await authenticatedFetch(`/api/mail/accounts/${encodeURIComponent(accountId)}`, { method: 'DELETE' });
+              if (!res.ok) {
+                Alert.alert('Error', 'Failed to remove mailbox.');
+                return;
+              }
+              const nextAccounts = mailAccounts.filter((a: any) => a.id !== accountId);
+              setMailAccounts(nextAccounts);
+              const nextSelected = nextAccounts[0]?.id || null;
+              setSelectedMailbox(nextSelected);
+              setHasActiveMailbox(nextAccounts.length > 0);
+              setShowMailboxDropdown(false);
+              if (nextAccounts.length === 0) {
+                setMailThreads([]);
+                setMailDetail(null);
+                setShowMailSetupModal(true);
+              }
+            } catch (e) {
+              Alert.alert('Error', 'Failed to remove mailbox.');
+            } finally {
+              setRemovingMailboxId(null);
+            }
+          },
+        },
+      ],
+    );
+  }, [authenticatedFetch, mailAccounts]);
+
   const tabCounts = {
     office: officeItems.length,
     calls: calls.length,
@@ -1298,14 +1432,14 @@ export default function InboxScreen() {
               <View style={styles.mailboxSelectorLeft}>
                 <View style={styles.mailboxProviderBadge}>
                   <Ionicons 
-                    name={(mailAccounts.find((a: any) => a.id === selectedMailbox) || mailAccounts[0])?.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} 
+                    name={selectedMailboxAccount?.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} 
                     size={14} 
-                    color={(mailAccounts.find((a: any) => a.id === selectedMailbox) || mailAccounts[0])?.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} 
+                    color={selectedMailboxAccount?.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} 
                   />
                 </View>
                 <View>
-                  <Text style={styles.mailboxDisplayName}>{mailAccounts.find((a: any) => a.id === selectedMailbox)?.displayName || 'Business Email'}</Text>
-                  <Text style={styles.mailboxEmail}>{mailAccounts.find((a: any) => a.id === selectedMailbox)?.email || ''}</Text>
+                  <Text style={styles.mailboxDisplayName}>{selectedMailboxAccount?.displayName || 'Business Email'}</Text>
+                  <Text style={styles.mailboxEmail}>{selectedMailboxAccount?.email || ''}</Text>
                 </View>
               </View>
               <Ionicons name={showMailboxDropdown ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.text.muted} />
@@ -1314,18 +1448,26 @@ export default function InboxScreen() {
             {showMailboxDropdown && (
               <View style={styles.mailboxDropdown}>
                 {mailAccounts.map((acct: any) => (
-                  <Pressable
-                    key={acct.id}
-                    style={({ hovered }: any) => [styles.mailboxDropdownItem, selectedMailbox === acct.id && styles.mailboxDropdownItemActive, hovered && styles.mailboxDropdownItemHover]}
-                    onPress={() => { setSelectedMailbox(acct.id); setShowMailboxDropdown(false); }}
-                  >
-                    <Ionicons name={acct.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} size={14} color={acct.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.mailboxDropdownName}>{acct.displayName}</Text>
-                      <Text style={styles.mailboxDropdownEmail}>{acct.email}</Text>
-                    </View>
-                    {selectedMailbox === acct.id && <Ionicons name="checkmark" size={16} color={Colors.accent.cyan} />}
-                  </Pressable>
+                  <View key={acct.id} style={[styles.mailboxDropdownItem, selectedMailbox === acct.id && styles.mailboxDropdownItemActive]}>
+                    <Pressable
+                      style={({ hovered }: any) => [styles.mailboxDropdownSelectArea, hovered && styles.mailboxDropdownItemHover]}
+                      onPress={() => { setSelectedMailbox(acct.id); setShowMailboxDropdown(false); }}
+                    >
+                      <Ionicons name={acct.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} size={14} color={acct.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.mailboxDropdownName}>{acct.displayName}</Text>
+                        <Text style={styles.mailboxDropdownEmail}>{acct.email}</Text>
+                      </View>
+                      {selectedMailbox === acct.id && <Ionicons name="checkmark" size={16} color={Colors.accent.cyan} />}
+                    </Pressable>
+                    <Pressable
+                      style={({ hovered }: any) => [styles.mailboxRemoveButton, hovered && styles.mailboxDropdownItemHover]}
+                      onPress={() => handleRemoveMailbox(acct.id, acct.email)}
+                      disabled={removingMailboxId === acct.id}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={Colors.semantic.error} />
+                    </Pressable>
+                  </View>
                 ))}
                 <Pressable
                   style={({ hovered }: any) => [styles.mailboxDropdownItem, styles.mailboxAddItem, hovered && styles.mailboxDropdownItemHover]}
@@ -1538,6 +1680,7 @@ export default function InboxScreen() {
         onSendMessage={handleEliSendMessage}
         micPulseAnim={eliMicPulse}
         messages={eliMessages}
+        activeRun={eliRun}
       />
     </View>
   );
@@ -2706,11 +2849,24 @@ const styles = StyleSheet.create({
   mailboxDropdownItem: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
+  mailboxDropdownSelectArea: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
+  },
+  mailboxRemoveButton: {
+    width: 36,
+    height: 36,
+    marginRight: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   mailboxDropdownItemActive: {
     backgroundColor: Colors.accent.cyan + '0D',
@@ -2728,6 +2884,11 @@ const styles = StyleSheet.create({
     color: Colors.text.muted,
   },
   mailboxAddItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
     borderBottomWidth: 0,
   },
   mailSetupOverlay: {
