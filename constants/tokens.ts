@@ -336,17 +336,17 @@ export const Canvas = {
 
   /** Workspace layout — tile dimensions, grid spacing, content regions */
   workspace: {
-    /** Deep dark background — darker than app background for depth separation */
-    bg: '#060608',
+    /** Authority Queue gray — physical canvas SURFACE */
+    bg: '#2A2A2A',
     /** Tile card dimensions */
     tileWidth: 268,
     tileHeight: 228,
     tileBorderRadius: 22,
     tilePadding: 24,
-    /** Glass surface */
-    tileBg: 'rgba(14,14,18,0.78)',
-    tileBorderColor: 'rgba(255,255,255,0.07)',
-    tileBorderHover: 'rgba(255,255,255,0.12)',
+    /** Darker gray widgets — cards sit INTO the canvas surface */
+    tileBg: '#1E1E1E',
+    tileBorderColor: 'rgba(255,255,255,0.08)',
+    tileBorderHover: 'rgba(59,130,246,0.3)',
     /** Grid layout */
     gridGap: 22,
     gridMaxWidth: 880,
@@ -359,8 +359,8 @@ export const Canvas = {
     /** Runway section */
     runwayTopMargin: 44,
     runwayMaxWidth: 620,
-    /** Dot grid atmosphere */
-    dotGridOpacity: 0.03,
+    /** Dot grid atmosphere — more visible on gray surface */
+    dotGridOpacity: 0.06,
     dotGridSpacing: 32,
     /** Cursor spotlight */
     spotlightRadius: 900,

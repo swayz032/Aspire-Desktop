@@ -1,29 +1,31 @@
 /**
  * Canvas Mode Design Tokens
  *
- * Premium $10K aesthetic — two-tone dark gray with blue accents
- * Reference: Authority Queue card + Today's Plan card visual language
+ * Premium $10K aesthetic — two-tone gray with refined blue accents
+ * Surface: Authority Queue gray (#2A2A2A) — physical desk/workspace feel
+ * Widgets: Today's Plan dark (#1E1E1E) — cards sit INTO the surface
+ * Reference: Claude.ai Cowork, Figma workspace, Bloomberg Terminal
  */
 
 export const CanvasTokens = {
-  // Background layers (depth hierarchy)
+  // Background layers (depth hierarchy — two-tone gray, NOT deep black)
   background: {
-    base: '#0A0A0A',           // Deep black canvas
-    surface: '#1E1E1E',        // Dark gray (like Today's Plan)
-    elevated: '#2A2A2A',       // Lighter gray (like Authority Queue)
+    base: '#2A2A2A',           // Authority Queue gray — canvas SURFACE
+    surface: '#1E1E1E',        // Darker gray — widgets sit INTO canvas
+    elevated: '#2A2A2A',       // Same as base for elevated panels
   },
 
   // Borders
   border: {
-    subtle: 'rgba(255, 255, 255, 0.15)',      // Soft white dividers
-    emphasis: 'rgba(59, 130, 246, 0.4)',      // Blue glow accent
+    subtle: 'rgba(255, 255, 255, 0.08)',      // Refined white dividers
+    emphasis: 'rgba(59, 130, 246, 0.3)',       // Blue hover accent (not glow)
   },
 
-  // Shadows (depth system)
+  // Shadows (physical depth — real shadows, NOT sci-fi glow)
   shadow: {
-    ambient: 'rgba(59, 130, 246, 0.1)',       // Blue ambient light
-    widget: 'rgba(0, 0, 0, 0.5)',             // Widget elevation shadow
-    widgetBlur: 24,                            // Shadow blur radius (px)
+    ambient: 'rgba(0, 0, 0, 0.15)',           // Neutral ambient (no blue)
+    widget: 'rgba(0, 0, 0, 0.4)',             // Widget elevation shadow
+    widgetBlur: 16,                            // Shadow blur radius (px)
   },
 
   // Agent glow colors
@@ -40,9 +42,9 @@ export const CanvasTokens = {
     muted: 'rgba(255, 255, 255, 0.5)',
   },
 
-  // Grid
+  // Grid (visible on gray surface — slightly brighter than on black)
   grid: {
-    dotColor: 'rgba(255, 255, 255, 0.035)',   // Subtle dots
+    dotColor: 'rgba(255, 255, 255, 0.06)',    // Visible dots on #2A2A2A gray
     spacing: {
       desktop: 32,             // 32px grid on desktop
       laptop: 28,              // 28px grid on laptop
@@ -63,7 +65,7 @@ export const CanvasTokens = {
     height: 80,                // Bottom dock height
     iconSize: 48,              // Icon diameter
     iconSpacing: 16,           // Space between icons
-    background: 'rgba(20, 20, 20, 0.95)',  // Dark glass
+    background: 'rgba(24, 24, 24, 0.95)',  // Dark glass on gray surface
   },
 
   // ---------------------------------------------------------------------------
@@ -145,9 +147,9 @@ export const CanvasTokens = {
       height: 96,
     },
 
-    /** Background surface */
+    /** Background surface (on gray canvas) */
     bg: {
-      inactive: 'rgba(14, 14, 18, 0.6)',
+      inactive: 'rgba(20, 20, 22, 0.6)',
       active: 'rgba(239, 68, 68, 0.08)',
       hover: 'rgba(239, 68, 68, 0.12)',
     },
@@ -247,14 +249,14 @@ export const CanvasTokens = {
     padding: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: '#2A2A2A',
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#242426',
     gap: 8,
     hoverTranslateY: -2,
     hoverBorderColor: 'rgba(59,130,246,0.2)',
-    /** Web box-shadow for inner cards (2-layer) */
-    webShadow: '0 2px 8px rgba(0,0,0,0.3)',
-    webShadowHover: '0 4px 12px rgba(0,0,0,0.4)',
+    /** Web box-shadow for inner cards — clean physical depth */
+    webShadow: '0 1px 4px rgba(0,0,0,0.2)',
+    webShadowHover: '0 2px 8px rgba(0,0,0,0.3)',
   },
 
   /** Shared action button tokens */
@@ -268,14 +270,13 @@ export const CanvasTokens = {
     fontWeight: '600' as const,
   },
 
-  /** Premium 6-layer shadow (web box-shadow) for WidgetContainer */
+  /** Premium physical shadow (web box-shadow) for WidgetContainer
+   *  Clean depth — real shadows, NOT sci-fi blue glow */
   premiumShadow: [
-    '0 12px 32px rgba(0, 0, 0, 0.6)',
-    '0 4px 16px rgba(0, 0, 0, 0.8)',
-    '0 0 40px rgba(59, 130, 246, 0.12)',
-    'inset 0 1px 0 rgba(255, 255, 255, 0.05)',
-    'inset 0 -1px 0 rgba(0, 0, 0, 0.3)',
-    '0 0 0 1px rgba(255, 255, 255, 0.08)',
+    '0 2px 8px rgba(0, 0, 0, 0.3)',
+    '0 1px 3px rgba(0, 0, 0, 0.2)',
+    'inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+    '0 0 0 1px rgba(255, 255, 255, 0.06)',
   ].join(', '),
 
   // ---------------------------------------------------------------------------
@@ -357,20 +358,19 @@ export const CanvasTokens = {
       text: '#FFFFFF',
     },
 
-    /** 6-layer premium shadow per tier (web box-shadow) */
+    /** Clean physical shadow per tier (web box-shadow) */
     shadowYellow: [
-      '0 24px 64px rgba(0, 0, 0, 0.8)',
-      '0 8px 24px rgba(0, 0, 0, 0.9)',
-      '0 0 60px rgba(59, 130, 246, 0.15)',
-      'inset 0 1px 0 rgba(255, 255, 255, 0.05)',
-      '0 0 0 1px rgba(255, 255, 255, 0.08)',
+      '0 16px 48px rgba(0, 0, 0, 0.5)',
+      '0 4px 16px rgba(0, 0, 0, 0.4)',
+      'inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+      '0 0 0 1px rgba(255, 255, 255, 0.06)',
     ].join(', '),
     shadowRed: [
-      '0 24px 64px rgba(0, 0, 0, 0.8)',
-      '0 8px 24px rgba(0, 0, 0, 0.9)',
-      '0 0 60px rgba(239, 68, 68, 0.15)',
-      'inset 0 1px 0 rgba(255, 255, 255, 0.05)',
-      '0 0 0 1px rgba(255, 255, 255, 0.08)',
+      '0 16px 48px rgba(0, 0, 0, 0.5)',
+      '0 4px 16px rgba(0, 0, 0, 0.4)',
+      '0 0 24px rgba(239, 68, 68, 0.1)',
+      'inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+      '0 0 0 1px rgba(255, 255, 255, 0.06)',
     ].join(', '),
 
     /** Animation timing */

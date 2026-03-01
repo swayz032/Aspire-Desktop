@@ -2,10 +2,12 @@
  * CanvasGrid — Premium dot grid background for Canvas Mode workspace.
  *
  * Creates a subtle, fixed-position dot pattern that appears painted ON the
- * canvas surface. Widgets scroll OVER this grid. Responsive grid spacing
- * adjusts per viewport breakpoint for consistent visual density.
+ * #2A2A2A gray canvas surface. Dots are slightly more visible than on black
+ * to achieve a premium drafting surface / graph paper feel.
+ * Widgets scroll OVER this grid. Responsive grid spacing adjusts per
+ * viewport breakpoint for consistent visual density.
  *
- * Quality Standard: $10,000 UI/UX agency grade — matches Claude.ai Cowork aesthetic.
+ * Quality Standard: $10,000 UI/UX agency grade — Figma workspace / drafting table.
  */
 
 import React from 'react';
@@ -85,8 +87,9 @@ export function CanvasGrid({
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 0,
+    zIndex: 2,
     // Grid appears fixed to viewport — widgets scroll OVER it
+    // z-index 2 sits above base (0) and edge vignette (1)
     position: 'absolute',
   },
 });

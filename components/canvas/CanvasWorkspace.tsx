@@ -2,13 +2,13 @@
  * CanvasWorkspace — Premium physical canvas workspace with REAL depth.
  *
  * $10,000 UI/UX QUALITY MANDATE:
- * - REAL canvas with physical presence (NOT flat background)
- * - Blue ambient glow from edges (like Authority Queue card)
- * - Visible light-based shadows UNDER widgets (NOT invisible dark-on-dark)
- * - Rim lighting on widget top edges (subtle blue gradient)
- * - Multi-layer depth system (deep black + blue glow + vignette + dot grid)
+ * - REAL canvas with physical presence — thick, substantial workspace surface
+ * - Two-tone gray: #2A2A2A canvas surface + #1E1E1E widget cards
+ * - Clean physical shadows (NOT sci-fi blue glow)
+ * - Subtle edge vignette for depth (NOT radial blue gradients)
+ * - Dot grid visible on gray surface — premium drafting table feel
  *
- * Reference Quality: Claude.ai Cowork canvas, Figma workspace, Authority Queue card.
+ * Reference Quality: Claude.ai Cowork, Figma workspace, Bloomberg Terminal.
  */
 
 import React, { useRef, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
@@ -79,27 +79,19 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
     const style = document.createElement('style');
     style.id = KEYFRAME_ID;
     style.textContent = `
-      /* Canvas entry — blue glow pulse (subtle welcome) */
-      @keyframes canvasGlowPulse {
-        0% { opacity: 0.08; }
-        50% { opacity: 0.12; }
-        100% { opacity: 0.08; }
-      }
-
       /* Widget drop from dock — spring entrance */
       @keyframes widgetDrop {
         0% { transform: translateY(-100px) scale(0.95); opacity: 0; }
         100% { transform: translateY(0) scale(1); opacity: 1; }
       }
 
-      /* Shadow grow on widget placement */
+      /* Shadow grow on widget placement — clean physical depth */
       @keyframes shadowGrow {
         0% { box-shadow: 0 0 0 rgba(0,0,0,0); }
         100% {
           box-shadow:
-            0 8px 24px rgba(0,0,0,0.4),
-            0 4px 12px rgba(0,0,0,0.3),
-            0 0 32px rgba(59,130,246,0.15);
+            0 2px 8px rgba(0,0,0,0.3),
+            0 1px 3px rgba(0,0,0,0.2);
         }
       }
 
@@ -220,29 +212,23 @@ function CanvasWidget({
     [tile.id, onContextMenu],
   );
 
-  // Premium widget surface — REAL depth with VISIBLE shadows
+  // Premium widget surface — clean solid card with physical depth
+  // NO glassmorphism, NO blue glow — real shadows on gray canvas
   const webPremiumStyle: ViewStyle = Platform.OS === 'web'
     ? ({
-        // Glassmorphism backdrop
-        backdropFilter: 'blur(20px) saturate(1.5)',
-        WebkitBackdropFilter: 'blur(20px) saturate(1.5)',
-        // VISIBLE shadows — CRITICAL: UNDER the widget, NOT invisible
+        // Clean physical shadows — grounds card onto #2A2A2A surface
         boxShadow: [
-          // Dark shadow — grounds the widget to canvas (VISIBLE on deep black)
-          `0 8px 24px rgba(0,0,0,0.5)`,
-          // Contact shadow — tight shadow at base
-          `0 4px 12px rgba(0,0,0,0.4)`,
-          // Blue ambient glow — premium touch (VISIBLE blue halo)
-          `0 0 32px rgba(59,130,246,0.15)`,
-          // Rim lighting — subtle blue catch light on top edge
-          `inset 0 1px 0 rgba(59,130,246,0.15)`,
-          // Edge ring — defines widget boundary
-          `0 0 0 0.5px rgba(255,255,255,0.05)`,
+          // Primary depth shadow — visible on gray canvas
+          `0 2px 8px rgba(0,0,0,0.3)`,
+          // Contact shadow — tight, grounding
+          `0 1px 3px rgba(0,0,0,0.2)`,
+          // Subtle top edge highlight — card separation
+          `inset 0 1px 0 rgba(255,255,255,0.04)`,
         ].join(', '),
         // Cursor feedback
         cursor: 'pointer',
         // Smooth transitions
-        transition: 'transform 0.32s cubic-bezier(0.19, 1, 0.22, 1), box-shadow 0.4s ease-out',
+        transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
       } as unknown as ViewStyle)
     : {};
 
@@ -352,14 +338,14 @@ const widgetStyles = StyleSheet.create({
   },
   underglow: {
     position: 'absolute',
-    bottom: -44,
-    left: '20%' as any,
-    right: '20%' as any,
-    height: 64,
-    borderRadius: 32,
-    opacity: 0.08,
+    bottom: -32,
+    left: '25%' as any,
+    right: '25%' as any,
+    height: 48,
+    borderRadius: 24,
+    opacity: 0.04,
     ...(Platform.OS === 'web'
-      ? { filter: 'blur(40px)' } as unknown as ViewStyle
+      ? { filter: 'blur(32px)' } as unknown as ViewStyle
       : {}),
   },
   iconRing: {
@@ -454,7 +440,7 @@ export function CanvasWorkspace(): React.ReactElement {
   const tileAnims = useRef(tiles.map(() => new Animated.Value(0))).current;
   const headerAnim = useRef(new Animated.Value(0)).current;
   const runwayAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0.08)).current;
+  const glowAnim = useRef(new Animated.Value(0.06)).current;
 
   // LiveLens state
   const [hoveredTile, setHoveredTile] = useState<string | null>(null);
@@ -467,21 +453,19 @@ export function CanvasWorkspace(): React.ReactElement {
   } | null>(null);
 
   // -------------------------------------------------------------------------
-  // Canvas glow pulse on drag-over
+  // Subtle feedback on drag-over (no blue glow — just slight vignette shift)
   // -------------------------------------------------------------------------
 
   useEffect(() => {
     if (isOver && dragState.isDragging) {
-      // Pulse blue glow when drag enters canvas
       Animated.timing(glowAnim, {
-        toValue: 0.16,
+        toValue: 0.12,
         duration: 300,
         useNativeDriver: false,
       }).start();
     } else {
-      // Reset glow when drag exits
       Animated.timing(glowAnim, {
-        toValue: 0.08,
+        toValue: 0.06,
         duration: 300,
         useNativeDriver: false,
       }).start();
@@ -496,22 +480,8 @@ export function CanvasWorkspace(): React.ReactElement {
     // Reset animations
     headerAnim.setValue(0);
     runwayAnim.setValue(0);
-    glowAnim.setValue(0.08);
+    glowAnim.setValue(0.06);
     tileAnims.forEach((a) => a.setValue(0));
-
-    // Blue glow pulse (subtle welcome)
-    Animated.sequence([
-      Animated.timing(glowAnim, {
-        toValue: 0.12,
-        duration: 400,
-        useNativeDriver: false,
-      }),
-      Animated.timing(glowAnim, {
-        toValue: 0.08,
-        duration: 400,
-        useNativeDriver: false,
-      }),
-    ]).start();
 
     // Header entrance
     const headerSpring = Animated.spring(headerAnim, {
@@ -626,8 +596,8 @@ export function CanvasWorkspace(): React.ReactElement {
     outputRange: [20, 0],
   });
 
-  // Blue edge glow intensity (animated on entry)
-  const glowOpacity = glowAnim;
+  // Edge vignette intensity (subtle, NOT blue glow)
+  const _vignetteOpacity = glowAnim; // retained for drag-over feedback
 
   // Check collision for snap ghost
   const snapIsValid =
@@ -641,21 +611,17 @@ export function CanvasWorkspace(): React.ReactElement {
 
   return (
     <View ref={Platform.OS === 'web' ? setNodeRef as any : undefined} style={ws.root}>
-      {/* Layer 1: Deep black base */}
+      {/* Layer 1: Authority Queue gray surface */}
       <View style={ws.baseLayer} />
 
-      {/* Layer 2: Blue ambient glow (edge lighting) */}
-      <Animated.View
+      {/* Layer 2: Subtle edge vignette (slight darkening at edges, NOT blue glow) */}
+      <View
         style={[
-          ws.blueGlowLayer,
+          ws.edgeVignetteLayer,
           Platform.OS === 'web'
             ? ({
-                opacity: glowOpacity,
                 backgroundImage: `
-                  radial-gradient(ellipse at top left, rgba(59, 130, 246, 0.12) 0%, transparent 50%),
-                  radial-gradient(ellipse at top right, rgba(59, 130, 246, 0.12) 0%, transparent 50%),
-                  radial-gradient(ellipse at bottom left, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-                  radial-gradient(ellipse at bottom right, rgba(59, 130, 246, 0.08) 0%, transparent 50%)
+                  radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.15) 100%)
                 `,
               } as unknown as ViewStyle)
             : {},
@@ -804,15 +770,15 @@ const ws = StyleSheet.create({
     overflow: 'visible', // CRITICAL: Shadows extend beyond bounds
   },
 
-  // Layer 1: Deep black base (infinite depth foundation)
+  // Layer 1: Authority Queue gray surface (physical canvas base)
   baseLayer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: CanvasTokens.workspace.bg, // #060608 — darker than app bg
+    backgroundColor: CanvasTokens.workspace.bg, // #2A2A2A — Authority Queue gray
     zIndex: 0,
   },
 
-  // Layer 2: Blue ambient glow (edge lighting)
-  blueGlowLayer: {
+  // Layer 2: Subtle edge vignette (slight darkening at edges for depth)
+  edgeVignetteLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1,
     pointerEvents: 'none',
@@ -854,13 +820,13 @@ const ws = StyleSheet.create({
     maxWidth: CanvasTokens.workspace.gridMaxWidth,
   },
   headerDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: Colors.accent.cyan,
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow: '0 0 12px rgba(59,130,246,0.6), 0 0 4px rgba(59,130,246,0.9)',
+          boxShadow: '0 0 6px rgba(59,130,246,0.4)',
         } as unknown as ViewStyle)
       : {}),
   },

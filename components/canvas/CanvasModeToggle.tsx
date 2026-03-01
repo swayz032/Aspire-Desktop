@@ -1,34 +1,32 @@
 /**
  * CanvasModeToggle — Chat | Canvas pill toggle ($10K premium)
  *
- * Lives INSIDE CanvasWorkspace. Switches between:
- * - Chat: 60/40 ChatCanvas (WebPreview + Persona orb)
- * - Canvas: Drag-drop tile workspace
- *
- * Matches CanvasToggle's premium aesthetic:
- * - Sliding spring indicator
- * - Glassmorphism backdrop blur
- * - Ionicons + compact labels
- * - Reduced-motion compliant
+ * Matches the Ava desk panel companyPill aesthetic:
+ * - Pill shape with borderRadius: 20
+ * - Active state: blue glow bg rgba(59,130,246,0.2) + blue border + boxShadow
+ * - Inactive: #242426 background
+ * - Smooth 0.2s transition
+ * - Online dot indicator on active segment
  * - Keyboard navigable (Arrow keys)
+ * - Reduced-motion compliant
  */
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import {
-  Animated,
   Pressable,
   StyleSheet,
   View,
+  Text,
   Platform,
   type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Canvas, Typography } from '@/constants/tokens';
+import { Typography } from '@/constants/tokens';
 import { subscribe, getMode, setMode, type CanvasMode } from '@/lib/chatCanvasStore';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 
 // ---------------------------------------------------------------------------
-// Mode config — order matters for index-based indicator positioning
+// Mode config — order matters for layout
 // ---------------------------------------------------------------------------
 
 interface ModeConfig {
@@ -43,21 +41,22 @@ const MODES: ModeConfig[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Layout constants — compact pill matching CanvasToggle dimensions
+// CompanyPill design constants
 // ---------------------------------------------------------------------------
 
-const PILL_HEIGHT = Canvas.toggle.pillHeight; // 32
-const PILL_PADDING = Canvas.toggle.pillPadding; // 3
-const INDICATOR_RADIUS = Canvas.toggle.indicatorRadius; // 14
-const ICON_SIZE = 14;
+const PILL_RADIUS = 20;
+const PILL_GAP = 6;               // Gap between segments
+const ICON_SIZE = 15;
+const DOT_SIZE = 6;
 
-const SEGMENT_WIDTH = 68;
-const PILL_WIDTH = SEGMENT_WIDTH * MODES.length + PILL_PADDING * 2;
-const INDICATOR_WIDTH = SEGMENT_WIDTH;
-const INDICATOR_HEIGHT = PILL_HEIGHT - PILL_PADDING * 2;
-
-// Spring config from Canvas tokens
-const SPRING = Canvas.motion.spring;
+// Colors — matching Ava desk companyPill
+const INACTIVE_BG = '#242426';
+const ACTIVE_BG = 'rgba(59, 130, 246, 0.2)';
+const ACTIVE_BORDER = 'rgba(59, 130, 246, 0.5)';
+const ACTIVE_GLOW = '0 0 16px rgba(59, 130, 246, 0.3)';
+const ACTIVE_TEXT = '#3B82F6';
+const INACTIVE_TEXT = '#6e6e73';
+const DOT_COLOR = '#3B82F6';
 
 // ---------------------------------------------------------------------------
 // Reduced-motion detection (web only, singleton)
@@ -83,7 +82,6 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 
 export function CanvasModeToggle(): React.ReactElement {
   const [currentMode, setCurrentMode] = useState<CanvasMode>(getMode());
-  const indicatorX = useRef(new Animated.Value(getModeOffset(currentMode))).current;
 
   // Subscribe to chatCanvasStore
   useEffect(() => {
@@ -92,22 +90,6 @@ export function CanvasModeToggle(): React.ReactElement {
     });
     return unsubscribe;
   }, []);
-
-  // Slide the indicator when mode changes
-  useEffect(() => {
-    const target = getModeOffset(currentMode);
-    if (reducedMotion) {
-      indicatorX.setValue(target);
-      return;
-    }
-    Animated.spring(indicatorX, {
-      toValue: target,
-      damping: SPRING.damping,
-      stiffness: SPRING.stiffness,
-      mass: SPRING.mass,
-      useNativeDriver: true,
-    }).start();
-  }, [currentMode, indicatorX]);
 
   // Handle mode selection
   const handlePress = useCallback(
@@ -142,47 +124,42 @@ export function CanvasModeToggle(): React.ReactElement {
 
   return (
     <View
-      style={styles.pill}
+      style={styles.container}
       accessibilityRole="radiogroup"
       accessibilityLabel="Canvas workspace mode"
       {...(Platform.OS === 'web' ? { onKeyDown: handleKeyDown } as Record<string, unknown> : {})}
     >
-      {/* Sliding indicator — rendered behind the options */}
-      <Animated.View
-        style={[
-          styles.indicator,
-          { transform: [{ translateX: indicatorX }] },
-        ]}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      />
-
-      {/* Mode options */}
       {MODES.map((cfg) => {
         const isActive = cfg.mode === currentMode;
         return (
           <Pressable
             key={cfg.mode}
-            style={styles.segment}
+            style={[
+              styles.pill,
+              isActive ? styles.pillActive : styles.pillInactive,
+            ]}
             onPress={() => handlePress(cfg.mode)}
             accessibilityRole="radio"
             accessibilityLabel={`${cfg.label} workspace mode`}
             accessibilityState={{ checked: isActive }}
           >
+            {/* Active dot indicator */}
+            {isActive && <View style={styles.dot} />}
+
             <Ionicons
               name={cfg.icon}
               size={ICON_SIZE}
-              color={isActive ? Canvas.toggle.activeText : Canvas.toggle.inactiveText}
-              style={styles.segmentIcon}
+              color={isActive ? ACTIVE_TEXT : INACTIVE_TEXT}
+              style={styles.icon}
             />
-            <Animated.Text
+            <Text
               style={[
-                styles.segmentLabel,
-                { color: isActive ? Canvas.toggle.activeText : Canvas.toggle.inactiveText },
+                styles.label,
+                { color: isActive ? ACTIVE_TEXT : INACTIVE_TEXT },
               ]}
             >
               {cfg.label}
-            </Animated.Text>
+            </Text>
           </Pressable>
         );
       })}
@@ -191,62 +168,84 @@ export function CanvasModeToggle(): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getModeOffset(mode: CanvasMode): number {
-  const idx = MODES.findIndex((m) => m.mode === mode);
-  return PILL_PADDING + idx * SEGMENT_WIDTH;
-}
-
-// ---------------------------------------------------------------------------
-// Styles — matches CanvasToggle $10K aesthetic
+// Styles — companyPill aesthetic from Ava desk panel
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  pill: {
+  container: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: PILL_HEIGHT,
-    width: PILL_WIDTH,
-    borderRadius: PILL_HEIGHT / 2,
-    backgroundColor: Canvas.toggle.bg,
-    position: 'relative',
-    padding: PILL_PADDING,
+    gap: PILL_GAP,
     ...(Platform.OS === 'web'
       ? ({
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          cursor: 'pointer',
           userSelect: 'none',
         } as unknown as ViewStyle)
       : {}),
   },
-  indicator: {
-    position: 'absolute',
-    top: PILL_PADDING,
-    left: 0,
-    width: INDICATOR_WIDTH,
-    height: INDICATOR_HEIGHT,
-    borderRadius: INDICATOR_RADIUS,
-    backgroundColor: Canvas.toggle.activeBg,
-  },
-  segment: {
-    width: SEGMENT_WIDTH,
-    height: INDICATOR_HEIGHT,
+
+  // Each segment is its own pill (like companyPill)
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: PILL_RADIUS,
+    borderWidth: 1,
+    borderColor: 'transparent',
     minWidth: 44,
     minHeight: 44,
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+        } as unknown as ViewStyle)
+      : {}),
   },
-  segmentIcon: {
-    marginRight: 4,
+
+  // Inactive pill — dark neutral
+  pillInactive: {
+    backgroundColor: INACTIVE_BG,
+    borderColor: 'transparent',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: 'none',
+        } as unknown as ViewStyle)
+      : {}),
   },
-  segmentLabel: {
+
+  // Active pill — blue glow (companyPillActive style)
+  pillActive: {
+    backgroundColor: ACTIVE_BG,
+    borderColor: ACTIVE_BORDER,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: ACTIVE_GLOW,
+        } as unknown as ViewStyle)
+      : {}),
+  },
+
+  // Online dot indicator (like companyPill)
+  dot: {
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_SIZE / 2,
+    backgroundColor: DOT_COLOR,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: `0 0 6px ${DOT_COLOR}`,
+        } as unknown as ViewStyle)
+      : {}),
+  },
+
+  icon: {
+    // No extra margin — gap handles spacing
+  },
+
+  label: {
     fontSize: Typography.small.fontSize,
     fontWeight: Typography.smallMedium.fontWeight,
     lineHeight: Typography.small.lineHeight,
+    letterSpacing: 0.3,
   },
 });
