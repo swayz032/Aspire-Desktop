@@ -23,28 +23,12 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
 
   const panelStyle = useMemo((): ViewStyle => {
     if (isVideoOnly) {
-      if (width >= 1200) {
-        return {
-          width: '88%' as unknown as number,
-          maxWidth: 1280,
-          height: '72vh' as unknown as number,
-          borderRadius: 20,
-        };
-      }
-      if (width >= 900) {
-        return {
-          width: '92%' as unknown as number,
-          maxWidth: 1100,
-          height: '65vh' as unknown as number,
-          borderRadius: 18,
-        };
-      }
       return {
-        width: '96%' as unknown as number,
-        maxWidth: undefined,
-        height: '60vh' as unknown as number,
-        borderRadius: 14,
-      };
+        width: '92vw' as unknown as number,
+        maxWidth: 1280,
+        maxHeight: '75vh' as unknown as number,
+        borderRadius: 20,
+      } as ViewStyle;
     }
 
     if (width >= 1200) {
@@ -71,6 +55,10 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
     };
   }, [width, isVideoOnly]);
 
+  const videoOnlyWebStyle = isVideoOnly && Platform.OS === 'web' ? {
+    aspectRatio: '16 / 9',
+  } as unknown as ViewStyle : undefined;
+
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -86,7 +74,7 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
     <View style={styles.overlay}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close overlay" />
       <View style={styles.panelContainer}>
-        <View style={[styles.panel, panelStyle]}>
+        <View style={[styles.panel, panelStyle, videoOnlyWebStyle]}>
           <FinnDeskPanel
             initialTab={initialTab}
             templateContext={templateContext}
