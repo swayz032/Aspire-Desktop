@@ -18,6 +18,7 @@ import {
   Animated,
   View,
   Text,
+  Pressable,
   StyleSheet,
   Platform,
   useWindowDimensions,
@@ -42,7 +43,7 @@ import { WidgetContainer } from './WidgetContainer';
 import { CanvasTrashCan } from './CanvasTrashCan';
 import { CanvasModeToggle } from './CanvasModeToggle';
 import { ChatCanvas } from './ChatCanvas';
-import { AvaOrb } from '@/components/ai-elements/AvaOrb';
+import { Persona } from '@/components/ai-elements/Persona';
 import type { PersonaState } from '@/components/ai-elements/Persona';
 import {
   subscribe as subscribeCanvas,
@@ -353,7 +354,23 @@ export function CanvasWorkspace(): React.ReactElement {
                   trustLevel: 'internal',
                 }}
                 personaElement={
-                  <AvaOrb size={240} />
+                  <Pressable
+                    onPress={() => {
+                      if (avaVoice.status === 'idle') {
+                        avaVoice.startSession();
+                      } else {
+                        avaVoice.endSession();
+                      }
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={avaVoice.status === 'idle' ? 'Start talking to Ava' : 'End voice session'}
+                  >
+                    <Persona
+                      state={personaState}
+                      variant="obsidian"
+                      style={{ width: 240, height: 240 }}
+                    />
+                  </Pressable>
                 }
                 streamEnabled
               />

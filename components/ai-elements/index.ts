@@ -16,6 +16,6 @@ export { HybridWebPreview } from './HybridWebPreview';
 export type { HybridWebPreviewProps } from './HybridWebPreview';
 
 export { Persona } from './Persona';
-export type { PersonaState } from './Persona';
+export type { PersonaState, PersonaVariant } from './Persona';
 
 export { AvaOrb } from './AvaOrb';
