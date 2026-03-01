@@ -27,7 +27,7 @@ const BREAKPOINTS = {
 
 function getWidth(): number {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return window.innerWidth;
+    return document.documentElement.clientWidth || window.innerWidth;
   }
   return 1440;
 }
