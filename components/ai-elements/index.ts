@@ -6,6 +6,7 @@ export type {
   AgentType,
   EventType,
   TrustLevel,
+  ConsoleLogEntry,
 } from './WebPreview';
 
 export { BrowserPanel } from './BrowserPanel';
