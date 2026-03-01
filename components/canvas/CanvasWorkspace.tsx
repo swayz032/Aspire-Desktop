@@ -56,6 +56,7 @@ import {
 import type { CanvasMode } from '@/lib/chatCanvasStore';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { useCanvasVoice } from '@/hooks/useCanvasVoice';
+import { useSupabase } from '@/providers';
 
 // Widget content imports
 import { QuoteWidget } from './widgets/QuoteWidget';
@@ -73,17 +74,24 @@ import { InvoiceWidget } from './widgets/InvoiceWidget';
 // Widget content registry
 // ---------------------------------------------------------------------------
 
-const WIDGET_CONTENT: Record<string, { title: string; component: React.ComponentType }> = {
-  email: { title: 'Email', component: EmailWidget },
-  invoice: { title: 'Invoice', component: InvoiceWidget },
-  quote: { title: 'Quote', component: QuoteWidget },
-  contract: { title: 'Contract', component: ContractWidget },
-  calendar: { title: 'Calendar', component: CalendarWidget },
-  finance: { title: 'Finance Hub', component: FinanceHubWidget },
-  task: { title: "Today's Plan", component: TodaysPlanWidget },
-  approval: { title: 'Authority Queue', component: AuthorityQueueWidget },
-  note: { title: 'Sticky Note', component: StickyNoteWidget },
-  receipt: { title: 'Receipts', component: ReceiptsWidget },
+interface WidgetDef {
+  title: string;
+  component: React.ComponentType<any>;
+  accent: string;
+  icon: string; // Ionicons name
+}
+
+const WIDGET_CONTENT: Record<string, WidgetDef> = {
+  email:    { title: 'Inbox',            component: EmailWidget,          accent: '#3B82F6', icon: 'mail' },
+  invoice:  { title: 'Invoices',         component: InvoiceWidget,        accent: '#F59E0B', icon: 'receipt' },
+  quote:    { title: 'Quotes',           component: QuoteWidget,          accent: '#06B6D4', icon: 'pricetag' },
+  contract: { title: 'Contracts',        component: ContractWidget,       accent: '#EF4444', icon: 'document-text' },
+  calendar: { title: 'Calendar',         component: CalendarWidget,       accent: '#10B981', icon: 'calendar' },
+  finance:  { title: 'Finance Hub',      component: FinanceHubWidget,     accent: '#059669', icon: 'trending-up' },
+  task:     { title: "Today's Plan",     component: TodaysPlanWidget,     accent: '#8B5CF6', icon: 'checkbox' },
+  approval: { title: 'Authority Queue',  component: AuthorityQueueWidget, accent: '#F97316', icon: 'shield-checkmark' },
+  note:     { title: 'Sticky Notes',     component: StickyNoteWidget,     accent: '#EAB308', icon: 'create' },
+  receipt:  { title: 'Receipts',         component: ReceiptsWidget,       accent: '#6366F1', icon: 'file-tray-full' },
 };
 
 // ---------------------------------------------------------------------------
@@ -108,6 +116,7 @@ function getDefaultWidgetSize(screenWidth: number) {
 // ---------------------------------------------------------------------------
 
 export function CanvasWorkspace(): React.ReactElement {
+  const { suiteId } = useSupabase();
   const { mode, stageOpen } = useImmersion();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -275,8 +284,6 @@ export function CanvasWorkspace(): React.ReactElement {
           {
             opacity: canvasOpacity,
             transform: [{ scale: canvasScale }],
-            // Responsive margin — canvas doesn't touch edges
-            margin: isWide ? 24 : isDesktop ? 20 : isLaptop ? 16 : 12,
           },
         ]}
       >
@@ -386,13 +393,15 @@ export function CanvasWorkspace(): React.ReactElement {
                   <WidgetContainer
                     key={pw.instanceId}
                     title={widgetDef.title}
+                    accent={widgetDef.accent}
+                    icon={widgetDef.icon}
                     position={pw.position}
                     size={pw.size}
                     onPositionChange={(pos) => handlePositionChange(pw.instanceId, pos)}
                     onSizeChange={(size) => handleSizeChange(pw.instanceId, size)}
                     onClose={() => handleWidgetClose(pw.instanceId)}
                   >
-                    <WidgetContent />
+                    <WidgetContent suiteId={suiteId || ''} officeId="" />
                   </WidgetContainer>
                 );
               })}
@@ -463,44 +472,23 @@ const ws = StyleSheet.create({
     flex: 1,
     position: 'relative',
     overflow: 'visible',
-    backgroundColor: '#1A1A1A', // Deep background behind the canvas surface
+    backgroundColor: CanvasTokens.workspace.bg, // seamless with canvas
   },
 
-  // Deep background — darker than canvas surface to create depth illusion
+  // Deep background — same as canvas surface, no flat border visible
   deepBg: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1A1A1A',
+    backgroundColor: CanvasTokens.workspace.bg,
     zIndex: 0,
   },
 
-  // 3D Canvas surface — raised above deep background with thick shadow
+  // Canvas surface — flush, no margin, no extra frame
   canvasSurface: {
     flex: 1,
     position: 'relative',
-    backgroundColor: CanvasTokens.workspace.bg, // #2A2A2A
-    borderRadius: 16,
-    overflow: 'hidden',
+    backgroundColor: CanvasTokens.workspace.bg,
+    overflow: 'visible', // widgets can be dragged outside bounds
     zIndex: 1,
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: [
-            // Thick physical depth shadow (3D feel)
-            '0 8px 32px rgba(0, 0, 0, 0.6)',
-            '0 4px 16px rgba(0, 0, 0, 0.4)',
-            '0 2px 6px rgba(0, 0, 0, 0.3)',
-            // Subtle outer rim highlight
-            '0 0 0 1px rgba(255, 255, 255, 0.06)',
-            // Faint blue ambient
-            '0 0 60px rgba(59, 130, 246, 0.04)',
-          ].join(', '),
-        } as unknown as ViewStyle)
-      : {
-          elevation: 16,
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.5,
-          shadowRadius: 32,
-        }),
   },
 
   // Inner shadows — creates the "sunken surface" 3D feel

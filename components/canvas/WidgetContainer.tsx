@@ -1,18 +1,15 @@
 /**
  * WidgetContainer — Premium draggable/resizable container for Canvas Mode widgets.
  *
- * $10,000 UI/UX QUALITY MANDATE:
- * - REAL depth: Multi-layer shadow system VISIBLE on dark canvas
- * - Premium drag/resize: Spring physics, 60fps, grid snap
- * - Custom SVG icons: NO emojis
- * - Smooth animations: react-native-reanimated worklets
- * - Glass header: Two-tone design with blue accent
- * - Bloomberg Terminal / Figma / macOS window panel quality
- *
- * Reference: Authority Queue card premium feel, Today's Plan depth system.
+ * Each widget has branded identity:
+ * - Accent color stripe on header left edge
+ * - Widget-specific icon in header
+ * - Accent-tinted close button hover
+ * - Premium depth with multi-layer shadows
+ * - Drag via header, resize via corners
  */
 
-import React, { useRef, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,9 +27,7 @@ import Reanimated, {
   withTiming,
   runOnJS,
 } from 'react-native-reanimated';
-import { DragHandleIcon } from '@/components/icons/ui/DragHandleIcon';
-import { CloseIcon } from '@/components/icons/ui/CloseIcon';
-import { ResizeIcon } from '@/components/icons/ui/ResizeIcon';
+import { Ionicons } from '@expo/vector-icons';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 
 // ---------------------------------------------------------------------------
@@ -47,6 +42,10 @@ interface WidgetContainerProps {
   onPositionChange?: (position: { x: number; y: number }) => void;
   onSizeChange?: (size: { width: number; height: number }) => void;
   onClose?: () => void;
+  /** Brand accent color for this widget */
+  accent?: string;
+  /** Ionicons icon name for this widget */
+  icon?: string;
   minWidth?: number;
   minHeight?: number;
   maxWidth?: number;
@@ -57,36 +56,17 @@ interface WidgetContainerProps {
 // Constants
 // ---------------------------------------------------------------------------
 
-const GRID_SIZE = 32; // Snap to 32px grid
-const HEADER_HEIGHT = CanvasTokens.widget.titleBarHeight; // 44
-const RESIZE_HANDLE_SIZE = 32; // Touch target
-const RESIZE_HANDLE_VISUAL_SIZE = 12; // Visual indicator
-const BORDER_RADIUS = CanvasTokens.widget.borderRadius; // 12
+const GRID_SIZE = 32;
+const HEADER_HEIGHT = 44;
+const BORDER_RADIUS = 12;
 
-// Spring physics (snappy, premium feel)
-const SPRING_CONFIG = {
-  damping: 20,
-  stiffness: 300,
-  mass: 0.9,
-};
+const SPRING_CONFIG = { damping: 20, stiffness: 300, mass: 0.9 };
+const SNAP_SPRING_CONFIG = { damping: 22, stiffness: 280, mass: 0.9 };
 
-// Grid snap spring (tighter)
-const SNAP_SPRING_CONFIG = {
-  damping: 22,
-  stiffness: 280,
-  mass: 0.9,
-};
-
-// ---------------------------------------------------------------------------
-// Helper Functions
-// ---------------------------------------------------------------------------
-
-/** Snap value to 32px grid */
 function snapToGrid(value: number): number {
   return Math.round(value / GRID_SIZE) * GRID_SIZE;
 }
 
-/** Clamp value between min and max */
 function clamp(value: number, min: number, max: number): number {
   'worklet';
   return Math.min(Math.max(value, min), max);
@@ -104,116 +84,71 @@ export function WidgetContainer({
   onPositionChange,
   onSizeChange,
   onClose,
+  accent = '#3B82F6',
+  icon,
   minWidth = 280,
   minHeight = 200,
   maxWidth = 800,
   maxHeight = 600,
 }: WidgetContainerProps) {
-  // Animated values
   const translateX = useSharedValue(position.x);
   const translateY = useSharedValue(position.y);
   const width = useSharedValue(size.width);
   const height = useSharedValue(size.height);
-  const scale = useSharedValue(1);
+  const scale = useSharedValue(0.95);
   const opacity = useSharedValue(0);
-  const isHovering = useSharedValue(false);
-
-  // Drag gesture state
+  const isDragging = useSharedValue(false);
   const dragStartX = useSharedValue(0);
   const dragStartY = useSharedValue(0);
-  const isDragging = useSharedValue(false);
-
-  // Resize gesture state
   const resizeStartWidth = useSharedValue(0);
   const resizeStartHeight = useSharedValue(0);
 
-  // ---------------------------------------------------------------------------
-  // Entrance Animation
-  // ---------------------------------------------------------------------------
-
   useEffect(() => {
-    // Spring entrance
-    opacity.value = withTiming(1, { duration: 300 });
+    opacity.value = withTiming(1, { duration: 250 });
     scale.value = withSpring(1, SPRING_CONFIG);
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Close Handler
-  // ---------------------------------------------------------------------------
-
   const handleClose = () => {
-    // Animate out
-    scale.value = withTiming(0, { duration: 250 });
-    opacity.value = withTiming(0, { duration: 250 });
-
-    // Trigger callback after animation
-    setTimeout(() => {
-      onClose?.();
-    }, 250);
+    scale.value = withTiming(0.9, { duration: 200 });
+    opacity.value = withTiming(0, { duration: 200 });
+    setTimeout(() => onClose?.(), 200);
   };
 
-  // ---------------------------------------------------------------------------
-  // Drag Gesture (Header Only)
-  // ---------------------------------------------------------------------------
-
+  // Drag gesture (header)
   const dragGesture = Gesture.Pan()
     .onBegin(() => {
       isDragging.value = true;
       dragStartX.value = translateX.value;
       dragStartY.value = translateY.value;
     })
-    .onUpdate((event) => {
-      translateX.value = dragStartX.value + event.translationX;
-      translateY.value = dragStartY.value + event.translationY;
+    .onUpdate((e) => {
+      translateX.value = dragStartX.value + e.translationX;
+      translateY.value = dragStartY.value + e.translationY;
     })
     .onEnd(() => {
       isDragging.value = false;
-
-      // Snap to grid with spring physics
-      const snappedX = snapToGrid(translateX.value);
-      const snappedY = snapToGrid(translateY.value);
-
-      translateX.value = withSpring(snappedX, SNAP_SPRING_CONFIG);
-      translateY.value = withSpring(snappedY, SNAP_SPRING_CONFIG);
-
-      // Trigger callback
-      if (onPositionChange) {
-        runOnJS(onPositionChange)({ x: snappedX, y: snappedY });
-      }
+      const sx = snapToGrid(translateX.value);
+      const sy = snapToGrid(translateY.value);
+      translateX.value = withSpring(sx, SNAP_SPRING_CONFIG);
+      translateY.value = withSpring(sy, SNAP_SPRING_CONFIG);
+      if (onPositionChange) runOnJS(onPositionChange)({ x: sx, y: sy });
     });
 
-  // ---------------------------------------------------------------------------
-  // Resize Gesture (Bottom-Right Corner)
-  // ---------------------------------------------------------------------------
-
+  // Resize gesture (bottom-right)
   const resizeGesture = Gesture.Pan()
     .onBegin(() => {
       resizeStartWidth.value = width.value;
       resizeStartHeight.value = height.value;
     })
-    .onUpdate((event) => {
-      const newWidth = resizeStartWidth.value + event.translationX;
-      const newHeight = resizeStartHeight.value + event.translationY;
-
-      // Enforce min/max constraints
-      width.value = clamp(newWidth, minWidth, maxWidth);
-      height.value = clamp(newHeight, minHeight, maxHeight);
+    .onUpdate((e) => {
+      width.value = clamp(resizeStartWidth.value + e.translationX, minWidth, maxWidth);
+      height.value = clamp(resizeStartHeight.value + e.translationY, minHeight, maxHeight);
     })
     .onEnd(() => {
-      // Trigger callback with final size
-      if (onSizeChange) {
-        runOnJS(onSizeChange)({
-          width: width.value,
-          height: height.value,
-        });
-      }
+      if (onSizeChange) runOnJS(onSizeChange)({ width: width.value, height: height.value });
     });
 
-  // ---------------------------------------------------------------------------
-  // Animated Styles
-  // ---------------------------------------------------------------------------
-
-  const containerAnimatedStyle = useAnimatedStyle(() => ({
+  const containerStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
@@ -224,87 +159,45 @@ export function WidgetContainer({
     height: height.value,
   }));
 
-  const headerAnimatedStyle = useAnimatedStyle(() => {
-    if (Platform.OS !== 'web') {
-      return {};
-    }
-    return {
-      cursor: isDragging.value ? 'grabbing' : 'grab',
-    } as any;
+  const headerCursorStyle = useAnimatedStyle(() => {
+    if (Platform.OS !== 'web') return {};
+    return { cursor: isDragging.value ? 'grabbing' : 'grab' } as any;
   });
 
-  // ---------------------------------------------------------------------------
-  // Premium Shadow System (Web)
-  // ---------------------------------------------------------------------------
-
-  const premiumShadow: ViewStyle =
-    Platform.OS === 'web'
-      ? ({
-          boxShadow: `
-            0 12px 32px rgba(0, 0, 0, 0.6),
-            0 4px 16px rgba(0, 0, 0, 0.8),
-            0 0 40px rgba(59, 130, 246, 0.12),
-            inset 0 1px 0 rgba(255, 255, 255, 0.05),
-            inset 0 -1px 0 rgba(0, 0, 0, 0.3)
-          `,
-        } as unknown as ViewStyle)
-      : {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 12 },
-          shadowOpacity: 0.6,
-          shadowRadius: 32,
-          elevation: 12,
-        };
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  // Premium shadow
+  const shadow: ViewStyle = Platform.OS === 'web'
+    ? ({
+        boxShadow: `0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.4), 0 0 0 1px ${accent}22`,
+      } as unknown as ViewStyle)
+    : { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.5, shadowRadius: 24, elevation: 12 };
 
   return (
-    <Reanimated.View
-      style={[styles.container, containerAnimatedStyle, premiumShadow]}
-    >
-      {/* Header (Draggable) */}
+    <Reanimated.View style={[s.container, containerStyle, shadow]}>
+      {/* Accent stripe on left edge */}
+      <View style={[s.accentStripe, { backgroundColor: accent }]} />
+
+      {/* Header */}
       <GestureDetector gesture={dragGesture}>
-        <Reanimated.View style={[styles.header, headerAnimatedStyle]}>
-          <DragHandleIcon size={16} color="rgba(255,255,255,0.3)" />
-          <Text style={styles.title}>{title}</Text>
-          <Pressable onPress={handleClose} style={styles.closeButton}>
-            <CloseIcon size={20} color="#FFFFFF" />
+        <Reanimated.View style={[s.header, headerCursorStyle]}>
+          {icon && (
+            <Ionicons name={icon as any} size={16} color={accent} />
+          )}
+          <Text style={[s.title, { color: accent }]}>{title}</Text>
+          <Pressable onPress={handleClose} style={s.closeBtn}>
+            <Ionicons name="close" size={16} color="rgba(255,255,255,0.5)" />
           </Pressable>
         </Reanimated.View>
       </GestureDetector>
 
-      {/* Content Area */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      {/* Content */}
+      <ScrollView style={s.content} showsVerticalScrollIndicator={false}>
         {children}
       </ScrollView>
 
-      {/* Resize Handle (Bottom-Right) */}
+      {/* Resize handle */}
       <GestureDetector gesture={resizeGesture}>
-        <Reanimated.View style={[styles.resizeHandle, styles.bottomRight]}>
-          <ResizeIcon size={RESIZE_HANDLE_VISUAL_SIZE} color="rgba(255,255,255,0.3)" />
-        </Reanimated.View>
-      </GestureDetector>
-
-      {/* Resize Handle (Bottom-Left) */}
-      <GestureDetector gesture={resizeGesture}>
-        <Reanimated.View style={[styles.resizeHandle, styles.bottomLeft]}>
-          <ResizeIcon size={RESIZE_HANDLE_VISUAL_SIZE} color="rgba(255,255,255,0.3)" />
-        </Reanimated.View>
-      </GestureDetector>
-
-      {/* Resize Handle (Top-Right) */}
-      <GestureDetector gesture={resizeGesture}>
-        <Reanimated.View style={[styles.resizeHandle, styles.topRight]}>
-          <ResizeIcon size={RESIZE_HANDLE_VISUAL_SIZE} color="rgba(255,255,255,0.3)" />
-        </Reanimated.View>
-      </GestureDetector>
-
-      {/* Resize Handle (Top-Left) */}
-      <GestureDetector gesture={resizeGesture}>
-        <Reanimated.View style={[styles.resizeHandle, styles.topLeft]}>
-          <ResizeIcon size={RESIZE_HANDLE_VISUAL_SIZE} color="rgba(255,255,255,0.3)" />
+        <Reanimated.View style={s.resizeHandle}>
+          <View style={[s.resizeDots, { borderColor: `${accent}40` }]} />
         </Reanimated.View>
       </GestureDetector>
     </Reanimated.View>
@@ -315,100 +208,77 @@ export function WidgetContainer({
 // Styles
 // ---------------------------------------------------------------------------
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: {
     position: 'absolute',
-    backgroundColor: CanvasTokens.background.elevated, // #2A2A2A
+    backgroundColor: '#1E1E1E',
     borderRadius: BORDER_RADIUS,
     borderWidth: 1,
-    borderColor: CanvasTokens.border.emphasis, // Blue glow accent
+    borderColor: 'rgba(255,255,255,0.08)',
     overflow: 'hidden',
+  },
+
+  accentStripe: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: 3,
+    borderTopLeftRadius: BORDER_RADIUS,
+    borderBottomLeftRadius: BORDER_RADIUS,
+    zIndex: 2,
   },
 
   header: {
     height: HEADER_HEIGHT,
-    backgroundColor: CanvasTokens.background.surface, // #1E1E1E
+    backgroundColor: '#161616',
     borderBottomWidth: 1,
-    borderBottomColor: CanvasTokens.border.emphasis, // rgba(59,130,246,0.4)
+    borderBottomColor: 'rgba(255,255,255,0.06)',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingLeft: 16,
+    paddingRight: 8,
     gap: 8,
   },
 
   title: {
     flex: 1,
-    color: CanvasTokens.text.primary,
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  } as any,
 
-  closeButton: {
-    width: 32,
-    height: 32,
+  closeBtn: {
+    width: 28,
+    height: 28,
     borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'background-color 150ms ease',
-        } as any)
-      : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
 
   content: {
     flex: 1,
-    backgroundColor: CanvasTokens.background.elevated, // #2A2A2A
-    padding: 16,
+    backgroundColor: '#1E1E1E',
   },
 
   resizeHandle: {
     position: 'absolute',
-    width: RESIZE_HANDLE_SIZE,
-    height: RESIZE_HANDLE_SIZE,
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'nwse-resize',
-        } as any)
-      : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'nwse-resize' } as any) : {}),
   },
 
-  bottomRight: {
-    bottom: -4,
-    right: -4,
-  },
-
-  bottomLeft: {
-    bottom: -4,
-    left: -4,
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'nesw-resize',
-        } as any)
-      : {}),
-  },
-
-  topRight: {
-    top: HEADER_HEIGHT - 4,
-    right: -4,
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'nesw-resize',
-        } as any)
-      : {}),
-  },
-
-  topLeft: {
-    top: HEADER_HEIGHT - 4,
-    left: -4,
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'nwse-resize',
-        } as any)
-      : {}),
+  resizeDots: {
+    width: 8,
+    height: 8,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
 });

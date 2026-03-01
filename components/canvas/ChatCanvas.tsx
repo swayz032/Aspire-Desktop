@@ -207,20 +207,10 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-  // Background layer with radial blue glow from edges
+  // Background layer — transparent, no extra color behind canvas
   backgroundLayer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: CanvasTokens.background.base,
-    ...(Platform.OS === 'web'
-      ? {
-          backgroundImage: `
-            radial-gradient(circle at top left, rgba(59, 130, 246, 0.1) 0%, transparent 40%),
-            radial-gradient(circle at top right, rgba(59, 130, 246, 0.1) 0%, transparent 40%),
-            radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
-            radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.08) 0%, transparent 40%)
-          `,
-        } as unknown as ViewStyle
-      : {}),
+    backgroundColor: 'transparent',
   },
 
   // Always vertical — WebPreview on top, Persona below
