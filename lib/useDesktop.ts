@@ -19,9 +19,9 @@ export function useDesktopWithMounted(): { isDesktop: boolean; mounted: boolean 
 }
 
 const BREAKPOINTS = {
-  tablet: 768,
-  laptop: 1280,
-  desktop: 1440,
+  tablet: 0,
+  laptop: 768,
+  desktop: 1024,
   wide: 1920,
 } as const;
 
