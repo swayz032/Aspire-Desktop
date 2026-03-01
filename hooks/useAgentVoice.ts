@@ -89,6 +89,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeRef = useRef(false);
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
   // Prevent duplicate sends while processing
   const processingRef = useRef(false);
   // Store last audio URL for replay on autoplay block
@@ -101,6 +103,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const audioChunksRef = useRef<Map<string, Uint8Array[]>>(new Map());
   // Keep-alive timer for TTS WebSocket (prevents idle disconnect)
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Delay auth-loss shutdown to avoid false offline flips during token refresh.
+  const authLossTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const useDeepgram = DEEPGRAM_STT_AGENTS.includes(agent);
 
@@ -325,7 +329,23 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         });
 
         if (!resp.ok) {
-          throw new Error(`Service returned ${resp.status}`);
+          let detail = `Service returned ${resp.status}`;
+          try {
+            const errData = await resp.json();
+            detail =
+              errData?.response ||
+              errData?.message ||
+              errData?.error ||
+              detail;
+          } catch {
+            try {
+              const rawText = await resp.text();
+              if (rawText?.trim()) detail = rawText.trim();
+            } catch {
+              // keep default detail
+            }
+          }
+          throw new Error(detail);
         }
 
         const data = await resp.json();
@@ -536,9 +556,23 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
   // Auto-end session on logout (session removed, not just missing suiteId)
   useEffect(() => {
-    if (!accessToken && activeRef.current) {
-      endSession();
+    if (!activeRef.current) return;
+
+    if (accessTokenRef.current) {
+      if (authLossTimerRef.current) {
+        clearTimeout(authLossTimerRef.current);
+        authLossTimerRef.current = null;
+      }
+      return;
     }
+
+    if (authLossTimerRef.current) return;
+    authLossTimerRef.current = setTimeout(() => {
+      authLossTimerRef.current = null;
+      if (!accessTokenRef.current && activeRef.current) {
+        endSession();
+      }
+    }, 10_000);
   }, [accessToken, endSession]);
 
   // Cleanup keep-alive timer on unmount
@@ -547,6 +581,10 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       if (keepAliveRef.current) {
         clearInterval(keepAliveRef.current);
         keepAliveRef.current = null;
+      }
+      if (authLossTimerRef.current) {
+        clearTimeout(authLossTimerRef.current);
+        authLossTimerRef.current = null;
       }
     };
   }, []);

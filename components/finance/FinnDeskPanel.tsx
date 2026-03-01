@@ -675,6 +675,17 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       });
     } catch (error) {
       // Fail closed — show error
+      const rawMessage = error instanceof Error ? error.message : String(error || 'Unknown error');
+      const lower = rawMessage.toLowerCase();
+      const userFacingMessage =
+        /401|auth_required|expired|unauthorized/.test(lower)
+          ? 'Finn session expired. Please sign in again.'
+          : /timeout|abort/.test(lower)
+          ? 'Finn is taking too long to respond. Please try again.'
+          : /503|unavailable|circuit/.test(lower)
+          ? 'Finn Brain is temporarily unavailable. Try again shortly.'
+          : `Finn request failed: ${rawMessage.length > 100 ? `${rawMessage.slice(0, 100)}...` : rawMessage}`;
+
       setIsConversing(false);
       setActiveRuns((prev) => {
         const run = prev[runId];
@@ -690,7 +701,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       });
       setChat((prev) =>
         prev.map((msg) =>
-          msg.runId === runId ? { ...msg, text: 'Unable to reach the orchestrator. Please try again.' } : msg
+          msg.runId === runId ? { ...msg, text: userFacingMessage } : msg
         )
       );
     }

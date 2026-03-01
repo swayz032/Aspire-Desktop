@@ -2526,7 +2526,14 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     if (!response.ok) {
       const errorText = await response.text();
       logger.error('Ava chat-stream orchestrator error', { correlationId, status: response.status, error: errorText.substring(0, 200) });
-      return sendSse("I'm having trouble processing that right now. Could you try again?", {
+      let responseMessage = `Ava Brain returned ${response.status}. Please try again.`;
+      try {
+        const parsed = JSON.parse(errorText);
+        responseMessage = parsed?.text || parsed?.message || parsed?.error || responseMessage;
+      } catch {
+        if (errorText?.trim()) responseMessage = errorText.trim().slice(0, 240);
+      }
+      return sendSse(responseMessage, {
         correlation_id: correlationId,
         error: 'ORCHESTRATOR_ERROR',
       });
@@ -2542,13 +2549,13 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     if (error instanceof Error && error.name === 'AbortError') {
       logger.error('Ava chat-stream timeout', { correlationId });
-      return sendSse("I'm taking longer than expected. Please try again.", {
+      return sendSse('Ava Brain timed out while processing this request. Please try again.', {
         correlation_id: correlationId,
         error: 'ORCHESTRATOR_TIMEOUT',
       });
     }
     logger.error('Ava chat-stream error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
-    return sendSse("I'm having trouble connecting right now.", {
+    return sendSse('Unable to connect to Ava Brain right now. Please check backend/orchestrator availability.', {
       correlation_id: correlationId,
       error: 'ORCHESTRATOR_UNAVAILABLE',
     });

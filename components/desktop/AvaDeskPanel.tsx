@@ -678,6 +678,17 @@ export function AvaDeskPanel() {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     } catch (error: unknown) {
       // Law #3: Fail Closed — show error, don't guess
+      const rawMessage = error instanceof Error ? error.message : String(error || 'Unknown error');
+      const lower = rawMessage.toLowerCase();
+      const userFacingMessage =
+        /401|auth_required|expired|unauthorized/.test(lower)
+          ? 'Ava session expired. Please sign in again.'
+          : /timeout|abort/.test(lower)
+          ? 'Ava is taking too long to respond. Please try again in a moment.'
+          : /503|unavailable|circuit/.test(lower)
+          ? 'Ava Brain is temporarily unavailable. Try again shortly.'
+          : `Ava request failed: ${rawMessage.length > 100 ? `${rawMessage.slice(0, 100)}...` : rawMessage}`;
+
       const errorEvent: AgentActivityEvent = {
         id: `evt_err_${Date.now()}`,
         type: 'error',
@@ -698,7 +709,7 @@ export function AvaDeskPanel() {
       setChat((prev) =>
         prev.map((msg) =>
           msg.runId === runId
-            ? { ...msg, text: 'I\'m having trouble connecting right now. Please try again.' }
+            ? { ...msg, text: userFacingMessage }
             : msg
         )
       );

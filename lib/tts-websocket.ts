@@ -93,7 +93,8 @@ export class TtsWebSocket {
   private handleMessage = (event: MessageEvent) => {
     try {
       const data = JSON.parse(event.data);
-      const contextId: string = data.contextId || 'default';
+      // ElevenLabs may return either context_id (snake_case) or contextId (camelCase).
+      const contextId: string = data.context_id || data.contextId || 'default';
 
       // Audio chunk — decode base64 to binary
       if (data.audio) {
@@ -106,7 +107,7 @@ export class TtsWebSocket {
       }
 
       // Context generation complete
-      if (data.isFinal || data.is_final) {
+      if (data.isFinal || data.is_final || data.final) {
         this.callbacks.onContextDone(contextId);
       }
 
