@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
+import { MessageBubble, ThinkingIndicator, type AgentChatMessage } from '@/components/chat';
 
 type ChatMsg = {
   id: string;
@@ -93,28 +94,25 @@ export function FinnChatModal({ visible, onClose }: Props) {
               <Text style={modalStyles.emptyText}>Ask Finn about cash runway, invoices, expenses, or financial strategy.</Text>
             </View>
           ) : (
-            messages.map((msg) => (
-              <View key={msg.id} style={[modalStyles.msgRow, msg.from === 'user' && modalStyles.msgRowUser]}>
-                {msg.from === 'finn' && (
-                  <View style={modalStyles.finnAvatar}>
-                    <Ionicons name="sparkles" size={10} color="#A78BFA" />
-                  </View>
-                )}
-                <View style={[modalStyles.msgBubble, msg.from === 'user' ? modalStyles.msgBubbleUser : modalStyles.msgBubbleFinn]}>
-                  <Text style={[modalStyles.msgText, msg.from === 'user' && modalStyles.msgTextUser]}>{msg.text}</Text>
-                </View>
-              </View>
-            ))
+            messages.map((msg) => {
+              const chatMessage: AgentChatMessage = {
+                id: msg.id,
+                from: msg.from,
+                text: msg.text,
+                timestamp: Date.now(),
+              };
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  message={chatMessage}
+                  agent="finn"
+                  showTimestamp={false}
+                />
+              );
+            })
           )}
           {finnVoice.status === 'thinking' && (
-            <View style={modalStyles.msgRow}>
-              <View style={modalStyles.finnAvatar}>
-                <Ionicons name="sparkles" size={10} color="#A78BFA" />
-              </View>
-              <View style={modalStyles.msgBubbleFinn}>
-                <Text style={modalStyles.thinkingText}>Finn is thinking...</Text>
-              </View>
-            </View>
+            <ThinkingIndicator agent="finn" text="Finn is thinking..." />
           )}
         </ScrollView>
 
@@ -221,54 +219,7 @@ const modalStyles = StyleSheet.create({
     paddingHorizontal: 24,
     lineHeight: 19,
   },
-  msgRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'flex-end',
-  },
-  msgRowUser: {
-    flexDirection: 'row-reverse',
-  },
-  finnAvatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(139,92,246,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  msgBubble: {
-    maxWidth: '80%',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
-  },
-  msgBubbleUser: {
-    backgroundColor: 'rgba(139,92,246,0.25)',
-    borderWidth: 1,
-    borderColor: 'rgba(139,92,246,0.3)',
-    borderBottomRightRadius: 4,
-  },
-  msgBubbleFinn: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderBottomLeftRadius: 4,
-  },
-  msgText: {
-    color: '#ccc',
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  msgTextUser: {
-    color: '#C4B5FD',
-  },
-  thinkingText: {
-    color: '#888',
-    fontSize: 13,
-    fontStyle: 'italic',
-  },
+  /* msgRow, msgRowUser, finnAvatar, msgBubble*, msgText*, thinkingText removed — using shared MessageBubble + ThinkingIndicator */
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',

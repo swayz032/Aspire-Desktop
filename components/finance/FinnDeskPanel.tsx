@@ -4,6 +4,7 @@ import { ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
+import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, type AnamMessage, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput, streamResponseToAvatar } from '@/lib/anam';
@@ -587,7 +588,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
         ...prev,
         [runId]: {
           ...run,
-          events: [{ type: 'thinking', message: 'Processing financial request...', ts: Date.now(), icon: 'sparkles' }],
+          events: [{ id: `evt_${Date.now()}_0`, type: 'thinking', label: 'Processing financial request...', status: 'active' as const, timestamp: Date.now(), icon: 'sparkles' }],
         },
       };
     });
@@ -682,7 +683,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
           ...prev,
           [runId]: {
             ...run,
-            events: [...run.events, { type: 'done', message: 'Connection failed', ts: Date.now(), icon: 'alert-circle' }],
+            events: [...run.events, { id: `evt_${Date.now()}_err`, type: 'error', label: 'Connection failed', status: 'error' as const, timestamp: Date.now(), icon: 'alert-circle' }],
             status: 'completed',
           },
         };

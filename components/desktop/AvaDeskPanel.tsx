@@ -545,28 +545,31 @@ export function AvaDeskPanel() {
     const trimmed = input.trim();
     if (!trimmed) return;
 
-    const runId = `run_${Date.now()}`;
+    const now = Date.now();
+    const runId = `run_${now}`;
 
     // Show user message + empty Ava response immediately
     setActiveRuns((prev) => ({
       ...prev,
-      [runId]: { id: runId, events: [], status: 'running', finalText: '' },
+      [runId]: { runId, agent: 'ava', events: [], status: 'running', startedAt: now, finalText: '' },
     }));
 
     setChat((prev) => [
       ...prev,
-      { id: `m_${Date.now()}`, from: 'user', text: trimmed },
-      { id: `m_${Date.now()}_ava`, from: 'ava', text: '', runId },
+      { id: `m_${now}`, from: 'user' as const, text: trimmed },
+      { id: `m_${now}_ava`, from: 'ava' as const, text: '', runId },
     ]);
     setInput('');
     setIsConversing(true);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
     // Show initial thinking event
-    const thinkingEvent: AvaActivityEvent = {
+    const thinkingEvent: AgentActivityEvent = {
+      id: `evt_${now}_think`,
       type: 'thinking',
-      message: 'Processing intent...',
-      ts: Date.now(),
+      label: 'Processing intent...',
+      status: 'active',
+      timestamp: now,
       icon: 'sparkles',
     };
     setActiveRuns((prev) => {
@@ -606,7 +609,7 @@ export function AvaDeskPanel() {
           userProfile,
           context: {
             pendingApprovals: pendingApprovals.length,
-            approvalSummary: pendingApprovals.slice(0, 3).map((p: any) => p.title || p.type || 'Approval'),
+            approvalSummary: pendingApprovals.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
             conversationHistory: chat.slice(-10).map(m => ({ from: m.from, text: m.text })),
           },
         }),
@@ -618,7 +621,7 @@ export function AvaDeskPanel() {
 
       const data = await resp.json();
       const responseText = data.response || data.text || 'I processed your request.';
-      const activityEvents = buildActivityFromResponse(data);
+      const activityEvents = buildActivityFromResponse(data, 'ava');
 
       // If video connected, pipe response to Anam avatar (Cara speaks with Emma voice)
       // Anam handles voice output — our LLM drives what she says (Law #1: Single Brain)
@@ -647,43 +650,36 @@ export function AvaDeskPanel() {
         return;
       }
 
-      // Animate real activity events with staggered timing
-      activityEvents.forEach((evt, idx) => {
-        const delay = idx === 0 ? 200 : 200 + idx * 600;
-        const timer = setTimeout(() => {
-          const event: AvaActivityEvent = { ...evt, ts: Date.now() };
-          setActiveRuns((prev) => {
-            const run = prev[runId];
-            if (!run) return prev;
-            const isDone = evt.type === 'done';
-            return {
-              ...prev,
-              [runId]: {
-                ...run,
-                events: [...run.events, event],
-                status: isDone ? 'completed' : 'running',
-                finalText: isDone ? responseText : run.finalText,
-              },
-            };
-          });
-          if (evt.type === 'done') {
-            setIsConversing(false);
-            setChat((prev) =>
-              prev.map((msg) =>
-                msg.runId === runId ? { ...msg, text: responseText } : msg
-              )
-            );
-          }
-          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-        }, delay);
-        runTimers.current.push(timer);
+      // Activity events from shared builder already have id/label/status/timestamp
+      // Display them all at once (they arrived complete from orchestrator)
+      setActiveRuns((prev) => {
+        const run = prev[runId];
+        if (!run) return prev;
+        return {
+          ...prev,
+          [runId]: {
+            ...run,
+            events: activityEvents,
+            status: 'completed',
+            finalText: responseText,
+          },
+        };
       });
-    } catch (error: any) {
+      setIsConversing(false);
+      setChat((prev) =>
+        prev.map((msg) =>
+          msg.runId === runId ? { ...msg, text: responseText } : msg
+        )
+      );
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    } catch (error: unknown) {
       // Law #3: Fail Closed — show error, don't guess
-      const errorEvent: AvaActivityEvent = {
-        type: 'done',
-        message: 'Connection failed',
-        ts: Date.now(),
+      const errorEvent: AgentActivityEvent = {
+        id: `evt_err_${Date.now()}`,
+        type: 'error',
+        label: 'Connection failed',
+        status: 'error',
+        timestamp: Date.now(),
         icon: 'alert-circle',
       };
       setActiveRuns((prev) => {
@@ -691,7 +687,7 @@ export function AvaDeskPanel() {
         if (!run) return prev;
         return {
           ...prev,
-          [runId]: { ...run, events: [...run.events, errorEvent], status: 'completed' },
+          [runId]: { ...run, events: [...run.events, errorEvent], status: 'error' },
         };
       });
       setIsConversing(false);
@@ -917,49 +913,35 @@ export function AvaDeskPanel() {
           contentContainerStyle={styles.chatContent}
           showsVerticalScrollIndicator={false}
         >
-          {chat.map((msg, idx) => {
+          {chat.map((msg) => {
             const run = msg.runId ? activeRuns[msg.runId] : null;
-            // Only show activity timeline if there are real events (conversational responses return empty)
             const showActivity = run && run.events.length > 0;
-            const showMessage = !msg.runId || (run && (run.status === 'completed' || run.events.length === 0));
+            const isThinking = msg.runId && run && run.status === 'running' && !msg.text;
 
+            // For user messages, render via MessageBubble directly
+            // For agent messages, render MessageBubble + optional ActivityTimeline + optional ThinkingIndicator
             return (
               <View key={msg.id}>
-                {msg.from === 'user' ? (
-                  <View style={[styles.msgBubble, styles.msgUser]}>
-                    <View style={styles.msgContent}>
-                      <Text style={styles.msgText}>{msg.text}</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={[styles.msgBubble, styles.msgAva]}>
-                    <View style={styles.avatarSmall}>
-                      <Ionicons name="sparkles" size={12} color={Colors.accent.cyan} />
-                    </View>
-                    <View style={styles.msgContent}>
-                      {showActivity && (
-                        <AvaActivityInline run={run} />
-                      )}
-                      {showMessage && msg.text ? (
-                        <Text style={styles.msgText}>{msg.text}</Text>
-                      ) : null}
-                      {msg.runId && run && run.status === 'running' && !msg.text && (
-                        Platform.OS === 'web' ? (
-                          <View style={actStyles.thinkingDotsRow}>
-                            <ShimmeringText
-                              text="Thinking..."
-                              duration={1.5}
-                              color={Colors.text.muted}
-                              shimmerColor={Colors.accent.cyan}
-                              style={{ fontSize: 13, fontWeight: '500' }}
-                            />
-                          </View>
-                        ) : (
-                          <ThinkingDots />
-                        )
-                      )}
-                    </View>
-                  </View>
+                {/* Activity timeline (above the message bubble for agent responses) */}
+                {msg.from !== 'user' && showActivity && (
+                  <ActivityTimeline
+                    events={run.events}
+                    agent="ava"
+                    style={{ marginBottom: 4 }}
+                  />
+                )}
+
+                {/* Thinking indicator (while waiting for response) */}
+                {msg.from !== 'user' && isThinking && (
+                  <ThinkingIndicator agent="ava" />
+                )}
+
+                {/* Message bubble (only show if there's text or it's a user message) */}
+                {(msg.from === 'user' || msg.text) && (
+                  <MessageBubble
+                    message={msg}
+                    agent="ava"
+                  />
                 )}
               </View>
             );
@@ -1371,73 +1353,6 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 8,
     gap: 12,
-  },
-  msgBubble: {
-    flexDirection: 'row',
-    gap: 10,
-    maxWidth: '85%',
-  },
-  msgAva: { 
-    alignSelf: 'flex-start',
-  },
-  msgUser: { 
-    alignSelf: 'flex-end',
-    flexDirection: 'row-reverse',
-  },
-  avatarSmall: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(59,130,246,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  msgContent: {
-    flex: 1,
-    gap: 8,
-  },
-  msgText: { 
-    color: Colors.text.primary, 
-    fontSize: 13, 
-    lineHeight: 20,
-    backgroundColor: '#1E1E20',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  attachmentList: {
-    gap: 6,
-    paddingLeft: 4,
-  },
-  attachmentChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(59,130,246,0.08)',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.15)',
-  },
-  attachmentName: {
-    flex: 1,
-    fontSize: 12,
-    color: Colors.text.primary,
-    fontWeight: '500',
-  },
-  attachmentBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: '#242426',
-    borderRadius: 4,
-  },
-  attachmentKind: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.text.tertiary,
   },
   inputRow: {
     flexDirection: 'row',

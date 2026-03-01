@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '@/constants/tokens';
+import { MessageBubble, type AgentChatMessage } from '@/components/chat';
 
 /* ── Types ─────────────────────────────────────── */
 
@@ -48,10 +49,6 @@ const FINN_CYAN = '#3B82F6';
 const FINN_CYAN_DIM = 'rgba(59, 130, 246, 0.12)';
 const FINN_CYAN_MED = 'rgba(59, 130, 246, 0.22)';
 const FINN_CYAN_BRIGHT = 'rgba(59, 130, 246, 0.55)';
-const USER_BUBBLE_BG = 'rgba(59, 130, 246, 0.18)';
-const USER_BUBBLE_BORDER = 'rgba(59, 130, 246, 0.28)';
-const FINN_BUBBLE_BG = 'rgba(255, 255, 255, 0.04)';
-const FINN_BUBBLE_BORDER = 'rgba(255, 255, 255, 0.06)';
 
 const STYLE_ID = 'finn-video-chat-overlay-css';
 
@@ -321,40 +318,26 @@ export function FinnVideoChatOverlay({
               </Text>
             </View>
           ) : (
-            chat.map((msg) => (
-              <View
-                key={msg.id}
-                style={[
-                  styles.msgRow,
-                  msg.from === 'user' && styles.msgRowUser,
-                  wc('finn-chat-msg-row'),
-                ]}
-              >
-                {msg.from === 'finn' && (
-                  <View style={styles.finnAvatar}>
-                    <Ionicons name="sparkles" size={9} color={FINN_CYAN} />
-                  </View>
-                )}
+            chat.map((msg) => {
+              const chatMessage: AgentChatMessage = {
+                id: msg.id,
+                from: msg.from,
+                text: msg.text,
+                timestamp: Date.now(),
+              };
+              return (
                 <View
-                  style={[
-                    styles.msgBubble,
-                    msg.from === 'user'
-                      ? styles.msgBubbleUser
-                      : styles.msgBubbleFinn,
-                    wc(msg.from === 'user' ? 'finn-chat-bubble-user' : 'finn-chat-bubble-finn'),
-                  ]}
+                  key={msg.id}
+                  style={[wc('finn-chat-msg-row')]}
                 >
-                  <Text
-                    style={[
-                      styles.msgText,
-                      msg.from === 'user' && styles.msgTextUser,
-                    ]}
-                  >
-                    {msg.text}
-                  </Text>
+                  <MessageBubble
+                    message={chatMessage}
+                    agent="finn"
+                    showTimestamp={false}
+                  />
                 </View>
-              </View>
-            ))
+              );
+            })
           )}
         </ScrollView>
 
@@ -605,70 +588,7 @@ const styles = StyleSheet.create({
     maxWidth: 260,
   },
 
-  msgRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    alignItems: 'flex-end',
-    paddingVertical: 2,
-  },
-
-  msgRowUser: {
-    flexDirection: 'row-reverse',
-  },
-
-  finnAvatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: FINN_CYAN_DIM,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.15)',
-  },
-
-  msgBubble: {
-    maxWidth: '78%',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 16,
-  } as Record<string, unknown>,
-
-  msgBubbleUser: {
-    backgroundColor: USER_BUBBLE_BG,
-    borderWidth: 1,
-    borderColor: USER_BUBBLE_BORDER,
-    borderBottomRightRadius: 4,
-    ...(Platform.OS === 'web'
-      ? {
-          boxShadow: 'inset 0 1px 0 rgba(59,130,246,0.08), 0 1px 3px rgba(0,0,0,0.15)',
-        }
-      : {}),
-  } as Record<string, unknown>,
-
-  msgBubbleFinn: {
-    backgroundColor: FINN_BUBBLE_BG,
-    borderWidth: 1,
-    borderColor: FINN_BUBBLE_BORDER,
-    borderBottomLeftRadius: 4,
-    ...(Platform.OS === 'web'
-      ? {
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03), 0 1px 3px rgba(0,0,0,0.12)',
-        }
-      : {}),
-  } as Record<string, unknown>,
-
-  msgText: {
-    color: Colors.text.secondary,
-    fontSize: 13,
-    lineHeight: 20,
-    ...(Platform.OS === 'web' ? { letterSpacing: '0.005em' } : {}),
-  } as Record<string, unknown>,
-
-  msgTextUser: {
-    color: '#A5C8FD',
-  },
+  /* msgRow, msgRowUser, finnAvatar, msgBubble*, msgText* removed — using shared MessageBubble */
 
   inputSeparator: {
     height: 1,

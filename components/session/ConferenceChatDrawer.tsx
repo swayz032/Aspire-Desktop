@@ -1,11 +1,24 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Pressable, 
-  TextInput, 
-  ScrollView, 
+/**
+ * ConferenceChatDrawer -- In-meeting chat drawer with 3 tabs.
+ *
+ * Tabs:
+ *   - Room: Multi-party room chat (human participants)
+ *   - Materials: Shared documents + authority queue (pending approvals)
+ *   - Private Ava: Private AI assistant chat (uses Ava backend)
+ *
+ * The Ava tab uses shared MessageBubble (agent="ava") for consistent
+ * agent chat styling across the app. Room chat retains its own
+ * multi-party bubble rendering since participants are humans, not agents.
+ */
+
+import React, { useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  TextInput,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
   Modal,
@@ -13,6 +26,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
+import { MessageBubble, ThinkingIndicator } from '@/components/chat';
+import type { AgentChatMessage } from '@/components/chat';
 
 const avaLogo = require('../../assets/images/ava-logo.png');
 
@@ -59,9 +74,33 @@ interface ConferenceChatDrawerProps {
   authorityQueue?: AuthorityItem[];
   onApproveAuthority?: (id: string) => void;
   onDenyAuthority?: (id: string) => void;
+  /** Whether Ava is currently processing a response in the private tab. */
+  avaThinking?: boolean;
 }
 
 type TabType = 'room' | 'materials' | 'ava';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Convert a private ChatMessage from Ava to AgentChatMessage for the shared bubble. */
+function toAvaChatMessage(msg: ChatMessage, currentUserId: string): AgentChatMessage {
+  const isUser = msg.senderId === currentUserId;
+  return {
+    id: msg.id,
+    from: isUser ? 'user' : 'ava',
+    text: msg.text,
+    timestamp: msg.timestamp.getTime(),
+    senderName: isUser ? undefined : msg.senderName,
+    senderId: msg.senderId,
+    isPrivate: msg.isPrivate,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 
 export function ConferenceChatDrawer({
   visible,
@@ -75,6 +114,7 @@ export function ConferenceChatDrawer({
   authorityQueue = [],
   onApproveAuthority,
   onDenyAuthority,
+  avaThinking = false,
 }: ConferenceChatDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabType>('room');
   const [inputText, setInputText] = useState('');
@@ -118,6 +158,12 @@ export function ConferenceChatDrawer({
   const roomMessages = messages.filter(m => !m.isPrivate);
   const privateMessages = messages.filter(m => m.isPrivate);
 
+  // Convert private Ava messages to shared AgentChatMessage format
+  const avaMessages = useMemo(
+    () => privateMessages.map(m => toAvaChatMessage(m, currentUserId)),
+    [privateMessages, currentUserId],
+  );
+
   return (
     <Modal
       visible={visible}
@@ -125,7 +171,7 @@ export function ConferenceChatDrawer({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.modalContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
@@ -153,7 +199,7 @@ export function ConferenceChatDrawer({
                 </View>
               )}
             </Pressable>
-            
+
             <Pressable
               style={[styles.tab, activeTab === 'materials' && styles.tabActive]}
               onPress={() => setActiveTab('materials')}
@@ -167,16 +213,16 @@ export function ConferenceChatDrawer({
                 </View>
               )}
             </Pressable>
-            
+
             <Pressable
               style={[styles.tab, activeTab === 'ava' && styles.tabActive]}
               onPress={() => setActiveTab('ava')}
             >
               <View style={styles.tabWithIcon}>
-                <Ionicons 
-                  name="lock-closed" 
-                  size={10} 
-                  color={activeTab === 'ava' ? '#3B82F6' : 'rgba(255,255,255,0.5)'} 
+                <Ionicons
+                  name="lock-closed"
+                  size={10}
+                  color={activeTab === 'ava' ? '#3B82F6' : 'rgba(255,255,255,0.5)'}
                 />
                 <Text style={[styles.tabText, activeTab === 'ava' && styles.tabTextActive]}>
                   Private Ava
@@ -206,14 +252,14 @@ export function ConferenceChatDrawer({
           )}
 
           <View style={styles.content}>
-            <ScrollView 
+            <ScrollView
               style={styles.messageList}
               contentContainerStyle={styles.messageListContent}
             >
               {activeTab === 'room' && (
                 roomMessages.length > 0 ? (
                   roomMessages.map((message) => (
-                    <View 
+                    <View
                       key={message.id}
                       style={[
                         styles.messageRow,
@@ -264,14 +310,14 @@ export function ConferenceChatDrawer({
                             </Text>
                           </View>
                           <View style={styles.proposalActions}>
-                            <Pressable 
+                            <Pressable
                               style={styles.proposalDeny}
                               onPress={() => onDenyAuthority?.(item.id)}
                             >
                               <Ionicons name="close" size={16} color="#EF4444" />
                               <Text style={styles.proposalDenyText}>Deny</Text>
                             </Pressable>
-                            <Pressable 
+                            <Pressable
                               style={styles.proposalApprove}
                               onPress={() => onApproveAuthority?.(item.id)}
                             >
@@ -288,10 +334,10 @@ export function ConferenceChatDrawer({
                       <View key={material.id} style={styles.materialCard}>
                         <View style={styles.materialHeader}>
                           <View style={[styles.materialIcon, { backgroundColor: `${getSensitivityColor(material.sensitivity)}20` }]}>
-                            <Ionicons 
-                              name={getMaterialIcon(material.type)} 
-                              size={16} 
-                              color={getSensitivityColor(material.sensitivity)} 
+                            <Ionicons
+                              name={getMaterialIcon(material.type)}
+                              size={16}
+                              color={getSensitivityColor(material.sensitivity)}
                             />
                           </View>
                           <View style={styles.materialInfo}>
@@ -306,14 +352,14 @@ export function ConferenceChatDrawer({
                               {getSensitivityLabel(material.sensitivity)}
                             </Text>
                           </View>
-                          <Pressable 
+                          <Pressable
                             style={[styles.saveButton, material.saved && styles.saveButtonSaved]}
                             onPress={() => onSaveMaterial(material.id)}
                           >
-                            <Ionicons 
-                              name={material.saved ? 'checkmark' : 'bookmark-outline'} 
-                              size={14} 
-                              color={material.saved ? '#4ade80' : 'rgba(255,255,255,0.7)'} 
+                            <Ionicons
+                              name={material.saved ? 'checkmark' : 'bookmark-outline'}
+                              size={14}
+                              color={material.saved ? '#4ade80' : 'rgba(255,255,255,0.7)'}
                             />
                             <Text style={[styles.saveButtonText, material.saved && styles.saveButtonTextSaved]}>
                               {material.saved ? 'Saved' : 'Save'}
@@ -333,32 +379,19 @@ export function ConferenceChatDrawer({
               )}
 
               {activeTab === 'ava' && (
-                privateMessages.length > 0 ? (
-                  privateMessages.map((message) => (
-                    <View 
-                      key={message.id}
-                      style={[
-                        styles.messageRow,
-                        message.senderId === currentUserId && styles.messageRowOwn,
-                      ]}
-                    >
-                      <View style={[
-                        styles.messageBubble,
-                        message.senderId === currentUserId ? styles.messageBubbleOwn : styles.messageBubbleAva,
-                      ]}>
-                        {message.senderId !== currentUserId && (
-                          <View style={styles.avaSenderRow}>
-                            <Text style={styles.messageSenderAva}>Ava</Text>
-                            <View style={styles.aiTag}>
-                              <Text style={styles.aiTagText}>AI</Text>
-                            </View>
-                          </View>
-                        )}
-                        <Text style={styles.messageText}>{message.text}</Text>
-                        <Text style={styles.messageTime}>{formatTime(message.timestamp)}</Text>
-                      </View>
-                    </View>
-                  ))
+                avaMessages.length > 0 || avaThinking ? (
+                  <>
+                    {avaMessages.map((message) => (
+                      <MessageBubble
+                        key={message.id}
+                        message={message}
+                        agent="ava"
+                      />
+                    ))}
+                    {avaThinking && (
+                      <ThinkingIndicator agent="ava" text="Ava is thinking..." />
+                    )}
+                  </>
                 ) : (
                   <View style={styles.emptyState}>
                     <Ionicons name="lock-closed" size={36} color="rgba(255,255,255,0.2)" />
@@ -380,7 +413,7 @@ export function ConferenceChatDrawer({
                   onSubmitEditing={handleSend}
                   returnKeyType="send"
                 />
-                <Pressable 
+                <Pressable
                   style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
                   onPress={handleSend}
                   disabled={!inputText.trim()}
@@ -539,6 +572,7 @@ const styles = StyleSheet.create({
     gap: 12,
     flexGrow: 1,
   },
+  // Room chat bubbles (multi-party human chat -- NOT agent chat)
   messageRow: {
     alignItems: 'flex-start',
   },
@@ -558,38 +592,11 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 14,
     borderTopRightRadius: 4,
   },
-  messageBubbleAva: {
-    backgroundColor: 'rgba(59, 130, 246, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.15)',
-  },
   messageSender: {
     fontSize: 11,
     fontWeight: '600',
     color: '#D4D4D8',
     marginBottom: 2,
-  },
-  messageSenderAva: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#3B82F6',
-  },
-  avaSenderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 2,
-  },
-  aiTag: {
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 3,
-  },
-  aiTagText: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: '#3B82F6',
   },
   messageText: {
     fontSize: 14,
