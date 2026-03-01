@@ -6,6 +6,17 @@ Aspire Desktop is a full-featured virtual office platform built with Expo (React
 ## User Preferences
 I prefer iterative development with a focus on clear communication. Please ask before making major architectural changes or implementing new features. I appreciate detailed explanations of complex technical decisions. I also prefer that you use simple language wherever possible.
 
+## Dev Auth Bypass
+Auth is automatically bypassed when Supabase credentials are not configured (no `EXPO_PUBLIC_SUPABASE_URL` / `SUPABASE_URL` env vars). The bypass is environment-driven and will never activate in production (`NODE_ENV=production`).
+
+Files involved:
+- `providers/SupabaseProvider.tsx` — provides a fake session with dev user/suite IDs
+- `app/_layout.tsx` — skips the auth gate redirect and onboarding check
+- `server/index.ts` — skips JWT verification in the middleware, sets RLS context
+- `lib/supabase.ts` — uses placeholder Supabase URL/key to prevent crash when env vars are missing
+
+To re-enable real auth, set the Supabase environment variables (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`).
+
 ## System Architecture
 The platform utilizes Expo/React Native Web with expo-router for the frontend, an Express.js server for the backend, and PostgreSQL with Drizzle ORM for database management. The build process involves `expo export -p web` to generate static files served by Express.
 

@@ -74,12 +74,29 @@ function isPublicPath(path: string): boolean {
   return PUBLIC_PATHS.some(p => path.startsWith(p)) || !path.startsWith('/api');
 }
 
+const DEV_BYPASS_AUTH = process.env.NODE_ENV !== 'production' && !process.env.SUPABASE_URL;
+const DEV_SUITE_ID = 'dev-suite-00000000-0000-0000-0000-000000000000';
+const DEV_USER_ID = 'dev-user-00000000-0000-0000-0000-000000000000';
+
+if (DEV_BYPASS_AUTH) {
+  logger.info('DEV_BYPASS_AUTH enabled — all requests will skip JWT verification');
+}
+
 // RLS context middleware — Law #3: Fail Closed + Law #6: Tenant Isolation
 // JWT-based suite derivation for authenticated routes.
 // Public routes use defaultSuiteId (read-only, RLS-scoped).
 // Authenticated routes REQUIRE valid JWT — no fallback.
 app.use(async (req, res, next) => {
   try {
+    if (DEV_BYPASS_AUTH) {
+      (req as any).authenticatedUserId = DEV_USER_ID;
+      (req as any).authenticatedSuiteId = DEV_SUITE_ID;
+      try {
+        await db.execute(sql`SELECT set_config('app.current_suite_id', ${DEV_SUITE_ID}, true)`);
+      } catch (_) { /* DB may not be connected in dev */ }
+      return next();
+    }
+
     // Public paths: use defaultSuiteId (read-only, no auth needed)
     if (isPublicPath(req.path)) {
       if (defaultSuiteId) {
@@ -99,9 +116,6 @@ app.use(async (req, res, next) => {
 
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-      // Law #3: Fail Closed — authenticated routes REQUIRE JWT.
-      // No JWT = no access to non-public API routes.
-      // Client must send Authorization: Bearer <jwt> via authenticatedFetch.
       return res.status(401).json({
         error: 'AUTH_REQUIRED',
         message: 'Authentication required. Please sign in.',
@@ -120,12 +134,9 @@ app.use(async (req, res, next) => {
 
     const suiteId = user.user_metadata?.suite_id || defaultSuiteId;
 
-    // Law #6 defense-in-depth: if x-suite-id header is present, it MUST match JWT-derived suite_id
-    // This prevents header-spoofing attacks where a valid JWT holder tries to access another tenant
     const headerSuiteId = req.headers['x-suite-id'] as string | undefined;
     if (headerSuiteId && suiteId && headerSuiteId !== suiteId) {
       logger.error('TENANT_ISOLATION_VIOLATION: x-suite-id header mismatch', { header_suite_id: headerSuiteId, jwt_suite_id: suiteId, user_id: user.id });
-      // Law #2: emit denial receipt for tenant isolation violation
       try {
         const { createReceipt } = require('./receiptService');
         await createReceipt({
@@ -547,8 +558,11 @@ const TERMS_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// Serve public landing page at root (unauthenticated — no JWT check)
 app.get('/', (req, res) => {
+  if (DEV_BYPASS_AUTH) {
+    const distPath = path.join(process.cwd(), 'dist');
+    return res.sendFile(path.join(distPath, 'index.html'));
+  }
   res.setHeader('Content-Type', 'text/html');
   res.send(LANDING_HTML);
 });
