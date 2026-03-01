@@ -123,7 +123,7 @@ describe('useActivityStream', () => {
     );
 
     expect(MockEventSource.instances).toHaveLength(1);
-    expect(getLastInstance().url).toContain('/api/orchestrator/v1/intents');
+    expect(getLastInstance().url).toContain('/api/orchestrator/intent');
   });
 
   it('uses custom URL when provided', () => {

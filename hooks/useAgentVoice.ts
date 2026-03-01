@@ -271,63 +271,71 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         headers['Authorization'] = `Bearer ${accessToken}`;
       }
 
-      // Wave 6: If onActivityEvent callback is provided, use SSE streaming
+      let responseText = 'I couldn\'t process that request.';
+      let receiptId: string | null = null;
+
+      // Wave 6: If onActivityEvent callback is provided, use SSE streaming.
       if (options.onActivityEvent) {
-        const eventSource = new EventSource(
-          `/api/orchestrator/intent?stream=true&agent=${agent}&text=${encodeURIComponent(text)}&suiteId=${suiteId || ''}`
-        );
-
-        eventSource.onmessage = (msg) => {
-          try {
-            const event = JSON.parse(msg.data);
-            if (event.type === 'response') {
-              // Final response received
-              const responseText = event.data.response || event.data.text || 'I couldn\'t process that request.';
-              const receiptId = event.data.receipt_id || null;
-              setLastResponse(responseText);
-              setLastReceiptId(receiptId);
-              onResponse?.(responseText, receiptId);
-              eventSource.close();
-            } else {
-              // Activity event (thinking/tool_call/step/done/error)
-              options.onActivityEvent?.(event);
-            }
-          } catch (e) {
-            console.error('[useAgentVoice] Failed to parse SSE event:', e);
-          }
-        };
-
-        eventSource.onerror = () => {
-          eventSource.close();
-          throw new Error('SSE stream failed');
-        };
-
-        // Don't continue to regular fetch - streaming handles it
-        return;
-      }
-
-      const resp = await fetch('/api/orchestrator/intent', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
+        const query = new URLSearchParams({
+          stream: 'true',
           agent,
           text,
-          voiceId: getVoiceId(agent),
           channel: 'voice',
-        }),
-      });
+        });
+        if (suiteId) query.set('suiteId', suiteId);
 
-      if (!resp.ok) {
-        throw new Error(`Service returned ${resp.status}`);
+        await new Promise<void>((resolve, reject) => {
+          const eventSource = new EventSource(`/api/orchestrator/intent?${query.toString()}`);
+          let completed = false;
+
+          eventSource.onmessage = (msg) => {
+            try {
+              const event = JSON.parse(msg.data);
+              if (event.type === 'response') {
+                const payload = event.data || event;
+                responseText = payload.response || payload.text || responseText;
+                receiptId = payload.receipt_id || null;
+                completed = true;
+                eventSource.close();
+                resolve();
+                return;
+              }
+              options.onActivityEvent?.(event);
+            } catch (e) {
+              console.error('[useAgentVoice] Failed to parse SSE event:', e);
+            }
+          };
+
+          eventSource.onerror = () => {
+            if (completed) return;
+            eventSource.close();
+            reject(new Error('SSE stream failed'));
+          };
+        });
+      } else {
+        const resp = await fetch('/api/orchestrator/intent', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            agent,
+            text,
+            voiceId: getVoiceId(agent),
+            channel: 'voice',
+          }),
+        });
+
+        if (!resp.ok) {
+          throw new Error(`Service returned ${resp.status}`);
+        }
+
+        const data = await resp.json();
+        responseText = data.response || data.text || responseText;
+        receiptId = data.receipt_id || null;
       }
-
-      const data = await resp.json();
-      const responseText = data.response || data.text || 'I couldn\'t process that request.';
-      const receiptId = data.receipt_id || null;
 
       setLastResponse(responseText);
       setLastReceiptId(receiptId);
-      onResponse?.(responseText, receiptId);
+      onResponse?.(responseText, receiptId ?? undefined);
 
       // Speak the response
       updateStatus('speaking');

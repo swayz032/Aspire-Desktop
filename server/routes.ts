@@ -17,11 +17,73 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
 
 const router = Router();
 
+type SupportedAgent =
+  | 'ava'
+  | 'finn'
+  | 'eli'
+  | 'nora'
+  | 'sarah'
+  | 'adam'
+  | 'quinn'
+  | 'tec'
+  | 'teressa'
+  | 'milo'
+  | 'clara'
+  | 'mail_ops';
+
+type AnamSessionContext = {
+  userId: string;
+  suiteId: string;
+  persona: SupportedAgent;
+  createdAt: number;
+};
+
+const SUPPORTED_AGENTS = new Set<SupportedAgent>([
+  'ava', 'finn', 'eli', 'nora', 'sarah', 'adam',
+  'quinn', 'tec', 'teressa', 'milo', 'clara', 'mail_ops',
+]);
+const ENABLE_INTENT_SSE_PROXY = process.env.ENABLE_INTENT_SSE_PROXY !== 'false';
+const STRICT_AGENT_VALIDATION = process.env.STRICT_AGENT_VALIDATION !== 'false';
+
+function parseRequestedAgent(raw: unknown): { value: SupportedAgent; provided: boolean; valid: boolean } {
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return { value: 'ava', provided: false, valid: true };
+  }
+  const normalized = raw.trim().toLowerCase() as SupportedAgent;
+  if (SUPPORTED_AGENTS.has(normalized)) {
+    return { value: normalized, provided: true, valid: true };
+  }
+  return { value: 'ava', provided: true, valid: false };
+}
+
+function normalizeSessionKey(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  return trimmed
+    .replace(/^session[:_-]/i, '')
+    .replace(/^sess[:_-]/i, '');
+}
+
 // ─── Anam Session Store (CUSTOMER_CLIENT_V1 Auth Bridge) ───
 // When a user starts an Anam avatar session, we store their auth context.
 // When Anam's brain routing calls /api/ava/chat-stream (without JWT), we look up
 // the user's suite_id from this store. TTL: 30 minutes, cleanup every 5 minutes.
-const anamSessionStore = new Map<string, { userId: string; suiteId: string; createdAt: number }>();
+const anamSessionStore = new Map<string, AnamSessionContext>();
+
+function setAnamSessionContext(sessionKey: string, ctx: AnamSessionContext): void {
+  if (!sessionKey) return;
+  anamSessionStore.set(sessionKey, ctx);
+  const normalized = normalizeSessionKey(sessionKey);
+  if (normalized && normalized !== sessionKey) {
+    anamSessionStore.set(normalized, ctx);
+  }
+}
+
+function getAnamSessionContext(sessionKey: unknown): AnamSessionContext | undefined {
+  if (typeof sessionKey !== 'string' || !sessionKey.trim()) return undefined;
+  return anamSessionStore.get(sessionKey) ?? anamSessionStore.get(normalizeSessionKey(sessionKey));
+}
 
 setInterval(() => {
   const cutoff = Date.now() - 30 * 60 * 1000;
@@ -1739,6 +1801,158 @@ const CIRCUIT_BREAKER_RESET_MS = 60_000;
 let orchestratorConsecutiveFailures = 0;
 let orchestratorLastFailureAt = 0;
 
+function writeSseHeaders(res: Response, correlationId: string): void {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('X-Correlation-Id', correlationId);
+}
+
+function writeSseEvent(res: Response, payload: Record<string, unknown>): void {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-sse-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const streamRequested = req.query.stream === 'true';
+  if (!ENABLE_INTENT_SSE_PROXY) {
+    return res.status(404).json({
+      error: 'DISABLED',
+      message: 'SSE proxy endpoint disabled by configuration.',
+      correlation_id: correlationId,
+    });
+  }
+
+  if (!streamRequested) {
+    return res.status(400).json({
+      error: 'STREAM_REQUIRED',
+      message: 'GET /api/orchestrator/intent requires stream=true. Use POST /api/orchestrator/intent for non-streaming requests.',
+      correlation_id: correlationId,
+    });
+  }
+
+  const suiteId = (req as any).authenticatedSuiteId || (typeof req.query.suiteId === 'string' ? req.query.suiteId : '');
+  if (!suiteId) {
+    return res.status(401).json({
+      error: 'AUTH_REQUIRED',
+      message: 'Authenticated suite context required.',
+      correlation_id: correlationId,
+    });
+  }
+
+  const rawAgent = typeof req.query.agent === 'string' ? req.query.agent : '';
+  const parsedAgent = parseRequestedAgent(rawAgent);
+  if (STRICT_AGENT_VALIDATION && parsedAgent.provided && !parsedAgent.valid) {
+    return res.status(400).json({
+      error: 'INVALID_AGENT',
+      message: `Unsupported agent '${rawAgent}'.`,
+      correlation_id: correlationId,
+      allowed_agents: Array.from(SUPPORTED_AGENTS),
+    });
+  }
+
+  writeSseHeaders(res, correlationId);
+
+  const text = typeof req.query.text === 'string' ? req.query.text.trim() : '';
+  if (!text || req.query.passive === 'true') {
+    writeSseEvent(res, {
+      type: 'connected',
+      message: 'stream_connected',
+      timestamp: Date.now(),
+      correlation_id: correlationId,
+      resolved_agent: parsedAgent.value,
+    });
+
+    const heartbeat = setInterval(() => {
+      writeSseEvent(res, {
+        type: 'heartbeat',
+        timestamp: Date.now(),
+        correlation_id: correlationId,
+      });
+    }, 15_000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+    });
+    return;
+  }
+
+  const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ORCHESTRATOR_TIMEOUT_MS);
+  req.on('close', () => controller.abort());
+
+  try {
+    const response = await fetch(`${ORCHESTRATOR_URL}/v1/intents?stream=true`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Suite-Id': suiteId,
+        'X-Office-Id': getDefaultOfficeId() || suiteId,
+        'X-Actor-Id': (req as any).authenticatedUserId || 'web-stream-client',
+        'X-Correlation-Id': correlationId,
+      },
+      body: JSON.stringify({
+        text,
+        agent: 'ava',
+        requested_agent: parsedAgent.value,
+        channel: typeof req.query.channel === 'string' ? req.query.channel : 'chat',
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      writeSseEvent(res, {
+        type: 'error',
+        timestamp: Date.now(),
+        correlation_id: correlationId,
+        code: 'ORCHESTRATOR_ERROR',
+        message: `Orchestrator returned ${response.status}`,
+        detail: errorText.substring(0, 200),
+      });
+      res.end();
+      return;
+    }
+
+    if (!response.body) {
+      writeSseEvent(res, {
+        type: 'error',
+        timestamp: Date.now(),
+        correlation_id: correlationId,
+        code: 'ORCHESTRATOR_NO_STREAM',
+        message: 'Orchestrator returned no stream body.',
+      });
+      res.end();
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(decoder.decode(value, { stream: true }));
+    }
+    res.end();
+  } catch (error: unknown) {
+    const code = error instanceof Error && error.name === 'AbortError'
+      ? 'ORCHESTRATOR_TIMEOUT'
+      : 'ORCHESTRATOR_UNAVAILABLE';
+    writeSseEvent(res, {
+      type: 'error',
+      timestamp: Date.now(),
+      correlation_id: correlationId,
+      code,
+      message: error instanceof Error ? error.message : 'Unknown stream error',
+    });
+    res.end();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+});
+
 router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -1768,6 +1982,17 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       });
     }
 
+    const parsedAgent = parseRequestedAgent(agent);
+    if (STRICT_AGENT_VALIDATION && parsedAgent.provided && !parsedAgent.valid) {
+      return res.status(400).json({
+        error: 'INVALID_AGENT',
+        message: `Unsupported agent '${String(agent)}'.`,
+        correlation_id: correlationId,
+        allowed_agents: Array.from(SUPPORTED_AGENTS),
+      });
+    }
+    const requestedAgent = parsedAgent.value;
+
     // Build profile context for Ava personalization (PII-filtered — Law #9)
     // Only safe business context fields, never DOB/address/gender
     const profileContext = userProfile ? {
@@ -1796,7 +2021,8 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       },
       body: JSON.stringify({
         text: text.trim(),
-        agent: agent || 'ava',
+        agent: 'ava',
+        requested_agent: requestedAgent,
         voice_id: voiceId,
         channel: channel || 'voice',
         user_profile: profileContext,
@@ -1855,6 +2081,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       response: data.text || data.message || 'I processed your request.',
       receipt_id: data.governance?.receipt_ids?.[0] || null,
       receipt_ids: data.governance?.receipt_ids || [],
+      resolved_agent: requestedAgent,
       action: data.plan?.task_type || null,
       governance: data.governance || null,
       risk_tier: data.risk?.tier || null,
@@ -2119,6 +2346,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     // Use EPHEMERAL persona config (not stateful ID) to avoid legacy token type.
     // Anam SDK v4.8 rejects legacy tokens — ephemeral returns type: "ephemeral".
     const requestedPersona = req.body?.persona;
+    const resolvedPersona: 'ava' | 'finn' = requestedPersona === 'finn' ? 'finn' : 'ava';
 
     // Ava: Cara avatar + Hope voice, Finn: custom avatar + voice
     // llmId: CUSTOMER_CLIENT_V1 routes all conversation to /api/ava/chat-stream (Law #1: Single Brain)
@@ -2141,8 +2369,8 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
     };
 
-    const personaConfig = requestedPersona === 'finn' ? FINN_CONFIG : AVA_CONFIG;
-    const agent = requestedPersona === 'finn' ? 'Finn' : 'Ava';
+    const personaConfig = resolvedPersona === 'finn' ? FINN_CONFIG : AVA_CONFIG;
+    const agent = resolvedPersona === 'finn' ? 'Finn' : 'Ava';
 
     const response = await fetch('https://api.anam.ai/v1/auth/session-token', {
       method: 'POST',
@@ -2160,7 +2388,6 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         persona: agent,
         avatarId: personaConfig.avatarId,
         error: errorText.substring(0, 500),
-        apiKeyPrefix: ANAM_API_KEY.substring(0, 8) + '...',
       });
       return res.status(502).json({
         error: 'AVATAR_SESSION_FAILED',
@@ -2171,22 +2398,23 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     const data = await response.json() as { sessionToken?: string };
     if (!data.sessionToken) {
-      logger.error('Anam returned no session token', { responseKeys: Object.keys(data), persona: requestedPersona || 'ava' });
+      logger.error('Anam returned no session token', { responseKeys: Object.keys(data), persona: resolvedPersona });
       return res.status(502).json({ error: 'AVATAR_NO_TOKEN', message: 'Avatar service returned invalid response' });
     }
 
-    logger.info('Anam session token obtained', { persona: requestedPersona || 'ava', tokenLength: data.sessionToken.length });
+    logger.info('Anam session token obtained', { persona: resolvedPersona, tokenLength: data.sessionToken.length });
 
     // Store user context for CUSTOMER_CLIENT_V1 brain routing auth bridge.
     // When Anam calls /api/ava/chat-stream, it sends the session_id — we look up the suite context.
     const suiteId = (req as any).authenticatedSuiteId;
     if (suiteId && data.sessionToken) {
-      anamSessionStore.set(data.sessionToken, {
+      setAnamSessionContext(data.sessionToken, {
         userId,
         suiteId,
+        persona: resolvedPersona,
         createdAt: Date.now(),
       });
-      logger.info('Anam session stored for brain routing', { userId, persona: requestedPersona || 'ava' });
+      logger.info('Anam session stored for brain routing', { userId, persona: resolvedPersona });
     }
 
     // Return only the session token — no API key exposure
@@ -2204,9 +2432,19 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
 router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sendSse = (text: string, extra: Record<string, unknown> = {}) => {
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+    }
+    res.write(`data: ${JSON.stringify({ text, done: false, ...extra })}\n\n`);
+    res.write(`data: ${JSON.stringify({ text: '', done: true, ...extra })}\n\n`);
+    res.end();
+  };
 
   try {
-    const { message, session_id, message_history, userProfile } = req.body;
+    const { message, session_id, message_history, userProfile, agent } = req.body;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'Missing or empty message parameter' });
@@ -2217,9 +2455,10 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     // Auth bridge: prefer JWT-derived suiteId/userId, fall back to session store for Anam brain routing
     let suiteId = (req as any).authenticatedSuiteId;
     let userId = (req as any).authenticatedUserId;
+    let sessionCtx: AnamSessionContext | undefined;
     if ((!suiteId || !userId) && session_id) {
       // CUSTOMER_CLIENT_V1 callback — Anam sends session_id, look up stored context
-      const sessionCtx = anamSessionStore.get(session_id);
+      sessionCtx = getAnamSessionContext(session_id);
       if (sessionCtx) {
         if (!suiteId) suiteId = sessionCtx.suiteId;
         if (!userId) userId = sessionCtx.userId;
@@ -2227,9 +2466,22 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
       }
     }
 
+    const parsedAgent = parseRequestedAgent(agent ?? sessionCtx?.persona);
+    if (STRICT_AGENT_VALIDATION && parsedAgent.provided && !parsedAgent.valid) {
+      return sendSse('Unsupported agent selection. Please choose a valid agent.', {
+        correlation_id: correlationId,
+        error: 'INVALID_AGENT',
+        allowed_agents: Array.from(SUPPORTED_AGENTS),
+      });
+    }
+    const requestedAgent = parsedAgent.value;
+
     if (!suiteId) {
       logger.warn('Ava chat-stream: no suite context available', { correlationId, hasSessionId: !!session_id });
-      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+      return sendSse("Your session expired. Please reconnect your avatar and try again.", {
+        correlation_id: correlationId,
+        error: 'AUTH_REQUIRED',
+      });
     }
 
     // Build profile context for Ava avatar personalization (PII-filtered — Law #9)
@@ -2260,6 +2512,7 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
       body: JSON.stringify({
         text: message.trim(),
         agent: 'ava',
+        requested_agent: requestedAgent,
         channel: 'avatar',
         session_id,
         message_history: message_history?.slice(-10),
@@ -2273,35 +2526,32 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     if (!response.ok) {
       const errorText = await response.text();
       logger.error('Ava chat-stream orchestrator error', { correlationId, status: response.status, error: errorText.substring(0, 200) });
-      // Return a friendly response for Anam to speak
-      return res.json({
-        response: "I'm having trouble processing that right now. Could you try again?",
+      return sendSse("I'm having trouble processing that right now. Could you try again?", {
         correlation_id: correlationId,
+        error: 'ORCHESTRATOR_ERROR',
       });
     }
 
     const data = await response.json();
-    const responseText = data.text || data.message || 'I processed your request.';
-
-    // SSE-style streaming for Anam CUSTOMER_CLIENT_V1
-    // Anam expects: text/event-stream with data chunks
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    // Send the full response as a single SSE event
-    // Anam will pipe this to the avatar's TTS (Hope voice)
-    res.write(`data: ${JSON.stringify({ text: responseText, done: false })}\n\n`);
-    res.write(`data: ${JSON.stringify({ text: '', done: true, receipt_id: data.governance?.receipt_ids?.[0] || null })}\n\n`);
-    res.end();
+    const responseText = data.text || data.message || "I'm ready when you are.";
+    return sendSse(responseText, {
+      correlation_id: correlationId,
+      receipt_id: data.governance?.receipt_ids?.[0] || null,
+      resolved_agent: requestedAgent,
+    });
   } catch (error: unknown) {
     if (error instanceof Error && error.name === 'AbortError') {
       logger.error('Ava chat-stream timeout', { correlationId });
-      res.json({ response: "I'm taking longer than expected. Please try again.", correlation_id: correlationId });
-      return;
+      return sendSse("I'm taking longer than expected. Please try again.", {
+        correlation_id: correlationId,
+        error: 'ORCHESTRATOR_TIMEOUT',
+      });
     }
     logger.error('Ava chat-stream error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
-    res.json({ response: "I'm having trouble connecting right now.", correlation_id: correlationId });
+    return sendSse("I'm having trouble connecting right now.", {
+      correlation_id: correlationId,
+      error: 'ORCHESTRATOR_UNAVAILABLE',
+    });
   }
 });
 

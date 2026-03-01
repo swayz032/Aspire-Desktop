@@ -2,7 +2,7 @@
  * useActivityStream -- Enterprise SSE hook for Canvas Chat Mode activity streaming
  *
  * Features:
- *   - EventSource-based SSE connection to orchestrator
+ *   - EventSource-based SSE connection to desktop orchestrator proxy
  *   - Auto-reconnect with exponential backoff (100ms base, max 5s, max 10 retries)
  *   - Heartbeat monitoring (detects stale connections)
  *   - Event parsing with type safety
@@ -48,7 +48,7 @@ export interface StreamEvent {
 export interface UseActivityStreamOptions {
   /** Whether the stream should be active */
   enabled: boolean;
-  /** SSE endpoint URL (defaults to /api/orchestrator/v1/intents?stream=true) */
+  /** SSE endpoint URL (defaults to /api/orchestrator/intent?stream=true&passive=true) */
   url?: string;
   /** Callback for each received event */
   onEvent: (event: StreamEvent) => void;
@@ -75,7 +75,7 @@ export interface UseActivityStreamReturn {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_URL = '/api/orchestrator/v1/intents?stream=true';
+const DEFAULT_URL = '/api/orchestrator/intent?stream=true&passive=true';
 const BASE_RECONNECT_DELAY_MS = 100;
 const MAX_RECONNECT_DELAY_MS = 5000;
 const DEFAULT_MAX_RECONNECT_ATTEMPTS = 10;
