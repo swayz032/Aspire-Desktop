@@ -15,6 +15,10 @@ import {
   MessageBubble,
   ActivityTimeline,
   ThinkingIndicator,
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtContent,
+  ChainOfThoughtStep,
   buildActivityFromResponse,
 } from '@/components/chat';
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
@@ -916,32 +920,53 @@ export function AvaDeskPanel() {
           {chat.map((msg) => {
             const run = msg.runId ? activeRuns[msg.runId] : null;
             const showActivity = run && run.events.length > 0;
-            const isThinking = msg.runId && run && run.status === 'running' && !msg.text;
+            const isRunning = msg.runId && run && run.status === 'running';
 
-            // For user messages, render via MessageBubble directly
-            // For agent messages, render MessageBubble + optional ActivityTimeline + optional ThinkingIndicator
+            // User messages — simple bubble
+            if (msg.from === 'user') {
+              return (
+                <View key={msg.id}>
+                  <MessageBubble message={msg} agent="ava" />
+                </View>
+              );
+            }
+
+            // Agent messages — Chain of Thought (single component replaces 3 separate ones)
             return (
               <View key={msg.id}>
-                {/* Activity timeline (above the message bubble for agent responses) */}
-                {msg.from !== 'user' && showActivity && (
-                  <ActivityTimeline
-                    events={run.events}
+                {showActivity && (
+                  <ChainOfThought
                     agent="ava"
+                    isStreaming={!!isRunning}
+                    defaultOpen={!!isRunning}
                     style={{ marginBottom: 4 }}
-                  />
+                  >
+                    <ChainOfThoughtHeader stepCount={run.events.length}>
+                      {isRunning ? 'Thinking...' : 'Chain of Thought'}
+                    </ChainOfThoughtHeader>
+                    <ChainOfThoughtContent>
+                      {run.events.map((event, idx) => (
+                        <ChainOfThoughtStep
+                          key={event.id}
+                          label={event.label}
+                          icon={event.icon as any}
+                          status={
+                            event.status === 'completed' || event.type === 'done'
+                              ? 'complete'
+                              : event.status === 'active'
+                              ? 'active'
+                              : 'pending'
+                          }
+                          isLast={idx === run.events.length - 1}
+                        />
+                      ))}
+                    </ChainOfThoughtContent>
+                  </ChainOfThought>
                 )}
 
-                {/* Thinking indicator (while waiting for response) */}
-                {msg.from !== 'user' && isThinking && (
-                  <ThinkingIndicator agent="ava" />
-                )}
-
-                {/* Message bubble (only show if there's text or it's a user message) */}
-                {(msg.from === 'user' || msg.text) && (
-                  <MessageBubble
-                    message={msg}
-                    agent="ava"
-                  />
+                {/* Message text (only show when response text is available) */}
+                {msg.text && (
+                  <MessageBubble message={msg} agent="ava" />
                 )}
               </View>
             );

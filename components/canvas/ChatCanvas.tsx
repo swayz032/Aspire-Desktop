@@ -188,21 +188,11 @@ export function ChatCanvas({
           </View>
         </View>
 
-        {/* Persona Panel (bottom, ~30%) */}
+        {/* Persona (bottom, ~30%) — NO box/panel, orb floats directly */}
         {!isMobile && (
           <View style={styles.personaPanel}>
-            {/* Premium depth: dark shadow + blue ambient glow */}
-            <View style={styles.panelShadowLayer} />
-            <View style={styles.panelBlueShadowLayer} />
-
-            {/* Top rim lighting (subtle blue catch light) */}
-            <View style={styles.rimLightTop} />
-
-            {/* Panel surface */}
-            <View style={styles.panelSurface}>
-              <View style={styles.personaContent}>
-                {personaElement}
-              </View>
+            <View style={styles.personaContent}>
+              {personaElement}
             </View>
           </View>
         )}
@@ -251,12 +241,11 @@ const styles = StyleSheet.create({
     minHeight: 300,
   },
 
-  // Persona panel (bottom, ~30% of space)
+  // Persona area (bottom, ~30%) — no box, orb floats clean
   personaPanel: {
     flex: 0.3,
-    position: 'relative',
-    borderRadius: 12,
-    overflow: 'visible',
+    alignItems: 'center',
+    justifyContent: 'center',
     minHeight: 200,
   },
 

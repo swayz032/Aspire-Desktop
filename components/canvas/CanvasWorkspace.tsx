@@ -42,7 +42,7 @@ import { WidgetContainer } from './WidgetContainer';
 import { CanvasTrashCan } from './CanvasTrashCan';
 import { CanvasModeToggle } from './CanvasModeToggle';
 import { ChatCanvas } from './ChatCanvas';
-import { Persona } from '@/components/ai-elements/Persona';
+import { AvaOrb } from '@/components/ai-elements/AvaOrb';
 import type { PersonaState } from '@/components/ai-elements/Persona';
 import {
   subscribe as subscribeCanvas,
@@ -353,19 +353,7 @@ export function CanvasWorkspace(): React.ReactElement {
                   trustLevel: 'internal',
                 }}
                 personaElement={
-                  <Persona
-                    state={personaState}
-                    variant={activeAgent}
-                    showControls
-                    onStateChange={(newState) => {
-                      // Control bar interaction — toggle voice session
-                      if (newState === 'listening' && !avaVoice.isListening) {
-                        avaVoice.startSession();
-                      } else if (newState === 'idle' || newState === 'asleep') {
-                        avaVoice.endSession();
-                      }
-                    }}
-                  />
+                  <AvaOrb size={240} />
                 }
                 streamEnabled
               />
