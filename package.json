@@ -3,9 +3,9 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "npm run build && npx tsx server/index.ts",
+    "start": "npm run build && ./node_modules/.bin/tsx server/index.ts",
     "dev": "expo start",
-    "build": "npx expo export -p web && node scripts/fix-viewport.js",
+    "build": "./node_modules/.bin/expo export -p web && node scripts/fix-viewport.js",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
