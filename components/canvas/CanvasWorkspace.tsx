@@ -43,15 +43,18 @@ import { CanvasTrashCan } from './CanvasTrashCan';
 import { CanvasModeToggle } from './CanvasModeToggle';
 import { ChatCanvas } from './ChatCanvas';
 import { Persona } from '@/components/ai-elements/Persona';
+import type { PersonaState } from '@/components/ai-elements/Persona';
 import {
   subscribe as subscribeCanvas,
   getMode as getCanvasMode,
   getPersonaState,
   getActiveAgent,
   getActivityEvents,
+  addActivityEvent,
 } from '@/lib/chatCanvasStore';
 import type { CanvasMode } from '@/lib/chatCanvasStore';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
+import { useCanvasVoice } from '@/hooks/useCanvasVoice';
 
 // Widget content imports
 import { QuoteWidget } from './widgets/QuoteWidget';
@@ -126,6 +129,30 @@ export function CanvasWorkspace(): React.ReactElement {
     });
     return unsubscribe;
   }, []);
+
+  // Voice pipeline: Ava voice session (ElevenLabs TTS + STT → Orchestrator → Agents)
+  // useCanvasVoice syncs persona state to chatCanvasStore automatically
+  const avaVoice = useCanvasVoice('ava');
+
+  // Live persona state from voice pipeline
+  const [personaState, setPersonaState] = useState<PersonaState>(getPersonaState() as PersonaState);
+  const [activeAgent, setActiveAgentLocal] = useState(getActiveAgent());
+
+  useEffect(() => {
+    const unsubscribe = subscribeCanvas((state) => {
+      setPersonaState(state.personaState as PersonaState);
+      setActiveAgentLocal(state.activeAgent);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Auto-start voice session when entering chat mode
+  useEffect(() => {
+    if (subMode === 'chat' && !avaVoice.isListening && !avaVoice.isProcessing && avaVoice.status === 'idle') {
+      // Voice session starts on user interaction (browser autoplay policy)
+      // We don't auto-start — user taps the Persona orb or control bar
+    }
+  }, [subMode]);
 
   // Drag-drop integration
   const { setNodeRef, isOver } = Platform.OS === 'web'
@@ -327,10 +354,17 @@ export function CanvasWorkspace(): React.ReactElement {
                 }}
                 personaElement={
                   <Persona
-                    state={getPersonaState()}
-                    variant={getActiveAgent()}
+                    state={personaState}
+                    variant={activeAgent}
                     showControls
-                    onStateChange={() => {/* controlled by orchestrator */}}
+                    onStateChange={(newState) => {
+                      // Control bar interaction — toggle voice session
+                      if (newState === 'listening' && !avaVoice.isListening) {
+                        avaVoice.startSession();
+                      } else if (newState === 'idle' || newState === 'asleep') {
+                        avaVoice.endSession();
+                      }
+                    }}
                   />
                 }
                 streamEnabled
