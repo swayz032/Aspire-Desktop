@@ -10,7 +10,7 @@
  * - Hybrid Browser View: when browser_screenshot events arrive,
  *   automatically switches to HybridWebPreview (40/60 split)
  *
- * Layout: WebPreview (60%) | Persona (40%)
+ * Layout: VERTICAL — WebPreview (top, ~70%) / Persona (bottom, ~30%)
  * Hybrid: HybridWebPreview [ActivityFeed (40%) | BrowserPanel (60%)] within WebPreview panel
  */
 
@@ -153,22 +153,17 @@ export function ChatCanvas({
   }));
 
   // Responsive layout detection
-  const isTablet = width < TABLET_BREAKPOINT;
   const isMobile = width < MOBILE_BREAKPOINT;
-  const stackVertical = isTablet || isMobile;
 
   return (
     <Animated.View style={[styles.container, containerAnimatedStyle]}>
       {/* Background layer with blue edge glow */}
       <View style={styles.backgroundLayer} />
 
-      {/* Content panels */}
-      <View style={[styles.contentWrapper, stackVertical && styles.contentWrapperVertical]}>
-        {/* WebPreview / HybridWebPreview Panel (60% width on desktop, full width when stacked) */}
-        <View style={[
-          styles.webPreviewPanel,
-          stackVertical ? styles.webPreviewPanelStacked : styles.webPreviewPanel60,
-        ]}>
+      {/* Content panels — ALWAYS vertical: WebPreview on top, Persona below */}
+      <View style={styles.contentWrapper}>
+        {/* WebPreview / HybridWebPreview Panel (top, ~70%) */}
+        <View style={styles.webPreviewPanel}>
           {/* Premium depth: dark shadow + blue ambient glow */}
           <View style={styles.panelShadowLayer} />
           <View style={styles.panelBlueShadowLayer} />
@@ -193,12 +188,9 @@ export function ChatCanvas({
           </View>
         </View>
 
-        {/* Persona Panel (40% width on desktop, hidden on mobile) */}
+        {/* Persona Panel (bottom, ~30%) */}
         {!isMobile && (
-          <View style={[
-            styles.personaPanel,
-            stackVertical ? styles.personaPanelStacked : styles.personaPanel40,
-          ]}>
+          <View style={styles.personaPanel}>
             {/* Premium depth: dark shadow + blue ambient glow */}
             <View style={styles.panelShadowLayer} />
             <View style={styles.panelBlueShadowLayer} />
@@ -215,11 +207,6 @@ export function ChatCanvas({
           </View>
         )}
       </View>
-
-      {/* Optional subtle divider with blue glow */}
-      {!stackVertical && (
-        <View style={styles.divider} />
-      )}
     </Animated.View>
   );
 }
@@ -246,48 +233,31 @@ const styles = StyleSheet.create({
       : {}),
   },
 
+  // Always vertical — WebPreview on top, Persona below
   contentWrapper: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 16,
     padding: 24,
     zIndex: 1,
   },
 
-  contentWrapperVertical: {
-    flexDirection: 'column',
-  },
-
-  // WebPreview panel (60% width on desktop)
+  // WebPreview panel (top, ~70% of space)
   webPreviewPanel: {
+    flex: 0.7,
     position: 'relative',
     borderRadius: 12,
-    overflow: 'visible', // Allow shadows to extend beyond bounds
+    overflow: 'visible',
+    minHeight: 300,
   },
 
-  webPreviewPanel60: {
-    flex: 0.6,
-  },
-
-  webPreviewPanelStacked: {
-    flex: 1,
-    minHeight: 400,
-  },
-
-  // Persona panel (40% width on desktop)
+  // Persona panel (bottom, ~30% of space)
   personaPanel: {
+    flex: 0.3,
     position: 'relative',
     borderRadius: 12,
-    overflow: 'visible', // Allow shadows to extend beyond bounds
-  },
-
-  personaPanel40: {
-    flex: 0.4,
-  },
-
-  personaPanelStacked: {
-    flex: 0,
-    height: 320,
+    overflow: 'visible',
+    minHeight: 200,
   },
 
   // Premium depth system: REAL shadows that are VISIBLE
@@ -365,17 +335,13 @@ const styles = StyleSheet.create({
     padding: 32,
   },
 
-  // Optional divider with blue glow gradient
+  // Horizontal divider between WebPreview and Persona
   divider: {
-    position: 'absolute',
-    top: 24,
-    bottom: 24,
-    left: '60%',
-    width: 1,
+    height: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     ...(Platform.OS === 'web'
       ? {
-          background: `linear-gradient(180deg,
+          background: `linear-gradient(90deg,
             transparent 0%,
             rgba(59, 130, 246, 0.2) 20%,
             rgba(59, 130, 246, 0.3) 50%,

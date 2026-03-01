@@ -1,14 +1,14 @@
 /**
- * CanvasModeToggle — Chat | Canvas pill toggle ($10K premium)
+ * CanvasModeToggle — Chat | Canvas tab toggle
  *
- * Matches the Ava desk panel companyPill aesthetic:
- * - Pill shape with borderRadius: 20
- * - Active state: blue glow bg rgba(59,130,246,0.2) + blue border + boxShadow
- * - Inactive: #242426 background
- * - Smooth 0.2s transition
- * - Online dot indicator on active segment
- * - Keyboard navigable (Arrow keys)
- * - Reduced-motion compliant
+ * Matches the "Voice with Ava | Video with Ava" TabButton style
+ * from AvaDeskPanel exactly:
+ * - Contained pill with #0f0f0f bg + borderRadius: 10 + padding: 3
+ * - Active tab: #242426 bg + borderRadius: 8
+ * - Inactive tab: transparent
+ * - Icon (14px) + label (11px, fontWeight 600)
+ * - Active text: white, Inactive text: tertiary
+ * - Compact, clean, no blue glow
  */
 
 import React, { useEffect, useCallback, useState } from 'react';
@@ -21,60 +21,24 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Typography } from '@/constants/tokens';
+import { Colors } from '@/constants/tokens';
 import { subscribe, getMode, setMode, type CanvasMode } from '@/lib/chatCanvasStore';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 
 // ---------------------------------------------------------------------------
-// Mode config — order matters for layout
+// Tab config
 // ---------------------------------------------------------------------------
 
-interface ModeConfig {
+interface TabConfig {
   mode: CanvasMode;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
 }
 
-const MODES: ModeConfig[] = [
+const TABS: TabConfig[] = [
   { mode: 'chat', icon: 'chatbubble-outline', label: 'Chat' },
   { mode: 'canvas', icon: 'grid-outline', label: 'Canvas' },
 ];
-
-// ---------------------------------------------------------------------------
-// CompanyPill design constants
-// ---------------------------------------------------------------------------
-
-const PILL_RADIUS = 20;
-const PILL_GAP = 6;               // Gap between segments
-const ICON_SIZE = 15;
-const DOT_SIZE = 6;
-
-// Colors — matching Ava desk companyPill
-const INACTIVE_BG = '#242426';
-const ACTIVE_BG = 'rgba(59, 130, 246, 0.2)';
-const ACTIVE_BORDER = 'rgba(59, 130, 246, 0.5)';
-const ACTIVE_GLOW = '0 0 16px rgba(59, 130, 246, 0.3)';
-const ACTIVE_TEXT = '#3B82F6';
-const INACTIVE_TEXT = '#6e6e73';
-const DOT_COLOR = '#3B82F6';
-
-// ---------------------------------------------------------------------------
-// Reduced-motion detection (web only, singleton)
-// ---------------------------------------------------------------------------
-
-let reducedMotion = false;
-
-if (Platform.OS === 'web' && typeof window !== 'undefined') {
-  try {
-    const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
-    reducedMotion = mql.matches;
-    mql.addEventListener('change', (e) => {
-      reducedMotion = e.matches;
-    });
-  } catch {
-    // silent
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -83,7 +47,6 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 export function CanvasModeToggle(): React.ReactElement {
   const [currentMode, setCurrentMode] = useState<CanvasMode>(getMode());
 
-  // Subscribe to chatCanvasStore
   useEffect(() => {
     const unsubscribe = subscribe((state) => {
       setCurrentMode(state.mode);
@@ -91,7 +54,6 @@ export function CanvasModeToggle(): React.ReactElement {
     return unsubscribe;
   }, []);
 
-  // Handle mode selection
   const handlePress = useCallback(
     (nextMode: CanvasMode) => {
       if (nextMode === currentMode) return;
@@ -101,64 +63,31 @@ export function CanvasModeToggle(): React.ReactElement {
     [currentMode],
   );
 
-  // Keyboard navigation — left/right arrows cycle modes
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      const currentIdx = MODES.findIndex((m) => m.mode === currentMode);
-      let nextIdx = currentIdx;
-
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        nextIdx = Math.max(0, currentIdx - 1);
-      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        nextIdx = Math.min(MODES.length - 1, currentIdx + 1);
-      }
-
-      if (nextIdx !== currentIdx) {
-        handlePress(MODES[nextIdx].mode);
-      }
-    },
-    [currentMode, handlePress],
-  );
-
   return (
     <View
-      style={styles.container}
+      style={styles.tabs}
       accessibilityRole="radiogroup"
       accessibilityLabel="Canvas workspace mode"
-      {...(Platform.OS === 'web' ? { onKeyDown: handleKeyDown } as Record<string, unknown> : {})}
     >
-      {MODES.map((cfg) => {
-        const isActive = cfg.mode === currentMode;
+      {TABS.map((tab) => {
+        const isActive = tab.mode === currentMode;
         return (
           <Pressable
-            key={cfg.mode}
-            style={[
-              styles.pill,
-              isActive ? styles.pillActive : styles.pillInactive,
-            ]}
-            onPress={() => handlePress(cfg.mode)}
+            key={tab.mode}
+            style={[styles.tabBtn, isActive && styles.tabBtnActive]}
+            onPress={() => handlePress(tab.mode)}
             accessibilityRole="radio"
-            accessibilityLabel={`${cfg.label} workspace mode`}
+            accessibilityLabel={`${tab.label} mode`}
             accessibilityState={{ checked: isActive }}
           >
-            {/* Active dot indicator */}
             {isActive && <View style={styles.dot} />}
-
             <Ionicons
-              name={cfg.icon}
-              size={ICON_SIZE}
-              color={isActive ? ACTIVE_TEXT : INACTIVE_TEXT}
-              style={styles.icon}
+              name={tab.icon}
+              size={14}
+              color={isActive ? Colors.accent.cyan : Colors.text.tertiary}
             />
-            <Text
-              style={[
-                styles.label,
-                { color: isActive ? ACTIVE_TEXT : INACTIVE_TEXT },
-              ]}
-            >
-              {cfg.label}
+            <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+              {tab.label}
             </Text>
           </Pressable>
         );
@@ -168,14 +97,17 @@ export function CanvasModeToggle(): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
-// Styles — companyPill aesthetic from Ava desk panel
+// Styles — exact match of AvaDeskPanel TabButton / tabs
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  container: {
+  // Container pill — matches AvaDeskPanel styles.tabs
+  tabs: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: PILL_GAP,
+    gap: 4,
+    backgroundColor: Colors.background.tertiary, // #0f0f0f
+    borderRadius: 10,
+    padding: 3,
     ...(Platform.OS === 'web'
       ? ({
           userSelect: 'none',
@@ -183,69 +115,49 @@ const styles = StyleSheet.create({
       : {}),
   },
 
-  // Each segment is its own pill (like companyPill)
-  pill: {
+  // Each tab button — matches AvaDeskPanel styles.tabBtn
+  tabBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: PILL_RADIUS,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    minWidth: 44,
-    minHeight: 44,
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
     ...(Platform.OS === 'web'
       ? ({
           cursor: 'pointer',
-          transition: 'all 0.2s ease',
+          transition: 'background-color 0.15s ease',
         } as unknown as ViewStyle)
       : {}),
   },
 
-  // Inactive pill — dark neutral
-  pillInactive: {
-    backgroundColor: INACTIVE_BG,
-    borderColor: 'transparent',
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: 'none',
-        } as unknown as ViewStyle)
-      : {}),
+  // Active tab — matches AvaDeskPanel styles.tabBtnActive
+  tabBtnActive: {
+    backgroundColor: '#242426',
   },
 
-  // Active pill — blue glow (companyPillActive style)
-  pillActive: {
-    backgroundColor: ACTIVE_BG,
-    borderColor: ACTIVE_BORDER,
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: ACTIVE_GLOW,
-        } as unknown as ViewStyle)
-      : {}),
-  },
-
-  // Online dot indicator (like companyPill)
+  // Active dot indicator
   dot: {
-    width: DOT_SIZE,
-    height: DOT_SIZE,
-    borderRadius: DOT_SIZE / 2,
-    backgroundColor: DOT_COLOR,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.accent.cyan,
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow: `0 0 6px ${DOT_COLOR}`,
+          boxShadow: '0 0 6px rgba(59,130,246,0.4)',
         } as unknown as ViewStyle)
       : {}),
   },
 
-  icon: {
-    // No extra margin — gap handles spacing
+  // Tab label — matches AvaDeskPanel styles.tabText
+  tabText: {
+    fontSize: 11,
+    color: Colors.text.tertiary,
+    fontWeight: '600',
   },
 
-  label: {
-    fontSize: Typography.small.fontSize,
-    fontWeight: Typography.smallMedium.fontWeight,
-    lineHeight: Typography.small.lineHeight,
-    letterSpacing: 0.3,
+  // Active label — matches AvaDeskPanel styles.tabTextActive
+  tabTextActive: {
+    color: Colors.text.primary,
   },
 });
