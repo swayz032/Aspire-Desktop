@@ -4,11 +4,18 @@ import { ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
-import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
+import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, type AnamMessage, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput, streamResponseToAvatar } from '@/lib/anam';
 import { speakText } from '@/lib/elevenlabs';
+import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
+import {
+  ThinkingIndicator,
+  ActivityTimeline,
+  buildActivityFromResponse,
+  type AgentActivityEvent,
+  type OrchestratorResponse,
+} from '@/components/chat';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
 
 /* ── Web-only keyframe animations for immersive mode ─────── */
@@ -95,23 +102,9 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   }
 }
 
-type FileAttachment = {
-  id: string;
-  name: string;
-  kind: 'PDF' | 'DOCX' | 'XLSX' | 'PNG';
-  url?: string;
-};
-
-type FinnActivityEvent = {
-  type: 'thinking' | 'step' | 'tool_call' | 'done';
-  message: string;
-  ts: number;
-  icon: keyof typeof Ionicons.glyphMap;
-};
-
 type ActiveRun = {
   id: string;
-  events: FinnActivityEvent[];
+  events: AgentActivityEvent[];
   status: 'running' | 'completed';
   finalText: string;
 };
@@ -120,42 +113,9 @@ type ChatMsg = {
   id: string;
   from: 'finn' | 'user';
   text: string;
-  attachments?: FileAttachment[];
+  attachments?: Array<{ id: string; name: string; kind: string; url?: string }>;
   runId?: string;
 };
-
-// Activity step definitions keyed by intent (steps are real, response is built from server data)
-/**
- * Build activity events from orchestrator response for Finn's activity visualization.
- * Falls back to synthesized steps if orchestrator doesn't return explicit activity.
- */
-function buildFinnActivity(data: {
-  activity?: Array<{ type: string; message: string; icon?: string }>;
-  route?: { skill_pack?: string };
-  risk_tier?: string;
-  action?: string;
-}): Omit<FinnActivityEvent, 'ts'>[] {
-  if (data.activity && Array.isArray(data.activity) && data.activity.length > 0) {
-    return data.activity.map((step) => ({
-      type: (step.type as FinnActivityEvent['type']) || 'step',
-      message: step.message,
-      icon: (step.icon as keyof typeof Ionicons.glyphMap) || 'cog',
-    }));
-  }
-
-  // Synthesize from pipeline metadata
-  const events: Omit<FinnActivityEvent, 'ts'>[] = [
-    { type: 'thinking', message: 'Processing financial request...', icon: 'sparkles' },
-  ];
-  if (data.route?.skill_pack) {
-    events.push({ type: 'step', message: `Routing to ${data.route.skill_pack}`, icon: 'git-network' });
-  }
-  if (data.action) {
-    events.push({ type: 'tool_call', message: `Executing: ${data.action}`, icon: 'hammer' });
-  }
-  events.push({ type: 'done', message: 'Complete', icon: 'checkmark-circle' });
-  return events;
-}
 
 type SnapshotData = {
   chapters: {
@@ -244,304 +204,13 @@ function buildSeedMessage(snapshot: SnapshotData | null, exceptions: ExceptionDa
   return parts.join(' ');
 }
 
-function ThinkingDots() {
-  const dot1 = useRef(new Animated.Value(0.3)).current;
-  const dot2 = useRef(new Animated.Value(0.3)).current;
-  const dot3 = useRef(new Animated.Value(0.3)).current;
-
-  useEffect(() => {
-    const animate = (dot: Animated.Value, delay: number) => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: false }),
-          Animated.timing(dot, { toValue: 0.3, duration: 400, useNativeDriver: false }),
-        ])
-      ).start();
-    };
-    animate(dot1, 0);
-    animate(dot2, 200);
-    animate(dot3, 400);
-  }, []);
-
-  return (
-    <View style={actStyles.thinkingDotsRow}>
-      <Animated.View style={[actStyles.thinkingDotAnim, { opacity: dot1 }]} />
-      <Animated.View style={[actStyles.thinkingDotAnim, { opacity: dot2 }]} />
-      <Animated.View style={[actStyles.thinkingDotAnim, { opacity: dot3 }]} />
-    </View>
-  );
-}
-
-function FinnActivityInline({ run }: { run: ActiveRun }) {
-  const [expanded, setExpanded] = useState(false);
-  const spinAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  const isRunning = run.status === 'running';
-  const currentEvent = run.events[run.events.length - 1];
-  const completedEvents = run.events.filter(e => e.type !== 'thinking');
-
-  useEffect(() => {
-    if (isRunning) {
-      Animated.loop(
-        Animated.timing(spinAnim, { toValue: 1, duration: 1200, useNativeDriver: false })
-      ).start();
-    }
-  }, [isRunning]);
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: false }).start();
-  }, []);
-
-  const spinInterpolate = spinAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  if (!isRunning && !expanded) {
-    return null;
-  }
-
-  return (
-    <Animated.View style={[actStyles.activityContainer, { opacity: fadeAnim }]}>
-      {isRunning && currentEvent && (
-        <View style={actStyles.statusBar}>
-          <View style={actStyles.statusLeft}>
-            <Animated.View style={[actStyles.spinner, { transform: [{ rotate: spinInterpolate }] }]}>
-              <View style={actStyles.spinnerInner} />
-            </Animated.View>
-            <Text style={actStyles.statusText} numberOfLines={1}>
-              {currentEvent.message}
-            </Text>
-          </View>
-          <Pressable onPress={() => setExpanded(!expanded)} style={actStyles.toggleBtn}>
-            <Text style={actStyles.detailsToggle}>
-              {expanded ? 'Hide details' : 'Show details'}
-            </Text>
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={12}
-              color={Colors.accent.cyan}
-            />
-          </Pressable>
-        </View>
-      )}
-
-      {expanded && completedEvents.length > 0 && (
-        <View style={actStyles.eventList}>
-          {completedEvents.map((event, idx) => {
-            const isDone = event.type === 'done';
-            const isCurrent = isRunning && idx === completedEvents.length - 1 && !isDone;
-            return (
-              <View key={idx} style={actStyles.eventRow}>
-                <View style={[
-                  actStyles.eventIconWrap,
-                  isDone && actStyles.eventIconDone,
-                  isCurrent && actStyles.eventIconCurrent,
-                ]}>
-                  <Ionicons
-                    name={event.icon}
-                    size={12}
-                    color={isDone ? Colors.semantic.success : isCurrent ? Colors.accent.cyan : Colors.text.tertiary}
-                  />
-                </View>
-                <Text style={[
-                  actStyles.eventText,
-                  isDone && actStyles.eventTextDone,
-                  isCurrent && actStyles.eventTextCurrent,
-                ]} numberOfLines={1}>
-                  {event.message}
-                </Text>
-                <Text style={actStyles.eventTime}>
-                  {new Date(event.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
-    </Animated.View>
-  );
-}
-
-const actStyles = StyleSheet.create({
-  activityContainer: {
-    marginBottom: 4,
-    borderRadius: 12,
-    backgroundColor: '#161618',
-    borderWidth: 1,
-    borderColor: '#232325',
-    overflow: 'hidden',
-  },
-  statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  statusLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    marginRight: 8,
-  },
-  spinner: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#2C2C2E',
-    borderTopColor: Colors.accent.cyan,
-  },
-  spinnerInner: {
-    flex: 1,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.text.secondary,
-    flex: 1,
-  },
-  toggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-  },
-  detailsToggle: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.accent.cyan,
-  },
-  completedLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    marginBottom: 4,
-  },
-  completedDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: Colors.semantic.success,
-  },
-  completedText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.text.tertiary,
-  },
-  completedSep: {
-    fontSize: 12,
-    color: Colors.text.muted,
-  },
-  eventList: {
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-    gap: 2,
-  },
-  eventRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 5,
-  },
-  eventIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    backgroundColor: '#1E1E20',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventIconDone: {
-    backgroundColor: 'rgba(52, 199, 89, 0.12)',
-  },
-  eventIconCurrent: {
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-  },
-  eventText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.text.tertiary,
-  },
-  eventTextDone: {
-    color: Colors.semantic.success,
-    fontWeight: '500',
-  },
-  eventTextCurrent: {
-    color: Colors.text.secondary,
-    fontWeight: '500',
-  },
-  eventTime: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: Colors.text.muted,
-    minWidth: 44,
-    textAlign: 'right',
-  },
-  thinkingDotsRow: {
-    flexDirection: 'row',
-    gap: 5,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#1E1E20',
-    borderRadius: 16,
-    alignSelf: 'flex-start',
-  },
-  thinkingDotAnim: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: Colors.accent.cyan,
-  },
-});
+/* ThinkingDots, FinnActivityInline, actStyles, buildFinnActivity removed — now using shared components */
 
 const defaultSeedChat: ChatMsg[] = [
   { id: 'm1', from: 'finn', text: 'Loading financial data...' },
 ];
 
-const playConnectionSound = () => {
-  if (Platform.OS !== 'web') return;
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(880, audioContext.currentTime + 0.1);
-    oscillator.frequency.exponentialRampToValueAtTime(660, audioContext.currentTime + 0.2);
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.3);
-  } catch (e) {}
-};
-
-const playSuccessSound = () => {
-  if (Platform.OS !== 'web') return;
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    oscillator.frequency.setValueAtTime(523, audioContext.currentTime);
-    oscillator.frequency.setValueAtTime(659, audioContext.currentTime + 0.1);
-    oscillator.frequency.setValueAtTime(784, audioContext.currentTime + 0.2);
-    gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.4);
-  } catch (e) {}
-};
+/* playConnectionSound / playSuccessSound removed — now imported from @/lib/soundEffects */
 
 type FinnDeskPanelProps = {
   initialTab?: 'voice' | 'video';
@@ -574,6 +243,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   const scrollRef = useRef<ScrollView>(null);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
   const connectionTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const isProcessingVoice = useRef(false);
 
   const clearConnectionTimeouts = useCallback(() => {
     connectionTimeouts.current.forEach(clearTimeout);
@@ -727,6 +397,49 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
           setConnectionStatus('');
           anamClientRef.current = null;
         },
+        onUserMessage: async (userMessage: string, messageHistory: AnamMessage[]) => {
+          if (isProcessingVoice.current) return;
+          isProcessingVoice.current = true;
+
+          setChat(prev => [...prev, {
+            id: `anam_user_${Date.now()}`,
+            from: 'user',
+            text: `\uD83C\uDFA4 ${userMessage}`,
+          }]);
+
+          try {
+            const resp = await fetch('/api/ava/chat-stream', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+              },
+              body: JSON.stringify({ message: userMessage, agent: 'finn', message_history: messageHistory.slice(-10) }),
+            });
+            const text = await resp.text();
+            const match = text.match(/data:\s*(\{.*?"done"\s*:\s*false.*?\})/);
+            const parsed = match ? JSON.parse(match[1]) : null;
+            const responseText = parsed?.text || text.replace(/data:.*?\n/g, '').trim() || 'I processed your request.';
+
+            setChat(prev => [...prev, {
+              id: `anam_finn_${Date.now()}`,
+              from: 'finn',
+              text: responseText,
+            }]);
+            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+
+            if (anamClientRef.current) {
+              await streamResponseToAvatar(anamClientRef.current, responseText);
+            }
+          } catch (err) {
+            console.error('[Anam/Finn] Voice flow error:', err);
+            if (anamClientRef.current) {
+              try { finnTalk(anamClientRef.current, "I had trouble processing that. Could you try again?"); } catch (_) {}
+            }
+          } finally {
+            isProcessingVoice.current = false;
+          }
+        },
       };
       const client = await connectFinnAvatar(elementId, session?.access_token, connectOptions);
       anamClientRef.current = client;
@@ -736,6 +449,13 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       setVideoState('connected');
       setVideoError(null);
       setConnectionStatus('');
+
+      // Send initial greeting since CUSTOMER_CLIENT_V1 has no built-in LLM
+      setTimeout(() => {
+        if (anamClientRef.current) {
+          finnTalk(anamClientRef.current, "Hi, I'm Finn. How can I help with your finances?");
+        }
+      }, 1500);
     } catch (e) {
       clearConnectionTimeouts();
       anamClientRef.current = null;
@@ -894,12 +614,12 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       setFinnContext(ctx);
 
       let responseText: string;
-      let activityEvents: Omit<FinnActivityEvent, 'ts'>[];
+      let activityEvents: AgentActivityEvent[];
 
       if (orchestratorResp.ok) {
         const data = await orchestratorResp.json();
         responseText = data.response || 'I processed your request.';
-        activityEvents = buildFinnActivity(data);
+        activityEvents = buildActivityFromResponse(data as OrchestratorResponse, 'finn');
       } else {
         // Orchestrator unavailable — fall back to local financial data
         const intent = trimmed.toLowerCase();
@@ -908,9 +628,10 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
           : intent.includes('invoice') ? 'invoices'
           : 'default';
         responseText = buildResponse(fallbackIntent, ctx.snapshot, ctx.exceptions);
+        const now = Date.now();
         activityEvents = [
-          { type: 'step', message: 'Using local financial data', icon: 'cloud-offline' },
-          { type: 'done', message: 'Complete', icon: 'checkmark-circle' },
+          { id: `evt_${now}_1`, type: 'step', label: 'Using local financial data', status: 'completed', timestamp: now, icon: 'cloud-offline' },
+          { id: `evt_${now}_2`, type: 'done', label: 'Complete', status: 'completed', timestamp: now + 1, icon: 'checkmark-circle' },
         ];
       }
 
@@ -918,7 +639,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       activityEvents.forEach((evt, idx) => {
         const delay = idx === 0 ? 200 : 200 + idx * 600;
         const timer = setTimeout(() => {
-          const event: FinnActivityEvent = { ...evt, ts: Date.now() };
+          const event: AgentActivityEvent = { ...evt, timestamp: Date.now() };
           setActiveRuns((prev) => {
             const run = prev[runId];
             if (!run) return prev;
@@ -1071,6 +792,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                   width: '100%',
                   height: '100%',
                   objectFit: 'cover',
+                  objectPosition: 'center 30%',  // Keep face visible when cropping
                   opacity: videoState === 'connected' ? 1 : 0,
                   transition: 'opacity 0.3s ease-in-out',
                   backgroundColor: '#000',
@@ -1403,6 +1125,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
+                    objectPosition: 'center 30%',  // Keep face visible when cropping
                     opacity: videoState === 'connected' ? 1 : 0,
                     transition: 'opacity 0.3s ease-in-out',
                     backgroundColor: '#000',
@@ -1550,25 +1273,13 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                     </View>
                     <View style={styles.msgContent}>
                       {showActivity && (
-                        <FinnActivityInline run={run} />
+                        <ActivityTimeline events={run.events} agent="finn" />
                       )}
                       {showMessage && msg.text ? (
                         <Text style={styles.msgText}>{msg.text}</Text>
                       ) : null}
                       {msg.runId && run && run.status === 'running' && !msg.text && (
-                        Platform.OS === 'web' ? (
-                          <View style={actStyles.thinkingDotsRow}>
-                            <ShimmeringText
-                              text="Thinking..."
-                              duration={1.5}
-                              color={Colors.text.muted}
-                              shimmerColor={Colors.accent.cyan}
-                              style={{ fontSize: 13, fontWeight: '500' }}
-                            />
-                          </View>
-                        ) : (
-                          <ThinkingDots />
-                        )
+                        <ThinkingIndicator agent="finn" />
                       )}
                     </View>
                   </View>
@@ -1865,6 +1576,12 @@ const immersiveStyles = StyleSheet.create({
     backgroundColor: '#000',
     position: 'relative',
     overflow: 'hidden',
+    ...(Platform.OS === 'web' ? {
+      maxHeight: '70vh',
+      aspectRatio: '16/9',
+      alignSelf: 'center',
+      width: '100%',
+    } : {}),
   } as Record<string, unknown>,
 
   /* Pre-connect background (idle / connecting / error) */

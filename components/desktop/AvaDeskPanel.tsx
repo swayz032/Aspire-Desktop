@@ -6,116 +6,22 @@ import { Colors } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
+import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, type AnamMessage, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput, streamResponseToAvatar } from '@/lib/anam';
+import {
+  type AgentChatMessage,
+  type AgentActivityEvent,
+  type ActiveRun,
+  type FileAttachment,
+  MessageBubble,
+  ActivityTimeline,
+  ThinkingIndicator,
+  buildActivityFromResponse,
+} from '@/components/chat';
+import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
 
-type FileAttachment = {
-  id: string;
-  name: string;
-  kind: 'PDF' | 'DOCX' | 'XLSX' | 'PNG';
-  url?: string;
-};
-
-type AvaActivityEvent = {
-  type: 'thinking' | 'step' | 'tool_call' | 'done';
-  message: string;
-  ts: number;
-  icon: keyof typeof Ionicons.glyphMap;
-};
-
-type ActiveRun = {
-  id: string;
-  events: AvaActivityEvent[];
-  status: 'running' | 'completed';
-  finalText: string;
-};
-
-type ChatMsg = {
-  id: string;
-  from: 'ava' | 'user';
-  text: string;
-  attachments?: FileAttachment[];
-  runId?: string;
-};
-
-/**
- * Build real-time activity events from orchestrator response.
- * If the orchestrator returns an `activity` array, use it directly.
- * Otherwise, synthesize pipeline steps from route/risk/action metadata.
- */
-function buildActivityFromResponse(data: {
-  activity?: Array<{ type: string; message: string; icon?: string }>;
-  route?: { skill_pack?: string; node?: string };
-  risk_tier?: string;
-  action?: string;
-  governance?: { approvals_required?: string[]; receipt_ids?: string[] };
-}): Omit<AvaActivityEvent, 'ts'>[] {
-  // If orchestrator returned explicit activity steps, use them
-  if (data.activity && Array.isArray(data.activity) && data.activity.length > 0) {
-    return data.activity.map((step) => ({
-      type: (step.type as AvaActivityEvent['type']) || 'step',
-      message: step.message,
-      icon: (step.icon as keyof typeof Ionicons.glyphMap) || 'cog',
-    }));
-  }
-
-  // Conversational response — no real action was taken, skip activity timeline
-  const hasAction = data.route?.skill_pack || data.action || (data.governance?.receipt_ids && data.governance.receipt_ids.length > 0);
-  if (!hasAction) {
-    return [];
-  }
-
-  // Synthesize from pipeline metadata
-  const events: Omit<AvaActivityEvent, 'ts'>[] = [
-    { type: 'thinking', message: 'Processing intent...', icon: 'sparkles' },
-  ];
-
-  if (data.route?.skill_pack) {
-    events.push({
-      type: 'step',
-      message: `Routing to ${data.route.skill_pack}`,
-      icon: 'git-network',
-    });
-  }
-
-  if (data.risk_tier) {
-    const tierIcon = data.risk_tier === 'RED' ? 'alert-circle' : data.risk_tier === 'YELLOW' ? 'warning' : 'shield-checkmark';
-    events.push({
-      type: 'step',
-      message: `Risk tier: ${data.risk_tier}`,
-      icon: tierIcon as keyof typeof Ionicons.glyphMap,
-    });
-  }
-
-  if (data.governance?.approvals_required && data.governance.approvals_required.length > 0) {
-    events.push({
-      type: 'step',
-      message: `Approval required (${data.governance.approvals_required.join(', ')})`,
-      icon: 'hand-left',
-    });
-  }
-
-  if (data.action) {
-    events.push({
-      type: 'tool_call',
-      message: `Executing: ${data.action}`,
-      icon: 'hammer',
-    });
-  }
-
-  if (data.governance?.receipt_ids && data.governance.receipt_ids.length > 0) {
-    events.push({
-      type: 'step',
-      message: `Receipt: ${data.governance.receipt_ids[0].slice(0, 12)}...`,
-      icon: 'receipt',
-    });
-  }
-
-  events.push({ type: 'done', message: 'Complete', icon: 'checkmark-circle' });
-  return events;
-}
 
 function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -176,303 +82,9 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
   );
 }
 
-function ThinkingDots() {
-  const dot1 = useRef(new Animated.Value(0.3)).current;
-  const dot2 = useRef(new Animated.Value(0.3)).current;
-  const dot3 = useRef(new Animated.Value(0.3)).current;
-
-  useEffect(() => {
-    const animate = (dot: Animated.Value, delay: number) => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: false }),
-          Animated.timing(dot, { toValue: 0.3, duration: 400, useNativeDriver: false }),
-        ])
-      ).start();
-    };
-    animate(dot1, 0);
-    animate(dot2, 200);
-    animate(dot3, 400);
-  }, []);
-
-  return (
-    <View style={actStyles.thinkingDotsRow}>
-      <Animated.View style={[actStyles.thinkingDotAnim, { opacity: dot1 }]} />
-      <Animated.View style={[actStyles.thinkingDotAnim, { opacity: dot2 }]} />
-      <Animated.View style={[actStyles.thinkingDotAnim, { opacity: dot3 }]} />
-    </View>
-  );
-}
-
-function AvaActivityInline({ run }: { run: ActiveRun }) {
-  const [expanded, setExpanded] = useState(false);
-  const spinAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  const isRunning = run.status === 'running';
-  const currentEvent = run.events[run.events.length - 1];
-  const completedEvents = run.events.filter(e => e.type !== 'thinking');
-
-  useEffect(() => {
-    if (isRunning) {
-      Animated.loop(
-        Animated.timing(spinAnim, { toValue: 1, duration: 1200, useNativeDriver: false })
-      ).start();
-    }
-  }, [isRunning]);
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: false }).start();
-  }, []);
-
-  const spinInterpolate = spinAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  if (!isRunning && !expanded) {
-    return null;
-  }
-
-  return (
-    <Animated.View style={[actStyles.activityContainer, { opacity: fadeAnim }]}>
-      {isRunning && currentEvent && (
-        <View style={actStyles.statusBar}>
-          <View style={actStyles.statusLeft}>
-            <Animated.View style={[actStyles.spinner, { transform: [{ rotate: spinInterpolate }] }]}>
-              <View style={actStyles.spinnerInner} />
-            </Animated.View>
-            <Text style={actStyles.statusText} numberOfLines={1}>
-              {currentEvent.message}
-            </Text>
-          </View>
-          <Pressable onPress={() => setExpanded(!expanded)} style={actStyles.toggleBtn}>
-            <Text style={actStyles.detailsToggle}>
-              {expanded ? 'Hide details' : 'Show details'}
-            </Text>
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={12}
-              color={Colors.accent.cyan}
-            />
-          </Pressable>
-        </View>
-      )}
-
-      {expanded && completedEvents.length > 0 && (
-        <View style={actStyles.eventList}>
-          {completedEvents.map((event, idx) => {
-            const isDone = event.type === 'done';
-            const isCurrent = isRunning && idx === completedEvents.length - 1 && !isDone;
-            return (
-              <View key={idx} style={actStyles.eventRow}>
-                <View style={[
-                  actStyles.eventIconWrap,
-                  isDone && actStyles.eventIconDone,
-                  isCurrent && actStyles.eventIconCurrent,
-                ]}>
-                  <Ionicons
-                    name={event.icon}
-                    size={12}
-                    color={isDone ? Colors.semantic.success : isCurrent ? Colors.accent.cyan : Colors.text.tertiary}
-                  />
-                </View>
-                <Text style={[
-                  actStyles.eventText,
-                  isDone && actStyles.eventTextDone,
-                  isCurrent && actStyles.eventTextCurrent,
-                ]} numberOfLines={1}>
-                  {event.message}
-                </Text>
-                <Text style={actStyles.eventTime}>
-                  {new Date(event.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
-    </Animated.View>
-  );
-}
-
-const actStyles = StyleSheet.create({
-  activityContainer: {
-    marginBottom: 4,
-    borderRadius: 12,
-    backgroundColor: '#161618',
-    borderWidth: 1,
-    borderColor: '#232325',
-    overflow: 'hidden',
-  },
-  statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  statusLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    marginRight: 8,
-  },
-  spinner: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#2C2C2E',
-    borderTopColor: Colors.accent.cyan,
-  },
-  spinnerInner: {
-    flex: 1,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.text.secondary,
-    flex: 1,
-  },
-  toggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-  },
-  detailsToggle: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.accent.cyan,
-  },
-  completedLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    marginBottom: 4,
-  },
-  completedDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: Colors.semantic.success,
-  },
-  completedText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.text.tertiary,
-  },
-  completedSep: {
-    fontSize: 12,
-    color: Colors.text.muted,
-  },
-  eventList: {
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-    gap: 2,
-  },
-  eventRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 5,
-  },
-  eventIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    backgroundColor: '#1E1E20',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventIconDone: {
-    backgroundColor: 'rgba(52, 199, 89, 0.12)',
-  },
-  eventIconCurrent: {
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-  },
-  eventText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.text.tertiary,
-  },
-  eventTextDone: {
-    color: Colors.semantic.success,
-    fontWeight: '500',
-  },
-  eventTextCurrent: {
-    color: Colors.text.secondary,
-    fontWeight: '500',
-  },
-  eventTime: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: Colors.text.muted,
-    minWidth: 44,
-    textAlign: 'right',
-  },
-  thinkingDotsRow: {
-    flexDirection: 'row',
-    gap: 5,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#1E1E20',
-    borderRadius: 16,
-    alignSelf: 'flex-start',
-  },
-  thinkingDotAnim: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: Colors.accent.cyan,
-  },
-});
-
-const seedChat: ChatMsg[] = [];
 
 
-const playConnectionSound = () => {
-  if (Platform.OS !== 'web') return;
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(880, audioContext.currentTime + 0.1);
-    oscillator.frequency.exponentialRampToValueAtTime(660, audioContext.currentTime + 0.2);
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.3);
-  } catch (e) {}
-};
-
-const playSuccessSound = () => {
-  if (Platform.OS !== 'web') return;
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    oscillator.frequency.setValueAtTime(523, audioContext.currentTime);
-    oscillator.frequency.setValueAtTime(659, audioContext.currentTime + 0.1);
-    oscillator.frequency.setValueAtTime(784, audioContext.currentTime + 0.2);
-    gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.4);
-  } catch (e) {}
-};
+const seedChat: AgentChatMessage[] = [];
 
 export function AvaDeskPanel() {
   const [mode, setMode] = useState<AvaMode>('voice');
@@ -480,7 +92,7 @@ export function AvaDeskPanel() {
   const [isConversing, setIsConversing] = useState(false);
   const [videoState, setVideoState] = useState<VideoConnectionState>('idle');
   const [connectionStatus, setConnectionStatus] = useState('');
-  const [chat, setChat] = useState<ChatMsg[]>(seedChat);
+  const [chat, setChat] = useState<AgentChatMessage[]>(seedChat);
   const [input, setInput] = useState('');
   const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRun>>({});
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -491,6 +103,7 @@ export function AvaDeskPanel() {
   const scrollRef = useRef<ScrollView>(null);
   const connectionTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
+  const isProcessingVoice = useRef(false);
 
   /** Show a voice/video error banner that auto-clears after 5s */
   const showVoiceError = useCallback((msg: string) => {
@@ -728,6 +341,52 @@ export function AvaDeskPanel() {
           setConnectionStatus('');
           anamClientRef.current = null;
         },
+        onUserMessage: async (userMessage: string, messageHistory: AnamMessage[]) => {
+          if (isProcessingVoice.current) return;
+          isProcessingVoice.current = true;
+
+          // Show user message in chat
+          setChat(prev => [...prev, {
+            id: `anam_user_${Date.now()}`,
+            from: 'user',
+            text: `\uD83C\uDFA4 ${userMessage}`,
+          }]);
+
+          try {
+            const resp = await fetch('/api/ava/chat-stream', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+              },
+              body: JSON.stringify({ message: userMessage, message_history: messageHistory.slice(-10) }),
+            });
+            const text = await resp.text();
+            // Parse SSE response — endpoint returns text/event-stream with data: JSON lines
+            const match = text.match(/data:\s*(\{.*?"done"\s*:\s*false.*?\})/);
+            const parsed = match ? JSON.parse(match[1]) : null;
+            const responseText = parsed?.text || text.replace(/data:.*?\n/g, '').trim() || 'I processed your request.';
+
+            setChat(prev => [...prev, {
+              id: `anam_ava_${Date.now()}`,
+              from: 'ava',
+              text: responseText,
+            }]);
+            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+
+            // Make avatar speak the response
+            if (anamClientRef.current) {
+              await streamResponseToAvatar(anamClientRef.current, responseText);
+            }
+          } catch (err) {
+            console.error('[Anam/Ava] Voice flow error:', err);
+            if (anamClientRef.current) {
+              try { (anamClientRef.current as any).talk?.("I had trouble processing that. Could you try again?"); } catch (_) {}
+            }
+          } finally {
+            isProcessingVoice.current = false;
+          }
+        },
       };
       const client = await connectAnamAvatar('anam-video-element', session?.access_token, connectOptions);
       anamClientRef.current = client;
@@ -738,6 +397,13 @@ export function AvaDeskPanel() {
       playSuccessSound();
       setVideoState('connected');
       setConnectionStatus('');
+
+      // Send initial greeting since CUSTOMER_CLIENT_V1 has no built-in LLM
+      setTimeout(() => {
+        if (anamClientRef.current && typeof (anamClientRef.current as any).talk === 'function') {
+          (anamClientRef.current as any).talk("Hi! I'm Ava, your Aspire assistant. How can I help you today?");
+        }
+      }, 1500);
     } catch (error: any) {
       clearConnectionTimeouts();
       anamClientRef.current = null;
@@ -798,13 +464,21 @@ export function AvaDeskPanel() {
   // W6: Approve-then-execute — chains approval into orchestrator resume, surfaces narration in chat
   const approveAndExecute = useCallback(async (approvalId: string) => {
     const runId = `run_approve_${Date.now()}`;
+    const now = Date.now();
     setActiveRuns((prev) => ({
       ...prev,
-      [runId]: { id: runId, events: [{ type: 'thinking', message: 'Approving and executing...', ts: Date.now(), icon: 'sparkles' }], status: 'running', finalText: '' },
+      [runId]: {
+        runId,
+        agent: 'ava',
+        events: [{ id: `evt_${now}_1`, type: 'thinking', label: 'Approving and executing...', status: 'active', timestamp: now, icon: 'sparkles' }],
+        status: 'running',
+        startedAt: now,
+        finalText: '',
+      },
     }));
     setChat((prev) => [
       ...prev,
-      { id: `m_approve_${Date.now()}`, from: 'ava', text: '', runId },
+      { id: `m_approve_${now}`, from: 'ava', text: '', runId },
     ]);
     setIsConversing(true);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -821,14 +495,14 @@ export function AvaDeskPanel() {
       if (!res.ok) throw new Error(`Approve returned ${res.status}`);
       const data = await res.json();
 
-      const events: Omit<AvaActivityEvent, 'ts'>[] = [
-        { type: 'step', message: 'Approval confirmed', icon: 'checkmark-circle' },
+      const events: Omit<AgentActivityEvent, 'id' | 'timestamp' | 'status'>[] = [
+        { type: 'step', label: 'Approval confirmed', icon: 'checkmark-circle' },
       ];
       if (data.executed) {
-        events.push({ type: 'tool_call', message: 'Executing approved action...', icon: 'hammer' });
-        events.push({ type: 'done', message: 'Execution complete', icon: 'checkmark-circle' });
+        events.push({ type: 'tool_call', label: 'Executing approved action...', icon: 'hammer' });
+        events.push({ type: 'done', label: 'Execution complete', icon: 'checkmark-circle' });
       } else {
-        events.push({ type: 'done', message: 'Approved (execution pending)', icon: 'checkmark-circle' });
+        events.push({ type: 'done', label: 'Approved (execution pending)', icon: 'checkmark-circle' });
       }
 
       const narrationText = data.narration || data.user_message || (data.executed ? 'Approved and executed successfully.' : 'Approved. Execution will follow.');
@@ -836,14 +510,19 @@ export function AvaDeskPanel() {
       events.forEach((evt, idx) => {
         const delay = 200 + idx * 500;
         const timer = setTimeout(() => {
-          const event: AvaActivityEvent = { ...evt, ts: Date.now() };
+          const isDone = evt.type === 'done';
+          const event: AgentActivityEvent = {
+            ...evt,
+            id: `evt_${Date.now()}_${idx}`,
+            timestamp: Date.now(),
+            status: isDone ? 'completed' : 'active',
+          };
           setActiveRuns((prev) => {
             const run = prev[runId];
             if (!run) return prev;
-            const isDone = evt.type === 'done';
             return { ...prev, [runId]: { ...run, events: [...run.events, event], status: isDone ? 'completed' : 'running', finalText: isDone ? narrationText : '' } };
           });
-          if (evt.type === 'done') {
+          if (isDone) {
             setIsConversing(false);
             setChat((prev) => prev.map((msg) => msg.runId === runId ? { ...msg, text: narrationText } : msg));
           }
@@ -851,11 +530,11 @@ export function AvaDeskPanel() {
         }, delay);
         runTimers.current.push(timer);
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setActiveRuns((prev) => {
         const run = prev[runId];
         if (!run) return prev;
-        return { ...prev, [runId]: { ...run, events: [...run.events, { type: 'done', message: 'Approval failed', ts: Date.now(), icon: 'alert-circle' }], status: 'completed' } };
+        return { ...prev, [runId]: { ...run, events: [...run.events, { id: `evt_err_${Date.now()}`, type: 'error', label: 'Approval failed', status: 'error', timestamp: Date.now(), icon: 'alert-circle' }], status: 'completed' } };
       });
       setIsConversing(false);
       setChat((prev) => prev.map((msg) => msg.runId === runId ? { ...msg, text: 'Approval failed. Please try again from the Authority Queue.' } : msg));

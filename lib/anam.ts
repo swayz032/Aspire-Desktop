@@ -46,6 +46,7 @@ export interface AnamConnectOptions {
   onConnectionEstablished?: () => void;
   onVideoStarted?: () => void;
   onConnectionClosed?: () => void;
+  onUserMessage?: (message: string, messageHistory: AnamMessage[]) => void;
 }
 
 /** In-memory conversation history for the current session */
@@ -156,6 +157,54 @@ export function finnTalk(client: AnamClientInstance, text: string): void {
   }
 }
 
+/**
+ * Stream a response to the Anam avatar for speech output.
+ * Uses createTalkMessageStream() for long responses (lower latency),
+ * falls back to talk() for short responses or on error.
+ */
+export async function streamResponseToAvatar(
+  client: AnamClientInstance,
+  responseText: string,
+): Promise<void> {
+  if (!client || !responseText?.trim()) return;
+
+  // Short responses: use simple talk()
+  if (responseText.length < 200) {
+    if (typeof (client as any).talk === 'function') {
+      (client as any).talk(responseText);
+    }
+    return;
+  }
+
+  // Longer responses: stream for lower latency
+  const talkStream = createAnamTalkStream(client);
+  if (!talkStream || typeof (talkStream as any).streamMessageChunk !== 'function') {
+    // Fallback to talk()
+    if (typeof (client as any).talk === 'function') {
+      (client as any).talk(responseText);
+    }
+    return;
+  }
+
+  try {
+    // Split into sentence chunks for natural speech pacing
+    const chunks = responseText.match(/[^.!?]+[.!?]+\s*/g) || [responseText];
+    for (let i = 0; i < chunks.length; i++) {
+      if (typeof (talkStream as any).isActive === 'function' && (talkStream as any).isActive()) {
+        await (talkStream as any).streamMessageChunk(chunks[i], i === chunks.length - 1);
+      }
+    }
+    if (typeof (talkStream as any).endMessage === 'function') {
+      (talkStream as any).endMessage();
+    }
+  } catch (err) {
+    console.warn('[Anam] Talk stream error, falling back:', err);
+    if (typeof (client as any).talk === 'function') {
+      (client as any).talk(responseText);
+    }
+  }
+}
+
 // ─── Event Listener Setup ─────────────────────────────────
 
 /**
@@ -167,11 +216,12 @@ export function setupAllEventListeners(
   historyTarget: 'ava' | 'finn',
   options?: AnamConnectOptions,
 ): void {
-  // Message history
+  // Message history — detect new user messages and forward to orchestrator via callback
   client.addListener(AnamEvent.MESSAGE_HISTORY_UPDATED, (event: any) => {
-    if (event?.messages && Array.isArray(event.messages)) {
-      const mapped = event.messages.map((msg: any) => ({
-        role: msg.role || 'user',
+    const msgArray = event?.messages || (Array.isArray(event) ? event : null);
+    if (msgArray && Array.isArray(msgArray)) {
+      const mapped = msgArray.map((msg: any) => ({
+        role: msg.role === 'user' ? 'user' : 'assistant' as const,
         content: msg.content || '',
         timestamp: msg.timestamp || Date.now(),
       }));
@@ -179,6 +229,12 @@ export function setupAllEventListeners(
         conversationHistory = mapped;
       } else {
         finnConversationHistory = mapped;
+      }
+
+      // Detect new user message and forward to orchestrator via callback
+      const last = mapped[mapped.length - 1];
+      if (last?.role === 'user' && last.content?.trim()) {
+        options?.onUserMessage?.(last.content, mapped);
       }
     }
   });

@@ -2128,6 +2128,8 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
       llmId: 'CUSTOMER_CLIENT_V1',
       systemPrompt: 'You are Ava, a professional AI assistant for Aspire business operations.',
+      skipGreeting: true,      // Client sends greeting — no built-in LLM for CUSTOMER_CLIENT_V1
+      avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
     };
     const FINN_CONFIG = {
       name: 'Finn',
@@ -2135,6 +2137,8 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       voiceId: req.body?.voiceId || '7db5f408-833c-49ce-97aa-eaec17077a4c',
       llmId: 'CUSTOMER_CLIENT_V1',
       systemPrompt: 'You are Finn, the Aspire finance and money desk specialist.',
+      skipGreeting: true,      // Client sends greeting — no built-in LLM for CUSTOMER_CLIENT_V1
+      avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
     };
 
     const personaConfig = requestedPersona === 'finn' ? FINN_CONFIG : AVA_CONFIG;
