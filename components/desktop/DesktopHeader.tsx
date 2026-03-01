@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Animated } fro
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/tokens';
-import { CanvasModeToggle } from '@/components/canvas/CanvasModeToggle';
+import { CanvasToggle } from '@/components/canvas/CanvasToggle';
 import { useSupabase, useTenant } from '@/providers';
 import { getInitials, getAvatarColor } from '@/utils/avatar';
 import { SettingsPanel, SettingsSectionId } from '@/components/settings/SettingsPanel';
@@ -430,7 +430,7 @@ export function DesktopHeader({
           )}
         </View>
 
-        <CanvasModeToggle />
+        <CanvasToggle />
 
         <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
           <Pressable

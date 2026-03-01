@@ -51,6 +51,11 @@ import { SnapGhost } from './SnapGhost';
 import { DragPreview } from './DragPreview';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { playSound } from '@/lib/soundManager';
+import { CanvasModeToggle } from './CanvasModeToggle';
+import { ChatCanvas } from './ChatCanvas';
+import { Persona } from '@/components/ai-elements/Persona';
+import { subscribe as subscribeCanvas, getMode as getCanvasMode, getPersonaState, getActiveAgent } from '@/lib/chatCanvasStore';
+import type { CanvasMode } from '@/lib/chatCanvasStore';
 
 // ---------------------------------------------------------------------------
 // Premium spring physics for Canvas Mode entrance
@@ -430,6 +435,15 @@ export function CanvasWorkspace(): React.ReactElement {
   const { mode, runwayState, stageOpen } = useImmersion();
   const tiles = useMemo(() => getAllTiles(), []);
 
+  // Chat | Canvas sub-mode (internal to workspace)
+  const [subMode, setSubMode] = useState<CanvasMode>(getCanvasMode());
+  useEffect(() => {
+    const unsubscribe = subscribeCanvas((state) => {
+      setSubMode(state.mode);
+    });
+    return unsubscribe;
+  }, []);
+
   // Drag-drop integration (web-only)
   const { setNodeRef, isOver } = Platform.OS === 'web'
     ? useDroppable({ id: 'canvas-workspace' })
@@ -657,7 +671,7 @@ export function CanvasWorkspace(): React.ReactElement {
 
       {/* Layer 5: Content (widgets scroll OVER grid) */}
       <View style={ws.content}>
-        {/* Header */}
+        {/* Header with mode toggle */}
         <Animated.View
           style={[
             ws.header,
@@ -667,43 +681,66 @@ export function CanvasWorkspace(): React.ReactElement {
             },
           ]}
         >
-          <View style={ws.headerLeft}>
-            <View style={ws.headerDot} />
-            <Text style={ws.headerTitle}>CANVAS</Text>
+          <View style={ws.headerRow}>
+            <View style={ws.headerLeft}>
+              <View style={ws.headerDot} />
+              <Text style={ws.headerTitle}>CANVAS</Text>
+            </View>
+            <CanvasModeToggle />
           </View>
           <Text style={ws.headerSub}>
             Governed execution workspace • Every action leaves a receipt
           </Text>
         </Animated.View>
 
-        {/* Tile grid — 3×2 layout */}
-        <View style={ws.tileGrid}>
-          {tiles.map((tile, idx) => (
-            <CanvasWidget
-              key={tile.id}
-              tile={tile}
-              index={idx}
-              entranceAnim={tileAnims[idx]}
-              onPress={handleTilePress}
-              onHoverIn={handleHoverIn}
-              onHoverOut={handleHoverOut}
-              onContextMenu={handleContextMenu}
+        {/* Conditional: ChatCanvas (chat mode) or tile grid (canvas mode) */}
+        {subMode === 'chat' ? (
+          <View style={ws.chatCanvasContainer}>
+            <ChatCanvas
+              webPreviewProps={{
+                activityEvents: [],
+                trustLevel: 'internal',
+              }}
+              personaElement={
+                <Persona
+                  state={getPersonaState()}
+                  variant={getActiveAgent()}
+                />
+              }
             />
-          ))}
-        </View>
+          </View>
+        ) : (
+          <>
+            {/* Tile grid — 3×2 layout */}
+            <View style={ws.tileGrid}>
+              {tiles.map((tile, idx) => (
+                <CanvasWidget
+                  key={tile.id}
+                  tile={tile}
+                  index={idx}
+                  entranceAnim={tileAnims[idx]}
+                  onPress={handleTilePress}
+                  onHoverIn={handleHoverIn}
+                  onHoverOut={handleHoverOut}
+                  onContextMenu={handleContextMenu}
+                />
+              ))}
+            </View>
 
-        {/* Runway display */}
-        <Animated.View
-          style={[
-            ws.runwayContainer,
-            {
-              opacity: runwayOpacity,
-              transform: [{ translateY: runwayTranslateY }],
-            },
-          ]}
-        >
-          <RunwayDisplay currentState={runwayState} />
-        </Animated.View>
+            {/* Runway display */}
+            <Animated.View
+              style={[
+                ws.runwayContainer,
+                {
+                  opacity: runwayOpacity,
+                  transform: [{ translateY: runwayTranslateY }],
+                },
+              ]}
+            >
+              <RunwayDisplay currentState={runwayState} />
+            </Animated.View>
+          </>
+        )}
       </View>
 
       {/* Layer 6: LiveLens overlay */}
@@ -796,11 +833,25 @@ const ws = StyleSheet.create({
     alignItems: 'center',
     marginBottom: CanvasTokens.workspace.headerBottomMargin,
     gap: CanvasTokens.workspace.headerGap,
+    width: '100%',
+    maxWidth: CanvasTokens.workspace.gridMaxWidth,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  // ChatCanvas container — fills workspace area
+  chatCanvasContainer: {
+    flex: 1,
+    width: '100%',
+    maxWidth: CanvasTokens.workspace.gridMaxWidth,
   },
   headerDot: {
     width: 9,

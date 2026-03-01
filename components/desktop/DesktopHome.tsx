@@ -22,8 +22,6 @@ import { TileContextMenu } from '@/components/canvas/TileContextMenu';
 import { CanvasTileWrapper } from '@/components/canvas/CanvasTileWrapper';
 import { useImmersion, setStageOpen, setLensOpen, setImmersionMode } from '@/lib/immersionStore';
 import { CanvasWorkspace } from '@/components/canvas/CanvasWorkspace';
-import { subscribe as subscribeCanvas, getMode as getCanvasMode } from '@/lib/chatCanvasStore';
-import type { CanvasMode } from '@/lib/chatCanvasStore';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useBreakpoint } from '@/lib/useDesktop';
 import { playSound } from '@/lib/soundManager';
@@ -96,16 +94,6 @@ export function DesktopHome() {
     documentName?: string;
     pandadocDocumentId?: string;
   }>({ visible: false, type: 'document' });
-  // ── Canvas mode state (chat vs canvas workspace) ──
-  const [canvasMode, setCanvasMode] = useState<CanvasMode>(getCanvasMode());
-
-  useEffect(() => {
-    const unsubscribe = subscribeCanvas((state) => {
-      setCanvasMode(state.mode);
-      setImmersionMode(state.mode === 'canvas' ? 'canvas' : 'off');
-    });
-    return unsubscribe;
-  }, []);
 
   const dynamicItems = useDynamicAuthorityQueue();
   const allAuthorityItems = useMemo(
@@ -299,7 +287,7 @@ export function DesktopHome() {
   // ── Conditional render: CanvasWorkspace (canvas mode) vs dashboard (chat mode) ──
   return (
     <DesktopShell>
-      {canvasMode === 'canvas' ? (
+      {mode === 'canvas' ? (
         <CanvasWorkspace />
       ) : (
         <>
