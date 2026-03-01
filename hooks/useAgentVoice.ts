@@ -466,11 +466,12 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       await ttsWs.connect();
       ttsWsRef.current = ttsWs;
 
-      // Start keep-alive pings to prevent idle WebSocket disconnect
+      // Start keep-alive pings to prevent idle WebSocket disconnect.
+      // Only send when an active context exists — sending to a non-existent
+      // context ID causes ElevenLabs to reject the message or close the socket.
       keepAliveRef.current = setInterval(() => {
-        if (ttsWsRef.current?.isConnected) {
-          const ctxId = currentContextRef.current || 'keepalive';
-          ttsWsRef.current.keepAlive(ctxId);
+        if (ttsWsRef.current?.isConnected && currentContextRef.current) {
+          ttsWsRef.current.keepAlive(currentContextRef.current);
         }
       }, 30_000);
     } catch (wsErr) {

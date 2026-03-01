@@ -127,7 +127,10 @@ export class TtsWebSocket {
   /** Send text to be synthesized in a specific context */
   speak(text: string, contextId: string): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ text, context_id: contextId }));
+    // ElevenLabs docs: text "Should always end with a single space"
+    // to signal the API that more text may follow in this context.
+    const normalizedText = text.endsWith(' ') ? text : text + ' ';
+    this.ws.send(JSON.stringify({ text: normalizedText, context_id: contextId }));
   }
 
   /** Force generation of any buffered text in a context */

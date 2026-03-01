@@ -58,6 +58,12 @@ export function setupTtsWebSocket(httpServer: Server): void {
       upstreamReady = true;
       logger.info('[WS-TTS] Upstream connected', { voice_id: voiceId });
 
+      // CRITICAL: Send InitializeConnectionMulti message per ElevenLabs docs.
+      // The multi-stream-input endpoint requires { "text": " " } (single space)
+      // as the FIRST message to initialize the connection. Without this,
+      // ElevenLabs rejects subsequent messages and may close the socket.
+      upstreamWs.send(JSON.stringify({ text: ' ' }));
+
       // Signal client that connection is live
       if (clientWs.readyState === WebSocket.OPEN) {
         clientWs.send(JSON.stringify({ type: 'connected' }));
