@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase';
 
 import { OfficeItem } from '@/types/inbox';
 import { CallItem } from '@/types/calls';
-import { MailThread } from '@/types/mail';
+import { MailThread, MailDetail, MailMessage } from '@/types/mail';
 import { Contact } from '@/types/contacts';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
@@ -25,9 +25,22 @@ const inboxHero = require('@/assets/images/inbox-hero.jpg');
 
 type TabType = 'office' | 'calls' | 'mail' | 'contacts';
 
-function getMailBody(item: MailThread): string {
-  // Use body from API data if available, otherwise fall back to preview
+function getMailBody(item: MailThread, detail?: MailDetail | null): string {
+  // Use full thread detail messages if loaded, otherwise fall back to preview
+  if (detail?.messages?.length) {
+    return detail.messages.map(m => m.content).join('\n\n---\n\n');
+  }
   return (item as any).body || item.preview;
+}
+
+interface ComposeState {
+  visible: boolean;
+  to: string;
+  subject: string;
+  body: string;
+  replyToThreadId?: string;
+  replyToMessageId?: string;
+  mode: 'new' | 'reply' | 'replyAll' | 'forward';
 }
 
 function getCallSummary(item: CallItem): string {
@@ -544,7 +557,17 @@ function CallPreview({ item }: { item: CallItem }) {
   );
 }
 
-function MailPreview({ item }: { item: MailThread }) {
+function MailPreview({ item, detail, loading: detailLoading, onReply, onReplyAll, onForward, onSmartReply }: {
+  item: MailThread;
+  detail?: MailDetail | null;
+  loading?: boolean;
+  onReply?: () => void;
+  onReplyAll?: () => void;
+  onForward?: () => void;
+  onSmartReply?: (text: string) => void;
+}) {
+  const messages = detail?.messages || [];
+
   return (
     <View style={fp.section}>
       <View style={fp.badgeRow}>
@@ -560,45 +583,71 @@ function MailPreview({ item }: { item: MailThread }) {
             <Text style={[fp.badgeText, { color: Colors.text.tertiary }]}>Attachments</Text>
           </View>
         )}
+        <View style={[fp.badge, { backgroundColor: Colors.background.tertiary }]}>
+          <Text style={[fp.badgeText, { color: Colors.text.tertiary }]}>{item.messageCount} messages</Text>
+        </View>
       </View>
       <Text style={fp.mailSubject}>{item.subject}</Text>
       <View style={fp.divider} />
-      <View style={fp.mailSenderRow}>
-        <View style={fp.mailAvatarLg}>
-          <Text style={fp.mailAvatarLgText}>{item.senderName.charAt(0)}</Text>
+
+      {/* Thread messages — show all if loaded, otherwise show sender info */}
+      {detailLoading ? (
+        <View style={{ padding: Spacing.xl, alignItems: 'center' }}>
+          <Text style={{ color: Colors.text.muted }}>Loading email...</Text>
         </View>
-        <View style={{ flex: 1, marginLeft: Spacing.md }}>
-          <Text style={fp.mailSenderName}>{item.senderName}</Text>
-          <Text style={fp.mailSenderEmail}>{item.senderEmail}</Text>
-        </View>
-        <Text style={fp.timestamp}>{formatRelativeTime(item.timestamp)}</Text>
-      </View>
-      <View style={fp.mailRecipientsBar}>
-        <Text style={fp.mailRecipientsLabel}>To:</Text>
-        <Text style={fp.mailRecipientsValue}>{item.recipients.join(', ')}</Text>
-      </View>
-      <View style={fp.divider} />
-      <View style={fp.mailBodyArea}>
-        <Text style={fp.mailBodyText}>{getMailBody(item)}</Text>
-      </View>
-      {item.hasAttachments && (
+      ) : messages.length > 0 ? (
+        messages.map((msg, idx) => (
+          <View key={msg.id || idx}>
+            <View style={fp.mailSenderRow}>
+              <View style={fp.mailAvatarLg}>
+                <Text style={fp.mailAvatarLgText}>{msg.sender.charAt(0)}</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: Spacing.md }}>
+                <Text style={fp.mailSenderName}>{msg.sender}</Text>
+                <Text style={fp.mailSenderEmail}>{msg.senderEmail}</Text>
+              </View>
+              <Text style={fp.timestamp}>{formatRelativeTime(msg.timestamp)}</Text>
+            </View>
+            <View style={[fp.mailBodyArea, { marginTop: Spacing.md }]}>
+              <Text style={fp.mailBodyText}>{msg.content}</Text>
+            </View>
+            {msg.attachments?.length > 0 && (
+              <View style={fp.attachmentsRow}>
+                {msg.attachments.map((att) => (
+                  <View key={att.id} style={fp.attachmentItem}>
+                    <Ionicons name="document" size={20} color={Colors.accent.cyan} />
+                    <Text style={fp.attachmentName}>{att.name}</Text>
+                    <Text style={fp.attachmentSize}>{att.size}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {idx < messages.length - 1 && <View style={fp.divider} />}
+          </View>
+        ))
+      ) : (
         <>
+          <View style={fp.mailSenderRow}>
+            <View style={fp.mailAvatarLg}>
+              <Text style={fp.mailAvatarLgText}>{item.senderName.charAt(0)}</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: Spacing.md }}>
+              <Text style={fp.mailSenderName}>{item.senderName}</Text>
+              <Text style={fp.mailSenderEmail}>{item.senderEmail}</Text>
+            </View>
+            <Text style={fp.timestamp}>{formatRelativeTime(item.timestamp)}</Text>
+          </View>
+          <View style={fp.mailRecipientsBar}>
+            <Text style={fp.mailRecipientsLabel}>To:</Text>
+            <Text style={fp.mailRecipientsValue}>{item.recipients.join(', ')}</Text>
+          </View>
           <View style={fp.divider} />
-          <Text style={fp.sectionLabel}>Attachments</Text>
-          <View style={fp.attachmentsRow}>
-            <View style={fp.attachmentItem}>
-              <Ionicons name="document" size={20} color={Colors.accent.cyan} />
-              <Text style={fp.attachmentName}>Document.pdf</Text>
-              <Text style={fp.attachmentSize}>2.4 MB</Text>
-            </View>
-            <View style={fp.attachmentItem}>
-              <Ionicons name="image" size={20} color={Colors.semantic.success} />
-              <Text style={fp.attachmentName}>Screenshot.png</Text>
-              <Text style={fp.attachmentSize}>1.1 MB</Text>
-            </View>
+          <View style={fp.mailBodyArea}>
+            <Text style={fp.mailBodyText}>{item.preview}</Text>
           </View>
         </>
       )}
+
       <View style={fp.divider} />
       <Text style={fp.sectionLabel}>Tags</Text>
       <View style={fp.tagsRow}>
@@ -616,32 +665,24 @@ function MailPreview({ item }: { item: MailThread }) {
       </View>
       <View style={fp.divider} />
       <View style={fp.actionBar}>
-        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7}>
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7} onPress={onReply}>
           <Ionicons name="arrow-undo" size={16} color={Colors.accent.cyan} />
           <Text style={[fp.actionBtnText, { color: Colors.accent.cyan }]}>Reply</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7} onPress={onReplyAll}>
           <Ionicons name="arrow-undo" size={16} color={Colors.text.tertiary} />
           <Text style={fp.actionBtnText}>Reply All</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7} onPress={onForward}>
           <Ionicons name="arrow-redo" size={16} color={Colors.text.tertiary} />
           <Text style={fp.actionBtnText}>Forward</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
-          <Ionicons name="archive" size={16} color={Colors.text.tertiary} />
-          <Text style={fp.actionBtnText}>Archive</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
-          <Ionicons name="star-outline" size={16} color={Colors.accent.amber} />
-          <Text style={[fp.actionBtnText, { color: Colors.accent.amber }]}>Star</Text>
         </TouchableOpacity>
       </View>
       <View style={fp.divider} />
       <Text style={fp.sectionLabel}>Smart Replies</Text>
       <View style={styles.smartReplyRow}>
         {['Thanks, received!', "I'll review and respond shortly", 'Forward to team for review'].map((reply) => (
-          <TouchableOpacity key={reply} style={styles.smartReplyPill} activeOpacity={0.7}>
+          <TouchableOpacity key={reply} style={styles.smartReplyPill} activeOpacity={0.7} onPress={() => onSmartReply?.(reply)}>
             <Text style={styles.smartReplyText}>{reply}</Text>
           </TouchableOpacity>
         ))}
@@ -768,6 +809,12 @@ export default function InboxScreen() {
   const [eliMessages, setEliMessages] = useState<EliMessage[]>([
     { id: '1', from: 'eli', text: 'Hey! I\'ve been sorting through your inbox. What would you like me to help with?', ts: Date.now() },
   ]);
+  // ── Mail detail + compose state ──
+  const [mailDetail, setMailDetail] = useState<MailDetail | null>(null);
+  const [mailDetailLoading, setMailDetailLoading] = useState(false);
+  const [compose, setCompose] = useState<ComposeState>({ visible: false, to: '', subject: '', body: '', mode: 'new' });
+  const [composeSending, setComposeSending] = useState(false);
+
   const [showMailSetupModal, setShowMailSetupModal] = useState(false);
   const [mailSetupChecked, setMailSetupChecked] = useState(false);
   const [hasActiveMailbox, setHasActiveMailbox] = useState(false);
@@ -826,6 +873,91 @@ export default function InboxScreen() {
       // Error handled by onError callback
     }
   }, [eliVoice]);
+
+  // ── Fetch full thread detail when clicking an email ──
+  const fetchMailDetail = useCallback(async (threadId: string) => {
+    setMailDetailLoading(true);
+    setMailDetail(null);
+    try {
+      const res = await authenticatedFetch(`/api/mail/threads/${threadId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMailDetail(data);
+      }
+    } catch (e) {
+      console.error('Failed to load thread detail', e);
+    }
+    setMailDetailLoading(false);
+  }, [authenticatedFetch]);
+
+  // ── Compose helpers ──
+  const openCompose = useCallback((mode: ComposeState['mode'] = 'new', thread?: MailThread) => {
+    if (!thread) {
+      setCompose({ visible: true, to: '', subject: '', body: '', mode: 'new' });
+      return;
+    }
+    const lastMsg = mailDetail?.messages?.[mailDetail.messages.length - 1];
+    const replyTo = lastMsg?.senderEmail || thread.senderEmail;
+    const allRecipients = [...new Set([replyTo, ...thread.recipients])].join(', ');
+    if (mode === 'reply') {
+      setCompose({ visible: true, to: replyTo, subject: `Re: ${thread.subject}`, body: '', mode, replyToThreadId: thread.id });
+    } else if (mode === 'replyAll') {
+      setCompose({ visible: true, to: allRecipients, subject: `Re: ${thread.subject}`, body: '', mode, replyToThreadId: thread.id });
+    } else if (mode === 'forward') {
+      const fwdBody = lastMsg ? `\n\n---------- Forwarded message ----------\nFrom: ${lastMsg.sender} <${lastMsg.senderEmail}>\n\n${lastMsg.content}` : '';
+      setCompose({ visible: true, to: '', subject: `Fwd: ${thread.subject}`, body: fwdBody, mode });
+    }
+  }, [mailDetail]);
+
+  const handleSendEmail = useCallback(async () => {
+    if (!compose.to || !compose.subject) return;
+    setComposeSending(true);
+    try {
+      const res = await authenticatedFetch('/api/mail/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: compose.to,
+          subject: compose.subject,
+          body: compose.body,
+          replyToThreadId: compose.replyToThreadId,
+        }),
+      });
+      if (res.ok) {
+        setCompose({ visible: false, to: '', subject: '', body: '', mode: 'new' });
+        Alert.alert('Sent', 'Email sent successfully.');
+      } else {
+        Alert.alert('Error', 'Failed to send email. Please try again.');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to send email. Please try again.');
+    }
+    setComposeSending(false);
+  }, [compose, authenticatedFetch]);
+
+  const handleSmartReply = useCallback(async (text: string, thread: MailThread) => {
+    setComposeSending(true);
+    try {
+      const res = await authenticatedFetch('/api/mail/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: thread.senderEmail,
+          subject: `Re: ${thread.subject}`,
+          body: text,
+          replyToThreadId: thread.id,
+        }),
+      });
+      if (res.ok) {
+        Alert.alert('Sent', `Quick reply sent: "${text}"`);
+      } else {
+        Alert.alert('Error', 'Failed to send reply.');
+      }
+    } catch {
+      Alert.alert('Error', 'Failed to send reply.');
+    }
+    setComposeSending(false);
+  }, [authenticatedFetch]);
 
   const breathAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef<ScrollView>(null);
@@ -1007,7 +1139,12 @@ export default function InboxScreen() {
 
   const handleItemPress = (id: string) => {
     setSelectedId(id);
+    setMailDetail(null);
     scrollRef.current?.scrollTo({ y: 0, animated: true });
+    // Fetch full thread detail for mail items
+    if (activeTab === 'mail') {
+      fetchMailDetail(id);
+    }
   };
 
   const handleTabChange = (tab: TabType) => {
@@ -1264,7 +1401,17 @@ export default function InboxScreen() {
             <View style={fp.detailContent}>
               {activeTab === 'office' && <OfficePreview item={selectedItem as OfficeItem} />}
               {activeTab === 'calls' && <CallPreview item={selectedItem as CallItem} />}
-              {activeTab === 'mail' && <MailPreview item={selectedItem as MailThread} />}
+              {activeTab === 'mail' && (
+                <MailPreview
+                  item={selectedItem as MailThread}
+                  detail={mailDetail}
+                  loading={mailDetailLoading}
+                  onReply={() => openCompose('reply', selectedItem as MailThread)}
+                  onReplyAll={() => openCompose('replyAll', selectedItem as MailThread)}
+                  onForward={() => openCompose('forward', selectedItem as MailThread)}
+                  onSmartReply={(text) => handleSmartReply(text, selectedItem as MailThread)}
+                />
+              )}
               {activeTab === 'contacts' && <ContactPreview item={selectedItem as Contact} />}
             </View>
           </View>
@@ -1274,6 +1421,76 @@ export default function InboxScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* ── Compose Email FAB — mail tab only ── */}
+      {activeTab === 'mail' && hasActiveMailbox && (
+        <TouchableOpacity
+          style={styles.composeFab}
+          activeOpacity={0.8}
+          onPress={() => openCompose('new')}
+        >
+          <Ionicons name="create-outline" size={22} color="#fff" />
+          <Text style={styles.composeFabText}>Compose</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ── Compose Modal ── */}
+      {compose.visible && (
+        <View style={styles.composeOverlay}>
+          <View style={styles.composeModal}>
+            <View style={styles.composeHeader}>
+              <Text style={styles.composeTitle}>
+                {compose.mode === 'reply' ? 'Reply' : compose.mode === 'replyAll' ? 'Reply All' : compose.mode === 'forward' ? 'Forward' : 'New Email'}
+              </Text>
+              <TouchableOpacity onPress={() => setCompose(c => ({ ...c, visible: false }))} activeOpacity={0.7}>
+                <Ionicons name="close" size={22} color={Colors.text.secondary} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.composeField}>
+              <Text style={styles.composeLabel}>To</Text>
+              <TextInput
+                style={styles.composeInput}
+                value={compose.to}
+                onChangeText={(t) => setCompose(c => ({ ...c, to: t }))}
+                placeholder="recipient@example.com"
+                placeholderTextColor={Colors.text.disabled}
+                autoFocus={compose.mode === 'new' || compose.mode === 'forward'}
+              />
+            </View>
+            <View style={styles.composeField}>
+              <Text style={styles.composeLabel}>Subject</Text>
+              <TextInput
+                style={styles.composeInput}
+                value={compose.subject}
+                onChangeText={(t) => setCompose(c => ({ ...c, subject: t }))}
+                placeholder="Subject"
+                placeholderTextColor={Colors.text.disabled}
+              />
+            </View>
+            <TextInput
+              style={styles.composeBody}
+              value={compose.body}
+              onChangeText={(t) => setCompose(c => ({ ...c, body: t }))}
+              placeholder="Write your email..."
+              placeholderTextColor={Colors.text.disabled}
+              multiline
+              textAlignVertical="top"
+              autoFocus={compose.mode === 'reply' || compose.mode === 'replyAll'}
+            />
+            <View style={styles.composeActions}>
+              <TouchableOpacity
+                style={[styles.composeSendBtn, composeSending && { opacity: 0.6 }]}
+                activeOpacity={0.7}
+                onPress={handleSendEmail}
+                disabled={composeSending || !compose.to || !compose.subject}
+              >
+                <Ionicons name="send" size={16} color="#fff" />
+                <Text style={styles.composeSendText}>{composeSending ? 'Sending...' : 'Send'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
 
       <Animated.View style={[styles.eliChipWrapper, { transform: [{ scale: breathAnim }] }]}>
         <TouchableOpacity onPress={() => setEliOpen(!eliOpen)} activeOpacity={0.8}>
@@ -2617,6 +2834,118 @@ const styles = StyleSheet.create({
   mailSetupEmptyCTAText: {
     ...Typography.bodyMedium,
     color: '#fff',
+    fontWeight: '600' as const,
+  },
+  // ── Compose FAB ──
+  composeFab: {
+    position: 'absolute',
+    bottom: 100,
+    right: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.accent.cyan,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 28,
+    gap: 8,
+    zIndex: 90,
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 4px 20px rgba(0, 188, 212, 0.4)',
+      cursor: 'pointer',
+    } : {}),
+  } as any,
+  composeFabText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  // ── Compose Modal ──
+  composeOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 200,
+  } as any,
+  composeModal: {
+    width: '90%',
+    maxWidth: 600,
+    backgroundColor: Colors.background.secondary,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    padding: Spacing.xl,
+    maxHeight: '80%',
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 16px 48px rgba(0,0,0,0.65)',
+    } : {}),
+  } as any,
+  composeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.lg,
+  } as any,
+  composeTitle: {
+    ...Typography.title,
+    color: Colors.text.primary,
+    fontWeight: '700' as const,
+  },
+  composeField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.xs,
+  } as any,
+  composeLabel: {
+    ...Typography.caption,
+    color: Colors.text.muted,
+    fontWeight: '600' as const,
+    width: 60,
+  },
+  composeInput: {
+    flex: 1,
+    ...Typography.body,
+    color: Colors.text.primary,
+    padding: Spacing.xs,
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+  } as any,
+  composeBody: {
+    flex: 1,
+    minHeight: 200,
+    ...Typography.body,
+    color: Colors.text.primary,
+    padding: Spacing.md,
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.lg,
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+  } as any,
+  composeActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  } as any,
+  composeSendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.accent.cyan,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.lg,
+  } as any,
+  composeSendText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '600' as const,
   },
 });
