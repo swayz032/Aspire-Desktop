@@ -1367,9 +1367,11 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? {
-      maxWidth: undefined,
+      maxWidth: 'none',
+      width: '100%',
       height: '100%',
       margin: 0,
+      alignSelf: 'stretch',
     } : {}),
   } as any,
   header: {
