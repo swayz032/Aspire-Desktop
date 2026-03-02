@@ -27,7 +27,14 @@ const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
 const LIVEKIT_SERVER_URL = process.env.LIVEKIT_WS_URL || process.env.LIVEKIT_SERVER_URL || '';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://www.aspireos.app';
-const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+function resolveOrchestratorUrl(): string | null {
+  const configured = process.env.ORCHESTRATOR_URL?.trim();
+  if (configured) return configured;
+  if (IS_PRODUCTION) return null;
+  return 'http://localhost:8000';
+}
 
 // Supabase admin for member queries (service role bypasses RLS for controlled lookups)
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -465,7 +472,11 @@ router.post('/api/conference/invite-external', async (req: Request, res: Respons
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       let orchestratorResponse: globalThis.Response;
       try {
-        orchestratorResponse = await fetch(`${ORCHESTRATOR_URL}/v1/intents`, {
+        const orchestratorUrl = resolveOrchestratorUrl();
+        if (!orchestratorUrl) {
+          throw new Error('ORCHESTRATOR_NOT_CONFIGURED');
+        }
+        orchestratorResponse = await fetch(`${orchestratorUrl}/v1/intents`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

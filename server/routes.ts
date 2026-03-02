@@ -44,6 +44,14 @@ const SUPPORTED_AGENTS = new Set<SupportedAgent>([
 ]);
 const ENABLE_INTENT_SSE_PROXY = process.env.ENABLE_INTENT_SSE_PROXY !== 'false';
 const STRICT_AGENT_VALIDATION = process.env.STRICT_AGENT_VALIDATION !== 'false';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+function resolveOrchestratorUrl(): string | null {
+  const configured = process.env.ORCHESTRATOR_URL?.trim();
+  if (configured) return configured;
+  if (IS_PRODUCTION) return null;
+  return 'http://localhost:8000';
+}
 
 function parseRequestedAgent(raw: unknown): { value: SupportedAgent; provided: boolean; valid: boolean } {
   if (typeof raw !== 'string' || !raw.trim()) {
@@ -1752,11 +1760,11 @@ router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
   };
 
   // Orchestrator
-  const orchUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+  const orchUrl = resolveOrchestratorUrl();
   checks.orchestrator = {
-    configured: !!process.env.ORCHESTRATOR_URL,
+    configured: !!process.env.ORCHESTRATOR_URL && !!orchUrl,
     sandbox: true,
-    status: process.env.ORCHESTRATOR_URL ? 'CONFIGURED' : 'DEFAULT_LOCALHOST',
+    status: orchUrl ? (process.env.ORCHESTRATOR_URL ? 'CONFIGURED' : 'DEFAULT_LOCALHOST') : 'MISSING_IN_PRODUCTION',
   };
 
   // LiveKit
@@ -1878,7 +1886,14 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
     return;
   }
 
-  const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+  const ORCHESTRATOR_URL = resolveOrchestratorUrl();
+  if (!ORCHESTRATOR_URL) {
+    return res.status(503).json({
+      error: 'ORCHESTRATOR_NOT_CONFIGURED',
+      message: 'ORCHESTRATOR_URL is required in production.',
+      correlation_id: correlationId,
+    });
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), ORCHESTRATOR_TIMEOUT_MS);
   req.on('close', () => controller.abort());
@@ -1963,7 +1978,14 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing or empty text parameter' });
     }
 
-    const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+    const ORCHESTRATOR_URL = resolveOrchestratorUrl();
+    if (!ORCHESTRATOR_URL) {
+      return res.status(503).json({
+        error: 'ORCHESTRATOR_NOT_CONFIGURED',
+        message: 'ORCHESTRATOR_URL is required in production.',
+        correlation_id: correlationId,
+      });
+    }
     const suiteId = (req as any).authenticatedSuiteId;
     if (!suiteId) {
       return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
@@ -2212,7 +2234,10 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
     // After successful approval, trigger resume execution via orchestrator
     const officeId = getDefaultOfficeId();
     try {
-      const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+      const orchestratorUrl = resolveOrchestratorUrl();
+      if (!orchestratorUrl) {
+        throw new Error('ORCHESTRATOR_NOT_CONFIGURED');
+      }
       const resumeRes = await fetch(`${orchestratorUrl}/v1/resume/${id}`, {
         method: 'POST',
         headers: {
@@ -2299,7 +2324,10 @@ router.post('/api/authority-queue/:id/execute', async (req: Request, res: Respon
   }
 
   try {
-    const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+    const orchestratorUrl = resolveOrchestratorUrl();
+    if (!orchestratorUrl) {
+      throw new Error('ORCHESTRATOR_NOT_CONFIGURED');
+    }
     const result = await fetch(`${orchestratorUrl}/v1/resume/${id}`, {
       method: 'POST',
       headers: {
@@ -2451,7 +2479,13 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing or empty message parameter' });
     }
 
-    const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://localhost:8000';
+    const ORCHESTRATOR_URL = resolveOrchestratorUrl();
+    if (!ORCHESTRATOR_URL) {
+      return res.status(503).json({
+        error: 'ORCHESTRATOR_NOT_CONFIGURED',
+        message: 'ORCHESTRATOR_URL is required in production.',
+      });
+    }
 
     // Auth bridge: prefer JWT-derived suiteId/userId, fall back to session store for Anam brain routing
     let suiteId = (req as any).authenticatedSuiteId;
