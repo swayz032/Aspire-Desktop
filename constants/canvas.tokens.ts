@@ -112,6 +112,8 @@ export const CanvasTokens = {
   iconGradients: {
     email: ['#2563EB', '#1D4ED8'],
     invoice: ['#059669', '#047857'],
+    phone: ['#22C55E', '#16A34A'],
+    messages: ['#0EA5E9', '#0284C7'],
     quote: ['#06B6D4', '#0891B2'],
     contract: ['#DC2626', '#B91C1C'],
     calendar: ['#F97316', '#EA580C'],

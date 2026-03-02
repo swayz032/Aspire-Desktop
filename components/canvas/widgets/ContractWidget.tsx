@@ -20,6 +20,7 @@ import {
   ActivityIndicator,
   type ViewStyle,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { ArrowRightIcon } from '@/components/icons/ui/ArrowRightIcon';
 import { CheckCircleIcon } from '@/components/icons/ui/CheckCircleIcon';
@@ -200,6 +201,7 @@ export function ContractWidget({
   onViewClick,
   onSendReminderClick,
 }: ContractWidgetProps) {
+  const router = useRouter();
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +216,7 @@ export function ContractWidget({
         setLoading(true);
         setError(null);
 
-        let query = supabase
+        const base = supabase
           .from('contracts')
           .select(`
             id,
@@ -230,36 +232,36 @@ export function ContractWidget({
           `)
           .eq('suite_id', suiteId);
 
-        if (contractId) {
-          query = query.eq('id', contractId).single();
-        } else {
-          query = query.order('created_at', { ascending: false }).limit(1).single();
-        }
-
-        const { data, error: fetchError } = await query;
+        const { data, error: fetchError } = contractId
+          ? await base.eq('id', contractId).single()
+          : await base.order('created_at', { ascending: false }).limit(1).single();
 
         if (fetchError) {
           throw fetchError;
         }
 
-        setContract(data);
-      } catch (_err) {
-        // Fallback to demo data when table does not exist yet
-        setContract({
-          id: 'demo-1',
-          contract_number: 'CTR-2024-018',
-          sender_name: 'Your Company',
-          sender_email: 'team@yourcompany.com',
-          client_name: 'Global Solutions LLC',
-          client_email: 'legal@globalsolutions.com',
-          status: 'sent',
-          signature_status: 'pending',
-          deadline: new Date(Date.now() + 1000 * 60 * 60 * 24 * 5).toISOString(),
-          parties: [
-            { name: 'Your Company', role: 'Sender', signed: true, signed_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString() },
-            { name: 'Global Solutions LLC', role: 'Client', signed: false, signed_at: null },
-          ],
-        });
+        setContract(data as Contract);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err || 'Failed to load contract');
+        if (message.toLowerCase().includes('relation') || message.toLowerCase().includes('does not exist')) {
+          setContract({
+            id: 'demo-1',
+            contract_number: 'CTR-2024-018',
+            sender_name: 'Your Company',
+            sender_email: 'team@yourcompany.com',
+            client_name: 'Global Solutions LLC',
+            client_email: 'legal@globalsolutions.com',
+            status: 'sent',
+            signature_status: 'pending',
+            deadline: new Date(Date.now() + 1000 * 60 * 60 * 24 * 5).toISOString(),
+            parties: [
+              { name: 'Your Company', role: 'Sender', signed: true, signed_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString() },
+              { name: 'Global Solutions LLC', role: 'Client', signed: false, signed_at: null },
+            ],
+          });
+        } else {
+          setError(message);
+        }
       } finally {
         setLoading(false);
       }
@@ -323,13 +325,18 @@ export function ContractWidget({
 
   return (
     <View style={styles.container}>
+      <View style={styles.bgAccentA} />
+      <View style={styles.bgAccentB} />
+
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.contractNumber}>{contract.contract_number}</Text>
-        <View style={[styles.statusBadge, getStatusBadgeStyle(contract.status)]}>
-          <Text style={styles.statusText}>{contract.status.toUpperCase()}</Text>
+      <Pressable style={styles.headerCard} onPress={() => router.push('/finance-hub/documents')}>
+        <View style={styles.header}>
+          <Text style={styles.contractNumber}>{contract.contract_number}</Text>
+          <View style={[styles.statusBadge, getStatusBadgeStyle(contract.status)]}>
+            <Text style={styles.statusText}>{contract.status.toUpperCase()}</Text>
+          </View>
         </View>
-      </View>
+      </Pressable>
 
       {/* Parties Row */}
       <PartiesRow sender={sender} client={client} />
@@ -361,6 +368,17 @@ export function ContractWidget({
             <Text style={styles.viewButtonText}>View Contract</Text>
           </Pressable>
         )}
+        {!onViewClick && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.viewButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => router.push('/finance-hub/documents')}
+          >
+            <Text style={styles.viewButtonText}>View Contract</Text>
+          </Pressable>
+        )}
 
         {onSendReminderClick && !allSigned && (
           <Pressable
@@ -369,6 +387,17 @@ export function ContractWidget({
               pressed && styles.buttonPressed,
             ]}
             onPress={() => onSendReminderClick(contract.id)}
+          >
+            <Text style={styles.reminderButtonText}>Send Reminder</Text>
+          </Pressable>
+        )}
+        {!onSendReminderClick && !allSigned && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.reminderButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => router.push('/finance-hub/documents')}
           >
             <Text style={styles.reminderButtonText}>Send Reminder</Text>
           </Pressable>
@@ -408,7 +437,28 @@ function getStatusBadgeStyle(status: string): ViewStyle {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    gap: 18,
+    gap: 10,
+    overflow: 'hidden',
+  },
+
+  bgAccentA: {
+    position: 'absolute',
+    top: -48,
+    right: -32,
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    backgroundColor: 'rgba(14,165,233,0.12)',
+  },
+
+  bgAccentB: {
+    position: 'absolute',
+    bottom: -56,
+    left: -34,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(245,158,11,0.1)',
   },
 
   centerContainer: {
@@ -432,6 +482,17 @@ const styles = StyleSheet.create({
   },
 
   // Header
+  headerCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(9,20,34,0.82)',
+    padding: 10,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 10px 24px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.07)' } as unknown as ViewStyle)
+      : {}),
+  },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -465,10 +526,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     paddingHorizontal: 14,
-    backgroundColor: CanvasTokens.background.surface,
+    backgroundColor: 'rgba(12,19,31,0.9)',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: CanvasTokens.border.subtle,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
 
   party: {
@@ -513,6 +574,11 @@ const styles = StyleSheet.create({
   // Signature Status
   signatureSection: {
     gap: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(12,19,31,0.86)',
+    padding: 10,
   },
 
   sectionTitle: {
@@ -548,7 +614,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: 'rgba(245, 158, 11, 0.2)',
@@ -565,6 +631,8 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: 10,
+    marginTop: 'auto',
+    paddingTop: 2,
   },
 
   viewButton: {

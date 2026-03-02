@@ -1,119 +1,247 @@
-import React from 'react';
-import { View, Text, Image, StyleSheet, Platform } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import type { VoiceStatus } from '@/hooks/useAgentVoice';
 
 interface AgentWidgetProps {
   agentId: string;
   suiteId: string;
   officeId: string;
+  voiceStatus?: VoiceStatus;
+  onPrimaryAction?: () => void;
 }
 
-const AGENT_META: Record<string, { name: string; role: string; accent: string; avatar: any }> = {
+const AGENT_META: Record<string, { name: string; subtitle: string; orbA: [string, string, string]; orbB: [string, string, string] }> = {
   ava: {
     name: 'Ava',
-    role: 'Executive AI Assistant',
-    accent: '#3B82F6',
-    avatar: require('@/assets/avatars/ava.png'),
+    subtitle: 'Executive AI Assistant',
+    orbA: ['#60A5FA', '#8B5CF6', '#1D4ED8'],
+    orbB: ['#A78BFA', '#38BDF8', '#1D4ED8'],
   },
   eli: {
     name: 'Eli',
-    role: 'Communications & Inbox',
-    accent: '#F59E0B',
-    avatar: require('@/assets/avatars/eli.png'),
+    subtitle: 'Communications and Inbox',
+    orbA: ['#FDE68A', '#22C55E', '#84CC16'],
+    orbB: ['#22C55E', '#FACC15', '#0F766E'],
   },
   finn: {
     name: 'Finn',
-    role: 'Finance & Accounting',
-    accent: '#8B5CF6',
-    avatar: require('@/assets/avatars/finn.png'),
+    subtitle: 'Finance and Accounting',
+    orbA: ['#38BDF8', '#6366F1', '#0EA5E9'],
+    orbB: ['#818CF8', '#06B6D4', '#1D4ED8'],
   },
 };
 
-export function AgentWidget({ agentId }: AgentWidgetProps) {
+function statusLabel(status?: VoiceStatus): string {
+  if (status === 'listening') return 'Listening';
+  if (status === 'thinking') return 'Thinking';
+  if (status === 'speaking') return 'Speaking';
+  if (status === 'error') return 'Reconnect needed';
+  return 'Ready';
+}
+
+export function AgentWidget({ agentId, voiceStatus = 'idle', onPrimaryAction }: AgentWidgetProps) {
   const meta = AGENT_META[agentId] || AGENT_META.ava;
+  const orbFloat = useRef(new Animated.Value(0)).current;
+  const orbPulse = useRef(new Animated.Value(1)).current;
+  const progress = useRef(new Animated.Value(0.2)).current;
+
+  useEffect(() => {
+    const floatLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(orbFloat, { toValue: -4, duration: 1800, useNativeDriver: true }),
+        Animated.timing(orbFloat, { toValue: 0, duration: 1800, useNativeDriver: true }),
+      ]),
+    );
+    floatLoop.start();
+    return () => floatLoop.stop();
+  }, [orbFloat]);
+
+  useEffect(() => {
+    const active = voiceStatus === 'listening' || voiceStatus === 'speaking' || voiceStatus === 'thinking';
+    if (active) {
+      const pulseLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(orbPulse, { toValue: 1.08, duration: 900, useNativeDriver: true }),
+          Animated.timing(orbPulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ]),
+      );
+      const progressLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(progress, { toValue: 0.94, duration: 1300, useNativeDriver: false }),
+          Animated.timing(progress, { toValue: 0.28, duration: 1300, useNativeDriver: false }),
+        ]),
+      );
+      pulseLoop.start();
+      progressLoop.start();
+      return () => {
+        pulseLoop.stop();
+        progressLoop.stop();
+      };
+    }
+
+    Animated.timing(orbPulse, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    Animated.timing(progress, { toValue: 0.2, duration: 300, useNativeDriver: false }).start();
+  }, [voiceStatus, orbPulse, progress]);
+
+  const isActive = voiceStatus !== 'idle' && voiceStatus !== 'error';
 
   return (
     <View style={styles.container}>
-      <View style={styles.avatarRow}>
-        <View style={[styles.avatarRing, { borderColor: meta.accent }]}>
-          <Image source={meta.avatar} style={styles.avatar} resizeMode="cover" />
-        </View>
-        <View style={styles.info}>
-          <Text style={styles.name}>{meta.name}</Text>
-          <Text style={styles.role}>{meta.role}</Text>
-        </View>
+      <Animated.View style={[styles.orbStage, { transform: [{ translateY: orbFloat }] }]}>
+        <Animated.View style={[styles.orbGlow, { transform: [{ scale: orbPulse }] }]} />
+        <Animated.View style={[styles.orbShell, { transform: [{ scale: orbPulse }] }]}>
+          <LinearGradient
+            colors={meta.orbA}
+            start={{ x: 0.15, y: 0.15 }}
+            end={{ x: 0.85, y: 0.85 }}
+            style={styles.orbMain}
+          >
+            <LinearGradient
+              colors={meta.orbB}
+              start={{ x: 0.7, y: 0.2 }}
+              end={{ x: 0.2, y: 0.9 }}
+              style={styles.orbInnerSwirl}
+            />
+            <View style={styles.orbHighlight} />
+          </LinearGradient>
+        </Animated.View>
+      </Animated.View>
+
+      <Text style={styles.agentName}>{meta.name}</Text>
+      <Text style={styles.agentSubtitle}>{meta.subtitle}</Text>
+
+      <View style={styles.progressTrack}>
+        <Animated.View style={[styles.progressFill, { width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]} />
       </View>
-      <View style={[styles.statusBar, { backgroundColor: `${meta.accent}22` }]}>
-        <View style={[styles.statusDot, { backgroundColor: meta.accent }]} />
-        <Text style={[styles.statusText, { color: meta.accent }]}>Ready</Text>
+
+      <Text style={styles.voiceState}>{statusLabel(voiceStatus)}</Text>
+
+      <View style={styles.controlsRow}>
+        <Pressable
+          style={({ pressed }) => [styles.primaryControl, pressed && styles.primaryControlPressed]}
+          onPress={onPrimaryAction}
+          accessibilityRole="button"
+          accessibilityLabel={isActive ? `Stop ${meta.name} voice session` : `Start ${meta.name} voice session`}
+        >
+          <Ionicons name={isActive ? 'stop' : 'mic'} size={16} color="#F8FAFC" />
+        </Pressable>
       </View>
-      <Text style={styles.hint}>Tap the dock icon to start a voice session</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    gap: 14,
-  },
-  avatarRow: {
-    flexDirection: 'row',
+    flex: 1,
+    backgroundColor: '#05070B',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     alignItems: 'center',
-    gap: 14,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 12px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08)' } as unknown as ViewStyle)
+      : {}),
   },
-  avatarRing: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    borderWidth: 2,
-    padding: 2,
+  orbStage: {
+    marginTop: 2,
+    width: 128,
+    height: 128,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orbGlow: {
+    position: 'absolute',
+    width: 118,
+    height: 118,
+    borderRadius: 59,
+    backgroundColor: 'rgba(56,189,248,0.24)',
+    ...(Platform.OS === 'web' ? ({ filter: 'blur(20px)' } as unknown as ViewStyle) : {}),
+  },
+  orbShell: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.26)',
     overflow: 'hidden',
   },
-  avatar: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 13,
-  },
-  info: {
+  orbMain: {
     flex: 1,
-    gap: 2,
+    borderRadius: 52,
   },
-  name: {
-    fontSize: 16,
+  orbInnerSwirl: {
+    position: 'absolute',
+    top: 10,
+    left: 14,
+    right: 14,
+    bottom: 12,
+    borderRadius: 42,
+    opacity: 0.7,
+  },
+  orbHighlight: {
+    position: 'absolute',
+    top: 12,
+    left: 16,
+    width: 54,
+    height: 22,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    transform: [{ rotate: '-18deg' }],
+  },
+  agentName: {
+    marginTop: 6,
+    color: '#F8FAFC',
+    fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
   },
-  role: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.5)',
-    letterSpacing: 0.1,
+  agentSubtitle: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 11,
+    textAlign: 'center',
   },
-  statusBar: {
+  progressTrack: {
+    marginTop: 10,
+    width: '100%',
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+  },
+  voiceState: {
+    marginTop: 8,
+    color: 'rgba(255,255,255,0.74)',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  controlsRow: {
+    marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    justifyContent: 'center',
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    ...(Platform.OS === 'web' && {
-      boxShadow: '0 0 6px currentColor',
-    } as any),
+  primaryControl: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as unknown as ViewStyle) : {}),
   },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  hint: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.35)',
-    textAlign: 'center',
+  primaryControlPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.96 }],
   },
 });

@@ -28,7 +28,6 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { CanvasTokens } from '@/constants/canvas.tokens';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,8 +56,8 @@ interface WidgetContainerProps {
 // ---------------------------------------------------------------------------
 
 const GRID_SIZE = 32;
-const HEADER_HEIGHT = 44;
-const BORDER_RADIUS = 12;
+const HEADER_HEIGHT = 48;
+const BORDER_RADIUS = 16;
 
 const SPRING_CONFIG = { damping: 20, stiffness: 300, mass: 0.9 };
 const SNAP_SPRING_CONFIG = { damping: 22, stiffness: 280, mass: 0.9 };
@@ -167,24 +166,31 @@ export function WidgetContainer({
   // Premium shadow
   const shadow: ViewStyle = Platform.OS === 'web'
     ? ({
-        boxShadow: `0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.4), 0 0 0 1px ${accent}22`,
+        boxShadow: `0 12px 40px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.35), 0 0 0 1px ${accent}22`,
       } as unknown as ViewStyle)
-    : { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.5, shadowRadius: 24, elevation: 12 };
+    : { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.55, shadowRadius: 24, elevation: 12 };
 
   return (
     <Reanimated.View style={[s.container, containerStyle, shadow]}>
-      {/* Accent stripe on left edge */}
-      <View style={[s.accentStripe, { backgroundColor: accent }]} />
+      <View style={s.topHighlight} pointerEvents="none" />
 
       {/* Header */}
       <GestureDetector gesture={dragGesture}>
         <Reanimated.View style={[s.header, headerCursorStyle]}>
-          {icon && (
-            <Ionicons name={icon as any} size={16} color={accent} />
-          )}
+          <View style={[s.accentDot, { backgroundColor: accent }]} />
+          {icon && <Ionicons name={icon as any} size={16} color={accent} />}
           <Text style={[s.title, { color: accent }]}>{title}</Text>
-          <Pressable onPress={handleClose} style={s.closeBtn}>
-            <Ionicons name="close" size={16} color="rgba(255,255,255,0.5)" />
+          <Pressable
+            onPress={handleClose}
+            style={({ pressed }) => [
+              s.closeBtn,
+              {
+                backgroundColor: pressed ? `${accent}33` : 'rgba(255,255,255,0.03)',
+                borderColor: pressed ? `${accent}66` : 'rgba(255,255,255,0.08)',
+              },
+            ]}
+          >
+            <Ionicons name="close" size={16} color="rgba(255,255,255,0.62)" />
           </Pressable>
         </Reanimated.View>
       </GestureDetector>
@@ -197,7 +203,11 @@ export function WidgetContainer({
       {/* Resize handle */}
       <GestureDetector gesture={resizeGesture}>
         <Reanimated.View style={s.resizeHandle}>
-          <View style={[s.resizeDots, { borderColor: `${accent}40` }]} />
+          <View style={s.resizeDotWrap}>
+            <View style={[s.resizeDot, { backgroundColor: `${accent}99` }]} />
+            <View style={[s.resizeDot, { backgroundColor: `${accent}B3` }]} />
+            <View style={[s.resizeDot, { backgroundColor: `${accent}CC` }]} />
+          </View>
         </Reanimated.View>
       </GestureDetector>
     </Reanimated.View>
@@ -211,27 +221,36 @@ export function WidgetContainer({
 const s = StyleSheet.create({
   container: {
     position: 'absolute',
-    backgroundColor: '#1E1E1E',
+    backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: BORDER_RADIUS,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+        } as any)
+      : {}),
   },
 
-  accentStripe: {
+  topHighlight: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    bottom: 0,
-    width: 3,
-    borderTopLeftRadius: BORDER_RADIUS,
-    borderBottomLeftRadius: BORDER_RADIUS,
-    zIndex: 2,
+    left: 1,
+    right: 1,
+    height: 42,
+    zIndex: 1,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 45%, transparent 100%)',
+        } as any)
+      : { backgroundColor: 'rgba(255,255,255,0.04)' }),
   },
 
   header: {
     height: HEADER_HEIGHT,
-    backgroundColor: '#161616',
+    backgroundColor: 'rgba(13,17,23,0.78)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
     flexDirection: 'row',
@@ -239,6 +258,14 @@ const s = StyleSheet.create({
     paddingLeft: 16,
     paddingRight: 8,
     gap: 8,
+    zIndex: 3,
+  },
+
+  accentDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 8px currentColor' } as any) : {}),
   },
 
   title: {
@@ -255,12 +282,13 @@ const s = StyleSheet.create({
     borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
 
   content: {
     flex: 1,
-    backgroundColor: '#1E1E1E',
+    backgroundColor: 'rgba(13,17,23,0.72)',
   },
 
   resizeHandle: {
@@ -274,11 +302,19 @@ const s = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'nwse-resize' } as any) : {}),
   },
 
-  resizeDots: {
-    width: 8,
-    height: 8,
-    borderRightWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: 'rgba(255,255,255,0.2)',
+  resizeDotWrap: {
+    width: 12,
+    height: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    gap: 2,
+  },
+
+  resizeDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
   },
 });

@@ -25,6 +25,7 @@ import {
   Platform,
   type ViewStyle,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { TaskIcon } from '@/components/icons/widgets/TaskIcon';
@@ -232,6 +233,7 @@ export function TodaysPlanWidget({
   onViewAll,
   onTaskToggle,
 }: TodaysPlanWidgetProps) {
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -439,6 +441,11 @@ export function TodaysPlanWidget({
             <Text style={styles.ctaButtonText}>Add Task</Text>
           </Pressable>
         )}
+        {!onAddTask && (
+          <Pressable style={styles.ctaButton} onPress={() => router.push('/session/plan')}>
+            <Text style={styles.ctaButtonText}>+ Add Task</Text>
+          </Pressable>
+        )}
       </View>
     );
   }
@@ -453,8 +460,12 @@ export function TodaysPlanWidget({
 
   return (
     <View style={styles.container}>
+      <View style={styles.bgAccentA} />
+      <View style={styles.bgAccentB} />
+
       {/* Progress header */}
-      <View style={styles.progressRow}>
+      <View style={styles.progressCard}>
+        <View style={styles.progressRow}>
         <Text
           style={styles.progressText}
           accessibilityLabel={`${completedCount} of ${tasks.length} tasks completed`}
@@ -469,6 +480,7 @@ export function TodaysPlanWidget({
               { width: `${(completedCount / tasks.length) * 100}%` } as ViewStyle,
             ]}
           />
+        </View>
         </View>
       </View>
 
@@ -499,6 +511,17 @@ export function TodaysPlanWidget({
             <Text style={styles.ghostButtonText}>Add Task</Text>
           </Pressable>
         )}
+        {!onAddTask && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.ghostButton,
+              pressed && styles.ghostButtonPressed,
+            ]}
+            onPress={() => router.push('/session/plan')}
+          >
+            <Text style={styles.ghostButtonText}>+ Add Task</Text>
+          </Pressable>
+        )}
         {onViewAll && (
           <Pressable
             style={({ pressed }) => [
@@ -508,6 +531,17 @@ export function TodaysPlanWidget({
             onPress={onViewAll}
             accessibilityRole="button"
             accessibilityLabel="View all tasks"
+          >
+            <Text style={styles.ghostButtonText}>View All</Text>
+          </Pressable>
+        )}
+        {!onViewAll && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.ghostButton,
+              pressed && styles.ghostButtonPressed,
+            ]}
+            onPress={() => router.push('/session/plan')}
           >
             <Text style={styles.ghostButtonText}>View All</Text>
           </Pressable>
@@ -524,6 +558,40 @@ export function TodaysPlanWidget({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    overflow: 'hidden',
+  },
+
+  bgAccentA: {
+    position: 'absolute',
+    top: -48,
+    right: -30,
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    backgroundColor: 'rgba(14,165,233,0.12)',
+  },
+
+  bgAccentB: {
+    position: 'absolute',
+    bottom: -60,
+    left: -40,
+    width: 148,
+    height: 148,
+    borderRadius: 74,
+    backgroundColor: 'rgba(6,182,212,0.09)',
+  },
+
+  progressCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(7,19,35,0.72)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.07)' } as unknown as ViewStyle)
+      : {}),
   },
 
   // Progress header
@@ -531,7 +599,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 12,
   },
 
   progressText: {
@@ -543,16 +610,16 @@ const styles = StyleSheet.create({
 
   progressBar: {
     flex: 1,
-    height: 4,
+    height: 5,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     overflow: 'hidden',
   },
 
   progressFill: {
     height: '100%',
     borderRadius: 2,
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#06B6D4',
   },
 
   // Task list
@@ -565,7 +632,7 @@ const styles = StyleSheet.create({
   taskCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#2A2A2A',
+    backgroundColor: 'rgba(12,19,31,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: 10,
@@ -586,7 +653,7 @@ const styles = StyleSheet.create({
   },
 
   taskCardHover: {
-    borderColor: 'rgba(59,130,246,0.2)',
+    borderColor: 'rgba(6,182,212,0.38)',
     ...(Platform.OS === 'web'
       ? ({
           boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
@@ -629,7 +696,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
-    color: CanvasTokens.text.primary,
+    color: '#F3F4F6',
     letterSpacing: 0.2,
   },
 
@@ -641,7 +708,7 @@ const styles = StyleSheet.create({
   taskDescription: {
     fontSize: 12,
     fontWeight: '400',
-    color: CanvasTokens.text.muted,
+    color: 'rgba(255,255,255,0.64)',
     lineHeight: 16,
   },
 
@@ -682,9 +749,9 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     gap: 8,
-    backgroundColor: CanvasTokens.background.surface,
+    backgroundColor: 'rgba(7,19,35,0.92)',
     borderTopWidth: 1,
-    borderTopColor: CanvasTokens.border.subtle,
+    borderTopColor: 'rgba(255,255,255,0.12)',
     paddingVertical: 8,
   },
 

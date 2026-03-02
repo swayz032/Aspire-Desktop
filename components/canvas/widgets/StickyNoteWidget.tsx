@@ -38,7 +38,7 @@ import { PlusIcon } from '@/components/icons/ui/PlusIcon';
 // Types
 // ---------------------------------------------------------------------------
 
-type NoteColor = 'amber' | 'blue' | 'emerald' | 'pink';
+type NoteColor = 'yellow' | 'pink' | 'blue' | 'green' | 'purple' | 'orange';
 
 interface StickyNote {
   id: string;
@@ -58,33 +58,57 @@ interface StickyNoteWidgetProps {
 // ---------------------------------------------------------------------------
 
 const NOTE_COLORS: Record<NoteColor, {
-  stripe: string;
+  card: string;
+  cardAlt: string;
   dot: string;
+  text: string;
   label: string;
 }> = {
-  amber: {
-    stripe: '#F59E0B',
-    dot: '#F59E0B',
+  yellow: {
+    card: '#FDE68A',
+    cardAlt: '#FCD34D',
+    dot: '#A16207',
+    text: '#1F2937',
     label: 'Yellow',
   },
+  pink: {
+    card: '#F9A8D4',
+    cardAlt: '#F472B6',
+    dot: '#9D174D',
+    text: '#1F2937',
+    label: 'Pink',
+  },
   blue: {
-    stripe: '#3B82F6',
-    dot: '#3B82F6',
+    card: '#93C5FD',
+    cardAlt: '#60A5FA',
+    dot: '#1E3A8A',
+    text: '#0F172A',
     label: 'Blue',
   },
-  emerald: {
-    stripe: '#10B981',
-    dot: '#10B981',
+  green: {
+    card: '#86EFAC',
+    cardAlt: '#4ADE80',
+    dot: '#14532D',
+    text: '#052E16',
     label: 'Green',
   },
-  pink: {
-    stripe: '#EC4899',
-    dot: '#EC4899',
-    label: 'Pink',
+  purple: {
+    card: '#C4B5FD',
+    cardAlt: '#A78BFA',
+    dot: '#4C1D95',
+    text: '#1F1A3A',
+    label: 'Purple',
+  },
+  orange: {
+    card: '#FDBA74',
+    cardAlt: '#FB923C',
+    dot: '#7C2D12',
+    text: '#2C1408',
+    label: 'Orange',
   },
 };
 
-const COLOR_CYCLE: NoteColor[] = ['amber', 'blue', 'emerald', 'pink'];
+const COLOR_CYCLE: NoteColor[] = ['yellow', 'pink', 'blue', 'green', 'purple', 'orange'];
 
 // ---------------------------------------------------------------------------
 // Note Card Component
@@ -106,6 +130,7 @@ const NoteCard = React.memo(({
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const colorConfig = NOTE_COLORS[note.color];
+  const tilt = (parseInt(note.id.slice(-2), 10) || 0) % 2 === 0 ? -1.4 : 1.2;
 
   const handleTextChange = useCallback(
     (text: string) => {
@@ -140,11 +165,14 @@ const NoteCard = React.memo(({
           } as unknown as Record<string, unknown>
         : {})}
     >
-      {/* Color identity stripe (left edge) */}
       <View
+        pointerEvents="none"
         style={[
-          styles.colorStripe,
-          { backgroundColor: colorConfig.stripe },
+          styles.cardTint,
+          {
+            backgroundColor: colorConfig.card,
+            transform: [{ rotate: `${tilt}deg` }],
+          },
         ]}
       />
 
@@ -221,28 +249,30 @@ export function StickyNoteWidget({
 
       // Map DB color values to widget NoteColor type
       const colorMap: Record<string, NoteColor> = {
-        yellow: 'amber',
+        yellow: 'yellow',
         blue: 'blue',
-        green: 'emerald',
+        green: 'green',
         pink: 'pink',
-        amber: 'amber',
-        emerald: 'emerald',
+        amber: 'yellow',
+        emerald: 'green',
+        purple: 'purple',
+        orange: 'orange',
       };
 
       setNotes(
         (data ?? []).map((row: Record<string, unknown>) => ({
           id: row.id as string,
           text: (row.content as string) ?? '',
-          color: colorMap[(row.color as string) ?? 'amber'] ?? 'amber',
+          color: colorMap[(row.color as string) ?? 'yellow'] ?? 'yellow',
           createdAt: row.created_at as string,
         })),
       );
     } catch (_e) {
       // Fallback to demo data when table does not exist yet
       setNotes([
-        { id: '1', text: 'Follow up with vendor about pricing quote', color: 'amber', createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString() },
+        { id: '1', text: 'Follow up with vendor about pricing quote', color: 'yellow', createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString() },
         { id: '2', text: 'Call insurance agent -- renewal deadline 3/15', color: 'blue', createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString() },
-        { id: '3', text: 'Prepare board presentation slides for Q1 review', color: 'emerald', createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString() },
+        { id: '3', text: 'Prepare board presentation slides for Q1 review', color: 'green', createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString() },
       ]);
     } finally {
       setLoading(false);
@@ -300,10 +330,12 @@ export function StickyNoteWidget({
 
     try {
       const colorMap: Record<NoteColor, string> = {
-        amber: 'yellow',
+        yellow: 'yellow',
         blue: 'blue',
-        emerald: 'green',
+        green: 'green',
         pink: 'pink',
+        purple: 'purple',
+        orange: 'orange',
       };
 
       await supabase.from('sticky_notes').insert({
@@ -358,10 +390,12 @@ export function StickyNoteWidget({
         const note = updated.find((n) => n.id === id);
         if (note) {
           const colorMap: Record<NoteColor, string> = {
-            amber: 'yellow',
+            yellow: 'yellow',
             blue: 'blue',
-            emerald: 'green',
+            green: 'green',
             pink: 'pink',
+            purple: 'purple',
+            orange: 'orange',
           };
           await supabase
             .from('sticky_notes')
@@ -541,9 +575,9 @@ const styles = StyleSheet.create({
   // Note card
   noteCard: {
     flexDirection: 'row',
-    backgroundColor: '#2A2A2A',
+    backgroundColor: '#0B111B',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.2)',
     borderRadius: 10,
     overflow: 'hidden',
     minHeight: 60,
@@ -562,7 +596,7 @@ const styles = StyleSheet.create({
   },
 
   noteCardHover: {
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.35)',
     ...(Platform.OS === 'web'
       ? ({
           transform: 'translateY(-1px)',
@@ -572,12 +606,12 @@ const styles = StyleSheet.create({
   },
 
   noteCardFocused: {
-    borderColor: 'rgba(59,130,246,0.4)',
+    borderColor: 'rgba(255,255,255,0.45)',
   },
 
-  // Color stripe (left edge identity)
-  colorStripe: {
-    width: 3,
+  cardTint: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.96,
   },
 
   // Drag handle area
@@ -594,8 +628,8 @@ const styles = StyleSheet.create({
   noteInput: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '500',
-    color: CanvasTokens.text.primary,
+    fontWeight: '600',
+    color: '#111827',
     lineHeight: 18,
     paddingVertical: 12,
     paddingRight: 32, // Account for color dot
@@ -643,9 +677,9 @@ const styles = StyleSheet.create({
   newNoteButton: {
     height: 36,
     borderRadius: 8,
-    backgroundColor: 'rgba(59,130,246,0.15)',
+    backgroundColor: '#0EA5E9',
     borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.3)',
+    borderColor: '#7DD3FC',
     flexDirection: 'row',
     gap: 6,
     justifyContent: 'center',
@@ -664,9 +698,9 @@ const styles = StyleSheet.create({
   },
 
   newNoteText: {
-    color: '#3B82F6',
+    color: '#FFFFFF',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 
   // State containers

@@ -440,6 +440,11 @@ export function AvaDeskPanel() {
     return isSessionActive ? 'Listening...' : 'Listening...';
   }, [isSessionActive]);
 
+  const hasPendingRunWithoutActivity = useMemo(
+    () => Object.values(activeRuns).some((run) => run.status === 'running' && run.events.length === 0),
+    [activeRuns],
+  );
+
   useEffect(() => {
     return () => {
       runTimers.current.forEach(clearTimeout);
@@ -553,21 +558,6 @@ export function AvaDeskPanel() {
     setIsConversing(true);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
-    // Show initial thinking event
-    const thinkingEvent: AgentActivityEvent = {
-      id: `evt_${now}_think`,
-      type: 'thinking',
-      label: 'Processing intent...',
-      status: 'active',
-      timestamp: now,
-      icon: 'sparkles',
-    };
-    setActiveRuns((prev) => {
-      const run = prev[runId];
-      if (!run) return prev;
-      return { ...prev, [runId]: { ...run, events: [thinkingEvent] } };
-    });
-
     try {
       // Law #1: Single Brain â€” route through orchestrator
       // Law #6: X-Suite-Id for tenant isolation
@@ -606,7 +596,21 @@ export function AvaDeskPanel() {
       });
 
       if (!resp.ok) {
-        throw new Error(`Orchestrator returned ${resp.status}`);
+        let errorBody: any = null;
+        try {
+          errorBody = await resp.json();
+        } catch {
+          errorBody = null;
+        }
+        const errorCode = errorBody?.error || errorBody?.error_code || '';
+        const errorText =
+          errorBody?.response ||
+          errorBody?.text ||
+          errorBody?.message ||
+          `Orchestrator returned ${resp.status}`;
+        const correlation = errorBody?.correlation_id || '';
+        const detail = correlation ? `${errorText} (ref: ${correlation})` : errorText;
+        throw new Error(errorCode ? `${errorCode}: ${detail}` : detail);
       }
 
       const data = await resp.json();
@@ -670,11 +674,23 @@ export function AvaDeskPanel() {
       const userFacingMessage =
         /401|auth_required|expired|unauthorized/.test(lower)
           ? 'Ava session expired. Please sign in again.'
-          : /timeout|abort/.test(lower)
+          : /model_unavailable/.test(lower)
+          ? 'Ava model is temporarily unavailable. Please try again in a moment.'
+          : /checkpointer_unavailable/.test(lower)
+          ? 'Ava memory service is unavailable right now. Please try again shortly.'
+          : /provider_auth_missing|auth_invalid_key|invalid_key/.test(lower)
+          ? 'A required provider connection is missing or expired. Please check your connected services.'
+          : /provider_all_failed/.test(lower)
+          ? 'All research providers failed this request. Try a narrower query or retry in a moment.'
+          : /param_extraction_failed/.test(lower)
+          ? rawMessage.replace(/^param_extraction_failed:\s*/i, '')
+          : /routing_denied/.test(lower)
+          ? 'This request could not be routed to a valid skill path. Please rephrase the task.'
+          : /upstream_timeout|orchestrator_timeout|timeout|abort/.test(lower)
           ? 'Ava is taking too long to respond. Please try again in a moment.'
-          : /503|unavailable|circuit/.test(lower)
+          : /orchestrator_unavailable|circuit_open|503|unavailable|circuit/.test(lower)
           ? 'Ava Brain is temporarily unavailable. Try again shortly.'
-          : `Ava request failed: ${rawMessage.length > 100 ? `${rawMessage.slice(0, 100)}...` : rawMessage}`;
+          : `Ava request failed: ${rawMessage.length > 140 ? `${rawMessage.slice(0, 140)}...` : rawMessage}`;
 
       const errorEvent: AgentActivityEvent = {
         id: `evt_err_${Date.now()}`,
@@ -969,7 +985,7 @@ export function AvaDeskPanel() {
               </View>
             );
           })}
-          {isConversing && (
+          {isConversing && hasPendingRunWithoutActivity && (
             <ThinkingIndicator
               agent="ava"
               text="Ava is thinking..."

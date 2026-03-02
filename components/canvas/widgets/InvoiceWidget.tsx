@@ -23,6 +23,7 @@ import {
   Platform,
   type ViewStyle,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { PaidIcon } from '@/components/icons/status/PaidIcon';
@@ -198,6 +199,7 @@ export function InvoiceWidget({
   onCreateClick,
   onActionComplete,
 }: InvoiceWidgetProps) {
+  const router = useRouter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -211,68 +213,24 @@ export function InvoiceWidget({
       setLoading(true);
       setError(null);
 
-      // TODO: Replace with real Supabase query once invoices table exists
-      // const { data, error: fetchError } = await supabase
-      //   .from('invoices')
-      //   .select('id, invoice_number, client_name, amount, status, due_date, created_at')
-      //   .eq('suite_id', suiteId)
-      //   .eq('office_id', officeId)
-      //   .order('created_at', { ascending: false })
-      //   .limit(10);
+      const { data, error: fetchError } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, client_name, amount, status, due_date, created_at')
+        .eq('suite_id', suiteId)
+        .eq('office_id', officeId)
+        .order('created_at', { ascending: false })
+        .limit(10);
 
-      // if (fetchError) throw fetchError;
-      // setInvoices(data || []);
+      if (fetchError) {
+        if (fetchError.message?.toLowerCase().includes('relation')) {
+          setInvoices([]);
+          setError(null);
+          return;
+        }
+        throw fetchError;
+      }
 
-      // TEMPORARY: Mock data for demonstration
-      const mockInvoices: Invoice[] = [
-        {
-          id: '1',
-          invoice_number: '2024-001',
-          client_name: 'Acme Corporation',
-          amount: 500000, // $5,000.00
-          status: 'PAID',
-          due_date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(), // 5 days ago
-          created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15).toISOString(),
-        },
-        {
-          id: '2',
-          invoice_number: '2024-002',
-          client_name: 'TechStart Inc',
-          amount: 750000, // $7,500.00
-          status: 'PENDING',
-          due_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days from now
-          created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(),
-        },
-        {
-          id: '3',
-          invoice_number: '2024-003',
-          client_name: 'Global Solutions LLC',
-          amount: 325000, // $3,250.00
-          status: 'OVERDUE',
-          due_date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10).toISOString(), // 10 days ago
-          created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
-        },
-        {
-          id: '4',
-          invoice_number: '2024-004',
-          client_name: 'Premier Consulting Group',
-          amount: 1200000, // $12,000.00
-          status: 'PENDING',
-          due_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(), // 14 days from now
-          created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 1).toISOString(),
-        },
-        {
-          id: '5',
-          invoice_number: '2024-005',
-          client_name: 'Summit Enterprises',
-          amount: 825000, // $8,250.00
-          status: 'PAID',
-          due_date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
-          created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 12).toISOString(),
-        },
-      ];
-
-      setInvoices(mockInvoices);
+      setInvoices((data || []) as Invoice[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load invoices');
     } finally {
@@ -289,31 +247,28 @@ export function InvoiceWidget({
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    // TODO: Enable real-time subscription once invoices table exists
-    // const subscription = supabase
-    //   .channel('invoices')
-    //   .on('postgres_changes', {
-    //     event: '*',
-    //     schema: 'public',
-    //     table: 'invoices',
-    //     filter: `suite_id=eq.${suiteId}`,
-    //   }, (payload) => {
-    //     if (payload.eventType === 'INSERT') {
-    //       setInvoices((prev) => [payload.new as Invoice, ...prev].slice(0, 10));
-    //     } else if (payload.eventType === 'UPDATE') {
-    //       setInvoices((prev) =>
-    //         prev.map((inv) => (inv.id === payload.new.id ? payload.new as Invoice : inv))
-    //       );
-    //     } else if (payload.eventType === 'DELETE') {
-    //       setInvoices((prev) => prev.filter((inv) => inv.id !== payload.old.id));
-    //     }
-    //   })
-    //   .subscribe();
+    if (!suiteId || !officeId) return;
 
-    // return () => {
-    //   subscription.unsubscribe();
-    // };
-  }, [suiteId]);
+    const channel = supabase
+      .channel(`invoices:${suiteId}:${officeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoices',
+          filter: `suite_id=eq.${suiteId}`,
+        },
+        () => {
+          fetchInvoices();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [suiteId, officeId, fetchInvoices]);
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -322,13 +277,14 @@ export function InvoiceWidget({
   const handleInvoicePress = useCallback(
     (invoiceId: string) => {
       onInvoiceClick?.(invoiceId);
+      router.push('/finance-hub/invoices');
     },
-    [onInvoiceClick]
+    [onInvoiceClick, router]
   );
 
   const handleViewAll = useCallback(() => {
-    // Navigate to full invoices view
-  }, []);
+    router.push('/finance-hub/invoices');
+  }, [router]);
 
   /**
    * Wave 17: Submit invoice creation through action bus.

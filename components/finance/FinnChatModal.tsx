@@ -51,10 +51,12 @@ export function FinnChatModal({ visible, onClose }: Props) {
     onActivityEvent: (event) => {
       const runId = currentRunIdRef.current;
       if (!runId) return;
+      const message = event.message?.trim();
+      if (!message) return;
       const mapped: AgentActivityEvent = {
         id: `finn_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         type: (event.type as AgentActivityEvent['type']) || 'step',
-        label: event.message || 'Working...',
+        label: message,
         status:
           event.type === 'done'
             ? 'completed'
@@ -96,6 +98,10 @@ export function FinnChatModal({ visible, onClose }: Props) {
     setInput('');
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [input, finnVoice]);
+
+  const hasPendingRunWithoutActivity = Object.values(activeRuns).some(
+    (run) => run.status === 'running' && run.events.length === 0,
+  );
 
   if (!visible) return null;
 
@@ -188,7 +194,7 @@ export function FinnChatModal({ visible, onClose }: Props) {
               );
             })
           )}
-          {finnVoice.status === 'thinking' && (
+          {finnVoice.status === 'thinking' && hasPendingRunWithoutActivity && (
             <ThinkingIndicator agent="finn" text="Finn is thinking..." />
           )}
         </ScrollView>

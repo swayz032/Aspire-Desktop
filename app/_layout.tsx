@@ -10,6 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
 import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
+import { IncomingCallOverlay } from '@/components/calls/IncomingCallOverlay';
 import { useDesktop } from '@/lib/useDesktop';
 import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 
@@ -294,6 +295,7 @@ function AppNavigator() {
         />
         <Stack.Screen name="+not-found" />
       </Stack>
+      <IncomingCallOverlay />
       {!isDesktop && <AvaMiniPlayer />}
       <StatusBar style="light" />
     </ThemeProvider>

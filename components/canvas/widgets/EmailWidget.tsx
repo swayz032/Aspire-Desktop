@@ -23,6 +23,7 @@ import {
   Platform,
   type ViewStyle,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { Ionicons } from '@expo/vector-icons';
@@ -182,6 +183,7 @@ export function EmailWidget({
   onComposeClick,
   onActionComplete,
 }: EmailWidgetProps) {
+  const router = useRouter();
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -195,59 +197,25 @@ export function EmailWidget({
       setLoading(true);
       setError(null);
 
-      // TODO: Replace with real Supabase query once emails table exists
-      // const { data, error: fetchError } = await supabase
-      //   .from('emails')
-      //   .select('id, sender_name, sender_email, subject, preview_text, timestamp, is_read')
-      //   .eq('suite_id', suiteId)
-      //   .eq('office_id', officeId)
-      //   .order('timestamp', { ascending: false })
-      //   .limit(10);
+      const { data, error: fetchError } = await supabase
+        .from('emails')
+        .select('id, sender_name, sender_email, subject, preview_text, timestamp, is_read')
+        .eq('suite_id', suiteId)
+        .eq('office_id', officeId)
+        .order('timestamp', { ascending: false })
+        .limit(10);
 
-      // if (fetchError) throw fetchError;
-      // setEmails(data || []);
+      if (fetchError) {
+        // Graceful fallback when table is not available in this environment.
+        if (fetchError.message?.toLowerCase().includes('relation')) {
+          setEmails([]);
+          setError(null);
+          return;
+        }
+        throw fetchError;
+      }
 
-      // TEMPORARY: Mock data for demonstration
-      const mockEmails: Email[] = [
-        {
-          id: '1',
-          sender_name: 'Sarah Johnson',
-          sender_email: 'sarah@example.com',
-          subject: 'Q1 Financial Review Meeting',
-          preview_text: 'Hi team, I wanted to schedule our quarterly financial review for next week. Please let me know your availability.',
-          timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(), // 5 min ago
-          is_read: false,
-        },
-        {
-          id: '2',
-          sender_name: 'Mike Chen',
-          sender_email: 'mike@example.com',
-          subject: 'Invoice #2024-001 Paid',
-          preview_text: 'Your invoice #2024-001 for $5,000 has been marked as paid. Thank you for your business!',
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
-          is_read: true,
-        },
-        {
-          id: '3',
-          sender_name: 'Emily Rodriguez',
-          sender_email: 'emily@example.com',
-          subject: 'Contract Amendment Request',
-          preview_text: 'I have reviewed the latest contract and have a few amendments I would like to propose. Can we schedule a call?',
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
-          is_read: true,
-        },
-        {
-          id: '4',
-          sender_name: 'David Park',
-          sender_email: 'david@example.com',
-          subject: 'New Project Proposal',
-          preview_text: 'Excited to share our new project proposal with you. Attached are the scope, timeline, and budget details.',
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
-          is_read: false,
-        },
-      ];
-
-      setEmails(mockEmails);
+      setEmails(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load emails');
     } finally {
@@ -264,31 +232,28 @@ export function EmailWidget({
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    // TODO: Enable real-time subscription once emails table exists
-    // const subscription = supabase
-    //   .channel('emails')
-    //   .on('postgres_changes', {
-    //     event: '*',
-    //     schema: 'public',
-    //     table: 'emails',
-    //     filter: `suite_id=eq.${suiteId}`,
-    //   }, (payload) => {
-    //     if (payload.eventType === 'INSERT') {
-    //       setEmails((prev) => [payload.new as Email, ...prev].slice(0, 10));
-    //     } else if (payload.eventType === 'UPDATE') {
-    //       setEmails((prev) =>
-    //         prev.map((e) => (e.id === payload.new.id ? payload.new as Email : e))
-    //       );
-    //     } else if (payload.eventType === 'DELETE') {
-    //       setEmails((prev) => prev.filter((e) => e.id !== payload.old.id));
-    //     }
-    //   })
-    //   .subscribe();
+    if (!suiteId || !officeId) return;
 
-    // return () => {
-    //   subscription.unsubscribe();
-    // };
-  }, [suiteId]);
+    const channel = supabase
+      .channel(`emails:${suiteId}:${officeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'emails',
+          filter: `suite_id=eq.${suiteId}`,
+        },
+        () => {
+          fetchEmails();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [suiteId, officeId, fetchEmails]);
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -297,13 +262,14 @@ export function EmailWidget({
   const handleEmailPress = useCallback(
     (emailId: string) => {
       onEmailClick?.(emailId);
+      router.push('/(tabs)/inbox');
     },
-    [onEmailClick]
+    [onEmailClick, router]
   );
 
   const handleViewAll = useCallback(() => {
-    // Navigate to full inbox view
-  }, []);
+    router.push('/(tabs)/inbox');
+  }, [router]);
 
   /**
    * Wave 17: Submit email compose action through action bus.

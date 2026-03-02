@@ -119,9 +119,11 @@ export function ChatCanvas({
       event.type === 'done' ||
       event.type === 'error'
     ) {
+      const message = event.message?.trim();
+      if (!message) return;
       addActivityEvent({
         type: event.type,
-        message: event.message || '',
+        message,
         icon: event.icon || event.type,
         agent: event.agent as 'ava' | 'finn' | 'eli' | undefined,
       });

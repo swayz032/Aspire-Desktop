@@ -381,7 +381,7 @@ export function FinnVideoChatOverlay({
                       showTimestamp={false}
                     />
                   ) : null}
-                  {isRunning && !msg.text && (
+                  {isRunning && run && run.events.length === 0 && !msg.text && (
                     <ThinkingIndicator agent="finn" text="Finn is thinking..." />
                   )}
                 </View>

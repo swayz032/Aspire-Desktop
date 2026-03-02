@@ -26,6 +26,7 @@ import {
   Platform,
   type ViewStyle,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { ReceiptIcon } from '@/components/icons/widgets/ReceiptIcon';
@@ -242,6 +243,7 @@ export function ReceiptsWidget({
   onReceiptClick,
   onLoadMore,
 }: ReceiptsWidgetProps) {
+  const router = useRouter();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -372,8 +374,9 @@ export function ReceiptsWidget({
   const handleReceiptPress = useCallback(
     (receiptId: string) => {
       onReceiptClick?.(receiptId);
+      router.push('/(tabs)/receipts');
     },
-    [onReceiptClick]
+    [onReceiptClick, router]
   );
 
   // ---------------------------------------------------------------------------

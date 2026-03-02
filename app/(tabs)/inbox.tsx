@@ -968,10 +968,12 @@ export default function InboxScreen() {
       setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
     },
     onActivityEvent: (event) => {
+      const message = event.message?.trim();
+      if (!message) return;
       const mapped: AgentActivityEvent = {
         id: `eli_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         type: (event.type as AgentActivityEvent['type']) || 'step',
-        label: event.message || 'Working...',
+        label: message,
         status:
           event.type === 'done'
             ? 'completed'

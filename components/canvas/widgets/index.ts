@@ -26,3 +26,5 @@ export { TodaysPlanWidget } from './TodaysPlanWidget';
 export { AuthorityQueueWidget } from './AuthorityQueueWidget';
 export { StickyNoteWidget } from './StickyNoteWidget';
 export { ReceiptsWidget } from './ReceiptsWidget';
+export { PhoneWidget } from './PhoneWidget';
+export { TextMessageWidget } from './TextMessageWidget';

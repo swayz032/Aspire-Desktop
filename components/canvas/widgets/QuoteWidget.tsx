@@ -20,6 +20,7 @@ import {
   ActivityIndicator,
   type ViewStyle,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { SendIcon } from '@/components/icons/ui/SendIcon';
 import { CanvasTokens } from '@/constants/canvas.tokens';
@@ -73,6 +74,7 @@ function formatAmount(amount: number): string {
 function LineItemCard({ item }: { item: LineItem }) {
   return (
     <View style={styles.lineItemCard}>
+      <View style={styles.lineAccent} />
       <View style={styles.itemHeader}>
         <Text style={styles.itemName} numberOfLines={1}>
           {item.name}
@@ -85,7 +87,7 @@ function LineItemCard({ item }: { item: LineItem }) {
       </Text>
 
       <Text style={styles.itemDetails}>
-        {item.quantity} × ${formatAmount(item.unit_price)}
+        {item.quantity} x ${formatAmount(item.unit_price)}
       </Text>
     </View>
   );
@@ -101,6 +103,7 @@ export function QuoteWidget({
   quoteId,
   onSendClick,
 }: QuoteWidgetProps) {
+  const router = useRouter();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +118,7 @@ export function QuoteWidget({
         setLoading(true);
         setError(null);
 
-        let query = supabase
+        const base = supabase
           .from('quotes')
           .select(`
             id,
@@ -129,35 +132,35 @@ export function QuoteWidget({
           .eq('suite_id', suiteId)
           .eq('office_id', officeId);
 
-        if (quoteId) {
-          query = query.eq('id', quoteId).single();
-        } else {
-          // Fetch most recent quote if no ID provided
-          query = query.order('created_at', { ascending: false }).limit(1).single();
-        }
-
-        const { data, error: fetchError } = await query;
+        const { data, error: fetchError } =
+          quoteId && typeof (base as any).eq === 'function'
+            ? await (base as any).eq('id', quoteId).single()
+            : await (base as any).single();
 
         if (fetchError) {
           throw fetchError;
         }
 
-        setQuote(data);
-      } catch (_err) {
-        // Fallback to demo data when table does not exist yet
-        setQuote({
-          id: 'demo-1',
-          quote_number: 'Q-2024-042',
-          client_name: 'Acme Corporation',
-          line_items: [
-            { name: 'Website Redesign', description: 'Full responsive redesign with CMS', quantity: 1, unit_price: 8500, total: 8500 },
-            { name: 'SEO Optimization', description: 'Technical SEO audit and implementation', quantity: 1, unit_price: 2500, total: 2500 },
-            { name: 'Monthly Hosting', description: 'Managed cloud hosting (12 months)', quantity: 12, unit_price: 150, total: 1800 },
-          ],
-          total_amount: 12800,
-          status: 'draft',
-          created_at: new Date().toISOString(),
-        });
+        setQuote(data as Quote);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err || 'Failed to load quote');
+        if (message.toLowerCase().includes('relation') || message.toLowerCase().includes('does not exist')) {
+          setQuote({
+            id: 'demo-1',
+            quote_number: 'Q-2024-042',
+            client_name: 'Acme Corporation',
+            line_items: [
+              { name: 'Website Redesign', description: 'Full responsive redesign with CMS', quantity: 1, unit_price: 8500, total: 8500 },
+              { name: 'SEO Optimization', description: 'Technical SEO audit and implementation', quantity: 1, unit_price: 2500, total: 2500 },
+              { name: 'Monthly Hosting', description: 'Managed cloud hosting (12 months)', quantity: 12, unit_price: 150, total: 1800 },
+            ],
+            total_amount: 12800,
+            status: 'draft',
+            created_at: new Date().toISOString(),
+          });
+        } else {
+          setError(message);
+        }
       } finally {
         setLoading(false);
       }
@@ -199,8 +202,12 @@ export function QuoteWidget({
 
   return (
     <View style={styles.container}>
+      <View style={styles.bgAccentA} />
+      <View style={styles.bgAccentB} />
+
       {/* Header */}
-      <View style={styles.header}>
+      <Pressable style={styles.headerCard} onPress={() => router.push('/finance-hub/quotes')}>
+        <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.quoteNumber}>{quote.quote_number}</Text>
           <Text style={styles.clientName}>{quote.client_name}</Text>
@@ -208,7 +215,8 @@ export function QuoteWidget({
         <View style={[styles.statusBadge, getStatusBadgeStyle(quote.status)]}>
           <Text style={styles.statusText}>{quote.status.toUpperCase()}</Text>
         </View>
-      </View>
+        </View>
+      </Pressable>
 
       {/* Line Items */}
       <ScrollView
@@ -234,6 +242,18 @@ export function QuoteWidget({
             pressed && styles.sendButtonPressed,
           ]}
           onPress={() => onSendClick(quote.id)}
+        >
+          <SendIcon size={18} color="#FFFFFF" />
+          <Text style={styles.sendButtonText}>Send Quote</Text>
+        </Pressable>
+      )}
+      {!onSendClick && quote.status === 'draft' && (
+        <Pressable
+          style={({ pressed }) => [
+            styles.sendButton,
+            pressed && styles.sendButtonPressed,
+          ]}
+          onPress={() => router.push('/finance-hub/quotes')}
         >
           <SendIcon size={18} color="#FFFFFF" />
           <Text style={styles.sendButtonText}>Send Quote</Text>
@@ -273,7 +293,28 @@ function getStatusBadgeStyle(status: string): ViewStyle {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    gap: 16,
+    gap: 10,
+    overflow: 'hidden',
+  },
+
+  bgAccentA: {
+    position: 'absolute',
+    top: -50,
+    right: -34,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(14,165,233,0.12)',
+  },
+
+  bgAccentB: {
+    position: 'absolute',
+    bottom: -64,
+    left: -42,
+    width: 152,
+    height: 152,
+    borderRadius: 76,
+    backgroundColor: 'rgba(59,130,246,0.1)',
   },
 
   centerContainer: {
@@ -297,6 +338,17 @@ const styles = StyleSheet.create({
   },
 
   // Header
+  headerCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.09)',
+    backgroundColor: 'rgba(9,20,34,0.82)',
+    padding: 10,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 10px 24px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.07)' } as unknown as ViewStyle)
+      : {}),
+  },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -340,12 +392,25 @@ const styles = StyleSheet.create({
   },
 
   lineItemCard: {
-    backgroundColor: CanvasTokens.background.surface,
+    backgroundColor: 'rgba(12,19,31,0.9)',
     borderRadius: 10,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: CanvasTokens.border.subtle,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 6px 16px rgba(0,0,0,0.26)' } as unknown as ViewStyle)
+      : {}),
+  },
+
+  lineAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: 'rgba(14,165,233,0.9)',
   },
 
   itemHeader: {
@@ -389,10 +454,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 16,
-    paddingBottom: 4,
-    borderTopWidth: 2,
-    borderTopColor: CanvasTokens.border.emphasis,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(14,165,233,0.34)',
+    backgroundColor: 'rgba(9,20,34,0.86)',
   },
 
   totalLabel: {
@@ -416,6 +483,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: Colors.accent.cyan,
+    borderWidth: 1,
+    borderColor: 'rgba(14,165,233,0.7)',
     borderRadius: 10,
     paddingVertical: 14,
     paddingHorizontal: 20,
@@ -423,6 +492,7 @@ const styles = StyleSheet.create({
       ? ({
           cursor: 'pointer',
           transition: 'all 150ms ease',
+          boxShadow: '0 0 18px rgba(14,165,233,0.44)',
         } as any)
       : {}),
   },

@@ -23,6 +23,7 @@ import {
   Platform,
   type ViewStyle,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { TrendUpIcon } from '@/components/icons/status/TrendUpIcon';
@@ -207,6 +208,7 @@ export function FinanceHubWidget({
   officeId,
   onViewDetails,
 }: FinanceHubWidgetProps) {
+  const router = useRouter();
   const [data, setData] = useState<FinanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -354,6 +356,7 @@ export function FinanceHubWidget({
   const runwayConfig = getRunwayConfig(data.runwayWeeks);
   const isDeltaPositive = data.cashDelta >= 0;
   const runwayMonths = Math.floor(data.runwayWeeks / 4.33);
+  const runwayProgress = Math.max(0, Math.min(100, (data.runwayWeeks / 24) * 100));
 
   return (
     <View
@@ -361,92 +364,65 @@ export function FinanceHubWidget({
       accessibilityRole="summary"
       accessibilityLabel={`Finance Hub: Cash position ${formatCurrency(data.cashPosition)}, Runway ${data.runwayWeeks} weeks`}
     >
-      {/* Cash Position Section */}
-      <View style={styles.section}>
-        <Text style={styles.overlineLabel}>CASH POSITION</Text>
-        <View style={styles.amountRow}>
-          <Text style={styles.amountDisplay}>
-            {formatCurrencyFull(data.cashPosition)}
-          </Text>
-          {isDeltaPositive ? (
-            <TrendUpIcon size={18} color="#10B981" />
-          ) : (
-            <TrendDownIcon size={18} color="#EF4444" />
-          )}
+      <View style={styles.bgAccentA} />
+      <View style={styles.bgAccentB} />
+
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <Text style={styles.overlineLabel}>CASH POSITION</Text>
+          <FinanceIcon size={16} color="rgba(255,255,255,0.7)" />
         </View>
-        <Text
-          style={[
-            styles.deltaText,
-            { color: isDeltaPositive ? '#10B981' : '#EF4444' },
-          ]}
-        >
-          {isDeltaPositive ? '+' : ''}
-          {formatCurrency(data.cashDelta)} this week
+        <View style={styles.amountRow}>
+          <Text style={styles.amountDisplay}>{formatCurrencyFull(data.cashPosition)}</Text>
+          {isDeltaPositive ? <TrendUpIcon size={18} color="#10B981" /> : <TrendDownIcon size={18} color="#EF4444" />}
+        </View>
+        <Text style={[styles.deltaText, { color: isDeltaPositive ? '#10B981' : '#EF4444' }]}>
+          {isDeltaPositive ? '+' : ''}{formatCurrency(data.cashDelta)} this week
         </Text>
       </View>
 
-      {/* Burn Rate Section */}
-      <View style={styles.section}>
+      <View style={styles.sectionCard}>
         <Text style={styles.overlineLabel}>BURN RATE</Text>
         <SparklineChart data={data.chartData} />
         <View style={styles.burnRateRow}>
-          <Text style={styles.burnRateText}>
-            {formatCurrency(data.burnRate)}/week
-          </Text>
+          <Text style={styles.burnRateText}>{formatCurrency(data.burnRate)}/week</Text>
           {data.burnTrend === 'down' ? (
             <View style={styles.trendBadge}>
-              <TrendDownIcon
-                size={14}
-                color="#10B981"
-              />
-              <Text
-                style={[styles.trendBadgeText, { color: '#10B981' }]}
-                accessibilityLabel="Burn rate trending down"
-              >
-                Decreasing
-              </Text>
+              <TrendDownIcon size={14} color="#10B981" />
+              <Text style={[styles.trendBadgeText, { color: '#10B981' }]} accessibilityLabel="Burn rate trending down">Decreasing</Text>
             </View>
           ) : (
             <View style={styles.trendBadge}>
-              <TrendUpIcon
-                size={14}
-                color="#EF4444"
-              />
-              <Text
-                style={[styles.trendBadgeText, { color: '#EF4444' }]}
-                accessibilityLabel="Burn rate trending up"
-              >
-                Increasing
-              </Text>
+              <TrendUpIcon size={14} color="#EF4444" />
+              <Text style={[styles.trendBadgeText, { color: '#EF4444' }]} accessibilityLabel="Burn rate trending up">Increasing</Text>
             </View>
           )}
         </View>
       </View>
 
-      {/* Runway Section */}
-      <View style={styles.section}>
+      <View style={styles.sectionCard}>
         <Text style={styles.overlineLabel}>RUNWAY</Text>
         <View style={styles.runwayRow}>
-          <View
-            style={[
-              styles.runwayChip,
-              {
-                backgroundColor: runwayConfig.bg,
-                borderColor: runwayConfig.border,
-              },
-            ]}
-          >
+          <View style={[styles.runwayChip, { backgroundColor: runwayConfig.bg, borderColor: runwayConfig.border }]}>
             <Text style={[styles.runwayChipText, { color: runwayConfig.text }]}>
               {data.runwayWeeks} weeks
             </Text>
           </View>
-          <Text style={styles.runwayEstimate}>
-            ~{runwayMonths} months remaining
-          </Text>
+          <Text style={styles.runwayEstimate}>~{runwayMonths} months remaining</Text>
+        </View>
+        <View style={styles.runwayGaugeTrack}>
+          <View
+            style={[
+              styles.runwayGaugeFill,
+              {
+                width: `${runwayProgress}%`,
+                backgroundColor: runwayConfig.border,
+              } as ViewStyle,
+            ]}
+          />
         </View>
       </View>
 
-      {/* Footer */}
       {onViewDetails && (
         <Pressable
           style={({ pressed }) => [
@@ -456,6 +432,17 @@ export function FinanceHubWidget({
           onPress={onViewDetails}
           accessibilityRole="button"
           accessibilityLabel="View financial details"
+        >
+          <Text style={styles.ghostButtonText}>View Details</Text>
+        </Pressable>
+      )}
+      {!onViewDetails && (
+        <Pressable
+          style={({ pressed }) => [
+            styles.ghostButton,
+            pressed && styles.ghostButtonPressed,
+          ]}
+          onPress={() => router.push('/finance-hub')}
         >
           <Text style={styles.ghostButtonText}>View Details</Text>
         </Pressable>
@@ -471,11 +458,55 @@ export function FinanceHubWidget({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    gap: 16,
+    gap: 10,
+    overflow: 'hidden',
   },
 
-  section: {
+  bgAccentA: {
+    position: 'absolute',
+    top: -50,
+    right: -32,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(59,130,246,0.12)',
+  },
+
+  bgAccentB: {
+    position: 'absolute',
+    bottom: -64,
+    left: -40,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(16,185,129,0.08)',
+  },
+
+  heroCard: {
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.24)',
+    backgroundColor: 'rgba(7,19,35,0.88)',
+    padding: 12,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 12px 26px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.08)' } as unknown as ViewStyle)
+      : {}),
+  },
+
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  sectionCard: {
     gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(7,19,35,0.72)',
+    padding: 10,
   },
 
   overlineLabel: {
@@ -557,6 +588,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: CanvasTokens.text.muted,
+  },
+
+  runwayGaugeTrack: {
+    marginTop: 4,
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+
+  runwayGaugeFill: {
+    height: '100%',
+    borderRadius: 3,
   },
 
   // Ghost button

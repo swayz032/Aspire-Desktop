@@ -59,7 +59,7 @@ import {
 import type { CanvasMode } from '@/lib/chatCanvasStore';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { useCanvasVoice } from '@/hooks/useCanvasVoice';
-import { useSupabase } from '@/providers';
+import { useSupabase, useTenant } from '@/providers';
 
 // Widget content imports
 import { QuoteWidget } from './widgets/QuoteWidget';
@@ -73,6 +73,8 @@ import { StickyNoteWidget } from './widgets/StickyNoteWidget';
 import { EmailWidget } from './widgets/EmailWidget';
 import { InvoiceWidget } from './widgets/InvoiceWidget';
 import { AgentWidget } from './widgets/AgentWidget';
+import { PhoneWidget } from './widgets/PhoneWidget';
+import { TextMessageWidget } from './widgets/TextMessageWidget';
 
 // ---------------------------------------------------------------------------
 // Widget content registry
@@ -85,13 +87,11 @@ interface WidgetDef {
   icon: string; // Ionicons name
 }
 
-const AvaAgentWidget = (props: any) => <AgentWidget {...props} agentId="ava" />;
-const EliAgentWidget = (props: any) => <AgentWidget {...props} agentId="eli" />;
-const FinnAgentWidget = (props: any) => <AgentWidget {...props} agentId="finn" />;
-
 const WIDGET_CONTENT: Record<string, WidgetDef> = {
   email:    { title: 'Inbox',            component: EmailWidget,          accent: '#3B82F6', icon: 'mail' },
   invoice:  { title: 'Invoices',         component: InvoiceWidget,        accent: '#F59E0B', icon: 'receipt' },
+  phone:    { title: 'Phone',            component: PhoneWidget,          accent: '#22C55E', icon: 'call' },
+  messages: { title: 'Messages',         component: TextMessageWidget,    accent: '#0EA5E9', icon: 'chatbubbles' },
   quote:    { title: 'Quotes',           component: QuoteWidget,          accent: '#06B6D4', icon: 'pricetag' },
   contract: { title: 'Contracts',        component: ContractWidget,       accent: '#EF4444', icon: 'document-text' },
   calendar: { title: 'Calendar',         component: CalendarWidget,       accent: '#10B981', icon: 'calendar' },
@@ -100,9 +100,9 @@ const WIDGET_CONTENT: Record<string, WidgetDef> = {
   approval: { title: 'Authority Queue',  component: AuthorityQueueWidget, accent: '#F97316', icon: 'shield-checkmark' },
   note:     { title: 'Sticky Notes',     component: StickyNoteWidget,     accent: '#EAB308', icon: 'create' },
   receipt:  { title: 'Receipts',         component: ReceiptsWidget,       accent: '#6366F1', icon: 'file-tray-full' },
-  ava:      { title: 'Ava',             component: AvaAgentWidget,       accent: '#3B82F6', icon: 'person' },
-  eli:      { title: 'Eli',             component: EliAgentWidget,       accent: '#F59E0B', icon: 'chatbubbles' },
-  finn:     { title: 'Finn',            component: FinnAgentWidget,      accent: '#8B5CF6', icon: 'stats-chart' },
+  ava:      { title: 'Ava',             component: AgentWidget,          accent: '#3B82F6', icon: 'person' },
+  eli:      { title: 'Eli',             component: AgentWidget,          accent: '#F59E0B', icon: 'chatbubbles' },
+  finn:     { title: 'Finn',            component: AgentWidget,          accent: '#8B5CF6', icon: 'stats-chart' },
 };
 
 // ---------------------------------------------------------------------------
@@ -128,6 +128,7 @@ function getDefaultWidgetSize(screenWidth: number) {
 
 export function CanvasWorkspace(): React.ReactElement {
   const { suiteId } = useSupabase();
+  const { tenant } = useTenant();
   const { mode, stageOpen } = useImmersion();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -157,7 +158,7 @@ export function CanvasWorkspace(): React.ReactElement {
 
   const voiceHooks = { ava: avaVoice, eli: eliVoice, finn: finnVoice } as const;
 
-  const handleAgentSelect = useCallback((agentId: string) => {
+  const handleAgentVoiceToggle = useCallback((agentId: string) => {
     const hook = voiceHooks[agentId as keyof typeof voiceHooks];
     if (!hook) return;
     if (hook.status === 'idle') {
@@ -594,6 +595,10 @@ export function CanvasWorkspace(): React.ReactElement {
                   const widgetDef = WIDGET_CONTENT[pw.id];
                   if (!widgetDef) return null;
                   const WidgetContent = widgetDef.component;
+                  const isAgentWidget = pw.id === 'ava' || pw.id === 'eli' || pw.id === 'finn';
+                  const voiceStatus = isAgentWidget
+                    ? voiceHooks[pw.id as keyof typeof voiceHooks].status
+                    : undefined;
                   return (
                     <WidgetContainer
                       key={pw.instanceId}
@@ -606,7 +611,17 @@ export function CanvasWorkspace(): React.ReactElement {
                       onSizeChange={(size) => handleSizeChange(pw.instanceId, size)}
                       onClose={() => handleWidgetClose(pw.instanceId)}
                     >
-                      <WidgetContent suiteId={suiteId || ''} officeId="" />
+                      <WidgetContent
+                        suiteId={suiteId || ''}
+                        officeId={tenant?.officeId || ''}
+                        {...(isAgentWidget
+                          ? {
+                              agentId: pw.id,
+                              voiceStatus,
+                              onPrimaryAction: () => handleAgentVoiceToggle(pw.id),
+                            }
+                          : {})}
+                      />
                     </WidgetContainer>
                   );
                 })}
@@ -639,7 +654,7 @@ export function CanvasWorkspace(): React.ReactElement {
           widgets={DEFAULT_WIDGETS}
           onWidgetSelect={handleWidgetSelect}
           onWidgetDrop={handleWidgetDrop}
-          onAgentSelect={handleAgentSelect}
+          onAgentSelect={handleWidgetSelect}
           position="bottom"
           activeWidgetIds={placedWidgets.map(pw => pw.id)}
           activeAgentId={activeAgentVoiceId}

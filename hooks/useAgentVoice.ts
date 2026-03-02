@@ -350,54 +350,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
       let responseText = 'I couldn\'t process that request.';
       let receiptId: string | null = null;
-
-      // Wave 6: If onActivityEvent callback is provided, use SSE streaming.
-      if (options.onActivityEvent) {
-        const query = new URLSearchParams({
-          stream: 'true',
-          agent,
-          text,
-          channel: 'voice',
-          correlation_id: traceId,
-        });
-        if (suiteId) query.set('suiteId', suiteId);
-
-        await new Promise<void>((resolve, reject) => {
-          const eventSource = new EventSource(`/api/orchestrator/intent?${query.toString()}`);
-          let completed = false;
-
-          eventSource.onmessage = (msg) => {
-            try {
-              const event = JSON.parse(msg.data);
-              if (event.type === 'response') {
-                const payload = event.data || event;
-                responseText = payload.response || payload.text || responseText;
-                receiptId = payload.receipt_id || null;
-                completed = true;
-                eventSource.close();
-                resolve();
-                return;
-              }
-              options.onActivityEvent?.(event);
-            } catch (e) {
-              console.error('[useAgentVoice] Failed to parse SSE event:', e);
-            }
-          };
-
-          eventSource.onerror = () => {
-            if (completed) return;
-            eventSource.close();
-            emitDiagnostic({
-              traceId,
-              stage: 'orchestrator',
-              code: 'SSE_STREAM_DISCONNECTED',
-              message: 'Orchestrator SSE stream disconnected before response.',
-              recoverable: true,
-            });
-            reject(new Error('SSE stream failed'));
-          };
-        });
-      } else {
+      const requestStandardResponse = async () => {
         const resp = await fetch('/api/orchestrator/intent', {
           method: 'POST',
           headers,
@@ -440,6 +393,67 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         const data = await resp.json();
         responseText = data.response || data.text || responseText;
         receiptId = data.receipt_id || null;
+      };
+
+      // Wave 6: If onActivityEvent callback is provided, use SSE streaming.
+      if (options.onActivityEvent) {
+        const query = new URLSearchParams({
+          stream: 'true',
+          agent,
+          text,
+          channel: 'voice',
+          correlation_id: traceId,
+        });
+        if (suiteId) query.set('suiteId', suiteId);
+
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const eventSource = new EventSource(`/api/orchestrator/intent?${query.toString()}`);
+            let completed = false;
+
+            eventSource.onmessage = (msg) => {
+              try {
+                const event = JSON.parse(msg.data);
+                if (event.type === 'response') {
+                  const payload = event.data || event;
+                  responseText = payload.response || payload.text || responseText;
+                  receiptId = payload.receipt_id || null;
+                  completed = true;
+                  eventSource.close();
+                  resolve();
+                  return;
+                }
+                options.onActivityEvent?.(event);
+              } catch (e) {
+                console.error('[useAgentVoice] Failed to parse SSE event:', e);
+              }
+            };
+
+            eventSource.onerror = () => {
+              if (completed) return;
+              eventSource.close();
+              emitDiagnostic({
+                traceId,
+                stage: 'orchestrator',
+                code: 'SSE_STREAM_DISCONNECTED',
+                message: 'Orchestrator SSE stream disconnected before response.',
+                recoverable: true,
+              });
+              reject(new Error('SSE stream failed'));
+            };
+          });
+        } catch {
+          emitDiagnostic({
+            traceId,
+            stage: 'orchestrator',
+            code: 'SSE_FALLBACK_POST',
+            message: 'SSE stream failed, falling back to standard orchestrator request.',
+            recoverable: true,
+          });
+          await requestStandardResponse();
+        }
+      } else {
+        await requestStandardResponse();
       }
 
       setLastResponse(responseText);

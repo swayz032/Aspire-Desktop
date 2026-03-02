@@ -16,6 +16,7 @@ import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import type { LineMode, TeamMember } from '@/types/frontdesk';
+import { triggerTestIncomingCall } from '@/lib/incomingCallOverlayStore';
 
 // ---------------------------------------------------------------------------
 // Hero image
@@ -467,6 +468,15 @@ export default function FrontDeskSetupScreen() {
                 </View>
               )}
             </View>
+            <Pressable
+              style={styles.testIncomingCallButton}
+              onPress={triggerTestIncomingCall}
+              accessibilityLabel="Test incoming call overlay"
+              accessibilityRole="button"
+            >
+              <Ionicons name="call-outline" size={14} color="#E0F2FE" />
+              <Text style={styles.testIncomingCallButtonText}>Test Incoming Call</Text>
+            </Pressable>
             <Pressable
               style={[
                 styles.saveButton,
@@ -1168,6 +1178,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.md,
     marginBottom: Spacing.xl,
     paddingHorizontal: Spacing.xs,
   },
@@ -1206,6 +1217,22 @@ const styles = StyleSheet.create({
   saveButtonText: {
     ...Typography.captionMedium,
     color: '#fff',
+  },
+  testIncomingCallButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 40,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.35)',
+    backgroundColor: 'rgba(14,165,233,0.14)',
+    paddingHorizontal: Spacing.md,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+  },
+  testIncomingCallButtonText: {
+    ...Typography.captionMedium,
+    color: '#E0F2FE',
   },
 
   // --- Columns ------------------------------------------------------------

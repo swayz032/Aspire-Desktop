@@ -25,6 +25,7 @@ import {
   Platform,
   type ViewStyle,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { ApprovalIcon } from '@/components/icons/widgets/ApprovalIcon';
@@ -226,6 +227,7 @@ export function AuthorityQueueWidget({
   onDeny,
   onViewAll,
 }: AuthorityQueueWidgetProps) {
+  const router = useRouter();
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -431,8 +433,12 @@ export function AuthorityQueueWidget({
 
   return (
     <View style={styles.container}>
+      <View style={styles.bgAccentA} />
+      <View style={styles.bgAccentB} />
+
       {/* Pending count */}
-      <View style={styles.countRow}>
+      <View style={styles.countCard}>
+        <View style={styles.countRow}>
         <View style={styles.pendingBadge}>
           <Text style={styles.pendingCount}>{requests.length}</Text>
         </View>
@@ -442,6 +448,7 @@ export function AuthorityQueueWidget({
         >
           pending
         </Text>
+        </View>
       </View>
 
       {/* Request list */}
@@ -472,6 +479,19 @@ export function AuthorityQueueWidget({
           </Pressable>
         </View>
       )}
+      {!onViewAll && (
+        <View style={styles.footer}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.viewAllButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => router.push('/session/authority')}
+          >
+            <Text style={styles.viewAllText}>View All Pending</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -483,6 +503,40 @@ export function AuthorityQueueWidget({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    overflow: 'hidden',
+  },
+
+  bgAccentA: {
+    position: 'absolute',
+    top: -50,
+    right: -34,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(59,130,246,0.12)',
+  },
+
+  bgAccentB: {
+    position: 'absolute',
+    bottom: -56,
+    left: -38,
+    width: 146,
+    height: 146,
+    borderRadius: 73,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+  },
+
+  countCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(7,19,35,0.74)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.07)' } as unknown as ViewStyle)
+      : {}),
   },
 
   // Pending count row
@@ -490,7 +544,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
   },
 
   pendingBadge: {
@@ -525,11 +578,11 @@ const styles = StyleSheet.create({
 
   // Approval card
   approvalCard: {
-    backgroundColor: '#2A2A2A',
+    backgroundColor: 'rgba(12,19,31,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: 10,
-    padding: 16,
+    padding: 12,
     gap: 10,
     ...(Platform.OS === 'web'
       ? ({
@@ -546,7 +599,7 @@ const styles = StyleSheet.create({
   },
 
   approvalCardHover: {
-    borderColor: 'rgba(59,130,246,0.2)',
+    borderColor: 'rgba(59,130,246,0.35)',
     ...(Platform.OS === 'web'
       ? ({
           boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
@@ -580,14 +633,14 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 13,
     fontWeight: '400',
-    color: CanvasTokens.text.secondary,
+    color: 'rgba(255,255,255,0.72)',
     lineHeight: 18,
   },
 
   requesterText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: CanvasTokens.text.muted,
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.58)',
   },
 
   // Risk chip
@@ -616,6 +669,8 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 8,
     backgroundColor: '#3B82F6',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     ...(Platform.OS === 'web'
@@ -637,7 +692,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 36,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
     justifyContent: 'center',
@@ -668,9 +723,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: CanvasTokens.background.surface,
+    backgroundColor: 'rgba(7,19,35,0.92)',
     borderTopWidth: 1,
-    borderTopColor: CanvasTokens.border.subtle,
+    borderTopColor: 'rgba(255,255,255,0.12)',
     paddingVertical: 8,
   },
 

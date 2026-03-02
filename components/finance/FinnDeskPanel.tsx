@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Alert, ActivityIndicator, type ViewStyle } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -572,19 +572,6 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
     setIsConversing(true);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
-    // Show initial thinking
-    setActiveRuns((prev) => {
-      const run = prev[runId];
-      if (!run) return prev;
-      return {
-        ...prev,
-        [runId]: {
-          ...run,
-          events: [{ id: `evt_${Date.now()}_0`, type: 'thinking', label: 'Processing financial request...', status: 'active' as const, timestamp: Date.now(), icon: 'sparkles' }],
-        },
-      };
-    });
-
     try {
       // Fetch fresh financial context AND route through orchestrator in parallel
       const [ctx, orchestratorResp] = await Promise.all([
@@ -626,6 +613,36 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
           { id: `evt_${now}_1`, type: 'step', label: 'Using local financial data', status: 'completed', timestamp: now, icon: 'cloud-offline' },
           { id: `evt_${now}_2`, type: 'done', label: 'Complete', status: 'completed', timestamp: now + 1, icon: 'checkmark-circle' },
         ];
+      }
+
+      if (activityEvents.length === 0) {
+        setIsConversing(false);
+        setActiveRuns((prev) => {
+          const run = prev[runId];
+          if (!run) return prev;
+          return {
+            ...prev,
+            [runId]: {
+              ...run,
+              events: [],
+              status: 'completed',
+              finalText: responseText,
+            },
+          };
+        });
+        setChat((prev) =>
+          prev.map((msg) =>
+            msg.runId === runId ? { ...msg, text: responseText } : msg
+          )
+        );
+        if (activeTab === 'voice' && responseText) {
+          speakText('finn', responseText, session?.access_token).catch((err) => {
+            showVoiceError('Voice playback failed - response shown in chat.');
+            console.error('[FinnDeskPanel] TTS error:', err);
+          });
+        }
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+        return;
       }
 
       // Animate real activity events
@@ -1309,7 +1326,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                       {showMessage && msg.text ? (
                         <Text style={styles.msgText}>{msg.text}</Text>
                       ) : null}
-                      {msg.runId && run && run.status === 'running' && !msg.text && (
+                      {msg.runId && run && run.status === 'running' && run.events.length === 0 && !msg.text && (
                         <ThinkingIndicator agent="finn" />
                       )}
                     </View>

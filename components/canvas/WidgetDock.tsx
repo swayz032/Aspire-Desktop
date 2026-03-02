@@ -34,6 +34,8 @@ import { TaskIcon } from '@/components/icons/widgets/TaskIcon';
 import { ApprovalIcon } from '@/components/icons/widgets/ApprovalIcon';
 import { NoteIcon } from '@/components/icons/widgets/NoteIcon';
 import { ReceiptIcon } from '@/components/icons/widgets/ReceiptIcon';
+import { PhoneIcon } from '@/components/icons/widgets/PhoneIcon';
+import { TextMessageIcon } from '@/components/icons/widgets/TextMessageIcon';
 
 export interface WidgetDefinition {
   id: string;
@@ -57,6 +59,8 @@ export interface WidgetDockProps {
 export const DEFAULT_WIDGETS: WidgetDefinition[] = [
   { id: 'email', icon: EmailIcon, label: 'Email', color: CanvasTokens.glow.eli },
   { id: 'invoice', icon: InvoiceIcon, label: 'Invoice', color: CanvasTokens.glow.finn },
+  { id: 'phone', icon: PhoneIcon, label: 'Phone', color: '#22C55E' },
+  { id: 'messages', icon: TextMessageIcon, label: 'Messages', color: '#0EA5E9' },
   { id: 'quote', icon: QuoteIcon, label: 'Quote', color: CanvasTokens.glow.ava },
   { id: 'contract', icon: ContractIcon, label: 'Contract', color: '#F59E0B' },
   { id: 'calendar', icon: CalendarIcon, label: 'Calendar', color: '#8B5CF6' },
@@ -316,8 +320,8 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
       accessibilityRole="button"
       accessibilityLabel={
         isAgent
-          ? `${widget.label} — Tap to start voice session`
-          : `${widget.label} — Drag to canvas or tap to open`
+          ? `${widget.label} - Tap to open voice widget`
+          : `${widget.label} - Drag to canvas or tap to open`
       }
       style={[styles.iconButtonWrapper, cursorStyle]}
     >
