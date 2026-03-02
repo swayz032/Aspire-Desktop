@@ -176,43 +176,6 @@ export function AvaDock() {
             <Text style={styles.stateLabel}>{getStateLabel()}</Text>
           </View>
 
-          <View style={styles.proofSteps}>
-            <View style={styles.stepItem}>
-              <View style={[styles.stepIcon, styles.stepComplete]}>
-                <Ionicons name="checkmark" size={12} color={Colors.background.primary} />
-              </View>
-              <Text style={styles.stepText}>Intent captured</Text>
-            </View>
-            <View style={styles.stepItem}>
-              <View style={[styles.stepIcon, styles.stepComplete]}>
-                <Ionicons name="checkmark" size={12} color={Colors.background.primary} />
-              </View>
-              <Text style={styles.stepText}>Plan drafted</Text>
-            </View>
-            <View style={styles.stepItem}>
-              <View style={[styles.stepIcon, session?.state === 'processing' ? styles.stepActive : styles.stepPending]}>
-                {session?.state === 'processing' ? (
-                  <View style={styles.stepDot} />
-                ) : (
-                  <Text style={styles.stepNumber}>3</Text>
-                )}
-              </View>
-              <Text style={styles.stepText}>Evidence assembled</Text>
-            </View>
-            <View style={styles.stepItem}>
-              <View style={[styles.stepIcon, styles.stepPending]}>
-                <Text style={styles.stepNumber}>4</Text>
-              </View>
-              <Text style={styles.stepText}>Policy checked</Text>
-            </View>
-            <View style={styles.stepItem}>
-              <View style={[styles.stepIcon, styles.stepPending]}>
-                <Text style={styles.stepNumber}>5</Text>
-              </View>
-              <Text style={styles.stepText}>Approval required</Text>
-            </View>
-          </View>
-
           <TouchableOpacity style={styles.endButton} onPress={handleEndSession}>
             <View style={styles.stopSquare} />
             <Text style={styles.endButtonText}>End Session</Text>

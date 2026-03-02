@@ -2068,9 +2068,13 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       return res.status(response.status).json({
         response: responseText,
         error: errorData?.error || `Orchestrator returned ${response.status}`,
+        error_code: errorData?.error || null,
+        error_reason: errorData?.message || null,
+        retryable: response.status >= 500 || response.status === 429,
         approval_payload_hash: errorData?.approval_payload_hash || null,
         required_approvals: errorData?.required_approvals || null,
         receipt_ids: errorData?.receipt_ids || [],
+        assigned_agent: errorData?.assigned_agent || requestedAgent,
         correlation_id: correlationId,
       });
     }
@@ -2099,11 +2103,15 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     }
 
     const data = await response.json();
+    const resolvedAgent = typeof data?.assigned_agent === 'string' && data.assigned_agent.trim()
+      ? data.assigned_agent.trim().toLowerCase()
+      : requestedAgent;
     res.json({
       response: data.text || data.message || 'I processed your request.',
       receipt_id: data.governance?.receipt_ids?.[0] || null,
       receipt_ids: data.governance?.receipt_ids || [],
-      resolved_agent: requestedAgent,
+      resolved_agent: resolvedAgent,
+      assigned_agent: resolvedAgent,
       media: Array.isArray(data.media) ? data.media : [],
       action: data.plan?.task_type || null,
       governance: data.governance || null,
@@ -2575,11 +2583,15 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     }
 
     const data = await response.json();
+    const resolvedAgent = typeof data?.assigned_agent === 'string' && data.assigned_agent.trim()
+      ? data.assigned_agent.trim().toLowerCase()
+      : requestedAgent;
     const responseText = data.text || data.message || "I'm ready when you are.";
     return sendSse(responseText, {
       correlation_id: correlationId,
       receipt_id: data.governance?.receipt_ids?.[0] || null,
-      resolved_agent: requestedAgent,
+      resolved_agent: resolvedAgent,
+      assigned_agent: resolvedAgent,
     });
   } catch (error: unknown) {
     if (error instanceof Error && error.name === 'AbortError') {
