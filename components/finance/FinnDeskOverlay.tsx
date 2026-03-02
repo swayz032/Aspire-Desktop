@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { View, StyleSheet, Pressable, Platform, useWindowDimensions, ViewStyle } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '@/constants/tokens';
 import { FinnDeskPanel } from './FinnDeskPanel';
@@ -12,47 +12,7 @@ type Props = {
 };
 
 export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext }: Props) {
-  const { width, height } = useWindowDimensions();
-
   const isVideoOnly = initialTab === 'video';
-
-  const panelStyle = useMemo((): ViewStyle => {
-    if (isVideoOnly) {
-      const modalW = Math.min(width * 0.92, 1280);
-      const idealH = modalW * (9 / 16);
-      const maxH = height * 0.75;
-      const modalH = Math.min(idealH, maxH);
-      const finalW = modalH < idealH ? modalH * (16 / 9) : modalW;
-      return {
-        width: finalW,
-        height: modalH,
-        borderRadius: 20,
-      };
-    }
-
-    if (width >= 1200) {
-      return {
-        width: '70%' as unknown as number,
-        maxWidth: 900,
-        height: '90vh' as unknown as number,
-        borderRadius: 16,
-      };
-    }
-    if (width >= 900) {
-      return {
-        width: '80%' as unknown as number,
-        maxWidth: 900,
-        height: '85vh' as unknown as number,
-        borderRadius: 16,
-      };
-    }
-    return {
-      width: '95%' as unknown as number,
-      maxWidth: undefined,
-      height: '95vh' as unknown as number,
-      borderRadius: 12,
-    };
-  }, [width, height, isVideoOnly]);
 
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') return;
@@ -69,7 +29,7 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
     <View style={styles.overlay}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close overlay" />
       <View style={styles.panelContainer}>
-        <View style={[styles.panel, panelStyle]}>
+        <View style={[styles.panel, isVideoOnly ? styles.panelLandscape : styles.panelDefault]}>
           <FinnDeskPanel
             initialTab={initialTab}
             templateContext={templateContext}
@@ -77,7 +37,6 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
             videoOnly={isVideoOnly}
             onEndCall={onClose}
           />
-          {/* Close button floats above the panel content */}
           <Pressable
             style={[styles.closeBtn, isVideoOnly && styles.closeBtnImmersive]}
             onPress={onClose}
@@ -126,6 +85,18 @@ const styles = StyleSheet.create({
       boxShadow: '0 32px 64px -16px rgba(0,0,0,0.7), 0 16px 32px -8px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06), 0 0 80px rgba(59,130,246,0.06)',
     } : {}),
   } as any,
+  panelLandscape: {
+    width: '88%',
+    maxWidth: 1100,
+    height: 440,
+    borderRadius: 20,
+  } as any,
+  panelDefault: {
+    width: '70%',
+    maxWidth: 900,
+    height: '90%',
+    borderRadius: 16,
+  } as any,
   closeBtn: {
     position: 'absolute',
     top: Spacing.md,
@@ -137,7 +108,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 20,
-    /* Ensure 44x44 minimum tap target */
     minWidth: 44,
     minHeight: 44,
     ...(Platform.OS === 'web' ? {
@@ -145,8 +115,6 @@ const styles = StyleSheet.create({
       transition: 'background-color 0.15s ease',
     } : {}),
   } as Record<string, unknown>,
-  /* In immersive video-only mode, the close button uses a
-     semi-transparent backdrop-blur pill so it floats above the video. */
   closeBtnImmersive: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     ...(Platform.OS === 'web' ? {
