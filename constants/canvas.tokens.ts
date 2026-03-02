@@ -60,12 +60,41 @@ export const CanvasTokens = {
     borderRadius: 12,          // Widget corner radius
   },
 
+  workspace: {
+    bg: '#2A2A2A',
+    gridMaxWidth: 880,
+    contentPaddingH: 48,
+    contentPaddingV: 36,
+    headerGap: 12,
+
+    behindBg: '#0D0D0D',
+    surfaceRadius: 16,
+    edgeThickness: 5,
+    edgeColor: '#1A1A1A',
+    edgeShadowColor: '#141414',
+    topHighlight: 'rgba(255,255,255,0.06)',
+    margin: {
+      wide: 20,
+      desktop: 16,
+      laptop: 12,
+      tablet: 8,
+    },
+    outerShadow: [
+      '0 12px 40px rgba(0,0,0,0.5)',
+      '0 4px 16px rgba(0,0,0,0.35)',
+      '0 0 0 1px rgba(255,255,255,0.04)',
+      'inset 0 1px 0 rgba(255,255,255,0.06)',
+    ].join(', '),
+    perspective: 1200,
+    minHeight: 600,
+  },
+
   // Dock
   dock: {
-    height: 80,                // Bottom dock height
-    iconSize: 48,              // Icon diameter
-    iconSpacing: 16,           // Space between icons
-    background: 'rgba(24, 24, 24, 0.95)',  // Dark glass on gray surface
+    height: 80,
+    iconSize: 48,
+    iconSpacing: 16,
+    background: 'rgba(24, 24, 24, 0.95)',
   },
 
   // ---------------------------------------------------------------------------

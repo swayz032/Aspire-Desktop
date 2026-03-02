@@ -13,11 +13,12 @@
  * - Adam wired to WebPreview via SSE activity stream
  */
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Animated,
   View,
   Text,
+  ScrollView,
   Pressable,
   Alert,
   StyleSheet,
@@ -273,6 +274,44 @@ export function CanvasWorkspace(): React.ReactElement {
   // Responsive content max width
   const contentMaxWidth = isWide ? 1600 : isDesktop ? 1400 : isLaptop ? 1200 : undefined;
 
+  // Responsive margin for floating slab
+  const slabMargin = isWide
+    ? CanvasTokens.workspace.margin.wide
+    : isDesktop
+      ? CanvasTokens.workspace.margin.desktop
+      : isLaptop
+        ? CanvasTokens.workspace.margin.laptop
+        : CanvasTokens.workspace.margin.tablet;
+
+  // Cursor spotlight (web only)
+  const spotlightRef = useRef<View>(null);
+  const [spotlightPos, setSpotlightPos] = useState<{ x: number; y: number } | null>(null);
+
+  const rafId = useRef<number>(0);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const el = spotlightRef.current as unknown as HTMLElement | null;
+    if (!el) return;
+    const onMove = (e: MouseEvent) => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      rafId.current = requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect();
+        setSpotlightPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      });
+    };
+    const onLeave = () => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      setSpotlightPos(null);
+    };
+    el.addEventListener('mousemove', onMove);
+    el.addEventListener('mouseleave', onLeave);
+    return () => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      el.removeEventListener('mousemove', onMove);
+      el.removeEventListener('mouseleave', onLeave);
+    };
+  }, []);
+
   const copyLatestDiagnostic = useCallback(async () => {
     if (!avaVoice.latestDiagnostic) return;
     const payload = JSON.stringify(avaVoice.latestDiagnostic, null, 2);
@@ -287,191 +326,263 @@ export function CanvasWorkspace(): React.ReactElement {
     }
   }, [avaVoice.latestDiagnostic]);
 
+  const spotlightStyle = useMemo(() => {
+    if (Platform.OS !== 'web' || !spotlightPos) return {};
+    return {
+      backgroundImage: `radial-gradient(circle ${CanvasTokens.workspace.spotlightRadius}px at ${spotlightPos.x}px ${spotlightPos.y}px, rgba(255,255,255,${CanvasTokens.workspace.spotlightOpacity}), transparent)`,
+    } as unknown as ViewStyle;
+  }, [spotlightPos]);
+
   return (
     <View ref={Platform.OS === 'web' ? (setNodeRef as any) : undefined} style={ws.root}>
-      {/* Layer 0: Deep background (creates depth behind canvas) */}
+      {/* Layer 0: Dark void behind the slab */}
       <View style={ws.deepBg} />
 
-      {/* Layer 1: 3D Canvas surface — raised with perspective + thick shadow */}
+      {/* Layer 1: Perspective wrapper for 3D entrance */}
       <Animated.View
         style={[
-          ws.canvasSurface,
+          ws.slabOuter,
           {
+            marginHorizontal: slabMargin,
+            marginTop: slabMargin,
+            marginBottom: slabMargin,
             opacity: canvasOpacity,
             transform: [{ scale: canvasScale }],
           },
+          Platform.OS === 'web'
+            ? ({
+                perspective: `${CanvasTokens.workspace.perspective}px`,
+              } as unknown as ViewStyle)
+            : {},
         ]}
       >
-        {/* Inner shadow overlay — creates "sunken surface" 3D feel */}
-        <View style={ws.innerShadowTop} pointerEvents="none" />
-        <View style={ws.innerShadowLeft} pointerEvents="none" />
-        <View style={ws.innerShadowRight} pointerEvents="none" />
-        <View style={ws.innerShadowBottom} pointerEvents="none" />
+        {/* 3D edge — bottom face (visible thickness) */}
+        <View style={ws.edgeBottom} pointerEvents="none" />
+        {/* 3D edge — right face */}
+        <View style={ws.edgeRight} pointerEvents="none" />
 
-        {/* Edge bevel — 1px bright top/left, dark bottom/right */}
-        <View style={ws.bevelHighlight} pointerEvents="none" />
+        {/* Canvas surface — clipped inner layer */}
+        <View ref={spotlightRef} style={ws.canvasSurface}>
+          {/* Inner shadow overlay — sunken surface 3D feel */}
+          <View style={ws.innerShadowTop} pointerEvents="none" />
+          <View style={ws.innerShadowLeft} pointerEvents="none" />
+          <View style={ws.innerShadowRight} pointerEvents="none" />
+          <View style={ws.innerShadowBottom} pointerEvents="none" />
 
-        {/* Dot grid on surface */}
-        <CanvasGrid />
+          {/* Top highlight bevel */}
+          <View style={ws.bevelHighlight} pointerEvents="none" />
 
-        {/* Layer 2: Edge vignette on canvas surface */}
-        <View
-          style={[
-            ws.edgeVignetteLayer,
-            Platform.OS === 'web'
-              ? ({
-                  backgroundImage:
-                    'radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.2) 100%)',
-                } as unknown as ViewStyle)
-              : {},
-          ]}
-          pointerEvents="none"
-        />
+          {/* Dot grid on surface */}
+          <CanvasGrid />
 
-        {/* Layer 3: Vignette overlay */}
-        <VignetteOverlay />
-
-        {/* Layer 4: Content — responsive padding */}
-        <View style={[
-          ws.content,
-          {
-            paddingHorizontal: isWide ? 64 : isDesktop ? 48 : isLaptop ? 32 : 20,
-            paddingTop: isDesktop ? 36 : 24,
-            maxWidth: contentMaxWidth,
-            alignSelf: contentMaxWidth ? 'center' : undefined,
-            width: contentMaxWidth ? '100%' : undefined,
-          },
-        ]}>
-          {/* Header with mode toggle */}
-          <Animated.View
+          {/* Edge vignette */}
+          <View
             style={[
-              ws.header,
-              {
-                opacity: headerOpacity,
-                transform: [{ translateY: headerTranslateY }],
-              },
+              ws.edgeVignetteLayer,
+              Platform.OS === 'web'
+                ? ({
+                    backgroundImage:
+                      'radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.2) 100%)',
+                  } as unknown as ViewStyle)
+                : {},
             ]}
-          >
-            <View style={[ws.headerRow, { maxWidth: isWide ? 1200 : CanvasTokens.workspace.gridMaxWidth }]}>
-              <View style={ws.headerLeft}>
-                <View style={ws.headerDot} />
-                <Text style={ws.headerTitle}>CANVAS</Text>
-              </View>
-              <CanvasModeToggle />
-            </View>
-            <Text style={ws.headerSub}>
-              Governed execution workspace
-            </Text>
-          </Animated.View>
+            pointerEvents="none"
+          />
 
-          {/* Sub-mode content */}
+          {/* Vignette overlay */}
+          <VignetteOverlay />
+
+          {/* Cursor spotlight (web only) */}
+          {spotlightPos && (
+            <View
+              style={[ws.spotlightLayer, spotlightStyle]}
+              pointerEvents="none"
+            />
+          )}
+
+          {/* Content layer — ScrollView for chat, overflow visible for canvas drag */}
           {subMode === 'chat' ? (
-            <View style={[
-              ws.chatCanvasContainer,
-              { maxWidth: isWide ? 1200 : CanvasTokens.workspace.gridMaxWidth },
-            ]}>
-              <ChatCanvas
-                webPreviewProps={{
-                  activityEvents: activityEvents as any,
-                  trustLevel: 'internal',
-                }}
-                personaElement={
-                  <View style={ws.personaVoiceWrap}>
-                    <Pressable
-                      onPress={() => {
-                        if (avaVoice.status === 'idle') {
-                          avaVoice.startSession();
-                        } else {
-                          avaVoice.endSession();
-                        }
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={avaVoice.status === 'idle' ? 'Start talking to Ava' : 'End voice session'}
-                    >
-                      <Persona
-                        state={personaState}
-                        variant="obsidian"
-                        style={{ width: 240, height: 240 }}
-                      />
-                    </Pressable>
-
-                    {avaVoice.latestDiagnostic && (
-                      <View style={ws.diagnosticBanner}>
-                        <Text style={ws.diagnosticTitle}>
-                          Voice issue: {avaVoice.latestDiagnostic.stage.toUpperCase()} • {avaVoice.latestDiagnostic.code}
-                        </Text>
-                        <Text style={ws.diagnosticMsg} numberOfLines={3}>
-                          {avaVoice.latestDiagnostic.message}
-                        </Text>
-                        <Text style={ws.diagnosticTrace} numberOfLines={1}>
-                          Trace: {avaVoice.latestDiagnostic.traceId}
-                        </Text>
-                        <View style={ws.diagnosticActions}>
-                          <Pressable style={ws.diagBtn} onPress={copyLatestDiagnostic}>
-                            <Text style={ws.diagBtnText}>Copy Debug</Text>
-                          </Pressable>
-                          {avaVoice.latestDiagnostic.stage === 'autoplay' && (
-                            <Pressable
-                              style={[ws.diagBtn, ws.diagBtnPrimary]}
-                              onPress={() => { avaVoice.replayLastAudio(); }}
-                            >
-                              <Text style={[ws.diagBtnText, ws.diagBtnPrimaryText]}>Retry Audio</Text>
-                            </Pressable>
-                          )}
-                          <Pressable style={ws.diagBtn} onPress={avaVoice.clearDiagnostics}>
-                            <Text style={ws.diagBtnText}>Dismiss</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    )}
+            <ScrollView
+              style={ws.scrollLayer}
+              contentContainerStyle={[
+                ws.scrollContent,
+                { minHeight: CanvasTokens.workspace.minHeight },
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={[
+                ws.content,
+                {
+                  paddingHorizontal: isWide ? 64 : isDesktop ? 48 : isLaptop ? 32 : 20,
+                  paddingTop: isDesktop ? 36 : 24,
+                  maxWidth: contentMaxWidth,
+                  alignSelf: contentMaxWidth ? 'center' : undefined,
+                  width: contentMaxWidth ? '100%' : undefined,
+                },
+              ]}>
+                <Animated.View
+                  style={[
+                    ws.header,
+                    {
+                      opacity: headerOpacity,
+                      transform: [{ translateY: headerTranslateY }],
+                    },
+                  ]}
+                >
+                  <View style={[ws.headerRow, { maxWidth: isWide ? 1200 : CanvasTokens.workspace.gridMaxWidth }]}>
+                    <View style={ws.headerLeft}>
+                      <View style={ws.headerDot} />
+                      <Text style={ws.headerTitle}>CANVAS</Text>
+                    </View>
+                    <CanvasModeToggle />
                   </View>
-                }
-                streamEnabled={false}
-                browserEvents={avaVoice.browserEvents}
-              />
-            </View>
-          ) : (
-            /* Canvas mode — free-form widget placement */
-            <View style={ws.canvasArea}>
-              {placedWidgets.map((pw) => {
-                const widgetDef = WIDGET_CONTENT[pw.id];
-                if (!widgetDef) return null;
-                const WidgetContent = widgetDef.component;
-                return (
-                  <WidgetContainer
-                    key={pw.instanceId}
-                    title={widgetDef.title}
-                    accent={widgetDef.accent}
-                    icon={widgetDef.icon}
-                    position={pw.position}
-                    size={pw.size}
-                    onPositionChange={(pos) => handlePositionChange(pw.instanceId, pos)}
-                    onSizeChange={(size) => handleSizeChange(pw.instanceId, size)}
-                    onClose={() => handleWidgetClose(pw.instanceId)}
-                  >
-                    <WidgetContent suiteId={suiteId || ''} officeId="" />
-                  </WidgetContainer>
-                );
-              })}
-
-              {/* Empty state */}
-              {placedWidgets.length === 0 && (
-                <View style={ws.emptyState}>
-                  <View style={ws.emptyIcon}>
-                    <View style={ws.emptyIconInner} />
-                  </View>
-                  <Text style={ws.emptyTitle}>Your workspace is empty</Text>
-                  <Text style={ws.emptySub}>
-                    {isTablet
-                      ? 'Tap widgets from the dock below to get started'
-                      : 'Drag or tap widgets from the dock below'}
+                  <Text style={ws.headerSub}>
+                    Governed execution workspace
                   </Text>
+                </Animated.View>
+
+                <View style={[
+                  ws.chatCanvasContainer,
+                  { maxWidth: isWide ? 1200 : CanvasTokens.workspace.gridMaxWidth },
+                ]}>
+                  <ChatCanvas
+                    webPreviewProps={{
+                      activityEvents: activityEvents as any,
+                      trustLevel: 'internal',
+                    }}
+                    personaElement={
+                      <View style={ws.personaVoiceWrap}>
+                        <Pressable
+                          onPress={() => {
+                            if (avaVoice.status === 'idle') {
+                              avaVoice.startSession();
+                            } else {
+                              avaVoice.endSession();
+                            }
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={avaVoice.status === 'idle' ? 'Start talking to Ava' : 'End voice session'}
+                        >
+                          <Persona
+                            state={personaState}
+                            variant="obsidian"
+                            style={{ width: 240, height: 240 }}
+                          />
+                        </Pressable>
+
+                        {avaVoice.latestDiagnostic && (
+                          <View style={ws.diagnosticBanner}>
+                            <Text style={ws.diagnosticTitle}>
+                              Voice issue: {avaVoice.latestDiagnostic.stage.toUpperCase()} • {avaVoice.latestDiagnostic.code}
+                            </Text>
+                            <Text style={ws.diagnosticMsg} numberOfLines={3}>
+                              {avaVoice.latestDiagnostic.message}
+                            </Text>
+                            <Text style={ws.diagnosticTrace} numberOfLines={1}>
+                              Trace: {avaVoice.latestDiagnostic.traceId}
+                            </Text>
+                            <View style={ws.diagnosticActions}>
+                              <Pressable style={ws.diagBtn} onPress={copyLatestDiagnostic}>
+                                <Text style={ws.diagBtnText}>Copy Debug</Text>
+                              </Pressable>
+                              {avaVoice.latestDiagnostic.stage === 'autoplay' && (
+                                <Pressable
+                                  style={[ws.diagBtn, ws.diagBtnPrimary]}
+                                  onPress={() => { avaVoice.replayLastAudio(); }}
+                                >
+                                  <Text style={[ws.diagBtnText, ws.diagBtnPrimaryText]}>Retry Audio</Text>
+                                </Pressable>
+                              )}
+                              <Pressable style={ws.diagBtn} onPress={avaVoice.clearDiagnostics}>
+                                <Text style={ws.diagBtnText}>Dismiss</Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    }
+                    streamEnabled={false}
+                    browserEvents={avaVoice.browserEvents}
+                  />
                 </View>
-              )}
+              </View>
+            </ScrollView>
+          ) : (
+            <View style={[
+              ws.contentCanvas,
+              {
+                paddingHorizontal: isWide ? 64 : isDesktop ? 48 : isLaptop ? 32 : 20,
+                paddingTop: isDesktop ? 36 : 24,
+                maxWidth: contentMaxWidth,
+                alignSelf: contentMaxWidth ? 'center' : undefined,
+                width: contentMaxWidth ? '100%' : undefined,
+              },
+            ]}>
+              <Animated.View
+                style={[
+                  ws.header,
+                  {
+                    opacity: headerOpacity,
+                    transform: [{ translateY: headerTranslateY }],
+                  },
+                ]}
+              >
+                <View style={[ws.headerRow, { maxWidth: isWide ? 1200 : CanvasTokens.workspace.gridMaxWidth }]}>
+                  <View style={ws.headerLeft}>
+                    <View style={ws.headerDot} />
+                    <Text style={ws.headerTitle}>CANVAS</Text>
+                  </View>
+                  <CanvasModeToggle />
+                </View>
+                <Text style={ws.headerSub}>
+                  Governed execution workspace
+                </Text>
+              </Animated.View>
+
+              <View style={ws.canvasArea}>
+                {placedWidgets.map((pw) => {
+                  const widgetDef = WIDGET_CONTENT[pw.id];
+                  if (!widgetDef) return null;
+                  const WidgetContent = widgetDef.component;
+                  return (
+                    <WidgetContainer
+                      key={pw.instanceId}
+                      title={widgetDef.title}
+                      accent={widgetDef.accent}
+                      icon={widgetDef.icon}
+                      position={pw.position}
+                      size={pw.size}
+                      onPositionChange={(pos) => handlePositionChange(pw.instanceId, pos)}
+                      onSizeChange={(size) => handleSizeChange(pw.instanceId, size)}
+                      onClose={() => handleWidgetClose(pw.instanceId)}
+                    >
+                      <WidgetContent suiteId={suiteId || ''} officeId="" />
+                    </WidgetContainer>
+                  );
+                })}
+
+                {placedWidgets.length === 0 && (
+                  <View style={ws.emptyState}>
+                    <View style={ws.emptyIcon}>
+                      <View style={ws.emptyIconPulse} />
+                      <View style={ws.emptyIconInner} />
+                    </View>
+                    <Text style={ws.emptyTitle}>Your workspace is empty</Text>
+                    <Text style={ws.emptySub}>
+                      {isTablet
+                        ? 'Tap widgets from the dock below to get started'
+                        : 'Drag or tap widgets from the dock below'}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           )}
         </View>
       </Animated.View>
+
+
 
       {/* WidgetDock — macOS-style dock at bottom (canvas mode only) */}
       {subMode === 'canvas' && (
@@ -520,36 +631,72 @@ const ws = StyleSheet.create({
     flex: 1,
     position: 'relative',
     overflow: 'visible',
-    backgroundColor: CanvasTokens.workspace.bg, // seamless with canvas
+    backgroundColor: CanvasTokens.workspace.behindBg,
   },
 
-  // Deep background — same as canvas surface, no flat border visible
   deepBg: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: CanvasTokens.workspace.bg,
+    backgroundColor: CanvasTokens.workspace.behindBg,
     zIndex: 0,
   },
 
-  // Canvas surface — flush, no margin, no extra frame
+  slabOuter: {
+    flex: 1,
+    position: 'relative',
+    zIndex: 1,
+  },
+
+  edgeBottom: {
+    position: 'absolute',
+    bottom: -CanvasTokens.workspace.edgeThickness,
+    left: 2,
+    right: -2,
+    height: CanvasTokens.workspace.edgeThickness,
+    backgroundColor: CanvasTokens.workspace.edgeColor,
+    borderBottomLeftRadius: CanvasTokens.workspace.surfaceRadius,
+    borderBottomRightRadius: CanvasTokens.workspace.surfaceRadius,
+    zIndex: 0,
+  },
+
+  edgeRight: {
+    position: 'absolute',
+    top: 2,
+    right: -CanvasTokens.workspace.edgeThickness,
+    bottom: -2,
+    width: CanvasTokens.workspace.edgeThickness,
+    backgroundColor: CanvasTokens.workspace.edgeShadowColor,
+    borderTopRightRadius: CanvasTokens.workspace.surfaceRadius,
+    borderBottomRightRadius: CanvasTokens.workspace.surfaceRadius,
+    zIndex: 0,
+  },
+
   canvasSurface: {
     flex: 1,
     position: 'relative',
     backgroundColor: CanvasTokens.workspace.bg,
-    overflow: 'visible', // widgets can be dragged outside bounds
+    borderRadius: CanvasTokens.workspace.surfaceRadius,
+    overflow: 'hidden',
+    minHeight: CanvasTokens.workspace.minHeight,
     zIndex: 1,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: CanvasTokens.workspace.outerShadow,
+        } as unknown as ViewStyle)
+      : {}),
   },
 
-  // Inner shadows — creates the "sunken surface" 3D feel
   innerShadowTop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 40,
+    height: 50,
+    borderTopLeftRadius: CanvasTokens.workspace.surfaceRadius,
+    borderTopRightRadius: CanvasTokens.workspace.surfaceRadius,
     zIndex: 10,
     ...(Platform.OS === 'web'
       ? ({
-          backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.03) 0%, transparent 100%)',
+          backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, transparent 100%)',
           pointerEvents: 'none',
         } as unknown as ViewStyle)
       : {}),
@@ -559,11 +706,13 @@ const ws = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    width: 30,
+    width: 35,
+    borderTopLeftRadius: CanvasTokens.workspace.surfaceRadius,
+    borderBottomLeftRadius: CanvasTokens.workspace.surfaceRadius,
     zIndex: 10,
     ...(Platform.OS === 'web'
       ? ({
-          backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.02) 0%, transparent 100%)',
+          backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.03) 0%, transparent 100%)',
           pointerEvents: 'none',
         } as unknown as ViewStyle)
       : {}),
@@ -573,11 +722,13 @@ const ws = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    width: 30,
+    width: 35,
+    borderTopRightRadius: CanvasTokens.workspace.surfaceRadius,
+    borderBottomRightRadius: CanvasTokens.workspace.surfaceRadius,
     zIndex: 10,
     ...(Platform.OS === 'web'
       ? ({
-          backgroundImage: 'linear-gradient(to left, rgba(0,0,0,0.08) 0%, transparent 100%)',
+          backgroundImage: 'linear-gradient(to left, rgba(0,0,0,0.14) 0%, transparent 100%)',
           pointerEvents: 'none',
         } as unknown as ViewStyle)
       : {}),
@@ -587,17 +738,18 @@ const ws = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 40,
+    height: 50,
+    borderBottomLeftRadius: CanvasTokens.workspace.surfaceRadius,
+    borderBottomRightRadius: CanvasTokens.workspace.surfaceRadius,
     zIndex: 10,
     ...(Platform.OS === 'web'
       ? ({
-          backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.1) 0%, transparent 100%)',
+          backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.18) 0%, transparent 100%)',
           pointerEvents: 'none',
         } as unknown as ViewStyle)
       : {}),
   },
 
-  // Bevel highlight — bright edge on top/left
   bevelHighlight: {
     position: 'absolute',
     top: 0,
@@ -605,22 +757,39 @@ const ws = StyleSheet.create({
     right: 0,
     height: 1,
     zIndex: 11,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: CanvasTokens.workspace.surfaceRadius,
+    borderTopRightRadius: CanvasTokens.workspace.surfaceRadius,
     ...(Platform.OS === 'web'
       ? ({
-          backgroundImage: 'linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.04) 50%, rgba(255,255,255,0.08) 100%)',
+          backgroundImage: 'linear-gradient(90deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.1) 100%)',
           pointerEvents: 'none',
         } as unknown as ViewStyle)
       : {
-          backgroundColor: 'rgba(255,255,255,0.06)',
+          backgroundColor: CanvasTokens.workspace.topHighlight,
         }),
   },
 
   edgeVignetteLayer: {
     ...StyleSheet.absoluteFillObject,
+    borderRadius: CanvasTokens.workspace.surfaceRadius,
     zIndex: 2,
     pointerEvents: 'none',
+  },
+
+  spotlightLayer: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: CanvasTokens.workspace.surfaceRadius,
+    zIndex: 3,
+    pointerEvents: 'none',
+  },
+
+  scrollLayer: {
+    flex: 1,
+    zIndex: 5,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
   },
 
   content: {
@@ -628,7 +797,16 @@ const ws = StyleSheet.create({
     zIndex: 5,
     paddingHorizontal: CanvasTokens.workspace.contentPaddingH,
     paddingTop: CanvasTokens.workspace.contentPaddingV,
-    paddingBottom: 80,
+    paddingBottom: 100,
+  },
+
+  contentCanvas: {
+    flex: 1,
+    zIndex: 5,
+    overflow: 'visible',
+    paddingHorizontal: CanvasTokens.workspace.contentPaddingH,
+    paddingTop: CanvasTokens.workspace.contentPaddingV,
+    paddingBottom: 100,
   },
 
   header: {
@@ -759,15 +937,15 @@ const ws = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 16,
+    paddingVertical: 80,
   },
 
-  // Empty state animated icon
   emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
@@ -775,24 +953,39 @@ const ws = StyleSheet.create({
     marginBottom: 8,
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.2)',
+          boxShadow: 'inset 0 2px 12px rgba(0,0,0,0.25), 0 0 30px rgba(59,130,246,0.04)',
+        } as unknown as ViewStyle)
+      : {}),
+  },
+
+  emptyIconPulse: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.08)',
+    ...(Platform.OS === 'web'
+      ? ({
+          animation: 'pulse 3s ease-in-out infinite',
         } as unknown as ViewStyle)
       : {}),
   },
 
   emptyIconInner: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 7,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.12)',
     borderStyle: 'dashed',
   },
 
   emptyTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '500',
     color: Colors.text.tertiary,
+    letterSpacing: 0.3,
   },
 
   emptySub: {
@@ -800,5 +993,6 @@ const ws = StyleSheet.create({
     fontWeight: '400',
     color: Colors.text.muted,
     textAlign: 'center',
+    lineHeight: 20,
   },
 });

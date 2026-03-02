@@ -88,8 +88,7 @@ const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 2,
-    // Grid appears fixed to viewport — widgets scroll OVER it
-    // z-index 2 sits above base (0) and edge vignette (1)
     position: 'absolute',
+    borderRadius: 16,
   },
 });

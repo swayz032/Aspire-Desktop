@@ -365,6 +365,17 @@ export const Canvas = {
     /** Cursor spotlight */
     spotlightRadius: 900,
     spotlightOpacity: 0.02,
+    /** 3D slab — dark void behind canvas */
+    behindBg: '#0D0D0D',
+    surfaceRadius: 16,
+    edgeThickness: 5,
+    edgeColor: '#1A1A1A',
+    edgeShadowColor: '#141414',
+    topHighlight: 'rgba(255,255,255,0.06)',
+    margin: { wide: 20, desktop: 16, laptop: 12, tablet: 8 },
+    outerShadow: '0 12px 40px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.06)',
+    perspective: 1200,
+    minHeight: 600,
   },
 
   /** Responsive layout constraints per viewport tier */

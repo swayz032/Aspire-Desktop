@@ -69,6 +69,17 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
     - Operator vs Tenant context via IS_OPERATOR flag.
 - **Plaid Compliance Patch**: Implemented legal pages, clean public URLs, explicit consent, security practices disclosure, and gated Plaid connection.
 
+- **Canvas Mode (3D Workspace)**:
+    - Floating 3D slab design: dark void (#0D0D0D) behind, rounded corners (16px), visible edge thickness (bottom/right faces), multi-layer box-shadow depth.
+    - Workspace tokens in `constants/tokens.ts` Canvas.workspace block: behindBg, surfaceRadius, edgeThickness, edgeColor, outerShadow, perspective, margin per breakpoint, minHeight.
+    - Duplicate workspace tokens in `constants/canvas.tokens.ts` CanvasTokens.workspace for parity.
+    - Responsive margin: 20px (wide), 16px (desktop), 12px (laptop), 8px (tablet).
+    - Chat sub-mode uses ScrollView for scrollable content; Canvas sub-mode uses overflow-visible View for drag widgets.
+    - Cursor spotlight: radial gradient follows mouse on web with RAF-throttled mousemove.
+    - Inner shadows increased to 0.05-0.18 opacity for stronger sunken feel.
+    - CanvasGrid and VignetteOverlay clipped with borderRadius: 16 to match surface corners.
+    - VignetteOverlay uses position: absolute (not fixed) since it's inside the clipped surface.
+
 **System Design Choices:**
 - Tenant-scoped database tables for financial data.
 - Append-only event store (`finance_events`) with idempotency.

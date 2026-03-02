@@ -122,15 +122,15 @@ const styles = StyleSheet.create({
   },
 });
 
-// Web override: use fixed positioning to cover the full viewport
 const webOverlayStyle = Platform.OS === 'web'
   ? ({
-      position: 'fixed',
+      position: 'absolute',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
       zIndex: 1,
+      borderRadius: 16,
     } as unknown as ViewStyle)
   : {};
 
