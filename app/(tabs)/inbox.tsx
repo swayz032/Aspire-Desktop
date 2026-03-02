@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, Text, Platform, Animated, TextInput, Image, ImageBackground, Alert, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,7 +27,6 @@ const inboxHero = require('@/assets/images/inbox-hero.jpg');
 type TabType = 'office' | 'calls' | 'mail' | 'contacts';
 
 function getMailBody(item: MailThread, detail?: MailDetail | null): string {
-  // Use full thread detail messages if loaded, otherwise fall back to preview
   if (detail?.messages?.length) {
     return detail.messages.map(m => m.content).join('\n\n---\n\n');
   }
@@ -41,45 +40,67 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'");
+    .replace(/&#39;/gi, "'")
+    .replace(/&zwnj;/gi, '')
+    .replace(/&shy;/gi, '')
+    .replace(/&#8204;/g, '')
+    .replace(/&#8203;/g, '')
+    .replace(/&#xFEFF;/gi, '')
+    .replace(/&#x200B;/gi, '')
+    .replace(/&#x200C;/gi, '')
+    .replace(/&#x200D;/gi, '')
+    .replace(/&#xAD;/gi, '')
+    .replace(/&lrm;/gi, '')
+    .replace(/&rlm;/gi, '');
 }
 
 function formatEmailContent(value: string): string {
   if (!value) return '';
   let text = decodeHtmlEntities(value);
 
-  // Convert common block separators first so body remains readable.
   text = text
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/div>/gi, '\n');
 
-  // Strip remaining HTML tags and noisy inline style/script blocks.
   text = text
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<[^>]+>/g, '');
 
-  // Normalize whitespace/newlines.
+  text = decodeHtmlEntities(text);
+  text = text.replace(/[\u200B-\u200D\uFEFF\u00AD\u200E\u200F]/g, '');
+
   return text
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]+\n/g, '\n')
+    .replace(/^[\s\n]+/, '')
+    .replace(/[\s\n]+$/, '')
     .trim();
 }
 
 interface ComposeState {
   visible: boolean;
   to: string;
+  cc: string;
+  bcc: string;
   subject: string;
   body: string;
   replyToThreadId?: string;
   replyToMessageId?: string;
   mode: 'new' | 'reply' | 'replyAll' | 'forward';
+  attachments: AttachedFile[];
+}
+
+interface AttachedFile {
+  name: string;
+  size: number;
+  type: string;
+  file: File;
 }
 
 function getCallSummary(item: CallItem): string {
-  // Use summary from API data if available, otherwise generate a basic summary
   if ((item as any).summary) return (item as any).summary;
   return `Call with ${item.callerName} regarding ${item.tags.join(' & ').toLowerCase()} matters. Duration: ${item.duration}. Outcome: ${item.outcome}. Follow-up actions may be required based on discussion points.`;
 }
@@ -98,10 +119,10 @@ const PRIORITY_ACCENT: Record<string, string> = {
   Low: Colors.accent.cyan,
 };
 
-const PRIORITY_PILL: Record<string, { bg: string; text: string }> = {
-  High: { bg: Colors.semantic.errorLight, text: Colors.semantic.error },
-  Medium: { bg: Colors.semantic.warningLight, text: Colors.semantic.warning },
-  Low: { bg: Colors.accent.cyanLight, text: Colors.accent.cyan },
+const PRIORITY_DOT_COLOR: Record<string, string> = {
+  High: Colors.semantic.error,
+  Medium: Colors.semantic.warning,
+  Low: Colors.accent.cyan,
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -165,29 +186,40 @@ const EMPTY_STATE_MAP: Record<string, { icon: keyof typeof Ionicons.glyphMap; ti
   Missed: { icon: 'close-circle-outline', title: 'No Missed calls', subtitle: 'Missed calls will appear here' },
   Voicemail: { icon: 'recording-outline', title: 'No Voicemails', subtitle: 'Voicemails will appear here' },
   Blocked: { icon: 'ban-outline', title: 'No Blocked calls', subtitle: 'Blocked calls will appear here' },
-  Unread: { icon: 'mail-unread-outline', title: 'No Unread items', subtitle: 'All caught up!' },
+  Unread: { icon: 'mail-unread-outline', title: 'All caught up', subtitle: 'No unread items right now' },
   Urgent: { icon: 'alert-circle-outline', title: 'No Urgent items', subtitle: 'No urgent items at this time' },
   Clients: { icon: 'business-outline', title: 'No Clients', subtitle: 'Client contacts will appear here' },
   Vendors: { icon: 'cube-outline', title: 'No Vendors', subtitle: 'Vendor contacts will appear here' },
   Team: { icon: 'people-circle-outline', title: 'No Team contacts', subtitle: 'Team contacts will appear here' },
   Recent: { icon: 'time-outline', title: 'No Recent contacts', subtitle: 'Recently contacted people will appear here' },
-  default: { icon: 'file-tray-outline', title: 'No items found', subtitle: 'Nothing to show for this filter' },
+  default: { icon: 'file-tray-outline', title: 'Nothing here yet', subtitle: 'Items will appear as they come in' },
 };
 
 const isWeb = Platform.OS === 'web';
 
+function getFileTypeIcon(mimeType: string): { icon: keyof typeof Ionicons.glyphMap; color: string } {
+  if (mimeType.startsWith('image/')) return { icon: 'image', color: '#A78BFA' };
+  if (mimeType === 'application/pdf') return { icon: 'document-text', color: '#F87171' };
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('.sheet')) return { icon: 'grid', color: '#4ADE80' };
+  if (mimeType.includes('word') || mimeType.includes('.document')) return { icon: 'document', color: '#60A5FA' };
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return { icon: 'easel', color: '#FBBF24' };
+  if (mimeType.startsWith('video/')) return { icon: 'videocam', color: '#F472B6' };
+  if (mimeType.startsWith('audio/')) return { icon: 'musical-notes', color: '#34D399' };
+  if (mimeType.includes('zip') || mimeType.includes('archive') || mimeType.includes('compressed')) return { icon: 'file-tray-stacked', color: '#6B7280' };
+  return { icon: 'document-outline', color: Colors.text.muted };
+}
+
 function OfficeItemCard({ item, selected, onPress }: { item: OfficeItem; selected: boolean; onPress: () => void }) {
   const [hovered, setHovered] = useState(false);
-  const accentColor = PRIORITY_ACCENT[item.priority] || Colors.surface.cardBorder;
-  const priorityPill = PRIORITY_PILL[item.priority];
+  const priorityColor = PRIORITY_DOT_COLOR[item.priority];
 
   return (
     <TouchableOpacity
       style={[
         styles.card,
-        { borderLeftWidth: 3, borderLeftColor: accentColor },
         selected && styles.cardSelected,
         hovered && isWeb && styles.cardHover,
+        item.unread && styles.cardUnread,
       ]}
       onPress={onPress}
       activeOpacity={0.7}
@@ -195,32 +227,17 @@ function OfficeItemCard({ item, selected, onPress }: { item: OfficeItem; selecte
     >
       <View style={styles.cardRow}>
         <View style={styles.iconCircle}>
-          <Ionicons name="briefcase" size={20} color={Colors.accent.cyan} />
+          <Ionicons name="briefcase" size={18} color={Colors.accent.cyan} />
         </View>
         <View style={{ flex: 1, marginLeft: Spacing.md }}>
           <View style={styles.titleRow}>
             {item.unread && <View style={styles.unreadDot} />}
-            <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+            {priorityColor && <View style={[styles.priorityDot, { backgroundColor: priorityColor }]} />}
+            <Text style={[styles.cardTitle, item.unread && styles.cardTitleUnread]} numberOfLines={1}>{item.title}</Text>
           </View>
-          <Text style={styles.cardSubtitle}>{item.department} · {item.requestType}</Text>
+          <Text style={styles.cardPreview} numberOfLines={1}>{item.department} · {item.preview}</Text>
         </View>
-        <View style={styles.cardRight}>
-          <Text style={styles.timeText}>{formatRelativeTime(item.timestamp)}</Text>
-          {priorityPill && (
-            <View style={[styles.priorityPill, { backgroundColor: priorityPill.bg }]}>
-              <Text style={[styles.priorityPillText, { color: priorityPill.text }]}>{item.priority}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-      <Text style={styles.previewText} numberOfLines={1}>{item.preview}</Text>
-      <View style={styles.tagsRow}>
-        {item.tags.slice(0, 3).map((tag) => (
-          <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
-            <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
-          </View>
-        ))}
-        <Text style={styles.assignedText}>Assigned to {item.assignedTo}</Text>
+        <Text style={styles.timeText}>{formatRelativeTime(item.timestamp)}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -228,28 +245,25 @@ function OfficeItemCard({ item, selected, onPress }: { item: OfficeItem; selecte
 
 function CallItemCard({ item, selected, onPress }: { item: CallItem; selected: boolean; onPress: () => void }) {
   const [hovered, setHovered] = useState(false);
-  const accentColor = PRIORITY_ACCENT[item.priority] || Colors.surface.cardBorder;
 
-  const getCallIconAndColor = (): { icon: keyof typeof Ionicons.glyphMap; color: string; bg: string } => {
+  const getCallIcon = (): { icon: keyof typeof Ionicons.glyphMap; color: string } => {
     switch (item.callType) {
-      case 'inbound': return { icon: 'call', color: Colors.semantic.success, bg: Colors.semantic.successLight };
-      case 'outbound': return { icon: 'call', color: Colors.semantic.success, bg: Colors.semantic.successLight };
-      case 'missed': return { icon: 'call', color: Colors.semantic.error, bg: Colors.semantic.errorLight };
-      case 'voicemail': return { icon: 'recording', color: Colors.semantic.warning, bg: Colors.semantic.warningLight };
-      case 'blocked': return { icon: 'close-circle', color: Colors.semantic.error, bg: Colors.semantic.errorLight };
-      default: return { icon: 'call', color: Colors.semantic.success, bg: Colors.semantic.successLight };
+      case 'inbound': return { icon: 'call', color: Colors.semantic.success };
+      case 'outbound': return { icon: 'call', color: Colors.semantic.success };
+      case 'missed': return { icon: 'call', color: Colors.semantic.error };
+      case 'voicemail': return { icon: 'recording', color: Colors.semantic.warning };
+      case 'blocked': return { icon: 'close-circle', color: Colors.semantic.error };
+      default: return { icon: 'call', color: Colors.semantic.success };
     }
   };
 
-  const { icon, color, bg } = getCallIconAndColor();
+  const { icon, color } = getCallIcon();
   const outcomeColor = item.outcome === 'Completed' ? Colors.semantic.success : item.outcome === 'Missed' || item.outcome === 'Blocked' ? Colors.semantic.error : Colors.accent.amber;
-  const outcomeBg = item.outcome === 'Completed' ? Colors.semantic.successLight : item.outcome === 'Missed' || item.outcome === 'Blocked' ? Colors.semantic.errorLight : Colors.accent.amberLight;
 
   return (
     <TouchableOpacity
       style={[
         styles.card,
-        { borderLeftWidth: 3, borderLeftColor: accentColor },
         selected && styles.cardSelected,
         hovered && isWeb && styles.cardHover,
       ]}
@@ -258,28 +272,14 @@ function CallItemCard({ item, selected, onPress }: { item: CallItem; selected: b
       {...(isWeb ? { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) } : {})}
     >
       <View style={styles.cardRow}>
-        <View style={[styles.iconCircle, { backgroundColor: bg }]}>
-          <Ionicons name={icon} size={20} color={color} />
+        <View style={[styles.iconCircle, { backgroundColor: color + '18' }]}>
+          <Ionicons name={icon} size={18} color={color} />
         </View>
         <View style={{ flex: 1, marginLeft: Spacing.md }}>
           <Text style={styles.cardTitle}>{item.callerName}</Text>
-          <Text style={styles.cardSubtitle}>{formatMaskedPhone(item.callerNumber)}</Text>
+          <Text style={styles.cardPreview}>{formatMaskedPhone(item.callerNumber)} · <Text style={{ color: outcomeColor }}>{item.outcome}</Text> · {item.duration}</Text>
         </View>
-        <View style={styles.cardRight}>
-          <Text style={styles.timeText}>{formatRelativeTime(item.timestamp)}</Text>
-          <Text style={styles.durationText}>{item.duration}</Text>
-        </View>
-      </View>
-      <View style={styles.callMetaRow}>
-        <View style={[styles.outcomePill, { backgroundColor: outcomeBg }]}>
-          <Text style={[styles.outcomePillText, { color: outcomeColor }]}>{item.outcome}</Text>
-        </View>
-        {item.hasSummary && (
-          <View style={styles.summaryBadge}>
-            <Ionicons name="sparkles" size={12} color={Colors.accent.cyan} />
-            <Text style={styles.summaryText}>Summary Ready</Text>
-          </View>
-        )}
+        <Text style={styles.timeText}>{formatRelativeTime(item.timestamp)}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -287,15 +287,14 @@ function CallItemCard({ item, selected, onPress }: { item: CallItem; selected: b
 
 function MailItemCard({ item, selected, onPress }: { item: MailThread; selected: boolean; onPress: () => void }) {
   const [hovered, setHovered] = useState(false);
-  const accentColor = PRIORITY_ACCENT[item.priority] || Colors.surface.cardBorder;
 
   return (
     <TouchableOpacity
       style={[
         styles.card,
-        { borderLeftWidth: 3, borderLeftColor: accentColor },
         selected && styles.cardSelected,
         hovered && isWeb && styles.cardHover,
+        item.unread && styles.cardUnread,
       ]}
       onPress={onPress}
       activeOpacity={0.7}
@@ -308,31 +307,26 @@ function MailItemCard({ item, selected, onPress }: { item: MailThread; selected:
         <View style={{ flex: 1, marginLeft: Spacing.md }}>
           <View style={styles.titleRow}>
             {item.unread && <View style={styles.unreadDot} />}
-            <Text style={styles.cardTitle} numberOfLines={1}>{item.subject}</Text>
+            <Text style={[styles.cardTitle, item.unread && styles.cardTitleUnread]} numberOfLines={1}>{item.subject}</Text>
           </View>
-          <Text style={styles.cardSubtitle}>{item.senderName}</Text>
+          <Text style={styles.cardPreview} numberOfLines={1}>{item.senderName}</Text>
         </View>
-        <View style={styles.cardRight}>
+        <View style={styles.cardMeta}>
           <Text style={styles.timeText}>{formatRelativeTime(item.timestamp)}</Text>
-          {item.hasAttachments && <Ionicons name="attach" size={14} color={Colors.text.muted} style={{ marginTop: 4 }} />}
-        </View>
-      </View>
-      <Text style={styles.previewText} numberOfLines={1}>{item.preview}</Text>
-      <View style={styles.mailMetaRow}>
-        <View style={styles.msgCountPill}>
-          <Text style={styles.msgCountText}>{item.messageCount} messages</Text>
-        </View>
-        {item.tags.length > 0 && (
-          <View style={styles.eliReviewBadge}>
-            <Ionicons name="sparkles" size={10} color={Colors.accent.cyan} />
-            <Text style={styles.eliReviewText}>Eli reviewed</Text>
+          <View style={styles.cardMetaIcons}>
+            {item.hasAttachments && (
+              <View style={styles.attachIndicator}>
+                <Ionicons name="attach" size={12} color={Colors.text.muted} />
+              </View>
+            )}
+            {item.messageCount > 1 && (
+              <Text style={styles.msgCount}>{item.messageCount}</Text>
+            )}
+            {item.tags.length > 0 && (
+              <Ionicons name="sparkles" size={10} color={Colors.accent.cyan} />
+            )}
           </View>
-        )}
-        {item.tags.slice(0, 2).map((tag) => (
-          <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
-            <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
-          </View>
-        ))}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -346,7 +340,6 @@ function ContactItemCard({ item, selected, onPress }: { item: Contact; selected:
     <TouchableOpacity
       style={[
         styles.card,
-        { borderLeftWidth: 3, borderLeftColor: Colors.surface.cardBorder },
         selected && styles.cardSelected,
         hovered && isWeb && styles.cardHover,
       ]}
@@ -360,36 +353,36 @@ function ContactItemCard({ item, selected, onPress }: { item: Contact; selected:
         </View>
         <View style={{ flex: 1, marginLeft: Spacing.md }}>
           <Text style={styles.cardTitle}>{item.name}</Text>
-          <Text style={styles.cardSubtitle}>{item.title}</Text>
-          <Text style={styles.orgText}>{item.organization}</Text>
+          <Text style={styles.cardPreview}>{item.title} · {item.organization} · <Text style={{ color: roleColor }}>{item.role}</Text></Text>
         </View>
-        <View style={styles.cardRight}>
-          <View style={[styles.rolePill, { borderColor: roleColor }]}>
-            <Text style={[styles.rolePillText, { color: roleColor }]}>{item.role}</Text>
-          </View>
-        </View>
-      </View>
-      <View style={styles.contactMetaRow}>
-        <Text style={styles.lastContactedText}>Last contacted {formatRelativeTime(item.lastContacted)}</Text>
+        <Text style={styles.timeText}>{formatRelativeTime(item.lastContacted)}</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
-function EmptyState({ filter }: { filter: string }) {
+function EmptyState({ filter, searchQuery }: { filter: string; searchQuery?: string }) {
+  if (searchQuery) {
+    return (
+      <View style={styles.emptyState}>
+        <Ionicons name="search-outline" size={40} color={Colors.text.disabled} style={{ opacity: 0.4 }} />
+        <Text style={styles.emptyTitle}>No results for "{searchQuery}"</Text>
+        <Text style={styles.emptySubtitle}>Try a different search term or clear your filters</Text>
+      </View>
+    );
+  }
   const config = EMPTY_STATE_MAP[filter] || EMPTY_STATE_MAP.default;
   return (
     <View style={styles.emptyState}>
-      <Ionicons name={config.icon} size={48} color={Colors.text.disabled} />
+      <Ionicons name={config.icon} size={40} color={Colors.text.disabled} style={{ opacity: 0.4 }} />
       <Text style={styles.emptyTitle}>{config.title}</Text>
       <Text style={styles.emptySubtitle}>{config.subtitle}</Text>
     </View>
   );
 }
 
-
 function OfficePreview({ item }: { item: OfficeItem }) {
-  const priorityPill = PRIORITY_PILL[item.priority];
+  const priorityColor = PRIORITY_DOT_COLOR[item.priority];
   const timelineSteps = ['Received', 'In Review', 'Resolved'];
   const currentStep = item.status === 'resolved' ? 2 : item.status === 'in_progress' ? 1 : 0;
   return (
@@ -397,10 +390,10 @@ function OfficePreview({ item }: { item: OfficeItem }) {
       <View style={fp.headerRow}>
         <View style={{ flex: 1 }}>
           <View style={fp.badgeRow}>
-            {priorityPill && (
-              <View style={[fp.badge, { backgroundColor: priorityPill.bg }]}>
-                <Ionicons name="flag" size={11} color={priorityPill.text} />
-                <Text style={[fp.badgeText, { color: priorityPill.text }]}>{item.priority} Priority</Text>
+            {priorityColor && (
+              <View style={[fp.badge, { backgroundColor: priorityColor + '20' }]}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: priorityColor }} />
+                <Text style={[fp.badgeText, { color: priorityColor }]}>{item.priority}</Text>
               </View>
             )}
             {item.unread && (
@@ -443,16 +436,7 @@ function OfficePreview({ item }: { item: OfficeItem }) {
         <Text style={fp.bodyText}>{item.body || item.preview}</Text>
       </View>
       <View style={fp.divider} />
-      <Text style={fp.sectionLabel}>Tags</Text>
-      <View style={fp.tagsRow}>
-        {item.tags.map((tag) => (
-          <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
-            <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
-          </View>
-        ))}
-      </View>
-      <View style={fp.divider} />
-      <Text style={fp.sectionLabel}>Status Timeline</Text>
+      <Text style={fp.sectionLabel}>Status</Text>
       <View style={fp.timelineRow}>
         {timelineSteps.map((step, idx) => {
           const isActive = idx <= currentStep;
@@ -472,20 +456,20 @@ function OfficePreview({ item }: { item: OfficeItem }) {
       </View>
       <View style={fp.divider} />
       <View style={fp.actionBar}>
-        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.semantic.successLight, borderColor: Colors.semantic.success + '44' }]} activeOpacity={0.7}>
-          <Ionicons name="checkmark-circle" size={16} color={Colors.semantic.success} />
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.semantic.successLight }]} activeOpacity={0.7}>
+          <Ionicons name="checkmark-circle" size={15} color={Colors.semantic.success} />
           <Text style={[fp.actionBtnText, { color: Colors.semantic.success }]}>Approve</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7}>
-          <Ionicons name="chatbubble" size={16} color={Colors.accent.cyan} />
-          <Text style={[fp.actionBtnText, { color: Colors.accent.cyan }]}>Reply</Text>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+          <Ionicons name="chatbubble" size={15} color={Colors.text.tertiary} />
+          <Text style={fp.actionBtnText}>Reply</Text>
         </TouchableOpacity>
         <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
-          <Ionicons name="arrow-redo" size={16} color={Colors.text.tertiary} />
+          <Ionicons name="arrow-redo" size={15} color={Colors.text.tertiary} />
           <Text style={fp.actionBtnText}>Forward</Text>
         </TouchableOpacity>
         <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
-          <Ionicons name="trending-up" size={16} color={Colors.semantic.warning} />
+          <Ionicons name="trending-up" size={15} color={Colors.semantic.warning} />
           <Text style={[fp.actionBtnText, { color: Colors.semantic.warning }]}>Escalate</Text>
         </TouchableOpacity>
       </View>
@@ -498,16 +482,19 @@ function CallPreview({ item }: { item: CallItem }) {
   const typeColor = item.callType === 'missed' || item.callType === 'blocked' ? Colors.semantic.error : item.callType === 'voicemail' ? Colors.semantic.warning : Colors.semantic.success;
   const typeLabel = item.callType.charAt(0).toUpperCase() + item.callType.slice(1);
   const typeIcon: keyof typeof Ionicons.glyphMap = item.callType === 'inbound' ? 'arrow-down' : item.callType === 'outbound' ? 'arrow-up' : item.callType === 'missed' ? 'close' : item.callType === 'voicemail' ? 'recording' : 'close-circle';
+  const waveformHeights = useMemo(() => Array.from({ length: 24 }, () => 4 + Math.random() * 16), []);
+  const waveformOpacities = useMemo(() => Array.from({ length: 24 }, () => 0.4 + Math.random() * 0.6), []);
+
   return (
     <View style={fp.section}>
       <View style={fp.headerRow}>
-        <View style={[fp.callerAvatar, { backgroundColor: typeColor + '22', borderColor: typeColor + '44' }]}>
-          <Ionicons name="call" size={28} color={typeColor} />
+        <View style={[fp.callerAvatar, { backgroundColor: typeColor + '18', borderColor: typeColor + '30' }]}>
+          <Ionicons name="call" size={24} color={typeColor} />
         </View>
         <View style={{ flex: 1, marginLeft: Spacing.lg }}>
           <Text style={fp.pageTitle}>{item.callerName}</Text>
           <Text style={fp.subtitleText}>{formatMaskedPhone(item.callerNumber)}</Text>
-          <View style={[fp.badge, { backgroundColor: typeColor + '22', alignSelf: 'flex-start', marginTop: Spacing.xs }]}>
+          <View style={[fp.badge, { backgroundColor: typeColor + '18', alignSelf: 'flex-start', marginTop: Spacing.xs }]}>
             <Ionicons name={typeIcon} size={11} color={typeColor} />
             <Text style={[fp.badgeText, { color: typeColor }]}>{typeLabel}</Text>
           </View>
@@ -517,7 +504,7 @@ function CallPreview({ item }: { item: CallItem }) {
       <View style={fp.divider} />
       <View style={fp.metricGrid}>
         <View style={fp.metricCard}>
-          <Ionicons name="time-outline" size={20} color={Colors.accent.cyan} />
+          <Ionicons name="time-outline" size={18} color={Colors.accent.cyan} />
           <Text style={fp.metricLabel}>Duration</Text>
           <Text style={fp.metricValue}>{item.duration}</Text>
         </View>
@@ -526,22 +513,17 @@ function CallPreview({ item }: { item: CallItem }) {
           <Text style={fp.metricLabel}>Outcome</Text>
           <Text style={[fp.metricValue, { color: outcomeColor }]}>{item.outcome}</Text>
         </View>
-        <View style={fp.metricCard}>
-          <Ionicons name="calendar-outline" size={20} color={Colors.text.muted} />
-          <Text style={fp.metricLabel}>Time</Text>
-          <Text style={fp.metricValue}>{formatRelativeTime(item.timestamp)}</Text>
-        </View>
       </View>
       <View style={fp.divider} />
       <Text style={fp.sectionLabel}>Recording</Text>
       <View style={fp.recordingCard}>
         <TouchableOpacity style={fp.playBtn} activeOpacity={0.7}>
-          <Ionicons name="play" size={20} color="#fff" />
+          <Ionicons name="play" size={18} color="#fff" />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: Spacing.md }}>
           <View style={fp.waveformBar}>
-            {Array.from({ length: 24 }).map((_, i) => (
-              <View key={i} style={[fp.waveformLine, { height: 4 + Math.random() * 16, opacity: 0.4 + Math.random() * 0.6 }]} />
+            {waveformHeights.map((h, i) => (
+              <View key={i} style={[fp.waveformLine, { height: h, opacity: waveformOpacities[i] }]} />
             ))}
           </View>
         </View>
@@ -553,39 +535,26 @@ function CallPreview({ item }: { item: CallItem }) {
           <Text style={fp.sectionLabel}>AI Summary</Text>
           <View style={fp.aiSummaryCard}>
             <View style={fp.aiSummaryHeader}>
-              <Ionicons name="sparkles" size={16} color={Colors.accent.cyan} />
-              <Text style={fp.aiSummaryLabel}>Sarah AI Summary</Text>
+              <Ionicons name="sparkles" size={14} color={Colors.accent.cyan} />
+              <Text style={fp.aiSummaryLabel}>AI Summary</Text>
             </View>
             <Text style={fp.bodyText}>{getCallSummary(item)}</Text>
           </View>
         </>
       )}
       <View style={fp.divider} />
-      <Text style={fp.sectionLabel}>Tags</Text>
-      <View style={fp.tagsRow}>
-        {item.tags.map((tag) => (
-          <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
-            <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
-          </View>
-        ))}
-      </View>
-      <View style={fp.divider} />
       <View style={fp.actionBar}>
-        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.semantic.successLight, borderColor: Colors.semantic.success + '44' }]} activeOpacity={0.7}>
-          <Ionicons name="call" size={16} color={Colors.semantic.success} />
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.semantic.successLight }]} activeOpacity={0.7}>
+          <Ionicons name="call" size={15} color={Colors.semantic.success} />
           <Text style={[fp.actionBtnText, { color: Colors.semantic.success }]}>Call Back</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7}>
-          <Ionicons name="chatbubble" size={16} color={Colors.accent.cyan} />
-          <Text style={[fp.actionBtnText, { color: Colors.accent.cyan }]}>Message</Text>
+        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
+          <Ionicons name="chatbubble" size={15} color={Colors.text.tertiary} />
+          <Text style={fp.actionBtnText}>Message</Text>
         </TouchableOpacity>
         <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
-          <Ionicons name="ban" size={16} color={Colors.semantic.error} />
-          <Text style={[fp.actionBtnText, { color: Colors.semantic.error }]}>Block</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
-          <Ionicons name="person-add" size={16} color={Colors.text.tertiary} />
-          <Text style={fp.actionBtnText}>Add to Contacts</Text>
+          <Ionicons name="person-add" size={15} color={Colors.text.tertiary} />
+          <Text style={fp.actionBtnText}>Save Contact</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -625,10 +594,9 @@ function MailPreview({ item, detail, loading: detailLoading, onReply, onReplyAll
       <Text style={fp.mailSubject}>{item.subject}</Text>
       <View style={fp.divider} />
 
-      {/* Thread messages — show all if loaded, otherwise show sender info */}
       {detailLoading ? (
         <View style={{ padding: Spacing.xl, alignItems: 'center' }}>
-          <Text style={{ color: Colors.text.muted }}>Loading email...</Text>
+          <Text style={{ color: Colors.text.muted, ...Typography.caption }}>Loading email...</Text>
         </View>
       ) : messages.length > 0 ? (
         messages.map((msg, idx) => (
@@ -643,21 +611,52 @@ function MailPreview({ item, detail, loading: detailLoading, onReply, onReplyAll
               </View>
               <Text style={fp.timestamp}>{formatRelativeTime(msg.timestamp)}</Text>
             </View>
-            <View style={[fp.mailBodyArea, { marginTop: Spacing.md }]}>
+            <View style={fp.mailBodyArea}>
               <Text style={fp.mailBodyText}>{formatEmailContent(msg.content) || 'No readable email body available.'}</Text>
             </View>
             {msg.attachments?.length > 0 && (
-              <View style={fp.attachmentsRow}>
-                {msg.attachments.map((att) => (
-                  <View key={att.id} style={fp.attachmentItem}>
-                    <Ionicons name="document" size={20} color={Colors.accent.cyan} />
-                    <Text style={fp.attachmentName}>{att.name}</Text>
-                    <Text style={fp.attachmentSize}>{att.size}</Text>
-                  </View>
-                ))}
+              <View style={fp.attachmentsSection}>
+                <Text style={fp.attachmentsLabel}>Attachments ({msg.attachments.length})</Text>
+                <View style={fp.attachmentsGrid}>
+                  {msg.attachments.map((att) => {
+                    const fileInfo = getFileTypeIcon(att.type);
+                    const isImage = att.type.startsWith('image/');
+                    return (
+                      <TouchableOpacity
+                        key={att.id}
+                        style={fp.attachmentCard}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          if (isWeb) {
+                            window.open(`/api/mail/attachments/${msg.id}/${att.id}?name=${encodeURIComponent(att.name)}&type=${encodeURIComponent(att.type)}`, '_blank');
+                          }
+                        }}
+                      >
+                        {isImage ? (
+                          <View style={fp.attachmentImagePreview}>
+                            <Ionicons name="image" size={24} color={fileInfo.color} />
+                          </View>
+                        ) : (
+                          <View style={[fp.attachmentIconWrap, { backgroundColor: fileInfo.color + '18' }]}>
+                            <Ionicons name={fileInfo.icon} size={20} color={fileInfo.color} />
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={fp.attachmentName} numberOfLines={1}>{att.name}</Text>
+                          <Text style={fp.attachmentSize}>{att.size}</Text>
+                        </View>
+                        <Ionicons name="download-outline" size={16} color={Colors.text.muted} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
             )}
-            {idx < messages.length - 1 && <View style={fp.divider} />}
+            {idx < messages.length - 1 && (
+              <View style={fp.threadSeparator}>
+                <View style={fp.threadSeparatorLine} />
+              </View>
+            )}
           </View>
         ))
       ) : (
@@ -678,45 +677,30 @@ function MailPreview({ item, detail, loading: detailLoading, onReply, onReplyAll
           </View>
           <View style={fp.divider} />
           <View style={fp.mailBodyArea}>
-            <Text style={fp.mailBodyText}>{item.preview}</Text>
+            <Text style={fp.mailBodyText}>{formatEmailContent(item.preview)}</Text>
           </View>
         </>
       )}
 
       <View style={fp.divider} />
-      <Text style={fp.sectionLabel}>Tags</Text>
-      <View style={fp.tagsRow}>
-        {item.tags.map((tag) => (
-          <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
-            <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
-          </View>
-        ))}
-        {item.tags.length > 0 && (
-          <View style={[fp.badge, { backgroundColor: Colors.accent.cyanLight }]}>
-            <Ionicons name="sparkles" size={10} color={Colors.accent.cyan} />
-            <Text style={[fp.badgeText, { color: Colors.accent.cyan }]}>Eli reviewed</Text>
-          </View>
-        )}
-      </View>
-      <View style={fp.divider} />
       <View style={fp.actionBar}>
-        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7} onPress={onReply}>
-          <Ionicons name="arrow-undo" size={16} color={Colors.accent.cyan} />
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight }]} activeOpacity={0.7} onPress={onReply}>
+          <Ionicons name="arrow-undo" size={15} color={Colors.accent.cyan} />
           <Text style={[fp.actionBtnText, { color: Colors.accent.cyan }]}>Reply</Text>
         </TouchableOpacity>
         <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7} onPress={onReplyAll}>
-          <Ionicons name="arrow-undo" size={16} color={Colors.text.tertiary} />
+          <Ionicons name="arrow-undo" size={15} color={Colors.text.tertiary} />
           <Text style={fp.actionBtnText}>Reply All</Text>
         </TouchableOpacity>
         <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7} onPress={onForward}>
-          <Ionicons name="arrow-redo" size={16} color={Colors.text.tertiary} />
+          <Ionicons name="arrow-redo" size={15} color={Colors.text.tertiary} />
           <Text style={fp.actionBtnText}>Forward</Text>
         </TouchableOpacity>
       </View>
       <View style={fp.divider} />
-      <Text style={fp.sectionLabel}>Smart Replies</Text>
+      <Text style={fp.sectionLabel}>Quick Replies</Text>
       <View style={styles.smartReplyRow}>
-        {['Thanks, received!', "I'll review and respond shortly", 'Forward to team for review'].map((reply) => (
+        {['Thanks, received!', "I'll review shortly", 'Forward to team'].map((reply) => (
           <TouchableOpacity key={reply} style={styles.smartReplyPill} activeOpacity={0.7} onPress={() => onSmartReply?.(reply)}>
             <Text style={styles.smartReplyText}>{reply}</Text>
           </TouchableOpacity>
@@ -728,11 +712,12 @@ function MailPreview({ item, detail, loading: detailLoading, onReply, onReplyAll
 
 function ContactPreview({ item }: { item: Contact }) {
   const roleColor = ROLE_COLORS[item.role] || Colors.text.secondary;
-  const activityHistory = [
-    { type: 'call' as const, icon: 'call' as keyof typeof Ionicons.glyphMap, desc: 'Phone call — 5 min', time: '2 days ago', color: Colors.semantic.success },
-    { type: 'email' as const, icon: 'mail' as keyof typeof Ionicons.glyphMap, desc: `Email thread — RE: ${item.organization} update`, time: '5 days ago', color: Colors.accent.cyan },
-    { type: 'meeting' as const, icon: 'videocam' as keyof typeof Ionicons.glyphMap, desc: 'Video meeting — Quarterly review', time: '2 weeks ago', color: '#A78BFA' },
-  ];
+  const activityHistory = useMemo(() => [
+    { icon: 'call' as keyof typeof Ionicons.glyphMap, desc: 'Phone call — 5 min', time: '2 days ago', color: Colors.semantic.success },
+    { icon: 'mail' as keyof typeof Ionicons.glyphMap, desc: `Email — RE: ${item.organization} update`, time: '5 days ago', color: Colors.accent.cyan },
+    { icon: 'videocam' as keyof typeof Ionicons.glyphMap, desc: 'Video meeting — Quarterly review', time: '2 weeks ago', color: '#A78BFA' },
+  ], [item.organization]);
+
   return (
     <View style={fp.section}>
       <View style={fp.headerRow}>
@@ -743,7 +728,7 @@ function ContactPreview({ item }: { item: Contact }) {
           <Text style={fp.pageTitle}>{item.name}</Text>
           <Text style={fp.subtitleText}>{item.title}</Text>
           <Text style={[fp.subtitleText, { color: Colors.text.muted, marginTop: 2 }]}>{item.organization}</Text>
-          <View style={[fp.badge, { backgroundColor: roleColor + '22', alignSelf: 'flex-start', marginTop: Spacing.sm }]}>
+          <View style={[fp.badge, { backgroundColor: roleColor + '18', alignSelf: 'flex-start', marginTop: Spacing.sm }]}>
             <Text style={[fp.badgeText, { color: roleColor }]}>{item.role}</Text>
           </View>
         </View>
@@ -752,24 +737,14 @@ function ContactPreview({ item }: { item: Contact }) {
       <Text style={fp.sectionLabel}>Contact Information</Text>
       <View style={fp.contactGrid}>
         <View style={fp.contactGridItem}>
-          <Ionicons name="mail-outline" size={18} color={Colors.accent.cyan} />
+          <Ionicons name="mail-outline" size={16} color={Colors.accent.cyan} />
           <Text style={fp.contactGridLabel}>Email</Text>
           <Text style={fp.contactGridValue}>{item.email}</Text>
         </View>
         <View style={fp.contactGridItem}>
-          <Ionicons name="call-outline" size={18} color={Colors.semantic.success} />
+          <Ionicons name="call-outline" size={16} color={Colors.semantic.success} />
           <Text style={fp.contactGridLabel}>Phone</Text>
           <Text style={fp.contactGridValue}>{formatMaskedPhone(item.phone)}</Text>
-        </View>
-        <View style={fp.contactGridItem}>
-          <Ionicons name="business-outline" size={18} color={Colors.accent.amber} />
-          <Text style={fp.contactGridLabel}>Organization</Text>
-          <Text style={fp.contactGridValue}>{item.organization}</Text>
-        </View>
-        <View style={fp.contactGridItem}>
-          <Ionicons name="time-outline" size={18} color={Colors.text.muted} />
-          <Text style={fp.contactGridLabel}>Last Contacted</Text>
-          <Text style={fp.contactGridValue}>{formatRelativeTime(item.lastContacted)}</Text>
         </View>
       </View>
       <View style={fp.divider} />
@@ -778,12 +753,12 @@ function ContactPreview({ item }: { item: Contact }) {
         <Text style={fp.bodyText}>{item.notes}</Text>
       </View>
       <View style={fp.divider} />
-      <Text style={fp.sectionLabel}>Communication History</Text>
+      <Text style={fp.sectionLabel}>History</Text>
       <View style={fp.historyList}>
         {activityHistory.map((act, idx) => (
           <View key={idx} style={fp.historyItem}>
-            <View style={[fp.historyDot, { backgroundColor: act.color + '22', borderColor: act.color + '44' }]}>
-              <Ionicons name={act.icon} size={14} color={act.color} />
+            <View style={[fp.historyDot, { backgroundColor: act.color + '18', borderColor: act.color + '30' }]}>
+              <Ionicons name={act.icon} size={13} color={act.color} />
             </View>
             <View style={{ flex: 1, marginLeft: Spacing.md }}>
               <Text style={fp.historyDesc}>{act.desc}</Text>
@@ -793,31 +768,18 @@ function ContactPreview({ item }: { item: Contact }) {
         ))}
       </View>
       <View style={fp.divider} />
-      <Text style={fp.sectionLabel}>Tags</Text>
-      <View style={fp.tagsRow}>
-        {item.tags.map((tag) => (
-          <View key={tag} style={[styles.tag, { backgroundColor: TAG_COLORS[tag]?.bg || Colors.background.tertiary }]}>
-            <Text style={[styles.tagText, { color: TAG_COLORS[tag]?.text || Colors.text.secondary }]}>{tag}</Text>
-          </View>
-        ))}
-      </View>
-      <View style={fp.divider} />
       <View style={fp.actionBar}>
-        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight, borderColor: Colors.accent.cyan + '44' }]} activeOpacity={0.7}>
-          <Ionicons name="mail" size={16} color={Colors.accent.cyan} />
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.accent.cyanLight }]} activeOpacity={0.7}>
+          <Ionicons name="mail" size={15} color={Colors.accent.cyan} />
           <Text style={[fp.actionBtnText, { color: Colors.accent.cyan }]}>Email</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.semantic.successLight, borderColor: Colors.semantic.success + '44' }]} activeOpacity={0.7}>
-          <Ionicons name="call" size={16} color={Colors.semantic.success} />
+        <TouchableOpacity style={[fp.actionBtn, { backgroundColor: Colors.semantic.successLight }]} activeOpacity={0.7}>
+          <Ionicons name="call" size={15} color={Colors.semantic.success} />
           <Text style={[fp.actionBtnText, { color: Colors.semantic.success }]}>Call</Text>
         </TouchableOpacity>
         <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
-          <Ionicons name="calendar" size={16} color={Colors.text.tertiary} />
+          <Ionicons name="calendar" size={15} color={Colors.text.tertiary} />
           <Text style={fp.actionBtnText}>Schedule</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={fp.actionBtn} activeOpacity={0.7}>
-          <Ionicons name="create" size={16} color={Colors.text.tertiary} />
-          <Text style={fp.actionBtnText}>Edit Contact</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -845,11 +807,11 @@ export default function InboxScreen() {
     { id: '1', from: 'eli', text: 'Hey! I\'ve been sorting through your inbox. What would you like me to help with?', ts: Date.now() },
   ]);
   const [eliRun, setEliRun] = useState<{ events: AgentActivityEvent[]; status: 'running' | 'completed' } | null>(null);
-  // ── Mail detail + compose state ──
   const [mailDetail, setMailDetail] = useState<MailDetail | null>(null);
   const [mailDetailLoading, setMailDetailLoading] = useState(false);
-  const [compose, setCompose] = useState<ComposeState>({ visible: false, to: '', subject: '', body: '', mode: 'new' });
+  const [compose, setCompose] = useState<ComposeState>({ visible: false, to: '', cc: '', bcc: '', subject: '', body: '', mode: 'new', attachments: [] });
   const [composeSending, setComposeSending] = useState(false);
+  const [showCcBcc, setShowCcBcc] = useState(false);
 
   const [showMailSetupModal, setShowMailSetupModal] = useState(false);
   const [mailSetupChecked, setMailSetupChecked] = useState(false);
@@ -859,10 +821,19 @@ export default function InboxScreen() {
   const [showMailboxDropdown, setShowMailboxDropdown] = useState(false);
   const [removingMailboxId, setRemovingMailboxId] = useState<string | null>(null);
 
-  // Tenant context for voice requests (Law #6: Tenant Isolation)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<MailThread[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const searchTimerRef = useRef<any>(null);
+
+  const [unifiedModalTab, setUnifiedModalTab] = useState<'compose' | 'eli'>('compose');
+  const modalScaleAnim = useRef(new Animated.Value(0.97)).current;
+  const modalOpacityAnim = useRef(new Animated.Value(0)).current;
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const { suiteId, session } = useSupabase();
 
-  // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const eliVoice = useAgentVoice({
     agent: 'eli',
     suiteId: suiteId ?? undefined,
@@ -908,6 +879,7 @@ export default function InboxScreen() {
   });
 
   const eliMicPulse = useRef(new Animated.Value(1)).current;
+  const breathAnim = useRef(new Animated.Value(1)).current;
 
   const selectedMailboxAccount = mailAccounts.find((a: any) => a.id === selectedMailbox) || mailAccounts[0];
   const selectedMailboxEmail = selectedMailboxAccount?.email as string | undefined;
@@ -939,12 +911,7 @@ export default function InboxScreen() {
     if (!session?.access_token) {
       setEliMessages(prev => [
         ...prev,
-        {
-          id: String(Date.now() + 1),
-          from: 'eli',
-          text: 'Your session expired. Please sign in again so I can access your inbox.',
-          ts: Date.now(),
-        },
+        { id: String(Date.now() + 1), from: 'eli', text: 'Your session expired. Please sign in again so I can access your inbox.', ts: Date.now() },
       ]);
       setEliRun(null);
       return;
@@ -955,18 +922,12 @@ export default function InboxScreen() {
       const msg = e instanceof Error ? e.message : String(e);
       setEliMessages(prev => [
         ...prev,
-        {
-          id: String(Date.now() + 2),
-          from: 'eli',
-          text: `I couldn't process that: ${msg}`,
-          ts: Date.now(),
-        },
+        { id: String(Date.now() + 2), from: 'eli', text: `I couldn't process that: ${msg}`, ts: Date.now() },
       ]);
       setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
     }
   }, [eliVoice, session?.access_token]);
 
-  // ── Fetch full thread detail when clicking an email ──
   const fetchMailDetail = useCallback(async (threadId: string) => {
     setMailDetailLoading(true);
     setMailDetail(null);
@@ -985,23 +946,26 @@ export default function InboxScreen() {
     setMailDetailLoading(false);
   }, [authenticatedFetch, selectedMailboxEmail]);
 
-  // ── Compose helpers ──
   const openCompose = useCallback((mode: ComposeState['mode'] = 'new', thread?: MailThread) => {
     if (!thread) {
-      setCompose({ visible: true, to: '', subject: '', body: '', mode: 'new' });
+      setCompose({ visible: true, to: '', cc: '', bcc: '', subject: '', body: '', mode: 'new', attachments: [] });
+      setShowCcBcc(false);
+      setUnifiedModalTab('compose');
       return;
     }
     const lastMsg = mailDetail?.messages?.[mailDetail.messages.length - 1];
     const replyTo = lastMsg?.senderEmail || thread.senderEmail;
     const allRecipients = [...new Set([replyTo, ...thread.recipients])].join(', ');
     if (mode === 'reply') {
-      setCompose({ visible: true, to: replyTo, subject: `Re: ${thread.subject}`, body: '', mode, replyToThreadId: thread.id });
+      setCompose({ visible: true, to: replyTo, cc: '', bcc: '', subject: `Re: ${thread.subject}`, body: '', mode, replyToThreadId: thread.id, attachments: [] });
     } else if (mode === 'replyAll') {
-      setCompose({ visible: true, to: allRecipients, subject: `Re: ${thread.subject}`, body: '', mode, replyToThreadId: thread.id });
+      setCompose({ visible: true, to: allRecipients, cc: '', bcc: '', subject: `Re: ${thread.subject}`, body: '', mode, replyToThreadId: thread.id, attachments: [] });
     } else if (mode === 'forward') {
       const fwdBody = lastMsg ? `\n\n---------- Forwarded message ----------\nFrom: ${lastMsg.sender} <${lastMsg.senderEmail}>\n\n${lastMsg.content}` : '';
-      setCompose({ visible: true, to: '', subject: `Fwd: ${thread.subject}`, body: fwdBody, mode });
+      setCompose({ visible: true, to: '', cc: '', bcc: '', subject: `Fwd: ${thread.subject}`, body: fwdBody, mode, attachments: [] });
     }
+    setShowCcBcc(false);
+    setUnifiedModalTab('compose');
   }, [mailDetail]);
 
   const handleSendEmail = useCallback(async () => {
@@ -1013,6 +977,8 @@ export default function InboxScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: compose.to,
+          cc: compose.cc || undefined,
+          bcc: compose.bcc || undefined,
           subject: compose.subject,
           body: compose.body,
           account: selectedMailboxEmail,
@@ -1020,7 +986,7 @@ export default function InboxScreen() {
         }),
       });
       if (res.ok) {
-        setCompose({ visible: false, to: '', subject: '', body: '', mode: 'new' });
+        setCompose({ visible: false, to: '', cc: '', bcc: '', subject: '', body: '', mode: 'new', attachments: [] });
         Alert.alert('Sent', 'Email sent successfully.');
       } else {
         Alert.alert('Error', 'Failed to send email. Please try again.');
@@ -1073,33 +1039,92 @@ export default function InboxScreen() {
     }
   }, [authenticatedFetch, selectedMailboxEmail]);
 
-  const breathAnim = useRef(new Animated.Value(1)).current;
+  const handleSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    setSearching(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedMailboxEmail) params.set('account', selectedMailboxEmail);
+      params.set('q', query);
+      const qs = params.toString();
+      const res = await authenticatedFetch(`/api/mail/threads?${qs}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(data.threads ?? []);
+      } else {
+        setSearchResults([]);
+      }
+    } catch {
+      setSearchResults([]);
+    }
+    setSearching(false);
+  }, [authenticatedFetch, selectedMailboxEmail]);
+
+  const onSearchChange = useCallback((text: string) => {
+    setSearchQuery(text);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!text.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    searchTimerRef.current = setTimeout(() => handleSearch(text), 300);
+  }, [handleSearch]);
+
+  const handleAttachFiles = useCallback(() => {
+    if (isWeb && fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  }, []);
+
+  const handleFileSelected = useCallback((e: any) => {
+    const files = e.target?.files;
+    if (!files) return;
+    const newFiles: AttachedFile[] = [];
+    for (let i = 0; i < files.length; i++) {
+      newFiles.push({
+        name: files[i].name,
+        size: files[i].size,
+        type: files[i].type,
+        file: files[i],
+      });
+    }
+    setCompose(prev => ({
+      ...prev,
+      attachments: [...prev.attachments, ...newFiles],
+    }));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const removeAttachment = useCallback((index: number) => {
+    setCompose(prev => ({
+      ...prev,
+      attachments: prev.attachments.filter((_, i) => i !== index),
+    }));
+  }, []);
+
+  const totalAttachmentSize = compose.attachments.reduce((sum, f) => sum + f.size, 0);
+
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadData() {
-      // Mail threads from PolarisM via Domain Rail
       await loadMailThreads();
-
-      // Office items from Supabase inbox_items table
       try {
         const items = await getInboxItems(50);
         if (!cancelled) setOfficeItems(items);
       } catch {
         if (!cancelled) setOfficeItems([]);
       }
-
-      // Calls from Supabase provider_call_log table
       try {
         const callData = await getProviderCalls(50);
         if (!cancelled) setCalls(callData);
       } catch {
         if (!cancelled) setCalls([]);
       }
-
-      // Contacts from Supabase (or empty if no contacts table)
       try {
         const { data: contactData } = await supabase
           .from('contacts')
@@ -1110,10 +1135,8 @@ export default function InboxScreen() {
       } catch {
         if (!cancelled) setContacts([]);
       }
-
       if (!cancelled) setLoading(false);
     }
-
     loadData();
     return () => { cancelled = true; };
   }, [loadMailThreads]);
@@ -1164,17 +1187,6 @@ export default function InboxScreen() {
   }, [activeTab, mailSetupChecked]);
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathAnim, { toValue: 1.03, duration: 1500, useNativeDriver: false }),
-        Animated.timing(breathAnim, { toValue: 1, duration: 1500, useNativeDriver: false }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [breathAnim]);
-
-  useEffect(() => {
     if (eliVoiceActive) {
       const loop = Animated.loop(
         Animated.sequence([
@@ -1188,6 +1200,18 @@ export default function InboxScreen() {
       eliMicPulse.setValue(1);
     }
   }, [eliVoiceActive, eliMicPulse]);
+
+  useEffect(() => {
+    if (compose.visible || eliOpen) {
+      Animated.parallel([
+        Animated.spring(modalScaleAnim, { toValue: 1, useNativeDriver: false, damping: 20, stiffness: 300 }),
+        Animated.timing(modalOpacityAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
+      ]).start();
+    } else {
+      modalScaleAnim.setValue(0.97);
+      modalOpacityAnim.setValue(0);
+    }
+  }, [compose.visible, eliOpen]);
 
   const currentFilter = activeFilter[activeTab];
 
@@ -1213,6 +1237,7 @@ export default function InboxScreen() {
   };
 
   const getFilteredMail = (): MailThread[] => {
+    if (searchResults !== null) return searchResults;
     switch (currentFilter) {
       case 'Unread': return mailThreads.filter(i => i.unread);
       case 'Starred': return mailThreads.slice(0, 1);
@@ -1261,7 +1286,6 @@ export default function InboxScreen() {
     setSelectedId(id);
     setMailDetail(null);
     scrollRef.current?.scrollTo({ y: 0, animated: true });
-    // Fetch full thread detail for mail items
     if (activeTab === 'mail') {
       fetchMailDetail(id);
     }
@@ -1270,6 +1294,8 @@ export default function InboxScreen() {
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
     setSelectedId(null);
+    setSearchQuery('');
+    setSearchResults(null);
   };
 
   const handleFilterChange = (filter: string) => {
@@ -1326,10 +1352,31 @@ export default function InboxScreen() {
 
   const eliTriagedCount = mailThreads.filter(i => i.tags.length > 0).length + officeItems.filter(i => i.unread).length;
 
+  const openUnifiedModal = useCallback((tab: 'compose' | 'eli' = 'compose') => {
+    if (tab === 'compose') {
+      if (!compose.visible) {
+        setCompose({ visible: true, to: '', cc: '', bcc: '', subject: '', body: '', mode: 'new', attachments: [] });
+      } else {
+        setCompose(prev => ({ ...prev, visible: true }));
+      }
+    }
+    setUnifiedModalTab(tab);
+    setEliOpen(tab === 'eli' || compose.visible);
+    if (tab === 'eli') setEliOpen(true);
+  }, [compose.visible]);
+
+  const closeUnifiedModal = useCallback(() => {
+    if (eliVoiceActive) eliVoice.endSession();
+    setCompose(prev => ({ ...prev, visible: false }));
+    setEliOpen(false);
+  }, [eliVoiceActive, eliVoice]);
+
+  const isUnifiedModalOpen = compose.visible || eliOpen;
+
   const renderListItems = () => {
     if (loading) {
       return Array.from({ length: 5 }).map((_, i) => (
-        <View key={i} style={styles.skeletonCard}>
+        <Animated.View key={i} style={styles.skeletonCard}>
           <View style={styles.skeletonRow}>
             <View style={styles.skeletonCircle} />
             <View style={{ flex: 1, marginLeft: 12 }}>
@@ -1337,12 +1384,12 @@ export default function InboxScreen() {
               <View style={styles.skeletonSubtitle} />
             </View>
           </View>
-        </View>
+        </Animated.View>
       ));
     }
 
     if (filteredItems.length === 0) {
-      return <EmptyState filter={currentFilter} />;
+      return <EmptyState filter={currentFilter} searchQuery={searchResults !== null ? searchQuery : undefined} />;
     }
 
     switch (activeTab) {
@@ -1368,6 +1415,7 @@ export default function InboxScreen() {
   const content = (
     <View style={styles.container}>
       <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={styles.pageScrollContent} showsVerticalScrollIndicator={false}>
+        {/* ── Header Banner (UNTOUCHED) ── */}
         <ImageBackground source={inboxHero} style={styles.headerBanner} imageStyle={styles.headerBannerImage}>
           <LinearGradient
             colors={['rgba(10, 10, 10, 0.35)', 'rgba(10, 10, 10, 0.65)']}
@@ -1389,6 +1437,7 @@ export default function InboxScreen() {
           </LinearGradient>
         </ImageBackground>
 
+        {/* ── Tab Bar (UNTOUCHED) ── */}
         <View style={styles.tabBar}>
           {TAB_CONFIG.map((tab) => {
             const isActive = activeTab === tab.key;
@@ -1422,27 +1471,25 @@ export default function InboxScreen() {
           })}
         </View>
 
-        {/* Mailbox Selector - Mail tab only */}
+        {/* ── Mailbox Selector (Redesigned) ── */}
         {activeTab === 'mail' && hasActiveMailbox && mailAccounts.length > 0 && (
           <View style={styles.mailboxSelectorBar}>
-            <Pressable 
+            <Pressable
               style={({ hovered }: any) => [styles.mailboxSelector, hovered && styles.mailboxSelectorHover]}
               onPress={() => setShowMailboxDropdown(!showMailboxDropdown)}
             >
               <View style={styles.mailboxSelectorLeft}>
-                <View style={styles.mailboxProviderBadge}>
-                  <Ionicons 
-                    name={selectedMailboxAccount?.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} 
-                    size={14} 
-                    color={selectedMailboxAccount?.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} 
-                  />
-                </View>
+                <Ionicons
+                  name={selectedMailboxAccount?.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'}
+                  size={14}
+                  color={selectedMailboxAccount?.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'}
+                />
                 <View>
                   <Text style={styles.mailboxDisplayName}>{selectedMailboxAccount?.displayName || 'Business Email'}</Text>
                   <Text style={styles.mailboxEmail}>{selectedMailboxAccount?.email || ''}</Text>
                 </View>
               </View>
-              <Ionicons name={showMailboxDropdown ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.text.muted} />
+              <Ionicons name={showMailboxDropdown ? 'chevron-up' : 'chevron-down'} size={14} color={Colors.text.muted} />
             </Pressable>
 
             {showMailboxDropdown && (
@@ -1453,19 +1500,19 @@ export default function InboxScreen() {
                       style={({ hovered }: any) => [styles.mailboxDropdownSelectArea, hovered && styles.mailboxDropdownItemHover]}
                       onPress={() => { setSelectedMailbox(acct.id); setShowMailboxDropdown(false); }}
                     >
-                      <Ionicons name={acct.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} size={14} color={acct.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} />
+                      <Ionicons name={acct.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} size={13} color={acct.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.mailboxDropdownName}>{acct.displayName}</Text>
                         <Text style={styles.mailboxDropdownEmail}>{acct.email}</Text>
                       </View>
-                      {selectedMailbox === acct.id && <Ionicons name="checkmark" size={16} color={Colors.accent.cyan} />}
+                      {selectedMailbox === acct.id && <Ionicons name="checkmark" size={14} color={Colors.accent.cyan} />}
                     </Pressable>
                     <Pressable
                       style={({ hovered }: any) => [styles.mailboxRemoveButton, hovered && styles.mailboxDropdownItemHover]}
                       onPress={() => handleRemoveMailbox(acct.id, acct.email)}
                       disabled={removingMailboxId === acct.id}
                     >
-                      <Ionicons name="trash-outline" size={16} color={Colors.semantic.error} />
+                      <Ionicons name="trash-outline" size={14} color={Colors.semantic.error} />
                     </Pressable>
                   </View>
                 ))}
@@ -1473,7 +1520,7 @@ export default function InboxScreen() {
                   style={({ hovered }: any) => [styles.mailboxDropdownItem, styles.mailboxAddItem, hovered && styles.mailboxDropdownItemHover]}
                   onPress={() => { setShowMailboxDropdown(false); router.push('/inbox/setup' as any); }}
                 >
-                  <Ionicons name="add-circle-outline" size={16} color={Colors.accent.cyan} />
+                  <Ionicons name="add-circle-outline" size={14} color={Colors.accent.cyan} />
                   <Text style={[styles.mailboxDropdownName, { color: Colors.accent.cyan }]}>Add mailbox</Text>
                 </Pressable>
               </View>
@@ -1481,6 +1528,36 @@ export default function InboxScreen() {
           </View>
         )}
 
+        {/* ── Search Bar (New) ── */}
+        {activeTab === 'mail' && hasActiveMailbox && (
+          <View style={styles.searchBar}>
+            <View style={styles.searchInputWrap}>
+              <Ionicons name="search" size={16} color={Colors.text.muted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search messages..."
+                placeholderTextColor={Colors.text.disabled}
+                value={searchQuery}
+                onChangeText={onSearchChange}
+                {...(isWeb ? { style: [styles.searchInput, { outlineStyle: 'none' } as any] } : {})}
+              />
+              {searchQuery ? (
+                <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults(null); }} activeOpacity={0.7}>
+                  <Ionicons name="close-circle" size={16} color={Colors.text.muted} />
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.capacityText}>{mailThreads.length} of 30</Text>
+              )}
+            </View>
+            {searchResults !== null && (
+              <Text style={styles.searchResultsLabel}>
+                {searching ? 'Searching...' : `${searchResults.length} result${searchResults.length !== 1 ? 's' : ''}`}
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* ── Filter Pills (Redesigned) ── */}
         <View style={styles.filterBar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
             {FILTERS[activeTab].map((f) => {
@@ -1492,7 +1569,6 @@ export default function InboxScreen() {
                   onPress={() => handleFilterChange(f.label)}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name={f.icon} size={12} color={isActive ? '#fff' : Colors.text.secondary} style={{ marginRight: 4 }} />
                   <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>{f.label}</Text>
                 </TouchableOpacity>
               );
@@ -1505,7 +1581,7 @@ export default function InboxScreen() {
           <View style={styles.mailSetupOverlay}>
             <View style={styles.mailSetupModal}>
               <View style={styles.mailSetupIconContainer}>
-                <Ionicons name="mail-outline" size={48} color={Colors.accent.cyan} />
+                <Ionicons name="mail-outline" size={40} color={Colors.accent.cyan} />
               </View>
               <Text style={styles.mailSetupTitle}>Set Up Your Mailbox</Text>
               <Text style={styles.mailSetupDescription}>
@@ -1513,15 +1589,15 @@ export default function InboxScreen() {
               </Text>
               <View style={styles.mailSetupFeatures}>
                 <View style={styles.mailSetupFeatureRow}>
-                  <Ionicons name="checkmark-circle" size={20} color={Colors.accent.cyan} />
+                  <Ionicons name="checkmark-circle" size={18} color={Colors.accent.cyan} />
                   <Text style={styles.mailSetupFeatureText}>Mailbox selector + unified inbox</Text>
                 </View>
                 <View style={styles.mailSetupFeatureRow}>
-                  <Ionicons name="checkmark-circle" size={20} color={Colors.accent.cyan} />
+                  <Ionicons name="checkmark-circle" size={18} color={Colors.accent.cyan} />
                   <Text style={styles.mailSetupFeatureText}>Verification checks and health status</Text>
                 </View>
                 <View style={styles.mailSetupFeatureRow}>
-                  <Ionicons name="checkmark-circle" size={20} color={Colors.accent.cyan} />
+                  <Ionicons name="checkmark-circle" size={18} color={Colors.accent.cyan} />
                   <Text style={styles.mailSetupFeatureText}>Eli drafting with policy-gated sending</Text>
                 </View>
               </View>
@@ -1547,23 +1623,21 @@ export default function InboxScreen() {
         {/* Mail Setup Required Empty State */}
         {activeTab === 'mail' && mailSetupChecked && !hasActiveMailbox && !showMailSetupModal ? (
           <View style={styles.mailSetupEmptyState}>
-            <View style={styles.mailSetupEmptyIcon}>
-              <Ionicons name="mail-unread-outline" size={40} color={Colors.text.muted} />
-            </View>
+            <Ionicons name="mail-unread-outline" size={36} color={Colors.text.muted} style={{ opacity: 0.4 }} />
             <Text style={styles.mailSetupEmptyTitle}>Mailbox Not Connected</Text>
             <Text style={styles.mailSetupEmptyDesc}>Set up your business email to start receiving and managing mail in Aspire Inbox.</Text>
             <TouchableOpacity
               style={styles.mailSetupEmptyCTA}
               onPress={() => router.push('/inbox/setup' as any)}
             >
-              <Ionicons name="settings-outline" size={16} color="#fff" />
+              <Ionicons name="settings-outline" size={15} color="#fff" />
               <Text style={styles.mailSetupEmptyCTAText}>Set Up Mailbox</Text>
             </TouchableOpacity>
           </View>
         ) : selectedItem ? (
           <View>
             <TouchableOpacity style={styles.backButton} onPress={() => setSelectedId(null)} activeOpacity={0.7}>
-              <Ionicons name="arrow-back" size={20} color={Colors.accent.cyan} />
+              <Ionicons name="chevron-back" size={18} color={Colors.text.tertiary} />
               <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
             <View style={fp.detailContent}>
@@ -1590,98 +1664,206 @@ export default function InboxScreen() {
         )}
       </ScrollView>
 
-      {/* ── Compose Email FAB — mail tab only ── */}
-      {activeTab === 'mail' && hasActiveMailbox && (
+      {/* ── Single Unified FAB ── */}
+      {activeTab === 'mail' && hasActiveMailbox && !isUnifiedModalOpen && (
         <TouchableOpacity
-          style={styles.composeFab}
+          style={styles.unifiedFab}
           activeOpacity={0.8}
-          onPress={() => openCompose('new')}
+          onPress={() => openUnifiedModal('compose')}
         >
-          <Ionicons name="create-outline" size={22} color="#fff" />
-          <Text style={styles.composeFabText}>Compose</Text>
+          <Ionicons name="create-outline" size={20} color="#fff" />
+          <Text style={styles.unifiedFabText}>Compose</Text>
         </TouchableOpacity>
       )}
 
-      {/* ── Compose Modal ── */}
-      {compose.visible && (
-        <View style={styles.composeOverlay}>
-          <View style={styles.composeModal}>
-            <View style={styles.composeHeader}>
-              <Text style={styles.composeTitle}>
-                {compose.mode === 'reply' ? 'Reply' : compose.mode === 'replyAll' ? 'Reply All' : compose.mode === 'forward' ? 'Forward' : 'New Email'}
-              </Text>
-              <TouchableOpacity onPress={() => setCompose(c => ({ ...c, visible: false }))} activeOpacity={0.7}>
-                <Ionicons name="close" size={22} color={Colors.text.secondary} />
+      {/* ── Unified Compose + Eli Modal ── */}
+      {isUnifiedModalOpen && (
+        <View style={styles.unifiedOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeUnifiedModal} />
+          <Animated.View style={[
+            styles.unifiedModal,
+            { transform: [{ scale: modalScaleAnim }], opacity: modalOpacityAnim },
+          ]}>
+            {/* Modal Header with tabs */}
+            <View style={styles.unifiedModalHeader}>
+              <View style={styles.unifiedModalTabs}>
+                <TouchableOpacity
+                  style={[styles.unifiedModalTab, unifiedModalTab === 'compose' && styles.unifiedModalTabActive]}
+                  onPress={() => setUnifiedModalTab('compose')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="mail" size={16} color={unifiedModalTab === 'compose' ? Colors.accent.cyan : Colors.text.muted} />
+                  <Text style={[styles.unifiedModalTabText, unifiedModalTab === 'compose' && styles.unifiedModalTabTextActive]}>
+                    {compose.mode === 'reply' ? 'Reply' : compose.mode === 'replyAll' ? 'Reply All' : compose.mode === 'forward' ? 'Forward' : 'Compose'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.unifiedModalTab, unifiedModalTab === 'eli' && styles.unifiedModalTabActiveEli]}
+                  onPress={() => setUnifiedModalTab('eli')}
+                  activeOpacity={0.7}
+                >
+                  <Image source={eliAvatar} style={styles.eliTabAvatar} />
+                  <Text style={[styles.unifiedModalTabText, unifiedModalTab === 'eli' && styles.unifiedModalTabTextActiveEli]}>Eli</Text>
+                  {eliTriagedCount > 0 && unifiedModalTab !== 'eli' && (
+                    <View style={styles.eliNotifBadge} />
+                  )}
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity onPress={closeUnifiedModal} activeOpacity={0.7} style={styles.unifiedModalClose}>
+                <Ionicons name="close" size={20} color={Colors.text.tertiary} />
               </TouchableOpacity>
             </View>
-            <View style={styles.composeField}>
-              <Text style={styles.composeLabel}>To</Text>
-              <TextInput
-                style={styles.composeInput}
-                value={compose.to}
-                onChangeText={(t) => setCompose(c => ({ ...c, to: t }))}
-                placeholder="recipient@example.com"
-                placeholderTextColor={Colors.text.disabled}
-                autoFocus={compose.mode === 'new' || compose.mode === 'forward'}
-              />
-            </View>
-            <View style={styles.composeField}>
-              <Text style={styles.composeLabel}>Subject</Text>
-              <TextInput
-                style={styles.composeInput}
-                value={compose.subject}
-                onChangeText={(t) => setCompose(c => ({ ...c, subject: t }))}
-                placeholder="Subject"
-                placeholderTextColor={Colors.text.disabled}
-              />
-            </View>
-            <TextInput
-              style={styles.composeBody}
-              value={compose.body}
-              onChangeText={(t) => setCompose(c => ({ ...c, body: t }))}
-              placeholder="Write your email..."
-              placeholderTextColor={Colors.text.disabled}
-              multiline
-              textAlignVertical="top"
-              autoFocus={compose.mode === 'reply' || compose.mode === 'replyAll'}
-            />
-            <View style={styles.composeActions}>
-              <TouchableOpacity
-                style={[styles.composeSendBtn, composeSending && { opacity: 0.6 }]}
-                activeOpacity={0.7}
-                onPress={handleSendEmail}
-                disabled={composeSending || !compose.to || !compose.subject}
-              >
-                <Ionicons name="send" size={16} color="#fff" />
-                <Text style={styles.composeSendText}>{composeSending ? 'Sending...' : 'Send'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+
+            {/* Compose Tab Content */}
+            {unifiedModalTab === 'compose' && (
+              <View style={styles.composeContent}>
+                {/* From */}
+                {selectedMailboxEmail && (
+                  <View style={styles.composeFieldRow}>
+                    <Text style={styles.composeFieldLabel}>From</Text>
+                    <Text style={styles.composeFromText}>{selectedMailboxEmail}</Text>
+                  </View>
+                )}
+                {/* To */}
+                <View style={styles.composeFieldRow}>
+                  <Text style={styles.composeFieldLabel}>To</Text>
+                  <TextInput
+                    style={styles.composeFieldInput}
+                    value={compose.to}
+                    onChangeText={(t) => setCompose(c => ({ ...c, to: t }))}
+                    placeholder="recipient@example.com"
+                    placeholderTextColor={Colors.text.disabled}
+                    autoFocus={compose.mode === 'new' || compose.mode === 'forward'}
+                  />
+                  {!showCcBcc && (
+                    <TouchableOpacity onPress={() => setShowCcBcc(true)} activeOpacity={0.7}>
+                      <Text style={styles.ccBccToggle}>Cc Bcc</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {/* CC */}
+                {showCcBcc && (
+                  <View style={styles.composeFieldRow}>
+                    <Text style={styles.composeFieldLabel}>Cc</Text>
+                    <TextInput
+                      style={styles.composeFieldInput}
+                      value={compose.cc}
+                      onChangeText={(t) => setCompose(c => ({ ...c, cc: t }))}
+                      placeholder="cc@example.com"
+                      placeholderTextColor={Colors.text.disabled}
+                    />
+                  </View>
+                )}
+                {/* BCC */}
+                {showCcBcc && (
+                  <View style={styles.composeFieldRow}>
+                    <Text style={styles.composeFieldLabel}>Bcc</Text>
+                    <TextInput
+                      style={styles.composeFieldInput}
+                      value={compose.bcc}
+                      onChangeText={(t) => setCompose(c => ({ ...c, bcc: t }))}
+                      placeholder="bcc@example.com"
+                      placeholderTextColor={Colors.text.disabled}
+                    />
+                  </View>
+                )}
+                {/* Subject */}
+                <View style={styles.composeFieldRow}>
+                  <Text style={styles.composeFieldLabel}>Subject</Text>
+                  <TextInput
+                    style={styles.composeFieldInput}
+                    value={compose.subject}
+                    onChangeText={(t) => setCompose(c => ({ ...c, subject: t }))}
+                    placeholder="Subject"
+                    placeholderTextColor={Colors.text.disabled}
+                  />
+                </View>
+                {/* Body */}
+                <TextInput
+                  style={styles.composeBody}
+                  value={compose.body}
+                  onChangeText={(t) => setCompose(c => ({ ...c, body: t }))}
+                  placeholder="Write your email..."
+                  placeholderTextColor={Colors.text.disabled}
+                  multiline
+                  textAlignVertical="top"
+                  autoFocus={compose.mode === 'reply' || compose.mode === 'replyAll'}
+                />
+                {/* Attached files */}
+                {compose.attachments.length > 0 && (
+                  <View style={styles.composeAttachmentsList}>
+                    {compose.attachments.map((f, idx) => {
+                      const fi = getFileTypeIcon(f.type);
+                      return (
+                        <View key={idx} style={styles.composeAttachmentChip}>
+                          <Ionicons name={fi.icon} size={14} color={fi.color} />
+                          <Text style={styles.composeAttachmentName} numberOfLines={1}>{f.name}</Text>
+                          <Text style={styles.composeAttachmentSize}>{(f.size / 1024).toFixed(0)} KB</Text>
+                          <TouchableOpacity onPress={() => removeAttachment(idx)} activeOpacity={0.7}>
+                            <Ionicons name="close" size={14} color={Colors.text.muted} />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                    {totalAttachmentSize > 25 * 1024 * 1024 && (
+                      <Text style={styles.attachmentWarning}>Total size exceeds 25MB limit</Text>
+                    )}
+                  </View>
+                )}
+                {/* Toolbar + Send */}
+                <View style={styles.composeFooter}>
+                  <View style={styles.composeToolbar}>
+                    <TouchableOpacity style={styles.composeToolbarBtn} activeOpacity={0.7} onPress={handleAttachFiles}>
+                      <Ionicons name="attach" size={18} color={Colors.text.muted} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.composeToolbarBtn} activeOpacity={0.7}>
+                      <Ionicons name="link" size={18} color={Colors.text.muted} />
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.composeSendBtn, (composeSending || !compose.to || !compose.subject) && { opacity: 0.4 }]}
+                    activeOpacity={0.7}
+                    onPress={handleSendEmail}
+                    disabled={composeSending || !compose.to || !compose.subject}
+                  >
+                    <Text style={styles.composeSendText}>{composeSending ? 'Sending...' : 'Send'}</Text>
+                    <Ionicons name="send" size={14} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+                {/* Hidden file input for web */}
+                {isWeb && (
+                  <input
+                    ref={fileInputRef as any}
+                    type="file"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={handleFileSelected}
+                  />
+                )}
+              </View>
+            )}
+
+            {/* Eli Tab Content */}
+            {unifiedModalTab === 'eli' && (
+              <View style={styles.eliTabContent}>
+                <EliVoiceChatPanel
+                  visible={true}
+                  onClose={closeUnifiedModal}
+                  voiceActive={eliVoiceActive}
+                  transcript={eliTranscript}
+                  triagedCount={eliTriagedCount}
+                  onMicPress={handleEliMicPress}
+                  onSendMessage={handleEliSendMessage}
+                  micPulseAnim={eliMicPulse}
+                  messages={eliMessages}
+                  activeRun={eliRun}
+                  embedded
+                />
+              </View>
+            )}
+          </Animated.View>
         </View>
       )}
-
-      <Animated.View style={[styles.eliChipWrapper, { transform: [{ scale: breathAnim }] }]}>
-        <TouchableOpacity onPress={() => setEliOpen(!eliOpen)} activeOpacity={0.8}>
-          <View style={styles.eliChip}>
-            <Image source={eliAvatar} style={styles.eliChipAvatar} />
-            <Text style={styles.eliChipText}>Eli</Text>
-          </View>
-          <View style={styles.eliNotifDot} />
-        </TouchableOpacity>
-      </Animated.View>
-
-      <EliVoiceChatPanel
-        visible={eliOpen}
-        onClose={() => { if (eliVoiceActive) { eliVoice.endSession(); } setEliOpen(false); }}
-        voiceActive={eliVoiceActive}
-        transcript={eliTranscript}
-        triagedCount={eliTriagedCount}
-        onMicPress={handleEliMicPress}
-        onSendMessage={handleEliSendMessage}
-        micPulseAnim={eliMicPulse}
-        messages={eliMessages}
-        activeRun={eliRun}
-      />
     </View>
   );
 
@@ -1725,7 +1907,7 @@ const fp = StyleSheet.create({
   },
   badgeText: {
     ...Typography.micro,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   pageTitle: {
     ...Typography.title,
@@ -1744,7 +1926,7 @@ const fp = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: Colors.border.subtle,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     marginVertical: Spacing.lg,
   },
   sectionLabel: {
@@ -1769,7 +1951,7 @@ const fp = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.surface.card,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: 'rgba(255,255,255,0.06)',
     flex: 1,
     minWidth: 140,
   },
@@ -1789,12 +1971,12 @@ const fp = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.xl,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   bodyText: {
     ...Typography.body,
     color: Colors.text.secondary,
-    lineHeight: 24,
+    lineHeight: 26,
   },
   tagsRow: {
     flexDirection: 'row',
@@ -1815,8 +1997,9 @@ const fp = StyleSheet.create({
     borderRadius: BorderRadius.md,
     backgroundColor: Colors.background.tertiary,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
+    borderColor: 'rgba(255,255,255,0.06)',
+    ...(isWeb ? { transition: 'background-color 0.2s ease' } : {}),
+  } as any,
   actionBtnText: {
     ...Typography.caption,
     color: Colors.text.tertiary,
@@ -1853,10 +2036,10 @@ const fp = StyleSheet.create({
     fontWeight: '500',
   },
   callerAvatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 2,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1870,14 +2053,14 @@ const fp = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     gap: Spacing.xs,
   },
   metricDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     marginTop: 5,
   },
   metricLabel: {
@@ -1898,12 +2081,12 @@ const fp = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   playBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: Colors.accent.cyan,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1944,33 +2127,34 @@ const fp = StyleSheet.create({
     fontWeight: '600',
   },
   mailSubject: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     color: Colors.text.primary,
-    lineHeight: 32,
+    lineHeight: 30,
     marginBottom: Spacing.sm,
   },
   mailSenderRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: Spacing.md,
   },
   mailAvatarLg: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.accent.cyanDark,
     alignItems: 'center',
     justifyContent: 'center',
   },
   mailAvatarLgText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#fff',
   },
   mailSenderName: {
     ...Typography.bodyMedium,
     color: Colors.text.primary,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   mailSenderEmail: {
     ...Typography.small,
@@ -1980,7 +2164,7 @@ const fp = StyleSheet.create({
   mailRecipientsBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
     backgroundColor: Colors.background.tertiary,
@@ -2005,21 +2189,44 @@ const fp = StyleSheet.create({
     color: Colors.text.secondary,
     lineHeight: 26,
   },
-  attachmentsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  attachmentsSection: {
+    marginTop: Spacing.md,
+  },
+  attachmentsLabel: {
+    ...Typography.smallMedium,
+    color: Colors.text.muted,
+    fontWeight: '600',
+    marginBottom: Spacing.sm,
+  },
+  attachmentsGrid: {
     gap: Spacing.sm,
   },
-  attachmentItem: {
+  attachmentCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 2,
+    paddingVertical: Spacing.md,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: 'rgba(255,255,255,0.06)',
+    ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
+  } as any,
+  attachmentIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentImagePreview: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: 'rgba(167,139,250,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   attachmentName: {
     ...Typography.caption,
@@ -2030,18 +2237,27 @@ const fp = StyleSheet.create({
     ...Typography.small,
     color: Colors.text.muted,
   },
+  threadSeparator: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  threadSeparatorLine: {
+    width: '100%',
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
   profileAvatarLg: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: Colors.accent.cyanDark,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.accent.cyan + '44',
+    borderWidth: 1,
+    borderColor: Colors.accent.cyan + '30',
   },
   profileAvatarLgText: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '700',
     color: '#fff',
   },
@@ -2056,7 +2272,7 @@ const fp = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: 'rgba(255,255,255,0.06)',
     gap: Spacing.xs,
   },
   contactGridLabel: {
@@ -2079,9 +2295,9 @@ const fp = StyleSheet.create({
     alignItems: 'center',
   },
   historyDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2214,10 +2430,43 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent.cyan,
     ...Shadows.glow(Colors.accent.cyan),
   },
+
+  // ── Search Bar ──
+  searchBar: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+  },
+  searchInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  } as any,
+  searchInput: {
+    flex: 1,
+    ...Typography.caption,
+    color: Colors.text.primary,
+    padding: 0,
+  } as any,
+  capacityText: {
+    ...Typography.small,
+    color: Colors.text.disabled,
+  },
+  searchResultsLabel: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    marginTop: Spacing.xs,
+    paddingLeft: Spacing.xs,
+  },
+
+  // ── Filter Pills (Redesigned) ──
   filterBar: {
     paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
   },
   filterScroll: {
     paddingHorizontal: Spacing.xl,
@@ -2225,18 +2474,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   filterPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs + 2,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xs + 3,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.background.tertiary,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-  },
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    ...(isWeb ? { transition: 'all 0.2s ease', cursor: 'pointer' } : {}),
+  } as any,
   filterPillActive: {
     backgroundColor: Colors.accent.cyan,
-    borderColor: Colors.accent.cyan,
   },
   filterPillText: {
     ...Typography.small,
@@ -2245,7 +2490,10 @@ const styles = StyleSheet.create({
   },
   filterPillTextActive: {
     color: '#fff',
+    fontWeight: '600',
   },
+
+  // ── Back Button ──
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2255,48 +2503,40 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     ...Typography.caption,
-    color: Colors.accent.cyan,
-    fontWeight: '600',
+    color: Colors.text.tertiary,
+    fontWeight: '500',
   },
-  detailScrollContent: {
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: 100,
-  },
-  detailCard: {
-    width: '100%',
-    maxWidth: 800,
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,
-    padding: Spacing.xl,
-  },
+
+  // ── List & Cards (Redesigned) ──
   listContent: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
+    paddingTop: Spacing.xs,
     paddingBottom: 100,
   },
   card: {
     backgroundColor: Colors.surface.card,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,
+    borderColor: 'rgba(255,255,255,0.06)',
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.lg,
     marginBottom: Spacing.sm,
-  },
+    ...(isWeb ? { transition: 'background-color 0.2s ease', cursor: 'pointer' } : {}),
+  } as any,
   cardSelected: {
-    borderColor: Colors.accent.cyan,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent.cyan,
     backgroundColor: Colors.background.elevated,
   },
   cardHover: {
     backgroundColor: Colors.surface.cardHover,
-    ...(isWeb ? { transform: [{ translateY: -1 }] } : {}),
+  },
+  cardUnread: {
+    backgroundColor: 'rgba(59,130,246,0.03)',
   },
   cardRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   iconCircle: {
     width: 40,
@@ -2311,348 +2551,83 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: Colors.accent.cyan,
     marginRight: Spacing.xs,
   },
+  priorityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: Spacing.xs,
+  },
   cardTitle: {
-    ...Typography.body,
+    ...Typography.caption,
     color: Colors.text.primary,
-    fontWeight: '700',
+    fontWeight: '400',
     flex: 1,
   },
-  cardSubtitle: {
+  cardTitleUnread: {
+    fontWeight: '600',
+  },
+  cardPreview: {
     ...Typography.small,
     color: Colors.text.tertiary,
-    marginTop: 2,
+    marginTop: 3,
   },
-  cardRight: {
+  cardMeta: {
     alignItems: 'flex-end',
     marginLeft: Spacing.sm,
+    gap: 4,
+  },
+  cardMetaIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   timeText: {
     ...Typography.small,
-    color: Colors.text.tertiary,
-  },
-  previewText: {
-    ...Typography.caption,
-    color: Colors.text.secondary,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-  },
-  tag: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.xs,
-  },
-  tagText: {
-    ...Typography.micro,
-    fontWeight: '600',
-  },
-  assignedText: {
-    ...Typography.small,
     color: Colors.text.muted,
-    marginLeft: 'auto',
   },
-  priorityPill: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.xs,
-    marginTop: 4,
+  attachIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  priorityPillText: {
+  msgCount: {
     ...Typography.micro,
-    fontWeight: '700',
-  },
-  durationText: {
-    ...Typography.small,
     color: Colors.text.muted,
-    marginTop: 2,
-  },
-  callMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-    gap: Spacing.md,
-  },
-  outcomePill: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.xs,
-  },
-  outcomePillText: {
-    ...Typography.micro,
     fontWeight: '600',
-  },
-  summaryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  summaryText: {
-    ...Typography.small,
-    color: Colors.accent.cyan,
-  },
-  summaryBadgeLarge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: Spacing.md,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    backgroundColor: Colors.accent.cyanLight,
-    borderRadius: BorderRadius.md,
   },
   mailAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.accent.cyanDark,
     alignItems: 'center',
     justifyContent: 'center',
   },
   mailAvatarText: {
-    ...Typography.headline,
-    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
-  },
-  mailMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    flexWrap: 'wrap',
-  },
-  msgCountPill: {
-    backgroundColor: Colors.background.tertiary,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.xs,
-  },
-  msgCountText: {
-    ...Typography.micro,
-    color: Colors.text.muted,
-  },
-  eliReviewBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  eliReviewText: {
-    ...Typography.micro,
-    color: Colors.accent.cyan,
+    color: '#fff',
   },
   contactAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.accent.cyanDark,
     alignItems: 'center',
     justifyContent: 'center',
   },
   contactAvatarText: {
-    ...Typography.headline,
-    color: Colors.accent.cyan,
-    fontWeight: '600',
-  },
-  orgText: {
-    ...Typography.small,
-    color: Colors.text.muted,
-    marginTop: 2,
-  },
-  rolePill: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.xs,
-    borderWidth: 1,
-  },
-  rolePillText: {
-    ...Typography.micro,
-    fontWeight: '600',
-  },
-  contactMetaRow: {
-    marginTop: Spacing.sm,
-    paddingTop: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border.subtle,
-  },
-  lastContactedText: {
-    ...Typography.small,
-    color: Colors.text.muted,
-  },
-  previewHeader: {
-    marginBottom: 0,
-  },
-  previewHeaderTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-  },
-  previewPriorityPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.sm + 2,
-    paddingVertical: 3,
-    borderRadius: BorderRadius.full,
-  },
-  previewPriorityText: {
-    ...Typography.micro,
-    fontWeight: '700',
-  },
-  previewTime: {
-    ...Typography.small,
-    color: Colors.text.muted,
-  },
-  previewHeadline: {
-    ...Typography.headline,
-    color: Colors.text.primary,
-    fontWeight: '700',
-    marginBottom: Spacing.sm,
-  },
-  previewSubhead: {
-    ...Typography.caption,
-    color: Colors.text.tertiary,
-    marginBottom: Spacing.sm,
-  },
-  previewChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-    marginTop: Spacing.xs,
-  },
-  previewChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 3,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    backgroundColor: Colors.background.tertiary,
-  },
-  previewChipText: {
-    ...Typography.micro,
-    color: Colors.text.tertiary,
-  },
-  previewChipDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  previewSectionTitle: {
-    ...Typography.small,
-    color: Colors.text.muted,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: Spacing.sm,
-  },
-  previewTagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-    marginTop: Spacing.md,
-  },
-  previewDivider: {
-    height: 1,
-    backgroundColor: Colors.border.subtle,
-    marginVertical: Spacing.md,
-  },
-  previewBody: {
-    ...Typography.caption,
-    color: Colors.text.secondary,
-    lineHeight: 22,
-  },
-  previewActionsRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  previewActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.background.tertiary,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  previewActionText: {
-    ...Typography.small,
-    color: Colors.text.tertiary,
-    fontWeight: '500',
-  },
-  previewAiSection: {
-    backgroundColor: Colors.background.tertiary,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.accent.cyanLight,
-  },
-  previewAiBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    marginBottom: Spacing.sm,
-  },
-  previewAiLabel: {
-    ...Typography.small,
-    color: Colors.accent.cyan,
-    fontWeight: '600',
-  },
-  previewUnreadBadge: {
-    backgroundColor: Colors.accent.cyanLight,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.full,
-  },
-  previewUnreadText: {
-    ...Typography.micro,
-    color: Colors.accent.cyan,
-    fontWeight: '700',
-  },
-  previewMailMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-  },
-  previewMailAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.accent.cyanDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewMailAvatarText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
     color: Colors.accent.cyan,
   },
-  previewMailSender: {
-    ...Typography.caption,
-    color: Colors.text.primary,
-    fontWeight: '600',
-  },
-  previewMailEmail: {
-    ...Typography.micro,
-    color: Colors.text.muted,
-  },
-  previewMailTo: {
-    ...Typography.micro,
-    color: Colors.text.muted,
-    marginTop: Spacing.sm,
-  },
+
+  // ── Smart Reply ──
   smartReplyRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
@@ -2660,111 +2635,44 @@ const styles = StyleSheet.create({
   },
   smartReplyPill: {
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs + 2,
+    paddingVertical: Spacing.xs + 3,
     borderRadius: BorderRadius.full,
+    backgroundColor: Colors.background.tertiary,
     borderWidth: 1,
-    borderColor: Colors.accent.cyan,
-    backgroundColor: Colors.accent.cyanLight,
-  },
+    borderColor: 'rgba(255,255,255,0.06)',
+    ...(isWeb ? { transition: 'background-color 0.2s ease', cursor: 'pointer' } : {}),
+  } as any,
   smartReplyText: {
     ...Typography.small,
-    color: Colors.accent.cyan,
+    color: Colors.text.secondary,
     fontWeight: '500',
   },
-  contactPreviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  contactPreviewAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.accent.cyanDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contactPreviewAvatarText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: Colors.accent.cyan,
-  },
-  contactPreviewTitle: {
-    ...Typography.caption,
-    color: Colors.text.tertiary,
-    marginTop: 2,
-  },
-  contactInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.sm,
-  },
-  contactInfoText: {
-    ...Typography.caption,
-    color: Colors.text.secondary,
-  },
+
+  // ── Empty State ──
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 80,
+    paddingVertical: 80,
     paddingHorizontal: Spacing.xl,
   },
   emptyTitle: {
-    ...Typography.body,
+    ...Typography.bodyMedium,
     color: Colors.text.secondary,
     marginTop: Spacing.lg,
   },
   emptySubtitle: {
-    ...Typography.small,
+    ...Typography.caption,
     color: Colors.text.muted,
     marginTop: Spacing.xs,
     textAlign: 'center',
+    lineHeight: 20,
   },
-  eliChipWrapper: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    zIndex: 100,
-  },
-  eliChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 48,
-    paddingLeft: 4,
-    paddingRight: Spacing.lg,
-    borderRadius: BorderRadius.full,
-    gap: Spacing.sm,
-    backgroundColor: Colors.surface.card,
-    borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,
-  },
-  eliChipAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  eliChipText: {
-    ...Typography.caption,
-    color: Colors.text.primary,
-    fontWeight: '700',
-  },
-  eliNotifDot: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.semantic.success,
-  },
+
+  // ── Skeleton ──
   skeletonCard: {
-    backgroundColor: Colors.surface.card,
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,
   },
   skeletonRow: {
     flexDirection: 'row',
@@ -2778,7 +2686,7 @@ const styles = StyleSheet.create({
   },
   skeletonTitle: {
     width: '70%',
-    height: 14,
+    height: 12,
     backgroundColor: Colors.background.tertiary,
     borderRadius: 4,
     marginBottom: Spacing.sm,
@@ -2789,11 +2697,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background.tertiary,
     borderRadius: 4,
   },
+
+  // ── Mailbox Selector (Refined) ──
   mailboxSelectorBar: {
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
     position: 'relative' as const,
     zIndex: 100,
   },
@@ -2802,32 +2710,25 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm + 2,
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    backgroundColor: Colors.background.secondary,
-  },
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: Colors.surface.card,
+    ...(isWeb ? { transition: 'background-color 0.2s ease', cursor: 'pointer' } : {}),
+  } as any,
   mailboxSelectorHover: {
-    backgroundColor: Colors.background.tertiary,
+    backgroundColor: Colors.surface.cardHover,
   },
   mailboxSelectorLeft: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: Spacing.sm,
   },
-  mailboxProviderBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: Colors.background.tertiary,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
   mailboxDisplayName: {
     ...Typography.smallMedium,
     color: Colors.text.primary,
-    fontWeight: '600' as const,
+    fontWeight: '500' as const,
   },
   mailboxEmail: {
     ...Typography.small,
@@ -2836,13 +2737,13 @@ const styles = StyleSheet.create({
   mailboxDropdown: {
     position: 'absolute' as const,
     top: '100%' as unknown as number,
-    left: Spacing.lg,
-    right: Spacing.lg,
+    left: Spacing.xl,
+    right: Spacing.xl,
     backgroundColor: Colors.surface.card,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    borderRadius: BorderRadius.md,
-    ...Shadows.md,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: BorderRadius.lg,
+    ...Shadows.lg,
     zIndex: 200,
     overflow: 'hidden' as const,
   },
@@ -2850,7 +2751,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
   },
   mailboxDropdownSelectArea: {
     flex: 1,
@@ -2859,17 +2760,19 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm + 2,
-  },
+    ...(isWeb ? { cursor: 'pointer' } : {}),
+  } as any,
   mailboxRemoveButton: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     marginRight: Spacing.xs,
     borderRadius: BorderRadius.sm,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-  },
+    ...(isWeb ? { cursor: 'pointer' } : {}),
+  } as any,
   mailboxDropdownItemActive: {
-    backgroundColor: Colors.accent.cyan + '0D',
+    backgroundColor: 'rgba(59,130,246,0.06)',
   },
   mailboxDropdownItemHover: {
     backgroundColor: Colors.background.tertiary,
@@ -2890,48 +2793,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm + 2,
     borderBottomWidth: 0,
-  },
+    ...(isWeb ? { cursor: 'pointer' } : {}),
+  } as any,
+
+  // ── Mail Setup ──
   mailSetupOverlay: {
     ...(Platform.OS === 'web' ? { position: 'fixed' as any } : { position: 'absolute' as const }),
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     zIndex: 9999,
     paddingHorizontal: Spacing.xl,
-  },
+    ...(isWeb ? { backdropFilter: 'blur(12px)' } : {}),
+  } as any,
   mailSetupModal: {
     width: '100%' as unknown as number,
-    maxWidth: 480,
+    maxWidth: 440,
     backgroundColor: Colors.surface.card,
     borderRadius: BorderRadius.xl,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: 'rgba(255,255,255,0.08)',
     padding: Spacing.xl + Spacing.sm,
     alignItems: 'center' as const,
-    ...Shadows.lg,
-  },
+    ...(isWeb ? { boxShadow: '0 24px 64px rgba(0,0,0,0.5)' } : {}),
+  } as any,
   mailSetupIconContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.accent.cyan + '18',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.accent.cyan + '15',
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     marginBottom: Spacing.lg,
   },
   mailSetupTitle: {
-    ...Typography.title,
+    ...Typography.headline,
     color: Colors.text.primary,
     fontWeight: '700' as const,
     textAlign: 'center' as const,
     marginBottom: Spacing.sm,
   },
   mailSetupDescription: {
-    ...Typography.body,
+    ...Typography.caption,
     color: Colors.text.secondary,
     textAlign: 'center' as const,
     lineHeight: 22,
@@ -2948,14 +2855,14 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   mailSetupFeatureText: {
-    ...Typography.body,
+    ...Typography.caption,
     color: Colors.text.primary,
   },
   mailSetupPrimaryButton: {
     width: '100%' as unknown as number,
     paddingVertical: Spacing.md,
     backgroundColor: Colors.accent.cyan,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.lg,
     alignItems: 'center' as const,
     marginBottom: Spacing.sm,
   },
@@ -2970,39 +2877,25 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
   },
   mailSetupSecondaryButtonText: {
-    ...Typography.body,
+    ...Typography.caption,
     color: Colors.text.muted,
   },
   mailSetupEmptyState: {
     flex: 1,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    paddingVertical: Spacing.xl * 3,
+    paddingVertical: 80,
     paddingHorizontal: Spacing.xl,
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.lg,
-    marginHorizontal: Spacing.lg,
-    marginVertical: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  mailSetupEmptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.background.tertiary,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginBottom: Spacing.lg,
   },
   mailSetupEmptyTitle: {
-    ...Typography.title,
+    ...Typography.bodyMedium,
     color: Colors.text.secondary,
     fontWeight: '600' as const,
+    marginTop: Spacing.lg,
     marginBottom: Spacing.sm,
   },
   mailSetupEmptyDesc: {
-    ...Typography.body,
+    ...Typography.caption,
     color: Colors.text.muted,
     textAlign: 'center' as const,
     lineHeight: 22,
@@ -3016,123 +2909,243 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     backgroundColor: Colors.accent.cyan,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.lg,
   },
   mailSetupEmptyCTAText: {
     ...Typography.bodyMedium,
     color: '#fff',
     fontWeight: '600' as const,
   },
-  // ── Compose FAB ──
-  composeFab: {
+
+  // ── Unified FAB ──
+  unifiedFab: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 28,
     right: 24,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.accent.cyan,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 28,
+    borderRadius: BorderRadius.full,
     gap: 8,
     zIndex: 90,
-    ...(Platform.OS === 'web' ? {
-      boxShadow: '0 4px 20px rgba(0, 188, 212, 0.4)',
+    ...Shadows.glow(Colors.accent.cyan),
+    ...(isWeb ? {
       cursor: 'pointer',
+      transition: 'transform 0.2s ease, box-shadow 0.2s ease',
     } : {}),
   } as any,
-  composeFabText: {
+  unifiedFabText: {
     color: '#fff',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600' as const,
   },
-  // ── Compose Modal ──
-  composeOverlay: {
-    position: 'absolute',
+
+  // ── Unified Modal (Compose + Eli) ──
+  unifiedOverlay: {
+    ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     zIndex: 200,
+    ...(isWeb ? { backdropFilter: 'blur(12px)' } : {}),
   } as any,
-  composeModal: {
-    width: '90%',
-    maxWidth: 600,
-    backgroundColor: Colors.background.secondary,
-    borderRadius: BorderRadius.xl,
+  unifiedModal: {
+    width: '92%',
+    maxWidth: 640,
+    maxHeight: '85%',
+    backgroundColor: Colors.surface.card,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    padding: Spacing.xl,
-    maxHeight: '80%',
-    ...(Platform.OS === 'web' ? {
-      boxShadow: '0 16px 48px rgba(0,0,0,0.65)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+    ...(isWeb ? {
+      boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px rgba(0,0,0,0.5)',
     } : {}),
   } as any,
-  composeHeader: {
+  unifiedModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
   } as any,
-  composeTitle: {
-    ...Typography.title,
-    color: Colors.text.primary,
-    fontWeight: '700' as const,
-  },
-  composeField: {
+  unifiedModalTabs: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  } as any,
+  unifiedModalTab: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
+    gap: 6,
+    paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    marginBottom: Spacing.xs,
+    borderRadius: BorderRadius.md,
+    ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
   } as any,
-  composeLabel: {
+  unifiedModalTabActive: {
+    backgroundColor: Colors.accent.cyanLight,
+  },
+  unifiedModalTabActiveEli: {
+    backgroundColor: 'rgba(245,158,11,0.15)',
+  },
+  unifiedModalTabText: {
     ...Typography.caption,
     color: Colors.text.muted,
-    fontWeight: '600' as const,
-    width: 60,
+    fontWeight: '500',
   },
-  composeInput: {
+  unifiedModalTabTextActive: {
+    color: Colors.accent.cyan,
+    fontWeight: '600',
+  },
+  unifiedModalTabTextActiveEli: {
+    color: '#F59E0B',
+    fontWeight: '600',
+  },
+  eliTabAvatar: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+  },
+  eliNotifBadge: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
+    marginLeft: -2,
+  },
+  unifiedModalClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
+  } as any,
+
+  // ── Compose Tab ──
+  composeContent: {
     flex: 1,
-    ...Typography.body,
+    padding: 0,
+  },
+  composeFieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm + 2,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+  } as any,
+  composeFieldLabel: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    fontWeight: '500',
+    width: 56,
+  },
+  composeFieldInput: {
+    flex: 1,
+    ...Typography.caption,
     color: Colors.text.primary,
-    padding: Spacing.xs,
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+    padding: 0,
+    ...(isWeb ? { outlineStyle: 'none' } : {}),
+  } as any,
+  composeFromText: {
+    ...Typography.caption,
+    color: Colors.text.tertiary,
+    flex: 1,
+  },
+  ccBccToggle: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    fontWeight: '500',
+    marginLeft: Spacing.sm,
+    ...(isWeb ? { cursor: 'pointer' } : {}),
   } as any,
   composeBody: {
     flex: 1,
-    minHeight: 200,
+    minHeight: 240,
     ...Typography.body,
     color: Colors.text.primary,
-    padding: Spacing.md,
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.lg,
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+    padding: Spacing.lg,
+    lineHeight: 24,
+    textAlignVertical: 'top',
+    ...(isWeb ? { outlineStyle: 'none' } : {}),
   } as any,
-  composeActions: {
+  composeAttachmentsList: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  composeAttachmentChip: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.background.tertiary,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: Spacing.xs + 2,
+  } as any,
+  composeAttachmentName: {
+    ...Typography.small,
+    color: Colors.text.primary,
+    flex: 1,
+  },
+  composeAttachmentSize: {
+    ...Typography.small,
+    color: Colors.text.muted,
+  },
+  attachmentWarning: {
+    ...Typography.small,
+    color: Colors.semantic.error,
+    marginTop: Spacing.xs,
+  },
+  composeFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.04)',
+  } as any,
+  composeToolbar: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  } as any,
+  composeToolbarBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
   } as any,
   composeSendBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: Colors.accent.cyan,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.lg + 4,
+    paddingVertical: Spacing.sm + 2,
+    borderRadius: BorderRadius.full,
+    ...(isWeb ? { cursor: 'pointer', transition: 'opacity 0.2s ease' } : {}),
   } as any,
   composeSendText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600' as const,
+  },
+
+  // ── Eli Tab ──
+  eliTabContent: {
+    flex: 1,
+    minHeight: 400,
   },
 });

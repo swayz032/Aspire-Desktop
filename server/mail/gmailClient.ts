@@ -291,6 +291,17 @@ export function gmailThreadToMailDetail(
   };
 }
 
+export function getAttachment(
+  accessToken: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<{ size: number; data: string }> {
+  return gmailFetch(
+    accessToken,
+    `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+  );
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -304,6 +315,8 @@ export function buildRawMessage(opts: {
   subject: string;
   body: string;
   from?: string;
+  cc?: string;
+  bcc?: string;
   replyToMessageId?: string;
   threadId?: string;
   html?: boolean;
@@ -311,6 +324,8 @@ export function buildRawMessage(opts: {
   const lines: string[] = [];
   if (opts.from) lines.push(`From: ${opts.from}`);
   lines.push(`To: ${opts.to}`);
+  if (opts.cc) lines.push(`Cc: ${opts.cc}`);
+  if (opts.bcc) lines.push(`Bcc: ${opts.bcc}`);
   lines.push(`Subject: ${opts.subject}`);
   lines.push(`MIME-Version: 1.0`);
   lines.push(`Content-Type: ${opts.html ? 'text/html' : 'text/plain'}; charset=UTF-8`);

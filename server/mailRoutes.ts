@@ -12,6 +12,7 @@ import {
   gmailThreadToMailThread,
   gmailThreadToMailDetail,
   buildRawMessage,
+  getAttachment,
 } from './mail/gmailClient';
 
 const router = Router();
@@ -130,7 +131,7 @@ router.get('/api/mail/messages/:id', async (req: Request, res: Response) => {
 router.post('/api/mail/send', async (req: Request, res: Response) => {
   try {
     const { token, suiteId } = await getGmailToken(req);
-    const { to, subject, body: emailBody, replyToThreadId, replyToMessageId } = req.body;
+    const { to, cc, bcc, subject, body: emailBody, replyToThreadId, replyToMessageId } = req.body;
 
     if (!to || !subject || !emailBody) {
       return res.status(400).json({ error: 'Missing required fields: to, subject, body' });
@@ -139,6 +140,8 @@ router.post('/api/mail/send', async (req: Request, res: Response) => {
     const email = await getConnectedEmail(suiteId);
     const raw = buildRawMessage({
       to,
+      cc: cc || undefined,
+      bcc: bcc || undefined,
       subject,
       body: emailBody,
       from: email || undefined,
@@ -215,6 +218,30 @@ router.get('/api/mail/labels', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     logger.error('Mail labels error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to load labels' });
+  }
+});
+
+
+// ─── GET /api/mail/attachments/:messageId/:attachmentId — Download attachment ───
+
+router.get('/api/mail/attachments/:messageId/:attachmentId', async (req: Request, res: Response) => {
+  try {
+    const { token } = await getGmailToken(req);
+    const { messageId, attachmentId } = req.params;
+
+    const attachment = await getAttachment(token, messageId, attachmentId);
+    const data = Buffer.from(attachment.data, 'base64url');
+
+    const filename = (req.query.name as string) || 'attachment';
+    const mimeType = (req.query.type as string) || 'application/octet-stream';
+
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Content-Length', data.length);
+    res.send(data);
+  } catch (error: unknown) {
+    logger.error('Mail attachment download error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: 'Failed to download attachment' });
   }
 });
 

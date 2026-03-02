@@ -44,7 +44,16 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
 - **Session**: Supports voice sessions, video calls, and conference rooms.
 - **Founder Hub**: Provides daily briefs, educational content, and notes.
 - **Bookings**: Service scheduling system integrated with financial tracking.
-- **Inbox**: Business email and message management.
+- **Inbox**: Business email and message management with redesigned premium UI.
+    - Aspire dark glass aesthetic throughout (dark surfaces, glassmorphism, blue accent).
+    - Unified Compose + Eli modal (single FAB, tabbed popup replacing two floating elements).
+    - CC/BCC support in compose, file attachment picker (web), type-coded attachment display.
+    - Debounced search bar for finding older messages beyond 30-item inbox cap.
+    - Text-only filter pills, refined mailbox selector dropdown.
+    - Premium detail views for all 4 types (Office, Calls, Mail, Contacts).
+    - Fixed `formatEmailContent` stripping invisible HTML entities (`&zwnj;`, zero-width chars, soft hyphens).
+    - Attachment download route: `GET /api/mail/attachments/:messageId/:attachmentId`.
+    - EliVoiceChatPanel supports `embedded` prop for inline rendering in unified modal.
 - **Mailbox Setup**:
     - Refactored to `/v1/*` OpenAPI contract with `lib/mailApi.ts` adapter layer (13 functions).
     - jobId-based resumable onboarding with sessionStorage persistence (wizard resumes from server after page refresh).

@@ -63,6 +63,7 @@ interface EliVoiceChatPanelProps {
   micPulseAnim: Animated.Value;
   messages: EliMessage[];
   activeRun?: { events: AgentActivityEvent[]; status: 'running' | 'completed' } | null;
+  embedded?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +106,7 @@ export function EliVoiceChatPanel({
   micPulseAnim: _micPulseAnim,
   messages,
   activeRun,
+  embedded = false,
 }: EliVoiceChatPanelProps) {
   // micPulseAnim kept for backward compat -- ChatInputBar handles its own pulse internally.
   void _micPulseAnim;
@@ -164,8 +166,8 @@ export function EliVoiceChatPanel({
   return (
     <Animated.View
       style={[
-        styles.panel,
-        {
+        embedded ? styles.panelEmbedded : styles.panel,
+        !embedded && {
           opacity: fadeAnim,
           transform: [{ translateY: slideAnim }],
         },
@@ -173,43 +175,44 @@ export function EliVoiceChatPanel({
       accessibilityRole="none"
       accessibilityLabel="Eli voice chat panel"
     >
-      {/* ---- Header ---- */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.avatarRing}>
-            <Image
-              source={eliAvatar}
-              style={styles.headerAvatar}
-              accessibilityLabel="Eli avatar"
-            />
-          </View>
-          <View style={styles.headerInfo}>
-            <View style={styles.headerNameRow}>
-              <Text style={styles.headerName}>Eli</Text>
-              {voiceActive && (
-                <View style={styles.liveBadge}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveText}>Live</Text>
+      {!embedded && (
+        <>
+          <View style={styles.header}>
+            <View style={styles.headerLeft}>
+              <View style={styles.avatarRing}>
+                <Image
+                  source={eliAvatar}
+                  style={styles.headerAvatar}
+                  accessibilityLabel="Eli avatar"
+                />
+              </View>
+              <View style={styles.headerInfo}>
+                <View style={styles.headerNameRow}>
+                  <Text style={styles.headerName}>Eli</Text>
+                  {voiceActive && (
+                    <View style={styles.liveBadge}>
+                      <View style={styles.liveDot} />
+                      <Text style={styles.liveText}>Live</Text>
+                    </View>
+                  )}
                 </View>
-              )}
+                <Text style={styles.headerSubtitle}>
+                  {triagedCount} items triaged today
+                </Text>
+              </View>
             </View>
-            <Text style={styles.headerSubtitle}>
-              {triagedCount} items triaged today
-            </Text>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close Eli chat"
+            >
+              <Ionicons name="close" size={20} color={Colors.text.secondary} />
+            </TouchableOpacity>
           </View>
-        </View>
-        <TouchableOpacity
-          onPress={onClose}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel="Close Eli chat"
-        >
-          <Ionicons name="close" size={20} color={Colors.text.secondary} />
-        </TouchableOpacity>
-      </View>
-
-      {/* ---- Divider ---- */}
-      <View style={styles.divider} />
+          <View style={styles.divider} />
+        </>
+      )}
 
       {/* ---- Message Thread ---- */}
       <ScrollView
@@ -305,7 +308,6 @@ const webGlassShadow = Platform.OS === 'web'
   : {};
 
 const styles = StyleSheet.create({
-  // Panel container
   panel: {
     position: 'absolute',
     bottom: 80,
@@ -320,6 +322,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...Shadows.lg,
     ...webGlassShadow,
+  },
+  panelEmbedded: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
 
   // Header
