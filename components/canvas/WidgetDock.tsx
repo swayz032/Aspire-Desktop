@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   Pressable,
   Platform,
   useWindowDimensions,
   ScrollView,
+  type ImageSourcePropType,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -14,6 +16,8 @@ import Animated, {
   withSpring,
   withDelay,
   withTiming,
+  withRepeat,
+  withSequence,
 } from 'react-native-reanimated';
 import { useDraggable } from '@/lib/canvasDragDrop';
 import { CanvasTokens } from '@/constants/canvas.tokens';
@@ -32,16 +36,20 @@ import { ReceiptIcon } from '@/components/icons/widgets/ReceiptIcon';
 
 export interface WidgetDefinition {
   id: string;
-  icon: React.ComponentType<{ size?: number; color?: string }>;
+  icon?: React.ComponentType<{ size?: number; color?: string }>;
   label: string;
   color?: string;
+  avatarImage?: ImageSourcePropType;
+  isAgent?: boolean;
 }
 
 export interface WidgetDockProps {
   widgets: WidgetDefinition[];
   onWidgetSelect?: (widgetId: string) => void;
+  onAgentSelect?: (agentId: string) => void;
   position?: 'bottom' | 'top';
   activeWidgetIds?: string[];
+  activeAgentId?: string | null;
 }
 
 export const DEFAULT_WIDGETS: WidgetDefinition[] = [
@@ -57,22 +65,34 @@ export const DEFAULT_WIDGETS: WidgetDefinition[] = [
   { id: 'receipt', icon: ReceiptIcon, label: 'Receipt', color: '#10B981' },
 ];
 
+export const AGENT_WIDGETS: WidgetDefinition[] = [
+  { id: 'ava', label: 'Ava', isAgent: true, avatarImage: require('@/assets/avatars/ava.png') },
+  { id: 'eli', label: 'Eli', isAgent: true, avatarImage: require('@/assets/avatars/eli.png') },
+  { id: 'finn', label: 'Finn', isAgent: true, avatarImage: require('@/assets/avatars/finn.png') },
+];
+
 const SPRING_CONFIG = { damping: 22, stiffness: 260, mass: 0.9 };
+const AVATAR_INSET = 3;
+const AVATAR_SIZE = CanvasTokens.dock.iconSize - AVATAR_INSET * 2;
+const AVATAR_RADIUS = CanvasTokens.dock.iconRadius - 2;
 
 interface WidgetIconButtonProps {
   widget: WidgetDefinition;
   onPress: () => void;
   index: number;
   isActive?: boolean;
+  isVoiceActive?: boolean;
 }
 
-function WidgetIconButton({ widget, onPress, index, isActive }: WidgetIconButtonProps) {
+function WidgetIconButton({ widget, onPress, index, isActive, isVoiceActive }: WidgetIconButtonProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
+  const isAgent = !!widget.isAgent;
 
-  const { attributes, listeners, setNodeRef, isDragging } = Platform.OS === 'web'
-    ? useDraggable({ id: widget.id })
+  const draggable = Platform.OS === 'web'
+    ? useDraggable({ id: widget.id, disabled: isAgent })
     : { attributes: {}, listeners: {}, setNodeRef: () => {}, isDragging: false };
+  const { attributes, listeners, setNodeRef, isDragging } = draggable;
 
   const scaleValue = useSharedValue(1.0);
   const translateY = useSharedValue(0);
@@ -80,6 +100,7 @@ function WidgetIconButton({ widget, onPress, index, isActive }: WidgetIconButton
   const opacityValue = useSharedValue(1.0);
   const entranceScale = useSharedValue(0.5);
   const entranceOpacity = useSharedValue(0);
+  const glowPulse = useSharedValue(1.0);
 
   useEffect(() => {
     entranceScale.value = withDelay(
@@ -92,6 +113,21 @@ function WidgetIconButton({ widget, onPress, index, isActive }: WidgetIconButton
     );
   }, []);
 
+  useEffect(() => {
+    if (isVoiceActive) {
+      glowPulse.value = withRepeat(
+        withSequence(
+          withTiming(1.12, { duration: 800 }),
+          withTiming(1.0, { duration: 800 })
+        ),
+        -1,
+        false
+      );
+    } else {
+      glowPulse.value = withTiming(1.0, { duration: 300 });
+    }
+  }, [isVoiceActive]);
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { scale: scaleValue.value * entranceScale.value },
@@ -103,6 +139,10 @@ function WidgetIconButton({ widget, onPress, index, isActive }: WidgetIconButton
   const tooltipStyle = useAnimatedStyle(() => ({
     opacity: tooltipOpacity.value,
     transform: [{ translateY: tooltipOpacity.value === 0 ? 4 : 0 }],
+  }));
+
+  const voiceGlowStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: glowPulse.value }],
   }));
 
   useEffect(() => {
@@ -150,10 +190,9 @@ function WidgetIconButton({ widget, onPress, index, isActive }: WidgetIconButton
     }
   };
 
-  const IconComponent = widget.icon;
   const gradientColors = CanvasTokens.iconGradients[widget.id] || ['#3B82F6', '#2563EB'];
 
-  const pressableProps = Platform.OS === 'web'
+  const pressableProps = Platform.OS === 'web' && !isAgent
     ? { ...attributes, ...listeners, ref: setNodeRef as any }
     : {};
 
@@ -166,6 +205,22 @@ function WidgetIconButton({ widget, onPress, index, isActive }: WidgetIconButton
       } as any)
     : { backgroundColor: gradientColors[0] };
 
+  const voiceGlowWebStyle = Platform.OS === 'web' && isVoiceActive
+    ? ({
+        boxShadow: `0 0 16px 4px ${gradientColors[0]}88, 0 0 32px 8px ${gradientColors[0]}44`,
+      } as any)
+    : {};
+
+  const cursorStyle = Platform.OS === 'web'
+    ? isAgent
+      ? ({ cursor: 'pointer' } as any)
+      : isDragging
+        ? ({ cursor: 'grabbing' } as any)
+        : ({ cursor: 'grab' } as any)
+    : {};
+
+  const IconComponent = widget.icon;
+
   return (
     <Pressable
       {...pressableProps}
@@ -175,49 +230,67 @@ function WidgetIconButton({ widget, onPress, index, isActive }: WidgetIconButton
       onHoverIn={Platform.OS === 'web' ? handleHoverIn : undefined}
       onHoverOut={Platform.OS === 'web' ? handleHoverOut : undefined}
       accessibilityRole="button"
-      accessibilityLabel={`${widget.label} — Drag to canvas or tap to open`}
-      style={[
-        styles.iconButtonWrapper,
-        Platform.OS === 'web' && isDragging
-          ? ({ cursor: 'grabbing' } as any)
-          : Platform.OS === 'web'
-          ? ({ cursor: 'grab' } as any)
-          : {},
-      ]}
+      accessibilityLabel={
+        isAgent
+          ? `${widget.label} — Tap to start voice session`
+          : `${widget.label} — Drag to canvas or tap to open`
+      }
+      style={[styles.iconButtonWrapper, cursorStyle]}
     >
-      {/* Tooltip */}
       <Animated.View style={[styles.tooltip, tooltipStyle]} pointerEvents="none">
         <Text style={styles.tooltipText}>{widget.label}</Text>
       </Animated.View>
 
       <Animated.View style={[styles.iconContainer, animatedStyle]}>
+        {isVoiceActive && (
+          <Animated.View
+            style={[styles.voiceGlowRing, voiceGlowStyle, voiceGlowWebStyle]}
+            pointerEvents="none"
+          />
+        )}
         <View style={[styles.iconTile, iconTileWebStyle]}>
-          {/* Inner highlight */}
           <View style={styles.iconHighlight} pointerEvents="none" />
-          <IconComponent size={28} color="#FFFFFF" />
+          {widget.avatarImage ? (
+            <Image
+              source={widget.avatarImage}
+              style={styles.avatarImage}
+              resizeMode="cover"
+            />
+          ) : IconComponent ? (
+            <IconComponent size={28} color="#FFFFFF" />
+          ) : null}
         </View>
       </Animated.View>
 
-      {/* Active dot */}
       {isActive && <View style={styles.activeDot} />}
+      {isVoiceActive && <View style={[styles.activeDot, { backgroundColor: gradientColors[0] }]} />}
     </Pressable>
   );
+}
+
+function DockDivider() {
+  return <View style={styles.divider} />;
 }
 
 export function WidgetDock({
   widgets = DEFAULT_WIDGETS,
   onWidgetSelect,
+  onAgentSelect,
   position = 'bottom',
   activeWidgetIds = [],
+  activeAgentId = null,
 }: WidgetDockProps) {
   const { width } = useWindowDimensions();
 
-  const isDesktop = width >= 1024;
-  const isTablet = width >= 768 && width < 1024;
-
-  const visibleIconCount = isDesktop ? 10 : isTablet ? 8 : 6;
-  const needsScroll = widgets.length > visibleIconCount;
-  const visibleWidgets = needsScroll ? widgets.slice(0, visibleIconCount) : widgets;
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const styleId = 'dock-scrollbar-hide';
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = '.dock-scroll::-webkit-scrollbar { display: none; }';
+    document.head.appendChild(style);
+  }, []);
 
   const dockSlideY = useSharedValue(50);
   const dockOpacity = useSharedValue(0);
@@ -240,23 +313,15 @@ export function WidgetDock({
         ? Canvas.workspace.margin.laptop
         : Canvas.workspace.margin.tablet;
 
-  const handleWidgetPress = (widgetId: string) => {
-    onWidgetSelect?.(widgetId);
+  const handlePress = (widget: WidgetDefinition) => {
+    if (widget.isAgent) {
+      onAgentSelect?.(widget.id);
+    } else {
+      onWidgetSelect?.(widget.id);
+    }
   };
 
-  const dockContent = (
-    <View style={styles.iconsContainer}>
-      {visibleWidgets.map((widget, index) => (
-        <WidgetIconButton
-          key={widget.id}
-          widget={widget}
-          onPress={() => handleWidgetPress(widget.id)}
-          index={index}
-          isActive={activeWidgetIds.includes(widget.id)}
-        />
-      ))}
-    </View>
-  );
+  const allWidgets = [...widgets, ...AGENT_WIDGETS];
 
   return (
     <Animated.View
@@ -268,32 +333,47 @@ export function WidgetDock({
       ]}
     >
       <View style={styles.dockShelf}>
-        {/* 3D bottom edge */}
         <View style={styles.shelfEdgeBottom} pointerEvents="none" />
-        {/* 3D right edge */}
         <View style={styles.shelfEdgeRight} pointerEvents="none" />
 
-        {/* Shelf surface */}
         <View style={styles.shelfSurface}>
-          {/* Top highlight bevel */}
-          <View style={styles.shelfHighlight} pointerEvents="none" />
-          {/* Inner top shadow */}
-          <View style={styles.shelfInnerTop} pointerEvents="none" />
-          {/* Inner bottom shadow */}
-          <View style={styles.shelfInnerBottom} pointerEvents="none" />
+          <View style={styles.shelfDecorationClip} pointerEvents="none">
+            <View style={styles.shelfHighlight} />
+            <View style={styles.shelfInnerTop} />
+            <View style={styles.shelfInnerBottom} />
+          </View>
 
-          {needsScroll ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.scrollContent}
-              style={styles.scrollView}
-            >
-              {dockContent}
-            </ScrollView>
-          ) : (
-            dockContent
-          )}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            style={[
+              styles.scrollView,
+              Platform.OS === 'web' && ({
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+              } as any),
+            ]}
+            {...(Platform.OS === 'web' ? { dataSet: { class: 'dock-scroll' }, className: 'dock-scroll' } as any : {})}
+          >
+            <View style={styles.iconsContainer}>
+              {allWidgets.map((widget, index) => {
+                const showDivider = index === widgets.length;
+                return (
+                  <React.Fragment key={widget.id}>
+                    {showDivider && <DockDivider />}
+                    <WidgetIconButton
+                      widget={widget}
+                      onPress={() => handlePress(widget)}
+                      index={index}
+                      isActive={activeWidgetIds.includes(widget.id)}
+                      isVoiceActive={widget.isAgent && activeAgentId === widget.id}
+                    />
+                  </React.Fragment>
+                );
+              })}
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Animated.View>
@@ -323,6 +403,7 @@ const styles = StyleSheet.create({
 
   dockShelf: {
     position: 'relative',
+    maxWidth: 920,
   },
 
   shelfEdgeBottom: {
@@ -354,12 +435,23 @@ const styles = StyleSheet.create({
     borderRadius: CanvasTokens.dock.surfaceRadius,
     paddingHorizontal: CanvasTokens.dock.paddingH,
     paddingVertical: CanvasTokens.dock.paddingV,
-    overflow: 'hidden',
     position: 'relative',
     zIndex: 1,
     ...(Platform.OS === 'web' && {
       boxShadow: CanvasTokens.dock.outerShadow,
     } as any),
+  },
+
+  shelfDecorationClip: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: CanvasTokens.dock.surfaceRadius,
+    overflow: 'hidden',
+    zIndex: 10,
+    pointerEvents: 'none',
   },
 
   shelfHighlight: {
@@ -368,13 +460,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    borderTopLeftRadius: CanvasTokens.dock.surfaceRadius,
-    borderTopRightRadius: CanvasTokens.dock.surfaceRadius,
     zIndex: 10,
     ...(Platform.OS === 'web'
       ? ({
           backgroundImage: 'linear-gradient(90deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.1) 100%)',
-          pointerEvents: 'none',
         } as any)
       : { backgroundColor: CanvasTokens.dock.topHighlight }),
   },
@@ -385,13 +474,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 20,
-    borderTopLeftRadius: CanvasTokens.dock.surfaceRadius,
-    borderTopRightRadius: CanvasTokens.dock.surfaceRadius,
     zIndex: 5,
     ...(Platform.OS === 'web'
       ? ({
           backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, transparent 100%)',
-          pointerEvents: 'none',
         } as any)
       : {}),
   },
@@ -402,13 +488,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 20,
-    borderBottomLeftRadius: CanvasTokens.dock.surfaceRadius,
-    borderBottomRightRadius: CanvasTokens.dock.surfaceRadius,
     zIndex: 5,
     ...(Platform.OS === 'web'
       ? ({
           backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.12) 0%, transparent 100%)',
-          pointerEvents: 'none',
         } as any)
       : {}),
   },
@@ -419,6 +502,7 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     alignItems: 'center',
+    paddingHorizontal: 2,
   },
 
   iconsContainer: {
@@ -463,6 +547,16 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
+  voiceGlowRing: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    right: -4,
+    bottom: -4,
+    borderRadius: CanvasTokens.dock.iconRadius + 4,
+    zIndex: -1,
+  },
+
   iconTile: {
     width: CanvasTokens.dock.iconSize,
     height: CanvasTokens.dock.iconSize,
@@ -481,12 +575,29 @@ const styles = StyleSheet.create({
     height: '50%',
     borderTopLeftRadius: CanvasTokens.dock.iconRadius,
     borderTopRightRadius: CanvasTokens.dock.iconRadius,
+    zIndex: 2,
     ...(Platform.OS === 'web'
       ? ({
           backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.05) 60%, transparent 100%)',
           pointerEvents: 'none',
         } as any)
       : { backgroundColor: 'rgba(255,255,255,0.12)' }),
+  },
+
+  avatarImage: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_RADIUS,
+    zIndex: 1,
+  },
+
+  divider: {
+    width: 1,
+    height: 32,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: 4,
+    alignSelf: 'center',
+    borderRadius: 0.5,
   },
 
   activeDot: {

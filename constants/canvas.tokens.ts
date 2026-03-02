@@ -120,6 +120,9 @@ export const CanvasTokens = {
     approval: ['#F59E0B', '#D97706'],
     note: ['#EAB308', '#CA8A04'],
     receipt: ['#6366F1', '#4F46E5'],
+    ava: ['#3B82F6', '#2563EB'],
+    eli: ['#F59E0B', '#D97706'],
+    finn: ['#8B5CF6', '#7C3AED'],
   } as Record<string, readonly [string, string]>,
 
   // ---------------------------------------------------------------------------

@@ -142,9 +142,32 @@ export function CanvasWorkspace(): React.ReactElement {
     return unsubscribe;
   }, []);
 
-  // Voice pipeline: Ava voice session (ElevenLabs TTS + STT → Orchestrator → Agents)
-  // useCanvasVoice syncs persona state to chatCanvasStore automatically
   const avaVoice = useCanvasVoice('ava');
+  const eliVoice = useCanvasVoice('eli');
+  const finnVoice = useCanvasVoice('finn');
+
+  const voiceHooks = { ava: avaVoice, eli: eliVoice, finn: finnVoice } as const;
+
+  const handleAgentSelect = useCallback((agentId: string) => {
+    const hook = voiceHooks[agentId as keyof typeof voiceHooks];
+    if (!hook) return;
+    if (hook.status === 'idle') {
+      Object.entries(voiceHooks).forEach(([id, h]) => {
+        if (id !== agentId && h.status !== 'idle') h.endSession();
+      });
+      hook.startSession();
+    } else {
+      hook.endSession();
+    }
+  }, [avaVoice, eliVoice, finnVoice]);
+
+  const activeAgentVoiceId = avaVoice.status !== 'idle'
+    ? 'ava'
+    : eliVoice.status !== 'idle'
+      ? 'eli'
+      : finnVoice.status !== 'idle'
+        ? 'finn'
+        : null;
 
   // Live persona state from voice pipeline
   const [personaState, setPersonaState] = useState<PersonaState>(getPersonaState() as PersonaState);
@@ -589,8 +612,10 @@ export function CanvasWorkspace(): React.ReactElement {
         <WidgetDock
           widgets={DEFAULT_WIDGETS}
           onWidgetSelect={handleWidgetSelect}
+          onAgentSelect={handleAgentSelect}
           position="bottom"
           activeWidgetIds={placedWidgets.map(pw => pw.id)}
+          activeAgentId={activeAgentVoiceId}
         />
       )}
 
