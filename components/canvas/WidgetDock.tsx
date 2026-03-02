@@ -160,7 +160,7 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
   const ghostRef = useRef<HTMLDivElement | null>(null);
 
   const handlePointerDown = useCallback((e: any) => {
-    if (Platform.OS !== 'web' || isAgent) return;
+    if (Platform.OS !== 'web') return;
     const pe = e as PointerEvent;
     dragStartRef.current = { x: pe.clientX, y: pe.clientY };
     didDragRef.current = false;
@@ -298,18 +298,16 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
     : {};
 
   const cursorStyle = Platform.OS === 'web'
-    ? isAgent
-      ? ({ cursor: 'pointer' } as any)
-      : isDragging
-        ? ({ cursor: 'grabbing' } as any)
-        : ({ cursor: 'grab' } as any)
+    ? isDragging
+      ? ({ cursor: 'grabbing' } as any)
+      : ({ cursor: 'grab' } as any)
     : {};
 
   const IconComponent = widget.icon;
 
   return (
     <Pressable
-      onPointerDown={Platform.OS === 'web' && !isAgent ? handlePointerDown : undefined}
+      onPointerDown={Platform.OS === 'web' ? handlePointerDown : undefined}
       onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}

@@ -72,6 +72,7 @@ import { ReceiptsWidget } from './widgets/ReceiptsWidget';
 import { StickyNoteWidget } from './widgets/StickyNoteWidget';
 import { EmailWidget } from './widgets/EmailWidget';
 import { InvoiceWidget } from './widgets/InvoiceWidget';
+import { AgentWidget } from './widgets/AgentWidget';
 
 // ---------------------------------------------------------------------------
 // Widget content registry
@@ -84,6 +85,10 @@ interface WidgetDef {
   icon: string; // Ionicons name
 }
 
+const AvaAgentWidget = (props: any) => <AgentWidget {...props} agentId="ava" />;
+const EliAgentWidget = (props: any) => <AgentWidget {...props} agentId="eli" />;
+const FinnAgentWidget = (props: any) => <AgentWidget {...props} agentId="finn" />;
+
 const WIDGET_CONTENT: Record<string, WidgetDef> = {
   email:    { title: 'Inbox',            component: EmailWidget,          accent: '#3B82F6', icon: 'mail' },
   invoice:  { title: 'Invoices',         component: InvoiceWidget,        accent: '#F59E0B', icon: 'receipt' },
@@ -95,6 +100,9 @@ const WIDGET_CONTENT: Record<string, WidgetDef> = {
   approval: { title: 'Authority Queue',  component: AuthorityQueueWidget, accent: '#F97316', icon: 'shield-checkmark' },
   note:     { title: 'Sticky Notes',     component: StickyNoteWidget,     accent: '#EAB308', icon: 'create' },
   receipt:  { title: 'Receipts',         component: ReceiptsWidget,       accent: '#6366F1', icon: 'file-tray-full' },
+  ava:      { title: 'Ava',             component: AvaAgentWidget,       accent: '#3B82F6', icon: 'person' },
+  eli:      { title: 'Eli',             component: EliAgentWidget,       accent: '#F59E0B', icon: 'chatbubbles' },
+  finn:     { title: 'Finn',            component: FinnAgentWidget,      accent: '#8B5CF6', icon: 'stats-chart' },
 };
 
 // ---------------------------------------------------------------------------
@@ -580,7 +588,7 @@ export function CanvasWorkspace(): React.ReactElement {
 
               <View
                 style={ws.canvasArea}
-                {...(Platform.OS === 'web' ? { 'data-canvas-drop': 'true' } as any : {})}
+                {...(Platform.OS === 'web' ? { dataSet: { canvasDrop: 'true' } } as any : {})}
               >
                 {placedWidgets.map((pw) => {
                   const widgetDef = WIDGET_CONTENT[pw.id];
