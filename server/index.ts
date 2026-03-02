@@ -242,6 +242,14 @@ try {
 
 // CORS — restricted to known origins (D-C4 fix: no wildcards in production)
 const CORS_ALLOWED_ORIGINS = (process.env.ASPIRE_CORS_ORIGINS || 'https://www.aspireos.app,https://aspireos.app,http://localhost:5000,http://localhost:5173,http://localhost:3000').split(',');
+
+function validateProductionEnv(): void {
+  if (process.env.NODE_ENV !== 'production') return;
+  const orchestratorUrl = process.env.ORCHESTRATOR_URL?.trim();
+  if (!orchestratorUrl) {
+    throw new Error('ORCHESTRATOR_URL is required in production');
+  }
+}
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
     ? CORS_ALLOWED_ORIGINS
@@ -622,6 +630,15 @@ async function loadOAuthTokens() {
 }
 
 async function start() {
+  try {
+    validateProductionEnv();
+  } catch (err: unknown) {
+    logger.error('[FATAL] Production env validation failed', {
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+    process.exit(1);
+  }
+
   // Load secrets from AWS Secrets Manager (production) or .env.local (dev)
   // Must happen BEFORE any code reads process.env for provider keys
   try {
