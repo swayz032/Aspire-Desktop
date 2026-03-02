@@ -12,23 +12,22 @@ type Props = {
 };
 
 export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext }: Props) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
 
-  /*
-   * When the overlay is opened with initialTab="video", render FinnDeskPanel
-   * in immersive video-only mode (FaceTime-style: no tabs, full-bleed video,
-   * floating controls, slide-up chat overlay).
-   */
   const isVideoOnly = initialTab === 'video';
 
   const panelStyle = useMemo((): ViewStyle => {
     if (isVideoOnly) {
+      const modalW = Math.min(width * 0.92, 1280);
+      const idealH = modalW * (9 / 16);
+      const maxH = height * 0.75;
+      const modalH = Math.min(idealH, maxH);
+      const finalW = modalH < idealH ? modalH * (16 / 9) : modalW;
       return {
-        width: '92vw' as unknown as number,
-        maxWidth: 1280,
-        maxHeight: '75vh' as unknown as number,
+        width: finalW,
+        height: modalH,
         borderRadius: 20,
-      } as ViewStyle;
+      };
     }
 
     if (width >= 1200) {
@@ -53,11 +52,7 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
       height: '95vh' as unknown as number,
       borderRadius: 12,
     };
-  }, [width, isVideoOnly]);
-
-  const videoOnlyWebStyle = isVideoOnly && Platform.OS === 'web' ? {
-    aspectRatio: '16 / 9',
-  } as unknown as ViewStyle : undefined;
+  }, [width, height, isVideoOnly]);
 
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') return;
@@ -74,7 +69,7 @@ export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext 
     <View style={styles.overlay}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close overlay" />
       <View style={styles.panelContainer}>
-        <View style={[styles.panel, panelStyle, videoOnlyWebStyle]}>
+        <View style={[styles.panel, panelStyle]}>
           <FinnDeskPanel
             initialTab={initialTab}
             templateContext={templateContext}
