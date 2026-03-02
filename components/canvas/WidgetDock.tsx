@@ -22,6 +22,7 @@ import Animated, {
 import { useDraggable } from '@/lib/canvasDragDrop';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { Canvas } from '@/constants/tokens';
+import { playSound } from '@/lib/soundManager';
 
 import { EmailIcon } from '@/components/icons/widgets/EmailIcon';
 import { InvoiceIcon } from '@/components/icons/widgets/InvoiceIcon';
@@ -149,6 +150,7 @@ function WidgetIconButton({ widget, onPress, index, isActive, isVoiceActive }: W
     if (isDragging) {
       opacityValue.value = withSpring(0.4, SPRING_CONFIG);
       scaleValue.value = withSpring(0.9, SPRING_CONFIG);
+      playSound('dock_drag_start');
     } else {
       opacityValue.value = withSpring(1.0, SPRING_CONFIG);
       scaleValue.value = withSpring(1.0, SPRING_CONFIG);
@@ -161,6 +163,7 @@ function WidgetIconButton({ widget, onPress, index, isActive, isVoiceActive }: W
     scaleValue.value = withSpring(1.08, SPRING_CONFIG);
     translateY.value = withSpring(-8, SPRING_CONFIG);
     tooltipOpacity.value = withTiming(1, { duration: 150 });
+    playSound('dock_hover');
   };
 
   const handleHoverOut = () => {
@@ -510,7 +513,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
     gap: CanvasTokens.dock.iconSpacing,
-    paddingTop: 6,
+    paddingTop: 34,
   },
 
   iconButtonWrapper: {

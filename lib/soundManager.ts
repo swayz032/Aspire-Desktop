@@ -15,7 +15,12 @@ export type SoundId =
   | 'authority_approved'
   | 'authority_denied'
   | 'lens_open'
-  | 'palette_open';
+  | 'palette_open'
+  | 'dock_hover'
+  | 'dock_drag_start'
+  | 'dock_drop'
+  | 'dock_agent_start'
+  | 'dock_agent_end';
 
 type SoundPriority = 0 | 1 | 2; // 0 = navigation, 1 = authority, 2 = error
 
@@ -195,8 +200,56 @@ const SOUNDS: Record<SoundId, SoundDef> = {
     priority: 0,
     essential: false,
     play: (ctx) => {
-      // Whoosh: filtered noise
       playNoiseBurst(ctx, 0, 0.1, 0.08);
+    },
+  },
+  dock_hover: {
+    priority: 0,
+    essential: false,
+    play: (ctx) => {
+      playNoiseBurst(ctx, 0, 0.015, 0.03);
+    },
+  },
+  dock_drag_start: {
+    priority: 0,
+    essential: false,
+    play: (ctx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(300, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(500, ctx.currentTime + 0.06);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.07);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.08);
+    },
+  },
+  dock_drop: {
+    priority: 0,
+    essential: false,
+    play: (ctx) => {
+      playTone(ctx, C5, 'sine', 0, 0.1, 0.1);
+      playTone(ctx, E5, 'sine', 0, 0.1, 0.1);
+    },
+  },
+  dock_agent_start: {
+    priority: 0,
+    essential: false,
+    play: (ctx) => {
+      playTone(ctx, C5, 'sine', 0, 0.09, 0.1);
+      playTone(ctx, E5, 'sine', 0.07, 0.09, 0.1);
+      playTone(ctx, G5, 'sine', 0.14, 0.12, 0.1);
+    },
+  },
+  dock_agent_end: {
+    priority: 0,
+    essential: false,
+    play: (ctx) => {
+      playTone(ctx, E5, 'sine', 0, 0.09, 0.08);
+      playTone(ctx, C5, 'sine', 0.08, 0.12, 0.08);
     },
   },
 };

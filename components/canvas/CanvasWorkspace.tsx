@@ -34,6 +34,7 @@ import {
   useImmersion,
 } from '@/lib/immersionStore';
 import { useDroppable, useCanvasDragDrop } from '@/lib/canvasDragDrop';
+import { playSound } from '@/lib/soundManager';
 import { CanvasGrid } from './CanvasGrid';
 import { VignetteOverlay } from './VignetteOverlay';
 import { Stage } from './Stage';
@@ -156,8 +157,10 @@ export function CanvasWorkspace(): React.ReactElement {
         if (id !== agentId && h.status !== 'idle') h.endSession();
       });
       hook.startSession();
+      playSound('dock_agent_start');
     } else {
       hook.endSession();
+      playSound('dock_agent_end');
     }
   }, [avaVoice, eliVoice, finnVoice]);
 
@@ -193,7 +196,7 @@ export function CanvasWorkspace(): React.ReactElement {
   const { setNodeRef, isOver } = Platform.OS === 'web'
     ? useDroppable({ id: 'canvas-workspace' })
     : { setNodeRef: () => {}, isOver: false };
-  const { dragState, widgets, addWidget, removeWidget, checkCollision } = useCanvasDragDrop();
+  const { dragState, widgets, addWidget, removeWidget, checkCollision, registerDropHandler, unregisterDropHandler } = useCanvasDragDrop();
 
   // Placed widgets state
   const [placedWidgets, setPlacedWidgets] = useState<
@@ -246,7 +249,28 @@ export function CanvasWorkspace(): React.ReactElement {
       ...prev,
       { id: widgetId, instanceId, position: { x, y }, size: { ...defaultWidgetSize } },
     ]);
+    playSound('dock_drop');
   }, [placedWidgets, defaultWidgetSize]);
+
+  const handleWidgetDrop = useCallback((widgetId: string, position: { x: number; y: number }) => {
+    const hasCollision = checkCollision(position, defaultWidgetSize);
+    if (hasCollision) {
+      position = { x: position.x + 32, y: position.y + 32 };
+    }
+    const instanceId = `${widgetId}-${Date.now()}`;
+    const maxZ = placedWidgets.reduce((z, w) => Math.max(z, 1), 1);
+    addWidget({ id: instanceId, position, size: { ...defaultWidgetSize }, zIndex: maxZ + 1 });
+    setPlacedWidgets((prev) => [
+      ...prev,
+      { id: widgetId, instanceId, position, size: { ...defaultWidgetSize } },
+    ]);
+    playSound('dock_drop');
+  }, [defaultWidgetSize, checkCollision, addWidget, placedWidgets]);
+
+  useEffect(() => {
+    registerDropHandler(handleWidgetDrop);
+    return () => unregisterDropHandler();
+  }, [handleWidgetDrop, registerDropHandler, unregisterDropHandler]);
 
   const handleWidgetClose = useCallback((instanceId: string) => {
     setPlacedWidgets((prev) => prev.filter((w) => w.instanceId !== instanceId));

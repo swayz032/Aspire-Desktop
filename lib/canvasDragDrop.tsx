@@ -71,6 +71,8 @@ export interface DragState {
   previewPosition: { x: number; y: number } | null;
 }
 
+type NewWidgetDropHandler = (widgetId: string, position: { x: number; y: number }) => void;
+
 interface CanvasDragDropContextValue {
   widgets: Map<string, CanvasWidget>;
   dragState: DragState;
@@ -83,6 +85,8 @@ interface CanvasDragDropContextValue {
     size: { width: number; height: number },
     excludeId?: string
   ) => boolean;
+  registerDropHandler: (handler: NewWidgetDropHandler) => void;
+  unregisterDropHandler: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +138,16 @@ export function CanvasDragDropProvider({
     previewPosition: null,
   });
 
-  // Velocity tracking for momentum rotation
+  const dropHandlerRef = useRef<NewWidgetDropHandler | null>(null);
+
+  const registerDropHandler = useCallback((handler: NewWidgetDropHandler) => {
+    dropHandlerRef.current = handler;
+  }, []);
+
+  const unregisterDropHandler = useCallback(() => {
+    dropHandlerRef.current = null;
+  }, []);
+
   const velocityRef = useRef({ x: 0, y: 0 });
   const lastPosRef = useRef({ x: 0, y: 0 });
 
@@ -277,13 +290,11 @@ export function CanvasDragDropProvider({
       }
 
       if (over.id === 'canvas-workspace') {
-        // Valid drop — snap to grid
         const snappedPosition = {
           x: snapToGrid(event.delta.x),
           y: snapToGrid(event.delta.y),
         };
 
-        // Check collision before placing
         const widget = widgets.get(active.id as string);
         if (widget) {
           const hasCollision = checkCollision(
@@ -293,10 +304,20 @@ export function CanvasDragDropProvider({
           );
 
           if (!hasCollision) {
-            // Safe to place
             onWidgetDrop?.(active.id as string, snappedPosition);
             updateWidgetPosition(active.id as string, snappedPosition);
           }
+        } else if (dropHandlerRef.current) {
+          const overRect = over.rect;
+          const canvasRelativePos = {
+            x: Math.max(0, snapToGrid(event.activatorEvent && 'clientX' in event.activatorEvent
+              ? (event.activatorEvent as PointerEvent).clientX + event.delta.x - overRect.left
+              : event.delta.x)),
+            y: Math.max(0, snapToGrid(event.activatorEvent && 'clientY' in event.activatorEvent
+              ? (event.activatorEvent as PointerEvent).clientY + event.delta.y - overRect.top
+              : event.delta.y)),
+          };
+          dropHandlerRef.current(active.id as string, canvasRelativePos);
         }
       }
 
@@ -322,6 +343,8 @@ export function CanvasDragDropProvider({
     updateWidgetPosition,
     updateWidgetSize,
     checkCollision,
+    registerDropHandler,
+    unregisterDropHandler,
   };
 
   return (

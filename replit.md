@@ -84,6 +84,9 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
     - **Dock tokens**: `CanvasTokens.dock` (size, radius, shadows, edge) + `CanvasTokens.iconGradients` map in `constants/canvas.tokens.ts`.
     - **Icon animations**: Hover lifts icon -8px with scale 1.08 + tooltip label; press pushes +2px with scale 0.92; drag fades to 0.4; staggered entrance with 35ms delay per icon.
     - **Active widget dots**: 5px white dot below dock icon when widget is placed on canvas, derived from `placedWidgets` state.
+    - **AI Voice Agent Icons**: Ava (Aspire Blue), Eli (Amber/Gold), Finn (Finance Purple) appended after tool icons with vertical divider. Photo-based squircle avatars with gradient glow border ring, glass highlight, pulsing glow when voice active. Non-draggable (tap to toggle voice session). Defined in `AGENT_WIDGETS` constant.
+    - **Drag-and-Drop**: `registerDropHandler`/`unregisterDropHandler` in `CanvasDragDropContextValue` allows CanvasWorkspace to receive drop events for new widgets from dock. `handleDragEnd` handles both existing widgets (move) and new widgets (create at canvas-relative position with collision check). New widgets registered in context Map via `addWidget`.
+    - **Interaction Sounds**: 5 dock sounds in `lib/soundManager.ts`: `dock_hover` (soft tick), `dock_drag_start` (rising blip), `dock_drop` (chord resolve), `dock_agent_start` (ascending 3-note chime), `dock_agent_end` (descending 2-note). All Web Audio synthesized, no external files.
 
 **System Design Choices:**
 - Tenant-scoped database tables for financial data.
