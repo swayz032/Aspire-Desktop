@@ -86,8 +86,8 @@ const styles = StyleSheet.create({
     } : {}),
   } as any,
   panelLandscape: {
-    width: '88%',
-    maxWidth: 1100,
+    width: '75%',
+    maxWidth: 860,
     height: 440,
     borderRadius: 20,
   } as any,
