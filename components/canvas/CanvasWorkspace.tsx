@@ -33,7 +33,7 @@ import {
 import {
   useImmersion,
 } from '@/lib/immersionStore';
-import { useDroppable, useCanvasDragDrop } from '@/lib/canvasDragDrop';
+import { useCanvasDragDrop } from '@/lib/canvasDragDrop';
 import { playSound } from '@/lib/soundManager';
 import { CanvasGrid } from './CanvasGrid';
 import { VignetteOverlay } from './VignetteOverlay';
@@ -192,11 +192,7 @@ export function CanvasWorkspace(): React.ReactElement {
     }
   }, [subMode]);
 
-  // Drag-drop integration
-  const { setNodeRef, isOver } = Platform.OS === 'web'
-    ? useDroppable({ id: 'canvas-workspace' })
-    : { setNodeRef: () => {}, isOver: false };
-  const { dragState, widgets, addWidget, removeWidget, checkCollision, registerDropHandler, unregisterDropHandler } = useCanvasDragDrop();
+  const { dragState, widgets, addWidget, removeWidget, checkCollision } = useCanvasDragDrop();
 
   // Placed widgets state
   const [placedWidgets, setPlacedWidgets] = useState<
@@ -266,11 +262,6 @@ export function CanvasWorkspace(): React.ReactElement {
     ]);
     playSound('dock_drop');
   }, [defaultWidgetSize, checkCollision, addWidget, placedWidgets]);
-
-  useEffect(() => {
-    registerDropHandler(handleWidgetDrop);
-    return () => unregisterDropHandler();
-  }, [handleWidgetDrop, registerDropHandler, unregisterDropHandler]);
 
   const handleWidgetClose = useCallback((instanceId: string) => {
     setPlacedWidgets((prev) => prev.filter((w) => w.instanceId !== instanceId));
@@ -381,7 +372,7 @@ export function CanvasWorkspace(): React.ReactElement {
   }, [spotlightPos]);
 
   return (
-    <View ref={Platform.OS === 'web' ? (setNodeRef as any) : undefined} style={ws.root}>
+    <View style={ws.root}>
       {/* Layer 0: Dark void behind the slab */}
       <View style={ws.deepBg} />
 
@@ -587,7 +578,10 @@ export function CanvasWorkspace(): React.ReactElement {
                 </Text>
               </Animated.View>
 
-              <View style={ws.canvasArea}>
+              <View
+                style={ws.canvasArea}
+                {...(Platform.OS === 'web' ? { 'data-canvas-drop': 'true' } as any : {})}
+              >
                 {placedWidgets.map((pw) => {
                   const widgetDef = WIDGET_CONTENT[pw.id];
                   if (!widgetDef) return null;
@@ -636,6 +630,7 @@ export function CanvasWorkspace(): React.ReactElement {
         <WidgetDock
           widgets={DEFAULT_WIDGETS}
           onWidgetSelect={handleWidgetSelect}
+          onWidgetDrop={handleWidgetDrop}
           onAgentSelect={handleAgentSelect}
           position="bottom"
           activeWidgetIds={placedWidgets.map(pw => pw.id)}

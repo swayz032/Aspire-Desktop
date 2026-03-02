@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,10 +19,10 @@ import Animated, {
   withRepeat,
   withSequence,
 } from 'react-native-reanimated';
-import { useDraggable } from '@/lib/canvasDragDrop';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { Canvas } from '@/constants/tokens';
-import { playSound } from '@/lib/soundManager';
+import { playSound, initSoundManager } from '@/lib/soundManager';
+import { snapToGrid } from '@/lib/canvasDragDrop';
 
 import { EmailIcon } from '@/components/icons/widgets/EmailIcon';
 import { InvoiceIcon } from '@/components/icons/widgets/InvoiceIcon';
@@ -47,6 +47,7 @@ export interface WidgetDefinition {
 export interface WidgetDockProps {
   widgets: WidgetDefinition[];
   onWidgetSelect?: (widgetId: string) => void;
+  onWidgetDrop?: (widgetId: string, position: { x: number; y: number }) => void;
   onAgentSelect?: (agentId: string) => void;
   position?: 'bottom' | 'top';
   activeWidgetIds?: string[];
@@ -80,20 +81,19 @@ const AVATAR_RADIUS = CanvasTokens.dock.iconRadius - 2;
 interface WidgetIconButtonProps {
   widget: WidgetDefinition;
   onPress: () => void;
+  onDragDrop?: (widgetId: string, position: { x: number; y: number }) => void;
   index: number;
   isActive?: boolean;
   isVoiceActive?: boolean;
 }
 
-function WidgetIconButton({ widget, onPress, index, isActive, isVoiceActive }: WidgetIconButtonProps) {
+function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoiceActive }: WidgetIconButtonProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const isAgent = !!widget.isAgent;
-
-  const draggable = Platform.OS === 'web'
-    ? useDraggable({ id: widget.id, disabled: isAgent })
-    : { attributes: {}, listeners: {}, setNodeRef: () => {}, isDragging: false };
-  const { attributes, listeners, setNodeRef, isDragging } = draggable;
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const didDragRef = useRef(false);
 
   const scaleValue = useSharedValue(1.0);
   const translateY = useSharedValue(0);
@@ -157,8 +157,90 @@ function WidgetIconButton({ widget, onPress, index, isActive, isVoiceActive }: W
     }
   }, [isDragging]);
 
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+
+  const handlePointerDown = useCallback((e: any) => {
+    if (Platform.OS !== 'web' || isAgent) return;
+    const pe = e as PointerEvent;
+    dragStartRef.current = { x: pe.clientX, y: pe.clientY };
+    didDragRef.current = false;
+
+    const gradientColors = CanvasTokens.iconGradients[widget.id] || ['#3B82F6', '#2563EB'];
+
+    const onMove = (ev: PointerEvent) => {
+      if (!dragStartRef.current) return;
+      const dx = ev.clientX - dragStartRef.current.x;
+      const dy = ev.clientY - dragStartRef.current.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 6 && !didDragRef.current) return;
+
+      if (!didDragRef.current) {
+        didDragRef.current = true;
+        setIsDragging(true);
+        const ghost = document.createElement('div');
+        ghost.style.cssText = `
+          position: fixed; z-index: 99999; pointer-events: none;
+          width: ${CanvasTokens.dock.iconSize}px; height: ${CanvasTokens.dock.iconSize}px;
+          border-radius: ${CanvasTokens.dock.iconRadius}px;
+          background: linear-gradient(135deg, ${gradientColors[0]}, ${gradientColors[1]});
+          box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,255,255,0.15);
+          opacity: 0.9;
+        `;
+        document.body.appendChild(ghost);
+        ghostRef.current = ghost;
+      }
+
+      if (ghostRef.current) {
+        ghostRef.current.style.left = `${ev.clientX - CanvasTokens.dock.iconSize / 2}px`;
+        ghostRef.current.style.top = `${ev.clientY - CanvasTokens.dock.iconSize / 2}px`;
+      }
+    };
+
+    const cleanup = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onCancel);
+      if (ghostRef.current) { ghostRef.current.remove(); ghostRef.current = null; }
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      const wasDragging = didDragRef.current;
+      dragStartRef.current = null;
+      didDragRef.current = false;
+      cleanup();
+
+      if (wasDragging) {
+        setIsDragging(false);
+        const canvasEl = document.querySelector('[data-canvas-drop]') as HTMLElement | null;
+        if (canvasEl) {
+          const rect = canvasEl.getBoundingClientRect();
+          if (
+            ev.clientX >= rect.left && ev.clientX <= rect.right &&
+            ev.clientY >= rect.top && ev.clientY <= rect.bottom
+          ) {
+            const relX = snapToGrid(ev.clientX - rect.left);
+            const relY = snapToGrid(ev.clientY - rect.top);
+            onDragDrop?.(widget.id, { x: Math.max(0, relX), y: Math.max(0, relY) });
+          }
+        }
+      }
+    };
+
+    const onCancel = () => {
+      dragStartRef.current = null;
+      didDragRef.current = false;
+      setIsDragging(false);
+      cleanup();
+    };
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onCancel);
+  }, [isAgent, widget.id, onDragDrop]);
+
   const handleHoverIn = () => {
     if (isDragging) return;
+    initSoundManager();
     setIsHovered(true);
     scaleValue.value = withSpring(1.08, SPRING_CONFIG);
     translateY.value = withSpring(-8, SPRING_CONFIG);
@@ -193,11 +275,12 @@ function WidgetIconButton({ widget, onPress, index, isActive, isVoiceActive }: W
     }
   };
 
-  const gradientColors = CanvasTokens.iconGradients[widget.id] || ['#3B82F6', '#2563EB'];
+  const handlePress = useCallback(() => {
+    if (didDragRef.current) return;
+    onPress();
+  }, [onPress]);
 
-  const pressableProps = Platform.OS === 'web' && !isAgent
-    ? { ...attributes, ...listeners, ref: setNodeRef as any }
-    : {};
+  const gradientColors = CanvasTokens.iconGradients[widget.id] || ['#3B82F6', '#2563EB'];
 
   const iconTileWebStyle = Platform.OS === 'web'
     ? ({
@@ -226,8 +309,8 @@ function WidgetIconButton({ widget, onPress, index, isActive, isVoiceActive }: W
 
   return (
     <Pressable
-      {...pressableProps}
-      onPress={onPress}
+      onPointerDown={Platform.OS === 'web' && !isAgent ? handlePointerDown : undefined}
+      onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onHoverIn={Platform.OS === 'web' ? handleHoverIn : undefined}
@@ -278,6 +361,7 @@ function DockDivider() {
 export function WidgetDock({
   widgets = DEFAULT_WIDGETS,
   onWidgetSelect,
+  onWidgetDrop,
   onAgentSelect,
   position = 'bottom',
   activeWidgetIds = [],
@@ -368,6 +452,7 @@ export function WidgetDock({
                     <WidgetIconButton
                       widget={widget}
                       onPress={() => handlePress(widget)}
+                      onDragDrop={onWidgetDrop}
                       index={index}
                       isActive={activeWidgetIds.includes(widget.id)}
                       isVoiceActive={widget.isAgent && activeAgentId === widget.id}

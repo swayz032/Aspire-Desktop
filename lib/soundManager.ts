@@ -205,14 +205,14 @@ const SOUNDS: Record<SoundId, SoundDef> = {
   },
   dock_hover: {
     priority: 0,
-    essential: false,
+    essential: true,
     play: (ctx) => {
       playNoiseBurst(ctx, 0, 0.015, 0.03);
     },
   },
   dock_drag_start: {
     priority: 0,
-    essential: false,
+    essential: true,
     play: (ctx) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -229,7 +229,7 @@ const SOUNDS: Record<SoundId, SoundDef> = {
   },
   dock_drop: {
     priority: 0,
-    essential: false,
+    essential: true,
     play: (ctx) => {
       playTone(ctx, C5, 'sine', 0, 0.1, 0.1);
       playTone(ctx, E5, 'sine', 0, 0.1, 0.1);
@@ -237,7 +237,7 @@ const SOUNDS: Record<SoundId, SoundDef> = {
   },
   dock_agent_start: {
     priority: 0,
-    essential: false,
+    essential: true,
     play: (ctx) => {
       playTone(ctx, C5, 'sine', 0, 0.09, 0.1);
       playTone(ctx, E5, 'sine', 0.07, 0.09, 0.1);
@@ -246,7 +246,7 @@ const SOUNDS: Record<SoundId, SoundDef> = {
   },
   dock_agent_end: {
     priority: 0,
-    essential: false,
+    essential: true,
     play: (ctx) => {
       playTone(ctx, E5, 'sine', 0, 0.09, 0.08);
       playTone(ctx, C5, 'sine', 0.08, 0.12, 0.08);
@@ -294,7 +294,14 @@ export function disposeSoundManager(): void {
  */
 export function playSound(id: SoundId): void {
   if (Platform.OS !== 'web') return;
-  if (!audioCtx) return;
+
+  if (!audioCtx) {
+    try {
+      audioCtx = new AudioContext();
+    } catch {
+      return;
+    }
+  }
 
   const soundMode = getImmersionState().soundMode;
   if (soundMode === 'off') return;
