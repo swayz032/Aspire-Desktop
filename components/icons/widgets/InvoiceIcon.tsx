@@ -1,34 +1,30 @@
 import React from 'react';
-import Svg, { Path, Line, Circle } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
 interface InvoiceIconProps {
   size?: number;
   color?: string;
-  accentColor?: string;
 }
 
-export function InvoiceIcon({
-  size = 24,
-  color = '#FFFFFF',
-  accentColor = '#F59E0B'
-}: InvoiceIconProps) {
+export function InvoiceIcon({ size = 28, color = '#FFFFFF' }: InvoiceIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      {/* Document outline */}
       <Path
-        d="M6 2h12v20H6V2z"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinejoin="round"
+        d="M6 2h8l6 6v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"
+        fill={color}
+        fillOpacity={0.15}
       />
-      {/* Lines */}
-      <Line x1="9" y1="7" x2="15" y2="7" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="9" y1="11" x2="15" y2="11" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      {/* Dollar sign */}
       <Path
-        d="M12 14v1.5M12 14c-.8 0-1.5.7-1.5 1.5s.7 1.5 1.5 1.5 1.5.7 1.5 1.5-.7 1.5-1.5 1.5M12 20v-1.5"
-        stroke={accentColor}
-        strokeWidth="2"
+        d="M6 2h8l6 6v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"
+        stroke={color}
+        strokeWidth="1.5"
+      />
+      <Path d="M14 2v6h6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <Path d="M9 13h6M9 16h4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <Path
+        d="M12 7.5v1M12 12v-1m0 0c-.83 0-1.5-.45-1.5-1s.67-1 1.5-1 1.5.45 1.5 1-.67 1-1.5 1z"
+        stroke={color}
+        strokeWidth="1.5"
         strokeLinecap="round"
       />
     </Svg>

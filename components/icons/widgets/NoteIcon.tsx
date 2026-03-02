@@ -1,37 +1,27 @@
 import React from 'react';
-import Svg, { Path, Line } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
 interface NoteIconProps {
   size?: number;
   color?: string;
-  accentColor?: string;
 }
 
-export function NoteIcon({
-  size = 24,
-  color = '#FFFFFF',
-  accentColor = '#F59E0B'
-}: NoteIconProps) {
+export function NoteIcon({ size = 28, color = '#FFFFFF' }: NoteIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      {/* Note body */}
       <Path
-        d="M4 2h16v16l-4 4H4V2z"
+        d="M4 3a1 1 0 011-1h14a1 1 0 011 1v14l-5 5H5a1 1 0 01-1-1V3z"
+        fill={color}
+        fillOpacity={0.15}
+      />
+      <Path
+        d="M4 3a1 1 0 011-1h14a1 1 0 011 1v14l-5 5H5a1 1 0 01-1-1V3z"
         stroke={color}
-        strokeWidth="2"
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
-      {/* Folded corner */}
-      <Path
-        d="M16 18v4l4-4h-4z"
-        stroke={accentColor}
-        strokeWidth="2"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      {/* Text lines */}
-      <Line x1="7" y1="7" x2="17" y2="7" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="7" y1="11" x2="14" y2="11" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <Path d="M15 17v5l5-5h-5z" fill={color} fillOpacity={0.3} stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+      <Path d="M8 7h8M8 11h6M8 15h3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
     </Svg>
   );
 }

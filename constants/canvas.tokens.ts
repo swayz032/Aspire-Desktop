@@ -91,11 +91,36 @@ export const CanvasTokens = {
 
   // Dock
   dock: {
-    height: 80,
-    iconSize: 48,
-    iconSpacing: 16,
-    background: 'rgba(24, 24, 24, 0.95)',
+    height: 88,
+    iconSize: 56,
+    iconRadius: 14,
+    iconSpacing: 14,
+    background: '#1C1C1E',
+    surfaceRadius: 18,
+    edgeThickness: 4,
+    edgeColor: '#151515',
+    outerShadow: '0 10px 36px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.08)',
+    topHighlight: 'rgba(255,255,255,0.08)',
+    paddingH: 18,
+    paddingV: 14,
+    tooltipBg: 'rgba(0,0,0,0.85)',
+    iconShadow: '0 3px 8px rgba(0,0,0,0.4)',
+    iconShadowHover: '0 8px 20px rgba(0,0,0,0.5)',
+    iconHighlight: 'inset 0 1px 0 rgba(255,255,255,0.25)',
   },
+
+  iconGradients: {
+    email: ['#2563EB', '#1D4ED8'],
+    invoice: ['#059669', '#047857'],
+    quote: ['#06B6D4', '#0891B2'],
+    contract: ['#DC2626', '#B91C1C'],
+    calendar: ['#F97316', '#EA580C'],
+    finance: ['#10B981', '#059669'],
+    task: ['#7C3AED', '#6D28D9'],
+    approval: ['#F59E0B', '#D97706'],
+    note: ['#EAB308', '#CA8A04'],
+    receipt: ['#6366F1', '#4F46E5'],
+  } as Record<string, readonly [string, string]>,
 
   // ---------------------------------------------------------------------------
   // Wave 19: Premium Trash Can (Canvas Drag-Delete Zone)

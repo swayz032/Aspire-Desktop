@@ -4,34 +4,16 @@ import Svg, { Rect, Path } from 'react-native-svg';
 interface TaskIconProps {
   size?: number;
   color?: string;
-  accentColor?: string;
 }
 
-export function TaskIcon({
-  size = 24,
-  color = '#FFFFFF',
-  accentColor = '#3B82F6'
-}: TaskIconProps) {
+export function TaskIcon({ size = 28, color = '#FFFFFF' }: TaskIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      {/* Checkboxes */}
-      <Rect x="4" y="5" width="3" height="3" rx="0.5" stroke={color} strokeWidth="1.5" />
-      <Rect x="4" y="11" width="3" height="3" rx="0.5" stroke={color} strokeWidth="1.5" />
-      <Rect x="4" y="17" width="3" height="3" rx="0.5" stroke={accentColor} strokeWidth="1.5" />
-
-      {/* Text lines */}
-      <Path d="M9 6.5h11" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M9 12.5h11" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M9 18.5h11" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-
-      {/* Check in third box */}
-      <Path
-        d="M4.5 18l.7.7L6.5 17"
-        stroke={accentColor}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <Rect x="4" y="4" width="5" height="5" rx="1.5" fill={color} fillOpacity={0.2} stroke={color} strokeWidth="1.2" />
+      <Rect x="4" y="10" width="5" height="5" rx="1.5" fill={color} fillOpacity={0.2} stroke={color} strokeWidth="1.2" />
+      <Rect x="4" y="16" width="5" height="5" rx="1.5" fill={color} stroke={color} strokeWidth="1.2" />
+      <Path d="M5 18l1.5 1.5L8.5 17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M11 6.5h9M11 12.5h9M11 18.5h7" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
     </Svg>
   );
 }

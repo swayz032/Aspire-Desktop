@@ -1,36 +1,28 @@
 import React from 'react';
-import Svg, { Rect, Line, Circle } from 'react-native-svg';
+import Svg, { Rect, Path, Text as SvgText } from 'react-native-svg';
 
 interface CalendarIconProps {
   size?: number;
   color?: string;
-  accentColor?: string;
 }
 
-export function CalendarIcon({
-  size = 24,
-  color = '#FFFFFF',
-  accentColor = '#3B82F6'
-}: CalendarIconProps) {
+export function CalendarIcon({ size = 28, color = '#FFFFFF' }: CalendarIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      {/* Calendar body */}
-      <Rect
-        x="3"
-        y="5"
-        width="18"
-        height="16"
-        rx="2"
-        stroke={color}
-        strokeWidth="2"
-      />
-      {/* Top bar */}
-      <Line x1="3" y1="9" x2="21" y2="9" stroke={color} strokeWidth="2" />
-      {/* Hangers */}
-      <Line x1="7" y1="3" x2="7" y2="7" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      <Line x1="17" y1="3" x2="17" y2="7" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      {/* Today dot */}
-      <Circle cx="12" cy="15" r="2" fill={accentColor} />
+      <Rect x="3" y="4" width="18" height="18" rx="3" fill={color} fillOpacity={0.15} />
+      <Rect x="3" y="4" width="18" height="18" rx="3" stroke={color} strokeWidth="1.5" />
+      <Path d="M3 9h18" stroke={color} strokeWidth="1.5" />
+      <Path d="M8 2.5v3M16 2.5v3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <SvgText
+        x="12"
+        y="17.5"
+        fill={color}
+        fontSize="9"
+        fontWeight="700"
+        textAnchor="middle"
+      >
+        17
+      </SvgText>
     </Svg>
   );
 }

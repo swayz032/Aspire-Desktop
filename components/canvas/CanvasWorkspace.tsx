@@ -590,6 +590,7 @@ export function CanvasWorkspace(): React.ReactElement {
           widgets={DEFAULT_WIDGETS}
           onWidgetSelect={handleWidgetSelect}
           position="bottom"
+          activeWidgetIds={placedWidgets.map(pw => pw.id)}
         />
       )}
 

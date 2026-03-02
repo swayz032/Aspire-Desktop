@@ -79,6 +79,11 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
     - Inner shadows increased to 0.05-0.18 opacity for stronger sunken feel.
     - CanvasGrid and VignetteOverlay clipped with borderRadius: 16 to match surface corners.
     - VignetteOverlay uses position: absolute (not fixed) since it's inside the clipped surface.
+    - **3D Shelf Dock**: Solid opaque `#1C1C1E` background (not glassmorphism), 18px surfaceRadius, visible 4px bottom/right edge thickness, multi-layer box-shadow, top highlight bevel, responsive margin sync with canvas slab.
+    - **Premium App Icons**: 56px squircle tiles (borderRadius: 14) with per-widget gradient backgrounds (blue/green/cyan/red/orange/emerald/violet/amber/yellow/indigo), bold 28px white SVG symbols, inner highlight overlay, individual drop shadows.
+    - **Dock tokens**: `CanvasTokens.dock` (size, radius, shadows, edge) + `CanvasTokens.iconGradients` map in `constants/canvas.tokens.ts`.
+    - **Icon animations**: Hover lifts icon -8px with scale 1.08 + tooltip label; press pushes +2px with scale 0.92; drag fades to 0.4; staggered entrance with 35ms delay per icon.
+    - **Active widget dots**: 5px white dot below dock icon when widget is placed on canvas, derived from `placedWidgets` state.
 
 **System Design Choices:**
 - Tenant-scoped database tables for financial data.
