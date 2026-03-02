@@ -37,8 +37,10 @@ router.get('/api/mail/threads', async (req: Request, res: Response) => {
     const maxResults = parseInt(req.query.limit as string) || 20;
     const pageToken = req.query.pageToken as string | undefined;
     const q = req.query.q as string | undefined;
+    const label = req.query.label as string | undefined;
+    const labelIds = label ? [label] : undefined;
 
-    const gmailData = await listThreads(token, { maxResults, pageToken, q });
+    const gmailData = await listThreads(token, { maxResults, pageToken, q, labelIds });
 
     // Fetch full thread data for each thread to get headers
     const fullThreads = await Promise.all(

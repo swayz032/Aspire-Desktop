@@ -22,6 +22,7 @@ import { EliVoiceChatPanel, type EliMessage } from '@/components/inbox/EliVoiceC
 import type { AgentActivityEvent } from '@/components/chat';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
+const finnAvatar = require('@/assets/avatars/finn.png');
 const inboxHero = require('@/assets/images/inbox-hero.jpg');
 
 type TabType = 'office' | 'calls' | 'mail' | 'contacts';
@@ -78,6 +79,98 @@ function formatEmailContent(value: string): string {
     .replace(/^[\s\n]+/, '')
     .replace(/[\s\n]+$/, '')
     .trim();
+}
+
+function containsHtmlTags(content: string): boolean {
+  if (!content) return false;
+  const htmlPattern = /<\s*(div|p|table|tr|td|th|span|a|img|br|ul|ol|li|h[1-6]|head|body|html|style|link|meta|center|font|b|i|u|strong|em|section|article|header|footer|nav|main|aside|figure|figcaption|blockquote|pre|code|form|input|button|select|textarea|label|fieldset|legend|details|summary|dialog|template|slot|picture|source|video|audio|canvas|svg|iframe)\b[^>]*>/i;
+  return htmlPattern.test(content);
+}
+
+function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
+  const [iframeHeight, setIframeHeight] = useState(300);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const darkStyleOverride = `
+    <style>
+      html, body {
+        background-color: #1C1C1E !important;
+        color: #d1d1d6 !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        font-size: 14px !important;
+        line-height: 1.6 !important;
+        margin: 0 !important;
+        padding: 8px !important;
+        overflow-x: hidden !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+      }
+      a { color: #3B82F6 !important; }
+      img { max-width: 100% !important; height: auto !important; border-radius: 4px; }
+      table { max-width: 100% !important; }
+      * { max-width: 100% !important; box-sizing: border-box !important; }
+    </style>
+    <script>
+      function reportHeight() {
+        var h = document.documentElement.scrollHeight || document.body.scrollHeight;
+        window.parent.postMessage({ type: 'email-iframe-height', height: h }, '*');
+      }
+      window.addEventListener('load', function() { setTimeout(reportHeight, 100); });
+      window.addEventListener('resize', reportHeight);
+      new MutationObserver(reportHeight).observe(document.body, { childList: true, subtree: true });
+    </script>
+  `;
+
+  const wrappedHtml = htmlContent.includes('<html') || htmlContent.includes('<HTML')
+    ? htmlContent.replace(/<head([^>]*)>/i, `<head$1>${darkStyleOverride}`)
+    : `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${darkStyleOverride}</head><body>${htmlContent}</body></html>`;
+
+  useEffect(() => {
+    if (!isWeb) return;
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'email-iframe-height' && typeof event.data.height === 'number') {
+        setIframeHeight(Math.min(Math.max(event.data.height + 16, 100), 2000));
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  if (!isWeb) {
+    return (
+      <View style={{ paddingVertical: Spacing.md }}>
+        <Text style={{ ...Typography.body, color: Colors.text.secondary, lineHeight: 26 }}>
+          {formatEmailContent(htmlContent)}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{
+      borderRadius: BorderRadius.md,
+      overflow: 'hidden',
+      backgroundColor: '#1C1C1E',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.06)',
+      marginVertical: Spacing.sm,
+    }}>
+      <iframe
+        ref={iframeRef as any}
+        srcDoc={wrappedHtml}
+        sandbox="allow-same-origin allow-scripts"
+        style={{
+          width: '100%',
+          height: iframeHeight,
+          border: 'none',
+          borderRadius: BorderRadius.md,
+          backgroundColor: '#1C1C1E',
+          display: 'block',
+        } as any}
+        title="Email content"
+      />
+    </View>
+  );
 }
 
 interface ComposeState {
@@ -287,6 +380,8 @@ function CallItemCard({ item, selected, onPress }: { item: CallItem; selected: b
 
 function MailItemCard({ item, selected, onPress }: { item: MailThread; selected: boolean; onPress: () => void }) {
   const [hovered, setHovered] = useState(false);
+  const isSent = (item as any).labelIds?.includes('SENT') && !(item as any).labelIds?.includes('INBOX');
+  const recipientDisplay = item.recipients?.length > 0 ? item.recipients[0].replace(/<.*>/, '').trim() : '';
 
   return (
     <TouchableOpacity
@@ -295,25 +390,35 @@ function MailItemCard({ item, selected, onPress }: { item: MailThread; selected:
         selected && styles.cardSelected,
         hovered && isWeb && styles.cardHover,
         item.unread && styles.cardUnread,
+        isSent && styles.cardSent,
       ]}
       onPress={onPress}
       activeOpacity={0.7}
       {...(isWeb ? { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) } : {})}
     >
       <View style={styles.cardRow}>
-        <View style={styles.mailAvatar}>
-          <Text style={styles.mailAvatarText}>{item.senderName.charAt(0)}</Text>
+        <View style={[styles.mailAvatar, isSent && styles.mailAvatarSent]}>
+          {isSent ? (
+            <Ionicons name="arrow-forward" size={14} color={Colors.accent.cyan} />
+          ) : (
+            <Text style={styles.mailAvatarText}>{item.senderName.charAt(0)}</Text>
+          )}
         </View>
         <View style={{ flex: 1, marginLeft: Spacing.md }}>
           <View style={styles.titleRow}>
             {item.unread && <View style={styles.unreadDot} />}
             <Text style={[styles.cardTitle, item.unread && styles.cardTitleUnread]} numberOfLines={1}>{item.subject}</Text>
           </View>
-          <Text style={styles.cardPreview} numberOfLines={1}>{item.senderName}</Text>
+          <Text style={styles.cardPreview} numberOfLines={1}>
+            {isSent ? `To: ${recipientDisplay || 'Unknown'}` : item.senderName}
+          </Text>
         </View>
         <View style={styles.cardMeta}>
           <Text style={styles.timeText}>{formatRelativeTime(item.timestamp)}</Text>
           <View style={styles.cardMetaIcons}>
+            {isSent && (
+              <Text style={styles.sentLabel}>Sent</Text>
+            )}
             {item.hasAttachments && (
               <View style={styles.attachIndicator}>
                 <Ionicons name="attach" size={12} color={Colors.text.muted} />
@@ -612,7 +717,11 @@ function MailPreview({ item, detail, loading: detailLoading, onReply, onReplyAll
               <Text style={fp.timestamp}>{formatRelativeTime(msg.timestamp)}</Text>
             </View>
             <View style={fp.mailBodyArea}>
-              <Text style={fp.mailBodyText}>{formatEmailContent(msg.content) || 'No readable email body available.'}</Text>
+              {containsHtmlTags(msg.content) ? (
+                <EmailHtmlRenderer htmlContent={msg.content} />
+              ) : (
+                <Text style={fp.mailBodyText}>{formatEmailContent(msg.content) || 'No readable email body available.'}</Text>
+              )}
             </View>
             {msg.attachments?.length > 0 && (
               <View style={fp.attachmentsSection}>
@@ -677,7 +786,11 @@ function MailPreview({ item, detail, loading: detailLoading, onReply, onReplyAll
           </View>
           <View style={fp.divider} />
           <View style={fp.mailBodyArea}>
-            <Text style={fp.mailBodyText}>{formatEmailContent(item.preview)}</Text>
+            {containsHtmlTags(item.preview) ? (
+              <EmailHtmlRenderer htmlContent={item.preview} />
+            ) : (
+              <Text style={fp.mailBodyText}>{formatEmailContent(item.preview)}</Text>
+            )}
           </View>
         </>
       )}
@@ -813,6 +926,8 @@ export default function InboxScreen() {
   const [composeSending, setComposeSending] = useState(false);
   const [showCcBcc, setShowCcBcc] = useState(false);
 
+  const [showFinnMenu, setShowFinnMenu] = useState(false);
+
   const [showMailSetupModal, setShowMailSetupModal] = useState(false);
   const [mailSetupChecked, setMailSetupChecked] = useState(false);
   const [hasActiveMailbox, setHasActiveMailbox] = useState(false);
@@ -824,6 +939,8 @@ export default function InboxScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<MailThread[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [labelResults, setLabelResults] = useState<MailThread[] | null>(null);
+  const [labelLoading, setLabelLoading] = useState(false);
   const searchTimerRef = useRef<any>(null);
 
   const [unifiedModalTab, setUnifiedModalTab] = useState<'compose' | 'eli'>('compose');
@@ -1073,6 +1190,27 @@ export default function InboxScreen() {
     searchTimerRef.current = setTimeout(() => handleSearch(text), 300);
   }, [handleSearch]);
 
+  const fetchMailByLabel = useCallback(async (label: string) => {
+    setLabelLoading(true);
+    setLabelResults(null);
+    try {
+      const params = new URLSearchParams();
+      if (selectedMailboxEmail) params.set('account', selectedMailboxEmail);
+      params.set('label', label);
+      const qs = params.toString();
+      const res = await authenticatedFetch(`/api/mail/threads?${qs}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLabelResults(data.threads ?? []);
+      } else {
+        setLabelResults([]);
+      }
+    } catch {
+      setLabelResults([]);
+    }
+    setLabelLoading(false);
+  }, [authenticatedFetch, selectedMailboxEmail]);
+
   const handleAttachFiles = useCallback(() => {
     if (isWeb && fileInputRef.current) {
       fileInputRef.current.click();
@@ -1238,12 +1376,13 @@ export default function InboxScreen() {
 
   const getFilteredMail = (): MailThread[] => {
     if (searchResults !== null) return searchResults;
+    if (labelResults !== null && (currentFilter === 'Sent' || currentFilter === 'Drafts' || currentFilter === 'Junk')) return labelResults;
     switch (currentFilter) {
       case 'Unread': return mailThreads.filter(i => i.unread);
-      case 'Starred': return mailThreads.slice(0, 1);
-      case 'Sent': return [];
-      case 'Drafts': return [];
-      case 'Junk': return [];
+      case 'Starred': return mailThreads.filter(i => (i as any).starred);
+      case 'Sent': return labelResults ?? [];
+      case 'Drafts': return labelResults ?? [];
+      case 'Junk': return labelResults ?? [];
       default: return mailThreads;
     }
   };
@@ -1296,11 +1435,20 @@ export default function InboxScreen() {
     setSelectedId(null);
     setSearchQuery('');
     setSearchResults(null);
+    setLabelResults(null);
   };
 
   const handleFilterChange = (filter: string) => {
     setActiveFilter(prev => ({ ...prev, [activeTab]: filter }));
     setSelectedId(null);
+    if (activeTab === 'mail') {
+      const labelMap: Record<string, string> = { Sent: 'SENT', Drafts: 'DRAFT', Junk: 'SPAM' };
+      if (labelMap[filter]) {
+        fetchMailByLabel(labelMap[filter]);
+      } else {
+        setLabelResults(null);
+      }
+    }
   };
 
   const handleRemoveMailbox = useCallback((accountId: string, accountEmail: string) => {
@@ -1359,10 +1507,12 @@ export default function InboxScreen() {
       } else {
         setCompose(prev => ({ ...prev, visible: true }));
       }
+      setEliOpen(false);
+    } else {
+      setEliOpen(true);
+      setCompose(prev => ({ ...prev, visible: false }));
     }
     setUnifiedModalTab(tab);
-    setEliOpen(tab === 'eli' || compose.visible);
-    if (tab === 'eli') setEliOpen(true);
   }, [compose.visible]);
 
   const closeUnifiedModal = useCallback(() => {
@@ -1374,7 +1524,7 @@ export default function InboxScreen() {
   const isUnifiedModalOpen = compose.visible || eliOpen;
 
   const renderListItems = () => {
-    if (loading) {
+    if (loading || labelLoading) {
       return Array.from({ length: 5 }).map((_, i) => (
         <Animated.View key={i} style={styles.skeletonCard}>
           <View style={styles.skeletonRow}>
@@ -1498,7 +1648,7 @@ export default function InboxScreen() {
                   <View key={acct.id} style={[styles.mailboxDropdownItem, selectedMailbox === acct.id && styles.mailboxDropdownItemActive]}>
                     <Pressable
                       style={({ hovered }: any) => [styles.mailboxDropdownSelectArea, hovered && styles.mailboxDropdownItemHover]}
-                      onPress={() => { setSelectedMailbox(acct.id); setShowMailboxDropdown(false); }}
+                      onPress={() => { setSelectedMailbox(acct.id); setShowMailboxDropdown(false); setLabelResults(null); }}
                     >
                       <Ionicons name={acct.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} size={13} color={acct.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} />
                       <View style={{ flex: 1 }}>
@@ -1664,58 +1814,69 @@ export default function InboxScreen() {
         )}
       </ScrollView>
 
-      {/* ── Single Unified FAB ── */}
-      {activeTab === 'mail' && hasActiveMailbox && !isUnifiedModalOpen && (
-        <TouchableOpacity
-          style={styles.unifiedFab}
-          activeOpacity={0.8}
-          onPress={() => openUnifiedModal('compose')}
-        >
-          <Ionicons name="create-outline" size={20} color="#fff" />
-          <Text style={styles.unifiedFabText}>Compose</Text>
-        </TouchableOpacity>
+      {/* ── Finn Floating Avatar + Selector ── */}
+      {activeTab === 'mail' && hasActiveMailbox && !compose.visible && !eliOpen && (
+        <View style={styles.finnFabContainer}>
+          {showFinnMenu && (
+            <>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowFinnMenu(false)} />
+              <View style={styles.finnMenu}>
+                <TouchableOpacity
+                  style={styles.finnMenuItem}
+                  activeOpacity={0.7}
+                  onPress={() => { setShowFinnMenu(false); openUnifiedModal('compose'); }}
+                >
+                  <View style={[styles.finnMenuIcon, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
+                    <Ionicons name="create-outline" size={18} color={Colors.accent.cyan} />
+                  </View>
+                  <Text style={styles.finnMenuText}>Compose</Text>
+                </TouchableOpacity>
+                <View style={styles.finnMenuDivider} />
+                <TouchableOpacity
+                  style={styles.finnMenuItem}
+                  activeOpacity={0.7}
+                  onPress={() => { setShowFinnMenu(false); setEliOpen(true); }}
+                >
+                  <View style={[styles.finnMenuIcon, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+                    <Ionicons name="sparkles" size={18} color="#F59E0B" />
+                  </View>
+                  <Text style={styles.finnMenuText}>Eli Chat</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+          <TouchableOpacity
+            style={styles.finnFab}
+            activeOpacity={0.8}
+            onPress={() => setShowFinnMenu(!showFinnMenu)}
+          >
+            <Image source={finnAvatar} style={styles.finnFabImage} />
+          </TouchableOpacity>
+        </View>
       )}
 
-      {/* ── Unified Compose + Eli Modal ── */}
-      {isUnifiedModalOpen && (
+      {/* ── Compose Modal (Standalone) ── */}
+      {compose.visible && (
         <View style={styles.unifiedOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeUnifiedModal} />
           <Animated.View style={[
             styles.unifiedModal,
             { transform: [{ scale: modalScaleAnim }], opacity: modalOpacityAnim },
           ]}>
-            {/* Modal Header with tabs */}
             <View style={styles.unifiedModalHeader}>
               <View style={styles.unifiedModalTabs}>
-                <TouchableOpacity
-                  style={[styles.unifiedModalTab, unifiedModalTab === 'compose' && styles.unifiedModalTabActive]}
-                  onPress={() => setUnifiedModalTab('compose')}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="mail" size={16} color={unifiedModalTab === 'compose' ? Colors.accent.cyan : Colors.text.muted} />
-                  <Text style={[styles.unifiedModalTabText, unifiedModalTab === 'compose' && styles.unifiedModalTabTextActive]}>
+                <View style={[styles.unifiedModalTab, styles.unifiedModalTabActive]}>
+                  <Ionicons name="mail" size={16} color={Colors.accent.cyan} />
+                  <Text style={[styles.unifiedModalTabText, styles.unifiedModalTabTextActive]}>
                     {compose.mode === 'reply' ? 'Reply' : compose.mode === 'replyAll' ? 'Reply All' : compose.mode === 'forward' ? 'Forward' : 'Compose'}
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.unifiedModalTab, unifiedModalTab === 'eli' && styles.unifiedModalTabActiveEli]}
-                  onPress={() => setUnifiedModalTab('eli')}
-                  activeOpacity={0.7}
-                >
-                  <Image source={eliAvatar} style={styles.eliTabAvatar} />
-                  <Text style={[styles.unifiedModalTabText, unifiedModalTab === 'eli' && styles.unifiedModalTabTextActiveEli]}>Eli</Text>
-                  {eliTriagedCount > 0 && unifiedModalTab !== 'eli' && (
-                    <View style={styles.eliNotifBadge} />
-                  )}
-                </TouchableOpacity>
+                </View>
               </View>
               <TouchableOpacity onPress={closeUnifiedModal} activeOpacity={0.7} style={styles.unifiedModalClose}>
                 <Ionicons name="close" size={20} color={Colors.text.tertiary} />
               </TouchableOpacity>
             </View>
 
-            {/* Compose Tab Content */}
-            {unifiedModalTab === 'compose' && (
               <View style={styles.composeContent}>
                 {/* From */}
                 {selectedMailboxEmail && (
@@ -1841,26 +2002,46 @@ export default function InboxScreen() {
                   />
                 )}
               </View>
-            )}
 
-            {/* Eli Tab Content */}
-            {unifiedModalTab === 'eli' && (
-              <View style={styles.eliTabContent}>
-                <EliVoiceChatPanel
-                  visible={true}
-                  onClose={closeUnifiedModal}
-                  voiceActive={eliVoiceActive}
-                  transcript={eliTranscript}
-                  triagedCount={eliTriagedCount}
-                  onMicPress={handleEliMicPress}
-                  onSendMessage={handleEliSendMessage}
-                  micPulseAnim={eliMicPulse}
-                  messages={eliMessages}
-                  activeRun={eliRun}
-                  embedded
-                />
+          </Animated.View>
+        </View>
+      )}
+
+      {/* ── Eli Chat Panel (Standalone) ── */}
+      {eliOpen && !compose.visible && (
+        <View style={styles.unifiedOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeUnifiedModal} />
+          <Animated.View style={[
+            styles.unifiedModal,
+            { transform: [{ scale: modalScaleAnim }], opacity: modalOpacityAnim },
+            { maxHeight: '80%' },
+          ]}>
+            <View style={styles.unifiedModalHeader}>
+              <View style={styles.unifiedModalTabs}>
+                <View style={[styles.unifiedModalTab, styles.unifiedModalTabActiveEli]}>
+                  <Image source={eliAvatar} style={styles.eliTabAvatar} />
+                  <Text style={[styles.unifiedModalTabText, styles.unifiedModalTabTextActiveEli]}>Eli</Text>
+                </View>
               </View>
-            )}
+              <TouchableOpacity onPress={closeUnifiedModal} activeOpacity={0.7} style={styles.unifiedModalClose}>
+                <Ionicons name="close" size={20} color={Colors.text.tertiary} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.eliTabContent}>
+              <EliVoiceChatPanel
+                visible={true}
+                onClose={closeUnifiedModal}
+                voiceActive={eliVoiceActive}
+                transcript={eliTranscript}
+                triagedCount={eliTriagedCount}
+                onMicPress={handleEliMicPress}
+                onSendMessage={handleEliSendMessage}
+                micPulseAnim={eliMicPulse}
+                messages={eliMessages}
+                activeRun={eliRun}
+                embedded
+              />
+            </View>
           </Animated.View>
         </View>
       )}
@@ -2613,6 +2794,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+  mailAvatarSent: {
+    backgroundColor: 'rgba(59,130,246,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.2)',
+  },
+  cardSent: {
+    borderLeftWidth: 2,
+    borderLeftColor: 'rgba(59,130,246,0.4)',
+  },
+  sentLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.accent.cyan,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
   contactAvatar: {
     width: 40,
     height: 40,
@@ -3147,5 +3344,71 @@ const styles = StyleSheet.create({
   eliTabContent: {
     flex: 1,
     minHeight: 400,
+  },
+
+  // ── Finn Floating Avatar ──
+  finnFabContainer: {
+    position: 'absolute',
+    bottom: 28,
+    right: 24,
+    alignItems: 'flex-end',
+    zIndex: 90,
+  } as any,
+  finnFab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden' as const,
+    borderWidth: 2,
+    borderColor: 'rgba(59,130,246,0.4)',
+    ...Shadows.glow(Colors.accent.cyan),
+    ...(isWeb ? {
+      cursor: 'pointer',
+      transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+    } : {}),
+  } as any,
+  finnFabImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  finnMenu: {
+    position: 'absolute' as const,
+    bottom: 68,
+    right: 0,
+    backgroundColor: Colors.surface.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden' as const,
+    width: 180,
+    zIndex: 200,
+    ...Shadows.lg,
+    ...(isWeb ? { backdropFilter: 'blur(16px)', boxShadow: '0 16px 48px rgba(0,0,0,0.5)' } : {}),
+  } as any,
+  finnMenuItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
+  } as any,
+  finnMenuIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  finnMenuText: {
+    ...Typography.caption,
+    color: Colors.text.primary,
+    fontWeight: '500' as const,
+  },
+  finnMenuDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginHorizontal: 12,
   },
 });

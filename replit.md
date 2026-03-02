@@ -46,14 +46,19 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
 - **Bookings**: Service scheduling system integrated with financial tracking.
 - **Inbox**: Business email and message management with redesigned premium UI.
     - Aspire dark glass aesthetic throughout (dark surfaces, glassmorphism, blue accent).
-    - Unified Compose + Eli modal (single FAB, tabbed popup replacing two floating elements).
+    - Finn floating avatar FAB (bottom-right) with popup selector for Compose and Eli Chat.
+    - Compose and Eli Chat open as separate standalone modals from Finn selector.
     - CC/BCC support in compose, file attachment picker (web), type-coded attachment display.
     - Debounced search bar for finding older messages beyond 30-item inbox cap.
-    - Text-only filter pills, refined mailbox selector dropdown.
+    - Filter pills wired to real Gmail API labels: Sent (SENT), Drafts (DRAFT), Junk (SPAM) via `?label=` param.
+    - `labelResults` state for label-filtered mail; resets on tab change and mailbox switch.
+    - HTML email rendering via sandboxed iframe with dark style injection and postMessage height reporting.
+    - Sent message card styling: cyan arrow icon, "To: recipient" preview, "Sent" label, blue-tint left border.
+    - `labelIds` added to MailThread server response for client-side sent detection.
     - Premium detail views for all 4 types (Office, Calls, Mail, Contacts).
     - Fixed `formatEmailContent` stripping invisible HTML entities (`&zwnj;`, zero-width chars, soft hyphens).
     - Attachment download route: `GET /api/mail/attachments/:messageId/:attachmentId`.
-    - EliVoiceChatPanel supports `embedded` prop for inline rendering in unified modal.
+    - EliVoiceChatPanel redesigned with ElevenLabs voice-chat-01 aesthetic: animated pulsing orb, shimmering status text, custom message bubbles with copy-on-hover, text input + voice toggle footer, triage count display, close button.
 - **Mailbox Setup**:
     - Refactored to `/v1/*` OpenAPI contract with `lib/mailApi.ts` adapter layer (13 functions).
     - jobId-based resumable onboarding with sessionStorage persistence (wizard resumes from server after page refresh).
