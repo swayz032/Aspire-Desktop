@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, Text, Platform, Animated, TextInput, Image, ImageBackground, Alert, Pressable } from 'react-native';
+import { StyleSheet, View, ScrollView, TouchableOpacity, Text, Platform, Animated, TextInput, Image, ImageBackground, Alert, Pressable, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
@@ -297,6 +297,10 @@ const EMPTY_STATE_MAP: Record<string, { icon: keyof typeof Ionicons.glyphMap; ti
 };
 
 const isWeb = Platform.OS === 'web';
+const screenW = isWeb && typeof window !== 'undefined' ? window.innerWidth : Dimensions.get('window').width;
+const isTablet = screenW >= 768 && screenW < 1200;
+const isDesktop = screenW >= 1200;
+const isWideScreen = screenW >= 768;
 
 function getFileTypeIcon(mimeType: string): { icon: keyof typeof Ionicons.glyphMap; color: string } {
   if (mimeType.startsWith('image/')) return { icon: 'image', color: '#A78BFA' };
@@ -1701,26 +1705,7 @@ export default function InboxScreen() {
           })}
         </View>
 
-        {/* ── Mailbox Pill (T001) ── */}
-        {activeTab === 'mail' && hasActiveMailbox && mailAccounts.length > 0 && (
-          <View style={styles.mailboxPillBar}>
-            <TouchableOpacity
-              style={styles.mailboxPill}
-              onPress={() => setShowMailboxModal(true)}
-              activeOpacity={0.75}
-            >
-              <Ionicons
-                name={selectedMailboxAccount?.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'}
-                size={13}
-                color={selectedMailboxAccount?.provider === 'GOOGLE' ? '#EA4335' : Colors.accent.cyan}
-              />
-              <Text style={styles.mailboxPillText} numberOfLines={1}>{selectedMailboxAccount?.email || 'Mailbox'}</Text>
-              <Ionicons name="chevron-down" size={11} color={Colors.text.muted} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── Smart Filter Pills (T002) ── */}
+        {/* ── Smart Filter Pills + Mailbox Pill ── */}
         <View style={styles.filterBar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
             {activeTab === 'mail' && hasActiveMailbox && (
@@ -1751,7 +1736,7 @@ export default function InboxScreen() {
                   <input
                     ref={dateInputRef as any}
                     type="date"
-                    style={{ display: 'none' }}
+                    style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, top: -100, left: -100 } as any}
                     onChange={(e: any) => setDateFilter(e.target.value || null)}
                   />
                 )}
@@ -1770,6 +1755,23 @@ export default function InboxScreen() {
                 </TouchableOpacity>
               );
             })}
+            {activeTab === 'mail' && hasActiveMailbox && mailAccounts.length > 0 && (
+              <TouchableOpacity
+                style={[styles.filterPill, styles.filterPillDate]}
+                onPress={() => setShowMailboxModal(true)}
+                activeOpacity={0.75}
+              >
+                <Ionicons
+                  name={selectedMailboxAccount?.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'}
+                  size={13}
+                  color={selectedMailboxAccount?.provider === 'GOOGLE' ? '#EA4335' : Colors.accent.cyan}
+                />
+                <Text style={[styles.filterPillText, { maxWidth: 160 }]} numberOfLines={1}>
+                  {selectedMailboxAccount?.email || 'Mailbox'}
+                </Text>
+                <Ionicons name="chevron-down" size={11} color={Colors.text.muted} />
+              </TouchableOpacity>
+            )}
           </ScrollView>
         </View>
 
@@ -3858,25 +3860,29 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.82)',
+    backgroundColor: isWideScreen ? 'rgba(0,0,0,0.78)' : 'rgba(0,0,0,0.82)',
     zIndex: 9999,
-    justifyContent: 'flex-end' as const,
-    ...(isWeb ? { backdropFilter: 'blur(8px)' } : {}),
+    justifyContent: isWideScreen ? ('center' as const) : ('flex-end' as const),
+    alignItems: isWideScreen ? ('center' as const) : ('stretch' as const),
+    ...(isWideScreen ? { backdropFilter: 'blur(10px)' } : {}),
   } as any,
   emailModalCard: {
     backgroundColor: '#0D0D0F',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    ...(isWideScreen ? { borderBottomLeftRadius: 20, borderBottomRightRadius: 20 } : {}),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.07)',
-    height: '95%' as unknown as number,
+    height: isWideScreen ? ('88%' as any) : ('95%' as any),
+    ...(isTablet ? { width: '90%' as any, maxWidth: 720 } : {}),
+    ...(isDesktop ? { width: '82%' as any, maxWidth: 1000 } : {}),
     flexDirection: 'column' as const,
-    ...(isWeb ? { boxShadow: '0 -24px 64px rgba(0,0,0,0.6)' } : {}),
+    ...(isWideScreen ? { boxShadow: '0 32px 80px rgba(0,0,0,0.7)' } : { boxShadow: '0 -24px 64px rgba(0,0,0,0.6)' }),
   } as any,
   emailModalHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    paddingHorizontal: 20,
+    paddingHorizontal: isWideScreen ? 28 : 20,
     paddingTop: 20,
     paddingBottom: 14,
   },
@@ -3916,7 +3922,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
   },
   emailModalSubjectWrap: {
-    paddingHorizontal: 20,
+    paddingHorizontal: isWideScreen ? 28 : 20,
     paddingBottom: 16,
     flexDirection: 'row' as const,
     alignItems: 'flex-start' as const,
@@ -3924,10 +3930,10 @@ const styles = StyleSheet.create({
   },
   emailModalSubject: {
     flex: 1,
-    fontSize: 20,
+    fontSize: isDesktop ? 22 : 20,
     fontWeight: '700' as const,
     color: Colors.text.primary,
-    lineHeight: 27,
+    lineHeight: isDesktop ? 30 : 27,
     letterSpacing: -0.3,
   },
   emailModalUnreadBadge: {
@@ -3951,7 +3957,7 @@ const styles = StyleSheet.create({
   },
   emailModalBody: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: isWideScreen ? 28 : 20,
     paddingTop: 16,
   },
   emailModalBodyText: {
@@ -4013,7 +4019,7 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.06)',
     paddingTop: 12,
     paddingBottom: 28,
-    paddingHorizontal: 16,
+    paddingHorizontal: isWideScreen ? 28 : 16,
   },
   emailModalSmartReplies: {
     flexDirection: 'row' as const,
@@ -4177,15 +4183,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#000',
+    backgroundColor: 'rgba(0,0,0,0.80)',
     zIndex: 9997,
-  } as any,
-  eliVoiceModal: {
-    flex: 1,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    paddingHorizontal: 24,
-  },
+    ...(isWeb ? { backdropFilter: 'blur(8px)' } : {}),
+  } as any,
+  eliVoiceModal: {
+    alignItems: 'center' as const,
+    backgroundColor: '#080808',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingTop: 40,
+    paddingBottom: 36,
+    paddingHorizontal: 28,
+    width: isWeb ? 420 : '92%' as any,
+    ...(isWeb ? { boxShadow: '0 32px 80px rgba(0,0,0,0.9)' } : {}),
+  } as any,
   eliVoiceClose: {
     position: 'absolute' as const,
     top: 20,
@@ -4208,16 +4223,16 @@ const styles = StyleSheet.create({
   eliVoiceSubtitle: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.4)',
-    marginBottom: 48,
+    marginBottom: 28,
     letterSpacing: 0.5,
   },
   eliOrbContainer: {
-    marginBottom: 56,
+    marginBottom: 36,
   },
   eliOrbVideoWrap: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
     overflow: 'hidden' as const,
     position: 'relative' as const,
     alignItems: 'center' as const,
@@ -4257,19 +4272,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   eliVoiceButtons: {
-    flexDirection: 'column' as const,
+    flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 14,
-    width: '100%' as unknown as number,
-    maxWidth: 300,
+    justifyContent: 'center' as const,
+    gap: 12,
   },
   eliVoiceSessionBtn: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     gap: 8,
-    width: '100%' as unknown as number,
-    paddingVertical: 15,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
     borderRadius: BorderRadius.full,
     backgroundColor: '#F59E0B',
   },
@@ -4286,8 +4300,8 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     gap: 8,
-    width: '100%' as unknown as number,
-    paddingVertical: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
     borderRadius: BorderRadius.full,
     borderWidth: 1.5,
     borderColor: '#F59E0B',
