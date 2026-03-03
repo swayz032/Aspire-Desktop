@@ -1,702 +1,307 @@
-/**
- * FinanceHubWidget -- Premium financial overview for Canvas Mode (Wave 16)
- *
- * $10,000 UI/UX QUALITY MANDATE:
- * - REAL depth: Multi-layer shadow system VISIBLE on dark canvas
- * - Cash position with large bold amount display
- * - Burn rate trend visualization (gradient-filled area)
- * - Runway estimate with color-coded chips
- * - Custom SVG icons (TrendUpIcon / TrendDownIcon) -- NO emojis
- * - Bloomberg Terminal / Cash Position card quality
- * - RLS-scoped Supabase queries (suite_id + office_id)
- * - Real-time postgres_changes subscription
- *
- * Reference: Cash Position card aesthetic, Authority Queue depth system.
- */
-
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  Platform,
-  type ViewStyle,
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { CanvasTokens } from '@/constants/canvas.tokens';
-import { TrendUpIcon } from '@/components/icons/status/TrendUpIcon';
-import { TrendDownIcon } from '@/components/icons/status/TrendDownIcon';
-import { FinanceIcon } from '@/components/icons/widgets/FinanceIcon';
+import { playClickSound } from '@/lib/sounds';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface CashPosition {
+interface Transaction {
   id: string;
-  suite_id: string;
-  office_id: string;
-  cash_amount: number;
-  burn_rate_weekly: number;
-  runway_weeks: number;
-  last_updated: string;
+  merchant: string;
+  category: string;
+  amount: number;
+  type: 'income' | 'expense';
+  date: string;
 }
 
 interface FinanceData {
   cashPosition: number;
-  cashDelta: number;        // +/- change this week
-  burnRate: number;          // weekly burn rate in dollars
-  burnTrend: 'up' | 'down'; // up = spending increasing, down = decreasing
-  runwayWeeks: number;       // estimated weeks of runway
-  chartData: number[];       // 8-point weekly spend data for sparkline
+  cashDelta: number;
+  receivable: number;
+  payable: number;
+  runwayWeeks: number;
+  transactions: Transaction[];
 }
 
 interface FinanceHubWidgetProps {
   suiteId: string;
   officeId: string;
-  onViewDetails?: () => void;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+const CATEGORY_COLORS: Record<string, string> = {
+  Software: '#8B5CF6',
+  Travel: '#3B82F6',
+  Food: '#F97316',
+  Office: '#10B981',
+  Payroll: '#EF4444',
+  Revenue: '#22C55E',
+  Other: '#6B7280',
+};
 
-const CHART_HEIGHT = 80;
-const CHART_BAR_RADIUS = 3;
+const DEMO_DATA: FinanceData = {
+  cashPosition: 124500,
+  cashDelta: 12.4,
+  receivable: 38200,
+  payable: 15600,
+  runwayWeeks: 18,
+  transactions: [
+    { id: '1', merchant: 'Stripe Payout', category: 'Revenue', amount: 4800, type: 'income', date: 'Today' },
+    { id: '2', merchant: 'Amazon Web Services', category: 'Software', amount: 890, type: 'expense', date: 'Today' },
+    { id: '3', merchant: 'Figma', category: 'Software', amount: 45, type: 'expense', date: 'Yesterday' },
+    { id: '4', merchant: 'Delta Airlines', category: 'Travel', amount: 620, type: 'expense', date: 'Mar 1' },
+    { id: '5', merchant: 'Acme Corp', category: 'Revenue', amount: 12400, type: 'income', date: 'Mar 1' },
+    { id: '6', merchant: 'Office Supplies', category: 'Office', amount: 156, type: 'expense', date: 'Feb 28' },
+  ],
+};
 
-// Runway health thresholds
-const RUNWAY_HEALTHY = 12; // > 12 weeks = green
-const RUNWAY_CAUTION = 6;  // 6-12 weeks = yellow, < 6 = red
-
-// ---------------------------------------------------------------------------
-// Helper Functions
-// ---------------------------------------------------------------------------
-
-/** Format currency with $ and comma separators */
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
+function formatMoney(n: number): string {
+  if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
+  return `$${n.toLocaleString()}`;
 }
 
-/** Format currency with cents */
-function formatCurrencyFull(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
-/** Get runway health color config */
-function getRunwayConfig(weeks: number): { bg: string; border: string; text: string; label: string } {
-  if (weeks > RUNWAY_HEALTHY) {
-    return {
-      bg: 'rgba(16,185,129,0.15)',
-      border: '#10B981',
-      text: '#10B981',
-      label: 'Healthy',
-    };
-  }
-  if (weeks > RUNWAY_CAUTION) {
-    return {
-      bg: 'rgba(245,158,11,0.15)',
-      border: '#F59E0B',
-      text: '#F59E0B',
-      label: 'Caution',
-    };
-  }
-  return {
-    bg: 'rgba(239,68,68,0.15)',
-    border: '#EF4444',
-    text: '#EF4444',
-    label: 'Critical',
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Sparkline Chart Component (Simplified bar chart with gradient)
-// ---------------------------------------------------------------------------
-
-const SparklineChart = React.memo(({ data }: { data: number[] }) => {
-  const maxVal = Math.max(...data, 1);
-
-  return (
-    <View style={chartStyles.container}>
-      <View style={chartStyles.barRow}>
-        {data.map((val, idx) => {
-          const heightPct = (val / maxVal) * 100;
-          const isLatest = idx === data.length - 1;
-
-          return (
-            <View key={idx} style={chartStyles.barWrapper}>
-              <View
-                style={[
-                  chartStyles.bar,
-                  {
-                    height: `${Math.max(heightPct, 4)}%`,
-                    backgroundColor: isLatest ? '#3B82F6' : 'rgba(59, 130, 246, 0.35)',
-                    borderRadius: CHART_BAR_RADIUS,
-                  } as ViewStyle,
-                ]}
-              />
-            </View>
-          );
-        })}
-      </View>
-      {/* Gradient overlay for premium feel */}
-      {Platform.OS === 'web' && (
-        <View
-          style={[
-            chartStyles.gradientOverlay,
-            {
-              backgroundImage:
-                'linear-gradient(180deg, rgba(59,130,246,0.08) 0%, rgba(16,185,129,0.08) 100%)',
-            } as unknown as ViewStyle,
-          ]}
-          pointerEvents="none"
-        />
-      )}
-    </View>
-  );
-});
-
-SparklineChart.displayName = 'SparklineChart';
-
-const chartStyles = StyleSheet.create({
-  container: {
-    height: CHART_HEIGHT,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  barRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  barWrapper: {
-    flex: 1,
-    height: '100%',
-    justifyContent: 'flex-end',
-  },
-  bar: {
-    width: '100%',
-  },
-  gradientOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 8,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
-
-export function FinanceHubWidget({
-  suiteId,
-  officeId,
-  onViewDetails,
-}: FinanceHubWidgetProps) {
-  const router = useRouter();
-  const [data, setData] = useState<FinanceData | null>(null);
+export function FinanceHubWidget({ suiteId, officeId }: FinanceHubWidgetProps) {
+  const [data, setData] = useState<FinanceData>(DEMO_DATA);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // ---------------------------------------------------------------------------
-  // Data Fetching (RLS-Scoped)
-  // ---------------------------------------------------------------------------
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-
-      // RLS-scoped query: suite_id + office_id filtering
-      const { data: cashData, error: fetchError } = await supabase
+      const { data: cp, error } = await supabase
         .from('cash_position')
-        .select('id, suite_id, office_id, cash_amount, burn_rate_weekly, runway_weeks, last_updated')
+        .select('*')
         .eq('suite_id', suiteId)
         .eq('office_id', officeId)
         .order('last_updated', { ascending: false })
         .limit(1)
         .single();
+      if (error) throw error;
 
-      if (fetchError) throw fetchError;
+      const { data: txns } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('suite_id', suiteId)
+        .eq('office_id', officeId)
+        .order('created_at', { ascending: false })
+        .limit(10);
 
-      const pos = cashData as CashPosition;
       setData({
-        cashPosition: pos.cash_amount,
-        cashDelta: Math.round(pos.cash_amount * 0.048), // Derived delta
-        burnRate: pos.burn_rate_weekly,
-        burnTrend: pos.runway_weeks >= 20 ? 'down' : 'up',
-        runwayWeeks: pos.runway_weeks,
-        chartData: [3200, 2800, 3100, 2600, 2400, 2900, 2300, pos.burn_rate_weekly],
+        cashPosition: cp.cash_amount ?? DEMO_DATA.cashPosition,
+        cashDelta: 0,
+        receivable: DEMO_DATA.receivable,
+        payable: DEMO_DATA.payable,
+        runwayWeeks: cp.runway_weeks ?? DEMO_DATA.runwayWeeks,
+        transactions: (txns ?? []).map((t: any) => ({
+          id: t.id,
+          merchant: t.merchant || 'Vendor',
+          category: t.category || 'Other',
+          amount: Math.abs(t.amount),
+          type: t.amount >= 0 ? 'income' : 'expense',
+          date: new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        })),
       });
-    } catch (_e) {
-      // Fallback to demo data when table does not exist yet
-      setData({
-        cashPosition: 45230,
-        cashDelta: 2180,
-        burnRate: 2150,
-        burnTrend: 'down',
-        runwayWeeks: 21,
-        chartData: [3200, 2800, 3100, 2600, 2400, 2900, 2300, 2150],
-      });
+    } catch {
+      setData(DEMO_DATA);
     } finally {
       setLoading(false);
     }
   }, [suiteId, officeId]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  // ---------------------------------------------------------------------------
-  // Real-Time Subscription
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    const channel = supabase
-      .channel(`cash_position:${suiteId}:${officeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'cash_position',
-          filter: `suite_id=eq.${suiteId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const pos = payload.new as CashPosition;
-            if (pos.office_id === officeId) {
-              setData({
-                cashPosition: pos.cash_amount,
-                cashDelta: Math.round(pos.cash_amount * 0.048),
-                burnRate: pos.burn_rate_weekly,
-                burnTrend: pos.runway_weeks >= 20 ? 'down' : 'up',
-                runwayWeeks: pos.runway_weeks,
-                chartData: [3200, 2800, 3100, 2600, 2400, 2900, 2300, pos.burn_rate_weekly],
-              });
-            }
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
-  }, [suiteId, officeId]);
-
-  // ---------------------------------------------------------------------------
-  // Loading State
-  // ---------------------------------------------------------------------------
-
-  if (loading) {
-    return (
-      <View style={styles.stateContainer}>
-        {/* Skeleton: Amount bar */}
-        <View style={styles.skeletonLarge} />
-        {/* Skeleton: Chart area */}
-        <View style={styles.skeletonChart} />
-        {/* Skeleton: Runway bar */}
-        <View style={styles.skeletonMedium} />
-      </View>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Error State
-  // ---------------------------------------------------------------------------
-
-  if (error) {
-    return (
-      <View style={styles.stateContainer}>
-        <FinanceIcon size={32} color="rgba(255,255,255,0.3)" />
-        <Text style={styles.errorText}>{error}</Text>
-        <Pressable style={styles.retryButton} onPress={fetchData}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Empty State
-  // ---------------------------------------------------------------------------
-
-  if (!data) {
-    return (
-      <View style={styles.stateContainer}>
-        <FinanceIcon size={48} color="rgba(255,255,255,0.2)" />
-        <Text style={styles.emptyText}>Connect your accounts</Text>
-        <Text style={styles.emptySubtext}>
-          Link Stripe or QuickBooks to see financial data
-        </Text>
-      </View>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
-  const runwayConfig = getRunwayConfig(data.runwayWeeks);
-  const isDeltaPositive = data.cashDelta >= 0;
-  const runwayMonths = Math.floor(data.runwayWeeks / 4.33);
-  const runwayProgress = Math.max(0, Math.min(100, (data.runwayWeeks / 24) * 100));
+  const isPositive = data.cashDelta >= 0;
 
   return (
-    <View
-      style={styles.container}
-      accessibilityRole="summary"
-      accessibilityLabel={`Finance Hub: Cash position ${formatCurrency(data.cashPosition)}, Runway ${data.runwayWeeks} weeks`}
-    >
-      <View style={styles.bgAccentA} />
-      <View style={styles.bgAccentB} />
-
-      <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
-          <Text style={styles.overlineLabel}>CASH POSITION</Text>
-          <FinanceIcon size={16} color="rgba(255,255,255,0.7)" />
-        </View>
-        <View style={styles.amountRow}>
-          <Text style={styles.amountDisplay}>{formatCurrencyFull(data.cashPosition)}</Text>
-          {isDeltaPositive ? <TrendUpIcon size={18} color="#10B981" /> : <TrendDownIcon size={18} color="#EF4444" />}
-        </View>
-        <Text style={[styles.deltaText, { color: isDeltaPositive ? '#10B981' : '#EF4444' }]}>
-          {isDeltaPositive ? '+' : ''}{formatCurrency(data.cashDelta)} this week
-        </Text>
-      </View>
-
-      <View style={styles.sectionCard}>
-        <Text style={styles.overlineLabel}>BURN RATE</Text>
-        <SparklineChart data={data.chartData} />
-        <View style={styles.burnRateRow}>
-          <Text style={styles.burnRateText}>{formatCurrency(data.burnRate)}/week</Text>
-          {data.burnTrend === 'down' ? (
-            <View style={styles.trendBadge}>
-              <TrendDownIcon size={14} color="#10B981" />
-              <Text style={[styles.trendBadgeText, { color: '#10B981' }]} accessibilityLabel="Burn rate trending down">Decreasing</Text>
-            </View>
-          ) : (
-            <View style={styles.trendBadge}>
-              <TrendUpIcon size={14} color="#EF4444" />
-              <Text style={[styles.trendBadgeText, { color: '#EF4444' }]} accessibilityLabel="Burn rate trending up">Increasing</Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.sectionCard}>
-        <Text style={styles.overlineLabel}>RUNWAY</Text>
-        <View style={styles.runwayRow}>
-          <View style={[styles.runwayChip, { backgroundColor: runwayConfig.bg, borderColor: runwayConfig.border }]}>
-            <Text style={[styles.runwayChipText, { color: runwayConfig.text }]}>
-              {data.runwayWeeks} weeks
+    <View style={s.root}>
+      {/* Hero — Total Balance */}
+      <View style={s.hero}>
+        <Text style={s.heroLabel}>TOTAL BALANCE</Text>
+        <View style={s.heroRow}>
+          <Text style={s.heroAmount}>{formatMoney(data.cashPosition)}</Text>
+          <View style={[s.deltaBadge, { backgroundColor: isPositive ? '#16A34A' : '#DC2626' }]}>
+            <Ionicons
+              name={isPositive ? 'trending-up' : 'trending-down'}
+              size={12}
+              color="#FFF"
+            />
+            <Text style={s.deltaText}>
+              {isPositive ? '+' : ''}{data.cashDelta.toFixed(1)}%
             </Text>
           </View>
-          <Text style={styles.runwayEstimate}>~{runwayMonths} months remaining</Text>
         </View>
-        <View style={styles.runwayGaugeTrack}>
-          <View
-            style={[
-              styles.runwayGaugeFill,
-              {
-                width: `${runwayProgress}%`,
-                backgroundColor: runwayConfig.border,
-              } as ViewStyle,
-            ]}
-          />
+        <Text style={s.heroSub}>Updated {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</Text>
+      </View>
+
+      {/* Stats strip */}
+      <View style={s.statsStrip}>
+        <View style={s.statCol}>
+          <Text style={s.statLabel}>RECEIVABLE</Text>
+          <Text style={s.statValue}>{formatMoney(data.receivable)}</Text>
+        </View>
+        <View style={s.statDivider} />
+        <View style={s.statCol}>
+          <Text style={s.statLabel}>PAYABLE</Text>
+          <Text style={s.statValue}>{formatMoney(data.payable)}</Text>
+        </View>
+        <View style={s.statDivider} />
+        <View style={s.statCol}>
+          <Text style={s.statLabel}>RUNWAY</Text>
+          <Text style={[s.statValue, { color: data.runwayWeeks < 8 ? '#EF4444' : data.runwayWeeks < 16 ? '#F59E0B' : '#22C55E' }]}>
+            {data.runwayWeeks}w
+          </Text>
         </View>
       </View>
 
-      {onViewDetails && (
-        <Pressable
-          style={({ pressed }) => [
-            styles.ghostButton,
-            pressed && styles.ghostButtonPressed,
-          ]}
-          onPress={onViewDetails}
-          accessibilityRole="button"
-          accessibilityLabel="View financial details"
-        >
-          <Text style={styles.ghostButtonText}>View Details</Text>
-        </Pressable>
-      )}
-      {!onViewDetails && (
-        <Pressable
-          style={({ pressed }) => [
-            styles.ghostButton,
-            pressed && styles.ghostButtonPressed,
-          ]}
-          onPress={() => router.push('/finance-hub')}
-        >
-          <Text style={styles.ghostButtonText}>View Details</Text>
-        </Pressable>
-      )}
+      {/* Transactions */}
+      <View style={s.txnHeader}>
+        <Text style={s.txnHeaderText}>RECENT TRANSACTIONS</Text>
+      </View>
+
+      <ScrollView style={s.txnList} showsVerticalScrollIndicator={false}>
+        {data.transactions.map(txn => {
+          const color = CATEGORY_COLORS[txn.category] ?? CATEGORY_COLORS.Other;
+          return (
+            <View key={txn.id} style={s.txnRow}>
+              <View style={[s.txnCircle, { backgroundColor: `${color}22` }]}>
+                <View style={[s.txnDot, { backgroundColor: color }]} />
+              </View>
+              <View style={s.txnInfo}>
+                <Text style={s.txnMerchant} numberOfLines={1}>{txn.merchant}</Text>
+                <Text style={s.txnCategory}>{txn.category} · {txn.date}</Text>
+              </View>
+              <Text style={[s.txnAmount, { color: txn.type === 'income' ? '#22C55E' : '#EF4444' }]}>
+                {txn.type === 'income' ? '+' : '-'}{formatMoney(txn.amount)}
+              </Text>
+            </View>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  root: {
     flex: 1,
-    gap: 10,
-    overflow: 'hidden',
+    backgroundColor: '#050A12',
   },
-
-  bgAccentA: {
-    position: 'absolute',
-    top: -50,
-    right: -32,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(59,130,246,0.12)',
+  hero: {
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 20,
   },
-
-  bgAccentB: {
-    position: 'absolute',
-    bottom: -64,
-    left: -40,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: 'rgba(16,185,129,0.08)',
-  },
-
-  heroCard: {
-    gap: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.24)',
-    backgroundColor: 'rgba(7,19,35,0.88)',
-    padding: 12,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 12px 26px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.08)' } as unknown as ViewStyle)
-      : {}),
-  },
-
-  heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  sectionCard: {
-    gap: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(7,19,35,0.72)',
-    padding: 10,
-  },
-
-  overlineLabel: {
+  heroLabel: {
     fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 1.5,
-    color: 'rgba(255,255,255,0.4)',
-    textTransform: 'uppercase',
-  },
-
-  amountRow: {
+    color: 'rgba(255,255,255,0.35)',
+    letterSpacing: 2,
+    marginBottom: 4,
+  } as any,
+  heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
-
-  amountDisplay: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-
-  deltaText: {
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-
-  burnRateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  burnRateText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: CanvasTokens.text.primary,
-    letterSpacing: 0.2,
-  },
-
-  trendBadge: {
+  heroAmount: {
+    fontSize: 44,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: -2,
+  } as any,
+  deltaBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-
-  trendBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-
-  runwayRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-
-  runwayChip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 6,
-    borderWidth: 1,
+    borderRadius: 20,
   },
-
-  runwayChipText: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-
-  runwayEstimate: {
+  deltaText: {
     fontSize: 12,
-    fontWeight: '500',
-    color: CanvasTokens.text.muted,
+    fontWeight: '700',
+    color: '#FFF',
+  } as any,
+  heroSub: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.25)',
+    marginTop: 6,
   },
-
-  runwayGaugeTrack: {
-    marginTop: 4,
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  statsStrip: {
+    flexDirection: 'row',
+    backgroundColor: '#080D14',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    paddingVertical: 16,
   },
-
-  runwayGaugeFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-
-  // Ghost button
-  ghostButton: {
-    height: 36,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 4,
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as unknown as ViewStyle)
-      : {}),
-  },
-
-  ghostButtonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
-  },
-
-  ghostButtonText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-
-  // State containers
-  stateContainer: {
+  statCol: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    gap: 4,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  statLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.3)',
+    letterSpacing: 1.5,
+  } as any,
+  statValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFF',
+  } as any,
+  txnHeader: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  txnHeaderText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.3)',
+    letterSpacing: 1.5,
+  } as any,
+  txnList: {
+    flex: 1,
+  },
+  txnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
     gap: 12,
   },
-
-  // Skeleton loading
-  skeletonLarge: {
-    width: '70%',
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+  txnCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
-
-  skeletonChart: {
-    width: '100%',
-    height: CHART_HEIGHT,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+  txnDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
-
-  skeletonMedium: {
-    width: '50%',
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-
-  // Error state
-  errorText: {
-    color: '#EF4444',
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-
-  retryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    ...(Platform.OS === 'web'
-      ? ({ cursor: 'pointer' } as unknown as ViewStyle)
-      : {}),
-  },
-
-  retryButtonText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 13,
+  txnInfo: { flex: 1 },
+  txnMerchant: {
+    fontSize: 14,
     fontWeight: '600',
+    color: '#FFF',
+  } as any,
+  txnCategory: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.35)',
+    marginTop: 2,
   },
-
-  // Empty state
-  emptyText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  emptySubtext: {
-    color: CanvasTokens.text.muted,
-    fontSize: 13,
-    textAlign: 'center',
-  },
+  txnAmount: {
+    fontSize: 15,
+    fontWeight: '700',
+  } as any,
 });

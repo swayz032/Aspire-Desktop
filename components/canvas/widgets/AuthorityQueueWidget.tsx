@@ -1,39 +1,8 @@
-/**
- * AuthorityQueueWidget -- Premium governance approval queue for Canvas Mode (Wave 16)
- *
- * $10,000 UI/UX QUALITY MANDATE:
- * - Reuses Authority Queue card design language EXACTLY
- * - Risk tier chips (RED / YELLOW / GREEN) with custom SVG ShieldIcon
- * - Approve (blue) / Deny (ghost) action buttons
- * - Card-based layout with multi-layer shadows
- * - Bloomberg Terminal / governance dashboard quality
- *
- * - RLS-scoped Supabase queries (suite_id + office_id)
- * - Real-time postgres_changes subscription
- * - Optimistic approve/deny with Supabase update
- *
- * Reference: Authority Queue card premium feel, Aspire governance pipeline.
- */
-
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  FlatList,
-  StyleSheet,
-  Platform,
-  type ViewStyle,
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, Pressable, FlatList, StyleSheet, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
-import { CanvasTokens } from '@/constants/canvas.tokens';
-import { ApprovalIcon } from '@/components/icons/widgets/ApprovalIcon';
-import { ShieldIcon } from '@/components/icons/status/ShieldIcon';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { playApproveSound, playDenySound } from '@/lib/sounds';
 
 type RiskTier = 'red' | 'yellow' | 'green';
 
@@ -41,7 +10,8 @@ interface ApprovalRequest {
   id: string;
   actionType: string;
   description: string;
-  requester: string;       // Agent name (e.g., "Finn", "Eli")
+  requester: string;
+  amount?: number;
   riskTier: RiskTier;
   timestamp: string;
   correlationId: string;
@@ -55,775 +25,354 @@ interface AuthorityQueueWidgetProps {
   onViewAll?: () => void;
 }
 
-// ---------------------------------------------------------------------------
-// Risk Tier Config
-// ---------------------------------------------------------------------------
-
-const RISK_CONFIG: Record<RiskTier, {
-  bg: string;
-  border: string;
-  text: string;
-  label: string;
-  shieldColor: string;
-}> = {
-  red: {
-    bg: 'rgba(239,68,68,0.15)',
-    border: '#EF4444',
-    text: '#EF4444',
-    label: 'RED',
-    shieldColor: '#EF4444',
-  },
-  yellow: {
-    bg: 'rgba(245,158,11,0.15)',
-    border: '#F59E0B',
-    text: '#F59E0B',
-    label: 'YELLOW',
-    shieldColor: '#F59E0B',
-  },
-  green: {
-    bg: 'rgba(16,185,129,0.15)',
-    border: '#10B981',
-    text: '#10B981',
-    label: 'GREEN',
-    shieldColor: '#10B981',
-  },
+const RISK_CONFIG: Record<RiskTier, { bg: string; border: string; text: string; label: string }> = {
+  red:    { bg: 'rgba(239,68,68,0.15)',  border: '#EF4444', text: '#EF4444', label: 'HIGH RISK' },
+  yellow: { bg: 'rgba(245,158,11,0.15)', border: '#F59E0B', text: '#F59E0B', label: 'MED RISK'  },
+  green:  { bg: 'rgba(34,197,94,0.15)',  border: '#22C55E', text: '#22C55E', label: 'LOW RISK'  },
 };
 
-// ---------------------------------------------------------------------------
-// Helper Functions
-// ---------------------------------------------------------------------------
-
-/** Format relative timestamp */
-function formatTimestamp(timestamp: string): string {
-  const now = new Date();
-  const then = new Date(timestamp);
-  const diffMs = now.getTime() - then.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${Math.floor(diffHours / 24)}d ago`;
+const AVATAR_COLORS: Record<string, string> = {
+  Ava: '#A855F7',
+  Eli: '#10B981',
+  Finn: '#3B82F6',
+  Nora: '#F59E0B',
+  Quinn: '#6366F1',
+};
+function agentColor(name: string): string {
+  return AVATAR_COLORS[name] ?? '#6B7280';
 }
 
-// ---------------------------------------------------------------------------
-// Risk Tier Chip Component
-// ---------------------------------------------------------------------------
-
-const RiskChip = React.memo(({ tier }: { tier: RiskTier }) => {
-  const config = RISK_CONFIG[tier];
-
-  return (
-    <View
-      style={[
-        styles.riskChip,
-        {
-          backgroundColor: config.bg,
-          borderColor: config.border,
-        },
-      ]}
-      accessibilityLabel={`${config.label} risk tier`}
-    >
-      <Text style={[styles.riskChipText, { color: config.text }]}>
-        {config.label}
-      </Text>
-    </View>
-  );
-});
-
-RiskChip.displayName = 'RiskChip';
-
-// ---------------------------------------------------------------------------
-// Approval Card Component
-// ---------------------------------------------------------------------------
-
-interface ApprovalCardProps {
-  request: ApprovalRequest;
-  onApprove: (id: string) => void;
-  onDeny: (id: string) => void;
+function relativeTime(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
-const ApprovalCard = React.memo(({ request, onApprove, onDeny }: ApprovalCardProps) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const riskConfig = RISK_CONFIG[request.riskTier];
+const DEMO_REQUESTS: ApprovalRequest[] = [
+  { id: '1', actionType: 'PAYMENT', description: 'Pay vendor invoice #1042', requester: 'Finn', amount: 12400, riskTier: 'red', timestamp: new Date(Date.now() - 5 * 60000).toISOString(), correlationId: 'corr-001' },
+  { id: '2', actionType: 'CONTRACT', description: 'Sign Acme Corp renewal', requester: 'Ava', amount: undefined, riskTier: 'yellow', timestamp: new Date(Date.now() - 22 * 60000).toISOString(), correlationId: 'corr-002' },
+  { id: '3', actionType: 'REFUND', description: 'Issue refund to customer #8821', requester: 'Eli', amount: 850, riskTier: 'yellow', timestamp: new Date(Date.now() - 45 * 60000).toISOString(), correlationId: 'corr-003' },
+  { id: '4', actionType: 'EMAIL', description: 'Send pricing proposal to prospect', requester: 'Nora', amount: undefined, riskTier: 'green', timestamp: new Date(Date.now() - 2 * 3600000).toISOString(), correlationId: 'corr-004' },
+];
 
-  const cardStyle = [
-    styles.approvalCard,
-    isHovered && styles.approvalCardHover,
-  ];
-
-  return (
-    <View
-      style={cardStyle}
-      accessibilityLabel={`${request.actionType}, ${riskConfig.label} risk tier, requested by ${request.requester}`}
-      {...(Platform.OS === 'web'
-        ? {
-            onMouseEnter: () => setIsHovered(true),
-            onMouseLeave: () => setIsHovered(false),
-          } as unknown as Record<string, unknown>
-        : {})}
-    >
-      {/* Header row */}
-      <View style={styles.cardHeader}>
-        <View style={styles.cardHeaderLeft}>
-          <ShieldIcon size={18} color={riskConfig.shieldColor} />
-          <Text style={styles.actionType} numberOfLines={1}>
-            {request.actionType}
-          </Text>
-        </View>
-        <RiskChip tier={request.riskTier} />
-      </View>
-
-      {/* Description */}
-      <Text style={styles.description} numberOfLines={2}>
-        {request.description}
-      </Text>
-
-      {/* Requester + timestamp */}
-      <Text style={styles.requesterText}>
-        Requested by {request.requester} - {formatTimestamp(request.timestamp)}
-      </Text>
-
-      {/* Action buttons */}
-      <View style={styles.buttonRow}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.approveButton,
-            pressed && styles.buttonPressed,
-          ]}
-          onPress={() => onApprove(request.id)}
-          accessibilityRole="button"
-          accessibilityLabel={`Approve ${request.actionType}`}
-        >
-          <Text style={styles.approveButtonText}>Approve</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [
-            styles.denyButton,
-            pressed && styles.buttonPressed,
-          ]}
-          onPress={() => onDeny(request.id)}
-          accessibilityRole="button"
-          accessibilityLabel={`Deny ${request.actionType}`}
-        >
-          <Text style={styles.denyButtonText}>Deny</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-});
-
-ApprovalCard.displayName = 'ApprovalCard';
-
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
-
-export function AuthorityQueueWidget({
-  suiteId,
-  officeId,
-  onApprove,
-  onDeny,
-  onViewAll,
-}: AuthorityQueueWidgetProps) {
-  const router = useRouter();
+export function AuthorityQueueWidget({ suiteId, officeId, onApprove, onDeny }: AuthorityQueueWidgetProps) {
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // ---------------------------------------------------------------------------
-  // Data Fetching (RLS-Scoped)
-  // ---------------------------------------------------------------------------
+  const [processing, setProcessing] = useState<Record<string, 'approving' | 'denying'>>({});
 
   const fetchRequests = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-
-      // RLS-scoped query: suite_id + office_id, only pending
-      const { data, error: fetchError } = await supabase
+      const { data, error } = await supabase
         .from('authority_queue')
-        .select('id, action_type, risk_tier, description, status, created_at')
+        .select('*')
         .eq('suite_id', suiteId)
         .eq('office_id', officeId)
-        .eq('status', 'pending')
+        .eq('status', 'PENDING')
         .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (fetchError) throw fetchError;
-
-      setRequests(
-        (data ?? []).map((row: Record<string, unknown>) => ({
-          id: row.id as string,
-          actionType: row.action_type as string,
-          description: (row.description as string) ?? '',
-          requester: 'Agent',
-          riskTier: (row.risk_tier as string).toLowerCase() as RiskTier,
-          timestamp: row.created_at as string,
-          correlationId: row.id as string,
-        })),
-      );
-    } catch (_e) {
-      // Fallback to demo data when table does not exist yet
-      setRequests([
-        { id: '1', actionType: 'Invoice Creation', description: 'Create $2,500 invoice for ABC Company -- Q4 consulting services', requester: 'Finn', riskTier: 'red', timestamp: new Date(Date.now() - 1000 * 60 * 3).toISOString(), correlationId: 'corr-001' },
-        { id: '2', actionType: 'Email Draft', description: 'Send Q4 update to investor distribution list (47 recipients)', requester: 'Eli', riskTier: 'yellow', timestamp: new Date(Date.now() - 1000 * 60 * 12).toISOString(), correlationId: 'corr-002' },
-        { id: '3', actionType: 'Calendar Update', description: 'Reschedule board meeting from March 5 to March 12', requester: 'Nora', riskTier: 'green', timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(), correlationId: 'corr-003' },
-      ]);
+        .limit(15);
+      if (error) throw error;
+      const mapped: ApprovalRequest[] = (data ?? []).map((row: any) => ({
+        id: row.id,
+        actionType: row.action_type || 'ACTION',
+        description: row.description || row.action_type,
+        requester: row.requester || row.agent_id || 'Agent',
+        amount: row.amount ?? undefined,
+        riskTier: (row.risk_tier?.toLowerCase() as RiskTier) || 'yellow',
+        timestamp: row.created_at,
+        correlationId: row.correlation_id || row.id,
+      }));
+      setRequests(mapped.length > 0 ? mapped : DEMO_REQUESTS);
+    } catch {
+      setRequests(DEMO_REQUESTS);
     } finally {
       setLoading(false);
     }
   }, [suiteId, officeId]);
 
-  useEffect(() => {
-    fetchRequests();
-  }, [fetchRequests]);
-
-  // ---------------------------------------------------------------------------
-  // Real-Time Subscription
-  // ---------------------------------------------------------------------------
+  useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
   useEffect(() => {
     const channel = supabase
-      .channel(`authority_queue:${suiteId}:${officeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'authority_queue',
-          filter: `suite_id=eq.${suiteId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const row = payload.new as Record<string, unknown>;
-            if ((row.office_id as string) === officeId && (row.status as string) === 'pending') {
-              const newReq: ApprovalRequest = {
-                id: row.id as string,
-                actionType: row.action_type as string,
-                description: (row.description as string) ?? '',
-                requester: 'Agent',
-                riskTier: (row.risk_tier as string).toLowerCase() as RiskTier,
-                timestamp: row.created_at as string,
-                correlationId: row.id as string,
-              };
-              setRequests((prev) => [newReq, ...prev].slice(0, 5));
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const row = payload.new as Record<string, unknown>;
-            // Remove from queue if no longer pending
-            if ((row.status as string) !== 'pending') {
-              setRequests((prev) => prev.filter((r) => r.id !== (row.id as string)));
-            }
-          } else if (payload.eventType === 'DELETE') {
-            const old = payload.old as { id: string };
-            setRequests((prev) => prev.filter((r) => r.id !== old.id));
-          }
-        },
-      )
+      .channel(`aq-widget-${suiteId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'authority_queue',
+        filter: `suite_id=eq.${suiteId}`,
+      }, () => fetchRequests())
       .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [suiteId, fetchRequests]);
 
-    return () => {
-      channel.unsubscribe();
-    };
-  }, [suiteId, officeId]);
+  const handleApprove = useCallback(async (req: ApprovalRequest) => {
+    if (processing[req.id]) return;
+    setProcessing(p => ({ ...p, [req.id]: 'approving' }));
+    playApproveSound();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setRequests(prev => prev.filter(r => r.id !== req.id));
+    try {
+      await supabase.from('authority_queue').update({ status: 'APPROVED' }).eq('id', req.id);
+      onApprove?.(req.id);
+    } catch {}
+    setProcessing(p => { const n = { ...p }; delete n[req.id]; return n; });
+  }, [processing, onApprove]);
 
-  // ---------------------------------------------------------------------------
-  // Handlers
-  // ---------------------------------------------------------------------------
+  const handleDeny = useCallback(async (req: ApprovalRequest) => {
+    if (processing[req.id]) return;
+    setProcessing(p => ({ ...p, [req.id]: 'denying' }));
+    playDenySound();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    setRequests(prev => prev.filter(r => r.id !== req.id));
+    try {
+      await supabase.from('authority_queue').update({ status: 'DENIED' }).eq('id', req.id);
+      onDeny?.(req.id);
+    } catch {}
+    setProcessing(p => { const n = { ...p }; delete n[req.id]; return n; });
+  }, [processing, onDeny]);
 
-  const handleApprove = useCallback(
-    async (requestId: string) => {
-      // Optimistic removal
-      setRequests((prev) => prev.filter((r) => r.id !== requestId));
-      onApprove?.(requestId);
-
-      try {
-        await supabase
-          .from('authority_queue')
-          .update({ status: 'approved' })
-          .eq('id', requestId);
-      } catch (_e) {
-        // Silent catch for demo mode
-      }
-    },
-    [onApprove],
-  );
-
-  const handleDeny = useCallback(
-    async (requestId: string) => {
-      // Optimistic removal
-      setRequests((prev) => prev.filter((r) => r.id !== requestId));
-      onDeny?.(requestId);
-
-      try {
-        await supabase
-          .from('authority_queue')
-          .update({ status: 'denied' })
-          .eq('id', requestId);
-      } catch (_e) {
-        // Silent catch for demo mode
-      }
-    },
-    [onDeny],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Loading State
-  // ---------------------------------------------------------------------------
-
-  if (loading) {
-    return (
-      <View style={styles.stateContainer}>
-        {[0, 1].map((i) => (
-          <View key={i} style={styles.skeletonCard}>
-            <View style={styles.skeletonHeader} />
-            <View style={styles.skeletonBody} />
-            <View style={styles.skeletonButtons} />
-          </View>
-        ))}
-      </View>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Error State
-  // ---------------------------------------------------------------------------
-
-  if (error) {
-    return (
-      <View style={styles.stateContainer}>
-        <ApprovalIcon size={32} color="rgba(255,255,255,0.3)" />
-        <Text style={styles.errorText}>{error}</Text>
-        <Pressable style={styles.retryButton} onPress={fetchRequests}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Empty State
-  // ---------------------------------------------------------------------------
-
-  if (requests.length === 0) {
-    return (
-      <View style={styles.stateContainer}>
-        <ApprovalIcon size={48} color="rgba(255,255,255,0.2)" />
-        <Text style={styles.emptyText}>Queue is clear</Text>
-        <Text style={styles.emptySubtext}>
-          No pending approvals at this time
-        </Text>
-      </View>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
-  const renderCard = ({ item }: { item: ApprovalRequest }) => (
-    <ApprovalCard
-      request={item}
-      onApprove={handleApprove}
-      onDeny={handleDeny}
-    />
-  );
+  const pendingCount = requests.length;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.bgAccentA} />
-      <View style={styles.bgAccentB} />
-
-      {/* Pending count */}
-      <View style={styles.countCard}>
-        <View style={styles.countRow}>
-        <View style={styles.pendingBadge}>
-          <Text style={styles.pendingCount}>{requests.length}</Text>
-        </View>
-        <Text
-          style={styles.pendingLabel}
-          accessibilityLabel={`${requests.length} pending approvals`}
-        >
-          pending
-        </Text>
-        </View>
+    <View style={s.root}>
+      {/* Header */}
+      <View style={s.header}>
+        <Text style={s.headerTitle}>Pending Approvals</Text>
+        {pendingCount > 0 && (
+          <View style={s.countBadge}>
+            <Text style={s.countText}>{pendingCount}</Text>
+          </View>
+        )}
       </View>
 
       {/* Request list */}
       <FlatList
         data={requests}
-        renderItem={renderCard}
-        keyExtractor={(item) => item.id}
+        keyExtractor={r => r.id}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-        maxToRenderPerBatch={5}
-        windowSize={5}
-        initialNumToRender={5}
-      />
+        ListEmptyComponent={
+          <View style={s.empty}>
+            <Text style={s.emptyIcon}>✓</Text>
+            <Text style={s.emptyTitle}>All clear</Text>
+            <Text style={s.emptyText}>{loading ? 'Loading…' : 'No pending approvals'}</Text>
+          </View>
+        }
+        renderItem={({ item: req }) => {
+          const risk = RISK_CONFIG[req.riskTier];
+          const color = agentColor(req.requester);
+          const isProcessing = !!processing[req.id];
+          return (
+            <View style={s.reqRow}>
+              {/* Top row */}
+              <View style={s.reqTopRow}>
+                <View style={[s.agentCircle, { backgroundColor: color }]}>
+                  <Text style={s.agentInitial}>{req.requester[0]}</Text>
+                </View>
+                <View style={s.reqInfo}>
+                  <View style={s.reqTitleRow}>
+                    <Text style={s.reqRequester}>{req.requester}</Text>
+                    <View style={[s.riskChip, { backgroundColor: risk.bg, borderColor: risk.border }]}>
+                      <Text style={[s.riskText, { color: risk.text }]}>{risk.label}</Text>
+                    </View>
+                  </View>
+                  <Text style={s.reqDesc} numberOfLines={2}>{req.description}</Text>
+                  <View style={s.reqMeta}>
+                    <Text style={s.reqTime}>{relativeTime(req.timestamp)}</Text>
+                    {req.amount !== undefined && (
+                      <Text style={s.reqAmount}>${req.amount.toLocaleString()}</Text>
+                    )}
+                  </View>
+                </View>
+              </View>
 
-      {/* Footer */}
-      {onViewAll && (
-        <View style={styles.footer}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.viewAllButton,
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={onViewAll}
-            accessibilityRole="button"
-            accessibilityLabel="View all pending approvals"
-          >
-            <Text style={styles.viewAllText}>View All Pending</Text>
-          </Pressable>
-        </View>
-      )}
-      {!onViewAll && (
-        <View style={styles.footer}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.viewAllButton,
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={() => router.push('/session/authority')}
-          >
-            <Text style={styles.viewAllText}>View All Pending</Text>
-          </Pressable>
-        </View>
-      )}
+              {/* Inline Approve / Reject — THE UNFORGETTABLE ELEMENT */}
+              <View style={s.actionRow}>
+                <Pressable
+                  style={[s.approveBtn, isProcessing && s.btnDisabled]}
+                  onPress={() => handleApprove(req)}
+                  disabled={isProcessing}
+                >
+                  <Text style={s.approveBtnText}>
+                    {processing[req.id] === 'approving' ? '…' : 'Approve'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[s.denyBtn, isProcessing && s.btnDisabled]}
+                  onPress={() => handleDeny(req)}
+                  disabled={isProcessing}
+                >
+                  <Text style={s.denyBtnText}>
+                    {processing[req.id] === 'denying' ? '…' : 'Reject'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          );
+        }}
+      />
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  root: {
     flex: 1,
-    overflow: 'hidden',
+    backgroundColor: '#060A10',
   },
-
-  bgAccentA: {
-    position: 'absolute',
-    top: -50,
-    right: -34,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(59,130,246,0.12)',
-  },
-
-  bgAccentB: {
-    position: 'absolute',
-    bottom: -56,
-    left: -38,
-    width: 146,
-    height: 146,
-    borderRadius: 73,
-    backgroundColor: 'rgba(239,68,68,0.1)',
-  },
-
-  countCard: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(7,19,35,0.74)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 10,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 8px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.07)' } as unknown as ViewStyle)
-      : {}),
-  },
-
-  // Pending count row
-  countRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.07)',
   },
-
-  pendingBadge: {
-    width: 24,
-    height: 24,
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFF',
+    flex: 1,
+  } as any,
+  countBadge: {
+    backgroundColor: '#F97316',
     borderRadius: 12,
-    backgroundColor: 'rgba(239,68,68,0.15)',
-    borderWidth: 1,
-    borderColor: '#EF4444',
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  pendingCount: {
+  countText: {
     fontSize: 12,
+    fontWeight: '800',
+    color: '#FFF',
+  } as any,
+  reqRow: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    gap: 12,
+  },
+  reqTopRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  agentCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  agentInitial: {
+    fontSize: 16,
     fontWeight: '700',
-    color: '#EF4444',
-  },
-
-  pendingLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: CanvasTokens.text.muted,
-    letterSpacing: 0.3,
-  },
-
-  // List
-  listContent: {
-    gap: 8,
-    paddingBottom: 52,
-  },
-
-  // Approval card
-  approvalCard: {
-    backgroundColor: 'rgba(12,19,31,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 10,
-    padding: 12,
-    gap: 10,
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          transition: 'all 150ms ease',
-        } as unknown as ViewStyle)
-      : {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 4,
-        }),
-  },
-
-  approvalCardHover: {
-    borderColor: 'rgba(59,130,246,0.35)',
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-          transform: 'translateY(-2px)',
-        } as unknown as ViewStyle)
-      : {}),
-  },
-
-  cardHeader: {
+    color: '#FFF',
+  } as any,
+  reqInfo: { flex: 1, gap: 4 },
+  reqTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-
-  cardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
-    flex: 1,
-    marginRight: 8,
   },
-
-  actionType: {
-    flex: 1,
+  reqRequester: {
     fontSize: 14,
-    fontWeight: '600',
-    color: CanvasTokens.text.primary,
-    letterSpacing: 0.2,
-  },
-
-  description: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.72)',
-    lineHeight: 18,
-  },
-
-  requesterText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.58)',
-  },
-
-  // Risk chip
+    fontWeight: '700',
+    color: '#FFF',
+  } as any,
   riskChip: {
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
     borderWidth: 1,
   },
-
-  riskChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
+  riskText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  } as any,
+  reqDesc: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.55)',
+    lineHeight: 18,
   },
-
-  // Button row
-  buttonRow: {
+  reqMeta: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
-
-  approveButton: {
-    flex: 1,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#3B82F6',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.7)',
-    justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as unknown as ViewStyle)
-      : {}),
-  },
-
-  approveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-
-  denyButton: {
-    flex: 1,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as unknown as ViewStyle)
-      : {}),
-  },
-
-  denyButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-
-  buttonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
-  },
-
-  // Footer
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(7,19,35,0.92)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.12)',
-    paddingVertical: 8,
-  },
-
-  viewAllButton: {
-    height: 36,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as unknown as ViewStyle)
-      : {}),
-  },
-
-  viewAllText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-
-  // State containers
-  stateContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-
-  // Skeleton loading
-  skeletonCard: {
-    width: '100%',
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    padding: 16,
     gap: 10,
-    marginBottom: 8,
   },
-
-  skeletonHeader: {
-    width: '60%',
-    height: 16,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+  reqTime: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.3)',
   },
-
-  skeletonBody: {
-    width: '90%',
-    height: 14,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+  reqAmount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.6)',
+  } as any,
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingLeft: 54,
   },
-
-  skeletonButtons: {
-    width: '100%',
+  approveBtn: {
+    flex: 1,
     height: 36,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: '#22C55E',
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-
-  // Error state
-  errorText: {
+  approveBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
+  } as any,
+  denyBtn: {
+    flex: 1,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+  },
+  denyBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
     color: '#EF4444',
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center',
+  } as any,
+  btnDisabled: {
+    opacity: 0.5,
   },
-
-  retryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    ...(Platform.OS === 'web'
-      ? ({ cursor: 'pointer' } as unknown as ViewStyle)
-      : {}),
+  empty: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: 8,
   },
-
-  retryButtonText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 13,
-    fontWeight: '600',
+  emptyIcon: {
+    fontSize: 32,
+    color: '#22C55E',
   },
-
-  // Empty state
-  emptyText: {
-    color: CanvasTokens.text.primary,
+  emptyTitle: {
     fontSize: 16,
-    fontWeight: '600',
-  },
-
-  emptySubtext: {
-    color: CanvasTokens.text.muted,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.5)',
+  } as any,
+  emptyText: {
     fontSize: 13,
-    textAlign: 'center',
+    color: 'rgba(255,255,255,0.25)',
   },
 });

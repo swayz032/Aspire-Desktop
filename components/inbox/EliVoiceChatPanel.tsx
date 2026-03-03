@@ -19,9 +19,6 @@ import {
   ChainOfThoughtHeader,
   ChainOfThoughtContent,
   ChainOfThoughtStep,
-  Reasoning,
-  ReasoningTrigger,
-  ReasoningContent,
   type AgentActivityEvent,
   type AgentChatMessage,
 } from '@/components/chat';
@@ -43,12 +40,7 @@ interface EliVoiceChatPanelProps {
   onSendMessage: (text: string) => void;
   micPulseAnim: Animated.Value;
   messages: EliMessage[];
-  activeRun?: {
-    events: AgentActivityEvent[];
-    status: 'running' | 'completed';
-    reasoning?: string;
-    reasoningDurationS?: number;
-  } | null;
+  activeRun?: { events: AgentActivityEvent[]; status: 'running' | 'completed' } | null;
   embedded?: boolean;
 }
 
@@ -211,7 +203,6 @@ export function EliVoiceChatPanel({
   if (!visible) return null;
 
   const isThinking = voiceActive && !transcript;
-  const isRunThinking = !!activeRun && activeRun.status === 'running' && activeRun.events.length === 0;
   const isConnected = voiceActive;
 
   return (
@@ -297,19 +288,8 @@ export function EliVoiceChatPanel({
             </ChainOfThoughtContent>
           </ChainOfThought>
         )}
-        {activeRun?.reasoning && (
-          <Reasoning
-            agent="eli"
-            isStreaming={activeRun.status === 'running'}
-            duration={activeRun.reasoningDurationS}
-            style={{ marginBottom: 8 }}
-          >
-            <ReasoningTrigger />
-            <ReasoningContent>{activeRun.reasoning}</ReasoningContent>
-          </Reasoning>
-        )}
 
-        {(isThinking || isRunThinking) && (
+        {isThinking && (
           <View style={styles.thinkingRow}>
             <Image source={eliAvatar} style={styles.msgAvatar} />
             <View style={styles.thinkingBubble}>

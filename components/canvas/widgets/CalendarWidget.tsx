@@ -1,26 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { CanvasTokens } from '@/constants/canvas.tokens';
-import { Colors } from '@/constants/tokens';
+import { playClickSound } from '@/lib/sounds';
 
 interface CalendarEvent {
   id: string;
   title: string;
   start_time: string;
   end_time: string;
-  agent_id: string;
+  agent_id?: string;
   location?: string | null;
-  link?: string | null;
 }
 
 interface CalendarWidgetProps {
@@ -31,426 +21,354 @@ interface CalendarWidgetProps {
   onAddEventClick?: () => void;
 }
 
-const WEEK_DAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+const WEEK_DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-const AGENT_COLORS: Record<string, string> = {
-  ava: '#A855F7',
-  nora: '#3B82F6',
-  eli: '#06B6D4',
-  finn: '#10B981',
-  quinn: '#6366F1',
-  sarah: '#9382F6',
-  clara: '#F59E0B',
-  milo: '#EF4444',
-};
+const EVENT_COLORS = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#0EA5E9'];
 
-function startOfMonth(date: Date): string {
-  const d = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
-  return d.toISOString();
-}
-
-function endOfMonth(date: Date): string {
-  const d = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-  return d.toISOString();
-}
-
-function formatTime(isoTime: string): string {
-  const date = new Date(isoTime);
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours % 12 || 12;
-  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+function colorFromId(id: string): string {
+  const hash = id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return EVENT_COLORS[hash % EVENT_COLORS.length];
 }
 
 function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
 }
 
-function mondayIndex(date: Date): number {
-  return (date.getDay() + 6) % 7;
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? 'pm' : 'am';
+  return `${h % 12 || 12}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''}${ampm}`;
 }
 
-function dayKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+function getDaysInMonth(year: number, month: number): Date[] {
+  const days: Date[] = [];
+  const first = new Date(year, month, 1);
+  const startDay = first.getDay();
+  for (let i = 0; i < startDay; i++) {
+    days.push(new Date(year, month, -startDay + i + 1));
+  }
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push(new Date(year, month, i));
+  }
+  while (days.length % 7 !== 0) {
+    days.push(new Date(year, month + 1, days.length - startDay - daysInMonth + 1));
+  }
+  return days;
 }
 
-export function CalendarWidget({
-  suiteId,
-  officeId,
-  date = new Date(),
-  onEventClick,
-  onAddEventClick,
-}: CalendarWidgetProps) {
-  const router = useRouter();
-  const [monthCursor, setMonthCursor] = useState(new Date(date.getFullYear(), date.getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState(new Date(date));
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+const DEMO_EVENTS: CalendarEvent[] = [
+  { id: '1', title: 'Board Meeting', start_time: new Date().toISOString(), end_time: new Date(Date.now() + 3600000).toISOString() },
+  { id: '2', title: 'Product Review', start_time: new Date(Date.now() + 86400000).toISOString(), end_time: new Date(Date.now() + 90000000).toISOString() },
+  { id: '3', title: 'Investor Call', start_time: new Date(Date.now() + 2 * 86400000).toISOString(), end_time: new Date(Date.now() + 2 * 86400000 + 3600000).toISOString() },
+];
+
+export function CalendarWidget({ suiteId, officeId }: CalendarWidgetProps) {
+  const today = useMemo(() => new Date(), []);
+  const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        setLoading(true);
-        const { data } = await supabase
-          .from('calendar_events')
-          .select('id, title, start_time, end_time, agent_id, location, link')
-          .eq('suite_id', suiteId)
-          .eq('office_id', officeId)
-          .gte('start_time', startOfMonth(monthCursor))
-          .lte('start_time', endOfMonth(monthCursor))
-          .order('start_time', { ascending: true });
-
-        setEvents(data || []);
-      } catch {
-        const today = new Date();
-        setEvents([
-          { id: '1', title: 'Team Standup', start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 0).toISOString(), end_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 15).toISOString(), agent_id: 'nora', location: 'Zoom' },
-          { id: '2', title: 'Client Discovery Call', start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 10, 30).toISOString(), end_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 11, 30).toISOString(), agent_id: 'ava', location: 'Google Meet' },
-          { id: '3', title: 'Invoice Review', start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 13, 0).toISOString(), end_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 13, 30).toISOString(), agent_id: 'finn' },
-        ]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchEvents();
-
-    const channel = supabase
-      .channel(`calendar_events:${suiteId}:${officeId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'calendar_events', filter: `suite_id=eq.${suiteId}` },
-        () => fetchEvents()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [suiteId, officeId, monthCursor]);
-
-  const gridDays = useMemo(() => {
-    const first = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
-    const lead = mondayIndex(first);
-    const start = new Date(first);
-    start.setDate(start.getDate() - lead);
-
-    const cells: Date[] = [];
-    for (let i = 0; i < 42; i += 1) {
-      const day = new Date(start);
-      day.setDate(start.getDate() + i);
-      cells.push(day);
+  const fetchEvents = useCallback(async () => {
+    try {
+      setLoading(true);
+      const start = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).toISOString();
+      const end = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59).toISOString();
+      const { data, error } = await supabase
+        .from('calendar_events')
+        .select('*')
+        .eq('suite_id', suiteId)
+        .eq('office_id', officeId)
+        .gte('start_time', start)
+        .lte('start_time', end);
+      if (error) throw error;
+      setEvents(data && data.length > 0 ? data : DEMO_EVENTS);
+    } catch {
+      setEvents(DEMO_EVENTS);
+    } finally {
+      setLoading(false);
     }
-    return cells;
-  }, [monthCursor]);
+  }, [suiteId, officeId, currentMonth]);
 
-  const eventsByDay = useMemo(() => {
-    const map = new Map<string, CalendarEvent[]>();
-    for (const event of events) {
-      const key = dayKey(new Date(event.start_time));
-      const prev = map.get(key) || [];
-      prev.push(event);
-      map.set(key, prev);
-    }
-    return map;
-  }, [events]);
+  useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
-  const selectedEvents = useMemo(() => {
-    const key = dayKey(selectedDate);
-    return (eventsByDay.get(key) || []).sort((a, b) => +new Date(a.start_time) - +new Date(b.start_time));
-  }, [eventsByDay, selectedDate]);
+  const days = useMemo(() =>
+    getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()),
+    [currentMonth]
+  );
 
-  const selectedPrimary = selectedEvents[0] || null;
-  const today = new Date();
+  const eventsOnDay = useCallback((day: Date) =>
+    events.filter(e => sameDay(new Date(e.start_time), day)),
+    [events]
+  );
+
+  const selectedEvents = useMemo(() =>
+    events.filter(e => sameDay(new Date(e.start_time), selectedDate)),
+    [events, selectedDate]
+  );
+
+  const prevMonth = () => {
+    setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+  };
+
+  const isCurrentMonth = (day: Date) =>
+    day.getMonth() === currentMonth.getMonth();
 
   return (
-    <View style={styles.container}>
-      <View style={styles.monthBar}>
-        <Pressable
-          accessibilityLabel="Previous month"
-          style={styles.arrowBtn}
-          onPress={() => setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-        >
-          <Ionicons name="chevron-back" size={14} color="rgba(255,255,255,0.75)" />
+    <View style={s.root}>
+      {/* Month nav */}
+      <View style={s.navRow}>
+        <Pressable style={s.navBtn} onPress={prevMonth}>
+          <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.6)" />
         </Pressable>
-        <Text style={styles.monthTitle}>
-          {monthCursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        <Text style={s.monthLabel}>
+          {MONTH_NAMES[currentMonth.getMonth()]} {currentMonth.getFullYear()}
         </Text>
-        <Pressable
-          accessibilityLabel="Next month"
-          style={styles.arrowBtn}
-          onPress={() => setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-        >
-          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.75)" />
+        <Pressable style={s.navBtn} onPress={nextMonth}>
+          <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.6)" />
         </Pressable>
       </View>
 
-      <View style={styles.calendarCard}>
-        <View style={styles.weekRow}>
-          {WEEK_DAYS.map((day) => (
-            <Text key={day} style={styles.weekLabel}>{day}</Text>
-          ))}
-        </View>
-
-        {loading ? (
-          <View style={styles.centerState}>
-            <ActivityIndicator size="small" color={Colors.semantic.success} />
-          </View>
-        ) : (
-          <View style={styles.grid}>
-            {gridDays.map((day) => {
-              const inMonth = day.getMonth() === monthCursor.getMonth();
-              const isToday = sameDay(day, today);
-              const isSelected = sameDay(day, selectedDate);
-              const dayEvents = eventsByDay.get(dayKey(day)) || [];
-              const accentColor = dayEvents[0] ? AGENT_COLORS[dayEvents[0].agent_id.toLowerCase()] || '#22C55E' : '#22C55E';
-
-              return (
-                <Pressable key={day.toISOString()} style={styles.dayCell} onPress={() => setSelectedDate(day)}>
-                  <View
-                    style={[
-                      styles.dayCircle,
-                      isSelected && styles.dayCircleSelected,
-                      isToday && styles.dayCircleToday,
-                      !inMonth && styles.dayCircleOut,
-                    ]}
-                  >
-                    <Text style={[styles.dayText, !inMonth && styles.dayTextOut, (isSelected || isToday) && styles.dayTextActive]}>
-                      {day.getDate()}
-                    </Text>
-                  </View>
-                  {dayEvents.length > 0 ? (
-                    <View style={styles.dotRow}>
-                      {dayEvents.slice(0, 2).map((event) => (
-                        <View
-                          key={event.id}
-                          style={[
-                            styles.eventDot,
-                            { backgroundColor: AGENT_COLORS[event.agent_id.toLowerCase()] || accentColor },
-                          ]}
-                        />
-                      ))}
-                    </View>
-                  ) : (
-                    <View style={styles.dotSpacer} />
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
+      {/* Day headers */}
+      <View style={s.weekRow}>
+        {WEEK_DAYS.map(d => (
+          <Text key={d} style={s.weekDay}>{d}</Text>
+        ))}
       </View>
 
-      <View style={styles.detailCard}>
-        <View style={styles.detailHeader}>
-          <Text style={styles.detailDate}>
-            {selectedDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </Text>
-          <Pressable
-            accessibilityLabel="Add event"
-            style={styles.addBtn}
-            onPress={onAddEventClick || (() => router.push('/calendar'))}
-          >
-            <Ionicons name="add" size={16} color="#10B981" />
-          </Pressable>
-        </View>
-
-        {selectedPrimary ? (
-          <Pressable
-            onPress={() => onEventClick?.(selectedPrimary.id)}
-            style={styles.eventDetailRow}
-          >
-            <View style={[styles.eventDetailDot, { backgroundColor: AGENT_COLORS[selectedPrimary.agent_id.toLowerCase()] || '#10B981' }]} />
-            <View style={styles.eventDetailBody}>
-              <Text style={styles.eventDetailTitle} numberOfLines={1}>{selectedPrimary.title}</Text>
-              <Text style={styles.eventDetailMeta} numberOfLines={1}>
-                {formatTime(selectedPrimary.start_time)} - {formatTime(selectedPrimary.end_time)}
-                {selectedPrimary.location ? `  •  ${selectedPrimary.location}` : ''}
-              </Text>
-            </View>
-          </Pressable>
-        ) : (
-          <Text style={styles.emptyText}>No events scheduled for this day.</Text>
-        )}
+      {/* Grid */}
+      <View style={s.grid}>
+        {days.map((day, idx) => {
+          const dayEvents = eventsOnDay(day);
+          const isToday = sameDay(day, today);
+          const isSelected = sameDay(day, selectedDate);
+          const inMonth = isCurrentMonth(day);
+          return (
+            <Pressable
+              key={idx}
+              style={s.dayCell}
+              onPress={() => { playClickSound(); setSelectedDate(day); }}
+            >
+              <View style={[
+                s.dayInner,
+                isToday && s.dayToday,
+                isSelected && !isToday && s.daySelected,
+              ]}>
+                <Text style={[
+                  s.dayNum,
+                  !inMonth && s.dayNumOther,
+                  isToday && s.dayNumToday,
+                  isSelected && !isToday && s.dayNumSelected,
+                ]}>
+                  {day.getDate()}
+                </Text>
+              </View>
+              {dayEvents.length > 0 && (
+                <View style={s.dotRow}>
+                  {dayEvents.slice(0, 3).map(e => (
+                    <View
+                      key={e.id}
+                      style={[s.eventDot, { backgroundColor: colorFromId(e.id) }]}
+                    />
+                  ))}
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
       </View>
+
+      {/* Divider */}
+      <View style={s.divider} />
+
+      {/* Selected day events */}
+      <ScrollView style={s.eventList} showsVerticalScrollIndicator={false}>
+        <Text style={s.eventListTitle}>
+          {sameDay(selectedDate, today) ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        </Text>
+        {selectedEvents.length === 0 ? (
+          <View style={s.noEvents}>
+            <Text style={s.noEventsText}>No events</Text>
+          </View>
+        ) : (
+          selectedEvents.map(event => {
+            const color = colorFromId(event.id);
+            return (
+              <View key={event.id} style={s.eventRow}>
+                <View style={[s.eventBar, { backgroundColor: color }]} />
+                <View style={s.eventInfo}>
+                  <Text style={s.eventTitle} numberOfLines={1}>{event.title}</Text>
+                  <Text style={s.eventTime}>
+                    {formatTime(event.start_time)} – {formatTime(event.end_time)}
+                  </Text>
+                  {event.location ? (
+                    <Text style={s.eventLocation} numberOfLines={1}>{event.location}</Text>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  root: {
     flex: 1,
-    gap: 10,
+    backgroundColor: '#060A10',
   },
-  monthBar: {
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(15,18,22,0.95)',
-    paddingHorizontal: 8,
+  navRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  arrowBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    alignItems: 'center',
+  navBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  monthTitle: {
-    color: CanvasTokens.text.primary,
-    fontSize: 14,
+  monthLabel: {
+    fontSize: 17,
     fontWeight: '700',
-  },
-  calendarCard: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    backgroundColor: 'rgba(15,18,22,0.9)',
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 8,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 10px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)' } as any)
-      : {}),
-  },
+    color: '#FFF',
+    letterSpacing: -0.3,
+  } as any,
   weekRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    paddingHorizontal: 8,
+    paddingBottom: 4,
   },
-  weekLabel: {
-    width: `${100 / 7}%`,
+  weekDay: {
+    flex: 1,
     textAlign: 'center',
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  centerState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.3)',
+    letterSpacing: 0.5,
+  } as any,
   grid: {
-    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignContent: 'flex-start',
+    paddingHorizontal: 8,
   },
   dayCell: {
-    width: `${100 / 7}%`,
+    width: `${100 / 7}%` as any,
     alignItems: 'center',
-    marginBottom: 4,
+    paddingVertical: 3,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  dayCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
+  dayInner: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  dayCircleOut: {
-    opacity: 0.45,
-  },
-  dayCircleSelected: {
-    backgroundColor: 'rgba(16,185,129,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.45)',
-  },
-  dayCircleToday: {
+  dayToday: {
     backgroundColor: '#10B981',
   },
-  dayText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 16,
+  daySelected: {
+    borderWidth: 1.5,
+    borderColor: '#10B981',
+  },
+  dayNum: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.75)',
     fontWeight: '500',
+  } as any,
+  dayNumOther: {
+    color: 'rgba(255,255,255,0.2)',
   },
-  dayTextOut: {
-    color: 'rgba(255,255,255,0.38)',
-  },
-  dayTextActive: {
-    color: '#06110D',
+  dayNumToday: {
+    color: '#FFF',
     fontWeight: '700',
-  },
+  } as any,
+  dayNumSelected: {
+    color: '#10B981',
+    fontWeight: '700',
+  } as any,
   dotRow: {
-    minHeight: 8,
-    marginTop: 2,
     flexDirection: 'row',
-    gap: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 2,
+    marginTop: 2,
+    height: 5,
   },
   eventDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
-  dotSpacer: {
-    minHeight: 8,
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    marginTop: 8,
+  },
+  eventList: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  eventListTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.35)',
+    marginBottom: 10,
+    letterSpacing: 0.3,
+  } as any,
+  noEvents: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  noEventsText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.2)',
+  },
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginBottom: 10,
+    gap: 10,
+  },
+  eventBar: {
+    width: 3,
+    borderRadius: 2,
+    minHeight: 36,
+  },
+  eventInfo: { flex: 1 },
+  eventTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  } as any,
+  eventTime: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
     marginTop: 2,
   },
-  detailCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(15,18,22,0.92)',
-    padding: 12,
-    gap: 8,
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  detailDate: {
-    color: '#34D399',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  addBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.4)',
-    backgroundColor: 'rgba(16,185,129,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
-  },
-  eventDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
-  },
-  eventDetailDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    marginTop: 4,
-  },
-  eventDetailBody: {
-    flex: 1,
-    gap: 3,
-  },
-  eventDetailTitle: {
-    color: CanvasTokens.text.primary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  eventDetailMeta: {
-    color: CanvasTokens.text.secondary,
-    fontSize: 12,
-  },
-  emptyText: {
-    color: CanvasTokens.text.muted,
-    fontSize: 12,
+  eventLocation: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.3)',
+    marginTop: 1,
   },
 });

@@ -11,6 +11,9 @@ function getAudioContext(): AudioContext | null {
       return null;
     }
   }
+  if (audioCtxRef.current.state === 'suspended') {
+    audioCtxRef.current.resume().catch(() => {});
+  }
   return audioCtxRef.current;
 }
 
@@ -92,4 +95,50 @@ export function playNotificationSound() {
 
 export function playHoverSound() {
   playTone(1400, 0.03, 'sine', 0.02);
+}
+
+export function playApproveSound() {
+  playChord([
+    { freq: 523, delay: 0, duration: 0.10, type: 'sine', gain: 0.06 },
+    { freq: 784, delay: 0.08, duration: 0.15, type: 'sine', gain: 0.05 },
+  ]);
+}
+
+export function playDenySound() {
+  playChord([
+    { freq: 440, delay: 0, duration: 0.10, type: 'sine', gain: 0.06 },
+    { freq: 277, delay: 0.07, duration: 0.15, type: 'sine', gain: 0.05 },
+  ]);
+}
+
+export function playMicActivateSound() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const vol = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(300, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.18);
+  vol.gain.setValueAtTime(0.07, ctx.currentTime);
+  vol.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+  osc.connect(vol);
+  vol.connect(ctx.destination);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.24);
+}
+
+export function playMessageSentSound() {
+  playTone(820, 0.07, 'triangle', 0.05);
+}
+
+export function playTaskCompleteSound() {
+  playChord([
+    { freq: 523, delay: 0,    duration: 0.10, type: 'sine', gain: 0.05 },
+    { freq: 659, delay: 0.06, duration: 0.10, type: 'sine', gain: 0.05 },
+    { freq: 784, delay: 0.12, duration: 0.16, type: 'sine', gain: 0.05 },
+  ]);
+}
+
+export function playNoteSaveSound() {
+  playTone(1000, 0.04, 'sine', 0.03);
 }

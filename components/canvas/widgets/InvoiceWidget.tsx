@@ -22,14 +22,18 @@ import {
   StyleSheet,
   Platform,
   type ViewStyle,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { PaidIcon } from '@/components/icons/status/PaidIcon';
 import { PendingIcon } from '@/components/icons/status/PendingIcon';
 import { OverdueIcon } from '@/components/icons/status/OverdueIcon';
 import { Ionicons } from '@expo/vector-icons';
+import { playClickSound, playTabSwitchSound } from '@/lib/sounds';
 import {
   submitAction,
   generateActionId,
@@ -41,6 +45,7 @@ import {
 // ---------------------------------------------------------------------------
 
 type InvoiceStatus = 'PAID' | 'PENDING' | 'OVERDUE';
+type FilterStatus = 'ALL' | 'PENDING' | 'PAID' | 'OVERDUE';
 
 interface Invoice {
   id: string;
@@ -55,11 +60,9 @@ interface Invoice {
 interface InvoiceWidgetProps {
   suiteId: string;
   officeId: string;
-  /** Actor ID for action bus (user performing actions) */
   actorId?: string;
   onInvoiceClick?: (invoiceId: string) => void;
   onCreateClick?: () => void;
-  /** Wave 17: Callback when action completes via action bus */
   onActionComplete?: (result: ActionResult) => void;
 }
 
@@ -67,125 +70,138 @@ interface InvoiceWidgetProps {
 // Helper Functions
 // ---------------------------------------------------------------------------
 
-/** Format currency (e.g., $5,000.00) */
 function formatCurrency(amount: number, currency = 'USD'): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-  }).format(amount / 100); // Assuming amount is in cents
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount / 100);
 }
 
-/** Format date (e.g., "Jan 15, 2024") */
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
-    year: 'numeric',
   });
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
 }
 
 // ---------------------------------------------------------------------------
 // Status Chip Component
 // ---------------------------------------------------------------------------
 
-interface StatusChipProps {
-  status: InvoiceStatus;
-}
-
-const StatusChip = React.memo(({ status }: StatusChipProps) => {
+const StatusChip = React.memo(({ status }: { status: InvoiceStatus }) => {
   const config = useMemo(() => {
     switch (status) {
       case 'PAID':
         return {
-          bg: 'rgba(16,185,129,0.15)',
-          border: '#10B981',
-          text: '#10B981',
-          Icon: PaidIcon,
+          bg: '#10B981',
+          border: 'transparent',
+          text: '#FFFFFF',
           label: 'Paid',
+          isFilled: true,
         };
       case 'PENDING':
         return {
-          bg: 'rgba(251,191,36,0.15)',
-          border: '#FBB924',
-          text: '#FBB924',
-          Icon: PendingIcon,
+          bg: 'transparent',
+          border: '#F59E0B',
+          text: '#F59E0B',
           label: 'Pending',
+          isFilled: false,
         };
       case 'OVERDUE':
         return {
-          bg: 'rgba(239,68,68,0.15)',
-          border: '#EF4444',
-          text: '#EF4444',
-          Icon: OverdueIcon,
+          bg: '#EF4444',
+          border: 'transparent',
+          text: '#FFFFFF',
           label: 'Overdue',
+          isFilled: true,
         };
     }
   }, [status]);
 
-  const { bg, border, text, Icon, label } = config;
-
   return (
-    <View style={[styles.statusChip, { backgroundColor: bg, borderColor: border }]}>
-      <Icon size={14} color={text} />
-      <Text style={[styles.statusText, { color: text }]}>{label}</Text>
+    <View
+      style={[
+        styles.statusChip,
+        {
+          backgroundColor: config.bg,
+          borderColor: config.border,
+          borderWidth: config.isFilled ? 0 : 1,
+        },
+      ]}
+    >
+      <Text style={[styles.statusText, { color: config.text }]}>{config.label}</Text>
     </View>
   );
 });
 
-StatusChip.displayName = 'StatusChip';
-
 // ---------------------------------------------------------------------------
-// Invoice Card Component
+// Invoice Row Component
 // ---------------------------------------------------------------------------
 
-interface InvoiceCardProps {
-  invoice: Invoice;
-  onPress: (invoiceId: string) => void;
-}
-
-const InvoiceCard = React.memo(({ invoice, onPress }: InvoiceCardProps) => {
+const InvoiceRow = React.memo(({ invoice, onPress }: { invoice: Invoice; onPress: (id: string) => void }) => {
   const [isHovered, setIsHovered] = useState(false);
 
-  const handlePressIn = useCallback(() => {
-    if (Platform.OS === 'web') setIsHovered(true);
-  }, []);
+  const statusColor = useMemo(() => {
+    switch (invoice.status) {
+      case 'PAID': return '#10B981';
+      case 'PENDING': return '#F59E0B';
+      case 'OVERDUE': return '#EF4444';
+    }
+  }, [invoice.status]);
 
-  const handlePressOut = useCallback(() => {
-    if (Platform.OS === 'web') setIsHovered(false);
-  }, []);
-
-  const cardStyle = [
-    styles.invoiceCard,
-    isHovered && styles.invoiceCardHover,
-  ];
+  const initials = useMemo(() => getInitials(invoice.client_name), [invoice.client_name]);
 
   return (
     <Pressable
       onPress={() => onPress(invoice.id)}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={cardStyle}
+      onPressIn={() => Platform.OS === 'web' && setIsHovered(true)}
+      onPressOut={() => Platform.OS === 'web' && setIsHovered(false)}
+      style={[
+        styles.invoiceRow,
+        isHovered && styles.invoiceRowHover,
+      ]}
     >
-      {/* Left section: Invoice number + client */}
-      <View style={styles.invoiceLeft}>
-        <Text style={styles.invoiceNumber}>#{invoice.invoice_number}</Text>
-        <Text style={styles.clientName} numberOfLines={1}>
-          {invoice.client_name}
-        </Text>
-        <Text style={styles.dueDate}>Due {formatDate(invoice.due_date)}</Text>
+      <View style={[styles.avatarCircle, { borderColor: statusColor }]}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']}
+          style={styles.avatarGradient}
+        >
+          <Text style={styles.avatarText}>{initials}</Text>
+        </LinearGradient>
       </View>
 
-      {/* Right section: Amount + status */}
-      <View style={styles.invoiceRight}>
-        <Text style={styles.amount}>{formatCurrency(invoice.amount)}</Text>
+      <View style={styles.invoiceInfo}>
+        <View style={styles.clientRow}>
+          <Text style={styles.clientNameText}>{invoice.client_name}</Text>
+          <Text style={styles.invoiceRefText}>#{invoice.invoice_number}</Text>
+        </View>
+        <Text style={styles.dueDateText}>Due {formatDate(invoice.due_date)}</Text>
+      </View>
+
+      <View style={styles.invoiceAmountCol}>
+        <Text style={[
+          styles.amountText,
+          { color: invoice.status === 'PAID' ? '#10B981' : invoice.status === 'OVERDUE' ? '#EF4444' : '#FFFFFF' }
+        ]}>
+          {formatCurrency(invoice.amount)}
+        </Text>
         <StatusChip status={invoice.status} />
       </View>
     </Pressable>
   );
 });
-
-InvoiceCard.displayName = 'InvoiceCard';
 
 // ---------------------------------------------------------------------------
 // Main Component
@@ -203,33 +219,35 @@ export function InvoiceWidget({
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterStatus>('ALL');
 
-  // ---------------------------------------------------------------------------
-  // Data Fetching
-  // ---------------------------------------------------------------------------
+  const stats = useMemo(() => {
+    const totals = { outstanding: 0, paid: 0, pending: 0, overdue: 0 };
+    invoices.forEach(inv => {
+      if (inv.status !== 'PAID') totals.outstanding += inv.amount;
+      if (inv.status === 'PAID') totals.paid += inv.amount;
+      if (inv.status === 'PENDING') totals.pending += inv.amount;
+      if (inv.status === 'OVERDUE') totals.overdue += inv.amount;
+    });
+    return totals;
+  }, [invoices]);
+
+  const filteredInvoices = useMemo(() => {
+    if (filter === 'ALL') return invoices;
+    return invoices.filter(inv => inv.status === filter);
+  }, [invoices, filter]);
 
   const fetchInvoices = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-
       const { data, error: fetchError } = await supabase
         .from('invoices')
-        .select('id, invoice_number, client_name, amount, status, due_date, created_at')
+        .select('*')
         .eq('suite_id', suiteId)
         .eq('office_id', officeId)
-        .order('created_at', { ascending: false })
-        .limit(10);
+        .order('created_at', { ascending: false });
 
-      if (fetchError) {
-        if (fetchError.message?.toLowerCase().includes('relation')) {
-          setInvoices([]);
-          setError(null);
-          return;
-        }
-        throw fetchError;
-      }
-
+      if (fetchError) throw fetchError;
       setInvoices((data || []) as Invoice[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load invoices');
@@ -242,357 +260,325 @@ export function InvoiceWidget({
     fetchInvoices();
   }, [fetchInvoices]);
 
-  // ---------------------------------------------------------------------------
-  // Real-Time Subscription
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    if (!suiteId || !officeId) return;
-
-    const channel = supabase
-      .channel(`invoices:${suiteId}:${officeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'invoices',
-          filter: `suite_id=eq.${suiteId}`,
-        },
-        () => {
-          fetchInvoices();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [suiteId, officeId, fetchInvoices]);
-
-  // ---------------------------------------------------------------------------
-  // Handlers
-  // ---------------------------------------------------------------------------
-
-  const handleInvoicePress = useCallback(
-    (invoiceId: string) => {
-      onInvoiceClick?.(invoiceId);
-      router.push('/finance-hub/invoices');
-    },
-    [onInvoiceClick, router]
-  );
-
-  const handleViewAll = useCallback(() => {
-    router.push('/finance-hub/invoices');
-  }, [router]);
-
-  /**
-   * Wave 17: Submit invoice creation through action bus.
-   * YELLOW tier -- requires user confirmation before creating.
-   */
-  const handleCreateViaActionBus = useCallback(async () => {
+  const handleCreate = useCallback(async () => {
+    playClickSound();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!actorId) {
-      // Fall back to direct create callback when actor not available
       onCreateClick?.();
       return;
     }
-
     const result = await submitAction({
       id: generateActionId(),
       type: 'invoice.create',
       widgetId: 'invoice-widget',
       riskTier: 'YELLOW',
-      payload: {
-        source: 'canvas_widget',
-        action: 'create_new',
-      },
+      payload: { source: 'canvas_widget' },
       suiteId,
       officeId,
       actorId,
       timestamp: Date.now(),
     });
-
     onActionComplete?.(result);
-
-    if (result.status === 'succeeded') {
-      onCreateClick?.();
-    }
+    if (result.status === 'succeeded') onCreateClick?.();
   }, [actorId, suiteId, officeId, onCreateClick, onActionComplete]);
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  const handleFilterChange = (newFilter: FilterStatus) => {
+    playTabSwitchSound();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setFilter(newFilter);
+  };
 
-  const renderInvoiceCard = useCallback(
-    ({ item }: { item: Invoice }) => <InvoiceCard invoice={item} onPress={handleInvoicePress} />,
-    [handleInvoicePress]
+  const renderFilterTab = (label: FilterStatus) => (
+    <Pressable
+      key={label}
+      onPress={() => handleFilterChange(label)}
+      style={[styles.filterTab, filter === label && styles.filterTabActive]}
+    >
+      <Text style={[styles.filterTabText, filter === label && styles.filterTabTextActive]}>
+        {label.charAt(0) + label.slice(1).toLowerCase()}
+      </Text>
+    </Pressable>
   );
 
-  const keyExtractor = useCallback((item: Invoice) => item.id, []);
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Ionicons name="document-text-outline" size={32} color="rgba(255,255,255,0.3)" />
-        <Text style={styles.loadingText}>Loading invoices...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.errorContainer}>
-        <Ionicons name="alert-circle-outline" size={32} color="#EF4444" />
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
-    );
-  }
-
-  if (invoices.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="document-text-outline" size={48} color="rgba(255,255,255,0.2)" />
-        <Text style={styles.emptyText}>No invoices yet</Text>
-        <Text style={styles.emptySubtext}>Create your first invoice</Text>
-      </View>
-    );
-  }
+  if (loading) return (
+    <View style={styles.loadingContainer}>
+      <View style={styles.skeletonHero} />
+      <View style={styles.skeletonRow} />
+      <View style={styles.skeletonRow} />
+      <View style={styles.skeletonRow} />
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      {/* Invoice list */}
+      <LinearGradient colors={['#1E293B', '#0F172A']} style={styles.heroSection}>
+        <View>
+          <Text style={styles.heroLabel}>OUTSTANDING</Text>
+          <Text style={styles.heroAmount}>{formatCurrency(stats.outstanding)}</Text>
+          <Text style={styles.heroSubtext}>USD · This month</Text>
+        </View>
+        <Pressable onPress={handleCreate}>
+          <LinearGradient colors={['#3B82F6', '#6366F1']} style={styles.createButton}>
+            <Text style={styles.createButtonText}>+ New Invoice</Text>
+          </LinearGradient>
+        </Pressable>
+      </LinearGradient>
+
+      <View style={styles.statsRow}>
+        <View style={[styles.statChip, { borderLeftColor: '#10B981' }]}>
+          <Text style={styles.statLabel}>Paid</Text>
+          <Text style={styles.statValue}>{formatCurrency(stats.paid)}</Text>
+        </View>
+        <View style={[styles.statChip, { borderLeftColor: '#F59E0B' }]}>
+          <Text style={styles.statLabel}>Pending</Text>
+          <Text style={styles.statValue}>{formatCurrency(stats.pending)}</Text>
+        </View>
+        <View style={[styles.statChip, { borderLeftColor: '#EF4444' }]}>
+          <Text style={styles.statLabel}>Overdue</Text>
+          <Text style={styles.statValue}>{formatCurrency(stats.overdue)}</Text>
+        </View>
+      </View>
+
+      <View style={styles.filterTabs}>
+        {['ALL', 'PENDING', 'PAID', 'OVERDUE'].map(f => renderFilterTab(f as FilterStatus))}
+      </View>
+
       <FlatList
-        data={invoices}
-        renderItem={renderInvoiceCard}
-        keyExtractor={keyExtractor}
-        showsVerticalScrollIndicator={false}
-        maxToRenderPerBatch={6}
-        windowSize={5}
-        removeClippedSubviews={Platform.OS === 'android'}
-        initialNumToRender={6}
+        data={filteredInvoices}
+        renderItem={({ item }) => (
+          <InvoiceRow
+            invoice={item}
+            onPress={(id) => {
+              playClickSound();
+              onInvoiceClick?.(id);
+              router.push('/finance-hub/invoices');
+            }}
+          />
+        )}
+        keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Ionicons name="document-text-outline" size={40} color="rgba(255,255,255,0.2)" />
+            <Text style={styles.emptyTitle}>No invoices found</Text>
+            <Text style={styles.emptySubtitle}>Try changing your filter</Text>
+          </View>
+        }
       />
 
-      {/* Action buttons */}
-      <View style={styles.actions}>
-        <Pressable style={styles.ghostButton} onPress={handleViewAll}>
-          <Text style={styles.ghostButtonText}>View All</Text>
-        </Pressable>
-        <Pressable
-          style={styles.primaryButton}
-          onPress={actorId ? handleCreateViaActionBus : onCreateClick}
-          accessibilityRole="button"
-          accessibilityLabel="Create new invoice"
-        >
-          <Ionicons name="add-outline" size={18} color="#FFFFFF" />
-          <Text style={styles.primaryButtonText}>Create Invoice</Text>
-        </Pressable>
-      </View>
+      <Pressable style={styles.footer} onPress={() => router.push('/finance-hub/invoices')}>
+        <Text style={styles.footerText}>View All Invoices →</Text>
+      </Pressable>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CanvasTokens.background.elevated,
+    backgroundColor: '#0D1117',
   },
-
-  listContent: {
-    padding: 16,
-    paddingBottom: 80, // Account for action buttons
-  },
-
-  invoiceCard: {
-    backgroundColor: '#2A2A2A',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
+  heroSection: {
+    padding: 24,
+    height: 140,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
-    // Multi-layer shadow
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          transition: 'all 150ms ease',
-        } as unknown as ViewStyle)
-      : {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 4,
-        }),
+    alignItems: 'center',
   },
-
-  invoiceCardHover: {
-    borderColor: 'rgba(59,130,246,0.2)',
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-          transform: 'translateY(-2px)',
-        } as unknown as ViewStyle)
-      : {}),
+  heroLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: 0.8,
   },
-
-  invoiceLeft: {
+  heroAmount: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginVertical: 4,
+  },
+  heroSubtext: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+  },
+  createButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  createButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 8,
+    marginTop: -20,
+    marginBottom: 16,
+  },
+  statChip: {
     flex: 1,
-    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderLeftWidth: 3,
+    borderRadius: 8,
+    padding: 10,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(12px)' } : {}) as any,
   },
-
-  invoiceNumber: {
-    color: CanvasTokens.text.primary,
+  statLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.5)',
+    marginBottom: 4,
+  },
+  statValue: {
     fontSize: 14,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    color: '#FFFFFF',
   },
-
-  clientName: {
-    color: CanvasTokens.text.primary,
+  filterTabs: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    gap: 8,
+  },
+  filterTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  filterTabActive: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  filterTabText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '500',
+  },
+  filterTabTextActive: {
+    color: '#FFFFFF',
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  invoiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  invoiceRowHover: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    transform: [{ translateY: -1 }],
+  },
+  avatarCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    padding: 2,
+    marginRight: 12,
+  },
+  avatarGradient: {
+    flex: 1,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  invoiceInfo: {
+    flex: 1,
+  },
+  clientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  clientNameText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  invoiceRefText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+  },
+  dueDateText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 2,
+  },
+  invoiceAmountCol: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  amountText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  statusChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  footer: {
+    padding: 16,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  footerText: {
+    color: 'rgba(255,255,255,0.5)',
     fontSize: 13,
     fontWeight: '500',
   },
-
-  dueDate: {
-    color: CanvasTokens.text.muted,
-    fontSize: 12,
-  },
-
-  invoiceRight: {
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-
-  amount: {
-    color: CanvasTokens.text.primary,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-
-  statusChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-
-  actions: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    gap: 8,
-    padding: 16,
-    backgroundColor: CanvasTokens.background.surface,
-    borderTopWidth: 1,
-    borderTopColor: CanvasTokens.border.subtle,
-  },
-
-  ghostButton: {
-    flex: 1,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: CanvasTokens.border.subtle,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as any)
-      : {}),
-  },
-
-  ghostButtonText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  primaryButton: {
-    flex: 1,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#3B82F6',
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as any)
-      : {}),
-  },
-
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
+    padding: 16,
+    gap: 16,
+    backgroundColor: '#0D1117',
+  },
+  skeletonHero: {
+    height: 120,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+  },
+  skeletonRow: {
+    height: 60,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 8,
+  },
+  emptyState: {
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: CanvasTokens.background.elevated,
+    paddingTop: 40,
   },
-
-  loadingText: {
-    color: CanvasTokens.text.secondary,
-    fontSize: 14,
-  },
-
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: CanvasTokens.background.elevated,
-  },
-
-  errorText: {
-    color: '#EF4444',
-    fontSize: 14,
-  },
-
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: CanvasTokens.background.elevated,
-  },
-
-  emptyText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 16,
+  emptyTitle: {
+    fontSize: 15,
     fontWeight: '600',
+    color: '#FFFFFF',
+    marginTop: 12,
   },
-
-  emptySubtext: {
-    color: CanvasTokens.text.muted,
-    fontSize: 14,
+  emptySubtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 4,
   },
 });

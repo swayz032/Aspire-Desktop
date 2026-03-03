@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useSupabase } from '@/providers';
 import {
   MessageBubble,
   ThinkingIndicator,
@@ -9,15 +11,9 @@ import {
   ChainOfThoughtHeader,
   ChainOfThoughtContent,
   ChainOfThoughtStep,
-  Reasoning,
-  ReasoningTrigger,
-  ReasoningContent,
-  buildActivityFromResponse,
   type AgentActivityEvent,
   type AgentChatMessage,
-  type OrchestratorResponse,
 } from '@/components/chat';
-import { useAuthFetch } from '@/lib/authenticatedFetch';
 
 type ChatMsg = {
   id: string;
@@ -33,16 +29,55 @@ type Props = {
 
 export function FinnChatModal({ visible, onClose }: Props) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [activeRuns, setActiveRuns] = useState<Record<string, {
-    events: AgentActivityEvent[];
-    status: 'running' | 'completed';
-    reasoning?: string;
-    reasoningDurationS?: number;
-  }>>({});
+  const [activeRuns, setActiveRuns] = useState<Record<string, { events: AgentActivityEvent[]; status: 'running' | 'completed' }>>({});
   const [input, setInput] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const { authenticatedFetch } = useAuthFetch();
+  const currentRunIdRef = useRef<string | null>(null);
+  const { suiteId, session } = useSupabase();
+
+  const finnVoice = useAgentVoice({
+    agent: 'finn',
+    suiteId: suiteId ?? undefined,
+    accessToken: session?.access_token,
+    onResponse: (text) => {
+      const runId = currentRunIdRef.current || undefined;
+      setMessages(prev => [...prev, { id: `finn_${Date.now()}`, from: 'finn', text, runId }]);
+      if (runId) {
+        setActiveRuns(prev => ({ ...prev, [runId]: { ...(prev[runId] || { events: [] }), status: 'completed' } }));
+      }
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    },
+    onActivityEvent: (event) => {
+      const runId = currentRunIdRef.current;
+      if (!runId) return;
+      const message = event.message?.trim();
+      if (!message) return;
+      const mapped: AgentActivityEvent = {
+        id: `finn_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: (event.type as AgentActivityEvent['type']) || 'step',
+        label: message,
+        status:
+          event.type === 'done'
+            ? 'completed'
+            : event.type === 'error'
+            ? 'error'
+            : event.type === 'thinking'
+            ? 'active'
+            : 'completed',
+        timestamp: event.timestamp || Date.now(),
+        icon: event.icon as any,
+      };
+      setActiveRuns(prev => {
+        const run = prev[runId] || { events: [], status: 'running' as const };
+        return {
+          ...prev,
+          [runId]: { ...run, events: [...run.events, mapped] },
+        };
+      });
+    },
+    onError: (_err) => {},
+  });
 
   useEffect(() => {
     Animated.timing(slideAnim, {
@@ -52,85 +87,17 @@ export function FinnChatModal({ visible, onClose }: Props) {
     }).start();
   }, [visible, slideAnim]);
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(() => {
     const trimmed = input.trim();
     if (!trimmed) return;
     const runId = `run_${Date.now()}`;
+    currentRunIdRef.current = runId;
     setActiveRuns(prev => ({ ...prev, [runId]: { events: [], status: 'running' } }));
     setMessages(prev => [...prev, { id: `user_${Date.now()}`, from: 'user', text: trimmed }]);
+    finnVoice.sendText(trimmed);
     setInput('');
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-
-    try {
-      const resp = await authenticatedFetch('/api/orchestrator/intent', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agent: 'finn',
-          text: trimmed,
-          channel: 'text',
-        }),
-      });
-
-      if (!resp.ok) {
-        let detail = `Service returned ${resp.status}`;
-        try {
-          const errorBody = await resp.json();
-          detail =
-            errorBody?.response ||
-            errorBody?.text ||
-            errorBody?.message ||
-            errorBody?.error ||
-            detail;
-        } catch {
-          // Keep default detail
-        }
-        throw new Error(detail);
-      }
-
-      const data = (await resp.json()) as OrchestratorResponse;
-      const responseText = data.response || data.text || 'I processed your request.';
-      const events = buildActivityFromResponse(data, 'finn');
-      const reasoning = typeof data.reasoning === 'string' ? data.reasoning : undefined;
-      const reasoningDurationS =
-        typeof data.reasoning_duration_s === 'number' ? data.reasoning_duration_s : undefined;
-
-      setActiveRuns(prev => ({
-        ...prev,
-        [runId]: { events, status: 'completed', reasoning, reasoningDurationS },
-      }));
-      setMessages(prev => [
-        ...prev,
-        { id: `finn_${Date.now()}`, from: 'finn', text: responseText, runId },
-      ]);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      setActiveRuns(prev => ({
-        ...prev,
-        [runId]: {
-          events: [
-            {
-              id: `finn_evt_err_${Date.now()}`,
-              type: 'error',
-              label: 'Connection failed',
-              status: 'error',
-              timestamp: Date.now(),
-              icon: 'alert-circle',
-            },
-          ],
-          status: 'completed',
-        },
-      }));
-      setMessages(prev => [
-        ...prev,
-        { id: `finn_${Date.now()}_err`, from: 'finn', text: `Finn request failed: ${msg}`, runId },
-      ]);
-    } finally {
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-    }
-  }, [authenticatedFetch, input]);
+  }, [input, finnVoice]);
 
   const hasPendingRunWithoutActivity = Object.values(activeRuns).some(
     (run) => run.status === 'running' && run.events.length === 0,
@@ -218,17 +185,6 @@ export function FinnChatModal({ visible, onClose }: Props) {
                       </ChainOfThoughtContent>
                     </ChainOfThought>
                   )}
-                  {run?.reasoning && (
-                    <Reasoning
-                      agent="finn"
-                      isStreaming={run.status === 'running'}
-                      duration={run.reasoningDurationS}
-                      style={{ marginBottom: 6 }}
-                    >
-                      <ReasoningTrigger />
-                      <ReasoningContent>{run.reasoning}</ReasoningContent>
-                    </Reasoning>
-                  )}
                   <MessageBubble
                     message={chatMessage}
                     agent="finn"
@@ -238,7 +194,7 @@ export function FinnChatModal({ visible, onClose }: Props) {
               );
             })
           )}
-          {hasPendingRunWithoutActivity && (
+          {finnVoice.status === 'thinking' && hasPendingRunWithoutActivity && (
             <ThinkingIndicator agent="finn" text="Finn is thinking..." />
           )}
         </ScrollView>

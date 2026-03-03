@@ -1,521 +1,313 @@
 /**
- * StickyNoteWidget -- Premium quick-capture notes for Canvas Mode (Wave 16)
+ * StickyNoteWidget — Single 3D physical sticky note
  *
- * $10,000 UI/UX QUALITY MANDATE:
- * - Dark card style with color identity stripes (NOT pastel backgrounds)
- * - Drag handles with DragHandleIcon (6-dot pattern)
- * - Inline text editing via TextInput
- * - Color cycling via dot indicator
- * - Card-based layout with consistent depth
- * - Bloomberg Terminal / premium notes quality
- *
- * - RLS-scoped Supabase queries (suite_id + office_id)
- * - Real-time postgres_changes subscription
- * - Inline editing with auto-save
- * - Add/delete with Supabase persistence
- *
- * Reference: Authority Queue card aesthetic, dark canvas two-tone palette.
+ * ONE note per modal. The modal IS the note.
+ * - 8 premium vivid colors
+ * - Paper gradient + corner fold + paperclip decoration
+ * - Dark text on vivid bg (note feel, not glass)
+ * - Auto-save via Supabase upsert (800ms debounce)
+ * - onNoteColorChange callback → WidgetModal via CanvasWorkspace
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View,
+  Platform,
+  Pressable,
+  StyleSheet,
   Text,
   TextInput,
-  Pressable,
-  FlatList,
-  StyleSheet,
-  Platform,
-  type ViewStyle,
+  View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { CanvasTokens } from '@/constants/canvas.tokens';
-import { NoteIcon } from '@/components/icons/widgets/NoteIcon';
-import { DragHandleIcon } from '@/components/icons/ui/DragHandleIcon';
-import { PlusIcon } from '@/components/icons/ui/PlusIcon';
+import { playNoteSaveSound, playClickSound } from '@/lib/sounds';
 
 // ---------------------------------------------------------------------------
-// Types
+// Premium color palette
 // ---------------------------------------------------------------------------
 
-type NoteColor = 'yellow' | 'pink' | 'blue' | 'green' | 'purple' | 'orange';
+const PREMIUM_COLORS = [
+  { id: 'hotpink',  hex: '#FF1B6B', dark: '#8B003A' },
+  { id: 'neonlime', hex: '#39FF14', dark: '#1A6600' },
+  { id: 'orange',   hex: '#FF8C00', dark: '#7A3E00' },
+  { id: 'yellow',   hex: '#FFE600', dark: '#6B5E00' },
+  { id: 'purple',   hex: '#9B2BE2', dark: '#4A0080' },
+  { id: 'cyan',     hex: '#00E5FF', dark: '#005C70' },
+  { id: 'coral',    hex: '#FF4444', dark: '#7A0000' },
+  { id: 'mint',     hex: '#00E676', dark: '#00593A' },
+] as const;
 
-interface StickyNote {
-  id: string;
-  text: string;
-  color: NoteColor;
-  createdAt: string;
+type ColorId = (typeof PREMIUM_COLORS)[number]['id'];
+
+function colorById(id: ColorId) {
+  return PREMIUM_COLORS.find(c => c.id === id) || PREMIUM_COLORS[0];
 }
+
+function randomColorId(): ColorId {
+  return PREMIUM_COLORS[Math.floor(Math.random() * PREMIUM_COLORS.length)].id;
+}
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
 
 interface StickyNoteWidgetProps {
   suiteId: string;
   officeId: string;
-  onNoteChange?: (notes: StickyNote[]) => void;
+  onNoteColorChange?: (hex: string) => void;
 }
 
 // ---------------------------------------------------------------------------
-// Color Config
+// Paperclip SVG
 // ---------------------------------------------------------------------------
 
-const NOTE_COLORS: Record<NoteColor, {
-  card: string;
-  cardAlt: string;
-  dot: string;
-  text: string;
-  label: string;
-}> = {
-  yellow: {
-    card: '#FDE68A',
-    cardAlt: '#FCD34D',
-    dot: '#A16207',
-    text: '#1F2937',
-    label: 'Yellow',
-  },
-  pink: {
-    card: '#F9A8D4',
-    cardAlt: '#F472B6',
-    dot: '#9D174D',
-    text: '#1F2937',
-    label: 'Pink',
-  },
-  blue: {
-    card: '#93C5FD',
-    cardAlt: '#60A5FA',
-    dot: '#1E3A8A',
-    text: '#0F172A',
-    label: 'Blue',
-  },
-  green: {
-    card: '#86EFAC',
-    cardAlt: '#4ADE80',
-    dot: '#14532D',
-    text: '#052E16',
-    label: 'Green',
-  },
-  purple: {
-    card: '#C4B5FD',
-    cardAlt: '#A78BFA',
-    dot: '#4C1D95',
-    text: '#1F1A3A',
-    label: 'Purple',
-  },
-  orange: {
-    card: '#FDBA74',
-    cardAlt: '#FB923C',
-    dot: '#7C2D12',
-    text: '#2C1408',
-    label: 'Orange',
-  },
-};
-
-const COLOR_CYCLE: NoteColor[] = ['yellow', 'pink', 'blue', 'green', 'purple', 'orange'];
-
-// ---------------------------------------------------------------------------
-// Note Card Component
-// ---------------------------------------------------------------------------
-
-interface NoteCardProps {
-  note: StickyNote;
-  onTextChange: (id: string, text: string) => void;
-  onColorCycle: (id: string) => void;
-  onDelete: (id: string) => void;
-}
-
-const NoteCard = React.memo(({
-  note,
-  onTextChange,
-  onColorCycle,
-  onDelete,
-}: NoteCardProps) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
-  const colorConfig = NOTE_COLORS[note.color];
-  const tilt = (parseInt(note.id.slice(-2), 10) || 0) % 2 === 0 ? -1.4 : 1.2;
-
-  const handleTextChange = useCallback(
-    (text: string) => {
-      onTextChange(note.id, text);
-    },
-    [note.id, onTextChange]
-  );
-
-  const handleBlur = useCallback(() => {
-    setIsFocused(false);
-    // Delete if empty
-    if (note.text.trim() === '') {
-      onDelete(note.id);
-    }
-  }, [note.id, note.text, onDelete]);
-
-  const cardStyle = [
-    styles.noteCard,
-    isHovered && styles.noteCardHover,
-    isFocused && styles.noteCardFocused,
-  ];
-
+function Paperclip({ color }: { color: string }) {
+  if (Platform.OS !== 'web') return null;
   return (
     <View
-      style={cardStyle}
-      accessibilityRole="text"
-      accessibilityLabel={`Sticky note: ${note.text || 'empty'}`}
-      {...(Platform.OS === 'web'
-        ? {
-            onMouseEnter: () => setIsHovered(true),
-            onMouseLeave: () => setIsHovered(false),
-          } as unknown as Record<string, unknown>
-        : {})}
+      style={{
+        position: 'absolute',
+        top: -14,
+        alignSelf: 'center',
+        zIndex: 10,
+        ...(Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : {}),
+      }}
+      pointerEvents="none"
     >
-      <View
-        pointerEvents="none"
-        style={[
-          styles.cardTint,
-          {
-            backgroundColor: colorConfig.card,
-            transform: [{ rotate: `${tilt}deg` }],
-          },
-        ]}
-      />
-
-      {/* Drag handle */}
-      <View style={styles.dragArea}>
-        <DragHandleIcon
-          size={14}
-          color="rgba(255,255,255,0.2)"
-        />
+      {/* Simple SVG-like paperclip using Views */}
+      <View style={pc.clip}>
+        <View style={[pc.outer, { borderColor: color }]}>
+          <View style={[pc.inner, { borderColor: color }]} />
+        </View>
       </View>
-
-      {/* Text content */}
-      <TextInput
-        style={styles.noteInput}
-        value={note.text}
-        onChangeText={handleTextChange}
-        onFocus={() => setIsFocused(true)}
-        onBlur={handleBlur}
-        placeholder="Write a note..."
-        placeholderTextColor="rgba(255,255,255,0.3)"
-        multiline
-        textAlignVertical="top"
-        accessibilityLabel="Note text input"
-      />
-
-      {/* Color dot (cycles color on press) */}
-      <Pressable
-        style={styles.colorDotHitArea}
-        onPress={() => onColorCycle(note.id)}
-        accessibilityRole="button"
-        accessibilityLabel={`Note color: ${colorConfig.label}. Press to change color.`}
-      >
-        <View
-          style={[
-            styles.colorDot,
-            { backgroundColor: colorConfig.dot },
-          ]}
-        />
-      </Pressable>
     </View>
   );
+}
+
+const pc = StyleSheet.create({
+  clip: {
+    width: 16,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  outer: {
+    width: 14,
+    height: 36,
+    borderRadius: 7,
+    borderWidth: 2.5,
+    justifyContent: 'flex-start',
+    paddingTop: 4,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  inner: {
+    width: 6,
+    height: 18,
+    borderRadius: 3,
+    borderWidth: 2.5,
+    backgroundColor: 'transparent',
+  },
 });
 
-NoteCard.displayName = 'NoteCard';
-
 // ---------------------------------------------------------------------------
-// Main Component
+// Component
 // ---------------------------------------------------------------------------
 
 export function StickyNoteWidget({
   suiteId,
   officeId,
-  onNoteChange,
+  onNoteColorChange,
 }: StickyNoteWidgetProps) {
-  const [notes, setNotes] = useState<StickyNote[]>([]);
+  const [noteId, setNoteId] = useState<string | null>(null);
+  const [text, setText] = useState('');
+  const [colorId, setColorId] = useState<ColorId>('hotpink');
   const [loading, setLoading] = useState(true);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ---------------------------------------------------------------------------
-  // Data Loading (RLS-Scoped)
-  // ---------------------------------------------------------------------------
+  const colorConfig = colorById(colorId);
 
-  const fetchNotes = useCallback(async () => {
-    try {
-      setLoading(true);
+  // ---- Load or create note from Supabase ----
+  useEffect(() => {
+    async function loadNote() {
+      try {
+        const { data, error } = await supabase
+          .from('sticky_notes')
+          .select('id, text, color')
+          .eq('suite_id', suiteId)
+          .eq('office_id', officeId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
 
-      const { data, error: fetchError } = await supabase
-        .from('sticky_notes')
-        .select('id, content, color, position, created_at')
-        .eq('suite_id', suiteId)
-        .eq('office_id', officeId)
-        .order('position', { ascending: true });
+        if (error && error.code !== 'PGRST116') {
+          // PGRST116 = no rows found — create a new one
+          console.warn('[StickyNote] load error:', error.message);
+        }
 
-      if (fetchError) throw fetchError;
-
-      // Map DB color values to widget NoteColor type
-      const colorMap: Record<string, NoteColor> = {
-        yellow: 'yellow',
-        blue: 'blue',
-        green: 'green',
-        pink: 'pink',
-        amber: 'yellow',
-        emerald: 'green',
-        purple: 'purple',
-        orange: 'orange',
-      };
-
-      setNotes(
-        (data ?? []).map((row: Record<string, unknown>) => ({
-          id: row.id as string,
-          text: (row.content as string) ?? '',
-          color: colorMap[(row.color as string) ?? 'yellow'] ?? 'yellow',
-          createdAt: row.created_at as string,
-        })),
-      );
-    } catch (_e) {
-      // Fallback to demo data when table does not exist yet
-      setNotes([
-        { id: '1', text: 'Follow up with vendor about pricing quote', color: 'yellow', createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString() },
-        { id: '2', text: 'Call insurance agent -- renewal deadline 3/15', color: 'blue', createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString() },
-        { id: '3', text: 'Prepare board presentation slides for Q1 review', color: 'green', createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString() },
-      ]);
-    } finally {
-      setLoading(false);
+        if (data) {
+          setNoteId(data.id);
+          setText(data.text || '');
+          const cid = (data.color as ColorId) || randomColorId();
+          setColorId(cid);
+          onNoteColorChange?.(colorById(cid).hex);
+        } else {
+          // No note yet — assign random color, will save on first keystroke
+          const newColor = randomColorId();
+          setColorId(newColor);
+          onNoteColorChange?.(colorById(newColor).hex);
+        }
+      } finally {
+        setLoading(false);
+      }
     }
+    loadNote();
   }, [suiteId, officeId]);
 
-  useEffect(() => {
-    fetchNotes();
-  }, [fetchNotes]);
-
-  // ---------------------------------------------------------------------------
-  // Real-Time Subscription
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    const channel = supabase
-      .channel(`sticky_notes:${suiteId}:${officeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sticky_notes',
-          filter: `suite_id=eq.${suiteId}`,
-        },
-        () => {
-          // Refetch all notes on any change (simpler than diffing for notes)
-          fetchNotes();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
-  }, [suiteId, officeId, fetchNotes]);
-
-  // ---------------------------------------------------------------------------
-  // Handlers
-  // ---------------------------------------------------------------------------
-
-  const handleAddNote = useCallback(async () => {
-    const newColor = COLOR_CYCLE[notes.length % COLOR_CYCLE.length];
-    const newNote: StickyNote = {
-      id: Date.now().toString(),
-      text: '',
-      color: newColor,
-      createdAt: new Date().toISOString(),
-    };
-
-    // Optimistic add
-    const updated = [newNote, ...notes];
-    setNotes(updated);
-    onNoteChange?.(updated);
-
-    try {
-      const colorMap: Record<NoteColor, string> = {
-        yellow: 'yellow',
-        blue: 'blue',
-        green: 'green',
-        pink: 'pink',
-        purple: 'purple',
-        orange: 'orange',
-      };
-
-      await supabase.from('sticky_notes').insert({
+  // ---- Auto-save (debounced 800ms) ----
+  const saveNote = useCallback(
+    async (newText: string, newColorId: ColorId) => {
+      const payload = {
         suite_id: suiteId,
         office_id: officeId,
-        content: '',
-        color: colorMap[newColor],
-        position: 0,
-      });
-    } catch (_e) {
-      // Silent catch for demo mode
-    }
-  }, [notes, onNoteChange, suiteId, officeId]);
-
-  /** Debounce ref for text saves */
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+        text: newText,
+        color: newColorId,
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        if (noteId) {
+          await supabase.from('sticky_notes').update(payload).eq('id', noteId);
+        } else {
+          const { data } = await supabase
+            .from('sticky_notes')
+            .insert({ ...payload, created_at: new Date().toISOString() })
+            .select('id')
+            .single();
+          if (data?.id) setNoteId(data.id);
+        }
+        playNoteSaveSound();
+      } catch (e) {
+        console.warn('[StickyNote] save error:', e);
+      }
+    },
+    [noteId, suiteId, officeId],
+  );
 
   const handleTextChange = useCallback(
-    (id: string, text: string) => {
-      const updated = notes.map((n) => (n.id === id ? { ...n, text } : n));
-      setNotes(updated);
-      onNoteChange?.(updated);
-
-      // Debounced save to Supabase (500ms)
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(async () => {
-        try {
-          await supabase
-            .from('sticky_notes')
-            .update({ content: text })
-            .eq('id', id);
-        } catch (_e) {
-          // Silent catch for demo mode
-        }
-      }, 500);
+    (val: string) => {
+      setText(val);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => saveNote(val, colorId), 800);
     },
-    [notes, onNoteChange],
+    [colorId, saveNote],
   );
 
-  const handleColorCycle = useCallback(
-    async (id: string) => {
-      const updated = notes.map((n) => {
-        if (n.id !== id) return n;
-        const currentIdx = COLOR_CYCLE.indexOf(n.color);
-        const nextColor = COLOR_CYCLE[(currentIdx + 1) % COLOR_CYCLE.length];
-        return { ...n, color: nextColor };
-      });
-      setNotes(updated);
-      onNoteChange?.(updated);
-
-      try {
-        const note = updated.find((n) => n.id === id);
-        if (note) {
-          const colorMap: Record<NoteColor, string> = {
-            yellow: 'yellow',
-            blue: 'blue',
-            green: 'green',
-            pink: 'pink',
-            purple: 'purple',
-            orange: 'orange',
-          };
-          await supabase
-            .from('sticky_notes')
-            .update({ color: colorMap[note.color] })
-            .eq('id', id);
-        }
-      } catch (_e) {
-        // Silent catch for demo mode
-      }
+  const handleColorChange = useCallback(
+    (cid: ColorId) => {
+      playClickSound();
+      setColorId(cid);
+      onNoteColorChange?.(colorById(cid).hex);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => saveNote(text, cid), 800);
     },
-    [notes, onNoteChange],
+    [text, saveNote, onNoteColorChange],
   );
 
-  const handleDelete = useCallback(
-    async (id: string) => {
-      const updated = notes.filter((n) => n.id !== id);
-      setNotes(updated);
-      onNoteChange?.(updated);
-
-      try {
-        await supabase.from('sticky_notes').delete().eq('id', id);
-      } catch (_e) {
-        // Silent catch for demo mode
-      }
-    },
-    [notes, onNoteChange],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Loading State
-  // ---------------------------------------------------------------------------
+  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
 
   if (loading) {
     return (
-      <View style={styles.stateContainer}>
-        {[0, 1, 2].map((i) => (
-          <View key={i} style={styles.skeletonNote} />
-        ))}
+      <View style={[s.root, { backgroundColor: colorConfig.hex, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: '#1F2937', opacity: 0.5, fontSize: 13 }}>Loading…</Text>
       </View>
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Empty State
-  // ---------------------------------------------------------------------------
-
-  if (notes.length === 0) {
-    return (
-      <View style={styles.stateContainer}>
-        <NoteIcon size={48} color="rgba(255,255,255,0.2)" />
-        <Text style={styles.emptyText}>Capture quick thoughts</Text>
-        <Text style={styles.emptySubtext}>
-          Add sticky notes during governance workflows
-        </Text>
-        <Pressable style={styles.ctaButton} onPress={handleAddNote}>
-          <PlusIcon size={16} color="#FFFFFF" />
-          <Text style={styles.ctaButtonText}>New Note</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
-  const renderNote = ({ item }: { item: StickyNote }) => (
-    <NoteCard
-      note={item}
-      onTextChange={handleTextChange}
-      onColorCycle={handleColorCycle}
-      onDelete={handleDelete}
-    />
-  );
 
   return (
-    <View style={styles.container}>
-      {/* Add button in header area */}
-      <View style={styles.headerRow}>
-        <Text style={styles.noteCount}>{notes.length} notes</Text>
-        <Pressable
-          style={({ pressed }) => [
-            styles.addButton,
-            pressed && styles.addButtonPressed,
-          ]}
-          onPress={handleAddNote}
-          accessibilityRole="button"
-          accessibilityLabel="Add new sticky note"
-        >
-          <PlusIcon size={16} color="#3B82F6" />
-        </Pressable>
+    <View
+      style={[
+        s.root,
+        { backgroundColor: colorConfig.hex },
+        Platform.OS === 'web'
+          ? ({
+              boxShadow:
+                '0 24px 64px rgba(0,0,0,0.55), 0 8px 24px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.45)',
+            } as any)
+          : {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 12 },
+              shadowOpacity: 0.5,
+              shadowRadius: 30,
+              elevation: 20,
+            },
+      ]}
+    >
+      {/* Paperclip decoration */}
+      <Paperclip color={colorConfig.dark} />
+
+      {/* Paper surface sheen */}
+      <View style={s.sheen} pointerEvents="none" />
+
+      {/* Header row */}
+      <View style={s.header}>
+        <View style={s.headerLeft}>
+          <Ionicons name="pencil" size={13} color={`${colorConfig.dark}BB`} />
+          <Text style={[s.noteLabel, { color: `${colorConfig.dark}99` }]}>NOTE</Text>
+        </View>
+
+        {/* Color picker */}
+        <View style={s.colorPicker}>
+          {PREMIUM_COLORS.map((c) => (
+            <Pressable
+              key={c.id}
+              onPress={() => handleColorChange(c.id)}
+              style={[
+                s.colorDot,
+                { backgroundColor: c.hex },
+                colorId === c.id
+                  ? {
+                      borderWidth: 2,
+                      borderColor: '#fff',
+                      ...(Platform.OS === 'web'
+                        ? ({
+                            boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
+                          } as any)
+                        : {}),
+                    }
+                  : { borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' },
+              ]}
+            />
+          ))}
+        </View>
       </View>
 
-      {/* Note list */}
-      <FlatList
-        data={notes}
-        renderItem={renderNote}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        initialNumToRender={10}
+      {/* Divider line (like ruled paper) */}
+      <View style={[s.ruled, { borderColor: `${colorConfig.dark}20` }]} />
+
+      {/* Text body */}
+      <TextInput
+        style={[s.body, { color: '#1F2937' }]}
+        value={text}
+        onChangeText={handleTextChange}
+        placeholder="Write your note…"
+        placeholderTextColor={`${colorConfig.dark}55`}
+        multiline
+        textAlignVertical="top"
+        autoFocus={!text}
+        scrollEnabled
       />
 
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.newNoteButton,
-            pressed && styles.newNoteButtonPressed,
-          ]}
-          onPress={handleAddNote}
-          accessibilityRole="button"
-          accessibilityLabel="Create new note"
-        >
-          <PlusIcon size={14} color="#FFFFFF" />
-          <Text style={styles.newNoteText}>New Note</Text>
-        </Pressable>
-      </View>
+      {/* Corner fold */}
+      <View
+        style={[
+          s.cornerFold,
+          {
+            borderTopColor: `${colorConfig.dark}28`,
+            borderLeftColor: `${colorConfig.dark}28`,
+          },
+        ]}
+        pointerEvents="none"
+      />
     </View>
   );
 }
@@ -524,231 +316,96 @@ export function StickyNoteWidget({
 // Styles
 // ---------------------------------------------------------------------------
 
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  root: {
     flex: 1,
+    borderRadius: 4,
+    overflow: 'hidden',
+    position: 'relative',
   },
 
-  // Header
-  headerRow: {
+  sheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 0,
+    pointerEvents: 'none',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 35%, transparent 65%)',
+        } as any)
+      : { backgroundColor: 'rgba(255,255,255,0.10)' }),
+  },
+
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 10,
+    zIndex: 1,
   },
 
-  noteCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: CanvasTokens.text.muted,
-    letterSpacing: 0.3,
-  },
-
-  addButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: 'rgba(59,130,246,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as unknown as ViewStyle)
-      : {}),
-  },
-
-  addButtonPressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.95 }],
-  },
-
-  // Note list
-  listContent: {
-    gap: 8,
-    paddingBottom: 52,
-  },
-
-  // Note card
-  noteCard: {
+  headerLeft: {
     flexDirection: 'row',
-    backgroundColor: '#0B111B',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 10,
-    overflow: 'hidden',
-    minHeight: 60,
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          transition: 'all 150ms ease',
-        } as unknown as ViewStyle)
-      : {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 4,
-        }),
-  },
-
-  noteCardHover: {
-    borderColor: 'rgba(255,255,255,0.35)',
-    ...(Platform.OS === 'web'
-      ? ({
-          transform: 'translateY(-1px)',
-          boxShadow: '0 3px 10px rgba(0,0,0,0.35)',
-        } as unknown as ViewStyle)
-      : {}),
-  },
-
-  noteCardFocused: {
-    borderColor: 'rgba(255,255,255,0.45)',
-  },
-
-  cardTint: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.96,
-  },
-
-  // Drag handle area
-  dragArea: {
-    width: 28,
-    justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({ cursor: 'grab' } as unknown as ViewStyle)
-      : {}),
+    gap: 5,
   },
 
-  // Note text input
-  noteInput: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
-    lineHeight: 18,
-    paddingVertical: 12,
-    paddingRight: 32, // Account for color dot
-    ...(Platform.OS === 'web'
-      ? ({
-          outline: 'none',
-          border: 'none',
-          resize: 'none',
-        } as any)
-      : {}),
-  },
+  noteLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  } as any,
 
-  // Color dot
-  colorDotHitArea: {
-    position: 'absolute',
-    right: 4,
-    bottom: 4,
-    width: 28,
-    height: 28,
-    justifyContent: 'center',
+  colorPicker: {
+    flexDirection: 'row',
     alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({ cursor: 'pointer' } as unknown as ViewStyle)
-      : {}),
+    gap: 6,
   },
 
   colorDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
 
-  // Footer
-  footer: {
+  ruled: {
+    marginHorizontal: 0,
+    borderBottomWidth: 1,
+    zIndex: 1,
+  },
+
+  body: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 26,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 24,
+    zIndex: 1,
+    fontFamily: Platform.OS === 'web' ? "'Georgia', serif" : undefined,
+    ...(Platform.OS === 'web'
+      ? ({ outlineStyle: 'none', resize: 'none' } as any)
+      : {}),
+  },
+
+  cornerFold: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
     right: 0,
-    backgroundColor: CanvasTokens.background.surface,
-    borderTopWidth: 1,
-    borderTopColor: CanvasTokens.border.subtle,
-    paddingVertical: 8,
-  },
-
-  newNoteButton: {
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#0EA5E9',
-    borderWidth: 1,
-    borderColor: '#7DD3FC',
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as unknown as ViewStyle)
-      : {}),
-  },
-
-  newNoteButtonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
-  },
-
-  newNoteText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  // State containers
-  stateContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-
-  // Skeleton loading
-  skeletonNote: {
-    width: '100%',
-    height: 60,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    marginBottom: 8,
-  },
-
-  // Empty state
-  emptyText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  emptySubtext: {
-    color: CanvasTokens.text.muted,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-
-  ctaButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#3B82F6',
-    ...(Platform.OS === 'web'
-      ? ({ cursor: 'pointer' } as unknown as ViewStyle)
-      : {}),
-  },
-
-  ctaButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+    width: 0,
+    height: 0,
+    borderStyle: 'solid',
+    borderTopWidth: 24,
+    borderLeftWidth: 24,
+    borderBottomWidth: 0,
+    borderRightWidth: 0,
+    zIndex: 10,
   },
 });

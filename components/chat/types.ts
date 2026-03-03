@@ -121,10 +121,6 @@ export interface ActiveRun {
   events: AgentActivityEvent[];
   /** Final response text (populated when status is 'completed'). */
   finalText?: string;
-  /** Optional summarized reasoning text returned by the orchestrator. */
-  reasoning?: string;
-  /** Optional reasoning duration in seconds. */
-  reasoningDurationS?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,12 +178,7 @@ export interface OrchestratorResponse {
     type: string;
     message: string;
     icon?: string;
-    status?: 'pending' | 'active' | 'completed' | 'error';
-    timestamp?: number;
   }>;
-  reasoning?: string;
-  reasoning_duration_s?: number;
-  stream_capable?: boolean;
   route?: {
     skill_pack?: string;
     node?: string;

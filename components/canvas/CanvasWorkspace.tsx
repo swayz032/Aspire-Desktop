@@ -42,7 +42,8 @@ import { CommandPalette } from './CommandPalette';
 import { SnapGhost } from './SnapGhost';
 import { DragPreview } from './DragPreview';
 import { WidgetDock, DEFAULT_WIDGETS } from './WidgetDock';
-import { WidgetContainer } from './WidgetContainer';
+import { WidgetIconTile } from './WidgetIconTile';
+import { WidgetModal } from './WidgetModal';
 import { CanvasTrashCan } from './CanvasTrashCan';
 import { CanvasModeToggle } from './CanvasModeToggle';
 import { ChatCanvas } from './ChatCanvas';
@@ -208,6 +209,9 @@ export function CanvasWorkspace(): React.ReactElement {
     Array<{ id: string; instanceId: string; position: { x: number; y: number }; size: { width: number; height: number } }>
   >([]);
 
+  // Which tile's modal is currently open (instanceId or null)
+  const [openModalInstanceId, setOpenModalInstanceId] = useState<string | null>(null);
+
   // Header entrance animation
   const headerAnim = useRef(new Animated.Value(0)).current;
   const canvasDepthAnim = useRef(new Animated.Value(0)).current;
@@ -236,7 +240,7 @@ export function CanvasWorkspace(): React.ReactElement {
     emitCanvasEvent('mode_change', { mode: 'canvas' });
   }, []);
 
-  // Widget selection from dock
+  // Widget selection from dock (tap)
   const handleWidgetSelect = useCallback((widgetId: string) => {
     const instanceId = `${widgetId}-${Date.now()}`;
     let x = 80;
@@ -254,6 +258,7 @@ export function CanvasWorkspace(): React.ReactElement {
       ...prev,
       { id: widgetId, instanceId, position: { x, y }, size: { ...defaultWidgetSize } },
     ]);
+    setOpenModalInstanceId(instanceId);
     playSound('dock_drop');
   }, [placedWidgets, defaultWidgetSize]);
 
@@ -269,6 +274,7 @@ export function CanvasWorkspace(): React.ReactElement {
       ...prev,
       { id: widgetId, instanceId, position, size: { ...defaultWidgetSize } },
     ]);
+    setOpenModalInstanceId(instanceId);
     playSound('dock_drop');
   }, [defaultWidgetSize, checkCollision, addWidget, placedWidgets]);
 
@@ -594,35 +600,17 @@ export function CanvasWorkspace(): React.ReactElement {
                 {placedWidgets.map((pw) => {
                   const widgetDef = WIDGET_CONTENT[pw.id];
                   if (!widgetDef) return null;
-                  const WidgetContent = widgetDef.component;
-                  const isAgentWidget = pw.id === 'ava' || pw.id === 'eli' || pw.id === 'finn';
-                  const voiceStatus = isAgentWidget
-                    ? voiceHooks[pw.id as keyof typeof voiceHooks].status
-                    : undefined;
                   return (
-                    <WidgetContainer
+                    <WidgetIconTile
                       key={pw.instanceId}
                       title={widgetDef.title}
                       accent={widgetDef.accent}
                       icon={widgetDef.icon}
                       position={pw.position}
-                      size={pw.size}
+                      onPress={() => setOpenModalInstanceId(pw.instanceId)}
+                      onRemove={() => handleWidgetClose(pw.instanceId)}
                       onPositionChange={(pos) => handlePositionChange(pw.instanceId, pos)}
-                      onSizeChange={(size) => handleSizeChange(pw.instanceId, size)}
-                      onClose={() => handleWidgetClose(pw.instanceId)}
-                    >
-                      <WidgetContent
-                        suiteId={suiteId || ''}
-                        officeId={tenant?.officeId || ''}
-                        {...(isAgentWidget
-                          ? {
-                              agentId: pw.id,
-                              voiceStatus,
-                              onPrimaryAction: () => handleAgentVoiceToggle(pw.id),
-                            }
-                          : {})}
-                      />
-                    </WidgetContainer>
+                    />
                   );
                 })}
 
@@ -680,6 +668,50 @@ export function CanvasWorkspace(): React.ReactElement {
         widgetId={dragState.activeWidgetId}
         isDragging={dragState.isDragging}
       />
+
+      {/* Widget Modal — opens when a canvas tile is tapped */}
+      {(() => {
+        const openWidget = openModalInstanceId
+          ? placedWidgets.find((pw) => pw.instanceId === openModalInstanceId)
+          : null;
+        const widgetDef = openWidget ? WIDGET_CONTENT[openWidget.id] : null;
+        const WidgetContent = widgetDef?.component;
+        const isAgentWidget = openWidget
+          ? openWidget.id === 'ava' || openWidget.id === 'eli' || openWidget.id === 'finn'
+          : false;
+        const voiceStatus = isAgentWidget && openWidget
+          ? voiceHooks[openWidget.id as keyof typeof voiceHooks].status
+          : undefined;
+
+        const widgetSize = (() => {
+          if (!openWidget) return 'standard' as const;
+          if (['ava', 'eli', 'finn'].includes(openWidget.id)) return 'agent' as const;
+          if (['email', 'phone', 'calendar', 'messages'].includes(openWidget.id)) return 'wide' as const;
+          return 'standard' as const;
+        })();
+
+        return (
+          <WidgetModal
+            visible={!!openWidget && !!widgetDef}
+            size={widgetSize}
+            onClose={() => setOpenModalInstanceId(null)}
+          >
+            {WidgetContent && openWidget ? (
+              <WidgetContent
+                suiteId={suiteId || ''}
+                officeId={tenant?.officeId || ''}
+                {...(isAgentWidget
+                  ? {
+                      agentId: openWidget.id,
+                      voiceStatus,
+                      onPrimaryAction: () => handleAgentVoiceToggle(openWidget.id),
+                    }
+                  : {})}
+              />
+            ) : null}
+          </WidgetModal>
+        );
+      })()}
 
       {/* Stage overlay */}
       <Stage />

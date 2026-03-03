@@ -2103,22 +2103,6 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     }
 
     const data = await response.json();
-    const reasoningSummary =
-      typeof data?.reasoning === 'string'
-        ? data.reasoning
-        : typeof data?.reasoning_summary === 'string'
-        ? data.reasoning_summary
-        : typeof data?.thinking === 'string'
-        ? data.thinking
-        : typeof data?.analysis === 'string'
-        ? data.analysis
-        : null;
-    const reasoningDurationS =
-      typeof data?.reasoning_duration_s === 'number'
-        ? data.reasoning_duration_s
-        : typeof data?.reasoning_duration === 'number'
-        ? data.reasoning_duration
-        : null;
     const resolvedAgent = typeof data?.assigned_agent === 'string' && data.assigned_agent.trim()
       ? data.assigned_agent.trim().toLowerCase()
       : requestedAgent;
@@ -2134,10 +2118,6 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       risk_tier: data.risk?.tier || null,
       route: data.route || null,
       plan: data.plan || null,
-      activity: Array.isArray(data.activity) ? data.activity : [],
-      reasoning: reasoningSummary,
-      reasoning_duration_s: reasoningDurationS,
-      stream_capable: true,
       correlation_id: correlationId,
     });
   } catch (error: unknown) {

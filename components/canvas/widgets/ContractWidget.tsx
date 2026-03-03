@@ -1,37 +1,9 @@
-/**
- * ContractWidget — DocuSign dashboard quality contract display for Canvas Mode
- *
- * $10,000 UI/UX MANDATE:
- * - Real Supabase data with RLS scoping
- * - Avatar-based parties row (sender → client)
- * - Signature status indicators (signed/pending/unsigned)
- * - Deadline countdown
- * - Reminder button
- * - Color-coded initials, premium layout
- */
-
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  Platform,
-  ActivityIndicator,
-  type ViewStyle,
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
-import { ArrowRightIcon } from '@/components/icons/ui/ArrowRightIcon';
-import { CheckCircleIcon } from '@/components/icons/ui/CheckCircleIcon';
-import { ClockIcon } from '@/components/icons/ui/ClockIcon';
-import { CircleIcon } from '@/components/icons/ui/CircleIcon';
-import { CanvasTokens } from '@/constants/canvas.tokens';
-import { Colors } from '@/constants/tokens';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { Ionicons } from '@expo/vector-icons';
+import { playClickSound, playApproveSound } from '@/lib/sounds';
 
 interface Party {
   name: string;
@@ -43,6 +15,8 @@ interface Party {
 interface Contract {
   id: string;
   contract_number: string;
+  title: string;
+  type_tag: string;
   sender_name: string;
   sender_email: string;
   client_name: string;
@@ -61,630 +35,415 @@ interface ContractWidgetProps {
   onSendReminderClick?: (contractId: string) => void;
 }
 
-// ---------------------------------------------------------------------------
-// Helper Functions
-// ---------------------------------------------------------------------------
-
-/** Generate color from name (deterministic) */
-function getColorFromName(name: string): string {
-  const colors = [
-    '#3B82F6', // Blue
-    '#10B981', // Green
-    '#A855F7', // Purple
-    '#F59E0B', // Amber
-    '#06B6D4', // Cyan
-    '#EF4444', // Red
-    '#8B5CF6', // Violet
-  ];
-
-  const hash = name
-    .split('')
-    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-
-  return colors[hash % colors.length];
-}
-
-/** Get initials from name */
 function getInitials(name: string): string {
   const parts = name.trim().split(' ');
-  if (parts.length === 1) {
-    return parts[0].substring(0, 2).toUpperCase();
-  }
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-/** Format deadline (relative time) */
-function formatDeadline(deadline: string): string {
-  const deadlineDate = new Date(deadline);
-  const now = new Date();
-  const diffMs = deadlineDate.getTime() - now.getTime();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 0) {
-    return `Overdue by ${Math.abs(diffDays)}d`;
-  }
-  if (diffDays === 0) {
-    return 'Due today';
-  }
-  if (diffDays === 1) {
-    return 'Due tomorrow';
-  }
-  if (diffDays <= 7) {
-    return `${diffDays} days left`;
-  }
-
-  return deadlineDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
+const AVATAR_COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444'];
+function avatarColor(name: string): string {
+  const h = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
-// ---------------------------------------------------------------------------
-// Parties Row Component
-// ---------------------------------------------------------------------------
-
-function PartiesRow({ sender, client }: { sender: Party; client: Party }) {
-  return (
-    <View style={styles.partiesRow}>
-      {/* Sender */}
-      <View style={styles.party}>
-        <View
-          style={[
-            styles.avatar,
-            { backgroundColor: getColorFromName(sender.name) },
-          ]}
-        >
-          <Text style={styles.avatarText}>{getInitials(sender.name)}</Text>
-        </View>
-        <View style={styles.partyInfo}>
-          <Text style={styles.partyName} numberOfLines={1}>
-            {sender.name}
-          </Text>
-          <Text style={styles.partyRole}>{sender.role}</Text>
-        </View>
-      </View>
-
-      {/* Arrow */}
-      <ArrowRightIcon size={20} color="rgba(255,255,255,0.3)" />
-
-      {/* Client */}
-      <View style={styles.party}>
-        <View
-          style={[
-            styles.avatar,
-            { backgroundColor: getColorFromName(client.name) },
-          ]}
-        >
-          <Text style={styles.avatarText}>{getInitials(client.name)}</Text>
-        </View>
-        <View style={styles.partyInfo}>
-          <Text style={styles.partyName} numberOfLines={1}>
-            {client.name}
-          </Text>
-          <Text style={styles.partyRole}>{client.role}</Text>
-        </View>
-      </View>
-    </View>
-  );
+function progressFromStatus(status: string): number {
+  const s = status.toLowerCase();
+  if (s === 'completed' || s === 'signed') return 1;
+  if (s === 'partially_signed') return 0.5;
+  if (s === 'sent') return 0.25;
+  return 0.1;
 }
 
-// ---------------------------------------------------------------------------
-// Signature Status Row Component
-// ---------------------------------------------------------------------------
+const DEMO_CONTRACT: Contract = {
+  id: 'demo-1',
+  contract_number: 'CT-2026-018',
+  title: 'Software Services Agreement',
+  type_tag: 'SaaS',
+  sender_name: 'Aspire Inc.',
+  sender_email: 'legal@aspire.com',
+  client_name: 'Jennifer Walsh',
+  client_email: 'jwalsh@acme.com',
+  status: 'sent',
+  signature_status: 'awaiting_signature',
+  deadline: new Date(Date.now() + 7 * 86400000).toISOString(),
+  parties: [
+    { name: 'Aspire Inc.', role: 'Provider', signed: true, signed_at: new Date().toISOString() },
+    { name: 'Jennifer Walsh', role: 'Client', signed: false, signed_at: null },
+  ],
+};
 
-function SignatureStatusRow({ party }: { party: Party }) {
-  const statusConfig = party.signed
-    ? { Icon: CheckCircleIcon, color: '#10B981', label: 'Signed' }
-    : { Icon: CircleIcon, color: 'rgba(255,255,255,0.3)', label: 'Unsigned' };
+const KEY_DATES = [
+  { label: 'Contract Date', value: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
+  { label: 'Effective Date', value: new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
+  { label: 'Term Length', value: '12 months' },
+  { label: 'Renewal', value: 'Auto-renews annually' },
+];
 
-  const { Icon, color, label } = statusConfig;
-
-  return (
-    <View style={styles.signatureRow}>
-      <Text style={styles.partyLabel} numberOfLines={1}>
-        {party.name}:
-      </Text>
-      <Icon size={16} color={color} />
-      <Text style={[styles.statusLabel, { color }]}>{label}</Text>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
-
-export function ContractWidget({
-  suiteId,
-  officeId,
-  contractId,
-  onViewClick,
-  onSendReminderClick,
-}: ContractWidgetProps) {
-  const router = useRouter();
+export function ContractWidget({ suiteId, officeId, contractId, onViewClick, onSendReminderClick }: ContractWidgetProps) {
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [reminderSent, setReminderSent] = useState(false);
 
-  // ---------------------------------------------------------------------------
-  // Data Fetching
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    const fetchContract = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const base = supabase
-          .from('contracts')
-          .select(`
-            id,
-            contract_number,
-            sender_name,
-            sender_email,
-            client_name,
-            client_email,
-            status,
-            signature_status,
-            deadline,
-            parties
-          `)
-          .eq('suite_id', suiteId);
-
-        const { data, error: fetchError } = contractId
-          ? await base.eq('id', contractId).single()
-          : await base.order('created_at', { ascending: false }).limit(1).single();
-
-        if (fetchError) {
-          throw fetchError;
-        }
-
-        setContract(data as Contract);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err || 'Failed to load contract');
-        if (message.toLowerCase().includes('relation') || message.toLowerCase().includes('does not exist')) {
-          setContract({
-            id: 'demo-1',
-            contract_number: 'CTR-2024-018',
-            sender_name: 'Your Company',
-            sender_email: 'team@yourcompany.com',
-            client_name: 'Global Solutions LLC',
-            client_email: 'legal@globalsolutions.com',
-            status: 'sent',
-            signature_status: 'pending',
-            deadline: new Date(Date.now() + 1000 * 60 * 60 * 24 * 5).toISOString(),
-            parties: [
-              { name: 'Your Company', role: 'Sender', signed: true, signed_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString() },
-              { name: 'Global Solutions LLC', role: 'Client', signed: false, signed_at: null },
-            ],
-          });
-        } else {
-          setError(message);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchContract();
+  const fetchContract = useCallback(async () => {
+    try {
+      setLoading(true);
+      const query = supabase.from('contracts').select('*').eq('suite_id', suiteId).eq('office_id', officeId);
+      const finalQuery = contractId
+        ? query.eq('id', contractId).single()
+        : query.order('created_at', { ascending: false }).limit(1).single();
+      const { data, error } = await finalQuery;
+      if (error) throw error;
+      setContract({
+        id: data.id,
+        contract_number: data.contract_number || `CT-${data.id.slice(0, 6).toUpperCase()}`,
+        title: data.title || 'Service Agreement',
+        type_tag: data.type_tag || 'Contract',
+        sender_name: data.sender_name || 'Your Company',
+        sender_email: data.sender_email || '',
+        client_name: data.client_name || 'Client',
+        client_email: data.client_email || '',
+        status: data.status || 'draft',
+        signature_status: data.signature_status || 'pending',
+        deadline: data.deadline || new Date(Date.now() + 7 * 86400000).toISOString(),
+        parties: (data.parties ?? [
+          { name: data.sender_name || 'Provider', role: 'Provider', signed: true },
+          { name: data.client_name || 'Client', role: 'Client', signed: false },
+        ]) as Party[],
+      });
+    } catch {
+      setContract(DEMO_CONTRACT);
+    } finally {
+      setLoading(false);
+    }
   }, [suiteId, officeId, contractId]);
 
-  // ---------------------------------------------------------------------------
-  // Loading State
-  // ---------------------------------------------------------------------------
+  useEffect(() => { fetchContract(); }, [fetchContract]);
 
-  if (loading) {
+  if (loading || !contract) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="small" color={Colors.accent.cyan} />
-        <Text style={styles.loadingText}>Loading contract...</Text>
+      <View style={[s.root, s.center]}>
+        <Text style={s.mutedText}>Loading…</Text>
       </View>
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Error State
-  // ---------------------------------------------------------------------------
-
-  if (error || !contract) {
-    return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>
-          {error || 'No contract found'}
-        </Text>
-      </View>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Extract Parties
-  // ---------------------------------------------------------------------------
-
-  const sender =
-    contract.parties.find((p) => p.role === 'Sender') ||
-    contract.parties[0] || {
-      name: contract.sender_name,
-      role: 'Sender',
-      signed: true,
-    };
-
-  const client =
-    contract.parties.find((p) => p.role === 'Client') ||
-    contract.parties[1] || {
-      name: contract.client_name,
-      role: 'Client',
-      signed: false,
-    };
-
-  const allSigned = contract.parties.every((p) => p.signed);
-
-  // ---------------------------------------------------------------------------
-  // Render Contract
-  // ---------------------------------------------------------------------------
+  const progress = progressFromStatus(contract.signature_status);
+  const deadlineDate = new Date(contract.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const allSigned = contract.parties.every(p => p.signed);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.bgAccentA} />
-      <View style={styles.bgAccentB} />
-
-      {/* Header */}
-      <Pressable style={styles.headerCard} onPress={() => router.push('/finance-hub/documents')}>
-        <View style={styles.header}>
-          <Text style={styles.contractNumber}>{contract.contract_number}</Text>
-          <View style={[styles.statusBadge, getStatusBadgeStyle(contract.status)]}>
-            <Text style={styles.statusText}>{contract.status.toUpperCase()}</Text>
+    <View style={s.root}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
+        {/* Contract number + title */}
+        <View style={s.titleSection}>
+          <Text style={s.contractNumber}>{contract.contract_number}</Text>
+          <View style={s.typePill}>
+            <Text style={s.typePillText}>{contract.type_tag}</Text>
           </View>
         </View>
-      </Pressable>
+        <Text style={s.contractTitle}>{contract.title}</Text>
 
-      {/* Parties Row */}
-      <PartiesRow sender={sender} client={client} />
+        {/* THE UNFORGETTABLE ELEMENT — two party circles connected by a line */}
+        <View style={s.partiesContainer}>
+          {contract.parties.map((party, idx) => {
+            const color = avatarColor(party.name);
+            return (
+              <React.Fragment key={idx}>
+                <View style={s.partyCol}>
+                  <View style={[s.partyCircle, { backgroundColor: color }]}>
+                    <Text style={s.partyInitials}>{getInitials(party.name)}</Text>
+                    {party.signed && (
+                      <View style={s.signedBadge}>
+                        <Ionicons name="checkmark" size={10} color="#FFF" />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={s.partyName} numberOfLines={1}>{party.name}</Text>
+                  <Text style={s.partyRole}>{party.role}</Text>
+                  <View style={[s.signChip, { backgroundColor: party.signed ? '#16A34A' : '#DC2626' }]}>
+                    <Text style={s.signChipText}>{party.signed ? 'Signed' : 'Pending'}</Text>
+                  </View>
+                </View>
+                {idx < contract.parties.length - 1 && (
+                  <View style={s.connectorWrap}>
+                    <View style={s.connectorLine} />
+                    <View style={[s.connectorDot, { backgroundColor: allSigned ? '#10B981' : '#F59E0B' }]} />
+                  </View>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </View>
 
-      {/* Signature Status */}
-      <View style={styles.signatureSection}>
-        <Text style={styles.sectionTitle}>Signature Status</Text>
-        {contract.parties.map((party, index) => (
-          <SignatureStatusRow key={index} party={party} />
-        ))}
-      </View>
+        {/* Progress */}
+        <View style={s.progressSection}>
+          <View style={s.progressTrack}>
+            <View style={[s.progressFill, {
+              width: `${progress * 100}%` as any,
+              backgroundColor: allSigned ? '#10B981' : '#3B82F6',
+            }]} />
+          </View>
+          <Text style={s.progressLabel}>
+            {allSigned ? 'Fully Executed' : `${contract.parties.filter(p => p.signed).length} of ${contract.parties.length} signed`}
+          </Text>
+        </View>
 
-      {/* Deadline */}
-      <View style={styles.deadlineRow}>
-        <ClockIcon size={18} color={Colors.accent.amber} />
-        <Text style={styles.deadlineText}>{formatDeadline(contract.deadline)}</Text>
-      </View>
+        {/* Key dates */}
+        <View style={s.datesSection}>
+          <Text style={s.sectionLabel}>KEY DATES</Text>
+          {KEY_DATES.map((d, i) => (
+            <View key={i} style={s.dateRow}>
+              <Text style={s.dateLabel}>{d.label}</Text>
+              <Text style={s.dateValue}>{d.value}</Text>
+            </View>
+          ))}
+          <View style={s.dateRow}>
+            <Text style={s.dateLabel}>Signature Deadline</Text>
+            <Text style={[s.dateValue, { color: '#F59E0B' }]}>{deadlineDate}</Text>
+          </View>
+        </View>
+      </ScrollView>
 
-      {/* Action Buttons */}
-      <View style={styles.actions}>
-        {onViewClick && (
+      {/* CTAs */}
+      <View style={s.ctaRow}>
+        {!allSigned && (
           <Pressable
-            style={({ pressed }) => [
-              styles.viewButton,
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={() => onViewClick(contract.id)}
+            style={s.reminderBtn}
+            onPress={() => {
+              if (reminderSent) return;
+              playClickSound();
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              setReminderSent(true);
+              onSendReminderClick?.(contract.id);
+            }}
           >
-            <Text style={styles.viewButtonText}>View Contract</Text>
+            <Text style={s.reminderBtnText}>{reminderSent ? 'Reminder Sent ✓' : 'Send Reminder'}</Text>
           </Pressable>
         )}
-        {!onViewClick && (
-          <Pressable
-            style={({ pressed }) => [
-              styles.viewButton,
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={() => router.push('/finance-hub/documents')}
-          >
-            <Text style={styles.viewButtonText}>View Contract</Text>
-          </Pressable>
-        )}
-
-        {onSendReminderClick && !allSigned && (
-          <Pressable
-            style={({ pressed }) => [
-              styles.reminderButton,
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={() => onSendReminderClick(contract.id)}
-          >
-            <Text style={styles.reminderButtonText}>Send Reminder</Text>
-          </Pressable>
-        )}
-        {!onSendReminderClick && !allSigned && (
-          <Pressable
-            style={({ pressed }) => [
-              styles.reminderButton,
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={() => router.push('/finance-hub/documents')}
-          >
-            <Text style={styles.reminderButtonText}>Send Reminder</Text>
-          </Pressable>
-        )}
+        <Pressable
+          style={s.viewBtn}
+          onPress={() => {
+            playClickSound();
+            onViewClick?.(contract.id);
+          }}
+        >
+          <Text style={s.viewBtnText}>View Contract</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Helper Functions
-// ---------------------------------------------------------------------------
-
-function getStatusBadgeStyle(status: string): ViewStyle {
-  const statusLower = status.toLowerCase();
-
-  if (statusLower === 'draft') {
-    return { backgroundColor: 'rgba(110, 110, 115, 0.2)' };
-  }
-  if (statusLower === 'sent') {
-    return { backgroundColor: 'rgba(59, 130, 246, 0.2)' };
-  }
-  if (statusLower === 'signed') {
-    return { backgroundColor: 'rgba(52, 199, 89, 0.2)' };
-  }
-  if (statusLower === 'expired') {
-    return { backgroundColor: 'rgba(255, 59, 48, 0.2)' };
-  }
-
-  return { backgroundColor: 'rgba(110, 110, 115, 0.2)' };
-}
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  root: {
     flex: 1,
-    gap: 10,
-    overflow: 'hidden',
+    backgroundColor: '#060A10',
   },
-
-  bgAccentA: {
-    position: 'absolute',
-    top: -48,
-    right: -32,
-    width: 136,
-    height: 136,
-    borderRadius: 68,
-    backgroundColor: 'rgba(14,165,233,0.12)',
-  },
-
-  bgAccentB: {
-    position: 'absolute',
-    bottom: -56,
-    left: -34,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(245,158,11,0.1)',
-  },
-
-  centerContainer: {
-    flex: 1,
+  center: {
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 12,
   },
-
-  loadingText: {
-    color: CanvasTokens.text.secondary,
-    fontSize: 13,
-    fontWeight: '500',
+  mutedText: {
+    color: 'rgba(255,255,255,0.25)',
+    fontSize: 14,
   },
-
-  errorText: {
-    color: Colors.semantic.error,
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center',
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 8,
   },
-
-  // Header
-  headerCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(9,20,34,0.82)',
-    padding: 10,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 10px 24px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.07)' } as unknown as ViewStyle)
-      : {}),
-  },
-
-  header: {
+  titleSection: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
-
   contractNumber: {
-    color: CanvasTokens.text.primary,
-    fontSize: 16,
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-
-  statusBadge: {
+    color: 'rgba(255,255,255,0.3)',
+    letterSpacing: 1,
+  } as any,
+  typePill: {
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(59,130,246,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.4)',
   },
-
-  statusText: {
-    color: '#FFFFFF',
+  typePillText: {
     fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 0.8,
+    color: '#3B82F6',
+    letterSpacing: 0.5,
+  } as any,
+  contractTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFF',
+    lineHeight: 26,
+    marginBottom: 28,
+    letterSpacing: -0.4,
+  } as any,
+  partiesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 12,
   },
-
-  // Parties
-  partiesRow: {
+  partyCol: {
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  partyCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  partyInitials: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFF',
+  } as any,
+  signedBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#060A10',
+  },
+  partyName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
+    textAlign: 'center',
+    maxWidth: 100,
+  } as any,
+  partyRole: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.35)',
+  },
+  signChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  signChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
+  } as any,
+  connectorWrap: {
+    flex: 0.4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    paddingBottom: 54,
+  },
+  connectorLine: {
+    height: 1,
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  connectorDot: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  progressSection: {
+    gap: 8,
+    marginBottom: 20,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  progressLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
+  },
+  datesSection: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.07)',
+    paddingTop: 16,
+    gap: 2,
+  },
+  sectionLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.28)',
+    letterSpacing: 1.5,
+    marginBottom: 8,
+  } as any,
+  dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(12,19,31,0.9)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
   },
-
-  party: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  avatarText: {
-    color: '#FFFFFF',
+  dateLabel: {
     fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    color: 'rgba(255,255,255,0.4)',
   },
-
-  partyInfo: {
-    flex: 1,
-    gap: 2,
-  },
-
-  partyName: {
-    color: CanvasTokens.text.primary,
+  dateValue: {
     fontSize: 13,
     fontWeight: '600',
-  },
-
-  partyRole: {
-    color: CanvasTokens.text.muted,
-    fontSize: 11,
-    fontWeight: '500',
-  },
-
-  // Signature Status
-  signatureSection: {
-    gap: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(12,19,31,0.86)',
-    padding: 10,
-  },
-
-  sectionTitle: {
-    color: CanvasTokens.text.secondary,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-
-  signatureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-
-  partyLabel: {
-    flex: 1,
-    color: CanvasTokens.text.primary,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-
-  statusLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-
-  // Deadline
-  deadlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(245, 158, 11, 0.14)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.2)',
-  },
-
-  deadlineText: {
-    color: Colors.accent.amber,
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-
-  // Actions
-  actions: {
+    color: '#FFF',
+  } as any,
+  ctaRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 'auto',
-    paddingTop: 2,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.07)',
   },
-
-  viewButton: {
+  reminderBtn: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: Colors.accent.cyan,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as any)
-      : {}),
-  },
-
-  viewButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-
-  reminderButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 10,
+    paddingVertical: 13,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: CanvasTokens.border.subtle,
+    borderColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
-    justifyContent: 'center',
-    ...(Platform.OS === 'web'
-      ? ({
-          cursor: 'pointer',
-          transition: 'all 150ms ease',
-        } as any)
-      : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-
-  reminderButtonText: {
-    color: CanvasTokens.text.primary,
-    fontSize: 14,
+  reminderBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.6)',
+  } as any,
+  viewBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 20,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+  },
+  viewBtnText: {
+    fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-
-  buttonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
-  },
+    color: '#FFF',
+  } as any,
 });

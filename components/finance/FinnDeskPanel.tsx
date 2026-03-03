@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, ActivityIndicator, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Alert, ActivityIndicator, type ViewStyle } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,9 +16,6 @@ import {
   ChainOfThoughtHeader,
   ChainOfThoughtContent,
   ChainOfThoughtStep,
-  Reasoning,
-  ReasoningTrigger,
-  ReasoningContent,
   buildActivityFromResponse,
   type AgentActivityEvent,
   type OrchestratorResponse,
@@ -114,8 +111,6 @@ type ActiveRun = {
   events: AgentActivityEvent[];
   status: 'running' | 'completed';
   finalText: string;
-  reasoning?: string;
-  reasoningDurationS?: number;
 };
 
 type ChatMsg = {
@@ -246,7 +241,6 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRun>>({});
   const [finnContext, setFinnContext] = useState<{ snapshot: SnapshotData | null; exceptions: ExceptionData | null }>({ snapshot: null, exceptions: null });
   const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [voiceIssueModal, setVoiceIssueModal] = useState<{ title: string; message: string } | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const voiceLineAnim = useRef(new Animated.Value(1)).current;
@@ -263,7 +257,6 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   /** Show a voice/video error banner that auto-clears after 5s */
   const showVoiceError = useCallback((msg: string) => {
     setVoiceError(msg);
-    setVoiceIssueModal({ title: 'Finn Voice Problem', message: msg });
     setTimeout(() => setVoiceError(null), 5000);
   }, []);
 
@@ -359,16 +352,11 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       try {
         await finnVoice.startSession();
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        console.error('Failed to start Finn voice session:', msg);
-        if (/permission|denied|getUserMedia/i.test(msg)) {
-          showVoiceError('Microphone access denied. Check browser permissions.');
-        } else {
-          showVoiceError(`Voice session failed: ${msg.length > 80 ? `${msg.slice(0, 80)}...` : msg}`);
-        }
+        console.error('Failed to start Finn voice session:', error);
+        Alert.alert('Connection Error', 'Unable to connect to Finn. Please try again.');
       }
     }
-  }, [finnVoice, showVoiceError]);
+  }, [finnVoice]);
 
   const handleConnectToFinn = useCallback(async () => {
     if (videoState !== 'idle') return;
@@ -607,16 +595,11 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
 
       let responseText: string;
       let activityEvents: AgentActivityEvent[];
-      let reasoningSummary: string | undefined;
-      let reasoningDurationS: number | undefined;
 
       if (orchestratorResp.ok) {
         const data = await orchestratorResp.json();
         responseText = data.response || 'I processed your request.';
         activityEvents = buildActivityFromResponse(data as OrchestratorResponse, 'finn');
-        reasoningSummary = typeof data.reasoning === 'string' ? data.reasoning : undefined;
-        reasoningDurationS =
-          typeof data.reasoning_duration_s === 'number' ? data.reasoning_duration_s : undefined;
       } else {
         // Orchestrator unavailable — fall back to local financial data
         const intent = trimmed.toLowerCase();
@@ -644,8 +627,6 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
               events: [],
               status: 'completed',
               finalText: responseText,
-              reasoning: reasoningSummary,
-              reasoningDurationS,
             },
           };
         });
@@ -679,9 +660,6 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                 ...run,
                 events: [...run.events, event],
                 status: isDone ? 'completed' : 'running',
-                finalText: isDone ? responseText : run.finalText,
-                reasoning: reasoningSummary,
-                reasoningDurationS,
               },
             };
           });
@@ -1087,22 +1065,6 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       </View>
 
       <View style={[styles.surfaceContainer, isInOverlay && styles.surfaceContainerOverlay]}>
-        {voiceIssueModal && (
-          <View style={styles.voiceModalOverlay}>
-            <View style={styles.voiceModalCard}>
-              <View style={styles.voiceModalHeader}>
-                <Text style={styles.voiceModalTitle}>{voiceIssueModal.title}</Text>
-                <Pressable style={styles.voiceModalClose} onPress={() => setVoiceIssueModal(null)}>
-                  <Ionicons name="close" size={14} color={Colors.text.tertiary} />
-                </Pressable>
-              </View>
-              <Text style={styles.voiceModalMessage}>{voiceIssueModal.message}</Text>
-              <Pressable style={styles.voiceModalButton} onPress={() => setVoiceIssueModal(null)}>
-                <Text style={styles.voiceModalButtonText}>OK</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
         {/* Voice/Video error banner — surfaces errors that were previously swallowed */}
         {voiceError && (
           <Pressable
@@ -1317,7 +1279,6 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
             const run = msg.runId ? activeRuns[msg.runId] : null;
             const showActivity = run && run.events.length > 0;
             const showMessage = !msg.runId || (run && run.status === 'completed');
-            const showReasoning = !!run?.reasoning;
 
             return (
               <View key={msg.id}>
@@ -1361,17 +1322,6 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                             ))}
                           </ChainOfThoughtContent>
                         </ChainOfThought>
-                      )}
-                      {showReasoning && (
-                        <Reasoning
-                          agent="finn"
-                          isStreaming={run.status === 'running'}
-                          duration={run.reasoningDurationS}
-                          style={{ marginBottom: 6 }}
-                        >
-                          <ReasoningTrigger />
-                          <ReasoningContent>{run.reasoning as string}</ReasoningContent>
-                        </Reasoning>
                       )}
                       {showMessage && msg.text ? (
                         <Text style={styles.msgText}>{msg.text}</Text>
@@ -1656,62 +1606,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.accent.cyan,
-  },
-  voiceModalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 130,
-  } as any,
-  voiceModalCard: {
-    width: '90%',
-    maxWidth: 420,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: '#1C1C1E',
-    padding: 16,
-  } as any,
-  voiceModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  voiceModalTitle: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  voiceModalClose: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  voiceModalMessage: {
-    color: Colors.text.secondary,
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 12,
-  },
-  voiceModalButton: {
-    alignSelf: 'flex-end',
-    borderRadius: 10,
-    backgroundColor: Colors.accent.cyan,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  voiceModalButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
   },
 });
 
