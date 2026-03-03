@@ -20,6 +20,13 @@ To re-enable real auth, set the Supabase environment variables (`EXPO_PUBLIC_SUP
 ## System Architecture
 The platform utilizes Expo/React Native Web with expo-router for the frontend, an Express.js server for the backend, and PostgreSQL with Drizzle ORM for database management. The build process involves `expo export -p web` to generate static files served by Express.
 
+**Canvas Widget Modal Architecture (Wave 16 Rebuild):**
+- `WidgetModal` is now a **bare transparent scaffold** — no glass, no header, no title bar. Card has `backgroundColor: 'transparent'`, `overflow: 'hidden'`, `borderRadius: 20`. Only provides: dark blurred backdrop, spring entrance animation, floating × close button (top:14, right:14, rgba(0,0,0,0.45)).
+- All 11 canvas widgets own their own full-bleed backgrounds, headers, and visual identity. No glass containers, no generic layouts.
+- Removed props from WidgetModal: `title`, `accent`, `icon`, `noteColor`, `hideHeader`, `noScroll`. New interface: `{ visible, onClose, children, size? }`.
+- Each widget has ONE unforgettable visual element (see plan in `.local/session_plan.md`).
+- Widget backgrounds: Agent=`#000`, StickyNote=vivid paper color, TodaysPlan=`#070A10`, Email=`#080D14`/`#06090F`, TextMessage=`#08090F`, Phone=navy LinearGradient, Finance=`#050A12`, Calendar=`#060A10`, Receipts/Quote/Contract/AuthorityQueue=`#060A10`.
+
 **UI/UX Decisions:**
 - Dark theme with glassmorphism for Finance Hub components.
 - Enterprise-grade SVG patterns for hero banners and UI elements (e.g., financeDashboard, pulseWave, hexGrid).
@@ -87,6 +94,23 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
     - **AI Voice Agent Icons**: Ava (Aspire Blue), Eli (Amber/Gold), Finn (Finance Purple) appended after tool icons with vertical divider. Photo-based squircle avatars with gradient glow border ring, glass highlight, pulsing glow when voice active. Non-draggable (tap to toggle voice session). Defined in `AGENT_WIDGETS` constant.
     - **Drag-and-Drop**: Custom pointer-based drag system (NOT dnd-kit) for dock-to-canvas. `onPointerDown` starts tracking, creates floating gradient ghost element on 6px threshold, `onPointerUp` checks if over `[data-canvas-drop]` element via `getBoundingClientRect` and places widget at canvas-relative snapped coordinates. `onPointerCancel` handled. Listeners registered only during active drag (not at mount). `onWidgetDrop` prop on WidgetDock; `data-canvas-drop` attribute on canvas area in CanvasWorkspace. Agent icons are non-draggable. Tap/click still works via `onWidgetSelect` for quick placement.
     - **Interaction Sounds**: 5 dock sounds in `lib/soundManager.ts`: `dock_hover` (soft tick), `dock_drag_start` (rising blip), `dock_drop` (chord resolve), `dock_agent_start` (ascending 3-note chime), `dock_agent_end` (descending 2-note). All Web Audio synthesized, no external files. `playSound()` auto-creates AudioContext on first call (fallback); `initSoundManager()` also called explicitly on first hover for reliability. All dock sounds marked `essential: true` to play with default soundMode.
+    - **Premium Widget Modal Redesign (Wave 17 — $20,000 quality)**:
+        - `WidgetModal.tsx`: Size prop ('standard'=560px, 'wide'=680px, 'agent'=700px), 4-layer 3D shadow, frosted glass top-bevel, accent strip with outward glow, noteColor prop for StickyNote paper mode, spring entrance animation. noScroll prop for full-height widgets.
+        - `lib/sounds.ts`: Added 6 new widget sounds: `playApproveSound`, `playDenySound`, `playMicActivateSound`, `playMessageSentSound`, `playTaskCompleteSound`, `playNoteSaveSound`.
+        - `CanvasWorkspace.tsx`: Passes correct `size` prop per widget type (agent/wide/standard), `noScroll` for agent+messages+email, `noteColorOverride` state + `onNoteColorChange` callback wired to StickyNoteWidget.
+        - `EmailWidget.tsx`: Flomail two-panel layout (240px left panel + flex right), Eli indicator strip, Office/Mail tabs, real data from Supabase + `/api/mail/threads`, thread rows with unread dots, detail panel, Open Inbox footer.
+        - `InvoiceWidget.tsx`: Stripe-style hero gradient, 3 stat chips, filter tabs (All/Pending/Paid/Overdue), clean rows with hover lift, LinearGradient CTA.
+        - `PhoneWidget.tsx`: AGL-style navy bg, Keypad/Recent/Contacts tabs, 60px dialpad circles, green call button with glow, active call overlay with controls.
+        - `TextMessageWidget.tsx`: iMessage-style two-view (thread list → conversation), favorites horizontal scroll, gradient sent bubbles, compose bar with send button.
+        - `QuoteWidget.tsx`: Status badge, client row, glass line-items table, totals block, full-width gradient Send CTA.
+        - `ContractWidget.tsx`: Parties connected by line, signature status chips, deadline countdown progress bar (green→amber→red).
+        - `CalendarWidget.tsx`: Inline calendar grid (day cells, today=green, event dots), view toggle (Day/Week/Month), selected day event panel, dark overrides.
+        - `TodaysPlanWidget.tsx`: Two-view (list + detail), hero task count, priority badges (HIGH=blue/MEDIUM=amber/LOW=gray), subtasks, Mark Complete animated pill.
+        - `AuthorityQueueWidget.tsx`: Two-view (queue + detail), circular progress ring, 3 stat chips, 4px left risk stripe per row, Approve/Deny with sounds + haptics.
+        - `FinanceHubWidget.tsx`: Green gradient hero, balance + change badge, sparkline bar chart, 3-col stat grid (Receivable/Payable/Runway), recent transactions.
+        - `ReceiptsWidget.tsx`: Search + horizontal category filter chips, category-colored circles, status dots, dashed upload CTA.
+        - `StickyNoteWidget.tsx`: ONE note per modal, 8 premium colors (Indigo/Amber/Coral/Teal/Lavender/Sky/Emerald/Rose), physical paper look (sheen overlay, corner fold, paperclip decoration), 800ms debounced Supabase autosave, color picker dots.
+        - `AgentWidget.tsx`: Two-view Voice + Chat. Voice: 186px floating orb with float+pulse animations, agent gradient colors (Ava=blue/purple, Eli=amber/green, Finn=cyan/indigo), mic/chat/reset controls. Chat: bubble conversation with gradient user bubbles matching agent colors, compose bar with animated send button.
 
 **System Design Choices:**
 - Tenant-scoped database tables for financial data.

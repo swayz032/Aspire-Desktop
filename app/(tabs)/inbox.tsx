@@ -19,7 +19,7 @@ import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { EliVoiceChatPanel, type EliMessage } from '@/components/inbox/EliVoiceChatPanel';
-import { buildActivityFromResponse, type AgentActivityEvent, type OrchestratorResponse } from '@/components/chat';
+import type { AgentActivityEvent } from '@/components/chat';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
 const finnAvatar = require('@/assets/avatars/finn.png');
@@ -88,53 +88,66 @@ function containsHtmlTags(content: string): boolean {
 }
 
 function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
+  const iframeHeightAnim = useRef(new Animated.Value(300)).current;
   const [iframeHeight, setIframeHeight] = useState(300);
+  const iframeOpacity = useRef(new Animated.Value(0)).current;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const darkStyleOverride = `
     <style>
       html, body {
-        background-color: #1C1C1E !important;
+        background-color: #0D0D0F !important;
         color: #d1d1d6 !important;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif !important;
         font-size: 14px !important;
-        line-height: 1.6 !important;
+        line-height: 1.7 !important;
         margin: 0 !important;
-        padding: 8px !important;
+        padding: 16px 20px !important;
         overflow-x: hidden !important;
         word-wrap: break-word !important;
         overflow-wrap: break-word !important;
+        -webkit-font-smoothing: antialiased !important;
       }
-      a { color: #3B82F6 !important; }
-      img { max-width: 100% !important; height: auto !important; border-radius: 4px; }
-      table { max-width: 100% !important; }
+      a { color: #38BDF8 !important; text-decoration: none !important; }
+      a:hover { text-decoration: underline !important; }
+      img { max-width: 100% !important; height: auto !important; border-radius: 6px; }
+      table { max-width: 100% !important; border-collapse: collapse !important; }
+      td, th { max-width: 100% !important; }
       * { max-width: 100% !important; box-sizing: border-box !important; }
+      p { margin: 0 0 12px 0 !important; }
+      h1, h2, h3, h4 { color: #f5f5f7 !important; font-weight: 600 !important; }
     </style>
     <script>
       function reportHeight() {
-        var h = document.documentElement.scrollHeight || document.body.scrollHeight;
+        var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
         window.parent.postMessage({ type: 'email-iframe-height', height: h }, '*');
       }
-      window.addEventListener('load', function() { setTimeout(reportHeight, 100); });
+      window.addEventListener('load', function() { setTimeout(reportHeight, 150); setTimeout(reportHeight, 500); });
       window.addEventListener('resize', reportHeight);
-      new MutationObserver(reportHeight).observe(document.body, { childList: true, subtree: true });
+      new MutationObserver(reportHeight).observe(document.body, { childList: true, subtree: true, attributes: true });
     </script>
   `;
 
   const wrappedHtml = htmlContent.includes('<html') || htmlContent.includes('<HTML')
     ? htmlContent.replace(/<head([^>]*)>/i, `<head$1>${darkStyleOverride}`)
-    : `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${darkStyleOverride}</head><body>${htmlContent}</body></html>`;
+    : `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${darkStyleOverride}</head><body style="background:#0D0D0F">${htmlContent}</body></html>`;
 
   useEffect(() => {
     if (!isWeb) return;
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'email-iframe-height' && typeof event.data.height === 'number') {
-        setIframeHeight(Math.min(Math.max(event.data.height + 16, 100), 2000));
+        const newH = Math.min(Math.max(event.data.height + 32, 100), 4000);
+        setIframeHeight(newH);
+        Animated.timing(iframeHeightAnim, { toValue: newH, duration: 250, useNativeDriver: false }).start();
       }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, []);
+
+  const handleLoad = () => {
+    Animated.timing(iframeOpacity, { toValue: 1, duration: 320, useNativeDriver: false }).start();
+  };
 
   if (!isWeb) {
     return (
@@ -147,29 +160,24 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
   }
 
   return (
-    <View style={{
-      borderRadius: BorderRadius.md,
-      overflow: 'hidden',
-      backgroundColor: '#1C1C1E',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.06)',
-      marginVertical: Spacing.sm,
-    }}>
+    <Animated.View style={{ overflow: 'hidden', opacity: iframeOpacity, height: iframeHeightAnim }}>
       <iframe
         ref={iframeRef as any}
         srcDoc={wrappedHtml}
         sandbox="allow-same-origin allow-scripts"
+        onLoad={handleLoad}
         style={{
           width: '100%',
           height: iframeHeight,
           border: 'none',
-          borderRadius: BorderRadius.md,
-          backgroundColor: '#1C1C1E',
+          outline: 'none',
+          boxShadow: 'none',
+          backgroundColor: '#0D0D0F',
           display: 'block',
         } as any}
         title="Email content"
       />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -382,57 +390,59 @@ function MailItemCard({ item, selected, onPress }: { item: MailThread; selected:
   const [hovered, setHovered] = useState(false);
   const isSent = (item as any).labelIds?.includes('SENT') && !(item as any).labelIds?.includes('INBOX');
   const recipientDisplay = item.recipients?.length > 0 ? item.recipients[0].replace(/<.*>/, '').trim() : '';
+  const initial = isSent ? '→' : item.senderName.charAt(0).toUpperCase();
 
   return (
     <TouchableOpacity
       style={[
-        styles.card,
-        selected && styles.cardSelected,
-        hovered && isWeb && styles.cardHover,
-        item.unread && styles.cardUnread,
-        isSent && styles.cardSent,
+        styles.mailRow,
+        selected && styles.mailRowSelected,
+        hovered && isWeb && styles.mailRowHover,
+        item.unread && styles.mailRowUnread,
       ]}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={0.85}
       {...(isWeb ? { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) } : {})}
     >
-      <View style={styles.cardRow}>
-        <View style={[styles.mailAvatar, isSent && styles.mailAvatarSent]}>
+      {item.unread && !selected && <View style={styles.mailUnreadAccent} />}
+      <View style={styles.mailRowInner}>
+        <View style={[styles.mailAvatarNew, isSent && styles.mailAvatarSent]}>
           {isSent ? (
-            <Ionicons name="arrow-forward" size={14} color={Colors.accent.cyan} />
+            <Ionicons name="arrow-forward" size={13} color={Colors.accent.cyan} />
           ) : (
-            <Text style={styles.mailAvatarText}>{item.senderName.charAt(0)}</Text>
+            <LinearGradient
+              colors={item.unread ? [Colors.accent.cyan, '#1D6FA4'] : ['#2A2A2E', '#222226']}
+              style={styles.mailAvatarGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={[styles.mailAvatarText, !item.unread && { color: Colors.text.muted }]}>{initial}</Text>
+            </LinearGradient>
           )}
         </View>
-        <View style={{ flex: 1, marginLeft: Spacing.md }}>
-          <View style={styles.titleRow}>
-            {item.unread && <View style={styles.unreadDot} />}
-            <Text style={[styles.cardTitle, item.unread && styles.cardTitleUnread]} numberOfLines={1}>{item.subject}</Text>
+
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={styles.mailRowLine1}>
+            <Text style={[styles.mailSenderLabel, item.unread && styles.mailSenderLabelUnread]} numberOfLines={1}>
+              {isSent ? `To: ${recipientDisplay || 'Unknown'}` : item.senderName}
+            </Text>
+            <View style={styles.mailRowMeta}>
+              {item.hasAttachments && <Ionicons name="attach" size={11} color={Colors.text.disabled} style={{ marginRight: 3 }} />}
+              {item.messageCount > 1 && <Text style={styles.mailThreadCount}>{item.messageCount}</Text>}
+              <Text style={[styles.mailTimeLabel, item.unread && styles.mailTimeLabelUnread]}>{formatRelativeTime(item.timestamp)}</Text>
+            </View>
           </View>
-          <Text style={styles.cardPreview} numberOfLines={1}>
-            {isSent ? `To: ${recipientDisplay || 'Unknown'}` : item.senderName}
+
+          <Text style={[styles.mailSubjectLabel, item.unread && styles.mailSubjectLabelUnread]} numberOfLines={1}>
+            {item.subject}
+          </Text>
+
+          <Text style={styles.mailPreviewLabel} numberOfLines={1}>
+            {item.preview || ' '}
           </Text>
         </View>
-        <View style={styles.cardMeta}>
-          <Text style={styles.timeText}>{formatRelativeTime(item.timestamp)}</Text>
-          <View style={styles.cardMetaIcons}>
-            {isSent && (
-              <Text style={styles.sentLabel}>Sent</Text>
-            )}
-            {item.hasAttachments && (
-              <View style={styles.attachIndicator}>
-                <Ionicons name="attach" size={12} color={Colors.text.muted} />
-              </View>
-            )}
-            {item.messageCount > 1 && (
-              <Text style={styles.msgCount}>{item.messageCount}</Text>
-            )}
-            {item.tags.length > 0 && (
-              <Ionicons name="sparkles" size={10} color={Colors.accent.cyan} />
-            )}
-          </View>
-        </View>
       </View>
+      <View style={styles.mailRowSeparator} />
     </TouchableOpacity>
   );
 }
@@ -919,13 +929,7 @@ export default function InboxScreen() {
   const [eliMessages, setEliMessages] = useState<EliMessage[]>([
     { id: '1', from: 'eli', text: 'Hey! I\'ve been sorting through your inbox. What would you like me to help with?', ts: Date.now() },
   ]);
-  const [eliRun, setEliRun] = useState<{
-    events: AgentActivityEvent[];
-    status: 'running' | 'completed';
-    reasoning?: string;
-    reasoningDurationS?: number;
-  } | null>(null);
-  const [eliVoiceIssueModal, setEliVoiceIssueModal] = useState<{ title: string; message: string } | null>(null);
+  const [eliRun, setEliRun] = useState<{ events: AgentActivityEvent[]; status: 'running' | 'completed' } | null>(null);
   const [mailDetail, setMailDetail] = useState<MailDetail | null>(null);
   const [mailDetailLoading, setMailDetailLoading] = useState(false);
   const [compose, setCompose] = useState<ComposeState>({ visible: false, to: '', cc: '', bcc: '', subject: '', body: '', mode: 'new', attachments: [] });
@@ -941,6 +945,20 @@ export default function InboxScreen() {
   const [selectedMailbox, setSelectedMailbox] = useState<string | null>(null);
   const [showMailboxDropdown, setShowMailboxDropdown] = useState(false);
   const [removingMailboxId, setRemovingMailboxId] = useState<string | null>(null);
+  const [showMailboxModal, setShowMailboxModal] = useState(false);
+
+  const [dateFilter, setDateFilter] = useState<string | null>(null);
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailModalThread, setEmailModalThread] = useState<MailThread | null>(null);
+  const emailModalSlideAnim = useRef(new Animated.Value(60)).current;
+  const emailModalOpacityAnim = useRef(new Animated.Value(0)).current;
+
+  const [eliVoiceModalOpen, setEliVoiceModalOpen] = useState(false);
+  const [eliVoiceChatOpen, setEliVoiceChatOpen] = useState(false);
+  const eliModalSlideAnim = useRef(new Animated.Value(80)).current;
+  const eliModalOpacityAnim = useRef(new Animated.Value(0)).current;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<MailThread[] | null>(null);
@@ -1000,18 +1018,6 @@ export default function InboxScreen() {
       console.error('Eli voice error:', error);
       setEliVoiceActive(false);
       setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
-      const msg = error.message || String(error);
-      const userMessage =
-        /autoplay|not allowed|play\(\)/i.test(msg)
-          ? 'Browser blocked audio autoplay. Tap the page and try voice again.'
-          : /permission|denied|microphone|getUserMedia/i.test(msg)
-          ? 'Microphone access denied. Check browser permissions.'
-          : /auth|unauthorized|401|session expired/i.test(msg)
-          ? 'Authentication failed. Please sign in again.'
-          : msg.length > 140
-          ? `${msg.slice(0, 140)}...`
-          : msg;
-      setEliVoiceIssueModal({ title: 'Eli Voice Problem', message: userMessage });
     },
   });
 
@@ -1023,17 +1029,11 @@ export default function InboxScreen() {
 
   const handleEliMicPress = useCallback(async () => {
     if (Platform.OS !== 'web') {
-      setEliVoiceIssueModal({
-        title: 'Eli Voice Problem',
-        message: 'Voice is only available on the web version.',
-      });
+      Alert.alert('Voice Unavailable', 'Voice is only available on the web version.');
       return;
     }
     if (!session?.access_token) {
-      setEliVoiceIssueModal({
-        title: 'Eli Voice Problem',
-        message: 'Authentication required. Please sign in again to talk to Eli.',
-      });
+      Alert.alert('Authentication Required', 'Please sign in again to talk to Eli.');
       return;
     }
     if (eliVoice.isActive) {
@@ -1042,15 +1042,8 @@ export default function InboxScreen() {
       try {
         await eliVoice.startSession();
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        console.error('Failed to start Eli voice session:', msg);
-        setEliVoiceIssueModal({
-          title: 'Eli Voice Problem',
-          message:
-            /permission|denied|getUserMedia/i.test(msg)
-              ? 'Microphone access denied. Check browser permissions.'
-              : `Unable to connect to Eli voice: ${msg.length > 120 ? `${msg.slice(0, 120)}...` : msg}`,
-        });
+        console.error('Failed to start Eli voice session:', error);
+        Alert.alert('Connection Error', 'Unable to connect to Eli. Please try again.');
       }
     }
   }, [eliVoice, session?.access_token]);
@@ -1067,51 +1060,7 @@ export default function InboxScreen() {
       return;
     }
     try {
-      const resp = await authenticatedFetch('/api/orchestrator/intent', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agent: 'eli',
-          text,
-          channel: 'text',
-        }),
-      });
-
-      if (!resp.ok) {
-        let detail = `Service returned ${resp.status}`;
-        try {
-          const errorBody = await resp.json();
-          detail =
-            errorBody?.response ||
-            errorBody?.text ||
-            errorBody?.message ||
-            errorBody?.error ||
-            detail;
-        } catch {
-          // keep status fallback
-        }
-        throw new Error(detail);
-      }
-
-      const data = (await resp.json()) as OrchestratorResponse;
-      const responseText = data.response || data.text || 'I processed your request.';
-      const events = buildActivityFromResponse(data, 'eli');
-      const reasoning = typeof data.reasoning === 'string' ? data.reasoning : undefined;
-      const reasoningDurationS =
-        typeof data.reasoning_duration_s === 'number' ? data.reasoning_duration_s : undefined;
-
-      setEliMessages(prev => [
-        ...prev,
-        { id: String(Date.now() + 1), from: 'eli', text: responseText, ts: Date.now() },
-      ]);
-      setEliRun({
-        events,
-        status: 'completed',
-        reasoning,
-        reasoningDurationS,
-      });
+      await eliVoice.sendText(text);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setEliMessages(prev => [
@@ -1479,7 +1428,15 @@ export default function InboxScreen() {
     switch (activeTab) {
       case 'office': return getFilteredOffice();
       case 'calls': return getFilteredCalls();
-      case 'mail': return getFilteredMail();
+      case 'mail': {
+        const base = getFilteredMail();
+        if (!dateFilter) return base;
+        return base.filter((thread: MailThread) => {
+          const d = new Date(thread.timestamp);
+          const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          return ds === dateFilter;
+        });
+      }
       case 'contacts': return getFilteredContacts();
     }
   };
@@ -1498,13 +1455,59 @@ export default function InboxScreen() {
 
   const selectedItem = getSelectedItem();
 
-  const handleItemPress = (id: string) => {
-    setSelectedId(id);
+  const openEmailModal = useCallback((thread: MailThread) => {
+    setEmailModalThread(thread);
+    setEmailModalOpen(true);
     setMailDetail(null);
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    fetchMailDetail(thread.id);
+    emailModalSlideAnim.setValue(60);
+    emailModalOpacityAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(emailModalSlideAnim, { toValue: 0, duration: 340, useNativeDriver: true }),
+      Animated.timing(emailModalOpacityAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }, [fetchMailDetail, emailModalSlideAnim, emailModalOpacityAnim]);
+
+  const closeEmailModal = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(emailModalSlideAnim, { toValue: 60, duration: 220, useNativeDriver: true }),
+      Animated.timing(emailModalOpacityAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => {
+      setEmailModalOpen(false);
+      setEmailModalThread(null);
+    });
+  }, [emailModalSlideAnim, emailModalOpacityAnim]);
+
+  const openEliVoiceModal = useCallback(() => {
+    setEliVoiceModalOpen(true);
+    setEliVoiceChatOpen(false);
+    eliModalSlideAnim.setValue(80);
+    eliModalOpacityAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(eliModalSlideAnim, { toValue: 0, duration: 360, useNativeDriver: true }),
+      Animated.timing(eliModalOpacityAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }, [eliModalSlideAnim, eliModalOpacityAnim]);
+
+  const closeEliVoiceModal = useCallback(() => {
+    if (eliVoiceActive) eliVoice.endSession();
+    Animated.parallel([
+      Animated.timing(eliModalSlideAnim, { toValue: 80, duration: 240, useNativeDriver: true }),
+      Animated.timing(eliModalOpacityAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => {
+      setEliVoiceModalOpen(false);
+      setEliVoiceChatOpen(false);
+    });
+  }, [eliModalSlideAnim, eliModalOpacityAnim, eliVoiceActive, eliVoice]);
+
+  const handleItemPress = (id: string) => {
     if (activeTab === 'mail') {
-      fetchMailDetail(id);
+      const thread = mailThreads.find(t => t.id === id) || (labelResults ?? []).find((t: MailThread) => t.id === id);
+      if (thread) { openEmailModal(thread as MailThread); }
+      return;
     }
+    setSelectedId(id);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   const handleTabChange = (tab: TabType) => {
@@ -1698,95 +1701,62 @@ export default function InboxScreen() {
           })}
         </View>
 
-        {/* ── Mailbox Selector (Redesigned) ── */}
+        {/* ── Mailbox Pill (T001) ── */}
         {activeTab === 'mail' && hasActiveMailbox && mailAccounts.length > 0 && (
-          <View style={styles.mailboxSelectorBar}>
-            <Pressable
-              style={({ hovered }: any) => [styles.mailboxSelector, hovered && styles.mailboxSelectorHover]}
-              onPress={() => setShowMailboxDropdown(!showMailboxDropdown)}
+          <View style={styles.mailboxPillBar}>
+            <TouchableOpacity
+              style={styles.mailboxPill}
+              onPress={() => setShowMailboxModal(true)}
+              activeOpacity={0.75}
             >
-              <View style={styles.mailboxSelectorLeft}>
-                <Ionicons
-                  name={selectedMailboxAccount?.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'}
-                  size={14}
-                  color={selectedMailboxAccount?.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'}
-                />
-                <View>
-                  <Text style={styles.mailboxDisplayName}>{selectedMailboxAccount?.displayName || 'Business Email'}</Text>
-                  <Text style={styles.mailboxEmail}>{selectedMailboxAccount?.email || ''}</Text>
-                </View>
-              </View>
-              <Ionicons name={showMailboxDropdown ? 'chevron-up' : 'chevron-down'} size={14} color={Colors.text.muted} />
-            </Pressable>
-
-            {showMailboxDropdown && (
-              <View style={styles.mailboxDropdown}>
-                {mailAccounts.map((acct: any) => (
-                  <View key={acct.id} style={[styles.mailboxDropdownItem, selectedMailbox === acct.id && styles.mailboxDropdownItemActive]}>
-                    <Pressable
-                      style={({ hovered }: any) => [styles.mailboxDropdownSelectArea, hovered && styles.mailboxDropdownItemHover]}
-                      onPress={() => { setSelectedMailbox(acct.id); setShowMailboxDropdown(false); setLabelResults(null); }}
-                    >
-                      <Ionicons name={acct.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} size={13} color={acct.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.mailboxDropdownName}>{acct.displayName}</Text>
-                        <Text style={styles.mailboxDropdownEmail}>{acct.email}</Text>
-                      </View>
-                      {selectedMailbox === acct.id && <Ionicons name="checkmark" size={14} color={Colors.accent.cyan} />}
-                    </Pressable>
-                    <Pressable
-                      style={({ hovered }: any) => [styles.mailboxRemoveButton, hovered && styles.mailboxDropdownItemHover]}
-                      onPress={() => handleRemoveMailbox(acct.id, acct.email)}
-                      disabled={removingMailboxId === acct.id}
-                    >
-                      <Ionicons name="trash-outline" size={14} color={Colors.semantic.error} />
-                    </Pressable>
-                  </View>
-                ))}
-                <Pressable
-                  style={({ hovered }: any) => [styles.mailboxDropdownItem, styles.mailboxAddItem, hovered && styles.mailboxDropdownItemHover]}
-                  onPress={() => { setShowMailboxDropdown(false); router.push('/inbox/setup' as any); }}
-                >
-                  <Ionicons name="add-circle-outline" size={14} color={Colors.accent.cyan} />
-                  <Text style={[styles.mailboxDropdownName, { color: Colors.accent.cyan }]}>Add mailbox</Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* ── Search Bar (New) ── */}
-        {activeTab === 'mail' && hasActiveMailbox && (
-          <View style={styles.searchBar}>
-            <View style={styles.searchInputWrap}>
-              <Ionicons name="search" size={16} color={Colors.text.muted} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search messages..."
-                placeholderTextColor={Colors.text.disabled}
-                value={searchQuery}
-                onChangeText={onSearchChange}
-                {...(isWeb ? { style: [styles.searchInput, { outlineStyle: 'none' } as any] } : {})}
+              <Ionicons
+                name={selectedMailboxAccount?.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'}
+                size={13}
+                color={selectedMailboxAccount?.provider === 'GOOGLE' ? '#EA4335' : Colors.accent.cyan}
               />
-              {searchQuery ? (
-                <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults(null); }} activeOpacity={0.7}>
-                  <Ionicons name="close-circle" size={16} color={Colors.text.muted} />
-                </TouchableOpacity>
-              ) : (
-                <Text style={styles.capacityText}>{mailThreads.length} of 30</Text>
-              )}
-            </View>
-            {searchResults !== null && (
-              <Text style={styles.searchResultsLabel}>
-                {searching ? 'Searching...' : `${searchResults.length} result${searchResults.length !== 1 ? 's' : ''}`}
-              </Text>
-            )}
+              <Text style={styles.mailboxPillText} numberOfLines={1}>{selectedMailboxAccount?.email || 'Mailbox'}</Text>
+              <Ionicons name="chevron-down" size={11} color={Colors.text.muted} />
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* ── Filter Pills (Redesigned) ── */}
+        {/* ── Smart Filter Pills (T002) ── */}
         <View style={styles.filterBar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            {activeTab === 'mail' && hasActiveMailbox && (
+              <>
+                <TouchableOpacity
+                  style={[styles.filterPill, styles.filterPillDate, dateFilter && styles.filterPillDateActive]}
+                  onPress={() => {
+                    if (isWeb && dateInputRef.current) {
+                      dateInputRef.current.click();
+                    }
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="calendar-outline" size={13} color={dateFilter ? '#fff' : Colors.accent.cyan} />
+                  <Text style={[styles.filterPillText, dateFilter && styles.filterPillTextActive]}>
+                    {dateFilter ? dateFilter : 'Date'}
+                  </Text>
+                  {dateFilter && (
+                    <TouchableOpacity
+                      onPress={(e) => { (e as any).stopPropagation?.(); setDateFilter(null); }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons name="close-circle" size={13} color="rgba(255,255,255,0.7)" />
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+                {isWeb && (
+                  <input
+                    ref={dateInputRef as any}
+                    type="date"
+                    style={{ display: 'none' }}
+                    onChange={(e: any) => setDateFilter(e.target.value || null)}
+                  />
+                )}
+              </>
+            )}
             {FILTERS[activeTab].map((f) => {
               const isActive = currentFilter === f.label;
               return (
@@ -1861,7 +1831,7 @@ export default function InboxScreen() {
               <Text style={styles.mailSetupEmptyCTAText}>Set Up Mailbox</Text>
             </TouchableOpacity>
           </View>
-        ) : selectedItem ? (
+        ) : selectedItem && activeTab !== 'mail' ? (
           <View>
             <TouchableOpacity style={styles.backButton} onPress={() => setSelectedId(null)} activeOpacity={0.7}>
               <Ionicons name="chevron-back" size={18} color={Colors.text.tertiary} />
@@ -1870,29 +1840,18 @@ export default function InboxScreen() {
             <View style={fp.detailContent}>
               {activeTab === 'office' && <OfficePreview item={selectedItem as OfficeItem} />}
               {activeTab === 'calls' && <CallPreview item={selectedItem as CallItem} />}
-              {activeTab === 'mail' && (
-                <MailPreview
-                  item={selectedItem as MailThread}
-                  detail={mailDetail}
-                  loading={mailDetailLoading}
-                  onReply={() => openCompose('reply', selectedItem as MailThread)}
-                  onReplyAll={() => openCompose('replyAll', selectedItem as MailThread)}
-                  onForward={() => openCompose('forward', selectedItem as MailThread)}
-                  onSmartReply={(text) => handleSmartReply(text, selectedItem as MailThread)}
-                />
-              )}
               {activeTab === 'contacts' && <ContactPreview item={selectedItem as Contact} />}
             </View>
           </View>
         ) : (
-          <View style={styles.listContent}>
+          <View style={activeTab === 'mail' ? styles.mailListContent : styles.listContent}>
             {renderListItems()}
           </View>
         )}
       </ScrollView>
 
       {/* ── Finn Floating Avatar + Selector ── */}
-      {activeTab === 'mail' && hasActiveMailbox && !compose.visible && !eliOpen && (
+      {activeTab === 'mail' && hasActiveMailbox && !compose.visible && !eliVoiceModalOpen && (
         <View style={styles.finnFabContainer}>
           {showFinnMenu && (
             <>
@@ -1912,7 +1871,7 @@ export default function InboxScreen() {
                 <TouchableOpacity
                   style={styles.finnMenuItem}
                   activeOpacity={0.7}
-                  onPress={() => { setShowFinnMenu(false); setEliOpen(true); }}
+                  onPress={() => { setShowFinnMenu(false); openEliVoiceModal(); }}
                 >
                   <View style={[styles.finnMenuIcon, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
                     <Ionicons name="sparkles" size={18} color="#F59E0B" />
@@ -2084,68 +2043,287 @@ export default function InboxScreen() {
         </View>
       )}
 
-      {/* ── Eli Chat Panel (Standalone) ── */}
-      {eliOpen && !compose.visible && (
-        <View style={styles.unifiedOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeUnifiedModal} />
+      {/* ── Email Detail Modal (T003) ── */}
+      {emailModalOpen && emailModalThread && (
+        <Animated.View style={[
+          styles.emailModalOverlay,
+          { opacity: emailModalOpacityAnim },
+        ]}>
           <Animated.View style={[
-            styles.unifiedModal,
-            { transform: [{ scale: modalScaleAnim }], opacity: modalOpacityAnim },
-            { maxHeight: '80%' },
+            styles.emailModalCard,
+            { transform: [{ translateY: emailModalSlideAnim }] },
           ]}>
-            <View style={styles.unifiedModalHeader}>
-              <View style={styles.unifiedModalTabs}>
-                <View style={[styles.unifiedModalTab, styles.unifiedModalTabActiveEli]}>
-                  <Image source={eliAvatar} style={styles.eliTabAvatar} />
-                  <Text style={[styles.unifiedModalTabText, styles.unifiedModalTabTextActiveEli]}>Eli</Text>
-                </View>
+            {/* Modal Header */}
+            <View style={styles.emailModalHeader}>
+              <LinearGradient
+                colors={[Colors.accent.cyan, '#1D6FA4']}
+                style={styles.emailModalAvatar}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.emailModalAvatarText}>
+                  {emailModalThread.senderName.charAt(0).toUpperCase()}
+                </Text>
+              </LinearGradient>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.emailModalSenderName} numberOfLines={1}>{emailModalThread.senderName}</Text>
+                <Text style={styles.emailModalSenderEmail} numberOfLines={1}>{emailModalThread.senderEmail}</Text>
               </View>
-              <TouchableOpacity onPress={closeUnifiedModal} activeOpacity={0.7} style={styles.unifiedModalClose}>
+              <Text style={styles.emailModalTime}>{formatRelativeTime(emailModalThread.timestamp)}</Text>
+              <TouchableOpacity style={styles.emailModalClose} onPress={closeEmailModal} activeOpacity={0.7}>
                 <Ionicons name="close" size={20} color={Colors.text.tertiary} />
               </TouchableOpacity>
             </View>
-            <View style={styles.eliTabContent}>
-              <EliVoiceChatPanel
-                visible={true}
-                onClose={closeUnifiedModal}
-                voiceActive={eliVoiceActive}
-                transcript={eliTranscript}
-                triagedCount={eliTriagedCount}
-                onMicPress={handleEliMicPress}
-                onSendMessage={handleEliSendMessage}
-                micPulseAnim={eliMicPulse}
-                messages={eliMessages}
-                activeRun={eliRun}
-                embedded
-              />
+
+            {/* Subject */}
+            <View style={styles.emailModalSubjectWrap}>
+              <Text style={styles.emailModalSubject}>{emailModalThread.subject}</Text>
+              {emailModalThread.unread && (
+                <View style={styles.emailModalUnreadBadge}>
+                  <Text style={styles.emailModalUnreadBadgeText}>Unread</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.emailModalDivider} />
+
+            {/* Body */}
+            <ScrollView style={styles.emailModalBody} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+              {mailDetailLoading ? (
+                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                  <Text style={{ color: Colors.text.muted, fontSize: 13 }}>Loading email...</Text>
+                </View>
+              ) : mailDetail?.messages?.length ? (
+                mailDetail.messages.map((msg, idx) => (
+                  <View key={msg.id || idx}>
+                    {idx > 0 && (
+                      <View style={styles.emailModalThreadSep}>
+                        <View style={styles.emailModalThreadSepLine} />
+                        <Text style={styles.emailModalThreadSepText}>Earlier message</Text>
+                        <View style={styles.emailModalThreadSepLine} />
+                      </View>
+                    )}
+                    {containsHtmlTags(msg.content) ? (
+                      <EmailHtmlRenderer htmlContent={msg.content} />
+                    ) : (
+                      <Text style={styles.emailModalBodyText}>{formatEmailContent(msg.content) || 'No readable content.'}</Text>
+                    )}
+                    {msg.attachments?.length > 0 && (
+                      <View style={{ marginTop: 16 }}>
+                        <Text style={styles.emailModalAttachLabel}>Attachments ({msg.attachments.length})</Text>
+                        {msg.attachments.map((att) => {
+                          const fi = getFileTypeIcon(att.type);
+                          return (
+                            <TouchableOpacity
+                              key={att.id}
+                              style={styles.emailModalAttachItem}
+                              activeOpacity={0.7}
+                              onPress={() => { if (isWeb) window.open(`/api/mail/attachments/${msg.id}/${att.id}?name=${encodeURIComponent(att.name)}&type=${encodeURIComponent(att.type)}`, '_blank'); }}
+                            >
+                              <Ionicons name={fi.icon} size={16} color={fi.color} />
+                              <Text style={styles.emailModalAttachName} numberOfLines={1}>{att.name}</Text>
+                              <Ionicons name="download-outline" size={14} color={Colors.text.muted} />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                ))
+              ) : (
+                containsHtmlTags(emailModalThread.preview) ? (
+                  <EmailHtmlRenderer htmlContent={emailModalThread.preview} />
+                ) : (
+                  <Text style={styles.emailModalBodyText}>{formatEmailContent(emailModalThread.preview) || 'No preview available.'}</Text>
+                )
+              )}
+            </ScrollView>
+
+            {/* Action Bar */}
+            <View style={styles.emailModalFooter}>
+              <View style={styles.emailModalSmartReplies}>
+                {['Thanks, received!', "I'll review shortly", 'Forward to team'].map((r) => (
+                  <TouchableOpacity key={r} style={styles.emailModalSmartPill} activeOpacity={0.7}
+                    onPress={() => { handleSmartReply(r, emailModalThread); closeEmailModal(); }}>
+                    <Text style={styles.emailModalSmartPillText}>{r}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.emailModalActions}>
+                <TouchableOpacity style={[styles.emailModalActionBtn, styles.emailModalActionBtnPrimary]} activeOpacity={0.7}
+                  onPress={() => { closeEmailModal(); openCompose('reply', emailModalThread); }}>
+                  <Ionicons name="arrow-undo" size={14} color="#fff" />
+                  <Text style={styles.emailModalActionBtnTextPrimary}>Reply</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.emailModalActionBtn} activeOpacity={0.7}
+                  onPress={() => { closeEmailModal(); openCompose('replyAll', emailModalThread); }}>
+                  <Ionicons name="arrow-undo" size={14} color={Colors.text.secondary} />
+                  <Text style={styles.emailModalActionBtnText}>Reply All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.emailModalActionBtn} activeOpacity={0.7}
+                  onPress={() => { closeEmailModal(); openCompose('forward', emailModalThread); }}>
+                  <Ionicons name="arrow-redo" size={14} color={Colors.text.secondary} />
+                  <Text style={styles.emailModalActionBtnText}>Forward</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </Animated.View>
-        </View>
+        </Animated.View>
       )}
-      {eliVoiceIssueModal && (
-        <View style={styles.unifiedOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEliVoiceIssueModal(null)} />
-          <View style={styles.voiceIssueModalCard}>
-            <View style={styles.voiceIssueModalHeader}>
-              <Text style={styles.voiceIssueModalTitle}>{eliVoiceIssueModal.title}</Text>
-              <TouchableOpacity
-                style={styles.voiceIssueModalClose}
-                onPress={() => setEliVoiceIssueModal(null)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="close" size={16} color={Colors.text.tertiary} />
+
+      {/* ── Mailbox Manager Modal (T001) ── */}
+      {showMailboxModal && (
+        <View style={styles.mailboxModalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMailboxModal(false)} />
+          <View style={styles.mailboxModalCard}>
+            <View style={styles.mailboxModalHeader}>
+              <Text style={styles.mailboxModalTitle}>Mailboxes</Text>
+              <TouchableOpacity onPress={() => setShowMailboxModal(false)} activeOpacity={0.7}>
+                <Ionicons name="close" size={20} color={Colors.text.tertiary} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.voiceIssueModalMessage}>{eliVoiceIssueModal.message}</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {mailAccounts.map((acct: any) => (
+                <TouchableOpacity
+                  key={acct.id}
+                  style={[styles.mailboxModalItem, selectedMailbox === acct.id && styles.mailboxModalItemActive]}
+                  activeOpacity={0.75}
+                  onPress={() => { setSelectedMailbox(acct.id); setLabelResults(null); setShowMailboxModal(false); }}
+                >
+                  <View style={styles.mailboxModalItemLeft}>
+                    <View style={[styles.mailboxModalProviderIcon, { backgroundColor: acct.provider === 'GOOGLE' ? 'rgba(234,67,53,0.12)' : 'rgba(59,130,246,0.12)' }]}>
+                      <Ionicons name={acct.provider === 'GOOGLE' ? 'logo-google' : 'shield-checkmark'} size={16} color={acct.provider === 'GOOGLE' ? '#EA4335' : '#3B82F6'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.mailboxModalName}>{acct.displayName}</Text>
+                      <Text style={styles.mailboxModalEmail}>{acct.email}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.mailboxModalItemRight}>
+                    {selectedMailbox === acct.id && <Ionicons name="checkmark-circle" size={18} color={Colors.accent.cyan} />}
+                    <TouchableOpacity
+                      style={styles.mailboxModalRemoveBtn}
+                      onPress={() => { setShowMailboxModal(false); handleRemoveMailbox(acct.id, acct.email); }}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={15} color={Colors.semantic.error} />
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
             <TouchableOpacity
-              style={styles.voiceIssueModalButton}
-              onPress={() => setEliVoiceIssueModal(null)}
-              activeOpacity={0.7}
+              style={styles.mailboxModalAddBtn}
+              activeOpacity={0.8}
+              onPress={() => { setShowMailboxModal(false); router.push('/inbox/setup' as any); }}
             >
-              <Text style={styles.voiceIssueModalButtonText}>OK</Text>
+              <Ionicons name="add-circle-outline" size={16} color="#fff" />
+              <Text style={styles.mailboxModalAddText}>Add Mailbox</Text>
             </TouchableOpacity>
           </View>
         </View>
+      )}
+
+      {/* ── Eli Voice Modal (T006) ── */}
+      {eliVoiceModalOpen && (
+        <Animated.View style={[styles.eliVoiceOverlay, { opacity: eliModalOpacityAnim }]}>
+          <Animated.View style={[styles.eliVoiceModal, { transform: [{ translateY: eliModalSlideAnim }] }]}>
+            {!eliVoiceChatOpen ? (
+              <>
+                {/* Close button */}
+                <TouchableOpacity style={styles.eliVoiceClose} onPress={closeEliVoiceModal} activeOpacity={0.7}>
+                  <Ionicons name="close" size={22} color="rgba(255,255,255,0.5)" />
+                </TouchableOpacity>
+
+                {/* Title */}
+                <Text style={styles.eliVoiceTitle}>Eli</Text>
+                <Text style={styles.eliVoiceSubtitle}>{eliVoiceActive ? 'Listening...' : 'AI Inbox Assistant'}</Text>
+
+                {/* Orb */}
+                <View style={styles.eliOrbContainer}>
+                  {isWeb ? (
+                    <View style={styles.eliOrbVideoWrap}>
+                      <video
+                        src="/eli-orb.mp4"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        style={{
+                          width: 260,
+                          height: 260,
+                          objectFit: 'cover',
+                          borderRadius: 130,
+                          ...(eliVoiceActive ? { filter: 'brightness(1.2) saturate(1.3)' } : {}),
+                        } as any}
+                      />
+                      {eliVoiceActive && (
+                        <View style={styles.eliOrbGlowRing} />
+                      )}
+                    </View>
+                  ) : (
+                    <View style={[styles.eliOrbFallback, eliVoiceActive && styles.eliOrbFallbackActive]}>
+                      <Image source={eliAvatar} style={{ width: 80, height: 80, borderRadius: 40 }} />
+                    </View>
+                  )}
+                </View>
+
+                {eliVoiceActive && eliTranscript ? (
+                  <Text style={styles.eliVoiceTranscript} numberOfLines={3}>{eliTranscript}</Text>
+                ) : null}
+
+                {/* Buttons */}
+                <View style={styles.eliVoiceButtons}>
+                  <TouchableOpacity
+                    style={[styles.eliVoiceSessionBtn, eliVoiceActive && styles.eliVoiceSessionBtnActive]}
+                    activeOpacity={0.8}
+                    onPress={handleEliMicPress}
+                  >
+                    <Ionicons name={eliVoiceActive ? 'stop' : 'mic'} size={18} color="#000" />
+                    <Text style={styles.eliVoiceSessionBtnText}>{eliVoiceActive ? 'End Session' : 'Start Session'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.eliVoiceChatBtn}
+                    activeOpacity={0.8}
+                    onPress={() => setEliVoiceChatOpen(true)}
+                  >
+                    <Ionicons name="chatbubble-outline" size={16} color="#F59E0B" />
+                    <Text style={styles.eliVoiceChatBtnText}>Chat</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                {/* Chat sub-screen */}
+                <View style={styles.eliChatSubHeader}>
+                  <TouchableOpacity style={styles.eliChatBackBtn} onPress={() => setEliVoiceChatOpen(false)} activeOpacity={0.7}>
+                    <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.6)" />
+                    <Text style={styles.eliChatBackText}>Eli</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={closeEliVoiceModal} activeOpacity={0.7}>
+                    <Ionicons name="close" size={20} color="rgba(255,255,255,0.4)" />
+                  </TouchableOpacity>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <EliVoiceChatPanel
+                    visible={true}
+                    onClose={closeEliVoiceModal}
+                    voiceActive={eliVoiceActive}
+                    transcript={eliTranscript}
+                    triagedCount={eliTriagedCount}
+                    onMicPress={handleEliMicPress}
+                    onSendMessage={handleEliSendMessage}
+                    micPulseAnim={eliMicPulse}
+                    messages={eliMessages}
+                    activeRun={eliRun}
+                    embedded
+                  />
+                </View>
+              </>
+            )}
+          </Animated.View>
+        </Animated.View>
       )}
     </View>
   );
@@ -3267,54 +3445,6 @@ const styles = StyleSheet.create({
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px rgba(0,0,0,0.5)',
     } : {}),
   } as any,
-  voiceIssueModalCard: {
-    width: '90%',
-    maxWidth: 420,
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    padding: Spacing.lg,
-    ...(isWeb ? { boxShadow: '0 24px 64px rgba(0,0,0,0.5)' } : {}),
-  } as any,
-  voiceIssueModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-  },
-  voiceIssueModalTitle: {
-    ...Typography.bodyMedium,
-    color: Colors.text.primary,
-    fontWeight: '600' as const,
-  },
-  voiceIssueModalClose: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    ...(isWeb ? { cursor: 'pointer' } : {}),
-  } as any,
-  voiceIssueModalMessage: {
-    ...Typography.caption,
-    color: Colors.text.secondary,
-    lineHeight: 22,
-    marginBottom: Spacing.md,
-  },
-  voiceIssueModalButton: {
-    alignSelf: 'flex-end' as const,
-    backgroundColor: Colors.accent.cyan,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md + 2,
-    paddingVertical: Spacing.xs + 4,
-    ...(isWeb ? { cursor: 'pointer' } : {}),
-  } as any,
-  voiceIssueModalButtonText: {
-    ...Typography.smallMedium,
-    color: '#fff',
-    fontWeight: '600' as const,
-  },
   unifiedModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3560,5 +3690,637 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.06)',
     marginHorizontal: 12,
+  },
+
+  // ── Mail List (iOS style, T005) ──
+  mailListContent: {
+    paddingTop: Spacing.xs,
+    paddingBottom: 100,
+  },
+  mailRow: {
+    position: 'relative' as const,
+    backgroundColor: 'transparent',
+    ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.15s ease' } : {}),
+  } as any,
+  mailRowInner: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    paddingLeft: 24,
+  },
+  mailRowSeparator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    marginLeft: 72,
+  },
+  mailRowHover: {
+    backgroundColor: 'rgba(255,255,255,0.025)',
+  },
+  mailRowUnread: {
+    backgroundColor: 'rgba(56,189,248,0.03)',
+  },
+  mailRowSelected: {
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent.cyan,
+    backgroundColor: 'rgba(56,189,248,0.06)',
+    paddingLeft: 21,
+  },
+  mailUnreadAccent: {
+    position: 'absolute' as const,
+    left: 8,
+    top: '50%' as unknown as number,
+    marginTop: -3,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.accent.cyan,
+  },
+  mailAvatarNew: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    overflow: 'hidden' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: 'rgba(59,130,246,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.2)',
+  },
+  mailAvatarGradient: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  mailRowLine1: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: 3,
+  },
+  mailSenderLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '400' as const,
+    color: Colors.text.muted,
+    letterSpacing: -0.1,
+  },
+  mailSenderLabelUnread: {
+    fontWeight: '600' as const,
+    color: Colors.text.primary,
+  },
+  mailRowMeta: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    marginLeft: 8,
+  },
+  mailTimeLabel: {
+    fontSize: 11,
+    color: Colors.text.disabled,
+    letterSpacing: -0.1,
+  },
+  mailTimeLabelUnread: {
+    color: Colors.accent.cyan,
+    fontWeight: '500' as const,
+  },
+  mailThreadCount: {
+    fontSize: 10,
+    color: Colors.text.disabled,
+    fontWeight: '500' as const,
+    backgroundColor: Colors.background.tertiary,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  mailSubjectLabel: {
+    fontSize: 13,
+    fontWeight: '400' as const,
+    color: Colors.text.tertiary,
+    marginBottom: 2,
+    letterSpacing: -0.1,
+  },
+  mailSubjectLabelUnread: {
+    fontWeight: '600' as const,
+    color: Colors.text.primary,
+  },
+  mailPreviewLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 17,
+  },
+
+  // ── Mailbox Pill (T001) ──
+  mailboxPillBar: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    paddingBottom: 2,
+  },
+  mailboxPill: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'flex-start' as const,
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    maxWidth: 260,
+    ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
+  } as any,
+  mailboxPillText: {
+    ...Typography.small,
+    color: Colors.text.secondary,
+    fontWeight: '500' as const,
+    flex: 1,
+  },
+
+  // ── Filter pill date variant (T002) ──
+  filterPillDate: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 5,
+    borderWidth: 1,
+    borderColor: Colors.accent.cyan + '40',
+  },
+  filterPillDateActive: {
+    backgroundColor: Colors.accent.cyan,
+    borderColor: Colors.accent.cyan,
+  },
+
+  // ── Email Modal (T003) ──
+  emailModalOverlay: {
+    ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    zIndex: 9999,
+    justifyContent: 'flex-end' as const,
+    ...(isWeb ? { backdropFilter: 'blur(8px)' } : {}),
+  } as any,
+  emailModalCard: {
+    backgroundColor: '#0D0D0F',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    height: '95%' as unknown as number,
+    flexDirection: 'column' as const,
+    ...(isWeb ? { boxShadow: '0 -24px 64px rgba(0,0,0,0.6)' } : {}),
+  } as any,
+  emailModalHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 14,
+  },
+  emailModalAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  emailModalAvatarText: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: '#fff',
+  },
+  emailModalSenderName: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: Colors.text.primary,
+  },
+  emailModalSenderEmail: {
+    fontSize: 12,
+    color: Colors.text.muted,
+    marginTop: 1,
+  },
+  emailModalTime: {
+    fontSize: 11,
+    color: Colors.text.disabled,
+    marginRight: 8,
+  },
+  emailModalClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  emailModalSubjectWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: 10,
+  },
+  emailModalSubject: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: Colors.text.primary,
+    lineHeight: 27,
+    letterSpacing: -0.3,
+  },
+  emailModalUnreadBadge: {
+    backgroundColor: Colors.accent.cyan + '18',
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: Colors.accent.cyan + '30',
+    marginTop: 4,
+  },
+  emailModalUnreadBadgeText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: Colors.accent.cyan,
+  },
+  emailModalDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginHorizontal: 0,
+  },
+  emailModalBody: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  emailModalBodyText: {
+    fontSize: 14,
+    color: Colors.text.secondary,
+    lineHeight: 24,
+    fontFamily: '-apple-system',
+  },
+  emailModalThreadSep: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+    marginVertical: 20,
+  },
+  emailModalThreadSepLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  emailModalThreadSepText: {
+    fontSize: 11,
+    color: Colors.text.disabled,
+    fontWeight: '500' as const,
+  },
+  emailModalAttachLabel: {
+    fontSize: 12,
+    color: Colors.text.muted,
+    fontWeight: '600' as const,
+    marginBottom: 8,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase' as const,
+  },
+  emailModalAttachItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    ...(isWeb ? { cursor: 'pointer' } : {}),
+  } as any,
+  emailModalAttachName: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.text.primary,
+    fontWeight: '500' as const,
+  },
+  emailModalFooter: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#0D0D0F',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    paddingTop: 12,
+    paddingBottom: 28,
+    paddingHorizontal: 16,
+  },
+  emailModalSmartReplies: {
+    flexDirection: 'row' as const,
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap' as const,
+  },
+  emailModalSmartPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  emailModalSmartPillText: {
+    fontSize: 12,
+    color: Colors.text.secondary,
+    fontWeight: '500' as const,
+  },
+  emailModalActions: {
+    flexDirection: 'row' as const,
+    gap: 8,
+  },
+  emailModalActionBtn: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  emailModalActionBtnPrimary: {
+    backgroundColor: Colors.accent.cyan,
+    borderColor: Colors.accent.cyan,
+    flex: 1.3,
+  },
+  emailModalActionBtnText: {
+    fontSize: 13,
+    color: Colors.text.secondary,
+    fontWeight: '500' as const,
+  },
+  emailModalActionBtnTextPrimary: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600' as const,
+  },
+
+  // ── Mailbox Manager Modal (T001) ──
+  mailboxModalOverlay: {
+    ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    zIndex: 9998,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 20,
+    ...(isWeb ? { backdropFilter: 'blur(10px)' } : {}),
+  } as any,
+  mailboxModalCard: {
+    width: '100%' as unknown as number,
+    maxWidth: 420,
+    backgroundColor: '#111113',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden' as const,
+    maxHeight: '70%' as unknown as number,
+    ...(isWeb ? { boxShadow: '0 24px 64px rgba(0,0,0,0.6)' } : {}),
+  } as any,
+  mailboxModalHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  mailboxModalTitle: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: Colors.text.primary,
+  },
+  mailboxModalItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+    ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.15s ease' } : {}),
+  } as any,
+  mailboxModalItemActive: {
+    backgroundColor: 'rgba(56,189,248,0.05)',
+  },
+  mailboxModalItemLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    flex: 1,
+  },
+  mailboxModalProviderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  mailboxModalName: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.text.primary,
+  },
+  mailboxModalEmail: {
+    fontSize: 12,
+    color: Colors.text.muted,
+    marginTop: 1,
+  },
+  mailboxModalItemRight: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+  },
+  mailboxModalRemoveBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  mailboxModalAddBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 8,
+    margin: 16,
+    paddingVertical: 13,
+    backgroundColor: Colors.accent.cyan,
+    borderRadius: BorderRadius.lg,
+  },
+  mailboxModalAddText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#fff',
+  },
+
+  // ── Eli Voice Modal (T006) ──
+  eliVoiceOverlay: {
+    ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000',
+    zIndex: 9997,
+  } as any,
+  eliVoiceModal: {
+    flex: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 24,
+  },
+  eliVoiceClose: {
+    position: 'absolute' as const,
+    top: 20,
+    right: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    zIndex: 10,
+  },
+  eliVoiceTitle: {
+    fontSize: 36,
+    fontWeight: '300' as const,
+    color: '#fff',
+    letterSpacing: 2,
+    marginBottom: 4,
+  },
+  eliVoiceSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.4)',
+    marginBottom: 48,
+    letterSpacing: 0.5,
+  },
+  eliOrbContainer: {
+    marginBottom: 56,
+  },
+  eliOrbVideoWrap: {
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    overflow: 'hidden' as const,
+    position: 'relative' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  eliOrbGlowRing: {
+    position: 'absolute' as const,
+    top: -8,
+    left: -8,
+    right: -8,
+    bottom: -8,
+    borderRadius: 139,
+    borderWidth: 2,
+    borderColor: '#F59E0B',
+    ...(isWeb ? { boxShadow: '0 0 40px rgba(245,158,11,0.4)' } : {}),
+  } as any,
+  eliOrbFallback: {
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(245,158,11,0.1)',
+    borderWidth: 2,
+    borderColor: 'rgba(245,158,11,0.3)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  eliOrbFallbackActive: {
+    borderColor: '#F59E0B',
+    backgroundColor: 'rgba(245,158,11,0.2)',
+  },
+  eliVoiceTranscript: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center' as const,
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 20,
+  },
+  eliVoiceButtons: {
+    flexDirection: 'column' as const,
+    alignItems: 'center' as const,
+    gap: 14,
+    width: '100%' as unknown as number,
+    maxWidth: 300,
+  },
+  eliVoiceSessionBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 8,
+    width: '100%' as unknown as number,
+    paddingVertical: 15,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#F59E0B',
+  },
+  eliVoiceSessionBtnActive: {
+    backgroundColor: '#EF4444',
+  },
+  eliVoiceSessionBtnText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#000',
+  },
+  eliVoiceChatBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 8,
+    width: '100%' as unknown as number,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    backgroundColor: 'transparent',
+  },
+  eliVoiceChatBtnText: {
+    fontSize: 15,
+    fontWeight: '500' as const,
+    color: '#F59E0B',
+  },
+  eliChatSubHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    width: '100%' as unknown as number,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 8,
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+  },
+  eliChatBackBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+  },
+  eliChatBackText: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '500' as const,
   },
 });
