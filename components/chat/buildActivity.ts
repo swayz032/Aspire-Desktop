@@ -43,7 +43,7 @@ function nextEventId(): string {
  */
 export function buildActivityFromResponse(
   data: OrchestratorResponse,
-  agent: AgentId,
+  _agent: AgentId,
 ): AgentActivityEvent[] {
   const now = Date.now();
 
@@ -53,8 +53,8 @@ export function buildActivityFromResponse(
       id: nextEventId(),
       type: (step.type as AgentActivityEvent['type']) || 'step',
       label: step.message,
-      status: 'completed' as const,
-      timestamp: now + idx,
+      status: step.status || 'completed',
+      timestamp: step.timestamp || now + idx,
       icon: (step.icon as keyof typeof Ionicons.glyphMap) || 'cog',
     }));
   }

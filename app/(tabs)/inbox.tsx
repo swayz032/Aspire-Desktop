@@ -19,7 +19,7 @@ import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { EliVoiceChatPanel, type EliMessage } from '@/components/inbox/EliVoiceChatPanel';
-import type { AgentActivityEvent } from '@/components/chat';
+import { buildActivityFromResponse, type AgentActivityEvent, type OrchestratorResponse } from '@/components/chat';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
 const finnAvatar = require('@/assets/avatars/finn.png');
@@ -919,7 +919,13 @@ export default function InboxScreen() {
   const [eliMessages, setEliMessages] = useState<EliMessage[]>([
     { id: '1', from: 'eli', text: 'Hey! I\'ve been sorting through your inbox. What would you like me to help with?', ts: Date.now() },
   ]);
-  const [eliRun, setEliRun] = useState<{ events: AgentActivityEvent[]; status: 'running' | 'completed' } | null>(null);
+  const [eliRun, setEliRun] = useState<{
+    events: AgentActivityEvent[];
+    status: 'running' | 'completed';
+    reasoning?: string;
+    reasoningDurationS?: number;
+  } | null>(null);
+  const [eliVoiceIssueModal, setEliVoiceIssueModal] = useState<{ title: string; message: string } | null>(null);
   const [mailDetail, setMailDetail] = useState<MailDetail | null>(null);
   const [mailDetailLoading, setMailDetailLoading] = useState(false);
   const [compose, setCompose] = useState<ComposeState>({ visible: false, to: '', cc: '', bcc: '', subject: '', body: '', mode: 'new', attachments: [] });
@@ -994,6 +1000,18 @@ export default function InboxScreen() {
       console.error('Eli voice error:', error);
       setEliVoiceActive(false);
       setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
+      const msg = error.message || String(error);
+      const userMessage =
+        /autoplay|not allowed|play\(\)/i.test(msg)
+          ? 'Browser blocked audio autoplay. Tap the page and try voice again.'
+          : /permission|denied|microphone|getUserMedia/i.test(msg)
+          ? 'Microphone access denied. Check browser permissions.'
+          : /auth|unauthorized|401|session expired/i.test(msg)
+          ? 'Authentication failed. Please sign in again.'
+          : msg.length > 140
+          ? `${msg.slice(0, 140)}...`
+          : msg;
+      setEliVoiceIssueModal({ title: 'Eli Voice Problem', message: userMessage });
     },
   });
 
@@ -1005,11 +1023,17 @@ export default function InboxScreen() {
 
   const handleEliMicPress = useCallback(async () => {
     if (Platform.OS !== 'web') {
-      Alert.alert('Voice Unavailable', 'Voice is only available on the web version.');
+      setEliVoiceIssueModal({
+        title: 'Eli Voice Problem',
+        message: 'Voice is only available on the web version.',
+      });
       return;
     }
     if (!session?.access_token) {
-      Alert.alert('Authentication Required', 'Please sign in again to talk to Eli.');
+      setEliVoiceIssueModal({
+        title: 'Eli Voice Problem',
+        message: 'Authentication required. Please sign in again to talk to Eli.',
+      });
       return;
     }
     if (eliVoice.isActive) {
@@ -1018,8 +1042,15 @@ export default function InboxScreen() {
       try {
         await eliVoice.startSession();
       } catch (error) {
-        console.error('Failed to start Eli voice session:', error);
-        Alert.alert('Connection Error', 'Unable to connect to Eli. Please try again.');
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('Failed to start Eli voice session:', msg);
+        setEliVoiceIssueModal({
+          title: 'Eli Voice Problem',
+          message:
+            /permission|denied|getUserMedia/i.test(msg)
+              ? 'Microphone access denied. Check browser permissions.'
+              : `Unable to connect to Eli voice: ${msg.length > 120 ? `${msg.slice(0, 120)}...` : msg}`,
+        });
       }
     }
   }, [eliVoice, session?.access_token]);
@@ -1036,7 +1067,51 @@ export default function InboxScreen() {
       return;
     }
     try {
-      await eliVoice.sendText(text);
+      const resp = await authenticatedFetch('/api/orchestrator/intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agent: 'eli',
+          text,
+          channel: 'text',
+        }),
+      });
+
+      if (!resp.ok) {
+        let detail = `Service returned ${resp.status}`;
+        try {
+          const errorBody = await resp.json();
+          detail =
+            errorBody?.response ||
+            errorBody?.text ||
+            errorBody?.message ||
+            errorBody?.error ||
+            detail;
+        } catch {
+          // keep status fallback
+        }
+        throw new Error(detail);
+      }
+
+      const data = (await resp.json()) as OrchestratorResponse;
+      const responseText = data.response || data.text || 'I processed your request.';
+      const events = buildActivityFromResponse(data, 'eli');
+      const reasoning = typeof data.reasoning === 'string' ? data.reasoning : undefined;
+      const reasoningDurationS =
+        typeof data.reasoning_duration_s === 'number' ? data.reasoning_duration_s : undefined;
+
+      setEliMessages(prev => [
+        ...prev,
+        { id: String(Date.now() + 1), from: 'eli', text: responseText, ts: Date.now() },
+      ]);
+      setEliRun({
+        events,
+        status: 'completed',
+        reasoning,
+        reasoningDurationS,
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setEliMessages(prev => [
@@ -2045,6 +2120,31 @@ export default function InboxScreen() {
               />
             </View>
           </Animated.View>
+        </View>
+      )}
+      {eliVoiceIssueModal && (
+        <View style={styles.unifiedOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEliVoiceIssueModal(null)} />
+          <View style={styles.voiceIssueModalCard}>
+            <View style={styles.voiceIssueModalHeader}>
+              <Text style={styles.voiceIssueModalTitle}>{eliVoiceIssueModal.title}</Text>
+              <TouchableOpacity
+                style={styles.voiceIssueModalClose}
+                onPress={() => setEliVoiceIssueModal(null)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={16} color={Colors.text.tertiary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.voiceIssueModalMessage}>{eliVoiceIssueModal.message}</Text>
+            <TouchableOpacity
+              style={styles.voiceIssueModalButton}
+              onPress={() => setEliVoiceIssueModal(null)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.voiceIssueModalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </View>
@@ -3167,6 +3267,54 @@ const styles = StyleSheet.create({
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px rgba(0,0,0,0.5)',
     } : {}),
   } as any,
+  voiceIssueModalCard: {
+    width: '90%',
+    maxWidth: 420,
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: Spacing.lg,
+    ...(isWeb ? { boxShadow: '0 24px 64px rgba(0,0,0,0.5)' } : {}),
+  } as any,
+  voiceIssueModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  voiceIssueModalTitle: {
+    ...Typography.bodyMedium,
+    color: Colors.text.primary,
+    fontWeight: '600' as const,
+  },
+  voiceIssueModalClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    ...(isWeb ? { cursor: 'pointer' } : {}),
+  } as any,
+  voiceIssueModalMessage: {
+    ...Typography.caption,
+    color: Colors.text.secondary,
+    lineHeight: 22,
+    marginBottom: Spacing.md,
+  },
+  voiceIssueModalButton: {
+    alignSelf: 'flex-end' as const,
+    backgroundColor: Colors.accent.cyan,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md + 2,
+    paddingVertical: Spacing.xs + 4,
+    ...(isWeb ? { cursor: 'pointer' } : {}),
+  } as any,
+  voiceIssueModalButtonText: {
+    ...Typography.smallMedium,
+    color: '#fff',
+    fontWeight: '600' as const,
+  },
   unifiedModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',

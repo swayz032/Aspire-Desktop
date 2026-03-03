@@ -18,6 +18,9 @@ import {
   ChainOfThoughtHeader,
   ChainOfThoughtContent,
   ChainOfThoughtStep,
+  Reasoning,
+  ReasoningTrigger,
+  ReasoningContent,
   buildActivityFromResponse,
 } from '@/components/chat';
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
@@ -99,6 +102,7 @@ export function AvaDeskPanel() {
   const [input, setInput] = useState('');
   const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRun>>({});
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceIssueModal, setVoiceIssueModal] = useState<{ title: string; message: string } | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const connectingAnim = useRef(new Animated.Value(0)).current;
@@ -111,6 +115,7 @@ export function AvaDeskPanel() {
   /** Show a voice/video error banner that auto-clears after 5s */
   const showVoiceError = useCallback((msg: string) => {
     setVoiceError(msg);
+    setVoiceIssueModal({ title: 'Ava Voice Problem', message: msg });
     setTimeout(() => setVoiceError(null), 5000);
   }, []);
 
@@ -617,6 +622,12 @@ export function AvaDeskPanel() {
       const responseText = data.response || data.text || 'I processed your request.';
       const activityEvents = buildActivityFromResponse(data, 'ava');
       const mediaItems = Array.isArray((data as any).media) ? (data as any).media : [];
+      const reasoningSummary =
+        typeof (data as any).reasoning === 'string' ? (data as any).reasoning : '';
+      const reasoningDuration =
+        typeof (data as any).reasoning_duration_s === 'number'
+          ? (data as any).reasoning_duration_s
+          : undefined;
 
       // If video connected, pipe response to Anam avatar (Cara speaks with Emma voice)
       // Anam handles voice output â€” our LLM drives what she says (Law #1: Single Brain)
@@ -633,7 +644,17 @@ export function AvaDeskPanel() {
         setActiveRuns((prev) => {
           const run = prev[runId];
           if (!run) return prev;
-          return { ...prev, [runId]: { ...run, events: [], status: 'completed', finalText: responseText } };
+          return {
+            ...prev,
+            [runId]: {
+              ...run,
+              events: [],
+              status: 'completed',
+              finalText: responseText,
+              reasoning: reasoningSummary || undefined,
+              reasoningDurationS: reasoningDuration,
+            },
+          };
         });
         setIsConversing(false);
         setChat((prev) =>
@@ -657,6 +678,8 @@ export function AvaDeskPanel() {
             events: activityEvents,
             status: 'completed',
             finalText: responseText,
+            reasoning: reasoningSummary || undefined,
+            reasoningDurationS: reasoningDuration,
           },
         };
       });
@@ -723,6 +746,22 @@ export function AvaDeskPanel() {
 
   return (
     <View style={styles.card}>
+      {voiceIssueModal && (
+        <View style={styles.voiceModalOverlay}>
+          <View style={styles.voiceModalCard}>
+            <View style={styles.voiceModalHeader}>
+              <Text style={styles.voiceModalTitle}>{voiceIssueModal.title}</Text>
+              <Pressable style={styles.voiceModalClose} onPress={() => setVoiceIssueModal(null)}>
+                <Ionicons name="close" size={14} color={Colors.text.tertiary} />
+              </Pressable>
+            </View>
+            <Text style={styles.voiceModalMessage}>{voiceIssueModal.message}</Text>
+            <Pressable style={styles.voiceModalButton} onPress={() => setVoiceIssueModal(null)}>
+              <Text style={styles.voiceModalButtonText}>OK</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.title}>Ava Desk</Text>
@@ -935,6 +974,7 @@ export function AvaDeskPanel() {
             const run = msg.runId ? activeRuns[msg.runId] : null;
             const showActivity = run && run.events.length > 0;
             const isRunning = msg.runId && run && run.status === 'running';
+            const showReasoning = !!run?.reasoning;
 
             // User messages â€” simple bubble
             if (msg.from === 'user') {
@@ -976,6 +1016,17 @@ export function AvaDeskPanel() {
                       ))}
                     </ChainOfThoughtContent>
                   </ChainOfThought>
+                )}
+                {showReasoning && (
+                  <Reasoning
+                    agent="ava"
+                    isStreaming={!!isRunning}
+                    duration={run.reasoningDurationS}
+                    style={{ marginBottom: 6 }}
+                  >
+                    <ReasoningTrigger />
+                    <ReasoningContent>{run.reasoning as string}</ReasoningContent>
+                  </Reasoning>
                 )}
 
                 {/* Message text (only show when response text is available) */}
@@ -1433,6 +1484,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.accent.cyan,
+  },
+  voiceModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 120,
+  } as any,
+  voiceModalCard: {
+    width: '90%',
+    maxWidth: 420,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#1C1C1E',
+    padding: 16,
+  } as any,
+  voiceModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  voiceModalTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  voiceModalClose: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voiceModalMessage: {
+    color: Colors.text.secondary,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  voiceModalButton: {
+    alignSelf: 'flex-end',
+    borderRadius: 10,
+    backgroundColor: Colors.accent.cyan,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  voiceModalButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   anamContainer: {
     position: 'absolute',
