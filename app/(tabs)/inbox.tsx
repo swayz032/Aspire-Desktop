@@ -19,6 +19,7 @@ import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { EliVoiceChatPanel, type EliMessage } from '@/components/inbox/EliVoiceChatPanel';
+import { AgentWidget } from '@/components/canvas/widgets/AgentWidget';
 import type { AgentActivityEvent } from '@/components/chat';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
@@ -2227,103 +2228,22 @@ export default function InboxScreen() {
         </View>
       )}
 
-      {/* ── Eli Voice Modal (T006) ── */}
+      {/* ── Eli Voice Modal ── */}
       {eliVoiceModalOpen && (
         <Animated.View style={[styles.eliVoiceOverlay, { opacity: eliModalOpacityAnim }]}>
           <Animated.View style={[styles.eliVoiceModal, { transform: [{ translateY: eliModalSlideAnim }] }]}>
-            {!eliVoiceChatOpen ? (
-              <>
-                {/* Close button */}
-                <TouchableOpacity style={styles.eliVoiceClose} onPress={closeEliVoiceModal} activeOpacity={0.7}>
-                  <Ionicons name="close" size={22} color="rgba(255,255,255,0.5)" />
-                </TouchableOpacity>
-
-                {/* Title */}
-                <Text style={styles.eliVoiceTitle}>Eli</Text>
-                <Text style={styles.eliVoiceSubtitle}>{eliVoiceActive ? 'Listening...' : 'AI Inbox Assistant'}</Text>
-
-                {/* Orb */}
-                <View style={styles.eliOrbContainer}>
-                  {isWeb ? (
-                    <View style={styles.eliOrbVideoWrap}>
-                      <video
-                        src="/eli-orb.mp4"
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        style={{
-                          width: 260,
-                          height: 260,
-                          objectFit: 'cover',
-                          borderRadius: 130,
-                          ...(eliVoiceActive ? { filter: 'brightness(1.2) saturate(1.3)' } : {}),
-                        } as any}
-                      />
-                      {eliVoiceActive && (
-                        <View style={styles.eliOrbGlowRing} />
-                      )}
-                    </View>
-                  ) : (
-                    <View style={[styles.eliOrbFallback, eliVoiceActive && styles.eliOrbFallbackActive]}>
-                      <Image source={eliAvatar} style={{ width: 80, height: 80, borderRadius: 40 }} />
-                    </View>
-                  )}
-                </View>
-
-                {eliVoiceActive && eliTranscript ? (
-                  <Text style={styles.eliVoiceTranscript} numberOfLines={3}>{eliTranscript}</Text>
-                ) : null}
-
-                {/* Buttons */}
-                <View style={styles.eliVoiceButtons}>
-                  <TouchableOpacity
-                    style={[styles.eliVoiceSessionBtn, eliVoiceActive && styles.eliVoiceSessionBtnActive]}
-                    activeOpacity={0.8}
-                    onPress={handleEliMicPress}
-                  >
-                    <Ionicons name={eliVoiceActive ? 'stop' : 'mic'} size={18} color="#000" />
-                    <Text style={styles.eliVoiceSessionBtnText}>{eliVoiceActive ? 'End Session' : 'Start Session'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.eliVoiceChatBtn}
-                    activeOpacity={0.8}
-                    onPress={() => setEliVoiceChatOpen(true)}
-                  >
-                    <Ionicons name="chatbubble-outline" size={16} color="#F59E0B" />
-                    <Text style={styles.eliVoiceChatBtnText}>Chat</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <>
-                {/* Chat sub-screen */}
-                <View style={styles.eliChatSubHeader}>
-                  <TouchableOpacity style={styles.eliChatBackBtn} onPress={() => setEliVoiceChatOpen(false)} activeOpacity={0.7}>
-                    <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.6)" />
-                    <Text style={styles.eliChatBackText}>Eli</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={closeEliVoiceModal} activeOpacity={0.7}>
-                    <Ionicons name="close" size={20} color="rgba(255,255,255,0.4)" />
-                  </TouchableOpacity>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <EliVoiceChatPanel
-                    visible={true}
-                    onClose={closeEliVoiceModal}
-                    voiceActive={eliVoiceActive}
-                    transcript={eliTranscript}
-                    triagedCount={eliTriagedCount}
-                    onMicPress={handleEliMicPress}
-                    onSendMessage={handleEliSendMessage}
-                    micPulseAnim={eliMicPulse}
-                    messages={eliMessages}
-                    activeRun={eliRun}
-                    embedded
-                  />
-                </View>
-              </>
-            )}
+            {/* Close button — floats above AgentWidget */}
+            <TouchableOpacity style={styles.eliVoiceClose} onPress={closeEliVoiceModal} activeOpacity={0.7}>
+              <Ionicons name="close" size={20} color="rgba(255,255,255,0.5)" />
+            </TouchableOpacity>
+            {/* Full Canvas-style agent layout */}
+            <AgentWidget
+              agentId="eli"
+              suiteId=""
+              officeId=""
+              voiceStatus={eliVoiceActive ? 'listening' : 'idle'}
+              onPrimaryAction={handleEliMicPress}
+            />
           </Animated.View>
         </Animated.View>
       )}
@@ -4190,15 +4110,14 @@ const styles = StyleSheet.create({
     ...(isWeb ? { backdropFilter: 'blur(8px)' } : {}),
   } as any,
   eliVoiceModal: {
-    alignItems: 'center' as const,
-    backgroundColor: '#080808',
+    backgroundColor: '#000',
     borderRadius: 28,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    paddingTop: 40,
-    paddingBottom: 36,
-    paddingHorizontal: 28,
-    width: isWeb ? 420 : '92%' as any,
+    width: isWeb ? 440 : '92%' as any,
+    height: isWeb ? 560 : 520,
+    overflow: 'hidden' as const,
+    position: 'relative' as const,
     ...(isWeb ? { boxShadow: '0 32px 80px rgba(0,0,0,0.9)' } : {}),
   } as any,
   eliVoiceClose: {
