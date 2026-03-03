@@ -691,6 +691,16 @@ export function AvaDeskPanel() {
           : /orchestrator_unavailable|circuit_open|503|unavailable|circuit/.test(lower)
           ? 'Ava Brain is temporarily unavailable. Try again shortly.'
           : `Ava request failed: ${rawMessage.length > 140 ? `${rawMessage.slice(0, 140)}...` : rawMessage}`;
+      const showServiceIssueModal =
+        /model_unavailable|checkpointer_unavailable|provider_auth_missing|provider_all_failed/.test(lower) ||
+        /upstream_timeout|orchestrator_timeout|timeout|orchestrator_unavailable|circuit_open|503|unavailable/.test(lower);
+
+      if (showServiceIssueModal) {
+        setVoiceIssueModal({
+          title: 'Ava Service Issue',
+          message: userFacingMessage,
+        });
+      }
 
       const errorEvent: AgentActivityEvent = {
         id: `evt_err_${Date.now()}`,
