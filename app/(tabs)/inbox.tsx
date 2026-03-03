@@ -89,10 +89,11 @@ function containsHtmlTags(content: string): boolean {
 }
 
 function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
-  const iframeHeightAnim = useRef(new Animated.Value(300)).current;
-  const [iframeHeight, setIframeHeight] = useState(300);
+  const iframeHeightAnim = useRef(new Animated.Value(400)).current;
+  const [iframeHeight, setIframeHeight] = useState(400);
   const iframeOpacity = useRef(new Animated.Value(0)).current;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const reportCount = useRef(0);
 
   const darkStyleOverride = `
     <style>
@@ -105,6 +106,7 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
         margin: 0 !important;
         padding: 16px 20px !important;
         overflow-x: hidden !important;
+        overflow-y: hidden !important;
         word-wrap: break-word !important;
         overflow-wrap: break-word !important;
         -webkit-font-smoothing: antialiased !important;
@@ -119,13 +121,18 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
       h1, h2, h3, h4 { color: #f5f5f7 !important; font-weight: 600 !important; }
     </style>
     <script>
+      var reported = 0;
       function reportHeight() {
+        if (reported >= 3) return;
+        reported++;
         var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
         window.parent.postMessage({ type: 'email-iframe-height', height: h }, '*');
       }
-      window.addEventListener('load', function() { setTimeout(reportHeight, 150); setTimeout(reportHeight, 500); });
-      window.addEventListener('resize', reportHeight);
-      new MutationObserver(reportHeight).observe(document.body, { childList: true, subtree: true, attributes: true });
+      window.addEventListener('load', function() {
+        setTimeout(reportHeight, 100);
+        setTimeout(reportHeight, 600);
+        setTimeout(reportHeight, 1400);
+      });
     </script>
   `;
 
@@ -135,19 +142,22 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
 
   useEffect(() => {
     if (!isWeb) return;
+    reportCount.current = 0;
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'email-iframe-height' && typeof event.data.height === 'number') {
-        const newH = Math.min(Math.max(event.data.height + 32, 100), 4000);
+        if (reportCount.current >= 3) return;
+        reportCount.current += 1;
+        const newH = Math.min(Math.max(event.data.height + 40, 100), 8000);
         setIframeHeight(newH);
-        Animated.timing(iframeHeightAnim, { toValue: newH, duration: 250, useNativeDriver: false }).start();
+        Animated.timing(iframeHeightAnim, { toValue: newH, duration: 200, useNativeDriver: false }).start();
       }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, []);
+  }, [htmlContent]);
 
   const handleLoad = () => {
-    Animated.timing(iframeOpacity, { toValue: 1, duration: 320, useNativeDriver: false }).start();
+    Animated.timing(iframeOpacity, { toValue: 1, duration: 260, useNativeDriver: false }).start();
   };
 
   if (!isWeb) {
@@ -161,12 +171,13 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
   }
 
   return (
-    <Animated.View style={{ overflow: 'hidden', opacity: iframeOpacity, height: iframeHeightAnim }}>
+    <Animated.View style={{ overflow: 'hidden' as any, opacity: iframeOpacity, height: iframeHeightAnim }}>
       <iframe
         ref={iframeRef as any}
         srcDoc={wrappedHtml}
         sandbox="allow-same-origin allow-scripts"
         onLoad={handleLoad}
+        scrolling="no"
         style={{
           width: '100%',
           height: iframeHeight,
@@ -175,6 +186,7 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
           boxShadow: 'none',
           backgroundColor: '#0D0D0F',
           display: 'block',
+          overflow: 'hidden',
         } as any}
         title="Email content"
       />
@@ -957,6 +969,8 @@ export default function InboxScreen() {
 
   const [selectedEmail, setSelectedEmail] = useState<MailThread | null>(null);
 
+  const emailPageFadeAnim = useRef(new Animated.Value(0)).current;
+
   const [eliVoiceModalOpen, setEliVoiceModalOpen] = useState(false);
   const [eliVoiceChatOpen, setEliVoiceChatOpen] = useState(false);
   const eliModalSlideAnim = useRef(new Animated.Value(80)).current;
@@ -1462,6 +1476,17 @@ export default function InboxScreen() {
     setMailDetail(null);
   }, []);
 
+  useEffect(() => {
+    if (selectedEmail) {
+      emailPageFadeAnim.setValue(0);
+      Animated.timing(emailPageFadeAnim, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [selectedEmail, emailPageFadeAnim]);
+
   const openEliVoiceModal = useCallback(() => {
     setEliVoiceModalOpen(true);
     setEliVoiceChatOpen(false);
@@ -1632,6 +1657,151 @@ export default function InboxScreen() {
         ));
     }
   };
+
+  if (selectedEmail) {
+    const emailPage = (
+      <Animated.View style={[styles.emailFullPage, { opacity: emailPageFadeAnim }]}>
+        {/* ── Slim top nav ── */}
+        <View style={styles.emailFullNav}>
+          <TouchableOpacity style={styles.emailFullNavBack} onPress={closeEmailDetail} activeOpacity={0.7}>
+            <Ionicons name="chevron-back" size={22} color="rgba(255,255,255,0.55)" />
+            <Text style={styles.emailFullNavBackText}>Inbox</Text>
+          </TouchableOpacity>
+          <Text style={styles.emailFullNavTime}>{formatRelativeTime(selectedEmail.timestamp)}</Text>
+        </View>
+
+        {/* ── Scrollable reading area ── */}
+        {isWeb && (
+          <style dangerouslySetInnerHTML={{ __html: '.aspire-email-scroll::-webkit-scrollbar{display:none}' }} />
+        )}
+        <ScrollView
+          style={styles.emailFullBody}
+          contentContainerStyle={styles.emailFullBodyContent}
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+          {...(isWeb ? { className: 'aspire-email-scroll' } : {})}
+        >
+          {/* Sender block */}
+          <View style={styles.emailFullSenderBlock}>
+            <LinearGradient
+              colors={[Colors.accent.cyan, '#1D6FA4']}
+              style={styles.emailFullAvatar}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={styles.emailFullAvatarText}>{selectedEmail.senderName.charAt(0).toUpperCase()}</Text>
+            </LinearGradient>
+            <View style={styles.emailFullSenderMeta}>
+              <Text style={styles.emailFullSenderName} numberOfLines={1}>{selectedEmail.senderName}</Text>
+              <Text style={styles.emailFullSenderEmail} numberOfLines={1}>{selectedEmail.senderEmail}</Text>
+            </View>
+          </View>
+
+          {/* Subject + unread badge */}
+          <View style={styles.emailFullSubjectWrap}>
+            <Text style={styles.emailFullSubject}>{selectedEmail.subject}</Text>
+            {selectedEmail.unread && (
+              <View style={styles.emailModalUnreadBadge}>
+                <Text style={styles.emailModalUnreadBadgeText}>Unread</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Divider */}
+          <View style={styles.emailFullDivider} />
+
+          {/* Email body — show preview instantly, replace with full content once loaded */}
+          {mailDetail?.messages?.length ? (
+            mailDetail.messages.map((msg, idx) => (
+              <View key={msg.id || idx}>
+                {idx > 0 && (
+                  <View style={styles.emailModalThreadSep}>
+                    <View style={styles.emailModalThreadSepLine} />
+                    <Text style={styles.emailModalThreadSepText}>Earlier message</Text>
+                    <View style={styles.emailModalThreadSepLine} />
+                  </View>
+                )}
+                {containsHtmlTags(msg.content) ? (
+                  <EmailHtmlRenderer htmlContent={msg.content} />
+                ) : (
+                  <Text style={styles.emailFullBodyText}>{formatEmailContent(msg.content) || 'No readable content.'}</Text>
+                )}
+                {msg.attachments?.length > 0 && (
+                  <View style={{ marginTop: 20 }}>
+                    <Text style={styles.emailModalAttachLabel}>Attachments ({msg.attachments.length})</Text>
+                    {msg.attachments.map((att) => {
+                      const fi = getFileTypeIcon(att.type);
+                      return (
+                        <TouchableOpacity
+                          key={att.id}
+                          style={styles.emailModalAttachItem}
+                          activeOpacity={0.7}
+                          onPress={() => { if (isWeb) window.open(`/api/mail/attachments/${msg.id}/${att.id}?name=${encodeURIComponent(att.name)}&type=${encodeURIComponent(att.type)}`, '_blank'); }}
+                        >
+                          <Ionicons name={fi.icon} size={16} color={fi.color} />
+                          <Text style={styles.emailModalAttachName} numberOfLines={1}>{att.name}</Text>
+                          <Ionicons name="download-outline" size={14} color={Colors.text.muted} />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            ))
+          ) : containsHtmlTags(selectedEmail.preview) ? (
+            <EmailHtmlRenderer htmlContent={selectedEmail.preview} />
+          ) : (
+            <Text style={styles.emailFullBodyText}>{formatEmailContent(selectedEmail.preview) || 'No preview available.'}</Text>
+          )}
+        </ScrollView>
+
+        {/* ── Frosted footer ── */}
+        <View style={styles.emailFullFooter}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.emailFullSmartScroll}>
+            {['Thanks, received!', "I'll review shortly", 'Forward to team'].map((r) => (
+              <TouchableOpacity
+                key={r}
+                style={styles.emailModalSmartPill}
+                activeOpacity={0.7}
+                onPress={() => { handleSmartReply(r, selectedEmail); closeEmailDetail(); }}
+              >
+                <Text style={styles.emailModalSmartPillText}>{r}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <View style={styles.emailFullActions}>
+            <TouchableOpacity
+              style={[styles.emailModalActionBtn, styles.emailModalActionBtnPrimary]}
+              activeOpacity={0.7}
+              onPress={() => { closeEmailDetail(); openCompose('reply', selectedEmail); }}
+            >
+              <Ionicons name="arrow-undo" size={14} color="#fff" />
+              <Text style={styles.emailModalActionBtnTextPrimary}>Reply</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.emailModalActionBtn}
+              activeOpacity={0.7}
+              onPress={() => { closeEmailDetail(); openCompose('replyAll', selectedEmail); }}
+            >
+              <Ionicons name="arrow-undo" size={14} color={Colors.text.secondary} />
+              <Text style={styles.emailModalActionBtnText}>Reply All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.emailModalActionBtn}
+              activeOpacity={0.7}
+              onPress={() => { closeEmailDetail(); openCompose('forward', selectedEmail); }}
+            >
+              <Ionicons name="arrow-redo" size={14} color={Colors.text.secondary} />
+              <Text style={styles.emailModalActionBtnText}>Forward</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Animated.View>
+    );
+    return isDesktop
+      ? <DesktopPageWrapper scrollable={false} fullWidth>{emailPage}</DesktopPageWrapper>
+      : emailPage;
+  }
 
   const content = (
     <View style={styles.container}>
@@ -1819,126 +1989,6 @@ export default function InboxScreen() {
               <Ionicons name="settings-outline" size={15} color="#fff" />
               <Text style={styles.mailSetupEmptyCTAText}>Set Up Mailbox</Text>
             </TouchableOpacity>
-          </View>
-        ) : activeTab === 'mail' && selectedEmail ? (
-          <View style={styles.emailDetailInline}>
-            {/* Back bar */}
-            <TouchableOpacity style={styles.emailDetailBack} onPress={closeEmailDetail} activeOpacity={0.7}>
-              <Ionicons name="chevron-back" size={18} color={Colors.text.tertiary} />
-              <Text style={styles.backButtonText}>Back to Inbox</Text>
-            </TouchableOpacity>
-
-            {/* Sender header */}
-            <View style={styles.emailModalHeader}>
-              <LinearGradient
-                colors={[Colors.accent.cyan, '#1D6FA4']}
-                style={styles.emailModalAvatar}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.emailModalAvatarText}>
-                  {selectedEmail.senderName.charAt(0).toUpperCase()}
-                </Text>
-              </LinearGradient>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.emailModalSenderName} numberOfLines={1}>{selectedEmail.senderName}</Text>
-                <Text style={styles.emailModalSenderEmail} numberOfLines={1}>{selectedEmail.senderEmail}</Text>
-              </View>
-              <Text style={styles.emailModalTime}>{formatRelativeTime(selectedEmail.timestamp)}</Text>
-            </View>
-
-            {/* Subject */}
-            <View style={styles.emailModalSubjectWrap}>
-              <Text style={styles.emailModalSubject}>{selectedEmail.subject}</Text>
-              {selectedEmail.unread && (
-                <View style={styles.emailModalUnreadBadge}>
-                  <Text style={styles.emailModalUnreadBadgeText}>Unread</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.emailModalDivider} />
-
-            {/* Body */}
-            <ScrollView style={styles.emailDetailBody} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 140 }}>
-              {mailDetailLoading ? (
-                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                  <Text style={{ color: Colors.text.muted, fontSize: 13 }}>Loading email...</Text>
-                </View>
-              ) : mailDetail?.messages?.length ? (
-                mailDetail.messages.map((msg, idx) => (
-                  <View key={msg.id || idx}>
-                    {idx > 0 && (
-                      <View style={styles.emailModalThreadSep}>
-                        <View style={styles.emailModalThreadSepLine} />
-                        <Text style={styles.emailModalThreadSepText}>Earlier message</Text>
-                        <View style={styles.emailModalThreadSepLine} />
-                      </View>
-                    )}
-                    {containsHtmlTags(msg.content) ? (
-                      <EmailHtmlRenderer htmlContent={msg.content} />
-                    ) : (
-                      <Text style={styles.emailModalBodyText}>{formatEmailContent(msg.content) || 'No readable content.'}</Text>
-                    )}
-                    {msg.attachments?.length > 0 && (
-                      <View style={{ marginTop: 16 }}>
-                        <Text style={styles.emailModalAttachLabel}>Attachments ({msg.attachments.length})</Text>
-                        {msg.attachments.map((att) => {
-                          const fi = getFileTypeIcon(att.type);
-                          return (
-                            <TouchableOpacity
-                              key={att.id}
-                              style={styles.emailModalAttachItem}
-                              activeOpacity={0.7}
-                              onPress={() => { if (isWeb) window.open(`/api/mail/attachments/${msg.id}/${att.id}?name=${encodeURIComponent(att.name)}&type=${encodeURIComponent(att.type)}`, '_blank'); }}
-                            >
-                              <Ionicons name={fi.icon} size={16} color={fi.color} />
-                              <Text style={styles.emailModalAttachName} numberOfLines={1}>{att.name}</Text>
-                              <Ionicons name="download-outline" size={14} color={Colors.text.muted} />
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-                ))
-              ) : (
-                containsHtmlTags(selectedEmail.preview) ? (
-                  <EmailHtmlRenderer htmlContent={selectedEmail.preview} />
-                ) : (
-                  <Text style={styles.emailModalBodyText}>{formatEmailContent(selectedEmail.preview) || 'No preview available.'}</Text>
-                )
-              )}
-            </ScrollView>
-
-            {/* Action footer */}
-            <View style={styles.emailModalFooter}>
-              <View style={styles.emailModalSmartReplies}>
-                {['Thanks, received!', "I'll review shortly", 'Forward to team'].map((r) => (
-                  <TouchableOpacity key={r} style={styles.emailModalSmartPill} activeOpacity={0.7}
-                    onPress={() => { handleSmartReply(r, selectedEmail); closeEmailDetail(); }}>
-                    <Text style={styles.emailModalSmartPillText}>{r}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={styles.emailModalActions}>
-                <TouchableOpacity style={[styles.emailModalActionBtn, styles.emailModalActionBtnPrimary]} activeOpacity={0.7}
-                  onPress={() => { closeEmailDetail(); openCompose('reply', selectedEmail); }}>
-                  <Ionicons name="arrow-undo" size={14} color="#fff" />
-                  <Text style={styles.emailModalActionBtnTextPrimary}>Reply</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.emailModalActionBtn} activeOpacity={0.7}
-                  onPress={() => { closeEmailDetail(); openCompose('replyAll', selectedEmail); }}>
-                  <Ionicons name="arrow-undo" size={14} color={Colors.text.secondary} />
-                  <Text style={styles.emailModalActionBtnText}>Reply All</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.emailModalActionBtn} activeOpacity={0.7}
-                  onPress={() => { closeEmailDetail(); openCompose('forward', selectedEmail); }}>
-                  <Ionicons name="arrow-redo" size={14} color={Colors.text.secondary} />
-                  <Text style={styles.emailModalActionBtnText}>Forward</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
           </View>
         ) : selectedItem && activeTab !== 'mail' ? (
           <View>
@@ -3751,24 +3801,123 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent.cyan,
   },
 
-  // ── Email Modal (T003) ──
-  emailDetailInline: {
+  // ── Full-screen email reader ──
+  emailFullPage: {
     flex: 1,
-    flexDirection: 'column' as const,
-    backgroundColor: Colors.background.primary,
+    backgroundColor: '#0a0a0c',
   },
-  emailDetailBack: {
+  emailFullNav: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    paddingHorizontal: isWideScreen ? 28 : 20,
-    paddingVertical: 14,
-    gap: 4,
+    justifyContent: 'space-between' as const,
+    height: 56,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: '#0a0a0c',
+    ...(isWeb ? { boxShadow: '0 1px 0 rgba(255,255,255,0.04)' } : {}),
+  } as any,
+  emailFullNavBack: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 2,
+    paddingVertical: 8,
+    paddingRight: 16,
   },
-  emailDetailBody: {
+  emailFullNavBackText: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.55)',
+    fontWeight: '400' as const,
+  },
+  emailFullNavTime: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.28)',
+    letterSpacing: 0.2,
+  },
+  emailFullBody: {
     flex: 1,
-    paddingHorizontal: isWideScreen ? 28 : 20,
+    ...(isWeb ? { scrollbarWidth: 'none', msOverflowStyle: 'none' } : {}),
+  } as any,
+  emailFullBodyContent: {
+    paddingHorizontal: isWideScreen ? 56 : 22,
+    paddingTop: 32,
+    paddingBottom: 200,
+    ...(isWideScreen ? { maxWidth: 720, alignSelf: 'center' as const, width: '100%' } : {}),
+  } as any,
+  emailFullSenderBlock: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 14,
+    marginBottom: 24,
+  },
+  emailFullAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  emailFullAvatarText: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: '#fff',
+  },
+  emailFullSenderMeta: {
+    flex: 1,
+  },
+  emailFullSenderName: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.text.primary,
+    letterSpacing: -0.1,
+  },
+  emailFullSenderEmail: {
+    fontSize: 13,
+    color: Colors.text.muted,
+    marginTop: 3,
+  },
+  emailFullSubjectWrap: {
+    marginBottom: 20,
+    gap: 10,
+  },
+  emailFullSubject: {
+    fontSize: isWideScreen ? 26 : 22,
+    fontWeight: '700' as const,
+    color: Colors.text.primary,
+    letterSpacing: -0.4,
+    lineHeight: isWideScreen ? 34 : 30,
+  },
+  emailFullDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginBottom: 24,
+  },
+  emailFullBodyText: {
+    fontSize: 15,
+    color: Colors.text.secondary,
+    lineHeight: 26,
+    fontFamily: '-apple-system',
+  },
+  emailFullFooter: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(10,10,12,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+    paddingTop: 14,
+    paddingBottom: 32,
+    paddingHorizontal: isWideScreen ? 56 : 20,
+    ...(isWeb ? { backdropFilter: 'blur(20px)' } : {}),
+  } as any,
+  emailFullSmartScroll: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  emailFullActions: {
+    flexDirection: 'row' as const,
+    gap: 8,
   },
   emailModalOverlay: {
     ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
