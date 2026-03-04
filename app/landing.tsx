@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { Stack } from 'expo-router';
 import LandingNav from '@/components/landing/LandingNav';
 import HeroSection from '@/components/landing/HeroSection';
 import HowItWorks from '@/components/landing/HowItWorks';
@@ -53,22 +54,25 @@ export default function LandingPage() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#050508',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
-      overflowX: 'hidden',
-    }}>
-      <LandingNav />
-      <HeroSection />
-      <HowItWorks />
-      {features.map((feature, i) => (
-        <FeatureSection key={feature.id} feature={feature} index={i} />
-      ))}
-      <FeaturesGrid />
-      <MeetTheTeam />
-      <PricingCTA />
-      <LandingFooter />
-    </div>
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <div style={{
+        minHeight: '100vh',
+        background: '#050508',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
+        overflowX: 'hidden',
+      }}>
+        <LandingNav />
+        <HeroSection />
+        <HowItWorks />
+        {features.map((feature, i) => (
+          <FeatureSection key={feature.id} feature={feature} index={i} />
+        ))}
+        <FeaturesGrid />
+        <MeetTheTeam />
+        <PricingCTA />
+        <LandingFooter />
+      </div>
+    </>
   );
 }

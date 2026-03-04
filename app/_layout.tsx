@@ -158,7 +158,7 @@ function useAuthGate() {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === ('(auth)' as any);
-    const inPublicGroup = segments[0] === ('sign' as any) || segments[0] === ('book' as any) || segments[0] === ('join' as any);
+    const inPublicGroup = segments.length === 0 || segments[0] === ('sign' as any) || segments[0] === ('book' as any) || segments[0] === ('join' as any) || segments[0] === ('landing' as any) || segments[0] === ('index' as any);
     const onOnboarding = segments[1] === ('onboarding' as any);
 
     if (DEV_BYPASS_AUTH) {
@@ -169,7 +169,7 @@ function useAuthGate() {
     }
 
     if (!session && !inAuthGroup && !inPublicGroup) {
-      router.replace('/(auth)/login' as any);
+      router.replace('/landing' as any);
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
       router.replace('/(auth)/onboarding' as any);
     } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
@@ -186,6 +186,7 @@ function AppNavigator() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
+        <Stack.Screen name="landing" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen

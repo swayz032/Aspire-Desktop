@@ -3,9 +3,9 @@ import { View } from 'react-native';
 import { DesktopHome } from '@/components/desktop/DesktopHome';
 
 const NATURAL_WIDTH = 1440;
-const NATURAL_HEIGHT = 900;
+const NATURAL_HEIGHT = 980;
 const SCALE = 0.72;
-const CLIP_HEIGHT = 520;
+const CLIP_HEIGHT = 660;
 
 export default function CockpitMockup() {
   return (
