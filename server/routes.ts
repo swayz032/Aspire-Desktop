@@ -189,6 +189,13 @@ async function fetchWithTimeoutAndRetry(
   throw new Error('Upstream request failed');
 }
 
+function secureTokenEquals(left: string, right: string): boolean {
+  const leftBuf = Buffer.from(left || '', 'utf8');
+  const rightBuf = Buffer.from(right || '', 'utf8');
+  if (leftBuf.length !== rightBuf.length) return false;
+  return crypto.timingSafeEqual(leftBuf, rightBuf);
+}
+
 // ─── Anam Session Store (CUSTOMER_CLIENT_V1 Auth Bridge) ───
 // When a user starts an Anam avatar session, we store their auth context.
 // When Anam's brain routing calls /api/ava/chat-stream (without JWT), we look up
@@ -2545,7 +2552,23 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const traceId = resolveTraceId(req, correlationId);
   const startedAt = Date.now();
-  const suiteId = (req as any).authenticatedSuiteId || null;
+  const authenticatedSuiteId = (req as any).authenticatedSuiteId || null;
+  const authenticatedUserId = (req as any).authenticatedUserId || '';
+  const headerSuiteId = typeof req.headers['x-suite-id'] === 'string' ? req.headers['x-suite-id'].trim() : '';
+  const headerOfficeId = typeof req.headers['x-office-id'] === 'string' ? req.headers['x-office-id'].trim() : '';
+  const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization.trim() : '';
+  const bearerToken = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
+  const s2sSecrets = [
+    process.env.S2S_HMAC_SECRET_ACTIVE,
+    process.env.DOMAIN_RAIL_HMAC_SECRET,
+    process.env.S2S_HMAC_SECRET,
+  ].filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
+  const isValidS2S = !authenticatedSuiteId
+    && !!bearerToken
+    && s2sSecrets.some((secret) => secureTokenEquals(bearerToken, secret.trim()));
+  const suiteId = authenticatedSuiteId || (isValidS2S ? (headerSuiteId || null) : null);
+  const officeId = (isValidS2S ? (headerOfficeId || headerSuiteId || null) : (getDefaultOfficeId() || suiteId)) || suiteId;
+  const actorId = authenticatedUserId || (isValidS2S ? 'n8n-service' : '');
   res.setHeader('X-Correlation-Id', correlationId);
   res.setHeader('X-Trace-Id', traceId);
   emitTraceEvent({
@@ -2590,11 +2613,14 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         correlationId,
         stage: 'orchestrator',
         status: 'error',
-        message: 'Authenticated suite context required.',
+        message: 'Suite context required via auth or valid S2S token.',
         errorCode: 'AUTH_REQUIRED',
         latencyMs: Date.now() - startedAt,
       });
-      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+      return res.status(401).json({
+        error: 'AUTH_REQUIRED',
+        message: 'Authenticated suite context required (or valid S2S bearer + x-suite-id).',
+      });
     }
 
     // Circuit breaker check — Law #3: fail fast when orchestrator is known-down
@@ -2664,8 +2690,8 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       headers: {
         'Content-Type': 'application/json',
         'X-Suite-Id': suiteId,
-        'X-Office-Id': getDefaultOfficeId() || suiteId,
-        'X-Actor-Id': (req as any).authenticatedUserId || '',
+        'X-Office-Id': officeId || suiteId,
+        'X-Actor-Id': actorId,
         'X-Correlation-Id': correlationId,
         'X-Trace-Id': traceId,
       },
