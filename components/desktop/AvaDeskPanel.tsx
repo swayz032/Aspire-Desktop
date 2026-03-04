@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
-import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
 import {
@@ -99,6 +99,7 @@ export function AvaDeskPanel() {
   const [input, setInput] = useState('');
   const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRun>>({});
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [latestVoiceDiagnostic, setLatestVoiceDiagnostic] = useState<VoiceDiagnosticEvent | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const connectingAnim = useRef(new Animated.Value(0)).current;
@@ -214,9 +215,19 @@ export function AvaDeskPanel() {
         showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
       }
     },
+    onDiagnostic: (diag) => {
+      setLatestVoiceDiagnostic(diag);
+      if (diag.stage === 'autoplay') {
+        showVoiceError(`Audio blocked by browser. Tap voice again to retry. Trace: ${diag.traceId}`);
+      }
+    },
   });
 
   const handleCompanyPillPress = useCallback(async () => {
+    if (latestVoiceDiagnostic?.stage === 'autoplay') {
+      const replayed = await avaVoice.replayLastAudio();
+      if (replayed) return;
+    }
     if (avaVoice.isActive) {
       avaVoice.endSession();
     } else {
@@ -237,7 +248,7 @@ export function AvaDeskPanel() {
         }
       }
     }
-  }, [avaVoice, showVoiceError]);
+  }, [avaVoice, showVoiceError, latestVoiceDiagnostic]);
 
   useEffect(() => {
     if (isSessionActive) {
@@ -702,17 +713,6 @@ export function AvaDeskPanel() {
           : /orchestrator_unavailable|circuit_open|503|unavailable|circuit/.test(lower)
           ? 'Ava Brain is temporarily unavailable. Try again shortly.'
           : `Ava request failed: ${rawMessage.length > 140 ? `${rawMessage.slice(0, 140)}...` : rawMessage}`;
-      const showServiceIssueModal =
-        /model_unavailable|checkpointer_unavailable|provider_auth_missing|provider_all_failed/.test(lower) ||
-        /upstream_timeout|orchestrator_timeout|timeout|orchestrator_unavailable|circuit_open|503|unavailable/.test(lower);
-
-      if (showServiceIssueModal) {
-        setVoiceIssueModal({
-          title: 'Ava Service Issue',
-          message: userFacingMessage,
-        });
-      }
-
       const errorEvent: AgentActivityEvent = {
         id: `evt_err_${Date.now()}`,
         type: 'error',

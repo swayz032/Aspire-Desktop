@@ -166,7 +166,9 @@ export function CanvasWorkspace(): React.ReactElement {
       Object.entries(voiceHooks).forEach(([id, h]) => {
         if (id !== agentId && h.status !== 'idle') h.endSession();
       });
-      hook.startSession();
+      hook.startSession().catch((err) => {
+        console.error('[CanvasWorkspace] Failed to start voice session:', err);
+      });
       playSound('dock_agent_start');
     } else {
       hook.endSession();
@@ -507,9 +509,13 @@ export function CanvasWorkspace(): React.ReactElement {
                     personaElement={
                       <View style={ws.personaVoiceWrap}>
                         <Pressable
-                          onPress={() => {
+                          onPress={async () => {
                             if (avaVoice.status === 'idle') {
-                              avaVoice.startSession();
+                              try {
+                                await avaVoice.startSession();
+                              } catch (err) {
+                                console.error('[CanvasWorkspace] Ava voice start failed:', err);
+                              }
                             } else {
                               avaVoice.endSession();
                             }

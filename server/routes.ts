@@ -45,6 +45,7 @@ const SUPPORTED_AGENTS = new Set<SupportedAgent>([
 const ENABLE_INTENT_SSE_PROXY = process.env.ENABLE_INTENT_SSE_PROXY !== 'false';
 const STRICT_AGENT_VALIDATION = process.env.STRICT_AGENT_VALIDATION !== 'false';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const DEFAULT_TTS_OUTPUT_FORMAT = process.env.ELEVENLABS_OUTPUT_FORMAT || 'mp3_44100_128';
 
 function resolveOrchestratorUrl(): string | null {
   const configured = process.env.ORCHESTRATOR_URL?.trim();
@@ -64,6 +65,12 @@ function parseRequestedAgent(raw: unknown): { value: SupportedAgent; provided: b
   return { value: 'ava', provided: true, valid: false };
 }
 
+function resolveTraceId(req: Request, fallback?: string): string {
+  const fromHeader = (req.headers['x-trace-id'] as string) || '';
+  const fromCorr = (req.headers['x-correlation-id'] as string) || '';
+  return fromHeader || fromCorr || fallback || `trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function normalizeSessionKey(raw: unknown): string {
   if (typeof raw !== 'string') return '';
   const trimmed = raw.trim();
@@ -79,6 +86,72 @@ type FetchRetryOptions = {
   retryOnStatuses?: number[];
   backoffMs?: number;
 };
+
+type TraceStage = 'session' | 'mic' | 'stt' | 'orchestrator' | 'tts' | 'playback';
+type TraceStatus = 'start' | 'ok' | 'error';
+let traceTableEnsured = false;
+
+async function ensureTraceTable(): Promise<void> {
+  if (traceTableEnsured) return;
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS trace_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        trace_id TEXT NOT NULL,
+        correlation_id TEXT NOT NULL,
+        suite_id TEXT NULL,
+        agent TEXT NULL,
+        stage TEXT NOT NULL,
+        status TEXT NOT NULL,
+        message TEXT NULL,
+        error_code TEXT NULL,
+        latency_ms INTEGER NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    traceTableEnsured = true;
+  } catch {
+    // Best effort only; never block request path on telemetry.
+  }
+}
+
+function emitTraceEvent(event: {
+  traceId: string;
+  correlationId: string;
+  suiteId?: string | null;
+  agent?: string | null;
+  stage: TraceStage;
+  status: TraceStatus;
+  message?: string;
+  errorCode?: string;
+  latencyMs?: number;
+  metadata?: Record<string, unknown>;
+}): void {
+  void (async () => {
+    try {
+      await ensureTraceTable();
+      await db.execute(sql`
+        INSERT INTO trace_events (
+          trace_id, correlation_id, suite_id, agent, stage, status, message, error_code, latency_ms, metadata
+        ) VALUES (
+          ${event.traceId},
+          ${event.correlationId},
+          ${event.suiteId ?? null},
+          ${event.agent ?? null},
+          ${event.stage},
+          ${event.status},
+          ${event.message ?? null},
+          ${event.errorCode ?? null},
+          ${typeof event.latencyMs === 'number' ? event.latencyMs : null},
+          ${JSON.stringify(event.metadata ?? {})}::jsonb
+        )
+      `);
+    } catch {
+      // telemetry must not fail user requests
+    }
+  })();
+}
 
 async function fetchWithTimeoutAndRetry(
   url: string,
@@ -1578,6 +1651,7 @@ function parseElevenLabsError(body: string, httpStatus: number): { code: string;
 
 function voiceErrorPayload(params: {
   correlationId: string;
+  traceId?: string;
   errorCode: string;
   errorStage: 'tts' | 'stt' | 'orchestrator';
   message: string;
@@ -1590,12 +1664,27 @@ function voiceErrorPayload(params: {
     error_stage: params.errorStage,
     message: params.message,
     correlation_id: params.correlationId,
+    trace_id: params.traceId,
     ...(typeof params.retryAfterMs === 'number' ? { retry_after_ms: params.retryAfterMs } : {}),
   };
 }
 
 router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const traceId = resolveTraceId(req, correlationId);
+  const suiteId = (req as any).authenticatedSuiteId || null;
+  const startedAt = Date.now();
+  res.setHeader('X-Trace-Id', traceId);
+  res.setHeader('X-Correlation-Id', correlationId);
+  emitTraceEvent({
+    traceId,
+    correlationId,
+    suiteId,
+    agent: typeof req.body?.agent === 'string' ? req.body.agent : null,
+    stage: 'tts',
+    status: 'start',
+    message: 'TTS request started',
+  });
   try {
     const { agent, text, voiceId, model, voiceSettings } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
@@ -1603,6 +1692,7 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
       logger.warn('[TTS] ELEVENLABS_API_KEY is missing — voice synthesis disabled');
       return res.status(500).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: 'TTS_NOT_CONFIGURED',
         errorStage: 'tts',
         message: 'Voice synthesis service not configured',
@@ -1619,6 +1709,7 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     if (!resolvedVoiceId) {
       return res.status(400).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: 'TTS_UNKNOWN_AGENT',
         errorStage: 'tts',
         message: `Unknown agent: ${agent}`,
@@ -1628,6 +1719,7 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: 'TTS_INVALID_TEXT',
         errorStage: 'tts',
         message: 'Missing or empty text parameter',
@@ -1635,7 +1727,7 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     }
 
     const response = await fetchWithTimeoutAndRetry(
-      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}?output_format=${encodeURIComponent(DEFAULT_TTS_OUTPUT_FORMAT)}`,
       {
         method: 'POST',
         headers: {
@@ -1656,8 +1748,21 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
       const errorBody = await response.text();
       logger.error('ElevenLabs TTS error', { status: response.status, error: errorBody.substring(0, 200) });
       const parsed = parseElevenLabsError(errorBody, response.status);
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId,
+        agent: typeof agent === 'string' ? agent : null,
+        stage: 'tts',
+        status: 'error',
+        message: parsed.clientMessage,
+        errorCode: `TTS_${String(parsed.code || 'UNKNOWN').toUpperCase()}`,
+        latencyMs: Date.now() - startedAt,
+        metadata: { http_status: response.status },
+      });
       return res.status(parsed.httpStatus).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: `TTS_${String(parsed.code || 'UNKNOWN').toUpperCase()}`,
         errorStage: 'tts',
         message: parsed.clientMessage,
@@ -1666,12 +1771,35 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
 
     const audioBuffer = await response.arrayBuffer();
     logger.info('[TTS] Success', { agent, bytes: audioBuffer.byteLength });
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      agent: typeof agent === 'string' ? agent : null,
+      stage: 'tts',
+      status: 'ok',
+      message: 'TTS synthesis completed',
+      latencyMs: Date.now() - startedAt,
+      metadata: { bytes: audioBuffer.byteLength, model: resolvedModel },
+    });
     res.set('Content-Type', 'audio/mpeg');
     res.send(Buffer.from(audioBuffer));
   } catch (error: unknown) {
     logger.error('TTS error', { error: error instanceof Error ? error.message : 'unknown' });
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      agent: typeof req.body?.agent === 'string' ? req.body.agent : null,
+      stage: 'tts',
+      status: 'error',
+      message: error instanceof Error ? error.message : 'unknown',
+      errorCode: 'TTS_UNAVAILABLE',
+      latencyMs: Date.now() - startedAt,
+    });
     res.status(500).json(voiceErrorPayload({
       correlationId,
+      traceId,
       errorCode: 'TTS_UNAVAILABLE',
       errorStage: 'tts',
       message: error instanceof Error ? error.message : 'unknown',
@@ -1681,12 +1809,27 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
 
 router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-tts-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const traceId = resolveTraceId(req, correlationId);
+  const suiteId = (req as any).authenticatedSuiteId || null;
+  const startedAt = Date.now();
+  res.setHeader('X-Trace-Id', traceId);
+  res.setHeader('X-Correlation-Id', correlationId);
+  emitTraceEvent({
+    traceId,
+    correlationId,
+    suiteId,
+    agent: typeof req.body?.agent === 'string' ? req.body.agent : null,
+    stage: 'tts',
+    status: 'start',
+    message: 'TTS stream request started',
+  });
   try {
     const { agent, text, voiceId, model, voiceSettings } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
       return res.status(500).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: 'TTS_NOT_CONFIGURED',
         errorStage: 'tts',
         message: 'Voice synthesis service not configured',
@@ -1702,6 +1845,7 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     if (!resolvedVoiceId) {
       return res.status(400).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: 'TTS_UNKNOWN_AGENT',
         errorStage: 'tts',
         message: `Unknown agent: ${agent}`,
@@ -1711,6 +1855,7 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: 'TTS_INVALID_TEXT',
         errorStage: 'tts',
         message: 'Missing or empty text parameter',
@@ -1718,7 +1863,7 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     }
 
     const response = await fetchWithTimeoutAndRetry(
-      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}/stream`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}/stream?output_format=${encodeURIComponent(DEFAULT_TTS_OUTPUT_FORMAT)}`,
       {
         method: 'POST',
         headers: {
@@ -1739,8 +1884,21 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
       const errorBody = await response.text();
       logger.error('ElevenLabs TTS stream error', { status: response.status, error: errorBody.substring(0, 200) });
       const parsed = parseElevenLabsError(errorBody, response.status);
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId,
+        agent: typeof agent === 'string' ? agent : null,
+        stage: 'tts',
+        status: 'error',
+        message: parsed.clientMessage,
+        errorCode: `TTS_${String(parsed.code || 'UNKNOWN').toUpperCase()}`,
+        latencyMs: Date.now() - startedAt,
+        metadata: { http_status: response.status, stream: true },
+      });
       return res.status(parsed.httpStatus).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: `TTS_${String(parsed.code || 'UNKNOWN').toUpperCase()}`,
         errorStage: 'tts',
         message: parsed.clientMessage,
@@ -1751,17 +1909,46 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     res.set('Transfer-Encoding', 'chunked');
     const reader = response.body.getReader();
     const pump = async () => {
+      let totalBytes = 0;
       while (true) {
         const { done, value } = await reader.read();
-        if (done) { res.end(); break; }
+        if (done) {
+          emitTraceEvent({
+            traceId,
+            correlationId,
+            suiteId,
+            agent: typeof agent === 'string' ? agent : null,
+            stage: 'tts',
+            status: 'ok',
+            message: 'TTS stream completed',
+            latencyMs: Date.now() - startedAt,
+            metadata: { bytes: totalBytes, model: resolvedModel, stream: true },
+          });
+          res.end();
+          break;
+        }
+        totalBytes += value?.byteLength || 0;
         res.write(value);
       }
     };
     await pump();
   } catch (error: unknown) {
     logger.error('TTS stream error', { error: error instanceof Error ? error.message : 'unknown' });
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      agent: typeof req.body?.agent === 'string' ? req.body.agent : null,
+      stage: 'tts',
+      status: 'error',
+      message: error instanceof Error ? error.message : 'unknown',
+      errorCode: 'TTS_UNAVAILABLE',
+      latencyMs: Date.now() - startedAt,
+      metadata: { stream: true },
+    });
     res.status(500).json(voiceErrorPayload({
       correlationId,
+      traceId,
       errorCode: 'TTS_UNAVAILABLE',
       errorStage: 'tts',
       message: error instanceof Error ? error.message : 'unknown',
@@ -1772,11 +1959,25 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
 // ─── ElevenLabs STT — Speech-to-Text via server proxy (no API key on client) ───
 router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-stt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const traceId = resolveTraceId(req, correlationId);
+  const suiteId = (req as any).authenticatedSuiteId || null;
+  const startedAt = Date.now();
+  res.setHeader('X-Trace-Id', traceId);
+  res.setHeader('X-Correlation-Id', correlationId);
+  emitTraceEvent({
+    traceId,
+    correlationId,
+    suiteId,
+    stage: 'stt',
+    status: 'start',
+    message: 'STT request started',
+  });
   try {
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
       return res.status(503).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: 'STT_NOT_CONFIGURED',
         errorStage: 'stt',
         message: 'Speech recognition service not configured',
@@ -1792,6 +1993,7 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
       if (!audio) {
         return res.status(400).json(voiceErrorPayload({
           correlationId,
+          traceId,
           errorCode: 'STT_MISSING_AUDIO',
           errorStage: 'stt',
           message: 'Missing audio data',
@@ -1810,6 +2012,7 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
     if (audioBuffer.length === 0) {
       return res.status(400).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: 'STT_EMPTY_AUDIO',
         errorStage: 'stt',
         message: 'Empty audio data',
@@ -1820,6 +2023,7 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
     if (audioBuffer.length > 25 * 1024 * 1024) {
       return res.status(413).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: 'STT_AUDIO_TOO_LARGE',
         errorStage: 'stt',
         message: 'Audio file too large (max 25MB)',
@@ -1843,8 +2047,20 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
       const errorBody = await response.text();
       logger.error('ElevenLabs STT error', { status: response.status, error: errorBody.substring(0, 200) });
       const parsed = parseElevenLabsError(errorBody, response.status);
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId,
+        stage: 'stt',
+        status: 'error',
+        message: parsed.clientMessage,
+        errorCode: `STT_${String(parsed.code || 'UNKNOWN').toUpperCase()}`,
+        latencyMs: Date.now() - startedAt,
+        metadata: { http_status: response.status },
+      });
       return res.status(parsed.httpStatus).json(voiceErrorPayload({
         correlationId,
+        traceId,
         errorCode: `STT_${String(parsed.code || 'UNKNOWN').toUpperCase()}`,
         errorStage: 'stt',
         message: parsed.clientMessage,
@@ -1852,11 +2068,32 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
     }
 
     const result = await response.json() as { text?: string; language_code?: string };
-    res.json({ text: result.text || '', language: result.language_code || 'en' });
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      stage: 'stt',
+      status: 'ok',
+      message: 'STT transcription completed',
+      latencyMs: Date.now() - startedAt,
+      metadata: { text_length: (result.text || '').length, language: result.language_code || 'en' },
+    });
+    res.json({ text: result.text || '', language: result.language_code || 'en', correlation_id: correlationId, trace_id: traceId });
   } catch (error: unknown) {
     logger.error('STT error', { error: error instanceof Error ? error.message : 'unknown' });
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      stage: 'stt',
+      status: 'error',
+      message: error instanceof Error ? error.message : 'unknown',
+      errorCode: 'STT_UNAVAILABLE',
+      latencyMs: Date.now() - startedAt,
+    });
     res.status(500).json(voiceErrorPayload({
       correlationId,
+      traceId,
       errorCode: 'STT_UNAVAILABLE',
       errorStage: 'stt',
       message: error instanceof Error ? error.message : 'unknown',
@@ -2036,12 +2273,13 @@ const CIRCUIT_BREAKER_RESET_MS = 60_000;
 let orchestratorConsecutiveFailures = 0;
 let orchestratorLastFailureAt = 0;
 
-function writeSseHeaders(res: Response, correlationId: string): void {
+function writeSseHeaders(res: Response, correlationId: string, traceId: string): void {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.setHeader('X-Correlation-Id', correlationId);
+  res.setHeader('X-Trace-Id', traceId);
 }
 
 function writeSseEvent(res: Response, payload: Record<string, unknown>): void {
@@ -2050,6 +2288,8 @@ function writeSseEvent(res: Response, payload: Record<string, unknown>): void {
 
 router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-sse-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const traceId = resolveTraceId(req, correlationId);
+  const startedAt = Date.now();
   const streamRequested = req.query.stream === 'true';
   if (!ENABLE_INTENT_SSE_PROXY) {
     return res.status(404).json({
@@ -2087,7 +2327,16 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
     });
   }
 
-  writeSseHeaders(res, correlationId);
+  writeSseHeaders(res, correlationId, traceId);
+  emitTraceEvent({
+    traceId,
+    correlationId,
+    suiteId: suiteId || null,
+    stage: 'orchestrator',
+    status: 'start',
+    message: 'Orchestrator SSE request started',
+    metadata: { stream: true },
+  });
 
   const text = typeof req.query.text === 'string' ? req.query.text.trim() : '';
   if (!text || req.query.passive === 'true') {
@@ -2096,6 +2345,7 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
       message: 'stream_connected',
       timestamp: Date.now(),
       correlation_id: correlationId,
+      trace_id: traceId,
       resolved_agent: parsedAgent.value,
     });
 
@@ -2104,6 +2354,7 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
         type: 'heartbeat',
         timestamp: Date.now(),
         correlation_id: correlationId,
+        trace_id: traceId,
       });
     }, 15_000);
 
@@ -2134,6 +2385,7 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
         'X-Office-Id': getDefaultOfficeId() || suiteId,
         'X-Actor-Id': (req as any).authenticatedUserId || 'web-stream-client',
         'X-Correlation-Id': correlationId,
+        'X-Trace-Id': traceId,
       },
       body: JSON.stringify({
         text,
@@ -2146,10 +2398,23 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errorText = await response.text();
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId: suiteId || null,
+        agent: parsedAgent.value,
+        stage: 'orchestrator',
+        status: 'error',
+        message: `Orchestrator returned ${response.status}`,
+        errorCode: `ORCHESTRATOR_HTTP_${response.status}`,
+        latencyMs: Date.now() - startedAt,
+        metadata: { stream: true },
+      });
       writeSseEvent(res, {
         type: 'error',
         timestamp: Date.now(),
         correlation_id: correlationId,
+        trace_id: traceId,
         code: 'ORCHESTRATOR_ERROR',
         message: `Orchestrator returned ${response.status}`,
         detail: errorText.substring(0, 200),
@@ -2159,10 +2424,23 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
     }
 
     if (!response.body) {
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId: suiteId || null,
+        agent: parsedAgent.value,
+        stage: 'orchestrator',
+        status: 'error',
+        message: 'Orchestrator returned no stream body.',
+        errorCode: 'ORCHESTRATOR_NO_STREAM',
+        latencyMs: Date.now() - startedAt,
+        metadata: { stream: true },
+      });
       writeSseEvent(res, {
         type: 'error',
         timestamp: Date.now(),
         correlation_id: correlationId,
+        trace_id: traceId,
         code: 'ORCHESTRATOR_NO_STREAM',
         message: 'Orchestrator returned no stream body.',
       });
@@ -2177,15 +2455,39 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
       if (done) break;
       res.write(decoder.decode(value, { stream: true }));
     }
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId: suiteId || null,
+      agent: parsedAgent.value,
+      stage: 'orchestrator',
+      status: 'ok',
+      message: 'Orchestrator SSE stream completed',
+      latencyMs: Date.now() - startedAt,
+      metadata: { stream: true },
+    });
     res.end();
   } catch (error: unknown) {
     const code = error instanceof Error && error.name === 'AbortError'
       ? 'ORCHESTRATOR_TIMEOUT'
       : 'ORCHESTRATOR_UNAVAILABLE';
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId: suiteId || null,
+      agent: parsedAgent.value,
+      stage: 'orchestrator',
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Unknown stream error',
+      errorCode: code,
+      latencyMs: Date.now() - startedAt,
+      metadata: { stream: true },
+    });
     writeSseEvent(res, {
       type: 'error',
       timestamp: Date.now(),
       correlation_id: correlationId,
+      trace_id: traceId,
       code,
       message: error instanceof Error ? error.message : 'Unknown stream error',
     });
@@ -2197,11 +2499,36 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
 router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const traceId = resolveTraceId(req, correlationId);
+  const startedAt = Date.now();
+  const suiteId = (req as any).authenticatedSuiteId || null;
+  res.setHeader('X-Correlation-Id', correlationId);
+  res.setHeader('X-Trace-Id', traceId);
+  emitTraceEvent({
+    traceId,
+    correlationId,
+    suiteId,
+    agent: typeof req.body?.agent === 'string' ? req.body.agent : null,
+    stage: 'orchestrator',
+    status: 'start',
+    message: 'Orchestrator intent request started',
+    metadata: { stream: false },
+  });
 
   try {
     const { agent, text, voiceId, channel, userProfile } = req.body;
 
     if (!text || typeof text !== 'string' || !text.trim()) {
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId,
+        stage: 'orchestrator',
+        status: 'error',
+        message: 'Missing or empty text parameter',
+        errorCode: 'ORCHESTRATOR_INVALID_TEXT',
+        latencyMs: Date.now() - startedAt,
+      });
       return res.status(400).json({ error: 'Missing or empty text parameter' });
     }
 
@@ -2213,8 +2540,16 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         correlation_id: correlationId,
       });
     }
-    const suiteId = (req as any).authenticatedSuiteId;
     if (!suiteId) {
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        stage: 'orchestrator',
+        status: 'error',
+        message: 'Authenticated suite context required.',
+        errorCode: 'AUTH_REQUIRED',
+        latencyMs: Date.now() - startedAt,
+      });
       return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
     }
 
@@ -2225,6 +2560,16 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       (now - orchestratorLastFailureAt) < CIRCUIT_BREAKER_RESET_MS
     ) {
       const retryAfterMs = Math.max(0, CIRCUIT_BREAKER_RESET_MS - (now - orchestratorLastFailureAt));
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId,
+        stage: 'orchestrator',
+        status: 'error',
+        message: 'Orchestrator circuit breaker open',
+        errorCode: 'ORCHESTRATOR_CIRCUIT_OPEN',
+        latencyMs: Date.now() - startedAt,
+      });
       return res.status(503).json({
         error: 'ORCHESTRATOR_CIRCUIT_OPEN',
         error_code: 'ORCHESTRATOR_CIRCUIT_OPEN',
@@ -2237,6 +2582,16 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
     const parsedAgent = parseRequestedAgent(agent);
     if (STRICT_AGENT_VALIDATION && parsedAgent.provided && !parsedAgent.valid) {
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId,
+        stage: 'orchestrator',
+        status: 'error',
+        message: `Unsupported agent '${String(agent)}'.`,
+        errorCode: 'INVALID_AGENT',
+        latencyMs: Date.now() - startedAt,
+      });
       return res.status(400).json({
         error: 'INVALID_AGENT',
         message: `Unsupported agent '${String(agent)}'.`,
@@ -2268,6 +2623,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         'X-Office-Id': getDefaultOfficeId() || suiteId,
         'X-Actor-Id': (req as any).authenticatedUserId || '',
         'X-Correlation-Id': correlationId,
+        'X-Trace-Id': traceId,
       },
       body: JSON.stringify({
         text: text.trim(),
@@ -2288,6 +2644,17 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       orchestratorLastFailureAt = Date.now();
       const errorText = await response.text();
       logger.error('Orchestrator error', { correlationId, status: response.status, error: errorText.substring(0, 200) });
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId,
+        agent: requestedAgent,
+        stage: 'orchestrator',
+        status: 'error',
+        message: `Orchestrator returned ${response.status}`,
+        errorCode: `ORCHESTRATOR_HTTP_${response.status}`,
+        latencyMs: Date.now() - startedAt,
+      });
 
       // Extract human-readable text from orchestrator error response
       let errorData: any = null;
@@ -2307,6 +2674,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         receipt_ids: errorData?.receipt_ids || [],
         assigned_agent: errorData?.assigned_agent || requestedAgent,
         correlation_id: correlationId,
+        trace_id: traceId,
       });
     }
 
@@ -2337,6 +2705,20 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     const resolvedAgent = typeof data?.assigned_agent === 'string' && data.assigned_agent.trim()
       ? data.assigned_agent.trim().toLowerCase()
       : requestedAgent;
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      agent: resolvedAgent,
+      stage: 'orchestrator',
+      status: 'ok',
+      message: 'Orchestrator intent completed',
+      latencyMs: Date.now() - startedAt,
+      metadata: {
+        assigned_agent: resolvedAgent,
+        receipt_count: Array.isArray(data?.governance?.receipt_ids) ? data.governance.receipt_ids.length : 0,
+      },
+    });
     res.json({
       response: data.text || data.message || 'I processed your request.',
       receipt_id: data.governance?.receipt_ids?.[0] || null,
@@ -2350,6 +2732,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       route: data.route || null,
       plan: data.plan || null,
       correlation_id: correlationId,
+      trace_id: traceId,
     });
   } catch (error: unknown) {
     orchestratorConsecutiveFailures++;
@@ -2357,6 +2740,16 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
     if (error instanceof Error && error.name === 'AbortError') {
       logger.error('Orchestrator timeout', { correlationId, timeout_ms: ORCHESTRATOR_TIMEOUT_MS });
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId,
+        stage: 'orchestrator',
+        status: 'error',
+        message: `Orchestrator request timed out after ${ORCHESTRATOR_TIMEOUT_MS / 1000}s`,
+        errorCode: 'ORCHESTRATOR_TIMEOUT',
+        latencyMs: Date.now() - startedAt,
+      });
       return res.status(504).json({
         error: 'ORCHESTRATOR_TIMEOUT',
         error_code: 'ORCHESTRATOR_TIMEOUT',
@@ -2364,10 +2757,21 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         message: `Orchestrator request timed out after ${ORCHESTRATOR_TIMEOUT_MS / 1000}s`,
         retry_after_ms: 2000,
         correlation_id: correlationId,
+        trace_id: traceId,
       });
     }
 
     logger.error('Orchestrator intent error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      stage: 'orchestrator',
+      status: 'error',
+      message: error instanceof Error ? error.message : 'unknown',
+      errorCode: 'ORCHESTRATOR_UNAVAILABLE',
+      latencyMs: Date.now() - startedAt,
+    });
     // Law #3: Fail Closed — return 503, not 200
     res.status(503).json({
       error: 'ORCHESTRATOR_UNAVAILABLE',
@@ -2376,6 +2780,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       message: 'The orchestrator is currently unavailable. Please try again.',
       retry_after_ms: 3000,
       correlation_id: correlationId,
+      trace_id: traceId,
     });
   }
 });

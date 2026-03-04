@@ -14,7 +14,7 @@ import { MailThread, MailDetail, MailMessage } from '@/types/mail';
 import { Contact } from '@/types/contacts';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
-import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
@@ -1007,6 +1007,8 @@ export default function InboxScreen() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [eliVoiceActive, setEliVoiceActive] = useState(false);
+  const [eliVoiceStatus, setEliVoiceStatus] = useState<'idle' | 'listening' | 'thinking' | 'speaking' | 'error'>('idle');
+  const [eliLatestDiagnostic, setEliLatestDiagnostic] = useState<VoiceDiagnosticEvent | null>(null);
   const [eliTranscript, setEliTranscript] = useState('');
   const [eliMessages, setEliMessages] = useState<EliMessage[]>([
     { id: '1', from: 'eli', text: 'Hey! I\'ve been sorting through your inbox. What would you like me to help with?', ts: Date.now() },
@@ -1084,6 +1086,7 @@ export default function InboxScreen() {
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
     onStatusChange: (voiceStatus) => {
+      setEliVoiceStatus(voiceStatus);
       setEliVoiceActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
       if (voiceStatus === 'idle') setEliTranscript('');
     },
@@ -1154,6 +1157,17 @@ export default function InboxScreen() {
       });
       setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
     },
+    onDiagnostic: (diag) => {
+      setEliLatestDiagnostic(diag);
+      if (diag.stage === 'autoplay') {
+        appendEliRunEvent({
+          type: 'error',
+          label: `Audio blocked by browser. Tap mic again to retry. Trace: ${diag.traceId}`,
+          status: 'error',
+          icon: 'alert-circle',
+        });
+      }
+    },
   });
 
   const eliMicPulse = useRef(new Animated.Value(1)).current;
@@ -1175,6 +1189,10 @@ export default function InboxScreen() {
       eliVoice.endSession();
     } else {
       try {
+        if (eliLatestDiagnostic?.stage === 'autoplay') {
+          const replayed = await eliVoice.replayLastAudio();
+          if (replayed) return;
+        }
         await eliVoice.startSession();
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -1192,7 +1210,7 @@ export default function InboxScreen() {
         Alert.alert(title, body);
       }
     }
-  }, [eliVoice, session?.access_token]);
+  }, [eliVoice, session?.access_token, eliLatestDiagnostic]);
 
   const handleEliSendMessage = useCallback(async (text: string) => {
     setEliMessages(prev => [...prev, { id: String(Date.now()), from: 'user', text, ts: Date.now() }]);
@@ -2446,7 +2464,7 @@ export default function InboxScreen() {
               agentId="eli"
               suiteId={suiteId ?? ''}
               officeId={tenant?.officeId ?? ''}
-              voiceStatus={eliVoiceActive ? 'listening' : 'idle'}
+              voiceStatus={eliVoiceStatus}
               onPrimaryAction={handleEliMicPress}
             />
           </Animated.View>

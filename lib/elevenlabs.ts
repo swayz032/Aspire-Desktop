@@ -123,11 +123,16 @@ export async function speakText(
   agent: AgentName,
   text: string,
   accessToken?: string,
+  traceId?: string,
 ): Promise<Blob | null> {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+    if (traceId) {
+      headers['X-Trace-Id'] = traceId;
+      headers['X-Correlation-Id'] = traceId;
     }
     const config = getVoiceConfig(agent);
     const resp = await fetch('/api/elevenlabs/tts', {
@@ -165,11 +170,16 @@ export async function streamSpeak(
   agent: AgentName,
   text: string,
   accessToken?: string,
+  traceId?: string,
 ): Promise<ReadableStream<Uint8Array> | null> {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+    if (traceId) {
+      headers['X-Trace-Id'] = traceId;
+      headers['X-Correlation-Id'] = traceId;
     }
     const config = getVoiceConfig(agent);
     const resp = await fetch('/api/elevenlabs/tts/stream', {

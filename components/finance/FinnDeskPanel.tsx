@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
-import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
 import { speakText } from '@/lib/elevenlabs';
@@ -242,6 +242,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRun>>({});
   const [finnContext, setFinnContext] = useState<{ snapshot: SnapshotData | null; exceptions: ExceptionData | null }>({ snapshot: null, exceptions: null });
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [latestVoiceDiagnostic, setLatestVoiceDiagnostic] = useState<VoiceDiagnosticEvent | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const voiceLineAnim = useRef(new Animated.Value(1)).current;
@@ -350,9 +351,19 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
         showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
       }
     },
+    onDiagnostic: (diag) => {
+      setLatestVoiceDiagnostic(diag);
+      if (diag.stage === 'autoplay') {
+        showVoiceError(`Audio blocked by browser. Tap voice again to retry. Trace: ${diag.traceId}`);
+      }
+    },
   });
 
   const handleCompanyPillPress = useCallback(async () => {
+    if (latestVoiceDiagnostic?.stage === 'autoplay') {
+      const replayed = await finnVoice.replayLastAudio();
+      if (replayed) return;
+    }
     if (finnVoice.isActive) {
       finnVoice.endSession();
     } else {
@@ -373,7 +384,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
         }
       }
     }
-  }, [finnVoice, showVoiceError]);
+  }, [finnVoice, showVoiceError, latestVoiceDiagnostic]);
 
   const handleConnectToFinn = useCallback(async () => {
     if (videoState !== 'idle') return;

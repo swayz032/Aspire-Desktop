@@ -160,6 +160,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     return `voice-${agent}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }, [agent]);
 
+  const buildTraceHeaders = useCallback((traceId: string): Record<string, string> => ({
+    'X-Trace-Id': traceId,
+    'X-Correlation-Id': traceId,
+  }), []);
+
   const emitDiagnostic = useCallback((event: Omit<VoiceDiagnosticEvent, 'agent' | 'timestamp'>) => {
     const payload: VoiceDiagnosticEvent = {
       agent,
@@ -197,7 +202,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
     const url = URL.createObjectURL(audioBlob);
     const audio = new Audio(url);
-    audio.playsInline = true;
+    (audio as any).playsInline = true;
     audioRef.current = audio;
 
     audio.onerror = () => {
@@ -265,7 +270,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       const probe = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAABCxAgAEABAAZGF0YQAAAAA=');
       probe.muted = false;
       probe.volume = 0.00001;
-      probe.playsInline = true;
+      (probe as any).playsInline = true;
       await probe.play();
       probe.pause();
       probe.currentTime = 0;
@@ -289,8 +294,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
    * Speak response text via HTTP streaming TTS.
    * Used as fallback when WebSocket TTS is unavailable.
    */
-  const speakViaHttpStream = useCallback(async (responseText: string) => {
-    const stream = await streamSpeak(agent, responseText, accessToken);
+  const speakViaHttpStream = useCallback(async (responseText: string, traceId: string) => {
+    const stream = await streamSpeak(agent, responseText, accessToken, traceId);
     if (stream && activeRef.current) {
       const reader = stream.getReader();
       const chunks: Uint8Array[] = [];
@@ -312,7 +317,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
       const url = URL.createObjectURL(audioBlob);
       const audio = new Audio(url);
-      audio.playsInline = true;
+      (audio as any).playsInline = true;
       audioRef.current = audio;
 
       audio.onerror = () => {
@@ -405,8 +410,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       // Route through orchestrator â€” the Single Brain (Law #1)
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'X-Trace-Id': traceId,
-        'X-Correlation-Id': traceId,
+        ...buildTraceHeaders(traceId),
       };
       if (suiteId) {
         headers['X-Suite-Id'] = suiteId;
@@ -551,7 +555,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       } else {
         // Fallback: HTTP streaming TTS
         console.warn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
-        await speakViaHttpStream(responseText);
+        await speakViaHttpStream(responseText, traceId);
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -590,7 +594,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         }
       }, 2000);
     }
-  }, [agent, suiteId, accessToken, onTranscript, onResponse, onError, updateStatus, speakViaHttpStream, playContextAudio, options.onActivityEvent, nextTraceId, emitDiagnostic]);
+  }, [agent, suiteId, accessToken, onTranscript, onResponse, onError, updateStatus, speakViaHttpStream, playContextAudio, options.onActivityEvent, nextTraceId, emitDiagnostic, buildTraceHeaders]);
 
   // Stable ref for sendText to avoid re-creating STT hook
   const sendTextRef = useRef(sendText);
@@ -686,9 +690,14 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         channel: 'voice',
         suiteId,
       });
+      const sessionTraceId = currentTraceIdRef.current || nextTraceId();
+      currentTraceIdRef.current = sessionTraceId;
       const preflight = await fetch(`/api/orchestrator/intent?${query.toString()}`, {
         method: 'GET',
-        headers: { Authorization: `Bearer ${accessTokenRef.current}` },
+        headers: {
+          Authorization: `Bearer ${accessTokenRef.current}`,
+          ...buildTraceHeaders(sessionTraceId),
+        },
       });
       if (!preflight.ok) {
         let reason = `Service returned ${preflight.status}`;
@@ -724,6 +733,10 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     const ttsWs = new TtsWebSocket({
       voiceId: voiceConfig.voiceId,
       model: voiceConfig.model,
+      outputFormat: 'mp3_44100_128',
+      accessToken: accessTokenRef.current,
+      suiteId,
+      traceId: currentTraceIdRef.current || nextTraceId(),
       voiceSettings: voiceConfig.voiceSettings,
       onAudio: (contextId, chunk) => {
         // Accumulate audio chunks for the context
@@ -797,7 +810,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       }, 2000);
       console.warn(`STT unavailable for ${agent} â€” text input + TTS mode`);
     }
-  }, [agent, updateStatus, stt, playContextAudio, emitDiagnostic, nextTraceId, unlockAudioPlayback]);
+  }, [agent, updateStatus, stt, playContextAudio, emitDiagnostic, nextTraceId, unlockAudioPlayback, buildTraceHeaders, suiteId]);
 
   /**
    * End the voice session. Closes WebSocket TTS, stops STT, and

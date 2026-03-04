@@ -19,6 +19,13 @@
 export interface TtsWsOptions {
   voiceId: string;
   model?: string;
+  outputFormat?: string;
+  /** JWT used for WS auth validation at the server edge. */
+  accessToken?: string;
+  /** Suite context for per-tenant WS limits and tracing. */
+  suiteId?: string;
+  /** Upstream voice trace id for correlation. */
+  traceId?: string;
   voiceSettings?: {
     stability?: number;
     similarity_boost?: number;
@@ -37,6 +44,10 @@ export class TtsWebSocket {
   private ws: WebSocket | null = null;
   private voiceId: string;
   private model: string;
+  private outputFormat: string;
+  private accessToken?: string;
+  private suiteId?: string;
+  private traceId?: string;
   private voiceSettings: TtsWsOptions['voiceSettings'];
   private callbacks: TtsWsOptions;
   private contextCounter = 0;
@@ -44,6 +55,10 @@ export class TtsWebSocket {
   constructor(options: TtsWsOptions) {
     this.voiceId = options.voiceId;
     this.model = options.model || 'eleven_flash_v2_5';
+    this.outputFormat = options.outputFormat || 'mp3_44100_128';
+    this.accessToken = options.accessToken;
+    this.suiteId = options.suiteId;
+    this.traceId = options.traceId;
     this.voiceSettings = options.voiceSettings;
     this.callbacks = options;
   }
@@ -58,7 +73,11 @@ export class TtsWebSocket {
       const qs = new URLSearchParams({
         voice_id: this.voiceId,
         model: this.model,
+        output_format: this.outputFormat,
       });
+      if (this.accessToken) qs.set('auth', this.accessToken);
+      if (this.suiteId) qs.set('suite_id', this.suiteId);
+      if (this.traceId) qs.set('trace_id', this.traceId);
       if (typeof this.voiceSettings?.stability === 'number') qs.set('stability', String(this.voiceSettings.stability));
       if (typeof this.voiceSettings?.similarity_boost === 'number') qs.set('similarity_boost', String(this.voiceSettings.similarity_boost));
       if (typeof this.voiceSettings?.style === 'number') qs.set('style', String(this.voiceSettings.style));
