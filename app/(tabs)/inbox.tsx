@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, Text, Platform, Animated, TextInput, Image, ImageBackground, Alert, Pressable, Dimensions } from 'react-native';
+import { StyleSheet, View, ScrollView, TouchableOpacity, TouchableWithoutFeedback, Text, Platform, Animated, TextInput, Image, ImageBackground, Alert, Pressable, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
@@ -91,7 +91,6 @@ function containsHtmlTags(content: string): boolean {
 function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
   const iframeHeightAnim = useRef(new Animated.Value(400)).current;
   const [iframeHeight, setIframeHeight] = useState(400);
-  const iframeOpacity = useRef(new Animated.Value(0)).current;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const reportCount = useRef(0);
 
@@ -156,10 +155,6 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
     return () => window.removeEventListener('message', handler);
   }, [htmlContent]);
 
-  const handleLoad = () => {
-    Animated.timing(iframeOpacity, { toValue: 1, duration: 260, useNativeDriver: false }).start();
-  };
-
   if (!isWeb) {
     return (
       <View style={{ paddingVertical: Spacing.md }}>
@@ -171,12 +166,11 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
   }
 
   return (
-    <Animated.View style={{ overflow: 'hidden' as any, opacity: iframeOpacity, height: iframeHeightAnim }}>
+    <Animated.View style={{ overflow: 'hidden' as any, height: iframeHeightAnim }}>
       <iframe
         ref={iframeRef as any}
         srcDoc={wrappedHtml}
         sandbox="allow-same-origin allow-scripts"
-        onLoad={handleLoad}
         scrolling="no"
         style={{
           width: '100%',
@@ -968,6 +962,8 @@ export default function InboxScreen() {
   const dateInputRef = useRef<HTMLInputElement | null>(null);
 
   const [selectedEmail, setSelectedEmail] = useState<MailThread | null>(null);
+  const [replyPopupOpen, setReplyPopupOpen] = useState(false);
+  const replyPopupAnim = useRef(new Animated.Value(0)).current;
 
   const emailPageFadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -1474,7 +1470,18 @@ export default function InboxScreen() {
   const closeEmailDetail = useCallback(() => {
     setSelectedEmail(null);
     setMailDetail(null);
-  }, []);
+    setReplyPopupOpen(false);
+    replyPopupAnim.setValue(0);
+  }, [replyPopupAnim]);
+
+  const toggleReplyPopup = useCallback(() => {
+    if (replyPopupOpen) {
+      Animated.timing(replyPopupAnim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => setReplyPopupOpen(false));
+    } else {
+      setReplyPopupOpen(true);
+      Animated.timing(replyPopupAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    }
+  }, [replyPopupOpen, replyPopupAnim]);
 
   useEffect(() => {
     if (selectedEmail) {
@@ -1755,47 +1762,74 @@ export default function InboxScreen() {
           )}
         </ScrollView>
 
-        {/* ── Frosted footer ── */}
-        <View style={styles.emailFullFooter}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.emailFullSmartScroll}>
-            {['Thanks, received!', "I'll review shortly", 'Forward to team'].map((r) => (
-              <TouchableOpacity
-                key={r}
-                style={styles.emailModalSmartPill}
-                activeOpacity={0.7}
-                onPress={() => { handleSmartReply(r, selectedEmail); closeEmailDetail(); }}
-              >
-                <Text style={styles.emailModalSmartPillText}>{r}</Text>
-              </TouchableOpacity>
+        {/* ── Reply popup backdrop ── */}
+        {replyPopupOpen && (
+          <TouchableWithoutFeedback onPress={toggleReplyPopup}>
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }} />
+          </TouchableWithoutFeedback>
+        )}
+
+        {/* ── Reply popup menu ── */}
+        {replyPopupOpen && (
+          <Animated.View
+            style={[
+              styles.emailReplyPopup,
+              {
+                opacity: replyPopupAnim,
+                transform: [{ translateY: replyPopupAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+              },
+            ]}
+          >
+            {/* Smart reply pills */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 12 }}>
+              {['Thanks, received!', "I'll review shortly", 'Forward to team'].map((r) => (
+                <TouchableOpacity
+                  key={r}
+                  style={styles.emailReplyPopupPill}
+                  activeOpacity={0.7}
+                  onPress={() => { handleSmartReply(r, selectedEmail); toggleReplyPopup(); closeEmailDetail(); }}
+                >
+                  <Text style={styles.emailReplyPopupPillText}>{r}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.emailReplyPopupDivider} />
+            {/* Action rows */}
+            {[
+              { label: 'Reply', icon: 'arrow-undo-outline' as const, mode: 'reply' as const },
+              { label: 'Reply All', icon: 'arrow-undo-outline' as const, mode: 'replyAll' as const },
+              { label: 'Forward', icon: 'arrow-redo-outline' as const, mode: 'forward' as const },
+            ].map((action, idx, arr) => (
+              <View key={action.label}>
+                <TouchableOpacity
+                  style={styles.emailReplyPopupRow}
+                  activeOpacity={0.65}
+                  onPress={() => { toggleReplyPopup(); closeEmailDetail(); openCompose(action.mode, selectedEmail); }}
+                >
+                  <Ionicons name={action.icon} size={15} color="rgba(255,255,255,0.55)" />
+                  <Text style={styles.emailReplyPopupRowText}>{action.label}</Text>
+                </TouchableOpacity>
+                {idx < arr.length - 1 && <View style={styles.emailReplyPopupDivider} />}
+              </View>
             ))}
-          </ScrollView>
-          <View style={styles.emailFullActions}>
-            <TouchableOpacity
-              style={[styles.emailModalActionBtn, styles.emailModalActionBtnPrimary]}
-              activeOpacity={0.7}
-              onPress={() => { closeEmailDetail(); openCompose('reply', selectedEmail); }}
-            >
-              <Ionicons name="arrow-undo" size={14} color="#fff" />
-              <Text style={styles.emailModalActionBtnTextPrimary}>Reply</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.emailModalActionBtn}
-              activeOpacity={0.7}
-              onPress={() => { closeEmailDetail(); openCompose('replyAll', selectedEmail); }}
-            >
-              <Ionicons name="arrow-undo" size={14} color={Colors.text.secondary} />
-              <Text style={styles.emailModalActionBtnText}>Reply All</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.emailModalActionBtn}
-              activeOpacity={0.7}
-              onPress={() => { closeEmailDetail(); openCompose('forward', selectedEmail); }}
-            >
-              <Ionicons name="arrow-redo" size={14} color={Colors.text.secondary} />
-              <Text style={styles.emailModalActionBtnText}>Forward</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+          </Animated.View>
+        )}
+
+        {/* ── Floating reply FAB ── */}
+        <LinearGradient
+          colors={['#D97706', '#B45309']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.emailReplyFab}
+        >
+          <TouchableOpacity
+            onPress={toggleReplyPopup}
+            activeOpacity={0.82}
+            style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name={replyPopupOpen ? 'close' : 'arrow-undo-outline'} size={22} color="#fff" />
+          </TouchableOpacity>
+        </LinearGradient>
       </Animated.View>
     );
     return isDesktop
@@ -3841,7 +3875,7 @@ const styles = StyleSheet.create({
   emailFullBodyContent: {
     paddingHorizontal: isWideScreen ? 56 : 22,
     paddingTop: 32,
-    paddingBottom: 200,
+    paddingBottom: 100,
     ...(isWideScreen ? { maxWidth: 720, alignSelf: 'center' as const, width: '100%' } : {}),
   } as any,
   emailFullSenderBlock: {
@@ -3898,26 +3932,56 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     fontFamily: '-apple-system',
   },
-  emailFullFooter: {
+  emailReplyFab: {
     position: 'absolute' as const,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(10,10,12,0.96)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
-    paddingTop: 14,
-    paddingBottom: 32,
-    paddingHorizontal: isWideScreen ? 56 : 20,
-    ...(isWeb ? { backdropFilter: 'blur(20px)' } : {}),
+    bottom: 28,
+    right: isWideScreen ? 32 : 20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    zIndex: 20,
+    ...(isWeb ? { boxShadow: '0 4px 20px rgba(217,119,6,0.45)' } : { elevation: 8 }),
+    overflow: 'hidden' as const,
   } as any,
-  emailFullSmartScroll: {
-    gap: 8,
-    paddingBottom: 12,
+  emailReplyPopup: {
+    position: 'absolute' as const,
+    bottom: 92,
+    right: isWideScreen ? 32 : 20,
+    width: 210,
+    backgroundColor: 'rgba(16,16,18,0.97)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    zIndex: 20,
+    overflow: 'hidden' as const,
+    ...(isWeb ? { backdropFilter: 'blur(24px)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' } : { elevation: 12 }),
+  } as any,
+  emailReplyPopupPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
   },
-  emailFullActions: {
+  emailReplyPopupPillText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '500' as const,
+  },
+  emailReplyPopupDivider: {
+    height: 0.5,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  emailReplyPopupRow: {
     flexDirection: 'row' as const,
-    gap: 8,
+    alignItems: 'center' as const,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  emailReplyPopupRowText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '400' as const,
   },
   emailModalOverlay: {
     ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
