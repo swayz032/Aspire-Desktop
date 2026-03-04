@@ -27,6 +27,25 @@ export function setupTtsWebSocket(httpServer: Server): void {
     const voiceId = url.searchParams.get('voice_id');
     const model = url.searchParams.get('model') || 'eleven_flash_v2_5';
     const inactivityTimeout = url.searchParams.get('inactivity_timeout') || '180';
+    const stabilityRaw = url.searchParams.get('stability');
+    const similarityRaw = url.searchParams.get('similarity_boost');
+    const styleRaw = url.searchParams.get('style');
+    const speedRaw = url.searchParams.get('speed');
+    const speakerBoostRaw = url.searchParams.get('use_speaker_boost');
+
+    const asNumber = (v: string | null): number | undefined => {
+      if (!v) return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const stability = asNumber(stabilityRaw);
+    const similarityBoost = asNumber(similarityRaw);
+    const style = asNumber(styleRaw);
+    const speed = asNumber(speedRaw);
+    const useSpeakerBoost =
+      speakerBoostRaw === 'true' ? true
+      : speakerBoostRaw === 'false' ? false
+      : undefined;
 
     if (!voiceId) {
       clientWs.close(4000, 'voice_id query parameter required');
@@ -62,7 +81,17 @@ export function setupTtsWebSocket(httpServer: Server): void {
       // The multi-stream-input endpoint requires { "text": " " } (single space)
       // as the FIRST message to initialize the connection. Without this,
       // ElevenLabs rejects subsequent messages and may close the socket.
-      upstreamWs.send(JSON.stringify({ text: ' ' }));
+      const initPayload: Record<string, unknown> = { text: ' ' };
+      const voiceSettings: Record<string, unknown> = {};
+      if (typeof stability === 'number') voiceSettings.stability = stability;
+      if (typeof similarityBoost === 'number') voiceSettings.similarity_boost = similarityBoost;
+      if (typeof style === 'number') voiceSettings.style = style;
+      if (typeof speed === 'number') voiceSettings.speed = speed;
+      if (typeof useSpeakerBoost === 'boolean') voiceSettings.use_speaker_boost = useSpeakerBoost;
+      if (Object.keys(voiceSettings).length > 0) {
+        initPayload.voice_settings = voiceSettings;
+      }
+      upstreamWs.send(JSON.stringify(initPayload));
 
       // Signal client that connection is live
       if (clientWs.readyState === WebSocket.OPEN) {

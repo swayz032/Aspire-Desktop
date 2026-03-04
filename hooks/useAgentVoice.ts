@@ -599,6 +599,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     const ttsWs = new TtsWebSocket({
       voiceId: voiceConfig.voiceId,
       model: voiceConfig.model,
+      voiceSettings: voiceConfig.voiceSettings,
       onAudio: (contextId, chunk) => {
         // Accumulate audio chunks for the context
         const existing = audioChunksRef.current.get(contextId);

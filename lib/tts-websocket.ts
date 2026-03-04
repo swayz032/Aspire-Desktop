@@ -19,6 +19,13 @@
 export interface TtsWsOptions {
   voiceId: string;
   model?: string;
+  voiceSettings?: {
+    stability?: number;
+    similarity_boost?: number;
+    style?: number;
+    use_speaker_boost?: boolean;
+    speed?: number;
+  };
   onAudio: (contextId: string, audioChunk: Uint8Array) => void;
   onContextDone: (contextId: string) => void;
   onConnected: () => void;
@@ -30,12 +37,14 @@ export class TtsWebSocket {
   private ws: WebSocket | null = null;
   private voiceId: string;
   private model: string;
+  private voiceSettings: TtsWsOptions['voiceSettings'];
   private callbacks: TtsWsOptions;
   private contextCounter = 0;
 
   constructor(options: TtsWsOptions) {
     this.voiceId = options.voiceId;
     this.model = options.model || 'eleven_flash_v2_5';
+    this.voiceSettings = options.voiceSettings;
     this.callbacks = options;
   }
 
@@ -46,7 +55,17 @@ export class TtsWebSocket {
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${protocol}//${window.location.host}/ws/tts?voice_id=${encodeURIComponent(this.voiceId)}&model=${encodeURIComponent(this.model)}`;
+      const qs = new URLSearchParams({
+        voice_id: this.voiceId,
+        model: this.model,
+      });
+      if (typeof this.voiceSettings?.stability === 'number') qs.set('stability', String(this.voiceSettings.stability));
+      if (typeof this.voiceSettings?.similarity_boost === 'number') qs.set('similarity_boost', String(this.voiceSettings.similarity_boost));
+      if (typeof this.voiceSettings?.style === 'number') qs.set('style', String(this.voiceSettings.style));
+      if (typeof this.voiceSettings?.speed === 'number') qs.set('speed', String(this.voiceSettings.speed));
+      if (typeof this.voiceSettings?.use_speaker_boost === 'boolean') qs.set('use_speaker_boost', this.voiceSettings.use_speaker_boost ? 'true' : 'false');
+
+      const url = `${protocol}//${window.location.host}/ws/tts?${qs.toString()}`;
 
       this.ws = new WebSocket(url);
 

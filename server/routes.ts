@@ -1486,6 +1486,22 @@ const VOICE_IDS: Record<string, string> = {
   sarah: 'DODLEQrClDo8wCz460ld',
 };
 
+const VOICE_MODELS: Record<string, string> = {
+  ava: 'eleven_flash_v2_5',
+  eli: 'eleven_flash_v2_5',
+  finn: 'eleven_flash_v2_5',
+  nora: 'eleven_flash_v2_5',
+  sarah: 'eleven_flash_v2_5',
+};
+
+const VOICE_SETTINGS: Record<string, { stability: number; similarity_boost: number; style: number; use_speaker_boost: boolean; speed: number }> = {
+  ava: { stability: 0.42, similarity_boost: 0.88, style: 0.18, use_speaker_boost: true, speed: 1.0 },
+  eli: { stability: 0.36, similarity_boost: 0.92, style: 0.22, use_speaker_boost: true, speed: 1.0 },
+  finn: { stability: 0.44, similarity_boost: 0.9, style: 0.16, use_speaker_boost: true, speed: 1.0 },
+  nora: { stability: 0.4, similarity_boost: 0.9, style: 0.18, use_speaker_boost: true, speed: 1.0 },
+  sarah: { stability: 0.46, similarity_boost: 0.86, style: 0.14, use_speaker_boost: true, speed: 1.0 },
+};
+
 /**
  * Parse ElevenLabs API error responses into actionable client messages.
  * ElevenLabs returns: { detail: { type, code, message, request_id } }
@@ -1519,7 +1535,7 @@ function parseElevenLabsError(body: string, httpStatus: number): { code: string;
 
 router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
   try {
-    const { agent, text, voiceId } = req.body;
+    const { agent, text, voiceId, model, voiceSettings } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
       logger.warn('[TTS] ELEVENLABS_API_KEY is missing — voice synthesis disabled');
@@ -1528,6 +1544,11 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     logger.info('[TTS] Request', { agent, textLength: text?.length ?? 0 });
 
     const resolvedVoiceId = voiceId || VOICE_IDS[agent];
+    const resolvedModel = model || VOICE_MODELS[agent] || 'eleven_flash_v2_5';
+    const resolvedVoiceSettings = {
+      ...(VOICE_SETTINGS[agent] || { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true, speed: 1.0 }),
+      ...(voiceSettings && typeof voiceSettings === 'object' ? voiceSettings : {}),
+    };
     if (!resolvedVoiceId) {
       return res.status(400).json({ error: `Unknown agent: ${agent}` });
     }
@@ -1547,11 +1568,8 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
         },
         body: JSON.stringify({
           text: text.trim(),
-          model_id: 'eleven_flash_v2_5',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-          },
+          model_id: resolvedModel,
+          voice_settings: resolvedVoiceSettings,
         }),
       }
     );
@@ -1575,13 +1593,18 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
 
 router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) => {
   try {
-    const { agent, text, voiceId } = req.body;
+    const { agent, text, voiceId, model, voiceSettings } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
       return res.status(500).json({ error: 'Voice synthesis service not configured' });
     }
 
     const resolvedVoiceId = voiceId || VOICE_IDS[agent];
+    const resolvedModel = model || VOICE_MODELS[agent] || 'eleven_flash_v2_5';
+    const resolvedVoiceSettings = {
+      ...(VOICE_SETTINGS[agent] || { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true, speed: 1.0 }),
+      ...(voiceSettings && typeof voiceSettings === 'object' ? voiceSettings : {}),
+    };
     if (!resolvedVoiceId) {
       return res.status(400).json({ error: `Unknown agent: ${agent}` });
     }
@@ -1601,11 +1624,8 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
         },
         body: JSON.stringify({
           text: text.trim(),
-          model_id: 'eleven_flash_v2_5',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-          },
+          model_id: resolvedModel,
+          voice_settings: resolvedVoiceSettings,
         }),
       }
     );

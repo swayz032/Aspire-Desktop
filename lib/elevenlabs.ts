@@ -16,6 +16,14 @@ export interface VoiceConfig {
   voiceId: string;
   /** Voice model to use */
   model: string;
+  /** Optional voice tuning for more natural delivery */
+  voiceSettings?: {
+    stability?: number;
+    similarity_boost?: number;
+    style?: number;
+    use_speaker_boost?: boolean;
+    speed?: number;
+  };
 }
 
 /**
@@ -27,26 +35,61 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
     name: 'Ava',
     voiceId: 'uYXf8XasLslADfZ2MB4u',
     model: 'eleven_flash_v2_5',
+    voiceSettings: {
+      stability: 0.42,
+      similarity_boost: 0.88,
+      style: 0.18,
+      use_speaker_boost: true,
+      speed: 1.0,
+    },
   },
   eli: {
     name: 'Eli',
     voiceId: 'c6kFzbpMaJ8UMD5P6l72',
     model: 'eleven_flash_v2_5',
+    voiceSettings: {
+      stability: 0.36,
+      similarity_boost: 0.92,
+      style: 0.22,
+      use_speaker_boost: true,
+      speed: 1.0,
+    },
   },
   finn: {
     name: 'Finn',
     voiceId: 's3TPKV1kjDlVtZbl4Ksh',
     model: 'eleven_flash_v2_5',
+    voiceSettings: {
+      stability: 0.44,
+      similarity_boost: 0.9,
+      style: 0.16,
+      use_speaker_boost: true,
+      speed: 1.0,
+    },
   },
   nora: {
     name: 'Nora',
     voiceId: '6aDn1KB0hjpdcocrUkmq',
     model: 'eleven_flash_v2_5',
+    voiceSettings: {
+      stability: 0.4,
+      similarity_boost: 0.9,
+      style: 0.18,
+      use_speaker_boost: true,
+      speed: 1.0,
+    },
   },
   sarah: {
     name: 'Sarah',
     voiceId: 'DODLEQrClDo8wCz460ld',
     model: 'eleven_flash_v2_5',
+    voiceSettings: {
+      stability: 0.46,
+      similarity_boost: 0.86,
+      style: 0.14,
+      use_speaker_boost: true,
+      speed: 1.0,
+    },
   },
 };
 
@@ -86,13 +129,16 @@ export async function speakText(
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`;
     }
+    const config = getVoiceConfig(agent);
     const resp = await fetch('/api/elevenlabs/tts', {
       method: 'POST',
       headers,
       body: JSON.stringify({
         agent,
         text,
-        voiceId: getVoiceId(agent),
+        voiceId: config.voiceId,
+        model: config.model,
+        voiceSettings: config.voiceSettings,
       }),
     });
     if (!resp.ok) {
@@ -125,13 +171,16 @@ export async function streamSpeak(
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`;
     }
+    const config = getVoiceConfig(agent);
     const resp = await fetch('/api/elevenlabs/tts/stream', {
       method: 'POST',
       headers,
       body: JSON.stringify({
         agent,
         text,
-        voiceId: getVoiceId(agent),
+        voiceId: config.voiceId,
+        model: config.model,
+        voiceSettings: config.voiceSettings,
       }),
     });
     if (!resp.ok || !resp.body) return null;
