@@ -18,7 +18,7 @@ import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
-import { EliVoiceChatPanel, type EliMessage } from '@/components/inbox/EliVoiceChatPanel';
+import { AgentWidget } from '@/components/canvas/widgets/AgentWidget';
 import type { AgentActivityEvent } from '@/components/chat';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
@@ -26,6 +26,7 @@ const finnAvatar = require('@/assets/avatars/finn.png');
 const inboxHero = require('@/assets/images/inbox-hero.jpg');
 
 type TabType = 'office' | 'calls' | 'mail' | 'contacts';
+type EliMessage = { id: string; from: 'user' | 'eli'; text: string; ts: number };
 
 function getMailBody(item: MailThread, detail?: MailDetail | null): string {
   if (detail?.messages?.length) {
@@ -2347,19 +2348,12 @@ export default function InboxScreen() {
             <TouchableOpacity style={styles.eliVoiceClose} onPress={closeEliVoiceModal} activeOpacity={0.7}>
               <Ionicons name="close" size={20} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
-            {/* Eli chat UI wired to useAgentVoice (ElevenLabs STT/TTS) */}
-            <EliVoiceChatPanel
-              visible
-              embedded
-              onClose={closeEliVoiceModal}
-              voiceActive={eliVoiceActive}
-              transcript={eliTranscript}
-              triagedCount={eliTriagedCount}
-              onMicPress={handleEliMicPress}
-              onSendMessage={handleEliSendMessage}
-              micPulseAnim={eliMicPulse}
-              messages={eliMessages}
-              activeRun={eliRun}
+            <AgentWidget
+              agentId="eli"
+              suiteId={suiteId ?? ''}
+              officeId={suiteId ?? ''}
+              voiceStatus={eliVoiceActive ? 'listening' : 'idle'}
+              onPrimaryAction={handleEliMicPress}
             />
           </Animated.View>
         </Animated.View>
