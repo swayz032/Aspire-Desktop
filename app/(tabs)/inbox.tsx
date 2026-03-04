@@ -967,7 +967,6 @@ export default function InboxScreen() {
   const emailPageFadeAnim = useRef(new Animated.Value(0)).current;
 
   const [eliVoiceModalOpen, setEliVoiceModalOpen] = useState(false);
-  const [eliVoiceChatOpen, setEliVoiceChatOpen] = useState(false);
   const eliModalSlideAnim = useRef(new Animated.Value(80)).current;
   const eliModalOpacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -986,6 +985,27 @@ export default function InboxScreen() {
 
   const { suiteId, session } = useSupabase();
 
+  const appendEliRunEvent = useCallback(
+    (
+      partial: Pick<AgentActivityEvent, 'label'> &
+        Partial<Pick<AgentActivityEvent, 'type' | 'status' | 'icon' | 'timestamp'>>,
+    ) => {
+      const mapped: AgentActivityEvent = {
+        id: `eli_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: partial.type || 'step',
+        label: partial.label,
+        status: partial.status || 'completed',
+        timestamp: partial.timestamp || Date.now(),
+        icon: partial.icon as any,
+      };
+      setEliRun(prev => {
+        if (!prev) return { events: [mapped], status: 'running' };
+        return { ...prev, events: [...prev.events, mapped] };
+      });
+    },
+    [],
+  );
+
   const eliVoice = useAgentVoice({
     agent: 'eli',
     suiteId: suiteId ?? undefined,
@@ -1000,13 +1020,27 @@ export default function InboxScreen() {
     onResponse: (text) => {
       setEliTranscript(text);
       setEliMessages(prev => [...prev, { id: String(Date.now()), from: 'eli', text, ts: Date.now() }]);
-      setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
+      setEliRun(prev => {
+        if (!prev || prev.events.length === 0) {
+          return {
+            events: [{
+              id: `eli_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              type: 'done',
+              label: 'Response drafted and ready.',
+              status: 'completed',
+              timestamp: Date.now(),
+              icon: 'checkmark-circle',
+            } as any],
+            status: 'completed',
+          };
+        }
+        return { ...prev, status: 'completed' };
+      });
     },
     onActivityEvent: (event) => {
       const message = event.message?.trim();
       if (!message) return;
-      const mapped: AgentActivityEvent = {
-        id: `eli_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      appendEliRunEvent({
         type: (event.type as AgentActivityEvent['type']) || 'step',
         label: message,
         status:
@@ -1019,15 +1053,17 @@ export default function InboxScreen() {
             : 'completed',
         timestamp: event.timestamp || Date.now(),
         icon: event.icon as any,
-      };
-      setEliRun(prev => {
-        if (!prev) return { events: [mapped], status: 'running' };
-        return { ...prev, events: [...prev.events, mapped] };
       });
     },
     onError: (error) => {
       console.error('Eli voice error:', error);
       setEliVoiceActive(false);
+      appendEliRunEvent({
+        type: 'error',
+        label: 'Voice pipeline error. Eli can retry now.',
+        status: 'error',
+        icon: 'alert-circle',
+      });
       setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
     },
   });
@@ -1061,7 +1097,17 @@ export default function InboxScreen() {
 
   const handleEliSendMessage = useCallback(async (text: string) => {
     setEliMessages(prev => [...prev, { id: String(Date.now()), from: 'user', text, ts: Date.now() }]);
-    setEliRun({ events: [], status: 'running' });
+    setEliRun({
+      events: [{
+        id: `eli_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: 'thinking',
+        label: 'Understanding your request...',
+        status: 'active',
+        timestamp: Date.now(),
+        icon: 'sparkles',
+      } as any],
+      status: 'running',
+    });
     if (!session?.access_token) {
       setEliMessages(prev => [
         ...prev,
@@ -1078,9 +1124,15 @@ export default function InboxScreen() {
         ...prev,
         { id: String(Date.now() + 2), from: 'eli', text: `I couldn't process that: ${msg}`, ts: Date.now() },
       ]);
+      appendEliRunEvent({
+        type: 'error',
+        label: `Error: ${msg}`,
+        status: 'error',
+        icon: 'alert-circle',
+      });
       setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
     }
-  }, [eliVoice, session?.access_token]);
+  }, [eliVoice, session?.access_token, appendEliRunEvent]);
 
   const fetchMailDetail = useCallback(async (threadId: string) => {
     setMailDetailLoading(true);
@@ -1495,7 +1547,6 @@ export default function InboxScreen() {
 
   const openEliVoiceModal = useCallback(() => {
     setEliVoiceModalOpen(true);
-    setEliVoiceChatOpen(true);
     eliModalSlideAnim.setValue(80);
     eliModalOpacityAnim.setValue(0);
     Animated.parallel([
@@ -1511,7 +1562,6 @@ export default function InboxScreen() {
       Animated.timing(eliModalOpacityAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => {
       setEliVoiceModalOpen(false);
-      setEliVoiceChatOpen(false);
     });
   }, [eliModalSlideAnim, eliModalOpacityAnim, eliVoiceActive, eliVoice]);
 
@@ -2298,21 +2348,19 @@ export default function InboxScreen() {
               <Ionicons name="close" size={20} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
             {/* Eli chat UI wired to useAgentVoice (ElevenLabs STT/TTS) */}
-            {eliVoiceChatOpen && (
-              <EliVoiceChatPanel
-                visible
-                embedded
-                onClose={closeEliVoiceModal}
-                voiceActive={eliVoiceActive}
-                transcript={eliTranscript}
-                triagedCount={eliTriagedCount}
-                onMicPress={handleEliMicPress}
-                onSendMessage={handleEliSendMessage}
-                micPulseAnim={eliMicPulse}
-                messages={eliMessages}
-                activeRun={eliRun}
-              />
-            )}
+            <EliVoiceChatPanel
+              visible
+              embedded
+              onClose={closeEliVoiceModal}
+              voiceActive={eliVoiceActive}
+              transcript={eliTranscript}
+              triagedCount={eliTriagedCount}
+              onMicPress={handleEliMicPress}
+              onSendMessage={handleEliSendMessage}
+              micPulseAnim={eliMicPulse}
+              messages={eliMessages}
+              activeRun={eliRun}
+            />
           </Animated.View>
         </Animated.View>
       )}
