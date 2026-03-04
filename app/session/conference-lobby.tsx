@@ -145,7 +145,7 @@ function injectLobbyKeyframes() {
 }
 
 const CONFERENCE_ROOM_IMAGE = require('@/assets/images/conference-room-meeting.jpg');
-const TEAM_MEETING_IMAGE = require('@/assets/images/executive-conference.jpg');
+const TEAM_MEETING_IMAGE = require('@/assets/images/session-lobby-hero.jpg');
 const NORA_AVATAR = require('@/assets/images/nora-avatar.png');
 
 const PURPOSE_OPTIONS: { id: SessionPurpose; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
