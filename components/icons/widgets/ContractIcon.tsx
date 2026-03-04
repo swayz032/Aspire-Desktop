@@ -11,11 +11,6 @@ export function ContractIcon({ size = 28, color = '#FFFFFF' }: ContractIconProps
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M6 2h8l4 4v16H6V2z"
-        fill={color}
-        fillOpacity={0.15}
-      />
-      <Path
-        d="M6 2h8l4 4v16H6V2z"
         stroke={color}
         strokeWidth="1.5"
         strokeLinejoin="round"

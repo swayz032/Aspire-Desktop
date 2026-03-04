@@ -11,11 +11,6 @@ export function InvoiceIcon({ size = 28, color = '#FFFFFF' }: InvoiceIconProps) 
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M6 2h8l6 6v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"
-        fill={color}
-        fillOpacity={0.15}
-      />
-      <Path
-        d="M6 2h8l6 6v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"
         stroke={color}
         strokeWidth="1.5"
       />

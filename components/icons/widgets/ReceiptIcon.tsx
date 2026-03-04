@@ -11,11 +11,6 @@ export function ReceiptIcon({ size = 28, color = '#FFFFFF' }: ReceiptIconProps) 
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M5 2h14v20l-2.5-1.5L14 22l-2-1.5L10 22l-2.5-1.5L5 22V2z"
-        fill={color}
-        fillOpacity={0.15}
-      />
-      <Path
-        d="M5 2h14v20l-2.5-1.5L14 22l-2-1.5L10 22l-2.5-1.5L5 22V2z"
         stroke={color}
         strokeWidth="1.5"
         strokeLinejoin="round"

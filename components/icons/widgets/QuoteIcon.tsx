@@ -11,11 +11,6 @@ export function QuoteIcon({ size = 28, color = '#FFFFFF' }: QuoteIconProps) {
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
         d="M4 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2h-4l-4 4v-4H6a2 2 0 01-2-2V5z"
-        fill={color}
-        fillOpacity={0.15}
-      />
-      <Path
-        d="M4 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2h-4l-4 4v-4H6a2 2 0 01-2-2V5z"
         stroke={color}
         strokeWidth="1.5"
       />

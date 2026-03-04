@@ -285,19 +285,17 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
   }, [onPress]);
 
   const gradientColors = CanvasTokens.iconGradients[widget.id] || ['#3B82F6', '#2563EB'];
+  const iconColor = gradientColors[0];
 
-  const iconTileWebStyle = Platform.OS === 'web'
-    ? ({
-        backgroundImage: `linear-gradient(135deg, ${gradientColors[0]} 0%, ${gradientColors[1]} 100%)`,
-        boxShadow: isHovered
-          ? CanvasTokens.dock.iconShadowHover
-          : CanvasTokens.dock.iconShadow,
-      } as any)
-    : { backgroundColor: gradientColors[0] };
+  const icon3DFilter = Platform.OS === 'web'
+    ? isHovered
+      ? (`drop-shadow(0 5px 0px rgba(0,0,0,0.75)) drop-shadow(0 10px 20px rgba(0,0,0,0.65)) drop-shadow(0 0 18px ${iconColor}99)` as any)
+      : (`drop-shadow(0 3px 0px rgba(0,0,0,0.65)) drop-shadow(0 6px 14px rgba(0,0,0,0.55)) drop-shadow(0 0 10px ${iconColor}66)` as any)
+    : undefined;
 
   const voiceGlowWebStyle = Platform.OS === 'web' && isVoiceActive
     ? ({
-        boxShadow: `0 0 16px 4px ${gradientColors[0]}88, 0 0 32px 8px ${gradientColors[0]}44`,
+        boxShadow: `0 0 16px 4px ${iconColor}88, 0 0 32px 8px ${iconColor}44`,
       } as any)
     : {};
 
@@ -336,8 +334,10 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
             pointerEvents="none"
           />
         )}
-        <View style={[styles.iconTile, iconTileWebStyle]}>
-          <View style={styles.iconHighlight} pointerEvents="none" />
+        <View
+          style={styles.iconTile}
+          {...(Platform.OS === 'web' ? { style: [styles.iconTile, { filter: icon3DFilter } as any] } : {})}
+        >
           {widget.avatarImage ? (
             <Image
               source={widget.avatarImage}
@@ -345,13 +345,13 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
               resizeMode="cover"
             />
           ) : IconComponent ? (
-            <IconComponent size={28} color="#FFFFFF" />
+            <IconComponent size={40} color={iconColor} />
           ) : null}
         </View>
       </Animated.View>
 
       {isActive && <View style={styles.activeDot} />}
-      {isVoiceActive && <View style={[styles.activeDot, { backgroundColor: gradientColors[0] }]} />}
+      {isVoiceActive && <View style={[styles.activeDot, { backgroundColor: iconColor }]} />}
     </Pressable>
   );
 }
@@ -650,28 +650,10 @@ const styles = StyleSheet.create({
   iconTile: {
     width: CanvasTokens.dock.iconSize,
     height: CanvasTokens.dock.iconSize,
-    borderRadius: CanvasTokens.dock.iconRadius,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    overflow: 'hidden',
-  },
-
-  iconHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '50%',
-    borderTopLeftRadius: CanvasTokens.dock.iconRadius,
-    borderTopRightRadius: CanvasTokens.dock.iconRadius,
-    zIndex: 2,
-    ...(Platform.OS === 'web'
-      ? ({
-          backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.05) 60%, transparent 100%)',
-          pointerEvents: 'none',
-        } as any)
-      : { backgroundColor: 'rgba(255,255,255,0.12)' }),
+    backgroundColor: 'transparent',
   },
 
   avatarImage: {

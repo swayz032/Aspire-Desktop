@@ -9,7 +9,6 @@ interface CalendarIconProps {
 export function CalendarIcon({ size = 28, color = '#FFFFFF' }: CalendarIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Rect x="3" y="4" width="18" height="18" rx="3" fill={color} fillOpacity={0.15} />
       <Rect x="3" y="4" width="18" height="18" rx="3" stroke={color} strokeWidth="1.5" />
       <Path d="M3 9h18" stroke={color} strokeWidth="1.5" />
       <Path d="M8 2.5v3M16 2.5v3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
