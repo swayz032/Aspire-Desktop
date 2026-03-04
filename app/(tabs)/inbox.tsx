@@ -18,7 +18,7 @@ import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
-import { EliVoiceChatPanel } from '@/components/inbox/EliVoiceChatPanel';
+import { EliVoiceChatPanel, type EliMessage } from '@/components/inbox/EliVoiceChatPanel';
 import type { AgentActivityEvent } from '@/components/chat';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
@@ -26,7 +26,6 @@ const finnAvatar = require('@/assets/avatars/finn.png');
 const inboxHero = require('@/assets/images/inbox-hero.jpg');
 
 type TabType = 'office' | 'calls' | 'mail' | 'contacts';
-type EliMessage = { id: string; from: 'user' | 'eli'; text: string; ts: number };
 
 function getMailBody(item: MailThread, detail?: MailDetail | null): string {
   if (detail?.messages?.length) {

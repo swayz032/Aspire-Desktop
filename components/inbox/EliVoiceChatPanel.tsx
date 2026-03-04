@@ -48,7 +48,6 @@ const isWeb = Platform.OS === 'web';
 const ELI_AMBER = Canvas.halo.desk.eli.hex;
 const ELI_AMBER_RING = Canvas.halo.desk.eli.ring;
 const eliAvatar: ImageSourcePropType = require('@/assets/avatars/eli-avatar.png');
-const ELI_ORB_VIDEO = '/eli-orb.mp4';
 
 function ShimmeringText({ text }: { text: string }) {
   const shimmer = useRef(new Animated.Value(0)).current;
@@ -79,7 +78,6 @@ function ShimmeringText({ text }: { text: string }) {
 function EliOrb({ voiceActive, size = 40 }: { voiceActive: boolean; size?: number }) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0.3)).current;
-  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     if (voiceActive) {
@@ -104,14 +102,6 @@ function EliOrb({ voiceActive, size = 40 }: { voiceActive: boolean; size?: numbe
     }
   }, [voiceActive, pulseAnim, glowAnim]);
 
-  useEffect(() => {
-    if (!isWeb || !videoRef.current) return;
-    videoRef.current.muted = true;
-    videoRef.current.loop = true;
-    videoRef.current.playsInline = true;
-    videoRef.current.play().catch(() => {});
-  }, []);
-
   return (
     <Animated.View style={[
       styles.orb,
@@ -123,32 +113,9 @@ function EliOrb({ voiceActive, size = 40 }: { voiceActive: boolean; size?: numbe
         { width: size - 4, height: size - 4, borderRadius: (size - 4) / 2 },
         { opacity: glowAnim },
       ]} />
-      {isWeb ? (
-        <div
-          style={{
-            width: size - 8,
-            height: size - 8,
-            borderRadius: '50%',
-            overflow: 'hidden',
-            position: 'relative',
-            border: `1px solid ${ELI_AMBER_RING}`,
-          }}
-        >
-          <video
-            ref={videoRef as any}
-            src={ELI_ORB_VIDEO}
-            autoPlay
-            loop
-            muted
-            playsInline
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          />
-        </div>
-      ) : (
-        <View style={[styles.orbCore, { width: size - 8, height: size - 8, borderRadius: (size - 8) / 2 }]}>
-          <Image source={eliAvatar} style={{ width: size - 12, height: size - 12, borderRadius: (size - 12) / 2 }} />
-        </View>
-      )}
+      <View style={[styles.orbCore, { width: size - 8, height: size - 8, borderRadius: (size - 8) / 2 }]}>
+        <Image source={eliAvatar} style={{ width: size - 12, height: size - 12, borderRadius: (size - 12) / 2 }} />
+      </View>
     </Animated.View>
   );
 }
@@ -271,13 +238,6 @@ export function EliVoiceChatPanel({
             <Ionicons name="close" size={18} color={Colors.text.tertiary} />
           </TouchableOpacity>
         </View>
-      </View>
-
-      <View style={styles.heroOrbSection}>
-        <EliOrb voiceActive={voiceActive} size={112} />
-        <Text style={styles.heroOrbLabel}>
-          {isConnected ? 'Eli is listening' : 'Eli ready'}
-        </Text>
       </View>
 
       <ScrollView
@@ -497,17 +457,6 @@ const styles = StyleSheet.create({
 
   messageArea: {
     flex: 1,
-  },
-  heroOrbSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 10,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  heroOrbLabel: {
-    fontSize: 12,
-    color: Colors.text.muted,
   },
   messageContent: {
     paddingHorizontal: 16,
