@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import crypto from 'crypto';
 import routes from './routes';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
@@ -75,6 +76,13 @@ function isPublicPath(path: string): boolean {
   return PUBLIC_PATHS.some(p => path.startsWith(p)) || !path.startsWith('/api');
 }
 
+function secureTokenEquals(left: string, right: string): boolean {
+  const leftBuf = Buffer.from((left || '').trim());
+  const rightBuf = Buffer.from((right || '').trim());
+  if (!leftBuf.length || !rightBuf.length || leftBuf.length !== rightBuf.length) return false;
+  return crypto.timingSafeEqual(leftBuf, rightBuf);
+}
+
 const DEV_BYPASS_AUTH = process.env.NODE_ENV !== 'production' && !process.env.SUPABASE_URL;
 const DEV_SUITE_ID = 'dev-suite-00000000-0000-0000-0000-000000000000';
 const DEV_USER_ID = 'dev-user-00000000-0000-0000-0000-000000000000';
@@ -114,6 +122,28 @@ app.use(async (req, res, next) => {
     }
 
     const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const s2sSecrets = [
+      process.env.S2S_HMAC_SECRET_ACTIVE,
+      process.env.DOMAIN_RAIL_HMAC_SECRET,
+      process.env.S2S_HMAC_SECRET,
+    ].filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
+    const isS2SIntentRoute = req.method === 'POST' && req.path === '/api/orchestrator/intent';
+    const headerSuiteId = typeof req.headers['x-suite-id'] === 'string' ? req.headers['x-suite-id'].trim() : '';
+    const headerOfficeId = typeof req.headers['x-office-id'] === 'string' ? req.headers['x-office-id'].trim() : '';
+    const isValidS2S = !!bearerToken && s2sSecrets.some((secret) => secureTokenEquals(bearerToken, secret));
+
+    if (isS2SIntentRoute && isValidS2S && headerSuiteId) {
+      const applied = await applyTenantContext(headerSuiteId);
+      if (!applied) {
+        logger.warn('S2S request continuing without DB tenant context', { path: req.path, suite_id: headerSuiteId });
+      }
+      (req as any).authenticatedUserId = 'n8n-service';
+      (req as any).authenticatedSuiteId = headerSuiteId;
+      (req as any).authenticatedOfficeId = headerOfficeId || headerSuiteId;
+      return next();
+    }
+
     if (!authHeader?.startsWith('Bearer ')) {
       return res.status(401).json({
         error: 'AUTH_REQUIRED',
@@ -122,7 +152,7 @@ app.use(async (req, res, next) => {
     }
 
     // JWT present: validate and extract suite_id
-    const token = authHeader.slice(7);
+    const token = bearerToken;
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
     if (error || !user) {
       return res.status(401).json({
@@ -133,16 +163,16 @@ app.use(async (req, res, next) => {
 
     const suiteId = user.user_metadata?.suite_id || defaultSuiteId;
 
-    const headerSuiteId = req.headers['x-suite-id'] as string | undefined;
-    if (headerSuiteId && suiteId && headerSuiteId !== suiteId) {
-      logger.error('TENANT_ISOLATION_VIOLATION: x-suite-id header mismatch', { header_suite_id: headerSuiteId, jwt_suite_id: suiteId, user_id: user.id });
+    const jwtHeaderSuiteId = req.headers['x-suite-id'] as string | undefined;
+    if (jwtHeaderSuiteId && suiteId && jwtHeaderSuiteId !== suiteId) {
+      logger.error('TENANT_ISOLATION_VIOLATION: x-suite-id header mismatch', { header_suite_id: jwtHeaderSuiteId, jwt_suite_id: suiteId, user_id: user.id });
       try {
         const { createReceipt } = require('./receiptService');
         await createReceipt({
           suiteId: 'system',
           officeId: 'system',
           actionType: 'auth.tenant_mismatch',
-          inputs: { header_suite_id: headerSuiteId, jwt_suite_id: suiteId, user_id: user.id },
+          inputs: { header_suite_id: jwtHeaderSuiteId, jwt_suite_id: suiteId, user_id: user.id },
           outputs: { reason: 'TENANT_ISOLATION_VIOLATION' },
           metadata: { source: 'rls_guard', risk_tier: 'red' },
         });
