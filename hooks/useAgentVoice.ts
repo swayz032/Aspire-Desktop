@@ -229,8 +229,25 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     if (typeof window === 'undefined') return true;
     if (audioUnlockedRef.current) return true;
     try {
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = 0.00001;
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.02);
+      }
+
+      // Keep probe unmuted; muted autoplay does not reliably unlock future audio.
       const probe = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAABCxAgAEABAAZGF0YQAAAAA=');
-      probe.muted = true;
+      probe.muted = false;
+      probe.volume = 0.00001;
       probe.playsInline = true;
       await probe.play();
       probe.pause();

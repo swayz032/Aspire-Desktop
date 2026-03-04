@@ -73,6 +73,49 @@ function normalizeSessionKey(raw: unknown): string {
     .replace(/^sess[:_-]/i, '');
 }
 
+type FetchRetryOptions = {
+  timeoutMs: number;
+  retries: number;
+  retryOnStatuses?: number[];
+  backoffMs?: number;
+};
+
+async function fetchWithTimeoutAndRetry(
+  url: string,
+  init: RequestInit,
+  options: FetchRetryOptions,
+): Promise<Response> {
+  const retryStatuses = new Set(options.retryOnStatuses || [429, 500, 502, 503, 504]);
+  const backoffMs = options.backoffMs ?? 250;
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= options.retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs);
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (attempt < options.retries && retryStatuses.has(response.status)) {
+        await new Promise((resolve) => setTimeout(resolve, backoffMs * (attempt + 1)));
+        continue;
+      }
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error;
+      if (attempt >= options.retries) break;
+      await new Promise((resolve) => setTimeout(resolve, backoffMs * (attempt + 1)));
+    }
+  }
+
+  if (lastError instanceof Error) throw lastError;
+  throw new Error('Upstream request failed');
+}
+
 // ─── Anam Session Store (CUSTOMER_CLIENT_V1 Auth Bridge) ───
 // When a user starts an Anam avatar session, we store their auth context.
 // When Anam's brain routing calls /api/ava/chat-stream (without JWT), we look up
@@ -1557,7 +1600,7 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing or empty text parameter' });
     }
 
-    const response = await fetch(
+    const response = await fetchWithTimeoutAndRetry(
       `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}`,
       {
         method: 'POST',
@@ -1571,7 +1614,8 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
           model_id: resolvedModel,
           voice_settings: resolvedVoiceSettings,
         }),
-      }
+      },
+      { timeoutMs: 20_000, retries: 1, retryOnStatuses: [429, 500, 502, 503, 504] },
     );
 
     if (!response.ok) {
@@ -1613,7 +1657,7 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
       return res.status(400).json({ error: 'Missing or empty text parameter' });
     }
 
-    const response = await fetch(
+    const response = await fetchWithTimeoutAndRetry(
       `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}/stream`,
       {
         method: 'POST',
@@ -1627,7 +1671,8 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
           model_id: resolvedModel,
           voice_settings: resolvedVoiceSettings,
         }),
-      }
+      },
+      { timeoutMs: 20_000, retries: 1, retryOnStatuses: [429, 500, 502, 503, 504] },
     );
 
     if (!response.ok || !response.body) {
@@ -2049,10 +2094,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     } : undefined;
 
     // Timeout enforcement — Gate 3: Reliability
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), ORCHESTRATOR_TIMEOUT_MS);
-
-    const response = await fetch(`${ORCHESTRATOR_URL}/v1/intents`, {
+    const response = await fetchWithTimeoutAndRetry(`${ORCHESTRATOR_URL}/v1/intents`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2069,10 +2111,11 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         channel: channel || 'voice',
         user_profile: profileContext,
       }),
-      signal: controller.signal,
+    }, {
+      timeoutMs: ORCHESTRATOR_TIMEOUT_MS,
+      retries: 1,
+      retryOnStatuses: [429, 500, 502, 503, 504],
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       orchestratorConsecutiveFailures++;

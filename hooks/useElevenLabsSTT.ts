@@ -50,13 +50,32 @@ export function useElevenLabsSTT(
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeRef = useRef(false);
   const sendingRef = useRef(false);
+  const mimeTypeRef = useRef('audio/webm;codecs=opus');
+
+  const resolveRecorderMimeType = useCallback((): string | null => {
+    if (typeof MediaRecorder === 'undefined') return null;
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+    ];
+    for (const mime of candidates) {
+      try {
+        if (MediaRecorder.isTypeSupported(mime)) return mime;
+      } catch {
+        // Continue fallback candidates.
+      }
+    }
+    return null;
+  }, []);
 
   /** Send accumulated audio chunks to server for transcription */
   const sendAudioForTranscription = useCallback(async () => {
     if (chunksRef.current.length === 0 || sendingRef.current) return;
 
     sendingRef.current = true;
-    const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
+    const audioBlob = new Blob(chunksRef.current, { type: mimeTypeRef.current || 'audio/webm' });
     chunksRef.current = [];
 
     // Skip tiny audio clips (likely just noise)
@@ -147,9 +166,11 @@ export function useElevenLabsSTT(
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus',
-      });
+      const preferredMime = resolveRecorderMimeType();
+      mimeTypeRef.current = preferredMime || '';
+      const mediaRecorder = preferredMime
+        ? new MediaRecorder(stream, { mimeType: preferredMime })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -178,7 +199,7 @@ export function useElevenLabsSTT(
       activeRef.current = false;
       stop();
     }
-  }, [stop, resetSilenceTimer]);
+  }, [stop, resetSilenceTimer, resolveRecorderMimeType]);
 
   // Cleanup on unmount
   useEffect(() => {
