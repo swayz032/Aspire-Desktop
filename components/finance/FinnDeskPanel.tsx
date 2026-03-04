@@ -334,7 +334,13 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       setIsSessionActive(false);
       // Classify and surface the error to the user
       const msg = error.message || String(error);
-      if (/autoplay|not allowed|play\(\)/i.test(msg)) {
+      if (/auth_required/i.test(msg)) {
+        showVoiceError('Session expired. Please sign in again.');
+      } else if (/circuit_open/i.test(msg)) {
+        showVoiceError('Finn Brain is warming back up. Try again in a few seconds.');
+      } else if (/orchestrator_timeout|timeout/i.test(msg)) {
+        showVoiceError('Finn took too long to respond. Please try again.');
+      } else if (/autoplay|not allowed|play\(\)/i.test(msg)) {
         showVoiceError('Tap anywhere on the page, then try again.');
       } else if (/permission|denied|not found.*microphone|getUserMedia/i.test(msg)) {
         showVoiceError('Microphone access denied. Check browser permissions.');
@@ -356,7 +362,11 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error('Failed to start Finn voice session:', msg);
-        if (/permission|denied|getUserMedia/i.test(msg)) {
+        if (/auth_required/i.test(msg)) {
+          showVoiceError('Session expired. Please sign in again.');
+        } else if (/circuit_open/i.test(msg)) {
+          showVoiceError('Finn Brain is warming back up. Try again in a few seconds.');
+        } else if (/permission|denied|getUserMedia/i.test(msg)) {
           showVoiceError('Microphone access denied. Check browser permissions.');
         } else {
           showVoiceError(`Voice session failed: ${msg.length > 60 ? msg.slice(0, 60) + '...' : msg}`);

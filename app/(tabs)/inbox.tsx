@@ -7,7 +7,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatRelativeTime, formatMaskedPhone } from '@/lib/formatters';
 import { getInboxItems, getProviderCalls } from '@/lib/api';
-import { supabase } from '@/lib/supabase';
 
 import { OfficeItem } from '@/types/inbox';
 import { CallItem } from '@/types/calls';
@@ -17,6 +16,7 @@ import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
+import { useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { AgentWidget } from '@/components/canvas/widgets/AgentWidget';
 import type { AgentActivityEvent } from '@/components/chat';
@@ -211,6 +211,78 @@ interface AttachedFile {
 function getCallSummary(item: CallItem): string {
   if ((item as any).summary) return (item as any).summary;
   return `Call with ${item.callerName} regarding ${item.tags.join(' & ').toLowerCase()} matters. Duration: ${item.duration}. Outcome: ${item.outcome}. Follow-up actions may be required based on discussion points.`;
+}
+
+function normalizeEmail(value: string): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function deriveRoleFromEmail(email: string): Contact['role'] {
+  const e = normalizeEmail(email);
+  if (!e) return 'Client';
+  if (e.endsWith('@aspireos.app') || e.endsWith('@aspire.app')) return 'Internal';
+  if (/vendor|supplies|billing|accounts/i.test(e)) return 'Vendor';
+  return 'Client';
+}
+
+function buildDerivedContacts(mailThreads: MailThread[], calls: CallItem[]): Contact[] {
+  const now = new Date().toISOString();
+  const byKey = new Map<string, Contact>();
+
+  const upsert = (candidate: Partial<Contact> & { name: string }) => {
+    const email = normalizeEmail(candidate.email || '');
+    const phone = String(candidate.phone || '').trim();
+    const key = email || phone || normalizeEmail(candidate.name);
+    if (!key) return;
+    const existing = byKey.get(key);
+    const next: Contact = {
+      id: existing?.id || `derived_${key.replace(/[^a-z0-9]/gi, '_')}`,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+      name: candidate.name || existing?.name || 'Unknown Contact',
+      title: candidate.title || existing?.title || 'Contact',
+      organization: candidate.organization || existing?.organization || 'External',
+      email: email || existing?.email || '',
+      phone: phone || existing?.phone || '',
+      role: candidate.role || existing?.role || deriveRoleFromEmail(email),
+      tags: existing?.tags || [],
+      lastContacted: candidate.lastContacted || existing?.lastContacted || now,
+      notes: candidate.notes || existing?.notes || 'Auto-derived from recent inbox activity.',
+      avatarUrl: existing?.avatarUrl,
+    };
+    byKey.set(key, next);
+  };
+
+  for (const thread of mailThreads || []) {
+    upsert({
+      name: thread.senderName || thread.senderEmail || 'Email Contact',
+      email: thread.senderEmail || '',
+      organization: thread.senderEmail?.split('@')[1] || 'Email',
+      title: 'Email Contact',
+      role: deriveRoleFromEmail(thread.senderEmail || ''),
+      lastContacted: thread.timestamp || now,
+      notes: `From mail thread: ${thread.subject || 'No subject'}`,
+    });
+  }
+
+  for (const call of calls || []) {
+    const raw = call as any;
+    const name = raw.callerName || raw.caller_name || raw.from_number || 'Phone Contact';
+    const phone = raw.callerNumber || raw.caller_number || raw.from_number || '';
+    upsert({
+      name,
+      phone,
+      title: 'Phone Contact',
+      organization: 'Phone',
+      role: 'Client',
+      lastContacted: raw.timestamp || raw.created_at || now,
+      notes: `From ${raw.callType || raw.call_type || 'call'} activity.`,
+    });
+  }
+
+  return Array.from(byKey.values()).sort(
+    (a, b) => new Date(b.lastContacted).getTime() - new Date(a.lastContacted).getTime(),
+  );
 }
 
 const TAG_COLORS: Record<string, { bg: string; text: string }> = {
@@ -934,7 +1006,6 @@ export default function InboxScreen() {
   const [mailThreads, setMailThreads] = useState<MailThread[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [eliOpen, setEliOpen] = useState(false);
   const [eliVoiceActive, setEliVoiceActive] = useState(false);
   const [eliTranscript, setEliTranscript] = useState('');
   const [eliMessages, setEliMessages] = useState<EliMessage[]>([
@@ -978,13 +1049,14 @@ export default function InboxScreen() {
   const [labelLoading, setLabelLoading] = useState(false);
   const searchTimerRef = useRef<any>(null);
 
-  const [unifiedModalTab, setUnifiedModalTab] = useState<'compose' | 'eli'>('compose');
+  const [contactsLoadError, setContactsLoadError] = useState<string | null>(null);
   const modalScaleAnim = useRef(new Animated.Value(0.97)).current;
   const modalOpacityAnim = useRef(new Animated.Value(0)).current;
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { suiteId, session } = useSupabase();
+  const { tenant } = useTenant();
 
   const appendEliRunEvent = useCallback(
     (
@@ -1059,9 +1131,24 @@ export default function InboxScreen() {
     onError: (error) => {
       console.error('Eli voice error:', error);
       setEliVoiceActive(false);
+      const msg = error.message || String(error);
+      const userLabel =
+        /auth_required/i.test(msg)
+          ? 'Session expired. Please sign in again.'
+          : /circuit_open/i.test(msg)
+          ? 'Eli Brain is warming back up. Try again in a few seconds.'
+          : /orchestrator_timeout|timeout/i.test(msg)
+          ? 'Eli took too long to respond. Please try again.'
+          : /autoplay|not allowed|play\(\)/i.test(msg)
+          ? 'Tap anywhere on the page, then try again.'
+          : /permission|denied|microphone|getUserMedia/i.test(msg)
+          ? 'Microphone access denied. Check browser permissions.'
+          : /tts|voice.*unavailable|synthesis|elevenlabs/i.test(msg)
+          ? 'Voice unavailable — responses shown in chat.'
+          : 'Voice pipeline error. Eli can retry now.';
       appendEliRunEvent({
         type: 'error',
-        label: 'Voice pipeline error. Eli can retry now.',
+        label: userLabel,
         status: 'error',
         icon: 'alert-circle',
       });
@@ -1090,8 +1177,19 @@ export default function InboxScreen() {
       try {
         await eliVoice.startSession();
       } catch (error) {
-        console.error('Failed to start Eli voice session:', error);
-        Alert.alert('Connection Error', 'Unable to connect to Eli. Please try again.');
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('Failed to start Eli voice session:', msg);
+        const title =
+          /auth_required/i.test(msg) ? 'Authentication Required'
+          : /circuit_open/i.test(msg) ? 'Service Warming Up'
+          : /permission|denied|microphone|getUserMedia/i.test(msg) ? 'Microphone Permission Needed'
+          : 'Connection Error';
+        const body =
+          /auth_required/i.test(msg) ? 'Please sign in again to talk to Eli.'
+          : /circuit_open/i.test(msg) ? 'Eli Brain is warming back up. Try again in a few seconds.'
+          : /permission|denied|microphone|getUserMedia/i.test(msg) ? 'Please allow microphone access, then try again.'
+          : 'Unable to connect to Eli. Please try again.';
+        Alert.alert(title, body);
       }
     }
   }, [eliVoice, session?.access_token]);
@@ -1157,7 +1255,6 @@ export default function InboxScreen() {
     if (!thread) {
       setCompose({ visible: true, to: '', cc: '', bcc: '', subject: '', body: '', mode: 'new', attachments: [] });
       setShowCcBcc(false);
-      setUnifiedModalTab('compose');
       return;
     }
     const lastMsg = mailDetail?.messages?.[mailDetail.messages.length - 1];
@@ -1172,7 +1269,6 @@ export default function InboxScreen() {
       setCompose({ visible: true, to: '', cc: '', bcc: '', subject: `Fwd: ${thread.subject}`, body: fwdBody, mode, attachments: [] });
     }
     setShowCcBcc(false);
-    setUnifiedModalTab('compose');
   }, [mailDetail]);
 
   const handleSendEmail = useCallback(async () => {
@@ -1353,21 +1449,21 @@ export default function InboxScreen() {
       } catch {
         if (!cancelled) setCalls([]);
       }
-      try {
-        const { data: contactData } = await supabase
-          .from('contacts')
-          .select('*')
-          .order('name', { ascending: true })
-          .limit(100);
-        if (!cancelled) setContacts(contactData ?? []);
-      } catch {
-        if (!cancelled) setContacts([]);
-      }
       if (!cancelled) setLoading(false);
     }
     loadData();
     return () => { cancelled = true; };
   }, [loadMailThreads]);
+
+  useEffect(() => {
+    const derived = buildDerivedContacts(mailThreads, calls);
+    setContacts(derived);
+    if (derived.length === 0) {
+      setContactsLoadError('No contact activity found yet. Contacts will populate from mail and call activity.');
+    } else {
+      setContactsLoadError(null);
+    }
+  }, [mailThreads, calls]);
 
   useEffect(() => {
     if (activeTab === 'mail' && hasActiveMailbox) {
@@ -1430,7 +1526,7 @@ export default function InboxScreen() {
   }, [eliVoiceActive, eliMicPulse]);
 
   useEffect(() => {
-    if (compose.visible || eliOpen) {
+    if (compose.visible) {
       Animated.parallel([
         Animated.spring(modalScaleAnim, { toValue: 1, useNativeDriver: false, damping: 20, stiffness: 300 }),
         Animated.timing(modalOpacityAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
@@ -1439,7 +1535,7 @@ export default function InboxScreen() {
       modalScaleAnim.setValue(0.97);
       modalOpacityAnim.setValue(0);
     }
-  }, [compose.visible, eliOpen]);
+  }, [compose.visible]);
 
   const currentFilter = activeFilter[activeTab];
 
@@ -1653,28 +1749,17 @@ export default function InboxScreen() {
 
   const eliTriagedCount = mailThreads.filter(i => i.tags.length > 0).length + officeItems.filter(i => i.unread).length;
 
-  const openUnifiedModal = useCallback((tab: 'compose' | 'eli' = 'compose') => {
-    if (tab === 'compose') {
-      if (!compose.visible) {
-        setCompose({ visible: true, to: '', cc: '', bcc: '', subject: '', body: '', mode: 'new', attachments: [] });
-      } else {
-        setCompose(prev => ({ ...prev, visible: true }));
-      }
-      setEliOpen(false);
+  const openUnifiedModal = useCallback(() => {
+    if (!compose.visible) {
+      setCompose({ visible: true, to: '', cc: '', bcc: '', subject: '', body: '', mode: 'new', attachments: [] });
     } else {
-      setEliOpen(true);
-      setCompose(prev => ({ ...prev, visible: false }));
+      setCompose(prev => ({ ...prev, visible: true }));
     }
-    setUnifiedModalTab(tab);
   }, [compose.visible]);
 
   const closeUnifiedModal = useCallback(() => {
-    if (eliVoiceActive) eliVoice.endSession();
     setCompose(prev => ({ ...prev, visible: false }));
-    setEliOpen(false);
-  }, [eliVoiceActive, eliVoice]);
-
-  const isUnifiedModalOpen = compose.visible || eliOpen;
+  }, []);
 
   const renderListItems = () => {
     if (loading || labelLoading) {
@@ -1692,6 +1777,15 @@ export default function InboxScreen() {
     }
 
     if (filteredItems.length === 0) {
+      if (activeTab === 'contacts' && contactsLoadError) {
+        return (
+          <View style={styles.emptyState}>
+            <Ionicons name="alert-circle-outline" size={40} color={Colors.text.disabled} style={{ opacity: 0.5 }} />
+            <Text style={styles.emptyTitle}>Contacts Unavailable</Text>
+            <Text style={styles.emptySubtitle}>{contactsLoadError}</Text>
+          </View>
+        );
+      }
       return <EmptyState filter={currentFilter} searchQuery={searchResults !== null ? searchQuery : undefined} />;
     }
 
@@ -2103,7 +2197,7 @@ export default function InboxScreen() {
                 <TouchableOpacity
                   style={styles.finnMenuItem}
                   activeOpacity={0.7}
-                  onPress={() => { setShowFinnMenu(false); openUnifiedModal('compose'); }}
+                  onPress={() => { setShowFinnMenu(false); openUnifiedModal(); }}
                 >
                   <View style={[styles.finnMenuIcon, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
                     <Ionicons name="create-outline" size={18} color={Colors.accent.cyan} />
@@ -2351,7 +2445,7 @@ export default function InboxScreen() {
             <AgentWidget
               agentId="eli"
               suiteId={suiteId ?? ''}
-              officeId={suiteId ?? ''}
+              officeId={tenant?.officeId ?? ''}
               voiceStatus={eliVoiceActive ? 'listening' : 'idle'}
               onPrimaryAction={handleEliMicPress}
             />

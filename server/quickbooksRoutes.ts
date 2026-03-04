@@ -8,7 +8,8 @@ const QuickBooks = require('node-quickbooks');
 const router = Router();
 
 const DOMAIN = process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000';
-const REDIRECT_URI = `https://${DOMAIN}/api/quickbooks/callback`;
+const BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || (DOMAIN.includes('localhost') ? `http://${DOMAIN}` : `https://${DOMAIN}`);
+const REDIRECT_URI = `${BASE_URL}/api/quickbooks/callback`;
 const AUTH_URL = 'https://appcenter.intuit.com/connect/oauth2';
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 

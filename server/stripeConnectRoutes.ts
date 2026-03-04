@@ -9,6 +9,7 @@ const stripeKey = process.env.STRIPE_CONNECT_SECRET_KEY || process.env.STRIPE_SE
 const stripe = new Stripe(stripeKey);
 
 const DOMAIN = process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000';
+const BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || (DOMAIN.includes('localhost') ? `http://${DOMAIN}` : `https://${DOMAIN}`);
 
 let connectedAccountId: string | null = null;
 
@@ -89,8 +90,8 @@ router.post('/api/stripe-connect/account-link', async (req: Request, res: Respon
     }
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `https://${DOMAIN}/finance-hub/connections?stripe=refresh`,
-      return_url: `https://${DOMAIN}/finance-hub/connections?stripe=connected`,
+      refresh_url: `${BASE_URL}/finance-hub/connections?stripe=refresh`,
+      return_url: `${BASE_URL}/finance-hub/connections?stripe=connected`,
       type: 'account_onboarding',
     });
     await emitReceipt(req, 'stripe.account_link.create', 'SUCCEEDED',
@@ -123,8 +124,8 @@ router.get('/api/stripe-connect/authorize', async (req: Request, res: Response) 
 
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
-      refresh_url: `https://${DOMAIN}/finance-hub/connections?stripe=refresh`,
-      return_url: `https://${DOMAIN}/finance-hub/connections?stripe=connected`,
+      refresh_url: `${BASE_URL}/finance-hub/connections?stripe=refresh`,
+      return_url: `${BASE_URL}/finance-hub/connections?stripe=connected`,
       type: 'account_onboarding',
     });
     await emitReceipt(req, 'stripe.authorize', 'SUCCEEDED',

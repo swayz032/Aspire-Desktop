@@ -38,6 +38,7 @@ import { sql } from 'drizzle-orm';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
+import { applyTenantContext } from './tenantContext';
 
 const router = Router();
 
@@ -89,9 +90,9 @@ function getOfficeId(req: Request): string {
 
 /** Set RLS context for a specific suite (used by webhook paths that resolve suite from DID) */
 async function setJwtClaims(suiteId: string, officeId?: string) {
-  await db.execute(sql`SELECT set_config('app.current_suite_id', ${suiteId}, true)`);
-  if (officeId) {
-    await db.execute(sql`SELECT set_config('app.current_office_id', ${officeId}, true)`);
+  const applied = await applyTenantContext(suiteId, officeId);
+  if (!applied) {
+    throw new Error('TENANT_CONTEXT_UNAVAILABLE');
   }
 }
 
@@ -365,7 +366,7 @@ router.post('/api/frontdesk/preview-audio', async (req: Request, res: Response) 
       },
       body: JSON.stringify({
         text,
-        model_id: 'eleven_monolingual_v1',
+        model_id: 'eleven_flash_v2_5',
         voice_settings: { stability: 0.5, similarity_boost: 0.75 },
       }),
     });

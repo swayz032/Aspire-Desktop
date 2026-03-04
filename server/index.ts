@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js';
 import { loadSecrets } from './secrets';
 import { logger } from './logger';
 import { setupTtsWebSocket } from './wsTts';
+import { applyTenantContext } from './tenantContext';
 
 let runMigrations: ((opts: { databaseUrl: string }) => Promise<void>) | null = null;
 let getStripeSync: (() => Promise<{ findOrCreateManagedWebhook: (url: string) => Promise<void>; syncBackfill: () => Promise<void> }>) | null = null;
@@ -91,16 +92,14 @@ app.use(async (req, res, next) => {
     if (DEV_BYPASS_AUTH) {
       (req as any).authenticatedUserId = DEV_USER_ID;
       (req as any).authenticatedSuiteId = DEV_SUITE_ID;
-      try {
-        await db.execute(sql`SELECT set_config('app.current_suite_id', ${DEV_SUITE_ID}, true)`);
-      } catch (_) { /* DB may not be connected in dev */ }
+      await applyTenantContext(DEV_SUITE_ID);
       return next();
     }
 
     // Public paths: use defaultSuiteId (read-only, no auth needed)
     if (isPublicPath(req.path)) {
       if (defaultSuiteId) {
-        await db.execute(sql`SELECT set_config('app.current_suite_id', ${defaultSuiteId}, true)`);
+        await applyTenantContext(defaultSuiteId);
       }
       return next();
     }
@@ -155,7 +154,14 @@ app.use(async (req, res, next) => {
     }
 
     if (suiteId) {
-      await db.execute(sql`SELECT set_config('app.current_suite_id', ${suiteId}, true)`);
+      const applied = await applyTenantContext(suiteId);
+      if (!applied) {
+        logger.warn('Continuing request with JWT suite context only (RLS context unavailable)', {
+          user_id: user.id,
+          suite_id: suiteId,
+          path: req.path,
+        });
+      }
     }
 
     // Attach user info for receipt actor binding
@@ -198,7 +204,11 @@ async function initStripe() {
     const stripeSync = await getStripeSync();
 
     logger.info('Setting up managed webhook');
-    const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+    const domain = process.env.REPLIT_DOMAINS?.split(',')[0];
+    const webhookBaseUrl = process.env.PUBLIC_BASE_URL?.trim() || (domain ? `https://${domain}` : '');
+    if (!webhookBaseUrl) {
+      throw new Error('PUBLIC_BASE_URL (or REPLIT_DOMAINS) is required for Stripe webhook setup');
+    }
     await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
 
     logger.info('Syncing Stripe data');
@@ -244,7 +254,12 @@ try {
 const CORS_ALLOWED_ORIGINS = (process.env.ASPIRE_CORS_ORIGINS || 'https://www.aspireos.app,https://aspireos.app,http://localhost:5000,http://localhost:5173,http://localhost:3000').split(',');
 
 function validateProductionEnv(): void {
-  if (process.env.NODE_ENV !== 'production') return;
+  const nodeEnv = (process.env.NODE_ENV || '').trim().toLowerCase();
+  const aspireEnv = (process.env.ASPIRE_ENV || '').trim().toLowerCase();
+  if ((nodeEnv === 'production') !== (aspireEnv === 'production') && (nodeEnv || aspireEnv)) {
+    throw new Error(`Environment mismatch: NODE_ENV=${nodeEnv || 'unset'} ASPIRE_ENV=${aspireEnv || 'unset'}`);
+  }
+  if (nodeEnv !== 'production') return;
   const orchestratorUrl = process.env.ORCHESTRATOR_URL?.trim();
   if (!orchestratorUrl) {
     throw new Error('ORCHESTRATOR_URL is required in production');

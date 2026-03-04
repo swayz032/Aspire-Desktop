@@ -84,7 +84,7 @@ async function fetchWithTimeoutAndRetry(
   url: string,
   init: RequestInit,
   options: FetchRetryOptions,
-): Promise<Response> {
+): Promise<globalThis.Response> {
   const retryStatuses = new Set(options.retryOnStatuses || [429, 500, 502, 503, 504]);
   const backoffMs = options.backoffMs ?? 250;
   let lastError: unknown = null;
@@ -1576,13 +1576,37 @@ function parseElevenLabsError(body: string, httpStatus: number): { code: string;
   return { code: 'unknown', clientMessage: `Voice synthesis failed (${httpStatus})`, httpStatus };
 }
 
+function voiceErrorPayload(params: {
+  correlationId: string;
+  errorCode: string;
+  errorStage: 'tts' | 'stt' | 'orchestrator';
+  message: string;
+  retryAfterMs?: number;
+  error?: string;
+}) {
+  return {
+    error: params.error || params.errorCode,
+    error_code: params.errorCode,
+    error_stage: params.errorStage,
+    message: params.message,
+    correlation_id: params.correlationId,
+    ...(typeof params.retryAfterMs === 'number' ? { retry_after_ms: params.retryAfterMs } : {}),
+  };
+}
+
 router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     const { agent, text, voiceId, model, voiceSettings } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
       logger.warn('[TTS] ELEVENLABS_API_KEY is missing — voice synthesis disabled');
-      return res.status(500).json({ error: 'Voice synthesis service not configured' });
+      return res.status(500).json(voiceErrorPayload({
+        correlationId,
+        errorCode: 'TTS_NOT_CONFIGURED',
+        errorStage: 'tts',
+        message: 'Voice synthesis service not configured',
+      }));
     }
     logger.info('[TTS] Request', { agent, textLength: text?.length ?? 0 });
 
@@ -1593,11 +1617,21 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
       ...(voiceSettings && typeof voiceSettings === 'object' ? voiceSettings : {}),
     };
     if (!resolvedVoiceId) {
-      return res.status(400).json({ error: `Unknown agent: ${agent}` });
+      return res.status(400).json(voiceErrorPayload({
+        correlationId,
+        errorCode: 'TTS_UNKNOWN_AGENT',
+        errorStage: 'tts',
+        message: `Unknown agent: ${agent}`,
+      }));
     }
 
     if (!text || typeof text !== 'string' || !text.trim()) {
-      return res.status(400).json({ error: 'Missing or empty text parameter' });
+      return res.status(400).json(voiceErrorPayload({
+        correlationId,
+        errorCode: 'TTS_INVALID_TEXT',
+        errorStage: 'tts',
+        message: 'Missing or empty text parameter',
+      }));
     }
 
     const response = await fetchWithTimeoutAndRetry(
@@ -1622,7 +1656,12 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
       const errorBody = await response.text();
       logger.error('ElevenLabs TTS error', { status: response.status, error: errorBody.substring(0, 200) });
       const parsed = parseElevenLabsError(errorBody, response.status);
-      return res.status(parsed.httpStatus).json({ error: parsed.clientMessage, code: parsed.code });
+      return res.status(parsed.httpStatus).json(voiceErrorPayload({
+        correlationId,
+        errorCode: `TTS_${String(parsed.code || 'UNKNOWN').toUpperCase()}`,
+        errorStage: 'tts',
+        message: parsed.clientMessage,
+      }));
     }
 
     const audioBuffer = await response.arrayBuffer();
@@ -1631,16 +1670,27 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     res.send(Buffer.from(audioBuffer));
   } catch (error: unknown) {
     logger.error('TTS error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json(voiceErrorPayload({
+      correlationId,
+      errorCode: 'TTS_UNAVAILABLE',
+      errorStage: 'tts',
+      message: error instanceof Error ? error.message : 'unknown',
+    }));
   }
 });
 
 router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-tts-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     const { agent, text, voiceId, model, voiceSettings } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
-      return res.status(500).json({ error: 'Voice synthesis service not configured' });
+      return res.status(500).json(voiceErrorPayload({
+        correlationId,
+        errorCode: 'TTS_NOT_CONFIGURED',
+        errorStage: 'tts',
+        message: 'Voice synthesis service not configured',
+      }));
     }
 
     const resolvedVoiceId = voiceId || VOICE_IDS[agent];
@@ -1650,11 +1700,21 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
       ...(voiceSettings && typeof voiceSettings === 'object' ? voiceSettings : {}),
     };
     if (!resolvedVoiceId) {
-      return res.status(400).json({ error: `Unknown agent: ${agent}` });
+      return res.status(400).json(voiceErrorPayload({
+        correlationId,
+        errorCode: 'TTS_UNKNOWN_AGENT',
+        errorStage: 'tts',
+        message: `Unknown agent: ${agent}`,
+      }));
     }
 
     if (!text || typeof text !== 'string' || !text.trim()) {
-      return res.status(400).json({ error: 'Missing or empty text parameter' });
+      return res.status(400).json(voiceErrorPayload({
+        correlationId,
+        errorCode: 'TTS_INVALID_TEXT',
+        errorStage: 'tts',
+        message: 'Missing or empty text parameter',
+      }));
     }
 
     const response = await fetchWithTimeoutAndRetry(
@@ -1679,7 +1739,12 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
       const errorBody = await response.text();
       logger.error('ElevenLabs TTS stream error', { status: response.status, error: errorBody.substring(0, 200) });
       const parsed = parseElevenLabsError(errorBody, response.status);
-      return res.status(parsed.httpStatus).json({ error: parsed.clientMessage, code: parsed.code });
+      return res.status(parsed.httpStatus).json(voiceErrorPayload({
+        correlationId,
+        errorCode: `TTS_${String(parsed.code || 'UNKNOWN').toUpperCase()}`,
+        errorStage: 'tts',
+        message: parsed.clientMessage,
+      }));
     }
 
     res.set('Content-Type', 'audio/mpeg');
@@ -1695,16 +1760,27 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     await pump();
   } catch (error: unknown) {
     logger.error('TTS stream error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json(voiceErrorPayload({
+      correlationId,
+      errorCode: 'TTS_UNAVAILABLE',
+      errorStage: 'tts',
+      message: error instanceof Error ? error.message : 'unknown',
+    }));
   }
 });
 
 // ─── ElevenLabs STT — Speech-to-Text via server proxy (no API key on client) ───
 router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-stt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
-      return res.status(503).json({ error: 'Speech recognition service not configured' });
+      return res.status(503).json(voiceErrorPayload({
+        correlationId,
+        errorCode: 'STT_NOT_CONFIGURED',
+        errorStage: 'stt',
+        message: 'Speech recognition service not configured',
+      }));
     }
 
     // Expect raw audio body (audio/webm, audio/wav, etc.) or base64 in JSON
@@ -1714,7 +1790,12 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
       // JSON body with base64 audio
       const { audio, encoding } = req.body;
       if (!audio) {
-        return res.status(400).json({ error: 'Missing audio data' });
+        return res.status(400).json(voiceErrorPayload({
+          correlationId,
+          errorCode: 'STT_MISSING_AUDIO',
+          errorStage: 'stt',
+          message: 'Missing audio data',
+        }));
       }
       audioBuffer = Buffer.from(audio, encoding || 'base64');
     } else {
@@ -1727,12 +1808,22 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
     }
 
     if (audioBuffer.length === 0) {
-      return res.status(400).json({ error: 'Empty audio data' });
+      return res.status(400).json(voiceErrorPayload({
+        correlationId,
+        errorCode: 'STT_EMPTY_AUDIO',
+        errorStage: 'stt',
+        message: 'Empty audio data',
+      }));
     }
 
     // Cap audio size at 25MB (ElevenLabs limit)
     if (audioBuffer.length > 25 * 1024 * 1024) {
-      return res.status(413).json({ error: 'Audio file too large (max 25MB)' });
+      return res.status(413).json(voiceErrorPayload({
+        correlationId,
+        errorCode: 'STT_AUDIO_TOO_LARGE',
+        errorStage: 'stt',
+        message: 'Audio file too large (max 25MB)',
+      }));
     }
 
     // Use ElevenLabs Speech-to-Text API
@@ -1752,14 +1843,24 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
       const errorBody = await response.text();
       logger.error('ElevenLabs STT error', { status: response.status, error: errorBody.substring(0, 200) });
       const parsed = parseElevenLabsError(errorBody, response.status);
-      return res.status(parsed.httpStatus).json({ error: parsed.clientMessage, code: parsed.code });
+      return res.status(parsed.httpStatus).json(voiceErrorPayload({
+        correlationId,
+        errorCode: `STT_${String(parsed.code || 'UNKNOWN').toUpperCase()}`,
+        errorStage: 'stt',
+        message: parsed.clientMessage,
+      }));
     }
 
     const result = await response.json() as { text?: string; language_code?: string };
     res.json({ text: result.text || '', language: result.language_code || 'en' });
   } catch (error: unknown) {
     logger.error('STT error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json(voiceErrorPayload({
+      correlationId,
+      errorCode: 'STT_UNAVAILABLE',
+      errorStage: 'stt',
+      message: error instanceof Error ? error.message : 'unknown',
+    }));
   }
 });
 
@@ -1768,7 +1869,39 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
  * Does NOT log or expose key values (Law #9: Never log secrets)
  */
 router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
-  const checks: Record<string, { configured: boolean; sandbox: boolean; status: string }> = {};
+  type HealthCheck = {
+    configured: boolean;
+    sandbox: boolean;
+    status: string;
+    connectivity?: boolean;
+    latency_ms?: number;
+    failure_code?: string;
+  };
+  const checks: Record<string, HealthCheck> = {};
+  const runProbe = async (
+    key: string,
+    configured: boolean,
+    url: string,
+    init?: RequestInit,
+    timeoutMs = 3000,
+  ): Promise<void> => {
+    if (!configured) return;
+    const startedAt = Date.now();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      const resp = await fetch(url, { ...init, signal: controller.signal });
+      clearTimeout(timeoutId);
+      checks[key].connectivity = resp.ok;
+      checks[key].latency_ms = Date.now() - startedAt;
+      if (!resp.ok) checks[key].failure_code = `HTTP_${resp.status}`;
+    } catch (error) {
+      checks[key].connectivity = false;
+      checks[key].latency_ms = Date.now() - startedAt;
+      const msg = error instanceof Error ? error.message.toLowerCase() : '';
+      checks[key].failure_code = msg.includes('abort') ? 'TIMEOUT' : 'UNREACHABLE';
+    }
+  };
 
   // Stripe
   const stripeKey = process.env.STRIPE_SECRET_KEY || '';
@@ -1809,6 +1942,14 @@ router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
     sandbox: true,
     status: process.env.ELEVENLABS_API_KEY ? 'CONFIGURED' : 'NOT_SET',
   };
+  await runProbe(
+    'elevenlabs',
+    checks.elevenlabs.configured,
+    'https://api.elevenlabs.io/v1/models',
+    process.env.ELEVENLABS_API_KEY
+      ? { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY } }
+      : undefined,
+  );
 
   // Deepgram
   checks.deepgram = {
@@ -1816,13 +1957,28 @@ router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
     sandbox: true,
     status: process.env.DEEPGRAM_API_KEY ? 'CONFIGURED' : 'NOT_SET',
   };
+  await runProbe(
+    'deepgram',
+    checks.deepgram.configured,
+    'https://api.deepgram.com/v1/projects',
+    process.env.DEEPGRAM_API_KEY
+      ? { headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` } }
+      : undefined,
+  );
 
   // Domain Rail / PolarisM
   checks.domain_rail = {
-    configured: !!process.env.DOMAIN_RAIL_HMAC_SECRET,
+    configured: !!process.env.DOMAIN_RAIL_HMAC_SECRET && !!process.env.DOMAIN_RAIL_URL,
     sandbox: true,
     status: process.env.DOMAIN_RAIL_HMAC_SECRET ? 'CONFIGURED' : 'NOT_SET',
   };
+  if (process.env.DOMAIN_RAIL_URL) {
+    await runProbe(
+      'domain_rail',
+      checks.domain_rail.configured,
+      `${process.env.DOMAIN_RAIL_URL.replace(/\/$/, '')}/healthz`,
+    );
+  }
 
   // Orchestrator
   const orchUrl = resolveOrchestratorUrl();
@@ -1831,6 +1987,9 @@ router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
     sandbox: true,
     status: orchUrl ? (process.env.ORCHESTRATOR_URL ? 'CONFIGURED' : 'DEFAULT_LOCALHOST') : 'MISSING_IN_PRODUCTION',
   };
+  if (orchUrl) {
+    await runProbe('orchestrator', checks.orchestrator.configured, `${orchUrl.replace(/\/$/, '')}/healthz`);
+  }
 
   // LiveKit
   checks.livekit = {
@@ -1838,6 +1997,9 @@ router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
     sandbox: true,
     status: !process.env.LIVEKIT_URL ? 'NOT_SET' : 'CONFIGURED',
   };
+  if (process.env.LIVEKIT_URL) {
+    await runProbe('livekit', checks.livekit.configured, process.env.LIVEKIT_URL, undefined, 2500);
+  }
 
   // Supabase
   checks.supabase = {
@@ -2062,9 +2224,13 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       orchestratorConsecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD &&
       (now - orchestratorLastFailureAt) < CIRCUIT_BREAKER_RESET_MS
     ) {
+      const retryAfterMs = Math.max(0, CIRCUIT_BREAKER_RESET_MS - (now - orchestratorLastFailureAt));
       return res.status(503).json({
         error: 'ORCHESTRATOR_CIRCUIT_OPEN',
+        error_code: 'ORCHESTRATOR_CIRCUIT_OPEN',
+        error_stage: 'orchestrator',
         message: 'Orchestrator circuit breaker open. Retrying automatically.',
+        retry_after_ms: retryAfterMs,
         correlation_id: correlationId,
       });
     }
@@ -2131,9 +2297,11 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       return res.status(response.status).json({
         response: responseText,
         error: errorData?.error || `Orchestrator returned ${response.status}`,
-        error_code: errorData?.error || null,
+        error_code: errorData?.error || `ORCHESTRATOR_HTTP_${response.status}`,
+        error_stage: 'orchestrator',
         error_reason: errorData?.message || null,
         retryable: response.status >= 500 || response.status === 429,
+        retry_after_ms: response.status === 429 ? 5_000 : undefined,
         approval_payload_hash: errorData?.approval_payload_hash || null,
         required_approvals: errorData?.required_approvals || null,
         receipt_ids: errorData?.receipt_ids || [],
@@ -2191,7 +2359,10 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       logger.error('Orchestrator timeout', { correlationId, timeout_ms: ORCHESTRATOR_TIMEOUT_MS });
       return res.status(504).json({
         error: 'ORCHESTRATOR_TIMEOUT',
+        error_code: 'ORCHESTRATOR_TIMEOUT',
+        error_stage: 'orchestrator',
         message: `Orchestrator request timed out after ${ORCHESTRATOR_TIMEOUT_MS / 1000}s`,
+        retry_after_ms: 2000,
         correlation_id: correlationId,
       });
     }
@@ -2200,7 +2371,10 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     // Law #3: Fail Closed — return 503, not 200
     res.status(503).json({
       error: 'ORCHESTRATOR_UNAVAILABLE',
+      error_code: 'ORCHESTRATOR_UNAVAILABLE',
+      error_stage: 'orchestrator',
       message: 'The orchestrator is currently unavailable. Please try again.',
+      retry_after_ms: 3000,
       correlation_id: correlationId,
     });
   }

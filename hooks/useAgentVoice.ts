@@ -36,6 +36,8 @@ export interface VoiceDiagnosticEvent {
   raw?: string;
   timestamp: number;
   correlationId?: string;
+  httpStatus?: number;
+  retryAfterMs?: number;
   recoverable: boolean;
 }
 
@@ -79,6 +81,21 @@ interface UseAgentVoiceReturn {
   sendText: (text: string) => Promise<void>;
   /** Replay last audio that was blocked by browser autoplay policy. */
   replayLastAudio: () => Promise<boolean>;
+}
+
+type VoiceErrorPayload = {
+  error?: string;
+  error_code?: string;
+  error_stage?: string;
+  message?: string;
+  response?: string;
+  correlation_id?: string;
+  retry_after_ms?: number;
+};
+
+function parseVoiceErrorPayload(raw: unknown): VoiceErrorPayload {
+  if (!raw || typeof raw !== 'object') return {};
+  return raw as VoiceErrorPayload;
 }
 
 /**
@@ -413,13 +430,14 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         });
 
         if (!resp.ok) {
+          let parsed: VoiceErrorPayload = {};
           let detail = `Service returned ${resp.status}`;
           try {
-            const errData = await resp.json();
+            parsed = parseVoiceErrorPayload(await resp.json());
             detail =
-              errData?.response ||
-              errData?.message ||
-              errData?.error ||
+              parsed.response ||
+              parsed.message ||
+              parsed.error ||
               detail;
           } catch {
             try {
@@ -429,15 +447,20 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
               // keep default detail
             }
           }
+          const code = parsed.error_code || `ORCH_HTTP_${resp.status}`;
+          const retryAfterMs = typeof parsed.retry_after_ms === 'number' ? parsed.retry_after_ms : undefined;
           emitDiagnostic({
             traceId,
             stage: 'orchestrator',
-            code: `ORCH_HTTP_${resp.status}`,
+            code,
             message: detail,
             raw: detail.slice(0, 220),
+            correlationId: parsed.correlation_id,
+            httpStatus: resp.status,
+            retryAfterMs,
             recoverable: resp.status >= 500,
           });
-          throw new Error(detail);
+          throw new Error(`${code}: ${detail}`);
         }
 
         const data = await resp.json();
@@ -542,6 +565,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         : 'orchestrator';
       const code =
         stage === 'orchestrator' && /timeout/.test(lower) ? 'ORCH_TIMEOUT'
+        : stage === 'orchestrator' && /circuit_open/.test(lower) ? 'CIRCUIT_OPEN'
+        : stage === 'orchestrator' && /auth_required/.test(lower) ? 'AUTH_REQUIRED'
         : stage === 'orchestrator' ? 'ORCH_UNAVAILABLE'
         : stage === 'stt' ? 'STT_FAILURE'
         : stage === 'mic' ? 'MIC_FAILURE'
@@ -641,6 +666,53 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
    * begins STT listening. Degrades gracefully if either is unavailable.
    */
   const startSession = useCallback(async () => {
+    if (!accessTokenRef.current || !suiteId) {
+      const msg = 'AUTH_REQUIRED: Voice requires authenticated suite context.';
+      emitDiagnostic({
+        traceId: currentTraceIdRef.current || nextTraceId(),
+        stage: 'orchestrator',
+        code: 'AUTH_REQUIRED',
+        message: msg,
+        recoverable: false,
+      });
+      throw new Error(msg);
+    }
+
+    try {
+      const query = new URLSearchParams({
+        stream: 'true',
+        passive: 'true',
+        agent,
+        channel: 'voice',
+        suiteId,
+      });
+      const preflight = await fetch(`/api/orchestrator/intent?${query.toString()}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${accessTokenRef.current}` },
+      });
+      if (!preflight.ok) {
+        let reason = `Service returned ${preflight.status}`;
+        try {
+          const parsed = parseVoiceErrorPayload(await preflight.json());
+          reason = parsed.message || parsed.error || reason;
+        } catch {
+          // keep default reason
+        }
+        throw new Error(`ORCH_PREFLIGHT_FAILED: ${reason}`);
+      }
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      emitDiagnostic({
+        traceId: currentTraceIdRef.current || nextTraceId(),
+        stage: 'orchestrator',
+        code: /timeout/.test(raw.toLowerCase()) ? 'ORCH_TIMEOUT' : 'ORCH_UNAVAILABLE',
+        message: raw,
+        raw: raw.slice(0, 220),
+        recoverable: true,
+      });
+      throw err instanceof Error ? err : new Error(raw);
+    }
+
     await unlockAudioPlayback();
 
     activeRef.current = true;

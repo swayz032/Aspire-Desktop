@@ -12,7 +12,8 @@ const GUSTO_AUTH_URL = 'https://api.gusto-demo.com/oauth/authorize';
 const GUSTO_TOKEN_URL = 'https://api.gusto-demo.com/oauth/token';
 
 const DOMAIN = process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000';
-const GUSTO_REDIRECT_URI = `https://${DOMAIN}/api/gusto/callback`;
+const BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || (DOMAIN.includes('localhost') ? `http://${DOMAIN}` : `https://${DOMAIN}`);
+const GUSTO_REDIRECT_URI = `${BASE_URL}/api/gusto/callback`;
 
 let currentAccessToken = process.env.GUSTO_ACCESS_TOKEN || '';
 let currentRefreshToken = process.env.GUSTO_REFRESH_TOKEN || '';
