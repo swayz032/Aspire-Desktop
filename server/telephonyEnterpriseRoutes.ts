@@ -41,6 +41,14 @@ import { logger } from './logger';
 
 const router = Router();
 
+type CallsCacheEntry = {
+  expiresAt: number;
+  payload: { calls: any[]; total: number };
+};
+const CALLS_CACHE_TTL_MS = 8000;
+const callsCache = new Map<string, CallsCacheEntry>();
+const callsInFlight = new Map<string, Promise<{ calls: any[]; total: number }>>();
+
 // =====================================================================
 // TWILIO CLIENT (lazy-load)
 // =====================================================================
@@ -502,24 +510,58 @@ router.get('/api/frontdesk/calls', async (req: Request, res: Response) => {
   try {
     const suiteId = getSuiteId(req);
     const limit = Math.min(parseInt((req.query.limit as string) || '50', 10), 200);
+    const cacheKey = `${suiteId}:${limit}`;
+    const now = Date.now();
 
-    const result = await db.execute(sql`
-      SELECT
-        call_session_id, suite_id, business_line_id, owner_office_id,
-        direction, status, from_number, to_number, caller_name,
-        duration_seconds, provider, provider_call_id,
-        started_at, ended_at, recording_url, voicemail_url,
-        metadata, created_at, updated_at
-      FROM public.call_sessions
-      WHERE suite_id = ${suiteId}::uuid
-      ORDER BY started_at DESC
-      LIMIT ${limit}
-    `);
-    const rows = (result.rows || result) as any[];
-    res.json({ calls: rows, total: rows.length });
+    const cached = callsCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return res.json(cached.payload);
+    }
+
+    const inFlight = callsInFlight.get(cacheKey);
+    if (inFlight) {
+      const payload = await inFlight;
+      return res.json(payload);
+    }
+
+    const queryPromise = (async () => {
+      const result = await db.execute(sql`
+        SELECT
+          call_session_id, suite_id, business_line_id, owner_office_id,
+          direction, status, from_number, to_number, caller_name,
+          duration_seconds, provider, provider_call_id,
+          started_at, ended_at, recording_url, voicemail_url,
+          metadata, created_at, updated_at
+        FROM public.call_sessions
+        WHERE suite_id = ${suiteId}::uuid
+        ORDER BY started_at DESC
+        LIMIT ${limit}
+      `);
+      const rows = (result.rows || result) as any[];
+      const payload = { calls: rows, total: rows.length };
+      callsCache.set(cacheKey, { payload, expiresAt: Date.now() + CALLS_CACHE_TTL_MS });
+      return payload;
+    })();
+
+    callsInFlight.set(cacheKey, queryPromise);
+    try {
+      const payload = await queryPromise;
+      res.json(payload);
+    } finally {
+      callsInFlight.delete(cacheKey);
+    }
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('GET /api/frontdesk/calls error', { error: msg });
+    const suiteId = (() => {
+      try { return getSuiteId(req); } catch { return ''; }
+    })();
+    const limit = Math.min(parseInt((req.query.limit as string) || '50', 10), 200);
+    const cacheKey = `${suiteId}:${limit}`;
+    const stale = callsCache.get(cacheKey);
+    if (stale?.payload) {
+      return res.json(stale.payload);
+    }
     res.status(500).json({ code: 'INTERNAL', message: msg });
   }
 });
