@@ -82,60 +82,61 @@ export function PhoneWidget({ suiteId, officeId }: PhoneWidgetProps) {
     { key: 'contacts', label: 'Contacts' },
   ];
 
-  return (
-    <LinearGradient colors={['#071A2F', '#0A2540']} style={s.root}>
-      {/* Tabs */}
-      <View style={s.tabs}>
-        {TABS.map(t => (
-          <Pressable
-            key={t.key}
-            style={[s.tabItem, tab === t.key && s.tabItemActive]}
-            onPress={() => { playClickSound(); setTab(t.key); }}
-          >
-            <Text style={[s.tabText, tab === t.key && s.tabTextActive]}>{t.label}</Text>
-            {tab === t.key && <View style={s.tabUnderline} />}
-          </Pressable>
-        ))}
-      </View>
+  const renderKeypad = () => {
+    const rows = [
+      DIGITS.slice(0, 3),
+      DIGITS.slice(3, 6),
+      DIGITS.slice(6, 9),
+      DIGITS.slice(9, 12),
+    ];
 
-      {tab === 'keypad' && (
-        <View style={s.keypadContainer}>
-          {/* Number display */}
-          <View style={s.display}>
-            <Text style={s.displayText} numberOfLines={1}>
-              {dialNumber ? formatDisplay(dialNumber) : ' '}
-            </Text>
-            {dialNumber.length > 0 && (
-              <Pressable onPress={handleDelete} style={s.deleteBtn} hitSlop={8}>
-                <Ionicons name="backspace-outline" size={22} color="rgba(255,255,255,0.45)" />
-              </Pressable>
-            )}
-          </View>
-
-          {/* Dial grid */}
-          <View style={s.grid}>
-            {DIGITS.map(d => (
-              <Pressable
-                key={d.value}
-                style={({ pressed }) => [s.dialBtn, pressed && s.dialBtnPressed]}
-                onPress={() => handleDigit(d.value)}
-              >
-                <Text style={s.dialDigit}>{d.value}</Text>
-                {d.sub ? <Text style={s.dialSub}>{d.sub}</Text> : null}
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Call button */}
-          <View style={s.callRow}>
-            <Pressable style={s.callBtnOuter} onPress={handleCall}>
-              <View style={[s.callBtnInner, Platform.OS === 'web' && ({ boxShadow: '0 0 24px #22C55E88' } as any)]}>
-                <Ionicons name="call" size={30} color="#FFF" />
-              </View>
+    return (
+      <View style={s.keypadContainer}>
+        {/* Number display */}
+        <View style={s.display}>
+          <Text style={s.displayText} numberOfLines={1}>
+            {dialNumber ? formatDisplay(dialNumber) : ' '}
+          </Text>
+          {dialNumber.length > 0 && (
+            <Pressable onPress={handleDelete} style={s.deleteBtn} hitSlop={8}>
+              <Ionicons name="backspace-outline" size={24} color="rgba(255,255,255,0.45)" />
             </Pressable>
-          </View>
+          )}
         </View>
-      )}
+
+        {/* Dial grid */}
+        <View style={s.grid}>
+          {rows.map((row, i) => (
+            <View key={i} style={s.gridRow}>
+              {row.map(d => (
+                <Pressable
+                  key={d.value}
+                  style={({ pressed }) => [s.dialBtn, pressed && s.dialBtnPressed]}
+                  onPress={() => handleDigit(d.value)}
+                >
+                  <Text style={s.dialDigit}>{d.value}</Text>
+                  {d.sub ? <Text style={s.dialSub}>{d.sub}</Text> : null}
+                </Pressable>
+              ))}
+            </View>
+          ))}
+        </View>
+
+        {/* Call button */}
+        <View style={s.callRow}>
+          <Pressable style={s.callBtnOuter} onPress={handleCall}>
+            <View style={[s.callBtnInner, Platform.OS === 'web' && ({ boxShadow: '0 0 24px rgba(59,130,246,0.5)' } as any)]}>
+              <Ionicons name="call" size={32} color="#FFF" />
+            </View>
+          </Pressable>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <View style={s.root}>
+      {tab === 'keypad' && renderKeypad()}
 
       {tab === 'recent' && (
         <FlatList
@@ -145,14 +146,14 @@ export function PhoneWidget({ suiteId, officeId }: PhoneWidgetProps) {
           contentContainerStyle={s.recentList}
           ListEmptyComponent={
             <View style={s.emptyState}>
-              <Ionicons name="call-outline" size={36} color="rgba(255,255,255,0.1)" />
+              <Ionicons name="call-outline" size={36} color="rgba(255,255,255,0.25)" />
               <Text style={s.emptyText}>{loading ? 'Loading…' : 'No recent calls'}</Text>
             </View>
           }
           renderItem={({ item: call }) => {
             const icon = callIcon(call);
             return (
-              <View style={s.recentRow}>
+              <Pressable style={({ pressed }) => [s.recentRow, pressed && { backgroundColor: 'rgba(255,255,255,0.04)' }]}>
                 <View style={[s.recentIcon, { backgroundColor: `${icon.color}22` }]}>
                   <Ionicons name={icon.name as any} size={16} color={icon.color} />
                 </View>
@@ -173,7 +174,7 @@ export function PhoneWidget({ suiteId, officeId }: PhoneWidgetProps) {
                 >
                   <Ionicons name="call-outline" size={16} color="rgba(255,255,255,0.5)" />
                 </Pressable>
-              </View>
+              </Pressable>
             );
           }}
         />
@@ -181,30 +182,44 @@ export function PhoneWidget({ suiteId, officeId }: PhoneWidgetProps) {
 
       {tab === 'contacts' && (
         <View style={s.emptyState}>
-          <Ionicons name="people-outline" size={36} color="rgba(255,255,255,0.1)" />
+          <Ionicons name="people-outline" size={36} color="rgba(255,255,255,0.25)" />
           <Text style={s.emptyText}>No contacts yet</Text>
         </View>
       )}
-    </LinearGradient>
+
+      {/* Tabs at bottom */}
+      <View style={s.tabs}>
+        {TABS.map(t => (
+          <Pressable
+            key={t.key}
+            style={[s.tabItem, tab === t.key && s.tabItemActive]}
+            onPress={() => { playClickSound(); setTab(t.key); }}
+          >
+            <Text style={[s.tabText, tab === t.key && s.tabTextActive]}>{t.label}</Text>
+            {tab === t.key && <View style={s.tabUnderline} />}
+          </Pressable>
+        ))}
+      </View>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   tabs: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.07)',
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.07)',
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     position: 'relative',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
@@ -220,11 +235,11 @@ const s = StyleSheet.create({
   } as any,
   tabUnderline: {
     position: 'absolute',
-    bottom: -4,
+    top: -1,
     left: '25%',
     right: '25%',
     height: 2,
-    backgroundColor: '#22C55E',
+    backgroundColor: '#3B82F6',
     borderRadius: 1,
   },
   keypadContainer: {
@@ -237,12 +252,12 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 60,
+    minHeight: 80,
     marginBottom: 12,
     position: 'relative',
   },
   displayText: {
-    fontSize: 34,
+    fontSize: 42,
     fontWeight: '300',
     color: '#FFF',
     letterSpacing: 2,
@@ -257,37 +272,41 @@ const s = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 14,
+    gap: 12,
     justifyContent: 'center',
     marginBottom: 20,
   },
+  gridRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 12,
+  },
   dialBtn: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: 'rgba(255,255,255,0.07)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({
+      cursor: 'pointer',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)',
+    } as any) : {}),
   },
   dialBtnPressed: {
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    transform: [{ scale: 0.93 }],
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    transform: [{ scale: 0.95 }],
   },
   dialDigit: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '600',
     color: '#FFF',
-    lineHeight: 28,
+    lineHeight: 30,
   } as any,
   dialSub: {
-    fontSize: 8,
+    fontSize: 9,
     color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
     lineHeight: 12,
   } as any,
   callRow: {
@@ -300,11 +319,11 @@ const s = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#22C55E',
+    backgroundColor: '#3B82F6',
     justifyContent: 'center',
     alignItems: 'center',
     ...(Platform.OS !== 'web' ? {
-      shadowColor: '#22C55E',
+      shadowColor: '#3B82F6',
       shadowOpacity: 0.55,
       shadowRadius: 20,
       shadowOffset: { width: 0, height: 0 },
@@ -318,7 +337,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
     gap: 12,
@@ -358,7 +377,7 @@ const s = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyText: {
-    color: 'rgba(255,255,255,0.22)',
+    color: 'rgba(255,255,255,0.45)',
     fontSize: 14,
   },
 });

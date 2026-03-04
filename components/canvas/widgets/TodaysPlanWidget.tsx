@@ -31,10 +31,10 @@ function formatTimeEstimate(hours: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-const PRIORITY: Record<Priority, { bg: string; label: string }> = {
-  high:   { bg: '#3B82F6', label: 'HIGH' },
-  medium: { bg: '#F59E0B', label: 'MED' },
-  low:    { bg: 'rgba(255,255,255,0.15)', label: 'LOW' },
+const PRIORITY: Record<Priority, { bg: string; border: string; text: string; label: string }> = {
+  high:   { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.4)', text: '#EF4444', label: 'HIGH' },
+  medium: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: '#F59E0B', label: 'MED' },
+  low:    { bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.1)', text: 'rgba(255,255,255,0.4)', label: 'LOW' },
 };
 
 const DEMO_TASKS: Task[] = [
@@ -113,8 +113,8 @@ export function TodaysPlanWidget({ suiteId, officeId }: TodaysPlanWidgetProps) {
         </View>
 
         <ScrollView style={s.detailScroll} contentContainerStyle={s.detailContent}>
-          <View style={[s.detailPriorityBadge, { backgroundColor: p.bg }]}>
-            <Text style={s.detailPriorityText}>{p.label}</Text>
+          <View style={[s.detailPriorityBadge, { backgroundColor: p.bg, borderWidth: 1, borderColor: p.border }]}>
+            <Text style={[s.detailPriorityText, { color: p.text }]}>{p.label}</Text>
           </View>
           <Text style={s.detailTitle}>{selectedTask.title}</Text>
           {selectedTask.description ? (
@@ -135,9 +135,9 @@ export function TodaysPlanWidget({ suiteId, officeId }: TodaysPlanWidgetProps) {
         <View style={s.detailActions}>
           <Pressable
             onPress={() => { toggleTask(selectedTask); setViewState('list'); setSelectedTask(null); }}
-            style={[s.detailCompleteBtn, { backgroundColor: selectedTask.completed ? 'rgba(255,255,255,0.08)' : '#3B82F6' }]}
+            style={[s.detailCompleteBtn, { backgroundColor: selectedTask.completed ? 'rgba(255,255,255,0.08)' : 'rgba(59,130,246,0.15)', borderWidth: 1, borderColor: selectedTask.completed ? 'rgba(255,255,255,0.12)' : 'rgba(59,130,246,0.5)' }]}
           >
-            <Text style={s.detailCompleteBtnText}>
+            <Text style={[s.detailCompleteBtnText, !selectedTask.completed && { color: '#3B82F6' }]}>
               {selectedTask.completed ? 'Mark Incomplete' : 'Mark Complete'}
             </Text>
           </Pressable>
@@ -186,12 +186,15 @@ export function TodaysPlanWidget({ suiteId, officeId }: TodaysPlanWidgetProps) {
           filtered.map(task => (
             <Pressable
               key={task.id}
-              style={s.taskRow}
-              onPress={() => { playClickSound(); setSelectedTask(task); setViewState('detail'); }}
+              style={({ pressed }) => [
+                s.taskRow,
+                pressed && { backgroundColor: 'rgba(255,255,255,0.04)' }
+              ]}
+              onPress={() => { playClickSound(); setSelectedTask(task); setViewState('list' as any === 'detail' ? 'detail' : 'detail'); }}
             >
               <View style={s.taskLeft}>
-                <View style={[s.badge, { backgroundColor: PRIORITY[task.priority].bg }]}>
-                  <Text style={s.badgeText}>{PRIORITY[task.priority].label}</Text>
+                <View style={[s.badge, { backgroundColor: PRIORITY[task.priority].bg, borderWidth: 1, borderColor: PRIORITY[task.priority].border }]}>
+                  <Text style={[s.badgeText, { color: PRIORITY[task.priority].text }]}>{PRIORITY[task.priority].label}</Text>
                 </View>
                 <Text style={[s.taskTitle, task.completed && s.taskDone]} numberOfLines={1}>
                   {task.title}
@@ -214,7 +217,13 @@ export function TodaysPlanWidget({ suiteId, officeId }: TodaysPlanWidgetProps) {
           ))
         )}
 
-        <Pressable style={s.addRow} onPress={() => playClickSound()}>
+        <Pressable 
+          style={({ pressed }) => [
+            s.addRow,
+            pressed && { backgroundColor: 'rgba(255,255,255,0.06)' }
+          ]} 
+          onPress={() => playClickSound()}
+        >
           <Ionicons name="add" size={18} color="rgba(255,255,255,0.3)" />
           <Text style={s.addText}>Add task</Text>
         </Pressable>
@@ -226,14 +235,14 @@ export function TodaysPlanWidget({ suiteId, officeId }: TodaysPlanWidgetProps) {
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#070A10',
+    backgroundColor: 'transparent',
   },
   hero: {
     paddingHorizontal: 24,
     paddingTop: 32,
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.07)',
+    borderBottomColor: 'rgba(255,255,255,0.06)',
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
@@ -279,15 +288,15 @@ const s = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   filterPillActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
+    backgroundColor: 'rgba(59,130,246,0.15)',
+    borderColor: 'rgba(59,130,246,0.5)',
   },
   filterText: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.4)',
     fontWeight: '600',
   } as any,
-  filterTextActive: { color: '#FFF' },
+  filterTextActive: { color: '#FFF', fontWeight: '700' },
   list: { flex: 1 },
   centerPad: {
     paddingVertical: 60,
@@ -301,10 +310,12 @@ const s = StyleSheet.create({
   taskRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    marginHorizontal: 4,
+    borderRadius: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: 'rgba(255,255,255,0.05)',
     gap: 12,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
@@ -312,14 +323,13 @@ const s = StyleSheet.create({
   badge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    paddingVertical: 2,
+    borderRadius: 100,
   },
   badgeText: {
     fontSize: 10,
-    fontWeight: '800',
-    color: '#FFF',
-    letterSpacing: 0.8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   } as any,
   taskTitle: {
     fontSize: 15,
@@ -359,19 +369,19 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 16,
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 20,
     paddingVertical: 14,
+    backgroundColor: 'rgba(255,255,255,0.02)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    borderStyle: 'dashed',
-    borderRadius: 10,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   addText: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.28)',
+    color: 'rgba(255,255,255,0.3)',
     fontWeight: '600',
   } as any,
   detailHeader: {
@@ -402,14 +412,13 @@ const s = StyleSheet.create({
   detailPriorityBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 6,
+    paddingVertical: 4,
+    borderRadius: 100,
   },
   detailPriorityText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#FFF',
-    letterSpacing: 1,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   } as any,
   detailTitle: {
     fontSize: 22,
@@ -440,7 +449,7 @@ const s = StyleSheet.create({
   },
   detailCompleteBtn: {
     paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 100,
     alignItems: 'center',
   },
   detailCompleteBtnText: {

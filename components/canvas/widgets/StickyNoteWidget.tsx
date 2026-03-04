@@ -27,14 +27,14 @@ import { playNoteSaveSound, playClickSound } from '@/lib/sounds';
 // ---------------------------------------------------------------------------
 
 const PREMIUM_COLORS = [
-  { id: 'hotpink',  hex: '#FF1B6B', dark: '#8B003A' },
-  { id: 'neonlime', hex: '#39FF14', dark: '#1A6600' },
-  { id: 'orange',   hex: '#FF8C00', dark: '#7A3E00' },
-  { id: 'yellow',   hex: '#FFE600', dark: '#6B5E00' },
-  { id: 'purple',   hex: '#9B2BE2', dark: '#4A0080' },
-  { id: 'cyan',     hex: '#00E5FF', dark: '#005C70' },
-  { id: 'coral',    hex: '#FF4444', dark: '#7A0000' },
-  { id: 'mint',     hex: '#00E676', dark: '#00593A' },
+  { id: 'yellow',   hex: '#FFF9C4', dark: '#7A6B00' }, // pale lemon — default
+  { id: 'pink',     hex: '#FFD6E0', dark: '#8B0033' }, // baby pink
+  { id: 'blue',     hex: '#BDE0FE', dark: '#003D8F' }, // baby blue
+  { id: 'mint',     hex: '#CAFFBF', dark: '#1A6600' }, // soft mint
+  { id: 'lavender', hex: '#E2D9F3', dark: '#3D1A80' }, // soft lavender
+  { id: 'peach',    hex: '#FFD6A5', dark: '#7A3D00' }, // soft peach
+  { id: 'sage',     hex: '#D4EDDA', dark: '#1A5C2A' }, // sage green
+  { id: 'lilac',    hex: '#F2C4DE', dark: '#6B0047' }, // soft lilac
 ] as const;
 
 type ColorId = (typeof PREMIUM_COLORS)[number]['id'];
@@ -121,7 +121,7 @@ export function StickyNoteWidget({
 }: StickyNoteWidgetProps) {
   const [noteId, setNoteId] = useState<string | null>(null);
   const [text, setText] = useState('');
-  const [colorId, setColorId] = useState<ColorId>('hotpink');
+  const [colorId, setColorId] = useState<ColorId>('yellow');
   const [loading, setLoading] = useState(true);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -290,7 +290,7 @@ export function StickyNoteWidget({
         value={text}
         onChangeText={handleTextChange}
         placeholder="Write your note…"
-        placeholderTextColor={`${colorConfig.dark}55`}
+        placeholderTextColor={`${colorConfig.dark}88`}
         multiline
         textAlignVertical="top"
         autoFocus={!text}
@@ -319,7 +319,7 @@ export function StickyNoteWidget({
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    borderRadius: 4,
+    borderRadius: 14,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -335,7 +335,7 @@ const s = StyleSheet.create({
     ...(Platform.OS === 'web'
       ? ({
           backgroundImage:
-            'linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 35%, transparent 65%)',
+            'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\' opacity=\'0.04\'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 35%, transparent 65%)',
         } as any)
       : { backgroundColor: 'rgba(255,255,255,0.10)' }),
   },
@@ -369,9 +369,9 @@ const s = StyleSheet.create({
   },
 
   colorDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
 

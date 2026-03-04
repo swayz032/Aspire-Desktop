@@ -23,7 +23,7 @@ interface CalendarWidgetProps {
 
 const WEEK_DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-const EVENT_COLORS = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#0EA5E9'];
+const EVENT_COLORS = ['#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#0EA5E9', '#10B981'];
 
 function colorFromId(id: string): string {
   const hash = id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
@@ -130,13 +130,19 @@ export function CalendarWidget({ suiteId, officeId }: CalendarWidgetProps) {
     <View style={s.root}>
       {/* Month nav */}
       <View style={s.navRow}>
-        <Pressable style={s.navBtn} onPress={prevMonth}>
+        <Pressable 
+          style={({ pressed }) => [s.navBtn, pressed && { backgroundColor: 'rgba(255,255,255,0.1)' }]} 
+          onPress={prevMonth}
+        >
           <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.6)" />
         </Pressable>
         <Text style={s.monthLabel}>
           {MONTH_NAMES[currentMonth.getMonth()]} {currentMonth.getFullYear()}
         </Text>
-        <Pressable style={s.navBtn} onPress={nextMonth}>
+        <Pressable 
+          style={({ pressed }) => [s.navBtn, pressed && { backgroundColor: 'rgba(255,255,255,0.1)' }]} 
+          onPress={nextMonth}
+        >
           <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.6)" />
         </Pressable>
       </View>
@@ -196,23 +202,28 @@ export function CalendarWidget({ suiteId, officeId }: CalendarWidgetProps) {
       {/* Selected day events */}
       <ScrollView style={s.eventList} showsVerticalScrollIndicator={false}>
         <Text style={s.eventListTitle}>
-          {sameDay(selectedDate, today) ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          {sameDay(selectedDate, today) ? "Today's Events" : selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </Text>
         {selectedEvents.length === 0 ? (
-          <View style={s.noEvents}>
-            <Text style={s.noEventsText}>No events</Text>
+          <View style={s.noEventsContainer}>
+            <View style={s.noEvents}>
+              <Text style={s.noEventsText}>No events</Text>
+            </View>
           </View>
         ) : (
           selectedEvents.map(event => {
             const color = colorFromId(event.id);
             return (
-              <View key={event.id} style={s.eventRow}>
+              <View key={event.id} style={s.eventCard}>
                 <View style={[s.eventBar, { backgroundColor: color }]} />
                 <View style={s.eventInfo}>
                   <Text style={s.eventTitle} numberOfLines={1}>{event.title}</Text>
-                  <Text style={s.eventTime}>
-                    {formatTime(event.start_time)} – {formatTime(event.end_time)}
-                  </Text>
+                  <View style={s.eventTimeRow}>
+                    <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.35)" style={{ marginRight: 4 }} />
+                    <Text style={s.eventTime}>
+                      {formatTime(event.start_time)} – {formatTime(event.end_time)}
+                    </Text>
+                  </View>
                   {event.location ? (
                     <Text style={s.eventLocation} numberOfLines={1}>{event.location}</Text>
                   ) : null}
@@ -229,7 +240,7 @@ export function CalendarWidget({ suiteId, officeId }: CalendarWidgetProps) {
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#060A10',
+    backgroundColor: 'transparent',
   },
   navRow: {
     flexDirection: 'row',
@@ -286,11 +297,11 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   dayToday: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#3B82F6',
   },
   daySelected: {
     borderWidth: 1.5,
-    borderColor: '#10B981',
+    borderColor: '#3B82F6',
   },
   dayNum: {
     fontSize: 13,
@@ -305,7 +316,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
   } as any,
   dayNumSelected: {
-    color: '#10B981',
+    color: '#3B82F6',
     fontWeight: '700',
   } as any,
   dotRow: {
@@ -332,22 +343,34 @@ const s = StyleSheet.create({
   eventListTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.35)',
+    color: 'rgba(255,255,255,0.5)',
     marginBottom: 10,
     letterSpacing: 0.3,
   } as any,
+  noEventsContainer: {
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    marginTop: 4,
+  },
   noEvents: {
-    paddingVertical: 20,
+    paddingVertical: 32,
     alignItems: 'center',
   },
   noEventsText: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.2)',
+    color: 'rgba(255,255,255,0.4)',
   },
-  eventRow: {
+  eventCard: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    marginBottom: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    padding: 12,
+    marginBottom: 8,
     gap: 10,
   },
   eventBar: {
@@ -361,14 +384,18 @@ const s = StyleSheet.create({
     fontWeight: '600',
     color: '#FFF',
   } as any,
+  eventTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
   eventTime: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.4)',
-    marginTop: 2,
   },
   eventLocation: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.3)',
-    marginTop: 1,
+    marginTop: 4,
   },
 });

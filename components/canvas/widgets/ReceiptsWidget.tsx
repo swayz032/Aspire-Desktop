@@ -45,6 +45,19 @@ export function ReceiptsWidget({ suiteId, officeId }: ReceiptsWidgetProps) {
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const getCategoryIcon = (category: string): keyof typeof Ionicons.hasGlyph | any => {
+    switch (category) {
+      case 'Food': return 'restaurant-outline';
+      case 'Travel': return 'airplane-outline';
+      case 'Software': return 'code-slash-outline';
+      case 'Office': return 'briefcase-outline';
+      case 'Other': return 'receipt-outline';
+      case 'Revenue': return 'arrow-down-circle-outline';
+      case 'Payroll': return 'people-outline';
+      default: return 'receipt-outline';
+    }
+  };
+
   const fetchReceipts = useCallback(async () => {
     try {
       setLoading(true);
@@ -94,7 +107,7 @@ export function ReceiptsWidget({ suiteId, officeId }: ReceiptsWidgetProps) {
 
       {/* Search */}
       <View style={s.searchWrap}>
-        <Ionicons name="search" size={14} color="rgba(255,255,255,0.3)" />
+        <Ionicons name="search-outline" size={14} color="rgba(255,255,255,0.3)" />
         <TextInput
           style={s.searchInput}
           value={searchQuery}
@@ -112,10 +125,16 @@ export function ReceiptsWidget({ suiteId, officeId }: ReceiptsWidgetProps) {
           return (
             <Pressable
               key={cat}
-              style={[s.filterChip, active && { backgroundColor: color }]}
+              style={[
+                s.filterChip, 
+                active && { 
+                  backgroundColor: `${color}22`,
+                  borderColor: `${color}55`,
+                }
+              ]}
               onPress={() => { playClickSound(); setActiveFilter(cat); }}
             >
-              <Text style={[s.filterChipText, active && s.filterChipTextActive]}>
+              <Text style={[s.filterChipText, active && { color }]}>
                 {cat}
               </Text>
             </Pressable>
@@ -138,11 +157,15 @@ export function ReceiptsWidget({ suiteId, officeId }: ReceiptsWidgetProps) {
           const color = CATEGORY_COLORS[receipt.category] ?? CATEGORY_COLORS.Other;
           const statusColor = receipt.status === 'flagged' ? '#EF4444' : receipt.status === 'pending' ? '#F59E0B' : '#10B981';
           return (
-            <View style={s.receiptRow}>
-              <View style={[s.receiptCircle, { backgroundColor: `${color}22` }]}>
-                <Text style={[s.receiptCatLetter, { color }]}>
-                  {receipt.category[0]}
-                </Text>
+            <Pressable 
+              style={({ pressed }) => [
+                s.receiptRow,
+                pressed && { backgroundColor: 'rgba(255,255,255,0.04)' }
+              ]}
+              onPress={() => playClickSound()}
+            >
+              <View style={[s.receiptCircle, { backgroundColor: `${color}18` }]}>
+                <Ionicons name={getCategoryIcon(receipt.category)} size={18} color={color} />
               </View>
               <View style={s.receiptInfo}>
                 <Text style={s.receiptMerchant} numberOfLines={1}>{receipt.merchant}</Text>
@@ -152,12 +175,18 @@ export function ReceiptsWidget({ suiteId, officeId }: ReceiptsWidgetProps) {
                 <Text style={s.receiptAmount}>${receipt.amount.toFixed(2)}</Text>
                 <View style={[s.statusDot, { backgroundColor: statusColor }]} />
               </View>
-            </View>
+            </Pressable>
           );
         }}
         ListFooterComponent={
-          <Pressable style={s.uploadBtn} onPress={() => playClickSound()}>
-            <Ionicons name="add" size={16} color="rgba(255,255,255,0.4)" />
+          <Pressable 
+            style={({ pressed }) => [
+              s.uploadBtn,
+              pressed && { backgroundColor: 'rgba(255,255,255,0.06)' }
+            ]} 
+            onPress={() => playClickSound()}
+          >
+            <Ionicons name="cloud-upload-outline" size={16} color="rgba(255,255,255,0.5)" />
             <Text style={s.uploadBtnText}>Upload Receipt</Text>
           </Pressable>
         }
@@ -169,7 +198,7 @@ export function ReceiptsWidget({ suiteId, officeId }: ReceiptsWidgetProps) {
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#060A10',
+    backgroundColor: 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -199,6 +228,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   searchInput: {
     flex: 1,
@@ -216,9 +247,10 @@ const s = StyleSheet.create({
   filterChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 100,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   filterChipText: {
@@ -258,6 +290,7 @@ const s = StyleSheet.create({
   receiptCatLetter: {
     fontSize: 16,
     fontWeight: '700',
+    color: '#FFF',
   } as any,
   receiptInfo: { flex: 1 },
   receiptMerchant: {
@@ -292,16 +325,17 @@ const s = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 8,
     marginBottom: 16,
-    paddingVertical: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 10,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 100,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   uploadBtnText: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.3)',
+    color: 'rgba(255,255,255,0.5)',
     fontWeight: '600',
   } as any,
 });

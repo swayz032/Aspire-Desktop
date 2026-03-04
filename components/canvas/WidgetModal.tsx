@@ -106,7 +106,21 @@ const s = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: 'transparent',
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow:
+            '0 24px 80px rgba(0,0,0,0.65), 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06)',
+        } as any)
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: 0.6,
+          shadowRadius: 40,
+          elevation: 24,
+        }),
   },
   closeBtn: {
     position: 'absolute',
@@ -115,11 +129,15 @@ const s = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 100,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' } as any)
+      : {}),
   },
   content: {
     flex: 1,

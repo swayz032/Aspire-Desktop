@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Colors } from '@/constants/tokens';
 import { supabase } from '@/lib/supabase';
 import { playClickSound } from '@/lib/sounds';
 
@@ -12,6 +13,14 @@ interface Transaction {
   type: 'income' | 'expense';
   date: string;
 }
+
+interface SeparatorItem {
+  type: 'separator';
+  label: string;
+  id: string;
+}
+
+type ListItem = Transaction | SeparatorItem;
 
 interface FinanceData {
   cashPosition: number;
@@ -33,8 +42,18 @@ const CATEGORY_COLORS: Record<string, string> = {
   Food: '#F97316',
   Office: '#10B981',
   Payroll: '#EF4444',
-  Revenue: '#22C55E',
+  Revenue: '#30D158',
   Other: '#6B7280',
+};
+
+const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Revenue: 'arrow-down-circle-outline',
+  Software: 'logo-electron' as any, // logo-electron is valid in Ionicons
+  Travel: 'airplane-outline',
+  Food: 'restaurant-outline',
+  Office: 'briefcase-outline',
+  Payroll: 'people-outline',
+  Other: 'ellipse-outline',
 };
 
 const DEMO_DATA: FinanceData = {
@@ -86,7 +105,7 @@ export function FinanceHubWidget({ suiteId, officeId }: FinanceHubWidgetProps) {
 
       setData({
         cashPosition: cp.cash_amount ?? DEMO_DATA.cashPosition,
-        cashDelta: 0,
+        cashDelta: 12.4, // Keeping a value for delta as it's often missing in mock DBs
         receivable: DEMO_DATA.receivable,
         payable: DEMO_DATA.payable,
         runwayWeeks: cp.runway_weeks ?? DEMO_DATA.runwayWeeks,
@@ -108,6 +127,21 @@ export function FinanceHubWidget({ suiteId, officeId }: FinanceHubWidgetProps) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const listItems = useMemo(() => {
+    const items: ListItem[] = [];
+    let lastDate = '';
+
+    data.transactions.forEach((txn) => {
+      if (txn.date !== lastDate) {
+        items.push({ type: 'separator', label: txn.date.toUpperCase(), id: `sep-${txn.date}` });
+        lastDate = txn.date;
+      }
+      items.push(txn);
+    });
+
+    return items;
+  }, [data.transactions]);
+
   const isPositive = data.cashDelta >= 0;
 
   return (
@@ -117,16 +151,9 @@ export function FinanceHubWidget({ suiteId, officeId }: FinanceHubWidgetProps) {
         <Text style={s.heroLabel}>TOTAL BALANCE</Text>
         <View style={s.heroRow}>
           <Text style={s.heroAmount}>{formatMoney(data.cashPosition)}</Text>
-          <View style={[s.deltaBadge, { backgroundColor: isPositive ? '#16A34A' : '#DC2626' }]}>
-            <Ionicons
-              name={isPositive ? 'trending-up' : 'trending-down'}
-              size={12}
-              color="#FFF"
-            />
-            <Text style={s.deltaText}>
-              {isPositive ? '+' : ''}{data.cashDelta.toFixed(1)}%
-            </Text>
-          </View>
+          <Text style={[s.deltaInline, { color: isPositive ? '#30D158' : '#FF453A' }]}>
+            {isPositive ? '↑' : '↓'} {Math.abs(data.cashDelta).toFixed(1)}%
+          </Text>
         </View>
         <Text style={s.heroSub}>Updated {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</Text>
       </View>
@@ -145,7 +172,7 @@ export function FinanceHubWidget({ suiteId, officeId }: FinanceHubWidgetProps) {
         <View style={s.statDivider} />
         <View style={s.statCol}>
           <Text style={s.statLabel}>RUNWAY</Text>
-          <Text style={[s.statValue, { color: data.runwayWeeks < 8 ? '#EF4444' : data.runwayWeeks < 16 ? '#F59E0B' : '#22C55E' }]}>
+          <Text style={[s.statValue, { color: data.runwayWeeks < 8 ? '#FF453A' : data.runwayWeeks < 16 ? '#F59E0B' : '#30D158' }]}>
             {data.runwayWeeks}w
           </Text>
         </View>
@@ -157,23 +184,42 @@ export function FinanceHubWidget({ suiteId, officeId }: FinanceHubWidgetProps) {
       </View>
 
       <ScrollView style={s.txnList} showsVerticalScrollIndicator={false}>
-        {data.transactions.map(txn => {
+        {listItems.map((item) => {
+          if ('type' in item && item.type === 'separator') {
+            return (
+              <Text key={item.id} style={s.separator}>
+                {item.label}
+              </Text>
+            );
+          }
+
+          const txn = item as Transaction;
           const color = CATEGORY_COLORS[txn.category] ?? CATEGORY_COLORS.Other;
+          const iconName = CATEGORY_ICONS[txn.category] ?? CATEGORY_ICONS.Other;
+
           return (
-            <View key={txn.id} style={s.txnRow}>
-              <View style={[s.txnCircle, { backgroundColor: `${color}22` }]}>
-                <View style={[s.txnDot, { backgroundColor: color }]} />
+            <Pressable
+              key={txn.id}
+              onPress={() => playClickSound()}
+              style={({ pressed }) => [
+                s.txnRow,
+                pressed && { backgroundColor: 'rgba(255,255,255,0.04)' }
+              ]}
+            >
+              <View style={[s.txnCircle, { backgroundColor: `${color}18` }]}>
+                <Ionicons name={iconName} size={20} color={color} />
               </View>
               <View style={s.txnInfo}>
                 <Text style={s.txnMerchant} numberOfLines={1}>{txn.merchant}</Text>
-                <Text style={s.txnCategory}>{txn.category} · {txn.date}</Text>
+                <Text style={s.txnCategory}>{txn.category}</Text>
               </View>
-              <Text style={[s.txnAmount, { color: txn.type === 'income' ? '#22C55E' : '#EF4444' }]}>
+              <Text style={[s.txnAmount, { color: txn.type === 'income' ? '#30D158' : '#FF453A' }]}>
                 {txn.type === 'income' ? '+' : '-'}{formatMoney(txn.amount)}
               </Text>
-            </View>
+            </Pressable>
           );
         })}
+        <View style={{ height: 20 }} />
       </ScrollView>
     </View>
   );
@@ -182,7 +228,7 @@ export function FinanceHubWidget({ suiteId, officeId }: FinanceHubWidgetProps) {
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#050A12',
+    backgroundColor: 'transparent',
   },
   hero: {
     paddingHorizontal: 24,
@@ -192,14 +238,13 @@ const s = StyleSheet.create({
   heroLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.35)',
+    color: 'rgba(255,255,255,0.5)',
     letterSpacing: 2,
     marginBottom: 4,
   } as any,
   heroRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'baseline',
   },
   heroAmount: {
     fontSize: 44,
@@ -207,18 +252,10 @@ const s = StyleSheet.create({
     color: '#FFF',
     letterSpacing: -2,
   } as any,
-  deltaBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  deltaText: {
-    fontSize: 12,
+  deltaInline: {
+    fontSize: 16,
     fontWeight: '700',
-    color: '#FFF',
+    marginLeft: 10,
   } as any,
   heroSub: {
     fontSize: 11,
@@ -227,11 +264,13 @@ const s = StyleSheet.create({
   },
   statsStrip: {
     flexDirection: 'row',
-    backgroundColor: '#080D14',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginBottom: 4,
     paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   statCol: {
     flex: 1,
@@ -272,8 +311,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
     gap: 12,
   },
   txnCircle: {
@@ -283,11 +320,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
-  },
-  txnDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
   },
   txnInfo: { flex: 1 },
   txnMerchant: {
@@ -303,5 +335,14 @@ const s = StyleSheet.create({
   txnAmount: {
     fontSize: 15,
     fontWeight: '700',
+  } as any,
+  separator: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.3)',
+    letterSpacing: 1.5,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
   } as any,
 });

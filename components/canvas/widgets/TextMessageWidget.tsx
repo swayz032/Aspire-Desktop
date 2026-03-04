@@ -15,9 +15,17 @@ interface TextMessageWidgetProps {
   officeId: string;
 }
 
-const SENT_GRADIENT: [string, string] = ['#FF1B6B', '#7C3AED'];
+const SENT_GRADIENT: [string, string] = ['#3B82F6', '#3B82F6'];
 
 const AVATAR_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#0EA5E9'];
+
+const DEMO_FAVORITES = [
+  { name: 'Alex', color: AVATAR_COLORS[0], online: true },
+  { name: 'Jordan', color: AVATAR_COLORS[1], online: false },
+  { name: 'Maya', color: AVATAR_COLORS[2], online: true },
+  { name: 'Sam', color: AVATAR_COLORS[3], online: false },
+  { name: 'Chris', color: AVATAR_COLORS[4], online: false },
+];
 
 function colorFromPhone(phone: string): string {
   const seed = phone.replace(/\D/g, '').slice(-4) || '1234';
@@ -44,6 +52,9 @@ function relativeTime(iso: string | null): string {
 
 function phoneInitial(phone: string): string {
   const c = phone.replace(/\D/g, '');
+  if (c.startsWith('1415')) return 'A'; // Alex
+  if (c.startsWith('1212')) return 'J'; // Jordan
+  if (c.startsWith('1312')) return 'M'; // Maya
   return c.slice(-2, -1) || '#';
 }
 
@@ -117,14 +128,9 @@ export function TextMessageWidget({ suiteId, officeId }: TextMessageWidgetProps)
             return (
               <View style={[s.bubbleRow, isSent ? s.bubbleRowRight : s.bubbleRowLeft]}>
                 {isSent ? (
-                  <LinearGradient
-                    colors={SENT_GRADIENT}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[s.bubble, s.bubbleSent]}
-                  >
+                  <View style={[s.bubble, s.bubbleSent]}>
                     <Text style={s.bubbleText}>{item.body}</Text>
-                  </LinearGradient>
+                  </View>
                 ) : (
                   <View style={[s.bubble, s.bubbleRecv]}>
                     <Text style={s.bubbleText}>{item.body}</Text>
@@ -153,9 +159,9 @@ export function TextMessageWidget({ suiteId, officeId }: TextMessageWidgetProps)
               style={[s.sendBtn, !inputText.trim() && s.sendBtnDisabled]}
             >
               {inputText.trim() ? (
-                <LinearGradient colors={SENT_GRADIENT} style={s.sendGrad}>
+                <View style={s.sendGrad}>
                   <Ionicons name="arrow-up" size={18} color="#FFF" />
-                </LinearGradient>
+                </View>
               ) : (
                 <View style={s.sendGradInactive}>
                   <Ionicons name="arrow-up" size={18} color="rgba(255,255,255,0.3)" />
@@ -178,15 +184,43 @@ export function TextMessageWidget({ suiteId, officeId }: TextMessageWidgetProps)
         </Pressable>
       </View>
 
+      {/* Search Bar */}
+      <View style={s.searchBar}>
+        <Ionicons name="search-outline" size={16} color="rgba(255,255,255,0.3)" />
+        <Text style={s.searchPlaceholder}>Search messages…</Text>
+      </View>
+
+      {/* Favorites Strip */}
+      <View>
+        <FlatList
+          horizontal
+          data={DEMO_FAVORITES}
+          keyExtractor={f => f.name}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.favoritesList}
+          renderItem={({ item: fav }) => (
+            <View style={s.favItem}>
+              <View style={[s.favAvatar, { backgroundColor: fav.color }]}>
+                <Text style={s.favAvatarText}>{fav.name[0]}</Text>
+                {fav.online && <View style={s.onlineDot} />}
+              </View>
+              <Text style={s.favName}>{fav.name}</Text>
+            </View>
+          )}
+        />
+      </View>
+
       {/* Thread list */}
       <FlatList
         data={threads}
         keyExtractor={t => t.thread_id}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <View style={s.emptyList}>
-            <Ionicons name="chatbubbles-outline" size={36} color="rgba(255,255,255,0.1)" />
-            <Text style={s.emptyListText}>{threadsLoading ? 'Loading…' : 'No conversations'}</Text>
+          <View style={s.emptyListContainer}>
+            <View style={s.emptyList}>
+              <Ionicons name="chatbubbles-outline" size={36} color="rgba(255,255,255,0.3)" />
+              <Text style={s.emptyListText}>{threadsLoading ? 'Loading…' : 'No conversations'}</Text>
+            </View>
           </View>
         }
         renderItem={({ item: thread }) => {
@@ -194,7 +228,7 @@ export function TextMessageWidget({ suiteId, officeId }: TextMessageWidgetProps)
           const displayName = formatPhone(thread.counterparty_e164 || '');
           return (
             <Pressable
-              style={s.threadRow}
+              style={({ pressed }) => [s.threadRow, pressed && { backgroundColor: 'rgba(255,255,255,0.04)' }]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                 playClickSound();
@@ -210,7 +244,7 @@ export function TextMessageWidget({ suiteId, officeId }: TextMessageWidgetProps)
                   <Text style={s.threadTime}>{relativeTime(thread.last_message_at)}</Text>
                 </View>
                 <Text style={s.threadPreview} numberOfLines={1}>
-                  {thread.counterparty_e164 || 'SMS conversation'}
+                  {thread.counterparty_e164 || 'New conversation'}
                 </Text>
               </View>
               {(thread.unread_count ?? 0) > 0 && (
@@ -229,7 +263,7 @@ export function TextMessageWidget({ suiteId, officeId }: TextMessageWidgetProps)
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#08090F',
+    backgroundColor: 'transparent',
   },
   listHeader: {
     flexDirection: 'row',
@@ -249,31 +283,88 @@ const s = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' } as any) : {}),
+  },
+  searchBar: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginBottom: 4,
+  },
+  searchPlaceholder: {
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  favoritesList: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 16,
+  },
+  favItem: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  favAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  favAvatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFF',
+  } as any,
+  favName: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '500',
+  },
+  onlineDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#34C759',
+    borderWidth: 2,
+    borderColor: '#1C1C1E',
   },
   threadRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.05)',
     gap: 12,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   threadAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
   },
   threadAvatarText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#FFF',
   } as any,
@@ -302,7 +393,7 @@ const s = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#7C3AED',
+    backgroundColor: '#3B82F6',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -311,14 +402,21 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: '#FFF',
   } as any,
+  emptyListContainer: {
+    padding: 20,
+  },
   emptyList: {
-    paddingVertical: 60,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
     alignItems: 'center',
     gap: 12,
   },
   emptyListText: {
-    color: 'rgba(255,255,255,0.22)',
+    color: 'rgba(255,255,255,0.45)',
     fontSize: 14,
+    textAlign: 'center',
   },
   convHeader: {
     flexDirection: 'row',
@@ -333,10 +431,12 @@ const s = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' } as any) : {}),
   },
   convAvatar: {
     width: 38,
@@ -366,10 +466,12 @@ const s = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' } as any) : {}),
   },
   msgList: {
     padding: 16,
@@ -378,12 +480,18 @@ const s = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   emptyConv: {
-    paddingVertical: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    margin: 20,
+    paddingVertical: 48,
+    paddingHorizontal: 24,
     alignItems: 'center',
+    gap: 12,
   },
   emptyConvText: {
-    color: 'rgba(255,255,255,0.22)',
+    color: 'rgba(255,255,255,0.45)',
     fontSize: 13,
+    textAlign: 'center',
   },
   bubbleRow: {
     marginBottom: 6,
@@ -398,6 +506,7 @@ const s = StyleSheet.create({
   bubbleSent: {
     borderRadius: 18,
     borderBottomRightRadius: 3,
+    backgroundColor: '#3B82F6',
   },
   bubbleRecv: {
     borderRadius: 18,
@@ -443,6 +552,8 @@ const s = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#3B82F6',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 24px rgba(59,130,246,0.5)' } as any) : {}),
   },
   sendGradInactive: {
     width: 40,

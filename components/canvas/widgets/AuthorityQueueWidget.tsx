@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, Pressable, FlatList, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, FlatList, StyleSheet, Platform, Image } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { playApproveSound, playDenySound } from '@/lib/sounds';
+import { Colors } from '@/constants/tokens';
 
 type RiskTier = 'red' | 'yellow' | 'green';
 
@@ -25,10 +26,18 @@ interface AuthorityQueueWidgetProps {
   onViewAll?: () => void;
 }
 
-const RISK_CONFIG: Record<RiskTier, { bg: string; border: string; text: string; label: string }> = {
-  red:    { bg: 'rgba(239,68,68,0.15)',  border: '#EF4444', text: '#EF4444', label: 'HIGH RISK' },
-  yellow: { bg: 'rgba(245,158,11,0.15)', border: '#F59E0B', text: '#F59E0B', label: 'MED RISK'  },
-  green:  { bg: 'rgba(34,197,94,0.15)',  border: '#22C55E', text: '#22C55E', label: 'LOW RISK'  },
+const RISK_CONFIG: Record<RiskTier, { bar: string; label: string }> = {
+  red:    { bar: '#EF4444', label: 'HIGH RISK' },
+  yellow: { bar: '#F59E0B', label: 'MED RISK'  },
+  green:  { bar: 'rgba(255,255,255,0.1)', label: 'LOW RISK'  },
+};
+
+const AGENT_PHOTOS: Record<string, any> = {
+  Ava: require('@/assets/avatars/ava.png'),
+  Eli: require('@/assets/avatars/eli.png'),
+  Finn: require('@/assets/avatars/finn.png'),
+  Nora: require('@/assets/avatars/nora.png'),
+  Quinn: require('@/assets/avatars/quinn.png'),
 };
 
 const AVATAR_COLORS: Record<string, string> = {
@@ -165,52 +174,63 @@ export function AuthorityQueueWidget({ suiteId, officeId, onApprove, onDeny }: A
           const risk = RISK_CONFIG[req.riskTier];
           const color = agentColor(req.requester);
           const isProcessing = !!processing[req.id];
+          const agentPhoto = AGENT_PHOTOS[req.requester];
+
           return (
-            <View style={s.reqRow}>
-              {/* Top row */}
-              <View style={s.reqTopRow}>
-                <View style={[s.agentCircle, { backgroundColor: color }]}>
-                  <Text style={s.agentInitial}>{req.requester[0]}</Text>
-                </View>
-                <View style={s.reqInfo}>
-                  <View style={s.reqTitleRow}>
-                    <Text style={s.reqRequester}>{req.requester}</Text>
-                    <View style={[s.riskChip, { backgroundColor: risk.bg, borderColor: risk.border }]}>
-                      <Text style={[s.riskText, { color: risk.text }]}>{risk.label}</Text>
+            <Pressable 
+              style={({ pressed }) => [s.reqRow, pressed && { backgroundColor: 'rgba(255,255,255,0.03)' }]}
+            >
+              {/* Risk Left Bar */}
+              <View style={[s.riskBar, { backgroundColor: risk.bar }]} />
+
+              {/* Main Content */}
+              <View style={s.rowContent}>
+                {/* Top row */}
+                <View style={s.reqTopRow}>
+                  {agentPhoto ? (
+                    <Image source={agentPhoto} style={s.agentPhoto} />
+                  ) : (
+                    <View style={[s.agentCircle, { backgroundColor: color }]}>
+                      <Text style={s.agentInitial}>{req.requester[0]}</Text>
+                    </View>
+                  )}
+                  <View style={s.reqInfo}>
+                    <View style={s.reqTitleRow}>
+                      <Text style={s.reqRequester}>{req.requester}</Text>
+                    </View>
+                    <Text style={s.reqDesc} numberOfLines={2}>{req.description}</Text>
+                    <View style={s.reqMeta}>
+                      <Text style={s.reqTime}>{relativeTime(req.timestamp)}</Text>
+                      {req.amount !== undefined && (
+                        <Text style={s.reqAmount}>${req.amount.toLocaleString()}</Text>
+                      )}
                     </View>
                   </View>
-                  <Text style={s.reqDesc} numberOfLines={2}>{req.description}</Text>
-                  <View style={s.reqMeta}>
-                    <Text style={s.reqTime}>{relativeTime(req.timestamp)}</Text>
-                    {req.amount !== undefined && (
-                      <Text style={s.reqAmount}>${req.amount.toLocaleString()}</Text>
-                    )}
-                  </View>
+                </View>
+
+                {/* Inline Approve / Reject */}
+                <View style={s.actionRow}>
+                  <Pressable
+                    style={[s.approveBtn, isProcessing && s.btnDisabled]}
+                    onPress={() => handleApprove(req)}
+                    disabled={isProcessing}
+                  >
+                    <Text style={s.approveBtnText}>
+                      {processing[req.id] === 'approving' ? '…' : 'Approve'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[s.denyBtn, isProcessing && s.btnDisabled]}
+                    onPress={() => handleDeny(req)}
+                    disabled={isProcessing}
+                  >
+                    <Text style={s.denyBtnText}>
+                      {processing[req.id] === 'denying' ? '…' : 'Reject'}
+                    </Text>
+                  </Pressable>
                 </View>
               </View>
-
-              {/* Inline Approve / Reject — THE UNFORGETTABLE ELEMENT */}
-              <View style={s.actionRow}>
-                <Pressable
-                  style={[s.approveBtn, isProcessing && s.btnDisabled]}
-                  onPress={() => handleApprove(req)}
-                  disabled={isProcessing}
-                >
-                  <Text style={s.approveBtnText}>
-                    {processing[req.id] === 'approving' ? '…' : 'Approve'}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[s.denyBtn, isProcessing && s.btnDisabled]}
-                  onPress={() => handleDeny(req)}
-                  disabled={isProcessing}
-                >
-                  <Text style={s.denyBtnText}>
-                    {processing[req.id] === 'denying' ? '…' : 'Reject'}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
+            </Pressable>
           );
         }}
       />
@@ -221,7 +241,7 @@ export function AuthorityQueueWidget({ suiteId, officeId, onApprove, onDeny }: A
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#060A10',
+    backgroundColor: 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -240,7 +260,9 @@ const s = StyleSheet.create({
     flex: 1,
   } as any,
   countBadge: {
-    backgroundColor: '#F97316',
+    backgroundColor: 'rgba(59,130,246,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.35)',
     borderRadius: 12,
     minWidth: 24,
     height: 24,
@@ -251,13 +273,23 @@ const s = StyleSheet.create({
   countText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#FFF',
+    color: '#3B82F6',
   } as any,
   reqRow: {
-    paddingHorizontal: 20,
+    flexDirection: 'row',
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  riskBar: {
+    width: 3,
+    alignSelf: 'stretch',
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  rowContent: {
+    flex: 1,
+    paddingRight: 20,
     gap: 12,
   },
   reqTopRow: {
@@ -265,10 +297,15 @@ const s = StyleSheet.create({
     gap: 12,
     alignItems: 'flex-start',
   },
+  agentPhoto: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
   agentCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
@@ -289,17 +326,6 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
-  riskChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  riskText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   } as any,
   reqDesc: {
     fontSize: 13,
@@ -322,36 +348,40 @@ const s = StyleSheet.create({
   } as any,
   actionRow: {
     flexDirection: 'row',
-    gap: 10,
-    paddingLeft: 54,
+    gap: 8,
+    marginTop: 10,
+    paddingLeft: 56,
   },
   approveBtn: {
-    flex: 1,
-    height: 36,
-    backgroundColor: '#22C55E',
-    borderRadius: 18,
+    backgroundColor: 'rgba(59,130,246,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.35)',
+    borderRadius: 100,
+    paddingHorizontal: 18,
+    height: 34,
     justifyContent: 'center',
     alignItems: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   approveBtnText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#FFF',
+    fontWeight: '600',
+    color: '#3B82F6',
   } as any,
   denyBtn: {
-    flex: 1,
-    height: 36,
-    borderRadius: 18,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    borderRadius: 100,
+    paddingHorizontal: 18,
+    height: 34,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#EF4444',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   denyBtnText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#EF4444',
   } as any,
   btnDisabled: {
