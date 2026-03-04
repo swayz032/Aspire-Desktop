@@ -1078,6 +1078,8 @@ router.post('/api/webhooks/twilio/sms/status', async (req: Request, res: Respons
 const WORKER_ID = `desktop-${process.pid}`;
 const OUTBOX_POLL_INTERVAL = 2000;
 const OUTBOX_BATCH_SIZE = 10;
+const OUTBOX_ERROR_THRESHOLD = 5;
+const OUTBOX_COOLDOWN_MS = 60_000;
 
 async function processOutboxJob(job: any): Promise<void> {
   const { job_id, job_type, payload, suite_id } = job;
@@ -1446,9 +1448,40 @@ function isTerminalStatus(status: string): boolean {
 }
 
 let outboxInterval: ReturnType<typeof setInterval> | null = null;
+let outboxConsecutiveErrors = 0;
+let outboxCooldownUntil = 0;
+
+async function outboxClaimFunctionExists(): Promise<boolean> {
+  try {
+    const check = await db.execute(sql`
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proname = 'frontdesk_outbox_claim'
+      ) AS exists
+    `);
+    const rows = (check.rows || check) as any[];
+    return !!rows[0]?.exists;
+  } catch {
+    return false;
+  }
+}
 
 async function pollOutbox() {
   try {
+    if (Date.now() < outboxCooldownUntil) return;
+
+    const functionExists = await outboxClaimFunctionExists();
+    if (!functionExists) {
+      outboxCooldownUntil = Date.now() + OUTBOX_COOLDOWN_MS;
+      logger.warn('Outbox worker paused: frontdesk_outbox_claim missing', {
+        cooldown_ms: OUTBOX_COOLDOWN_MS,
+      });
+      return;
+    }
+
     const result = await db.execute(sql`
       SELECT * FROM public.frontdesk_outbox_claim(${WORKER_ID}, ${OUTBOX_BATCH_SIZE})
     `);
@@ -1472,11 +1505,18 @@ async function pollOutbox() {
         } catch (_) { /* best-effort receipt */ }
       }
     }
+    outboxConsecutiveErrors = 0;
   } catch (err: unknown) {
-    // Silently skip if tables don't exist yet (migration not run)
     const errMsg = err instanceof Error ? err.message : 'unknown';
-    if (!errMsg.includes('does not exist')) {
-      logger.error('Outbox poll error', { error: errMsg });
+    outboxConsecutiveErrors += 1;
+    logger.error('Outbox poll error', { error: errMsg });
+    if (outboxConsecutiveErrors >= OUTBOX_ERROR_THRESHOLD) {
+      outboxCooldownUntil = Date.now() + OUTBOX_COOLDOWN_MS;
+      logger.warn('Outbox worker entering cooldown after repeated failures', {
+        consecutive_errors: outboxConsecutiveErrors,
+        cooldown_ms: OUTBOX_COOLDOWN_MS,
+      });
+      outboxConsecutiveErrors = 0;
     }
   }
 }
