@@ -18,7 +18,7 @@ import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
-import { AgentWidget } from '@/components/canvas/widgets/AgentWidget';
+import { EliVoiceChatPanel } from '@/components/inbox/EliVoiceChatPanel';
 import type { AgentActivityEvent } from '@/components/chat';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
@@ -2348,13 +2348,19 @@ export default function InboxScreen() {
             <TouchableOpacity style={styles.eliVoiceClose} onPress={closeEliVoiceModal} activeOpacity={0.7}>
               <Ionicons name="close" size={20} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
-            {/* Full Canvas-style Eli modal (3D orb + chat) */}
-            <AgentWidget
-              agentId="eli"
-              suiteId={suiteId ?? ''}
-              officeId={suiteId ?? ''}
-              voiceStatus={eliVoiceActive ? 'listening' : 'idle'}
-              onPrimaryAction={handleEliMicPress}
+            {/* Eli chat UI wired to useAgentVoice (ElevenLabs STT/TTS) */}
+            <EliVoiceChatPanel
+              visible
+              embedded
+              onClose={closeEliVoiceModal}
+              voiceActive={eliVoiceActive}
+              transcript={eliTranscript}
+              triagedCount={eliTriagedCount}
+              onMicPress={handleEliMicPress}
+              onSendMessage={handleEliSendMessage}
+              micPulseAnim={eliMicPulse}
+              messages={eliMessages}
+              activeRun={eliRun}
             />
           </Animated.View>
         </Animated.View>

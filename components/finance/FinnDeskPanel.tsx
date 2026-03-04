@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Alert, ActivityIndicator, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, ActivityIndicator, type ViewStyle } from 'react-native';
 import { ImageBackground } from 'react-native';
 const financeConnectHero = require('@/assets/images/finance-connect-hero.jpg');
 import { LinearGradient } from 'expo-linear-gradient';
@@ -352,12 +352,18 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
     } else {
       try {
         await finnVoice.startSession();
+        await finnVoice.sendText('Confirm voice is live in one short sentence and ask what financial task to handle.');
       } catch (error) {
-        console.error('Failed to start Finn voice session:', error);
-        Alert.alert('Connection Error', 'Unable to connect to Finn. Please try again.');
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('Failed to start Finn voice session:', msg);
+        if (/permission|denied|getUserMedia/i.test(msg)) {
+          showVoiceError('Microphone access denied. Check browser permissions.');
+        } else {
+          showVoiceError(`Voice session failed: ${msg.length > 60 ? msg.slice(0, 60) + '...' : msg}`);
+        }
       }
     }
-  }, [finnVoice]);
+  }, [finnVoice, showVoiceError]);
 
   const handleConnectToFinn = useCallback(async () => {
     if (videoState !== 'idle') return;
