@@ -246,6 +246,23 @@ function validateEnum(value: any, allowed: string[]): string | null {
   return allowed.includes(value) ? value : null;
 }
 
+function isValidIsoDate(value: string | null): boolean {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.toISOString().slice(0, 10) === value;
+}
+
+function isAdultDate(value: string | null): boolean {
+  if (!isValidIsoDate(value)) return false;
+  const dob = new Date(value as string);
+  const now = new Date();
+  let age = now.getUTCFullYear() - dob.getUTCFullYear();
+  const monthDelta = now.getUTCMonth() - dob.getUTCMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getUTCDate() < dob.getUTCDate())) age -= 1;
+  return age >= 18;
+}
+
 // Canonical JSON: sort object keys recursively for deterministic HMAC signatures
 // Must match n8n receiver sortKeys() — both sides produce identical canonical JSON
 function sortKeys(obj: any): any {
@@ -529,6 +546,18 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
     if (!businessName) {
       return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'Business name is required' });
     }
+    if (!ownerName) {
+      return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'Owner name is required' });
+    }
+    if (!gender) {
+      return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'Gender is required' });
+    }
+    if (!isValidIsoDate(dateOfBirth)) {
+      return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'Date of birth must be YYYY-MM-DD' });
+    }
+    if (!isAdultDate(dateOfBirth)) {
+      return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'User must be at least 18 years old' });
+    }
 
     // 1. Create suite via app.ensure_suite (handles duplicates gracefully)
     // Deterministic tenantId from userId — ensures idempotency (same user = same tenant)
@@ -679,6 +708,8 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
     const webhookPayload = {
       suiteId,
       officeId: suiteId, // officeId defaults to suiteId for single-office tenants
+      dateOfBirth,
+      gender,
       industry,
       industrySpecialty,
       incomeRange,
@@ -825,6 +856,19 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
       ? Math.floor(b.fiscalYearEndMonth) : null;
     const consentPersonalization = b.consentPersonalization === true;
     const consentCommunications = b.consentCommunications === true;
+
+    if (!ownerName) {
+      return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'Owner name is required' });
+    }
+    if (!gender) {
+      return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'Gender is required' });
+    }
+    if (!isValidIsoDate(dateOfBirth)) {
+      return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'Date of birth must be YYYY-MM-DD' });
+    }
+    if (!isAdultDate(dateOfBirth)) {
+      return res.status(400).json({ error: 'VALIDATION_FAILED', message: 'User must be at least 18 years old' });
+    }
 
     // V3 marketing fields (migration 064)
     const industrySpecialty = sanitizeText(b.industrySpecialty);

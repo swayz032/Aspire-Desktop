@@ -189,6 +189,13 @@ const YEARS_MAP: Record<string, string> = {
   '10+': '10_plus',
 };
 
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'non-binary', label: 'Non-binary' },
+  { value: 'prefer-not-to-say', label: 'Prefer not to say' },
+];
+
 // SERVICES array removed in v3 — all services auto-included per Genesis Gate
 
 const COUNTRY_CURRENCY: Record<string, string> = {
@@ -245,6 +252,8 @@ interface FormState {
   // Step 1
   businessName: string;
   ownerName: string;
+  dateOfBirth: string;
+  gender: string;
   ownerTitle: string;
   industry: string;
   teamSize: string;
@@ -273,6 +282,8 @@ interface FormState {
 const initialFormState: FormState = {
   businessName: '',
   ownerName: '',
+  dateOfBirth: '',
+  gender: '',
   ownerTitle: '',
   industry: '',
   teamSize: '',
@@ -347,6 +358,23 @@ const SAFE_DRAFT_FIELDS: (keyof FormState)[] = [
   'businessAddressSameAsHome', 'consentPersonalization', 'consentCommunications',
   'homeEditable', 'businessEditable',
 ];
+
+function isValidDobFormat(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.toISOString().slice(0, 10) === value;
+}
+
+function isAdultDob(value: string): boolean {
+  if (!isValidDobFormat(value)) return false;
+  const today = new Date();
+  const dob = new Date(value);
+  let age = today.getUTCFullYear() - dob.getUTCFullYear();
+  const monthDelta = today.getUTCMonth() - dob.getUTCMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getUTCDate() < dob.getUTCDate())) age -= 1;
+  return age >= 18;
+}
 
 function saveDraft(form: FormState): void {
   if (Platform.OS !== 'web') return;
@@ -558,6 +586,8 @@ export default function OnboardingScreen() {
     form.industrySpecialty !== '' &&
     form.teamSize !== '' &&
     form.ownerName.trim() !== '' &&
+    form.gender !== '' &&
+    isAdultDob(form.dateOfBirth) &&
     form.entityType !== '' &&
     form.yearsInBusiness !== '';
 
@@ -595,6 +625,8 @@ export default function OnboardingScreen() {
       const payload = {
         businessName: form.businessName.trim(),
         ownerName: form.ownerName.trim(),
+        dateOfBirth: form.dateOfBirth,
+        gender: form.gender,
         ownerTitle: form.ownerTitle.trim() || null,
         industry: form.industry,
         teamSize: form.teamSize,
@@ -910,6 +942,34 @@ export default function OnboardingScreen() {
         value={form.ownerName}
         onChangeText={(v) => updateForm({ ownerName: v })}
       />
+
+      <Text style={styles.label}>Date of Birth</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="YYYY-MM-DD"
+        placeholderTextColor="#555"
+        value={form.dateOfBirth}
+        onChangeText={(v) => updateForm({ dateOfBirth: v.trim() })}
+        autoCapitalize="none"
+      />
+      {form.dateOfBirth !== '' && !isAdultDob(form.dateOfBirth) && (
+        <Text style={styles.helperErrorText}>You must be at least 18 years old.</Text>
+      )}
+
+      <Text style={styles.label}>Gender</Text>
+      <View style={styles.pillRow}>
+        {GENDER_OPTIONS.map((opt) => (
+          <TouchableOpacity
+            key={opt.value}
+            style={[styles.pill, form.gender === opt.value && styles.pillSelected]}
+            onPress={() => updateForm({ gender: opt.value })}
+          >
+            <Text style={[styles.pillText, form.gender === opt.value && styles.pillTextSelected]}>
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       {/* Email (read-only from session) */}
       {session?.user?.email && (
@@ -1519,6 +1579,11 @@ const styles = StyleSheet.create({
     color: '#aaa',
     marginBottom: 6,
     marginTop: 18,
+  },
+  helperErrorText: {
+    color: ERROR_RED,
+    fontSize: 12,
+    marginTop: 6,
   },
 
   // Inputs
