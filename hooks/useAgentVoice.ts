@@ -122,6 +122,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   // Delay auth-loss shutdown to avoid false offline flips during token refresh.
   const authLossTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentTraceIdRef = useRef<string | null>(null);
+  const audioUnlockedRef = useRef(false);
 
   const useDeepgram = DEEPGRAM_STT_AGENTS.includes(agent);
 
@@ -179,6 +180,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
     const url = URL.createObjectURL(audioBlob);
     const audio = new Audio(url);
+    audio.playsInline = true;
     audioRef.current = audio;
 
     audio.onerror = () => {
@@ -220,6 +222,36 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   }, [updateStatus, onError, emitDiagnostic, nextTraceId]);
 
   /**
+   * Unlock browser audio output from a user gesture.
+   * Some browsers block async TTS playback until an initial play() occurs.
+   */
+  const unlockAudioPlayback = useCallback(async (): Promise<boolean> => {
+    if (typeof window === 'undefined') return true;
+    if (audioUnlockedRef.current) return true;
+    try {
+      const probe = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAABCxAgAEABAAZGF0YQAAAAA=');
+      probe.muted = true;
+      probe.playsInline = true;
+      await probe.play();
+      probe.pause();
+      probe.currentTime = 0;
+      audioUnlockedRef.current = true;
+      return true;
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      emitDiagnostic({
+        traceId: currentTraceIdRef.current || nextTraceId(),
+        stage: 'autoplay',
+        code: 'AUDIO_UNLOCK_FAILED',
+        message: 'Browser blocked audio unlock probe.',
+        raw: raw.slice(0, 220),
+        recoverable: true,
+      });
+      return false;
+    }
+  }, [emitDiagnostic, nextTraceId]);
+
+  /**
    * Speak response text via HTTP streaming TTS.
    * Used as fallback when WebSocket TTS is unavailable.
    */
@@ -246,6 +278,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
       const url = URL.createObjectURL(audioBlob);
       const audio = new Audio(url);
+      audio.playsInline = true;
       audioRef.current = audio;
 
       audio.onerror = () => {
@@ -590,6 +623,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
    * begins STT listening. Degrades gracefully if either is unavailable.
    */
   const startSession = useCallback(async () => {
+    await unlockAudioPlayback();
+
     activeRef.current = true;
     processingRef.current = false;
     updateStatus('listening');
@@ -665,9 +700,14 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         raw: msg ? msg.slice(0, 220) : undefined,
         recoverable: true,
       });
+      onErrorRef.current?.(new Error(msg || 'Unable to access microphone.'));
+      updateStatus('error');
+      setTimeout(() => {
+        if (activeRef.current) updateStatus('listening');
+      }, 2000);
       console.warn(`STT unavailable for ${agent} â€” text input + TTS mode`);
     }
-  }, [agent, updateStatus, stt, playContextAudio, emitDiagnostic, nextTraceId]);
+  }, [agent, updateStatus, stt, playContextAudio, emitDiagnostic, nextTraceId, unlockAudioPlayback]);
 
   /**
    * End the voice session. Closes WebSocket TTS, stops STT, and

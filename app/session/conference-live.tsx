@@ -452,7 +452,7 @@ export default function ConferenceLive() {
   const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
-  const { suiteId } = useSupabase();
+  const { suiteId, session } = useSupabase();
   // Law #3: Fail Closed — all API requests must include JWT auth
   const { authenticatedFetch } = useAuthFetch();
 
@@ -504,6 +504,7 @@ export default function ConferenceLive() {
   const noraVoice = useAgentVoice({
     agent: 'nora',
     suiteId: suiteId ?? undefined,
+    accessToken: session?.access_token,
     onStatusChange: (voiceStatus) => {
       if (voiceStatus === 'speaking') setAvaState('speaking');
       else if (voiceStatus === 'listening') setAvaState('listening');
