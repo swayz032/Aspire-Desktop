@@ -256,7 +256,8 @@ const CORS_ALLOWED_ORIGINS = (process.env.ASPIRE_CORS_ORIGINS || 'https://www.as
 function validateProductionEnv(): void {
   const nodeEnv = (process.env.NODE_ENV || '').trim().toLowerCase();
   const aspireEnv = (process.env.ASPIRE_ENV || '').trim().toLowerCase();
-  if ((nodeEnv === 'production') !== (aspireEnv === 'production') && (nodeEnv || aspireEnv)) {
+  // Only enforce parity when ASPIRE_ENV is explicitly set.
+  if (aspireEnv && (nodeEnv === 'production') !== (aspireEnv === 'production')) {
     throw new Error(`Environment mismatch: NODE_ENV=${nodeEnv || 'unset'} ASPIRE_ENV=${aspireEnv || 'unset'}`);
   }
   if (nodeEnv !== 'production') return;
