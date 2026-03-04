@@ -514,9 +514,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         await speakViaHttpStream(responseText);
       }
     } catch (error) {
-      processingRef.current = false;
       const err = error instanceof Error ? error : new Error(String(error));
-      onError?.(err);
       const raw = err.message || 'Unknown error';
       const lower = raw.toLowerCase();
       const stage: VoiceFailureStage =
@@ -540,6 +538,35 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         raw: raw.slice(0, 220),
         recoverable: stage !== 'mic',
       });
+
+      // Enterprise resilience: when brain/orchestrator is unavailable,
+      // still use ElevenLabs to speak a short fallback so voice UX never goes silent.
+      if (stage === 'orchestrator' && activeRef.current) {
+        const fallbackText = 'I am connected, but my reasoning service is temporarily unavailable. Please try again in a moment.';
+        try {
+          setLastResponse(fallbackText);
+          onResponse?.(fallbackText, undefined);
+          updateStatus('speaking');
+          processingRef.current = true;
+
+          if (ttsWsRef.current?.isConnected) {
+            const ctxId = ttsWsRef.current.nextContextId();
+            currentContextRef.current = ctxId;
+            audioChunksRef.current.set(ctxId, []);
+            ttsWsRef.current.speak(fallbackText, ctxId);
+            ttsWsRef.current.flush(ctxId);
+            return;
+          }
+
+          await speakViaHttpStream(fallbackText);
+          return;
+        } catch {
+          // If fallback TTS itself fails, continue into normal error handling below.
+        }
+      }
+
+      processingRef.current = false;
+      onError?.(err);
       updateStatus('error');
       setTimeout(() => {
         if (activeRef.current) {
