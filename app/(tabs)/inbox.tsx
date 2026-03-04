@@ -19,7 +19,6 @@ import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { EliVoiceChatPanel, type EliMessage } from '@/components/inbox/EliVoiceChatPanel';
-import { AgentWidget } from '@/components/canvas/widgets/AgentWidget';
 import type { AgentActivityEvent } from '@/components/chat';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
@@ -1496,7 +1495,7 @@ export default function InboxScreen() {
 
   const openEliVoiceModal = useCallback(() => {
     setEliVoiceModalOpen(true);
-    setEliVoiceChatOpen(false);
+    setEliVoiceChatOpen(true);
     eliModalSlideAnim.setValue(80);
     eliModalOpacityAnim.setValue(0);
     Animated.parallel([
@@ -2298,14 +2297,22 @@ export default function InboxScreen() {
             <TouchableOpacity style={styles.eliVoiceClose} onPress={closeEliVoiceModal} activeOpacity={0.7}>
               <Ionicons name="close" size={20} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
-            {/* Full Canvas-style agent layout */}
-            <AgentWidget
-              agentId="eli"
-              suiteId=""
-              officeId=""
-              voiceStatus={eliVoiceActive ? 'listening' : 'idle'}
-              onPrimaryAction={handleEliMicPress}
-            />
+            {/* Eli chat UI wired to useAgentVoice (ElevenLabs STT/TTS) */}
+            {eliVoiceChatOpen && (
+              <EliVoiceChatPanel
+                visible
+                embedded
+                onClose={closeEliVoiceModal}
+                voiceActive={eliVoiceActive}
+                transcript={eliTranscript}
+                triagedCount={eliTriagedCount}
+                onMicPress={handleEliMicPress}
+                onSendMessage={handleEliSendMessage}
+                micPulseAnim={eliMicPulse}
+                messages={eliMessages}
+                activeRun={eliRun}
+              />
+            )}
           </Animated.View>
         </Animated.View>
       )}
