@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert, ScrollView, Image, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
@@ -9,7 +9,6 @@ import { getPlaidConsent, setPlaidConsent } from '@/lib/security/plaidConsent';
 import { getMfaStatus, isMfaVerifiedRecently, verifyMfaCode, generateMfaSecret, storeMfaSecret, updateMfaStatus, getQrCodeDataUrl } from '@/lib/security/mfa';
 
 const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
-const financeConnectHero = require('@/assets/images/finance-connect-hero.jpg');
 
 type ProviderStatus = 'connected' | 'disconnected' | 'connecting' | 'error' | 'unavailable';
 
@@ -576,12 +575,7 @@ export default function ConnectionsScreen() {
 
   return (
     <FinanceHubShell>
-      <ImageBackground
-        source={financeConnectHero}
-        style={s.heroBanner}
-        imageStyle={{ resizeMode: 'cover' } as any}
-      >
-        <View style={[StyleSheet.absoluteFill as any, { backgroundColor: "rgba(10, 12, 20, 0.55)" }]} />
+      <View style={[s.heroBanner, premiumCardBase as any, Platform.OS === 'web' && { background: `radial-gradient(ellipse at top right, rgba(59,130,246,0.08) 0%, transparent 50%), ${CARD_BG}` } as any]}>
         <View style={s.heroContent}>
           <View style={s.heroLeft}>
             <View style={s.heroIconWrap}>
@@ -599,7 +593,7 @@ export default function ConnectionsScreen() {
             </View>
           </View>
         </View>
-      </ImageBackground>
+      </View>
 
       {Platform.OS === 'web' && linkedAccounts.length > 0 && (
         <div style={{
@@ -1196,7 +1190,7 @@ export default function ConnectionsScreen() {
 
 const s = StyleSheet.create({
   heroBanner: {
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(28, 28, 30, 0.92)',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(59, 130, 246, 0.25)',

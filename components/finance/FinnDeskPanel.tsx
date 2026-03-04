@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Alert, ActivityIndicator, type ViewStyle } from 'react-native';
 import { ImageBackground } from 'react-native';
+const financeConnectHero = require('@/assets/images/finance-connect-hero.jpg');
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
@@ -825,7 +826,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
           {/* Pre-connect states (idle / connecting / error) */}
           {videoState !== 'connected' && (
             <ImageBackground
-              source={{ uri: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=800' }}
+              source={financeConnectHero}
               style={immersiveStyles.preConnectBg}
               imageStyle={{ opacity: 0.12 }}
             >
@@ -1179,7 +1180,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
               </View>
             ) : (
               <ImageBackground
-                source={{ uri: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=800' }}
+                source={financeConnectHero}
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}
                 imageStyle={{ opacity: 0.2 }}
               >
