@@ -27,7 +27,7 @@ import type { CallSession } from '@/types/frontdesk';
 // Hero image
 // ---------------------------------------------------------------------------
 
-const callsHero = require('@/assets/images/finance-hub-hero.png');
+const callsHero = require('@/assets/images/calls-hero.jpg');
 
 // ---------------------------------------------------------------------------
 // DTMF Dialpad Audio (Web Audio API) -- copied exactly from working version

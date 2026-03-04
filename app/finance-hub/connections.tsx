@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert, ScrollView, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert, ScrollView, Image, ImageBackground } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
@@ -578,9 +578,10 @@ export default function ConnectionsScreen() {
     <FinanceHubShell>
       <ImageBackground
         source={financeConnectHero}
-        style={[s.heroBanner, premiumCardBase as any]}
-        imageStyle={{ resizeMode: 'cover', opacity: 0.28 } as any}
+        style={s.heroBanner}
+        imageStyle={{ resizeMode: 'cover' } as any}
       >
+        <View style={[StyleSheet.absoluteFill as any, { backgroundColor: "rgba(10, 12, 20, 0.55)" }]} />
         <View style={s.heroContent}>
           <View style={s.heroLeft}>
             <View style={s.heroIconWrap}>
@@ -1195,10 +1196,10 @@ export default function ConnectionsScreen() {
 
 const s = StyleSheet.create({
   heroBanner: {
-    backgroundColor: 'rgba(28, 28, 30, 0.92)',
+    backgroundColor: 'transparent',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.15)',
+    borderColor: 'rgba(59, 130, 246, 0.25)',
     padding: 24,
     overflow: 'hidden',
     position: 'relative',
