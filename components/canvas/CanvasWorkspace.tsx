@@ -63,47 +63,71 @@ import { useCanvasVoice } from '@/hooks/useCanvasVoice';
 import { useSupabase, useTenant } from '@/providers';
 
 // Widget content imports
-import { QuoteWidget } from './widgets/QuoteWidget';
-import { ContractWidget } from './widgets/ContractWidget';
-import { CalendarWidget } from './widgets/CalendarWidget';
-import { TodaysPlanWidget } from './widgets/TodaysPlanWidget';
-import { AuthorityQueueWidget } from './widgets/AuthorityQueueWidget';
-import { FinanceHubWidget } from './widgets/FinanceHubWidget';
-import { ReceiptsWidget } from './widgets/ReceiptsWidget';
-import { StickyNoteWidget } from './widgets/StickyNoteWidget';
-import { EmailWidget } from './widgets/EmailWidget';
-import { InvoiceWidget } from './widgets/InvoiceWidget';
 import { AgentWidget } from './widgets/AgentWidget';
-import { PhoneWidget } from './widgets/PhoneWidget';
-import { TextMessageWidget } from './widgets/TextMessageWidget';
+
+// Canvas Peek Panel system
+import { CanvasPeekPanel } from './CanvasPeekPanel';
+import {
+  InboxPanelContent,
+  InvoicesPanelContent,
+  CalendarPanelContent,
+  ContractsPanelContent,
+  CallsPanelContent,
+  MessagesPanelContent,
+  QuotesPanelContent,
+  AuthorityPanelContent,
+  FinancePanelContent,
+  PlanPanelContent,
+  NotesPanelContent,
+  ReceiptsPanelContent,
+} from './panels';
+
+// Router for "Open Full Page" navigation
+import { useRouter } from 'expo-router';
 
 // ---------------------------------------------------------------------------
 // Widget content registry
 // ---------------------------------------------------------------------------
 
-interface WidgetDef {
+/** Agent modal widget (Ava / Eli / Finn) — uses WidgetModal + AgentWidget */
+interface AgentWidgetDef {
+  kind: 'agent';
   title: string;
-  component: React.ComponentType<any>;
+  component: typeof AgentWidget;
   accent: string;
-  icon: string; // Ionicons name
+  icon: string;
+  size: import('./WidgetModal').ModalSize;
 }
 
+/** Non-agent widget — uses CanvasPeekPanel with a dedicated panel content component */
+interface PeekWidgetDef {
+  kind: 'peek';
+  title: string;
+  subtitle: string;
+  panelContent: React.ComponentType<{ suiteId: string; officeId: string }>;
+  pageRoute: string;
+  accent: string;
+  icon: string;
+}
+
+type WidgetDef = AgentWidgetDef | PeekWidgetDef;
+
 const WIDGET_CONTENT: Record<string, WidgetDef> = {
-  email:    { title: 'Inbox',            component: EmailWidget,          accent: '#3B82F6', icon: 'mail' },
-  invoice:  { title: 'Invoices',         component: InvoiceWidget,        accent: '#F59E0B', icon: 'receipt' },
-  phone:    { title: 'Phone',            component: PhoneWidget,          accent: '#22C55E', icon: 'call' },
-  messages: { title: 'Messages',         component: TextMessageWidget,    accent: '#0EA5E9', icon: 'chatbubbles' },
-  quote:    { title: 'Quotes',           component: QuoteWidget,          accent: '#06B6D4', icon: 'pricetag' },
-  contract: { title: 'Contracts',        component: ContractWidget,       accent: '#EF4444', icon: 'document-text' },
-  calendar: { title: 'Calendar',         component: CalendarWidget,       accent: '#10B981', icon: 'calendar' },
-  finance:  { title: 'Finance Hub',      component: FinanceHubWidget,     accent: '#059669', icon: 'trending-up' },
-  task:     { title: "Today's Plan",     component: TodaysPlanWidget,     accent: '#8B5CF6', icon: 'checkbox' },
-  approval: { title: 'Authority Queue',  component: AuthorityQueueWidget, accent: '#F97316', icon: 'shield-checkmark' },
-  note:     { title: 'Sticky Notes',     component: StickyNoteWidget,     accent: '#EAB308', icon: 'create' },
-  receipt:  { title: 'Receipts',         component: ReceiptsWidget,       accent: '#6366F1', icon: 'file-tray-full' },
-  ava:      { title: 'Ava',             component: AgentWidget,          accent: '#3B82F6', icon: 'person' },
-  eli:      { title: 'Eli',             component: AgentWidget,          accent: '#F59E0B', icon: 'chatbubbles' },
-  finn:     { title: 'Finn',            component: AgentWidget,          accent: '#8B5CF6', icon: 'stats-chart' },
+  email:    { kind: 'peek', title: 'Inbox',           subtitle: 'Connected to Inbox',         panelContent: InboxPanelContent,     pageRoute: '/inbox',                   accent: '#0ea5e9', icon: 'mail'            },
+  invoice:  { kind: 'peek', title: 'Invoices',        subtitle: 'Connected to Finance Hub',   panelContent: InvoicesPanelContent,  pageRoute: '/finance-hub/invoices',    accent: '#0ea5e9', icon: 'receipt'         },
+  phone:    { kind: 'peek', title: 'Calls',           subtitle: 'Connected to Calls',         panelContent: CallsPanelContent,     pageRoute: '/session/calls',           accent: '#0ea5e9', icon: 'call'            },
+  messages: { kind: 'peek', title: 'Messages',        subtitle: 'Connected to Messages',      panelContent: MessagesPanelContent,  pageRoute: '/session/messages',        accent: '#0ea5e9', icon: 'chatbubbles'     },
+  quote:    { kind: 'peek', title: 'Quotes',          subtitle: 'Connected to Finance Hub',   panelContent: QuotesPanelContent,    pageRoute: '/finance-hub/quotes',      accent: '#0ea5e9', icon: 'pricetag'        },
+  contract: { kind: 'peek', title: 'Contracts',       subtitle: 'Connected to Documents',     panelContent: ContractsPanelContent, pageRoute: '/finance-hub/documents',   accent: '#0ea5e9', icon: 'document-text'   },
+  calendar: { kind: 'peek', title: 'Calendar',        subtitle: 'Connected to Calendar',      panelContent: CalendarPanelContent,  pageRoute: '/calendar',                accent: '#0ea5e9', icon: 'calendar'        },
+  finance:  { kind: 'peek', title: 'Finance Hub',     subtitle: 'Connected to Finance Hub',   panelContent: FinancePanelContent,   pageRoute: '/finance-hub',             accent: '#0ea5e9', icon: 'trending-up'     },
+  task:     { kind: 'peek', title: "Today's Plan",    subtitle: "Connected to Today's Plan",  panelContent: PlanPanelContent,      pageRoute: '/session/plan',            accent: '#0ea5e9', icon: 'checkbox'        },
+  approval: { kind: 'peek', title: 'Authority Queue', subtitle: 'Connected to Authority',     panelContent: AuthorityPanelContent, pageRoute: '/session/authority',       accent: '#0ea5e9', icon: 'shield-checkmark'},
+  note:     { kind: 'peek', title: 'Sticky Notes',    subtitle: 'Connected to Notes',         panelContent: NotesPanelContent,     pageRoute: '/founder-hub/notes',       accent: '#f59e0b', icon: 'create'          },
+  receipt:  { kind: 'peek', title: 'Receipts',        subtitle: 'Execution Log',              panelContent: ReceiptsPanelContent,  pageRoute: '/receipts',                accent: '#0ea5e9', icon: 'shield-checkmark'},
+  ava:      { kind: 'agent', title: 'Ava',  component: AgentWidget, accent: '#3B82F6', icon: 'person',      size: 'agent' },
+  eli:      { kind: 'agent', title: 'Eli',  component: AgentWidget, accent: '#F59E0B', icon: 'chatbubbles', size: 'agent' },
+  finn:     { kind: 'agent', title: 'Finn', component: AgentWidget, accent: '#8B5CF6', icon: 'stats-chart', size: 'agent' },
 };
 
 // ---------------------------------------------------------------------------
@@ -130,6 +154,7 @@ function getDefaultWidgetSize(screenWidth: number) {
 export function CanvasWorkspace(): React.ReactElement {
   const { suiteId } = useSupabase();
   const { tenant } = useTenant();
+  const router = useRouter();
   const { mode, stageOpen } = useImmersion();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -342,6 +367,39 @@ export function CanvasWorkspace(): React.ReactElement {
   const spotlightRef = useRef<View>(null);
   const [spotlightPos, setSpotlightPos] = useState<{ x: number; y: number } | null>(null);
 
+  // TiltCard effect (web only) — mouse-tracking 3D perspective tilt on canvas slab
+  const tiltWrapRef = useRef<View>(null);
+  const tiltRafId = useRef<number>(0);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const el = tiltWrapRef.current as unknown as HTMLElement | null;
+    if (!el) return;
+    const onMove = (e: MouseEvent) => {
+      if (tiltRafId.current) cancelAnimationFrame(tiltRafId.current);
+      tiltRafId.current = requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect();
+        const nx = (e.clientX - rect.left) / rect.width - 0.5;
+        const ny = (e.clientY - rect.top) / rect.height - 0.5;
+        const rx = (-ny * 8).toFixed(3);
+        const ry = (nx * 8).toFixed(3);
+        el.style.transform = `perspective(1400px) rotateX(${rx}deg) rotateY(${ry}deg)`;
+        el.style.transition = 'none';
+      });
+    };
+    const onLeave = () => {
+      if (tiltRafId.current) cancelAnimationFrame(tiltRafId.current);
+      el.style.transition = 'transform 0.45s ease-out';
+      el.style.transform = 'perspective(1400px) rotateX(0deg) rotateY(0deg)';
+    };
+    el.addEventListener('mousemove', onMove);
+    el.addEventListener('mouseleave', onLeave);
+    return () => {
+      if (tiltRafId.current) cancelAnimationFrame(tiltRafId.current);
+      el.removeEventListener('mousemove', onMove);
+      el.removeEventListener('mouseleave', onLeave);
+    };
+  }, []);
+
   const rafId = useRef<number>(0);
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -392,6 +450,9 @@ export function CanvasWorkspace(): React.ReactElement {
     <View style={ws.root}>
       {/* Layer 0: Dark void behind the slab */}
       <View style={ws.deepBg} />
+
+      {/* TiltCard wrapper — CSS 3D perspective tilt on mouse move (web only) */}
+      <View ref={tiltWrapRef} style={ws.tiltWrap}>
 
       {/* Layer 1: Perspective wrapper for 3D entrance */}
       <Animated.View
@@ -639,6 +700,7 @@ export function CanvasWorkspace(): React.ReactElement {
           )}
         </View>
       </Animated.View>
+      </View>{/* /tiltWrap */}
 
 
 
@@ -675,47 +737,57 @@ export function CanvasWorkspace(): React.ReactElement {
         isDragging={dragState.isDragging}
       />
 
-      {/* Widget Modal — opens when a canvas tile is tapped */}
+      {/* Widget Modals / Panels — open when a canvas tile is tapped */}
       {(() => {
         const openWidget = openModalInstanceId
           ? placedWidgets.find((pw) => pw.instanceId === openModalInstanceId)
           : null;
         const widgetDef = openWidget ? WIDGET_CONTENT[openWidget.id] : null;
-        const WidgetContent = widgetDef?.component;
-        const isAgentWidget = openWidget
-          ? openWidget.id === 'ava' || openWidget.id === 'eli' || openWidget.id === 'finn'
-          : false;
-        const voiceStatus = isAgentWidget && openWidget
-          ? voiceHooks[openWidget.id as keyof typeof voiceHooks].status
-          : undefined;
 
-        const widgetSize = (() => {
-          if (!openWidget) return 'standard' as const;
-          if (['ava', 'eli', 'finn'].includes(openWidget.id)) return 'agent' as const;
-          if (['email', 'phone', 'calendar', 'messages'].includes(openWidget.id)) return 'wide' as const;
-          return 'standard' as const;
-        })();
+        if (!openWidget || !widgetDef) return null;
 
-        return (
-          <WidgetModal
-            visible={!!openWidget && !!widgetDef}
-            size={widgetSize}
-            onClose={() => setOpenModalInstanceId(null)}
-          >
-            {WidgetContent && openWidget ? (
-              <WidgetContent
+        // Agent widgets (Ava / Eli / Finn) — keep WidgetModal unchanged
+        if (widgetDef.kind === 'agent') {
+          const voiceStatus = voiceHooks[openWidget.id as keyof typeof voiceHooks]?.status;
+          const AgentComp = widgetDef.component;
+          return (
+            <WidgetModal
+              visible
+              size={widgetDef.size}
+              accent={widgetDef.accent}
+              onClose={() => setOpenModalInstanceId(null)}
+            >
+              <AgentComp
                 suiteId={suiteId || ''}
                 officeId={tenant?.officeId || ''}
-                {...(isAgentWidget
-                  ? {
-                      agentId: openWidget.id,
-                      voiceStatus,
-                      onPrimaryAction: () => handleAgentVoiceToggle(openWidget.id),
-                    }
-                  : {})}
+                agentId={openWidget.id}
+                voiceStatus={voiceStatus}
+                onPrimaryAction={() => handleAgentVoiceToggle(openWidget.id)}
               />
-            ) : null}
-          </WidgetModal>
+            </WidgetModal>
+          );
+        }
+
+        // All other widgets — CanvasPeekPanel with dedicated panel content
+        const PanelComp = widgetDef.panelContent;
+        return (
+          <CanvasPeekPanel
+            visible
+            onClose={() => setOpenModalInstanceId(null)}
+            onOpenFullPage={() => {
+              setOpenModalInstanceId(null);
+              router.push(widgetDef.pageRoute as any);
+            }}
+            accent={widgetDef.accent}
+            icon={widgetDef.icon}
+            title={widgetDef.title}
+            subtitle={widgetDef.subtitle}
+          >
+            <PanelComp
+              suiteId={suiteId || ''}
+              officeId={tenant?.officeId || ''}
+            />
+          </CanvasPeekPanel>
         );
       })()}
 
@@ -737,13 +809,18 @@ const ws = StyleSheet.create({
     flex: 1,
     position: 'relative',
     overflow: 'visible',
-    backgroundColor: CanvasTokens.workspace.behindBg,
+    backgroundColor: 'transparent',
   },
 
   deepBg: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: CanvasTokens.workspace.behindBg,
+    backgroundColor: 'transparent',
     zIndex: 0,
+  },
+
+  tiltWrap: {
+    flex: 1,
+    position: 'relative',
   },
 
   slabOuter: {

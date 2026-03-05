@@ -102,7 +102,7 @@ export const CanvasTokens = {
     outerShadow: '0 10px 36px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.08)',
     topHighlight: 'rgba(255,255,255,0.08)',
     paddingH: 18,
-    paddingV: 18,
+    paddingV: 8,
     tooltipBg: 'rgba(0,0,0,0.85)',
     iconShadow: '0 3px 8px rgba(0,0,0,0.4)',
     iconShadowHover: '0 8px 20px rgba(0,0,0,0.5)',

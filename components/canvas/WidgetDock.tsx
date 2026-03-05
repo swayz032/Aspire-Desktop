@@ -43,6 +43,7 @@ export interface WidgetDefinition {
   label: string;
   color?: string;
   avatarImage?: ImageSourcePropType;
+  iconImage?: string;
   isAgent?: boolean;
 }
 
@@ -344,6 +345,12 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
               style={styles.avatarImage}
               resizeMode="cover"
             />
+          ) : widget.iconImage ? (
+            <Image
+              source={{ uri: widget.iconImage }}
+              style={styles.dockIconImg}
+              resizeMode="contain"
+            />
           ) : IconComponent ? (
             <IconComponent size={40} color={iconColor} />
           ) : null}
@@ -417,7 +424,7 @@ export function WidgetDock({
       style={[
         styles.dock,
         position === 'top' ? styles.dockTop : styles.dockBottom,
-        { paddingBottom: position === 'bottom' ? margin + 8 : undefined },
+        { paddingBottom: position === 'bottom' ? margin : undefined },
         dockAnimStyle,
       ]}
     >
@@ -600,7 +607,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
     gap: CanvasTokens.dock.iconSpacing,
-    paddingTop: 34,
+    paddingTop: 26,
   },
 
   iconButtonWrapper: {
@@ -660,6 +667,13 @@ const styles = StyleSheet.create({
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_RADIUS,
+    zIndex: 1,
+  },
+
+  dockIconImg: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
     zIndex: 1,
   },
 
