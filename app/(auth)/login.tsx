@@ -41,6 +41,15 @@ export default function LoginScreen() {
     }).start();
   };
 
+  const waitForSessionReady = async (maxAttempts = 12, delayMs = 250): Promise<boolean> => {
+    for (let i = 0; i < maxAttempts; i++) {
+      const current = await supabase.auth.getSession();
+      if (current.data.session?.access_token) return true;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return false;
+  };
+
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
       setError('Please enter both email and password.');
@@ -62,6 +71,12 @@ export default function LoginScreen() {
       }
 
       if (data.session) {
+        // Ensure session is persisted before routing to protected onboarding/dashboard routes.
+        const ready = await waitForSessionReady();
+        if (!ready) {
+          setError('Session initialization timed out. Please sign in again.');
+          return;
+        }
         // Check if onboarding is complete
         const suiteId = data.session.user?.user_metadata?.suite_id;
         if (suiteId) {
@@ -138,6 +153,12 @@ export default function LoginScreen() {
 
       if (signInError) {
         setError(signInError.message);
+        return;
+      }
+
+      const ready = await waitForSessionReady();
+      if (!ready) {
+        setError('Session initialization timed out. Please sign in again.');
         return;
       }
 

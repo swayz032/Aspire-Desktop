@@ -614,12 +614,18 @@ export default function OnboardingScreen() {
   const resolveAccessToken = async (): Promise<string | null> => {
     if (session?.access_token) return session.access_token;
 
-    const current = await supabase.auth.getSession();
-    const currentToken = current.data.session?.access_token;
-    if (currentToken) return currentToken;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const current = await supabase.auth.getSession();
+      const currentToken = current.data.session?.access_token;
+      if (currentToken) return currentToken;
 
-    const refreshed = await supabase.auth.refreshSession();
-    return refreshed.data.session?.access_token || null;
+      const refreshed = await supabase.auth.refreshSession();
+      const refreshedToken = refreshed.data.session?.access_token;
+      if (refreshedToken) return refreshedToken;
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return null;
   };
 
   // ---------------------------------------------------------------------------
