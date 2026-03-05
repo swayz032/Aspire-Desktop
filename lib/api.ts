@@ -59,6 +59,12 @@ export async function getSuiteProfile() {
   return data;
 }
 
+export async function getTenantIdentity() {
+  const res = await fetch('/api/tenant/identity');
+  if (!res.ok) throw new Error('Failed to resolve tenant identity');
+  return res.json();
+}
+
 // ── Cash Position (from ops-snapshot server endpoint) ────────────────────────
 export async function getCashPosition() {
   const res = await fetch('/api/ops-snapshot');

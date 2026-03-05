@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Tenant } from '@/types';
-import { getSuiteProfile } from '@/lib/api';
+import { getSuiteProfile, getTenantIdentity } from '@/lib/api';
 
 interface TenantContextType {
   tenant: Tenant | null;
@@ -81,19 +81,30 @@ export function TenantProvider({ children }: TenantProviderProps) {
       setError(null);
       const profile = await getSuiteProfile();
       const mapped = mapSuiteProfileToTenant(profile);
+      let identity: { suiteDisplayId?: string; officeDisplayId?: string; businessName?: string } | null = null;
+      try {
+        identity = await getTenantIdentity();
+      } catch {
+        identity = null;
+      }
       const cached = readBootstrapIdentityCache();
       if (cached) {
         setTenant({
           ...mapped,
-          businessName: mapped.businessName || cached.businessName || 'Aspire Business',
+          businessName: mapped.businessName || identity?.businessName || cached.businessName || 'Aspire Business',
           ownerName: mapped.ownerName || cached.ownerName || '',
           suiteId: mapped.suiteId || cached.suiteId || '',
           officeId: mapped.officeId || cached.officeId || '',
-          displayId: mapped.displayId || cached.suiteDisplayId || undefined,
-          officeDisplayId: mapped.officeDisplayId || cached.officeDisplayId || undefined,
+          displayId: mapped.displayId || identity?.suiteDisplayId || cached.suiteDisplayId || undefined,
+          officeDisplayId: mapped.officeDisplayId || identity?.officeDisplayId || cached.officeDisplayId || undefined,
         });
       } else {
-        setTenant(mapped);
+        setTenant({
+          ...mapped,
+          businessName: mapped.businessName || identity?.businessName || 'Aspire Business',
+          displayId: mapped.displayId || identity?.suiteDisplayId || undefined,
+          officeDisplayId: mapped.officeDisplayId || identity?.officeDisplayId || undefined,
+        });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tenant');

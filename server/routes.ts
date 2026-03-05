@@ -876,6 +876,31 @@ router.get('/api/onboarding/status', async (req: Request, res: Response) => {
 });
 
 /**
+ * Tenant Identity â€” authoritative business + premium suite/office display IDs.
+ * Used by desktop UI surfaces to avoid pending/mock identity labels.
+ */
+router.get('/api/tenant/identity', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId || suiteId === getDefaultSuiteId()) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context not available' });
+  }
+  try {
+    const identity = await resolveSuiteOfficeIdentity(suiteId);
+    return res.json({
+      suiteId,
+      suiteDisplayId: identity.suiteDisplayId,
+      officeDisplayId: identity.officeDisplayId,
+      businessName: identity.businessName || null,
+    });
+  } catch (error: unknown) {
+    return res.status(500).json({
+      error: 'IDENTITY_LOOKUP_FAILED',
+      message: error instanceof Error ? error.message : 'Failed to resolve tenant identity',
+    });
+  }
+});
+
+/**
  * Profile Update — updates existing suite_profiles for returning users
  * Called when a user with an existing suite completes/updates their profile.
  * Uses authenticated suite context with server-side sanitization + receipt.

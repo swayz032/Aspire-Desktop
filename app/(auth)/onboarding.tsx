@@ -614,6 +614,27 @@ export default function OnboardingScreen() {
   const resolveAccessToken = async (): Promise<string | null> => {
     if (session?.access_token) return session.access_token;
 
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        const key = Object.keys(window.localStorage).find((k) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+        if (key) {
+          const raw = window.localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const accessToken = parsed?.access_token || parsed?.currentSession?.access_token || (Array.isArray(parsed) ? parsed[0]?.access_token : null);
+            const refreshToken = parsed?.refresh_token || parsed?.currentSession?.refresh_token || (Array.isArray(parsed) ? parsed[0]?.refresh_token : null);
+            if (accessToken && refreshToken) {
+              await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+              return accessToken;
+            }
+            if (accessToken) return accessToken;
+          }
+        }
+      } catch {
+        // ignore malformed localStorage session cache
+      }
+    }
+
     for (let attempt = 0; attempt < 10; attempt++) {
       const current = await supabase.auth.getSession();
       const currentToken = current.data.session?.access_token;

@@ -140,9 +140,10 @@ export function AvaDeskPanel() {
   }, []);
   const suiteDisplayId = tenant?.displayId || bootstrapIdentity?.suiteDisplayId || '';
   const officeDisplayId = tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId || '';
+  const resolvedBusinessName = tenant?.businessName || bootstrapIdentity?.businessName || 'Your Company';
   const companyPillLabel = suiteDisplayId && officeDisplayId
-    ? `${tenant?.businessName || bootstrapIdentity?.businessName || 'Your Company'} • Suite ${suiteDisplayId} • Office ${officeDisplayId}`
-    : (tenant?.businessName || bootstrapIdentity?.businessName || 'Suite/Office Pending');
+    ? `${resolvedBusinessName} • Suite ${suiteDisplayId} • Office ${officeDisplayId}`
+    : resolvedBusinessName;
 
   // W4: Authority queue polling â€” provides context to orchestrator (approvals shown in Authority Queue, not chat)
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
