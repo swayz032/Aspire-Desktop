@@ -50,6 +50,20 @@ export default function LoginScreen() {
     return false;
   };
 
+  const signInWithRetry = async (emailValue: string, passwordValue: string, retries = 5) => {
+    let lastError: string | null = null;
+    for (let attempt = 0; attempt < retries; attempt++) {
+      const result = await supabase.auth.signInWithPassword({
+        email: emailValue.trim(),
+        password: passwordValue,
+      });
+      if (!result.error && result.data?.session) return result;
+      lastError = result.error?.message || null;
+      await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+    }
+    return { data: { session: null, user: null }, error: { message: lastError || 'Sign in failed' } as any };
+  };
+
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
       setError('Please enter both email and password.');
@@ -60,10 +74,7 @@ export default function LoginScreen() {
     setError(null);
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const { data, error: authError } = await signInWithRetry(email, password);
 
       if (authError) {
         setError(authError.message);
@@ -151,10 +162,7 @@ export default function LoginScreen() {
       }
 
       // Account created and auto-confirmed — sign in immediately
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const { data: signInData, error: signInError } = await signInWithRetry(email, password);
 
       if (signInError) {
         setError(signInError.message);
