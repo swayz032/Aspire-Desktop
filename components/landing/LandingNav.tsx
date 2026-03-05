@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { motion, useScroll, useMotionValueEvent } from 'framer-motion';
 
 const navLinks = ['Product', 'Features', 'AI Staff', 'Pricing'];
@@ -39,24 +39,18 @@ export default function LandingNav() {
       }}
     >
       {/* Logo */}
-      <a href="/landing" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+      <a href="/landing" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
         <img
-          src="/aspire-logo.png"
+          src="/aspire-logo-full.png"
           alt="Aspire"
-          style={{ height: 22, objectFit: 'contain' }}
+          style={{
+            height: 140,
+            objectFit: 'contain',
+          } as React.CSSProperties}
           onError={(e) => {
             (e.currentTarget as HTMLImageElement).style.display = 'none';
           }}
         />
-        <span style={{
-          fontSize: 16,
-          fontWeight: 700,
-          color: '#ffffff',
-          letterSpacing: '-0.02em',
-          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
-        }}>
-          Aspire
-        </span>
       </a>
 
       {/* Nav Links */}

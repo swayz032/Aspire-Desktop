@@ -2,10 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import CockpitMockup from './CockpitMockup';
 
-const tabs = ['1. Cockpit Command', '2. AI Staff', '3. Governed Execution'];
-
 export default function HeroSection() {
-  const [activeTab, setActiveTab] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -47,6 +44,34 @@ export default function HeroSection() {
       paddingTop: 48,
       paddingBottom: 0,
     }}>
+      {/* Video background */}
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          zIndex: 0,
+          opacity: 0.55,
+        } as React.CSSProperties}
+      >
+        <source src="/videos/aspire-bg.mp4" type="video/mp4" />
+      </video>
+
+      {/* Gradient overlay so text stays readable */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 0,
+        background: 'linear-gradient(to bottom, rgba(5,5,8,0.45) 0%, rgba(5,5,8,0.2) 40%, rgba(5,5,8,0.8) 85%, rgba(5,5,8,1) 100%)',
+        pointerEvents: 'none',
+      }} />
+
       {/* Atmospheric background layers */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
@@ -76,34 +101,11 @@ export default function HeroSection() {
           backgroundSize: '60px 60px',
           maskImage: 'radial-gradient(ellipse 80% 80% at 50% 0%, black 0%, transparent 70%)',
           WebkitMaskImage: 'radial-gradient(ellipse 80% 80% at 50% 0%, black 0%, transparent 70%)',
-        }} />
+        } as React.CSSProperties} />
       </div>
 
       {/* Content */}
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: 1200, padding: '0 48px' }}>
-
-        {/* Eyebrow */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            background: 'rgba(59,130,246,0.08)',
-            border: '1px solid rgba(59,130,246,0.2)',
-            borderRadius: 24, padding: '6px 16px',
-            marginBottom: 20,
-          }}
-        >
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', boxShadow: '0 0 8px rgba(59,130,246,0.8)' }} />
-          <span style={{
-            fontSize: 12, fontWeight: 600, color: '#60A5FA',
-            letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
-          }}>
-            Governed AI Execution
-          </span>
-        </motion.div>
 
         {/* Headline */}
         <motion.div
@@ -121,14 +123,14 @@ export default function HeroSection() {
             margin: 0,
             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
           }}>
-            Think it. Govern it.{' '}
+            Reclaim Your{' '}
             <span style={{
               background: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
-            }}>
-              Execute it.
+            } as React.CSSProperties}>
+              Freedom.
             </span>
           </h1>
         </motion.div>
@@ -148,8 +150,7 @@ export default function HeroSection() {
             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
           }}
         >
-          Simple enough to run in hours. Sophisticated enough to scale.
-          Aspire gives your business a governed AI executive team — without the overhead.
+          Simple enough to launch in hours. Sophisticated enough to scale, Aspire gives your business a governed team of AI agents and a virtual office that manages admin, paperwork, finances and operations — so you can lead with freedom.
         </motion.p>
 
         {/* CTA Buttons */}
@@ -211,40 +212,6 @@ export default function HeroSection() {
           >
             Watch Overview →
           </a>
-        </motion.div>
-
-        {/* Tab Switcher */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.5 }}
-          style={{
-            display: 'flex',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 12,
-            padding: 4,
-            gap: 2,
-            marginBottom: 20,
-          }}
-        >
-          {tabs.map((tab, i) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(i)}
-              style={{
-                fontSize: 13, fontWeight: 600,
-                color: activeTab === i ? '#ffffff' : 'rgba(255,255,255,0.45)',
-                background: activeTab === i ? 'rgba(59,130,246,0.18)' : 'transparent',
-                border: activeTab === i ? '1px solid rgba(59,130,246,0.25)' : '1px solid transparent',
-                borderRadius: 8, padding: '8px 20px', cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
-              }}
-            >
-              {tab}
-            </button>
-          ))}
         </motion.div>
 
         {/* Tilting Dashboard Mockup */}
