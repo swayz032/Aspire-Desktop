@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useSupabase } from '@/providers';
+import { useSupabase, useTenant } from '@/providers';
 import { supabase } from '@/lib/supabase';
 import { CelebrationModal } from '@/components/CelebrationModal';
 
@@ -425,6 +425,7 @@ function clearDraft(): void {
 export default function OnboardingScreen() {
   const router = useRouter();
   const { suiteId, session } = useSupabase();
+  const { refresh: refreshTenant } = useTenant();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -802,6 +803,7 @@ export default function OnboardingScreen() {
         } catch (_) { /* retry */ }
       }
       clearDraft();
+      await refreshTenant();
       router.replace('/(tabs)');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to save onboarding data.';
@@ -1467,6 +1469,7 @@ export default function OnboardingScreen() {
     try {
       await supabase.auth.getSession();
       await supabase.auth.refreshSession();
+      await refreshTenant();
     } catch (_) {
       // Best-effort refresh; continue navigation.
     }
