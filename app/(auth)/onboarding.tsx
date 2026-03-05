@@ -196,6 +196,8 @@ const GENDER_OPTIONS = [
   { value: 'prefer-not-to-say', label: 'Prefer not to say' },
 ];
 
+const BOOTSTRAP_IDENTITY_CACHE_KEY = 'aspire.bootstrap.identity';
+
 // SERVICES array removed in v3 — all services auto-included per Genesis Gate
 
 const COUNTRY_CURRENCY: Record<string, string> = {
@@ -701,6 +703,25 @@ export default function OnboardingScreen() {
         const bootstrapResult = await resp.json();
         const { suiteId: newSuiteId, suiteDisplayId, officeDisplayId, businessName: bName } = bootstrapResult;
         setBootstrappedSuiteId(newSuiteId);
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          try {
+            window.localStorage.setItem(
+              BOOTSTRAP_IDENTITY_CACHE_KEY,
+              JSON.stringify({
+                suiteId: newSuiteId,
+                officeId: bootstrapResult.officeId || '',
+                suiteDisplayId: suiteDisplayId || '',
+                officeDisplayId: officeDisplayId || '',
+                businessName: bName || form.businessName.trim(),
+                ownerName: form.ownerName.trim(),
+                capturedAt: new Date().toISOString(),
+              }),
+            );
+          } catch (_) {
+            // Non-fatal cache write failure.
+          }
+        }
 
         // Session refresh with retry polling — prevents redirect loop back to onboarding.
         // Retries up to 3x (500ms intervals) checking /api/onboarding/status for completion.
@@ -1441,8 +1462,14 @@ export default function OnboardingScreen() {
   // ---------------------------------------------------------------------------
   // Celebration modal dismiss → navigate to home
   // ---------------------------------------------------------------------------
-  const handleEnterAspire = () => {
+  const handleEnterAspire = async () => {
     setShowCelebration(false);
+    try {
+      await supabase.auth.getSession();
+      await supabase.auth.refreshSession();
+    } catch (_) {
+      // Best-effort refresh; continue navigation.
+    }
     router.replace('/(tabs)');
   };
 

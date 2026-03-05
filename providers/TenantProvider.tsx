@@ -15,6 +15,28 @@ interface TenantProviderProps {
   children: ReactNode;
 }
 
+const BOOTSTRAP_IDENTITY_CACHE_KEY = 'aspire.bootstrap.identity';
+
+type BootstrapIdentityCache = {
+  suiteId?: string;
+  officeId?: string;
+  suiteDisplayId?: string;
+  officeDisplayId?: string;
+  businessName?: string;
+  ownerName?: string;
+};
+
+function readBootstrapIdentityCache(): BootstrapIdentityCache | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(BOOTSTRAP_IDENTITY_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as BootstrapIdentityCache;
+  } catch {
+    return null;
+  }
+}
+
 function mapSuiteProfileToTenant(profile: any): Tenant {
   return {
     id: profile.id ?? profile.suite_id ?? '',
@@ -58,9 +80,55 @@ export function TenantProvider({ children }: TenantProviderProps) {
       setIsLoading(true);
       setError(null);
       const profile = await getSuiteProfile();
-      setTenant(mapSuiteProfileToTenant(profile));
+      const mapped = mapSuiteProfileToTenant(profile);
+      const cached = readBootstrapIdentityCache();
+      if (cached) {
+        setTenant({
+          ...mapped,
+          businessName: mapped.businessName || cached.businessName || 'Aspire Business',
+          ownerName: mapped.ownerName || cached.ownerName || '',
+          suiteId: mapped.suiteId || cached.suiteId || '',
+          officeId: mapped.officeId || cached.officeId || '',
+          displayId: mapped.displayId || cached.suiteDisplayId || undefined,
+          officeDisplayId: mapped.officeDisplayId || cached.officeDisplayId || undefined,
+        });
+      } else {
+        setTenant(mapped);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tenant');
+      const cached = readBootstrapIdentityCache();
+      if (cached?.suiteId) {
+        setTenant({
+          id: cached.suiteId,
+          businessName: cached.businessName || 'Aspire Business',
+          suiteId: cached.suiteId,
+          officeId: cached.officeId || '',
+          displayId: cached.suiteDisplayId || undefined,
+          officeDisplayId: cached.officeDisplayId || undefined,
+          ownerName: cached.ownerName || '',
+          ownerEmail: '',
+          role: 'Founder',
+          timezone: 'America/New_York',
+          currency: 'USD',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          industry: null,
+          industrySpecialty: null,
+          incomeRange: null,
+          referralSource: null,
+          gender: null,
+          teamSize: null,
+          entityType: null,
+          yearsInBusiness: null,
+          businessGoals: null,
+          painPoint: null,
+          salesChannel: null,
+          customerType: null,
+          preferredChannel: null,
+          onboardingCompleted: true,
+        });
+      }
     } finally {
       setIsLoading(false);
     }
