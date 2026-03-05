@@ -10,14 +10,13 @@ export function ApprovalIcon({ size = 28, color = '#FFFFFF' }: ApprovalIconProps
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M12 2L4 6v6c0 5 3.5 9.5 8 11 4.5-1.5 8-6 8-11V6l-8-4z"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
+        d="M12 2L3 6.5V12c0 5.25 3.83 10.15 9 11.35C17.17 22.15 21 17.25 21 12V6.5L12 2z"
+        fill={color}
       />
       <Path
-        d="M9 12l2 2 4-4"
+        d="M8.5 12l2.5 2.5 4.5-5"
         stroke={color}
+        strokeOpacity={0.35}
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"

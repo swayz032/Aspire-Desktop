@@ -36,7 +36,12 @@ export default function Index() {
       root.style.minHeight = '100vh';
       root.style.display = 'block';
     }
+    const scrollStyle = document.createElement('style');
+    scrollStyle.id = 'hide-scrollbar';
+    scrollStyle.textContent = `::-webkit-scrollbar{display:none}html,body{-ms-overflow-style:none;scrollbar-width:none}`;
+    document.head.appendChild(scrollStyle);
     return () => {
+      document.getElementById('hide-scrollbar')?.remove();
       body.style.overflow = prev.bodyOverflow;
       body.style.height = prev.bodyHeight;
       html.style.overflow = prev.htmlOverflow;

@@ -13,48 +13,61 @@ import Reanimated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
 import { playOpenSound } from '@/lib/sounds';
 
-export type ModalSize = 'standard' | 'wide' | 'agent';
+export type ModalSize = 'compact' | 'standard' | 'wide' | 'agent' | 'portrait' | 'tape' | 'note';
 
 interface WidgetModalProps {
   visible: boolean;
   onClose: () => void;
   children: React.ReactNode;
   size?: ModalSize;
+  accent?: string;
 }
 
-const SPRING = { damping: 24, stiffness: 300, mass: 0.8 };
+const SPRING = { damping: 22, stiffness: 280, mass: 0.8 };
 
 const SIZE_MAP: Record<ModalSize, { width: number; maxHeight: number }> = {
-  standard: { width: 580, maxHeight: 700 },
-  wide:     { width: 720, maxHeight: 780 },
-  agent:    { width: 720, maxHeight: 800 },
+  compact:  { width: 520,  maxHeight: 600  },
+  standard: { width: 680,  maxHeight: 780  },
+  wide:     { width: 860,  maxHeight: 840  },
+  agent:    { width: 720,  maxHeight: 800  },
+  portrait: { width: 440,  maxHeight: 780  },
+  tape:     { width: 480,  maxHeight: 820  },
+  note:     { width: 400,  maxHeight: 440  },
 };
 
-export function WidgetModal({ visible, onClose, children, size = 'standard' }: WidgetModalProps) {
+export function WidgetModal({
+  visible,
+  onClose,
+  children,
+  size = 'standard',
+  accent = '#0ea5e9',
+}: WidgetModalProps) {
   const { width: screenW, height: screenH } = useWindowDimensions();
-  const scale = useSharedValue(0.94);
-  const opacity = useSharedValue(0);
+  const scale        = useSharedValue(0.92);
+  const opacity      = useSharedValue(0);
+  const translateY   = useSharedValue(16);
   const backdropOpacity = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
       playOpenSound();
-      opacity.value = withTiming(1, { duration: 220 });
-      backdropOpacity.value = withTiming(1, { duration: 200 });
-      scale.value = withSpring(1, SPRING);
+      opacity.value         = withTiming(1, { duration: 200 });
+      backdropOpacity.value = withTiming(1, { duration: 180 });
+      scale.value           = withSpring(1, SPRING);
+      translateY.value      = withSpring(0, SPRING);
     } else {
-      opacity.value = withTiming(0, { duration: 180 });
-      backdropOpacity.value = withTiming(0, { duration: 160 });
-      scale.value = withTiming(0.94, { duration: 160 });
+      opacity.value         = withTiming(0, { duration: 160 });
+      backdropOpacity.value = withTiming(0, { duration: 140 });
+      scale.value           = withTiming(0.92, { duration: 150 });
+      translateY.value      = withTiming(16,   { duration: 150 });
     }
   }, [visible]);
 
   const modalStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ scale: scale.value }],
+    opacity:   opacity.value,
+    transform: [{ scale: scale.value }, { translateY: translateY.value }],
   }));
 
   const backdropStyle = useAnimatedStyle(() => ({
@@ -62,8 +75,9 @@ export function WidgetModal({ visible, onClose, children, size = 'standard' }: W
   }));
 
   const sizeConfig = SIZE_MAP[size];
-  const modalW = Math.min(screenW - 32, sizeConfig.width);
-  const modalH = Math.min(screenH - 80, sizeConfig.maxHeight);
+  const modalW  = Math.min(screenW - 32, sizeConfig.width);
+  const modalH  = Math.min(screenH - 80, sizeConfig.maxHeight);
+  const isNote  = size === 'note';
 
   return (
     <Modal
@@ -78,10 +92,41 @@ export function WidgetModal({ visible, onClose, children, size = 'standard' }: W
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Reanimated.View>
 
-        <Reanimated.View style={[s.card, modalStyle, { width: modalW, height: modalH }]}>
-          <Pressable onPress={onClose} style={s.closeBtn}>
-            <Ionicons name="close" size={18} color="rgba(255,255,255,0.9)" />
-          </Pressable>
+        <Reanimated.View
+          style={[
+            s.card,
+            modalStyle,
+            { width: modalW, maxHeight: modalH },
+            isNote && s.cardNote,
+          ]}
+        >
+          {/* 4px accent gradient strip at top — hidden for frameless note */}
+          {!isNote && (
+            <View
+              style={[
+                s.accentStrip,
+                {
+                  backgroundColor: accent,
+                  ...(Platform.OS === 'web'
+                    ? ({ background: `linear-gradient(90deg, ${accent}, ${accent}66)` } as any)
+                    : {}),
+                },
+              ]}
+            />
+          )}
+
+          {/* Close button — tap outside closes note instead */}
+          {!isNote && (
+            <Pressable
+              onPress={onClose}
+              style={s.closeBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <View style={s.closeLine1} />
+              <View style={s.closeLine2} />
+            </Pressable>
+          )}
+
           <View style={s.content}>{children}</View>
         </Reanimated.View>
       </View>
@@ -97,47 +142,73 @@ const s = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.82)',
     ...(Platform.OS === 'web'
-      ? ({ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any)
+      ? ({ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' } as any)
       : {}),
   },
   card: {
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: '#1C1C1E',
+    backgroundColor: 'rgba(12,12,16,0.97)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.07)',
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow:
-            '0 24px 80px rgba(0,0,0,0.65), 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06)',
+          boxShadow: '0 32px 96px rgba(0,0,0,0.72), 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
+          backdropFilter: 'blur(40px)',
+          WebkitBackdropFilter: 'blur(40px)',
         } as any)
       : {
           shadowColor: '#000',
-          shadowOffset: { width: 0, height: 12 },
-          shadowOpacity: 0.6,
-          shadowRadius: 40,
-          elevation: 24,
+          shadowOffset: { width: 0, height: 16 },
+          shadowOpacity: 0.7,
+          shadowRadius: 48,
+          elevation: 32,
         }),
+  },
+  cardNote: {
+    borderRadius: 16,
+    borderWidth: 0,
+  },
+  accentStrip: {
+    width: '100%',
+    height: 4,
+    opacity: 0.9,
   },
   closeBtn: {
     position: 'absolute',
-    top: 14,
-    right: 14,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    top: 16,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 100,
     ...(Platform.OS === 'web'
-      ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' } as any)
+      ? ({ cursor: 'pointer' } as any)
       : {}),
+  },
+  closeLine1: {
+    position: 'absolute',
+    width: 14,
+    height: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 1,
+    transform: [{ rotate: '45deg' }],
+  },
+  closeLine2: {
+    position: 'absolute',
+    width: 14,
+    height: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 1,
+    transform: [{ rotate: '-45deg' }],
   },
   content: {
     flex: 1,
