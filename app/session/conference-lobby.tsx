@@ -203,6 +203,25 @@ export default function ConferenceLobby() {
   const { session, suiteId } = useSupabase();
   const { tenant } = useTenant();
   const { authenticatedFetch } = useAuthFetch();
+  const [bootstrapIdentity, setBootstrapIdentity] = useState<{
+    suiteDisplayId?: string;
+    officeDisplayId?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem('aspire.bootstrap.identity');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setBootstrapIdentity({
+        suiteDisplayId: parsed.suiteDisplayId || undefined,
+        officeDisplayId: parsed.officeDisplayId || undefined,
+      });
+    } catch {
+      // Ignore malformed cache.
+    }
+  }, []);
 
   // Inject web hover CSS once
   useEffect(() => { injectLobbyKeyframes(); }, []);
@@ -210,8 +229,10 @@ export default function ConferenceLobby() {
   const userName = session?.user?.user_metadata?.full_name
     ?? session?.user?.email?.split('@')[0]
     ?? 'You';
-  const suiteDisplay = formatDisplayId(tenant?.displayId, suiteId);
-  const officeDisplay = tenant?.officeDisplayId ? formatDisplayId(tenant.officeDisplayId, tenant.officeId) : '';
+  const suiteDisplay = formatDisplayId(tenant?.displayId || bootstrapIdentity?.suiteDisplayId, suiteId);
+  const officeDisplay = (tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId)
+    ? formatDisplayId(tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId, tenant?.officeId)
+    : '';
   const suiteLabel = officeDisplay ? `Suite ${suiteDisplay} • Office ${officeDisplay}` : `Suite ${suiteDisplay}`;
 
   const [purpose, setPurpose] = useState<SessionPurpose>('Internal');

@@ -118,11 +118,31 @@ export function AvaDeskPanel() {
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();
   const { tenant } = useTenant();
-  const suiteDisplayId = tenant?.displayId || tenant?.suiteId?.slice(0, 8) || '';
-  const officeDisplayId = tenant?.officeDisplayId || tenant?.officeId?.slice(0, 8) || '';
+  const [bootstrapIdentity, setBootstrapIdentity] = useState<{
+    businessName?: string;
+    suiteDisplayId?: string;
+    officeDisplayId?: string;
+  } | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem('aspire.bootstrap.identity');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setBootstrapIdentity({
+        businessName: parsed.businessName || undefined,
+        suiteDisplayId: parsed.suiteDisplayId || undefined,
+        officeDisplayId: parsed.officeDisplayId || undefined,
+      });
+    } catch {
+      // Ignore malformed cache.
+    }
+  }, []);
+  const suiteDisplayId = tenant?.displayId || bootstrapIdentity?.suiteDisplayId || tenant?.suiteId?.slice(0, 8) || '';
+  const officeDisplayId = tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId || tenant?.officeId?.slice(0, 8) || '';
   const companyPillLabel = suiteDisplayId && officeDisplayId
-    ? `${tenant?.businessName || 'Your Company'} • Suite ${suiteDisplayId} • Office ${officeDisplayId}`
-    : (tenant?.businessName || 'Suite/Office Pending');
+    ? `${tenant?.businessName || bootstrapIdentity?.businessName || 'Your Company'} • Suite ${suiteDisplayId} • Office ${officeDisplayId}`
+    : (tenant?.businessName || bootstrapIdentity?.businessName || 'Suite/Office Pending');
 
   // W4: Authority queue polling â€” provides context to orchestrator (approvals shown in Authority Queue, not chat)
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);

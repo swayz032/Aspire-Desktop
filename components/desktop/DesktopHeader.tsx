@@ -62,12 +62,33 @@ export function DesktopHeader({
   const { session, signOut } = useSupabase();
   const { tenant } = useTenant();
   const router = useRouter();
+  const [bootstrapIdentity, setBootstrapIdentity] = useState<{
+    businessName?: string;
+    suiteDisplayId?: string;
+    officeDisplayId?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem('aspire.bootstrap.identity');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setBootstrapIdentity({
+        businessName: parsed.businessName || undefined,
+        suiteDisplayId: parsed.suiteDisplayId || undefined,
+        officeDisplayId: parsed.officeDisplayId || undefined,
+      });
+    } catch {
+      // Ignore malformed cache.
+    }
+  }, []);
 
   // Derive display values from auth context, falling back to props, then defaults
-  const businessName = businessNameProp || tenant?.businessName || 'Your Business';
+  const businessName = businessNameProp || tenant?.businessName || bootstrapIdentity?.businessName || 'Your Business';
   const role = roleProp || tenant?.role || 'Founder';
-  const suiteDisplayId = tenant?.displayId || suiteIdProp || tenant?.suiteId?.slice(0, 8) || '';
-  const officeDisplayId = tenant?.officeDisplayId || '';
+  const suiteDisplayId = tenant?.displayId || bootstrapIdentity?.suiteDisplayId || suiteIdProp || tenant?.suiteId?.slice(0, 8) || '';
+  const officeDisplayId = tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId || '';
   const userName = tenant?.ownerName || session?.user?.user_metadata?.full_name || 'User';
 
   // Initials-based avatar (replaces stock photo)
