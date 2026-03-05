@@ -55,19 +55,39 @@ export default function DailyBriefScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch latest daily brief from Adam's research receipts
+    const getActionType = (row: any): string => {
+      return String(row?.action?.action_type || row?.action_type || '').toLowerCase();
+    };
+    const getPayload = (row: any): any => {
+      return row?.payload || row?.result || row?.action || {};
+    };
+    const isBriefReceipt = (row: any): boolean => {
+      const actionType = getActionType(row);
+      return actionType.startsWith('adam.daily_brief')
+        || actionType.startsWith('research.daily_brief')
+        || actionType.startsWith('founder_hub.brief');
+    };
+    const isInsightReceipt = (row: any): boolean => {
+      const actionType = getActionType(row);
+      return actionType.startsWith('adam.pulse')
+        || actionType.startsWith('research.insight')
+        || actionType.startsWith('founder_hub.insight');
+    };
+
+    // Fetch latest daily brief from Adam's research receipts.
+    // Schema tolerant: supports both `action_type` and `action.action_type`.
     const fetchBrief = supabase
       .from('receipts')
       .select('*')
-      .or('action_type.like.adam.daily_brief%,action_type.like.research.daily_brief%,action_type.like.founder_hub.brief%')
       .order('created_at', { ascending: false })
-      .limit(1)
+      .limit(100)
       .then(({ data }) => {
-        if (data?.[0]?.payload) {
-          const p = data[0].payload;
+        const brief = data?.find(isBriefReceipt);
+        if (brief) {
+          const p = getPayload(brief);
           setDailyBrief({
-            id: data[0].id ?? '',
-            date: data[0].created_at?.split('T')[0] ?? new Date().toISOString().split('T')[0],
+            id: brief.receipt_id ?? brief.id ?? '',
+            date: brief.created_at?.split('T')[0] ?? new Date().toISOString().split('T')[0],
             title: p.title ?? 'Daily Brief',
             bullets: p.bullets ?? p.key_points ?? [],
             whyItMatters: p.why_it_matters ?? p.summary ?? '',
@@ -83,16 +103,16 @@ export default function DailyBriefScreen() {
     // Fetch past briefs (last 5)
     const fetchPast = supabase
       .from('receipts')
-      .select('id,created_at,payload')
-      .or('action_type.like.adam.daily_brief%,action_type.like.research.daily_brief%,action_type.like.founder_hub.brief%')
+      .select('*')
       .order('created_at', { ascending: false })
-      .range(1, 5)
+      .limit(100)
       .then(({ data }) => {
-        if (data && data.length > 0) {
-          setPastBriefs(data.map((r: any, idx: number) => ({
-            id: r.id ?? `past-${idx}`,
+        const matches = (data || []).filter(isBriefReceipt).slice(1, 6);
+        if (matches.length > 0) {
+          setPastBriefs(matches.map((r: any, idx: number) => ({
+            id: r.receipt_id ?? r.id ?? `past-${idx}`,
             date: r.created_at?.split('T')[0] ?? '',
-            title: r.payload?.title ?? 'Past brief',
+            title: getPayload(r)?.title ?? 'Past brief',
             read: true,
           })));
         }
@@ -101,21 +121,21 @@ export default function DailyBriefScreen() {
     // Fetch AI insights from Adam's pulse/insight receipts
     const fetchInsights = supabase
       .from('receipts')
-      .select('id,payload')
-      .or('action_type.like.adam.pulse%,action_type.like.research.insight%,action_type.like.founder_hub.insight%')
+      .select('*')
       .order('created_at', { ascending: false })
-      .limit(3)
+      .limit(100)
       .then(({ data }) => {
-        if (data && data.length > 0) {
+        const matches = (data || []).filter(isInsightReceipt).slice(0, 3);
+        if (matches.length > 0) {
           const iconMap: Record<string, string> = {
             opportunity: 'trending-up-outline',
             risk: 'warning-outline',
             strategic: 'bulb-outline',
           };
-          setAiInsights(data.map((r: any, idx: number) => {
-            const p = r.payload ?? {};
+          setAiInsights(matches.map((r: any, idx: number) => {
+            const p = getPayload(r) ?? {};
             return {
-              id: r.id ?? `insight-${idx}`,
+              id: r.receipt_id ?? r.id ?? `insight-${idx}`,
               icon: iconMap[p.insight_type] ?? ['trending-up-outline', 'warning-outline', 'bulb-outline'][idx % 3],
               title: p.title ?? 'Insight',
               desc: p.summary ?? p.description ?? '',
@@ -124,8 +144,27 @@ export default function DailyBriefScreen() {
         }
       });
 
-    Promise.allSettled([fetchBrief, fetchPast, fetchInsights]).then(() => setLoading(false));
-  }, []);
+    Promise.allSettled([fetchBrief, fetchPast, fetchInsights]).then(() => {
+      setDailyBrief((prev) => {
+        if (prev.id) return prev;
+        const industry = tenant?.industry ?? 'Business';
+        return {
+          id: `seed-${Date.now()}`,
+          date: new Date().toISOString().split('T')[0],
+          title: `${industry} Founder Brief`,
+          bullets: [
+            `Build your first ${industry.toLowerCase()} momentum loop this week.`,
+            'Prioritize one revenue action and one operational efficiency action.',
+            'Use Ava + Adam to turn new signals into an execution checklist.',
+          ],
+          whyItMatters: `This starter brief is tailored to your ${industry.toLowerCase()} profile while live Adam research sync completes.`,
+          ctas: [{ label: 'Discuss with Ava', action: 'OPEN_STUDIO' }],
+          imageKey: 'pallet-yard',
+        };
+      });
+      setLoading(false);
+    });
+  }, [tenant?.industry]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
