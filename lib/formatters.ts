@@ -1,4 +1,4 @@
-// Identity values come from intake form (suite_profiles via useTenant) — no hardcoded constants
+﻿// Identity values come from intake form (suite_profiles via useTenant) â€” no hardcoded constants
 
 export function formatTimestamp(date: Date): string {
   return date.toISOString();
@@ -84,20 +84,19 @@ export function formatMoney(amount: number, currency: string = 'USD'): string {
 }
 
 export function formatDisplayId(displayId?: string | null, uuid?: string | null): string {
-  if (displayId) return displayId;
-  if (uuid) return uuid.slice(0, 8);
+  if (displayId) return String(displayId).trim().toUpperCase();
   return '';
 }
 
 export function formatSuiteContext(suiteId?: string | null, officeId?: string | null, displayId?: string | null): string {
-  const suite = displayId || (suiteId ? suiteId.slice(0, 8) : '');
+  const suite = displayId ? String(displayId).trim().toUpperCase() : '';
   return suite ? `Suite ${suite}` : 'Suite';
 }
 
 export function formatFullContext(businessName?: string | null, suiteId?: string | null, displayId?: string | null): string {
   const name = businessName || 'Your Business';
-  const suite = displayId || (suiteId ? suiteId.slice(0, 8) : '');
-  return suite ? `${name} · Suite ${suite}` : name;
+  const suite = displayId ? String(displayId).trim().toUpperCase() : '';
+  return suite ? `${name} Â· Suite ${suite}` : name;
 }
 
 export function getRandomPastDate(maxDaysAgo: number = 30): Date {
@@ -117,3 +116,4 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+

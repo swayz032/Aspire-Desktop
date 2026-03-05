@@ -138,8 +138,8 @@ export function AvaDeskPanel() {
       // Ignore malformed cache.
     }
   }, []);
-  const suiteDisplayId = tenant?.displayId || bootstrapIdentity?.suiteDisplayId || tenant?.suiteId?.slice(0, 8) || '';
-  const officeDisplayId = tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId || tenant?.officeId?.slice(0, 8) || '';
+  const suiteDisplayId = tenant?.displayId || bootstrapIdentity?.suiteDisplayId || '';
+  const officeDisplayId = tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId || '';
   const companyPillLabel = suiteDisplayId && officeDisplayId
     ? `${tenant?.businessName || bootstrapIdentity?.businessName || 'Your Company'} • Suite ${suiteDisplayId} • Office ${officeDisplayId}`
     : (tenant?.businessName || bootstrapIdentity?.businessName || 'Suite/Office Pending');

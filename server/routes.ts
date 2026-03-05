@@ -270,6 +270,67 @@ function isAdultDate(value: string | null): boolean {
   return age >= 18;
 }
 
+function premiumDisplayFallback(prefix: 'STE' | 'OFF', seed: string): string {
+  const clean = (seed || '').replace(/[^a-zA-Z0-9]/g, '');
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
+  }
+  const n = (hash % 999) + 1;
+  return `${prefix}-${String(n).padStart(3, '0')}`;
+}
+
+async function resolveSuiteOfficeIdentity(suiteId: string): Promise<{
+  suiteDisplayId: string;
+  officeDisplayId: string;
+  businessName?: string | null;
+}> {
+  let suiteDisplayId: string | null = null;
+  let officeDisplayId: string | null = null;
+  let businessName: string | null = null;
+
+  // 1) suite_profiles cache (fast path)
+  try {
+    if (supabaseAdmin) {
+      const { data: profileData } = await supabaseAdmin
+        .from('suite_profiles')
+        .select('display_id, office_display_id, business_name')
+        .eq('suite_id', suiteId)
+        .single();
+      suiteDisplayId = profileData?.display_id || null;
+      officeDisplayId = profileData?.office_display_id || null;
+      businessName = profileData?.business_name || null;
+    }
+  } catch {
+    // best effort
+  }
+
+  // 2) canonical app schema (source of truth for premium display ids)
+  try {
+    const identityResult = await db.execute(sql`
+      SELECT
+        s.display_id AS suite_display_id,
+        o.display_id AS office_display_id
+      FROM app.suites s
+      LEFT JOIN app.offices o ON o.suite_id = s.suite_id
+      WHERE s.suite_id = ${suiteId}
+      ORDER BY o.created_at ASC NULLS LAST
+      LIMIT 1
+    `);
+    const identityRow = ((identityResult.rows || identityResult) as any[])[0];
+    if (!suiteDisplayId) suiteDisplayId = identityRow?.suite_display_id || null;
+    if (!officeDisplayId) officeDisplayId = identityRow?.office_display_id || null;
+  } catch {
+    // best effort
+  }
+
+  return {
+    suiteDisplayId: suiteDisplayId || premiumDisplayFallback('STE', suiteId),
+    officeDisplayId: officeDisplayId || premiumDisplayFallback('OFF', suiteId),
+    businessName,
+  };
+}
+
 // Canonical JSON: sort object keys recursively for deterministic HMAC signatures
 // Must match n8n receiver sortKeys() — both sides produce identical canonical JSON
 function sortKeys(obj: any): any {
@@ -486,7 +547,14 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       existingProfile?.business_name &&
       existingProfile?.industry
     ) {
-      return res.json({ suiteId: existingSuiteId, created: false });
+      const identity = await resolveSuiteOfficeIdentity(existingSuiteId);
+      return res.json({
+        suiteId: existingSuiteId,
+        created: false,
+        suiteDisplayId: identity.suiteDisplayId,
+        officeDisplayId: identity.officeDisplayId,
+        businessName: identity.businessName || existingProfile.business_name || null,
+      });
     }
     // Profile missing or incomplete — fall through to create/update it
   }
@@ -755,26 +823,15 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       logger.warn('N8N_WEBHOOK_SECRET not set — skipping intake activation webhook (fail-closed)');
     }
 
-    // Query display IDs for celebration screen.
-    // Fail-safe: if DB triggers did not populate display IDs yet, derive deterministic fallbacks.
-    let suiteDisplayId: string | null = null;
-    let officeDisplayId: string | null = null;
-    try {
-      const { data: profileData } = await supabaseAdmin.from('suite_profiles')
-        .select('display_id, office_display_id, business_name')
-        .eq('suite_id', suiteId)
-        .single();
-      suiteDisplayId = profileData?.display_id || null;
-      officeDisplayId = profileData?.office_display_id || null;
-    } catch (_) { /* best-effort — display IDs are cosmetic */ }
-    if (!suiteDisplayId) {
-      suiteDisplayId = suiteId.slice(0, 8).toUpperCase();
-    }
-    if (!officeDisplayId) {
-      officeDisplayId = suiteId.slice(0, 8).toUpperCase();
-    }
-
-    res.json({ suiteId, created: true, receiptId, suiteDisplayId, officeDisplayId, businessName });
+    const identity = await resolveSuiteOfficeIdentity(suiteId);
+    res.json({
+      suiteId,
+      created: true,
+      receiptId,
+      suiteDisplayId: identity.suiteDisplayId,
+      officeDisplayId: identity.officeDisplayId,
+      businessName: identity.businessName || businessName,
+    });
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : 'unknown';
     logger.error('Bootstrap error', { correlationId, error: errorMsg });

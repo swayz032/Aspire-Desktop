@@ -87,7 +87,7 @@ export function DesktopHeader({
   // Derive display values from auth context, falling back to props, then defaults
   const businessName = businessNameProp || tenant?.businessName || bootstrapIdentity?.businessName || 'Your Business';
   const role = roleProp || tenant?.role || 'Founder';
-  const suiteDisplayId = tenant?.displayId || bootstrapIdentity?.suiteDisplayId || suiteIdProp || tenant?.suiteId?.slice(0, 8) || '';
+  const suiteDisplayId = tenant?.displayId || bootstrapIdentity?.suiteDisplayId || '';
   const officeDisplayId = tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId || '';
   const userName = tenant?.ownerName || session?.user?.user_metadata?.full_name || 'User';
 
