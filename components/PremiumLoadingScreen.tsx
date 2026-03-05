@@ -284,6 +284,7 @@ export function PremiumLoadingScreen({
       accessibilityRole="progressbar"
       accessibilityLabel="Setting up your Aspire workspace"
       accessibilityState={{ busy: !isComplete }}
+      testID="onboarding-premium-loading-screen"
     >
       {/* Subtle radial glow behind sphere (web only, centered on sphere) */}
       {isWeb && <View style={styles.radialGlowWeb} />}

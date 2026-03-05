@@ -210,7 +210,9 @@ export default function ConferenceLobby() {
   const userName = session?.user?.user_metadata?.full_name
     ?? session?.user?.email?.split('@')[0]
     ?? 'You';
-  const suiteLabel = `Suite ${formatDisplayId(tenant?.displayId, suiteId)}` || 'Conference Room';
+  const suiteDisplay = formatDisplayId(tenant?.displayId, suiteId);
+  const officeDisplay = tenant?.officeDisplayId ? formatDisplayId(tenant.officeDisplayId, tenant.officeId) : '';
+  const suiteLabel = officeDisplay ? `Suite ${suiteDisplay} • Office ${officeDisplay}` : `Suite ${suiteDisplay}`;
 
   const [purpose, setPurpose] = useState<SessionPurpose>('Internal');
   const [participants, setParticipants] = useState<Participant[]>([
@@ -448,7 +450,7 @@ export default function ConferenceLobby() {
         
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Conference Room</Text>
-          <Text style={styles.headerSubtitle}>{suiteLabel} • Room CR-01</Text>
+          <Text style={styles.headerSubtitle} testID="conference-header-suite-office">{suiteLabel} • Room CR-01</Text>
         </View>
         
         <View style={styles.headerActions}>
@@ -522,7 +524,7 @@ export default function ConferenceLobby() {
                     {/* Idle Mode Details */}
                     <View style={styles.sessionDetails}>
                       <Text style={styles.sessionMeetingTitle}>Conference Room</Text>
-                      <Text style={styles.sessionLocation}>{suiteLabel} • Room CR-01</Text>
+                      <Text style={styles.sessionLocation} testID="conference-card-suite-office">{suiteLabel} • Room CR-01</Text>
                       
                       <View style={styles.idleInfoRow}>
                         <Ionicons name="time-outline" size={16} color="rgba(255,255,255,0.6)" />
@@ -585,7 +587,7 @@ export default function ConferenceLobby() {
                     {/* Meeting Details - Bottom Section */}
                     <View style={styles.sessionDetails}>
                       <Text style={styles.sessionMeetingTitle}>{purpose} Session</Text>
-                      <Text style={styles.sessionLocation}>{suiteLabel} • Room CR-01</Text>
+                      <Text style={styles.sessionLocation} testID="conference-live-suite-office">{suiteLabel} • Room CR-01</Text>
                       
                       {/* Participants */}
                       <View style={styles.sessionParticipantsRow}>

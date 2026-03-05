@@ -199,8 +199,8 @@ export default function DailyBriefScreen() {
   if (!tenant?.onboardingCompleted) {
     return (
       <HubPageShell rightRail={<View />}>
-        <View style={styles.header}>
-          <Text style={styles.pageTitle}>Daily Brief</Text>
+        <View style={styles.header} testID="founder-hub-daily-brief-locked">
+          <Text style={styles.pageTitle} testID="founder-hub-daily-brief-title">Daily Brief</Text>
           <Text style={styles.pageSubtitle}>AI-curated intelligence for your business</Text>
         </View>
         <View style={styles.emptyStateContainer}>
@@ -216,11 +216,11 @@ export default function DailyBriefScreen() {
 
   return (
     <HubPageShell rightRail={rightRail}>
-      <View style={styles.header}>
+      <View style={styles.header} testID="founder-hub-daily-brief-page">
         <Text style={styles.pageTitle}>
           {tenant?.industry ? `Your ${tenant.industry} Daily Brief` : 'Daily Brief'}
         </Text>
-        <Text style={styles.pageSubtitle}>
+        <Text style={styles.pageSubtitle} testID="founder-hub-daily-brief-subtitle">
           {tenant?.industry
             ? `Insights for your ${tenant.industry} business`
             : 'AI-curated intelligence for your business'}
@@ -228,7 +228,7 @@ export default function DailyBriefScreen() {
       </View>
 
       {!dailyBrief.id ? (
-        <View style={styles.emptyStateContainer}>
+        <View style={styles.emptyStateContainer} testID="founder-hub-daily-brief-preparing">
           <Ionicons name="sunny-outline" size={48} color={THEME.text.muted} />
           <Text style={styles.emptyStateTitle}>Your personalized brief is being prepared...</Text>
           <Text style={styles.emptyStateDesc}>
@@ -238,7 +238,7 @@ export default function DailyBriefScreen() {
       ) : null}
 
       {dailyBrief.id ? (
-      <View style={styles.todayCard}>
+      <View style={styles.todayCard} testID="founder-hub-daily-brief-populated">
         <ImageBackground
           source={resolveHubImage(dailyBrief.imageUrl, dailyBrief.imageKey)}
           style={styles.heroImage}

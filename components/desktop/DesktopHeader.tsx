@@ -99,10 +99,9 @@ export function DesktopHeader({
 
   // Suite identity label (replaces "Founder" role)
   const suiteIdentity = useMemo(() => {
-    const parts: string[] = [];
-    if (suiteDisplayId) parts.push(`Suite ${suiteDisplayId}`);
-    if (officeDisplayId) parts.push(`Office ${officeDisplayId}`);
-    return parts.join(' \u00b7 ') || 'Suite';
+    const suitePart = suiteDisplayId ? `Suite ${suiteDisplayId}` : 'Suite Pending';
+    const officePart = officeDisplayId ? `Office ${officeDisplayId}` : 'Office Pending';
+    return `${suitePart} \u00b7 ${officePart}`;
   }, [suiteDisplayId, officeDisplayId]);
 
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
@@ -273,10 +272,10 @@ export function DesktopHeader({
               </Text>
             </View>
           </View>
-          <View style={s.profileHeaderInfo}>
-            <Text style={s.profileHeaderName} numberOfLines={1}>{userName}</Text>
-            <Text style={s.profileHeaderSub}>Manage your account</Text>
-          </View>
+            <View style={s.profileHeaderInfo}>
+              <Text style={s.profileHeaderName} numberOfLines={1} testID="desktop-profile-name">{userName}</Text>
+              <Text style={s.profileHeaderSub}>Manage your account</Text>
+            </View>
           <View style={s.profileBadge}>
             <Text style={s.profileBadgeText}>{role}</Text>
           </View>
@@ -354,7 +353,7 @@ export function DesktopHeader({
 
   return (
     <>
-    <View style={s.container}>
+    <View style={s.container} testID="desktop-header">
       <View style={s.leftSection} />
 
       <View style={s.centerSection}>
@@ -375,13 +374,14 @@ export function DesktopHeader({
               hovered && s.suiteToggleHover,
               activePanel === 'suite' && s.suiteToggleActive,
             ]}
+            testID="desktop-suite-toggle"
           >
             <View style={s.companyInfo}>
               <View style={s.statusRow}>
                 <View style={s.statusDot} />
-                <Text style={s.businessName}>{businessName}</Text>
+                <Text style={s.businessName} testID="desktop-header-business-name">{businessName}</Text>
               </View>
-              <Text style={s.roleText}>{suiteIdentity}</Text>
+              <Text style={s.roleText} testID="desktop-header-suite-office">{suiteIdentity}</Text>
             </View>
             <Ionicons
               name={activePanel === 'suite' ? 'chevron-up' : 'chevron-down'}
@@ -461,10 +461,11 @@ export function DesktopHeader({
               pressed && s.profileButtonPressed,
               activePanel === 'profile' && s.profileButtonActive,
             ]}
+            testID="desktop-profile-button"
           >
             <View style={[s.profileRing, { borderColor: avatarColor }, activePanel === 'profile' && s.profileRingActive]}>
               <View style={[s.profileImagePlaceholder, { backgroundColor: `${avatarColor}25` }]}>
-                <Text style={[s.profileImageInitials, { color: avatarColor }]}>{userInitials}</Text>
+                <Text style={[s.profileImageInitials, { color: avatarColor }]} testID="desktop-header-avatar-initials">{userInitials}</Text>
               </View>
             </View>
           </Pressable>

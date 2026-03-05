@@ -57,6 +57,7 @@ export function CelebrationModal({
       style={styles.overlay}
       accessibilityRole="none"
       accessibilityLabel="Workspace setup complete"
+      testID="onboarding-celebration-modal"
     >
       <Animated.View
         style={[
@@ -103,6 +104,7 @@ export function CelebrationModal({
               style={styles.badge}
               accessibilityRole="text"
               accessibilityLabel={`Suite ${suiteDisplayId}`}
+              testID="onboarding-celebration-suite"
             >
               <Ionicons
                 name="business-outline"
@@ -118,6 +120,7 @@ export function CelebrationModal({
               style={styles.badge}
               accessibilityRole="text"
               accessibilityLabel={`Office ${officeDisplayId}`}
+              testID="onboarding-celebration-office"
             >
               <Ionicons
                 name="location-outline"
@@ -146,6 +149,7 @@ export function CelebrationModal({
             accessibilityRole="button"
             accessibilityLabel="Enter Aspire workspace"
             accessibilityHint="Opens your new business suite"
+            testID="onboarding-celebration-enter"
           >
             <Text style={styles.enterButtonText}>Enter Aspire</Text>
             <Ionicons

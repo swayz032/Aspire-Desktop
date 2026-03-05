@@ -118,6 +118,11 @@ export function AvaDeskPanel() {
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();
   const { tenant } = useTenant();
+  const suiteDisplayId = tenant?.displayId || tenant?.suiteId?.slice(0, 8) || '';
+  const officeDisplayId = tenant?.officeDisplayId || tenant?.officeId?.slice(0, 8) || '';
+  const companyPillLabel = suiteDisplayId && officeDisplayId
+    ? `${tenant?.businessName || 'Your Company'} • Suite ${suiteDisplayId} • Office ${officeDisplayId}`
+    : (tenant?.businessName || 'Suite/Office Pending');
 
   // W4: Authority queue polling â€” provides context to orchestrator (approvals shown in Authority Queue, not chat)
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
@@ -743,13 +748,13 @@ export function AvaDeskPanel() {
   const handleStartSession = () => setIsSessionActive(!isSessionActive);
 
   return (
-    <View style={styles.card}>
+    <View style={styles.card} testID="ava-desk-panel">
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.title}>Ava Desk</Text>
+          <Text style={styles.title} testID="ava-desk-title">Ava Desk</Text>
         </View>
         <View style={styles.tabs}>
-          <TabButton label="Voice with Ava" icon="mic" active={mode === 'voice'} onPress={() => setMode('voice')} />
+          <TabButton label="Voice with Ava" icon="mic" active={mode === 'voice'} onPress={() => setMode('voice')} testID="ava-voice-tab" />
           <TabButton label="Video with Ava" icon="videocam" active={mode === 'video'} onPress={() => setMode('video')} />
         </View>
       </View>
@@ -787,6 +792,7 @@ export function AvaDeskPanel() {
                   isSessionActive && styles.companyPillActive,
                 ]} 
                 onPress={handleCompanyPillPress}
+                testID="ava-company-pill"
               >
                 <Animated.View 
                   style={[
@@ -800,8 +806,8 @@ export function AvaDeskPanel() {
                     },
                   ]}
                 />
-                <Text style={styles.companyName}>
-                  {avaVoice.isActive ? 'Talking with Ava...' : (tenant?.businessName || 'Your Business')}
+                <Text style={styles.companyName} testID="ava-company-pill-text">
+                  {avaVoice.isActive ? 'Talking with Ava...' : companyPillLabel}
                 </Text>
               </Pressable>
             </View>
@@ -1062,9 +1068,9 @@ export function AvaDeskPanel() {
   );
 }
 
-function TabButton({ label, icon, active, onPress }: { label: string; icon: keyof typeof Ionicons.glyphMap; active: boolean; onPress: () => void }) {
+function TabButton({ label, icon, active, onPress, testID }: { label: string; icon: keyof typeof Ionicons.glyphMap; active: boolean; onPress: () => void; testID?: string }) {
   return (
-    <Pressable onPress={onPress} style={[styles.tabBtn, active && styles.tabBtnActive]}>
+    <Pressable onPress={onPress} style={[styles.tabBtn, active && styles.tabBtnActive]} testID={testID}>
       <Ionicons name={icon} size={14} color={active ? Colors.accent.cyan : Colors.text.tertiary} />
       <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
     </Pressable>

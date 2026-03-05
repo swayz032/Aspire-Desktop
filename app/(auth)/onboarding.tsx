@@ -608,6 +608,17 @@ export default function OnboardingScreen() {
 
   const canSubmit = form.consentPersonalization;
 
+  const resolveAccessToken = async (): Promise<string | null> => {
+    if (session?.access_token) return session.access_token;
+
+    const current = await supabase.auth.getSession();
+    const currentToken = current.data.session?.access_token;
+    if (currentToken) return currentToken;
+
+    const refreshed = await supabase.auth.refreshSession();
+    return refreshed.data.session?.access_token || null;
+  };
+
   // ---------------------------------------------------------------------------
   // Submit
   // ---------------------------------------------------------------------------
@@ -660,7 +671,7 @@ export default function OnboardingScreen() {
       };
 
       if (!effectiveSuiteId) {
-        const token = session?.access_token;
+        const token = await resolveAccessToken();
         if (!token) {
           setError('Session expired. Please sign in again.');
           setLoading(false);
@@ -725,7 +736,7 @@ export default function OnboardingScreen() {
       }
 
       // Existing suite — update profile via server endpoint (sanitization + receipt)
-      const token = session?.access_token;
+      const token = await resolveAccessToken();
       if (!token) {
         setError('Session expired. Please sign in again.');
         setLoading(false);
