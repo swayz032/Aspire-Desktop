@@ -1,6 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Feature } from './FeaturesData';
+import AIStaffVideoCarousel from './AIStaffVideoCarousel';
+import AIStaffPhotoCarousel from './AIStaffPhotoCarousel';
 
 interface FeatureSectionProps {
   feature: Feature;
@@ -140,7 +142,11 @@ export default function FeatureSection({ feature, index }: FeatureSectionProps) 
           transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
           style={{ order: isEven ? 0 : 1 }}
         >
-          <FeatureVisual feature={feature} />
+          {feature.id === 'canvas'
+            ? <AIStaffVideoCarousel />
+            : feature.id === 'ai-staff'
+            ? <AIStaffPhotoCarousel />
+            : <FeatureVisual feature={feature} />}
         </motion.div>
 
         {/* Text */}
