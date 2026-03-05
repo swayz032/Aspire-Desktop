@@ -2673,6 +2673,13 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
   try {
     const { agent, text, voiceId, channel, userProfile } = req.body;
+    const incomingIntent = typeof req.body?.intent === 'string' ? req.body.intent.trim() : '';
+    const incomingTaskType = typeof req.body?.task_type === 'string' ? req.body.task_type.trim() : '';
+    const incomingRequestId = typeof req.body?.request_id === 'string' ? req.body.request_id.trim() : '';
+    const incomingSessionId = typeof req.body?.session_id === 'string' ? req.body.session_id.trim() : '';
+    const incomingConversationId = typeof req.body?.conversation_id === 'string' ? req.body.conversation_id.trim() : '';
+    const incomingPayload = req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : undefined;
+    const incomingContext = req.body?.context && typeof req.body.context === 'object' ? req.body.context : undefined;
 
     if (!text || typeof text !== 'string' || !text.trim()) {
       emitTraceEvent({
@@ -2774,6 +2781,24 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     } : undefined;
 
     // Timeout enforcement — Gate 3: Reliability
+    const downstreamBody: Record<string, any> = {
+      text: text.trim(),
+      agent: requestedAgent,
+      requested_agent: requestedAgent,
+      voice_id: voiceId,
+      channel: channel || 'voice',
+      user_profile: profileContext,
+      suite_id: suiteId,
+      office_id: officeId || suiteId,
+    };
+    if (incomingIntent) downstreamBody.intent = incomingIntent;
+    if (incomingTaskType) downstreamBody.task_type = incomingTaskType;
+    if (incomingRequestId) downstreamBody.request_id = incomingRequestId;
+    if (incomingSessionId) downstreamBody.session_id = incomingSessionId;
+    if (incomingConversationId) downstreamBody.conversation_id = incomingConversationId;
+    if (incomingPayload) downstreamBody.payload = incomingPayload;
+    if (incomingContext) downstreamBody.context = incomingContext;
+
     const response = await fetchWithTimeoutAndRetry(`${ORCHESTRATOR_URL}/v1/intents`, {
       method: 'POST',
       headers: {
@@ -2784,14 +2809,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         'X-Correlation-Id': correlationId,
         'X-Trace-Id': traceId,
       },
-      body: JSON.stringify({
-        text: text.trim(),
-        agent: requestedAgent,
-        requested_agent: requestedAgent,
-        voice_id: voiceId,
-        channel: channel || 'voice',
-        user_profile: profileContext,
-      }),
+      body: JSON.stringify(downstreamBody),
     }, {
       timeoutMs: ORCHESTRATOR_TIMEOUT_MS,
       retries: 1,
