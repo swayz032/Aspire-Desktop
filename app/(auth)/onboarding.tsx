@@ -693,12 +693,20 @@ export default function OnboardingScreen() {
 
         // Session refresh with retry polling — prevents redirect loop back to onboarding.
         // Retries up to 3x (500ms intervals) checking /api/onboarding/status for completion.
-        await supabase.auth.refreshSession();
-        for (let attempt = 0; attempt < 3; attempt++) {
+        let latestToken = token;
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const refreshed = await supabase.auth.refreshSession();
+          const nextToken = refreshed.data.session?.access_token;
+          if (nextToken) latestToken = nextToken;
+          const suiteInJwt = refreshed.data.session?.user?.user_metadata?.suite_id;
+          if (suiteInJwt === newSuiteId) break;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        for (let attempt = 0; attempt < 6; attempt++) {
           await new Promise(resolve => setTimeout(resolve, 500));
           try {
             const statusResp = await fetch('/api/onboarding/status', {
-              headers: { Authorization: `Bearer ${token}` },
+              headers: { Authorization: `Bearer ${latestToken}` },
             });
             const statusData = await statusResp.json();
             if (statusData.complete) break;
@@ -744,12 +752,18 @@ export default function OnboardingScreen() {
       }
 
       // Session refresh with retry polling — prevents redirect loop (same pattern as bootstrap)
-      await supabase.auth.refreshSession();
-      for (let attempt = 0; attempt < 3; attempt++) {
+      let latestToken = token;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const refreshed = await supabase.auth.refreshSession();
+        const nextToken = refreshed.data.session?.access_token;
+        if (nextToken) latestToken = nextToken;
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      for (let attempt = 0; attempt < 6; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 500));
         try {
           const statusResp = await fetch('/api/onboarding/status', {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${latestToken}` },
           });
           const statusData = await statusResp.json();
           if (statusData.complete) break;
@@ -803,6 +817,7 @@ export default function OnboardingScreen() {
     editable: boolean,
     onToggleEdit: () => void,
     onChange: (patch: Partial<AddressFields>) => void,
+    testPrefix: string,
   ) => {
     if (!addr.line1 && !addr.city) return null;
     return (
@@ -822,6 +837,7 @@ export default function OnboardingScreen() {
               onChangeText={(v) => onChange({ line1: v })}
               placeholder="Street address"
               placeholderTextColor="#555"
+              testID={`${testPrefix}-line1`}
             />
             <TextInput
               style={[styles.input, styles.addressField]}
@@ -829,6 +845,7 @@ export default function OnboardingScreen() {
               onChangeText={(v) => onChange({ line2: v })}
               placeholder="Apt, suite (optional)"
               placeholderTextColor="#555"
+              testID={`${testPrefix}-line2`}
             />
             <View style={styles.addressRow}>
               <TextInput
@@ -837,6 +854,7 @@ export default function OnboardingScreen() {
                 onChangeText={(v) => onChange({ city: v })}
                 placeholder="City"
                 placeholderTextColor="#555"
+                testID={`${testPrefix}-city`}
               />
               <TextInput
                 style={[styles.input, styles.addressField, { flex: 1 }]}
@@ -844,6 +862,7 @@ export default function OnboardingScreen() {
                 onChangeText={(v) => onChange({ state: v })}
                 placeholder="State"
                 placeholderTextColor="#555"
+                testID={`${testPrefix}-state`}
               />
               <TextInput
                 style={[styles.input, styles.addressField, { flex: 1 }]}
@@ -851,6 +870,7 @@ export default function OnboardingScreen() {
                 onChangeText={(v) => onChange({ zip: v })}
                 placeholder="ZIP"
                 placeholderTextColor="#555"
+                testID={`${testPrefix}-zip`}
               />
             </View>
           </View>
@@ -872,6 +892,7 @@ export default function OnboardingScreen() {
     addr: AddressFields,
     onChange: (patch: Partial<AddressFields>) => void,
     label: string,
+    testPrefix: string,
   ) => (
     <View>
       <Text style={styles.label}>{label}</Text>
@@ -881,6 +902,7 @@ export default function OnboardingScreen() {
         onChangeText={(v) => onChange({ line1: v })}
         placeholder="Street address"
         placeholderTextColor="#555"
+        testID={`${testPrefix}-line1`}
       />
       <TextInput
         style={[styles.input, { marginTop: 8 }]}
@@ -888,6 +910,7 @@ export default function OnboardingScreen() {
         onChangeText={(v) => onChange({ line2: v })}
         placeholder="Apt, suite, unit (optional)"
         placeholderTextColor="#555"
+        testID={`${testPrefix}-line2`}
       />
       <View style={[styles.addressRow, { marginTop: 8 }]}>
         <TextInput
@@ -896,6 +919,7 @@ export default function OnboardingScreen() {
           onChangeText={(v) => onChange({ city: v })}
           placeholder="City"
           placeholderTextColor="#555"
+          testID={`${testPrefix}-city`}
         />
         <TextInput
           style={[styles.input, { flex: 1 }]}
@@ -903,6 +927,7 @@ export default function OnboardingScreen() {
           onChangeText={(v) => onChange({ state: v })}
           placeholder="State"
           placeholderTextColor="#555"
+          testID={`${testPrefix}-state`}
         />
         <TextInput
           style={[styles.input, { flex: 1 }]}
@@ -910,6 +935,7 @@ export default function OnboardingScreen() {
           onChangeText={(v) => onChange({ zip: v })}
           placeholder="ZIP"
           placeholderTextColor="#555"
+          testID={`${testPrefix}-zip`}
         />
       </View>
       <TextInput
@@ -918,6 +944,7 @@ export default function OnboardingScreen() {
         onChangeText={(v) => onChange({ country: v })}
         placeholder="Country code (US, CA, GB...)"
         placeholderTextColor="#555"
+        testID={`${testPrefix}-country`}
       />
     </View>
   );
@@ -941,6 +968,7 @@ export default function OnboardingScreen() {
         placeholderTextColor="#555"
         value={form.ownerName}
         onChangeText={(v) => updateForm({ ownerName: v })}
+        testID="onboarding-owner-name"
       />
 
       <Text style={styles.label}>Date of Birth</Text>
@@ -951,6 +979,7 @@ export default function OnboardingScreen() {
         value={form.dateOfBirth}
         onChangeText={(v) => updateForm({ dateOfBirth: v.trim() })}
         autoCapitalize="none"
+        testID="onboarding-date-of-birth"
       />
       {form.dateOfBirth !== '' && !isAdultDob(form.dateOfBirth) && (
         <Text style={styles.helperErrorText}>You must be at least 18 years old.</Text>
@@ -963,6 +992,7 @@ export default function OnboardingScreen() {
             key={opt.value}
             style={[styles.pill, form.gender === opt.value && styles.pillSelected]}
             onPress={() => updateForm({ gender: opt.value })}
+            testID={`onboarding-gender-${opt.value}`}
           >
             <Text style={[styles.pillText, form.gender === opt.value && styles.pillTextSelected]}>
               {opt.label}
@@ -990,6 +1020,7 @@ export default function OnboardingScreen() {
         placeholderTextColor="#555"
         value={form.businessName}
         onChangeText={(v) => updateForm({ businessName: v })}
+        testID="onboarding-business-name"
       />
 
       {/* Industry */}
@@ -1000,6 +1031,7 @@ export default function OnboardingScreen() {
             key={ind}
             style={[styles.chip, form.industry === ind && styles.chipSelected]}
             onPress={() => updateForm({ industry: ind, industrySpecialty: '' })}
+            testID={`onboarding-industry-${ind.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`}
           >
             <Text style={[styles.chipText, form.industry === ind && styles.chipTextSelected]}>
               {ind}
@@ -1018,6 +1050,7 @@ export default function OnboardingScreen() {
                 key={spec}
                 style={[styles.chip, form.industrySpecialty === spec && styles.chipSelected]}
                 onPress={() => updateForm({ industrySpecialty: spec })}
+                testID={`onboarding-specialty-${spec.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`}
               >
                 <Text style={[styles.chipText, form.industrySpecialty === spec && styles.chipTextSelected]}>
                   {spec}
@@ -1036,6 +1069,7 @@ export default function OnboardingScreen() {
             key={size}
             style={[styles.pill, form.teamSize === size && styles.pillSelected]}
             onPress={() => updateForm({ teamSize: size })}
+            testID={`onboarding-team-size-${size.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`}
           >
             <Text style={[styles.pillText, form.teamSize === size && styles.pillTextSelected]}>
               {size}
@@ -1140,6 +1174,7 @@ export default function OnboardingScreen() {
                 value={form.homeSearchText}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ homeSearchText: e.target.value })}
                 style={webInputStyle}
+                data-testid="onboarding-home-search"
               />
             </View>
             {renderAddressFields(
@@ -1150,7 +1185,24 @@ export default function OnboardingScreen() {
                 updateForm({
                   homeAddress: { ...form.homeAddress, ...patch },
                 }),
+              'onboarding-home-address',
             )}
+            {!hasHomeAddress ? (
+              renderManualAddress(
+                form.homeAddress,
+                (patch) => {
+                  const next = { ...form.homeAddress, ...patch };
+                  const tz =
+                    (next.country === 'US' && STATE_TIMEZONES[next.state]) ||
+                    COUNTRY_TIMEZONES[next.country] ||
+                    '';
+                  const cur = COUNTRY_CURRENCY[next.country] || 'USD';
+                  updateForm({ homeAddress: next, timezone: tz, currency: cur });
+                },
+                'Home Address',
+                'onboarding-home-address',
+              )
+            ) : null}
           </View>
         ) : (
           renderManualAddress(
@@ -1165,6 +1217,7 @@ export default function OnboardingScreen() {
               updateForm({ homeAddress: next, timezone: tz, currency: cur });
             },
             'Home Address',
+            'onboarding-home-address',
           )
         )}
 
@@ -1194,6 +1247,7 @@ export default function OnboardingScreen() {
             onValueChange={(v) => updateForm({ businessAddressSameAsHome: v })}
             trackColor={{ false: '#333', true: ACCENT_LIGHT }}
             thumbColor={form.businessAddressSameAsHome ? ACCENT : '#888'}
+            testID="onboarding-business-address-same-as-home"
           />
         </View>
 
@@ -1214,6 +1268,7 @@ export default function OnboardingScreen() {
                       updateForm({ businessSearchText: e.target.value })
                     }
                     style={webInputStyle}
+                    data-testid="onboarding-business-search"
                   />
                 </View>
                 {renderAddressFields(
@@ -1224,7 +1279,19 @@ export default function OnboardingScreen() {
                     updateForm({
                       businessAddress: { ...form.businessAddress, ...patch },
                     }),
+                  'onboarding-business-address',
                 )}
+                {!hasBusinessAddress ? (
+                  renderManualAddress(
+                    form.businessAddress,
+                    (patch) =>
+                      updateForm({
+                        businessAddress: { ...form.businessAddress, ...patch },
+                      }),
+                    'Business Address',
+                    'onboarding-business-address',
+                  )
+                ) : null}
               </View>
             ) : (
               renderManualAddress(
@@ -1234,6 +1301,7 @@ export default function OnboardingScreen() {
                     businessAddress: { ...form.businessAddress, ...patch },
                   }),
                 'Business Address',
+                'onboarding-business-address',
               )
             )}
           </>
@@ -1400,14 +1468,18 @@ export default function OnboardingScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      testID="onboarding-screen"
+    >
       <View style={styles.inner}>
         {/* Progress bar */}
         <View style={styles.progressTrack}>
           <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
         </View>
         <View style={styles.stepIndicatorRow}>
-          <Text style={styles.stepIndicator}>Step {step} of 3</Text>
+          <Text style={styles.stepIndicator} testID="onboarding-step-indicator">Step {step} of 3</Text>
           <Text style={styles.stepName}>
             {step === 1 ? 'You & Your Business' : step === 2 ? 'Address & Location' : 'Final Details & Go'}
           </Text>
@@ -1433,6 +1505,7 @@ export default function OnboardingScreen() {
               style={styles.backButton}
               onPress={goBack}
               disabled={loading}
+              testID="onboarding-back-button"
             >
               <Ionicons name="arrow-back" size={18} color="#aaa" />
               <Text style={styles.backButtonText}>Back</Text>
@@ -1449,6 +1522,7 @@ export default function OnboardingScreen() {
               ]}
               onPress={goNext}
               disabled={!(step === 1 ? canProceedStep1 : canProceedStep2)}
+              testID="onboarding-continue-button"
             >
               <Text style={styles.nextButtonText}>Continue</Text>
               <Ionicons name="arrow-forward" size={18} color="#fff" />
@@ -1461,6 +1535,7 @@ export default function OnboardingScreen() {
               ]}
               onPress={handleComplete}
               disabled={!canSubmit || loading}
+              testID="onboarding-launch-button"
             >
               {loading ? (
                 <ActivityIndicator color="#fff" size="small" />
