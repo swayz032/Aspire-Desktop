@@ -755,7 +755,8 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       logger.warn('N8N_WEBHOOK_SECRET not set — skipping intake activation webhook (fail-closed)');
     }
 
-    // Query display IDs for celebration screen (triggers populate them on INSERT)
+    // Query display IDs for celebration screen.
+    // Fail-safe: if DB triggers did not populate display IDs yet, derive deterministic fallbacks.
     let suiteDisplayId: string | null = null;
     let officeDisplayId: string | null = null;
     try {
@@ -766,6 +767,12 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       suiteDisplayId = profileData?.display_id || null;
       officeDisplayId = profileData?.office_display_id || null;
     } catch (_) { /* best-effort — display IDs are cosmetic */ }
+    if (!suiteDisplayId) {
+      suiteDisplayId = suiteId.slice(0, 8).toUpperCase();
+    }
+    if (!officeDisplayId) {
+      officeDisplayId = suiteId.slice(0, 8).toUpperCase();
+    }
 
     res.json({ suiteId, created: true, receiptId, suiteDisplayId, officeDisplayId, businessName });
   } catch (error: unknown) {
