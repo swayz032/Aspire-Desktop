@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
-import { resolveHubImage } from '@/data/founderHub/imageHelper';
+import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
+import { useTenant } from '@/providers';
 
 const THEME = {
   bg: '#000000',
@@ -51,6 +52,7 @@ const collections = [
 ];
 
 export default function SavedScreen() {
+  const { tenant } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState('all');
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
@@ -90,7 +92,9 @@ export default function SavedScreen() {
               date: formatAge(r.created_at ?? new Date().toISOString()),
               starred: p.starred ?? false,
               imageKey: IMAGE_KEYS_BY_TYPE[type] ?? 'warehouse-dock',
-              imageUrl: p.image_url ?? p.results?.[0]?.image_url ?? undefined,
+              imageUrl: p.image_url
+                ?? p.results?.[0]?.image_url
+                ?? getIndustryImageUrl(tenant?.industry, type),
             };
           }));
         }
@@ -101,7 +105,7 @@ export default function SavedScreen() {
       }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [tenant?.industry]);
 
   const getTypeIcon = (type: string) => {
     switch (type) {

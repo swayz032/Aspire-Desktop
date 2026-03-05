@@ -38,7 +38,8 @@ export function resolveHubImage(
   if (imageUrl && imageUrl.startsWith('http')) {
     return { uri: imageUrl };
   }
-  return imageMap[imageKey || ''] || placeholder;
+  // Enforce real web imagery fallback (no local mock placeholder images).
+  return { uri: getIndustryImageUrl(undefined, imageKey || 'business') };
 }
 
 function hashSeed(input: string): number {
