@@ -5,12 +5,14 @@ import { DesktopHome } from '@/components/desktop/DesktopHome';
 const NATURAL_WIDTH = 1440;
 const NATURAL_HEIGHT = 980;
 const SCALE = 0.72;
-const CLIP_HEIGHT = 660;
+const SCALED_WIDTH = NATURAL_WIDTH * SCALE;
+const CLIP_HEIGHT = 620;
 
 export default function CockpitMockup() {
   return (
     <div style={{
-      width: '100%',
+      width: SCALED_WIDTH,
+      margin: '0 auto',
       borderRadius: 16,
       overflow: 'hidden',
       background: 'transparent',
@@ -51,7 +53,7 @@ export default function CockpitMockup() {
       {/* Clip container — shows only the top CLIP_HEIGHT px of the scaled dashboard */}
       <div style={{
         position: 'relative',
-        width: '100%',
+        width: SCALED_WIDTH,
         height: CLIP_HEIGHT,
         overflow: 'hidden',
       }}>
@@ -80,7 +82,7 @@ export default function CockpitMockup() {
           bottom: 0,
           left: 0,
           right: 0,
-          height: 100,
+          height: 160,
           background: 'linear-gradient(to bottom, transparent, #050508)',
           pointerEvents: 'none',
           zIndex: 10,

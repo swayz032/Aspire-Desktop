@@ -14,13 +14,13 @@ export interface Feature {
 export const features: Feature[] = [
   {
     id: 'canvas',
-    eyebrow: 'Command Center',
-    title: 'Your entire business on one surface.',
+    eyebrow: 'Meet Ava, Finn & Eli — Video Chat & Voice Session',
+    title: "You didn't build a business to be buried in it.",
     description1:
-      'The Aspire Canvas is a drag-and-drop workspace where every part of your business lives together. Finance, communications, approvals, schedules — all on one intelligent surface.',
+      "Every founder loses hours to admin, follow-ups, approvals, and paperwork that shouldn't be on their plate. Ava, Finn, and Eli are your dedicated AI executive team — always briefed, always available, and always ready to act.",
     description2:
-      'Arrange widgets your way. Pin what matters. Aspire learns your workflow and surfaces what needs attention before you have to ask.',
-    cta: 'Explore Canvas',
+      'Video in or start a voice session with your team any time. They know your business inside out and work around the clock — without the overhead of a full hire.',
+    cta: 'Start a Live Session',
     ctaHref: '/login',
     accent: '#3B82F6',
     accentLight: 'rgba(59,130,246,0.12)',
