@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, ImageBackground } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
-import { resolveHubImage } from '@/data/founderHub/imageHelper';
+import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
 
@@ -87,7 +87,9 @@ export default function PulseScreen() {
               title: payload.title ?? r.action_type ?? 'Research insight',
               summary: payload.summary ?? payload.snippet ?? payload.description ?? '',
               imageKey: IMAGE_KEYS_BY_CATEGORY[category] ?? 'warehouse-dock',
-              imageUrl: payload.image_url ?? payload.results?.[0]?.image_url ?? undefined,
+              imageUrl: payload.image_url
+                ?? payload.results?.[0]?.image_url
+                ?? getIndustryImageUrl(tenant?.industry, category),
             };
           }));
         }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
-import { resolveHubImage } from '@/data/founderHub/imageHelper';
+import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
 
@@ -110,7 +110,9 @@ export default function LibraryScreen() {
               category,
               saved: false,
               imageKey: IMAGE_KEYS_BY_CATEGORY[category] ?? 'warehouse-dock',
-              imageUrl: p.image_url ?? p.results?.[0]?.image_url ?? undefined,
+              imageUrl: p.image_url
+                ?? p.results?.[0]?.image_url
+                ?? getIndustryImageUrl(tenant?.industry, category),
             };
           }));
         }

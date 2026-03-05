@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, Image, ImageBackground } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
-import { resolveHubImage } from '@/data/founderHub/imageHelper';
+import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
 
@@ -93,7 +93,9 @@ export default function DailyBriefScreen() {
             whyItMatters: p.why_it_matters ?? p.summary ?? '',
             ctas: p.ctas ?? [{ label: 'Discuss with Ava', action: 'OPEN_STUDIO' }],
             imageKey: p.image_key ?? 'pallet-yard',
-            imageUrl: p.image_url ?? p.results?.[0]?.image_url ?? undefined,
+            imageUrl: p.image_url
+              ?? p.results?.[0]?.image_url
+              ?? getIndustryImageUrl(tenant?.industry, p.category ?? 'daily-brief'),
             metrics: p.metrics ?? undefined,
             focusAreas: p.focus_areas ?? p.action_items ?? undefined,
           });
@@ -160,6 +162,7 @@ export default function DailyBriefScreen() {
           whyItMatters: `This starter brief is tailored to your ${industry.toLowerCase()} profile while live Adam research sync completes.`,
           ctas: [{ label: 'Discuss with Ava', action: 'OPEN_STUDIO' }],
           imageKey: 'pallet-yard',
+          imageUrl: getIndustryImageUrl(tenant?.industry, 'daily-brief'),
         };
       });
       setLoading(false);

@@ -41,4 +41,39 @@ export function resolveHubImage(
   return imageMap[imageKey || ''] || placeholder;
 }
 
+function hashSeed(input: string): number {
+  let h = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    h = ((h << 5) - h) + input.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h % 9973) + 1;
+}
+
+/**
+ * Build a real web image URL for an industry/topic.
+ * Uses keyword-based Flickr imagery (no API key required).
+ */
+export function getIndustryImageUrl(
+  industry?: string | null,
+  topic?: string | null
+): string {
+  const words = [
+    (industry || '').trim(),
+    (topic || '').trim(),
+    'business',
+  ].filter(Boolean);
+  const keywordPath = words
+    .join(' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 4)
+    .join(',');
+  const safeKeywords = keywordPath || 'small,business';
+  const lock = hashSeed(safeKeywords);
+  return `https://loremflickr.com/1600/900/${safeKeywords}?lock=${lock}`;
+}
+
 export const hubImages = imageMap;
