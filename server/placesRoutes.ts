@@ -2,7 +2,9 @@ import { Router } from 'express';
 
 const router = Router();
 
-const GKEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
+// GOOGLE_MAPS_API_KEY is set by AWS Secrets Manager at server startup (via secrets.ts).
+// Falls back to EXPO_PUBLIC_GOOGLE_PLACES_API_KEY for local dev with .env.
+const GKEY = process.env.GOOGLE_MAPS_API_KEY || process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
 
 router.post('/api/places/autocomplete', async (req, res) => {
   const { input } = req.body ?? {};
