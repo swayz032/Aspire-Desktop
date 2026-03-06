@@ -61,6 +61,7 @@ const PUBLIC_PATHS = [
   '/api/auth/validate-invite-code', // Private beta invite gate — rate-limited, no JWT needed
   '/api/auth/signup',               // Private beta signup — rate-limited, invite code validated server-side
   '/api/config/public',             // Public client config (Google Places key) — no secrets, referrer-restricted
+  '/api/places/',                    // Google Places proxy — onboarding address autocomplete (no JWT yet)
 ];
 
 // /v1/ paths that REQUIRE auth (Law #3: Fail Closed — default deny)
@@ -416,6 +417,14 @@ try {
 
 if (registerObjectStorageRoutes) {
   registerObjectStorageRoutes(app);
+}
+
+try {
+  const placesRoutes = require('./placesRoutes').default;
+  app.use(placesRoutes);
+  logger.info('Google Places proxy routes registered');
+} catch (e) {
+  logger.warn('Places routes not available, skipping');
 }
 
 // Public client config — returns non-secret keys that the browser needs at runtime.
