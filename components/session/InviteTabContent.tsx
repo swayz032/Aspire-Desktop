@@ -659,7 +659,7 @@ export function InviteTabContent({
               styles.textInput,
               focusedInput === 'suiteId' && styles.textInputFocused,
             ]}
-            placeholder="STE-XXXXXX"
+            placeholder="e.g., 868"
             placeholderTextColor={Colors.text.muted}
             value={lookupSuiteId}
             onChangeText={setLookupSuiteId}
@@ -668,14 +668,14 @@ export function InviteTabContent({
             autoCapitalize="characters"
             accessibilityLabel="Suite ID input"
           />
-          <Text style={styles.formatHint}>Format: STE-XXXXXX</Text>
+          <Text style={styles.formatHint}>3-digit number (e.g., 868)</Text>
           <Text style={styles.inputLabel}>Office ID</Text>
           <TextInput
             style={[
               styles.textInput,
               focusedInput === 'officeId' && styles.textInputFocused,
             ]}
-            placeholder="OFF-XXXXXX"
+            placeholder="e.g., A844"
             placeholderTextColor={Colors.text.muted}
             value={lookupOfficeId}
             onChangeText={setLookupOfficeId}
@@ -684,7 +684,7 @@ export function InviteTabContent({
             autoCapitalize="characters"
             accessibilityLabel="Office ID input"
           />
-          <Text style={styles.formatHint}>Format: OFF-XXXXXX</Text>
+          <Text style={styles.formatHint}>Letter + number (e.g., A844)</Text>
           <PressableScale
             style={[
               styles.actionButton,

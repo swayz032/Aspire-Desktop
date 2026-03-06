@@ -270,14 +270,36 @@ function isAdultDate(value: string | null): boolean {
   return age >= 18;
 }
 
-function premiumDisplayFallback(prefix: 'STE' | 'OFF', seed: string): string {
+/**
+ * Deterministic hash from seed string. Returns unsigned 32-bit integer.
+ */
+function deterministicHash(seed: string): number {
   const clean = (seed || '').replace(/[^a-zA-Z0-9]/g, '');
   let hash = 0;
   for (let i = 0; i < clean.length; i++) {
     hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
   }
-  const n = (hash % 999) + 1;
-  return `${prefix}-${String(n).padStart(3, '0')}`;
+  return hash;
+}
+
+/**
+ * Generate suite display number: 3-digit (100-999), e.g., "600"
+ * Frontend prepends "Suite" → "Suite 600"
+ */
+function suiteDisplayNumber(suiteId: string): string {
+  const n = (deterministicHash(suiteId + ':suite') % 900) + 100;
+  return String(n);
+}
+
+/**
+ * Generate office display number: letter + 3-digit, e.g., "A907"
+ * Frontend prepends "Office" → "Office A907"
+ */
+function officeDisplayNumber(suiteId: string): string {
+  const hash = deterministicHash(suiteId + ':office');
+  const letter = String.fromCharCode(65 + (hash % 26)); // A-Z
+  const n = (Math.floor(hash / 26) % 900) + 100; // 100-999
+  return `${letter}${n}`;
 }
 
 async function resolveSuiteOfficeIdentity(suiteId: string): Promise<{
@@ -325,8 +347,8 @@ async function resolveSuiteOfficeIdentity(suiteId: string): Promise<{
   }
 
   return {
-    suiteDisplayId: suiteDisplayId || premiumDisplayFallback('STE', suiteId),
-    officeDisplayId: officeDisplayId || premiumDisplayFallback('OFF', suiteId),
+    suiteDisplayId: suiteDisplayId || suiteDisplayNumber(suiteId),
+    officeDisplayId: officeDisplayId || officeDisplayNumber(suiteId),
     businessName,
   };
 }

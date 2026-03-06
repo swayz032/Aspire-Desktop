@@ -234,7 +234,7 @@ export default function ConferenceLobby() {
     ? formatDisplayId(tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId, tenant?.officeId)
     : '';
   const suiteLabel = officeDisplay ? `Suite ${suiteDisplay} • Office ${officeDisplay}` : `Suite ${suiteDisplay}`;
-  const roomNumber = `CR-${suiteDisplay?.replace('STE-', '') || '001'}`;
+  const roomNumber = `CR-${suiteDisplay || '001'}`;
 
   const [purpose, setPurpose] = useState<SessionPurpose>('Internal');
   const [participants, setParticipants] = useState<Participant[]>([

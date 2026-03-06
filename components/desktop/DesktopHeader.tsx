@@ -326,8 +326,22 @@ export function DesktopHeader({
                   onPress={async () => {
                     setActivePanel('none');
                     if (item.id === 'signout') {
-                      await signOut();
-                      router.replace('/(auth)/login' as any);
+                      try {
+                        // Clear bootstrap identity cache
+                        if (typeof window !== 'undefined') {
+                          window.localStorage.removeItem('aspire.bootstrap.identity');
+                        }
+                        await signOut();
+                      } catch (e) {
+                        // Sign out even if Supabase call fails
+                        console.error('Sign out error:', e);
+                      }
+                      // Redirect to landing page and force clean state
+                      if (typeof window !== 'undefined') {
+                        window.location.href = '/landing';
+                      } else {
+                        router.replace('/landing' as any);
+                      }
                     } else {
                       // Open settings panel at the corresponding section
                       openSettings(item.id as SettingsSectionId);
@@ -402,7 +416,7 @@ export function DesktopHeader({
                 <View style={s.statusDot} />
                 <Text style={s.businessName} testID="desktop-header-business-name">{businessName}</Text>
               </View>
-              <Text style={s.roleText} testID="desktop-header-suite-office">{suiteIdentity}</Text>
+              <Text style={s.roleText}>{suiteIdentity}</Text>
             </View>
             <Ionicons
               name={activePanel === 'suite' ? 'chevron-up' : 'chevron-down'}
@@ -427,7 +441,7 @@ export function DesktopHeader({
                   </View>
                   <View>
                     <Text style={s.sdItemTitle}>{businessName}</Text>
-                    <Text style={s.sdItemSub}>{suiteIdentity}</Text>
+                    <Text style={s.sdItemSub}>Suite {suiteDisplayId || '—'} · Office {officeDisplayId || '—'}</Text>
                   </View>
                 </View>
                 <Ionicons name="checkmark" size={16} color="#3B82F6" />

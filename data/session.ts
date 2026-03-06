@@ -80,7 +80,7 @@ let currentSession: Session | null = null;
 const sessions: Session[] = [];
 
 export function createSession(purpose: SessionPurpose, mode: SessionMode, participants: SessionParticipant[], suiteDisplayId?: string): Session {
-  const roomNumber = `CR-${suiteDisplayId?.replace('STE-', '') || '001'}`;
+  const roomNumber = `CR-${suiteDisplayId || '001'}`;
   const session: Session = {
     id: `session-${Date.now()}`,
     roomId: roomNumber,

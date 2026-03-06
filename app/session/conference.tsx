@@ -78,7 +78,7 @@ export default function ConferenceSession() {
   const isDesktop = useDesktop();
   const { tenant } = useTenant();
   const session = getDefaultSession();
-  const roomNumber = `CR-${tenant?.displayId?.replace('STE-', '') || '001'}`;
+  const roomNumber = `CR-${tenant?.displayId || '001'}`;
 
   const [isMuted, setIsMuted] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
