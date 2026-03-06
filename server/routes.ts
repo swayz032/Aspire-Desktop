@@ -661,6 +661,27 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       return res.status(500).json({ error: 'BOOTSTRAP_FAILED', message: 'Could not create suite' });
     }
 
+    // 1b. Create tenant_memberships row — enables RLS Path A for client-side queries.
+    // Without this, app.check_suite_access() fails for auth.uid() checks,
+    // blocking ALL client-side Supabase queries (getSuiteProfile, etc.)
+    // This is CRITICAL — if it fails, the user sees "Suite Pending" everywhere.
+    try {
+      await db.execute(sql`
+        INSERT INTO tenant_memberships (tenant_id, user_id, role)
+        VALUES (${tenantId}, ${userId}::uuid, 'owner')
+        ON CONFLICT (tenant_id, user_id) DO NOTHING
+      `);
+    } catch (membershipErr: unknown) {
+      logger.error('tenant_memberships insert FAILED — client-side RLS will be broken', {
+        correlationId, tenantId, userId,
+        error: membershipErr instanceof Error ? membershipErr.message : 'unknown'
+      });
+      return res.status(500).json({
+        error: 'BOOTSTRAP_FAILED',
+        message: 'Could not create tenant membership — RLS access will be broken'
+      });
+    }
+
     // 2. Get user email from Supabase admin
     const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
     if (userError || !user) {

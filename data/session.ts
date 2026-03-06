@@ -79,10 +79,11 @@ export interface Session {
 let currentSession: Session | null = null;
 const sessions: Session[] = [];
 
-export function createSession(purpose: SessionPurpose, mode: SessionMode, participants: SessionParticipant[]): Session {
+export function createSession(purpose: SessionPurpose, mode: SessionMode, participants: SessionParticipant[], suiteDisplayId?: string): Session {
+  const roomNumber = `CR-${suiteDisplayId?.replace('STE-', '') || '001'}`;
   const session: Session = {
     id: `session-${Date.now()}`,
-    roomId: 'CR-01',
+    roomId: roomNumber,
     purpose,
     mode,
     title: 'Conference Room',

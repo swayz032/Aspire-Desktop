@@ -78,7 +78,8 @@ export default function ConferenceSession() {
   const isDesktop = useDesktop();
   const { tenant } = useTenant();
   const session = getDefaultSession();
-  
+  const roomNumber = `CR-${tenant?.displayId?.replace('STE-', '') || '001'}`;
+
   const [isMuted, setIsMuted] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [participants, setParticipants] = useState(session.participants);
@@ -297,7 +298,7 @@ export default function ConferenceSession() {
           <Text style={styles.headerTitle}>Conference Lobby</Text>
           <View style={styles.headerMeta}>
             <Text style={styles.headerSubtitle}>
-              Suite {tenant?.suiteId ?? ''} • Room CR-01
+              Suite {tenant?.suiteId ?? ''} • Room {roomNumber}
             </Text>
             <View style={styles.headerBadges}>
               <View style={styles.lobbyBadge}>
@@ -517,7 +518,7 @@ export default function ConferenceSession() {
       <InviteSheet
         visible={inviteSheetVisible}
         onClose={() => setInviteSheetVisible(false)}
-        roomName="CR-01"
+        roomName={roomNumber}
         hostName="You"
         purpose="Internal"
         onInviteMember={handleInviteMember}

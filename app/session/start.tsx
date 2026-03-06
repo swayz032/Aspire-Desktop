@@ -53,7 +53,7 @@ export default function StartSessionScreen() {
         presence: 'good' as const,
       }));
 
-    createSession(purpose, mode, staffParticipants);
+    createSession(purpose, mode, staffParticipants, tenant?.displayId);
 
     if (mode === 'conference') {
       router.push('/session/conference');

@@ -611,6 +611,7 @@ export default function OnboardingScreen() {
     setLoading(true);
     setShowLoading(true);
     setError(null);
+    const bootstrapStartTime = Date.now();
 
     try {
       const effectiveSuiteId = suiteId || bootstrappedSuiteId;
@@ -697,13 +698,28 @@ export default function OnboardingScreen() {
           } catch (_) { /* retry */ }
         }
 
-        // Store celebration data — loading screen will fade, then celebration shows
-        setCelebrationData({
+        // Store celebration data — loading screen will fade, then celebration shows.
+        // Ensure minimum 12s of loading so n8n intake-activation + Adam daily brief
+        // have time to process, and all 4 status messages cycle at least twice.
+        const elapsed = Date.now() - bootstrapStartTime;
+        const MIN_LOADING_MS = 12000;
+        const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
+
+        const celebData = {
           businessName: bName || form.businessName.trim(),
           suiteDisplayId: suiteDisplayId || '',
           officeDisplayId: officeDisplayId || '',
-        });
-        setLoadingComplete(true);
+        };
+
+        if (remaining > 0) {
+          setTimeout(() => {
+            setCelebrationData(celebData);
+            setLoadingComplete(true);
+          }, remaining);
+        } else {
+          setCelebrationData(celebData);
+          setLoadingComplete(true);
+        }
         clearDraft();
         return;
       }
@@ -769,6 +785,20 @@ export default function OnboardingScreen() {
     setLoadingComplete(false);
     setShowCelebration(true);
   }, []);
+
+  // Safety net: if PremiumLoadingScreen crashes (LoadingFallback renders) or doesn't call
+  // onFadeComplete within 5s after loadingComplete, auto-transition to celebration.
+  // Prevents the eternal spinner dead-end.
+  useEffect(() => {
+    if (loadingComplete && showLoading) {
+      const timer = setTimeout(() => {
+        setShowLoading(false);
+        setLoadingComplete(false);
+        setShowCelebration(true);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [loadingComplete, showLoading]);
 
   // ---------------------------------------------------------------------------
   // Step transitions
