@@ -3267,23 +3267,32 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     const resolvedPersona: 'ava' | 'finn' = requestedPersona === 'finn' ? 'finn' : 'ava';
 
     // Ava: Cara avatar + Hope voice, Finn: custom avatar + voice
-    // llmId: CUSTOMER_CLIENT_V1 routes all conversation to /api/ava/chat-stream (Law #1: Single Brain)
+    // llmId: Custom LLM registered with Anam → routes to /v1/chat/completions (Law #1: Single Brain)
+    // Fallback to CUSTOMER_CLIENT_V1 if custom LLM not configured.
+    const ANAM_CUSTOM_LLM_ID = process.env.ANAM_CUSTOM_LLM_ID || 'CUSTOMER_CLIENT_V1';
+    const suiteId = (req as any).authenticatedSuiteId || '';
+    const officeId = getDefaultOfficeId() || suiteId;
+
+    // Embed tenant context in system prompt so /v1/chat/completions can identify the user.
+    // Anam passes this as the first message to our custom LLM endpoint.
+    const aspireCtx = `[ASPIRE_CTX:suite_id=${suiteId},user_id=${userId},office_id=${officeId},agent=${resolvedPersona}]`;
+
     const AVA_CONFIG = {
       name: 'Ava',
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
-      llmId: 'CUSTOMER_CLIENT_V1',
-      systemPrompt: 'You are Ava, a professional AI assistant for Aspire business operations.',
-      skipGreeting: true,      // Client sends greeting — no built-in LLM for CUSTOMER_CLIENT_V1
+      llmId: ANAM_CUSTOM_LLM_ID,
+      systemPrompt: `${aspireCtx}\nYou are Ava, a professional AI executive assistant for Aspire business operations. You help business owners manage their company efficiently. Keep responses concise and conversational — under 50 words unless explaining something complex. Your responses will be spoken aloud, so avoid markdown, bullet points, or formatting.`,
+      skipGreeting: true,      // Client sends personalized greeting
       avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
     };
     const FINN_CONFIG = {
       name: 'Finn',
       avatarId: req.body?.avatarId || '45ddc55c-14a9-4b25-8e28-f6c1ce39ccc5',
       voiceId: req.body?.voiceId || '7db5f408-833c-49ce-97aa-eaec17077a4c',
-      llmId: 'CUSTOMER_CLIENT_V1',
-      systemPrompt: 'You are Finn, the Aspire finance and money desk specialist.',
-      skipGreeting: true,      // Client sends greeting — no built-in LLM for CUSTOMER_CLIENT_V1
+      llmId: ANAM_CUSTOM_LLM_ID,
+      systemPrompt: `${aspireCtx}\nYou are Finn, the Aspire finance and money desk specialist. You help business owners manage their finances, track invoices, process payments, and understand their financial health. Keep responses concise and conversational — under 50 words unless explaining something complex. Your responses will be spoken aloud, so avoid markdown, bullet points, or formatting.`,
+      skipGreeting: true,      // Client sends personalized greeting
       avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
     };
 
@@ -3564,6 +3573,224 @@ router.post('/api/anam/session/bind', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     logger.error('Anam session bind error', { error: error instanceof Error ? error.message : 'unknown' });
     return res.status(500).json({ error: 'ANAM_BIND_FAILED', message: 'Failed to bind avatar session' });
+  }
+});
+
+// ─── Anam Server-Side Custom LLM Endpoint (OpenAI Chat Completions compatible) ───
+// When Anam is configured with a custom LLM (server-side), it sends standard
+// OpenAI Chat Completions requests to this endpoint. Our endpoint:
+// 1. Validates the shared secret (ANAM_LLM_SECRET env var)
+// 2. Extracts tenant context from [ASPIRE_CTX:...] in the system prompt
+// 3. Routes through LangGraph orchestrator (Law #1: Single Brain)
+// 4. Streams response back in Chat Completions SSE format
+//
+// This replaces CUSTOMER_CLIENT_V1 — Anam servers call us directly (server-to-server),
+// eliminating the broken client-side round-trip.
+
+router.post('/v1/chat/completions', async (req: Request, res: Response) => {
+  const correlationId = `anam-llm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  try {
+    // Step 1: Validate shared secret (Law #3: Fail Closed)
+    const authHeader = req.headers['authorization'] || '';
+    const bearerToken = typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '').trim() : '';
+    const expectedSecret = process.env.ANAM_LLM_SECRET || '';
+
+    if (!expectedSecret) {
+      logger.error('Anam LLM endpoint: ANAM_LLM_SECRET not configured', { correlationId });
+      return res.status(503).json({ error: { message: 'LLM endpoint not configured', type: 'server_error' } });
+    }
+
+    if (!bearerToken || !secureTokenEquals(bearerToken, expectedSecret)) {
+      logger.warn('Anam LLM endpoint: invalid secret', { correlationId });
+      return res.status(401).json({ error: { message: 'Invalid API key', type: 'authentication_error' } });
+    }
+
+    // Step 2: Parse OpenAI Chat Completions request
+    const { messages, stream } = req.body;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: { message: 'messages array is required', type: 'invalid_request_error' } });
+    }
+
+    // Extract system message (contains ASPIRE_CTX + persona instructions)
+    const systemMsg = messages.find((m: any) => m.role === 'system');
+    const systemContent = typeof systemMsg?.content === 'string' ? systemMsg.content : '';
+
+    // Parse [ASPIRE_CTX:suite_id=xxx,user_id=yyy,office_id=zzz,agent=aaa]
+    const ctxMatch = systemContent.match(/\[ASPIRE_CTX:([^\]]+)\]/);
+    let suiteId = '';
+    let userId = '';
+    let officeId = '';
+    let agentName = 'ava';
+
+    if (ctxMatch) {
+      const ctxPairs = ctxMatch[1].split(',');
+      for (const pair of ctxPairs) {
+        const [key, val] = pair.split('=').map((s: string) => s.trim());
+        if (key === 'suite_id') suiteId = val;
+        else if (key === 'user_id') userId = val;
+        else if (key === 'office_id') officeId = val;
+        else if (key === 'agent') agentName = val;
+      }
+    }
+
+    if (!suiteId || !userId) {
+      logger.warn('Anam LLM endpoint: missing tenant context in system prompt', { correlationId, hasCtx: !!ctxMatch });
+      return res.status(400).json({ error: { message: 'Missing tenant context', type: 'invalid_request_error' } });
+    }
+
+    // Extract the last user message (what the user just said)
+    const userMessages = messages.filter((m: any) => m.role === 'user');
+    const lastUserMsg = userMessages[userMessages.length - 1];
+    const utterance = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content.trim() : '';
+
+    if (!utterance) {
+      return res.status(400).json({ error: { message: 'No user message found', type: 'invalid_request_error' } });
+    }
+
+    // Build conversation history from messages (skip system, take last 10 exchanges)
+    const history = messages
+      .filter((m: any) => m.role !== 'system')
+      .slice(-20)
+      .map((m: any) => ({ role: m.role, content: m.content }));
+
+    // Step 3: Fetch user profile for personalization (server-side lookup)
+    let profileContext: Record<string, any> | undefined;
+    if (supabaseAdmin) {
+      try {
+        const { data: sp } = await supabaseAdmin
+          .from('suite_profiles')
+          .select('owner_name, business_name, industry, team_size, industry_specialty, business_goals, pain_point, preferred_channel')
+          .eq('suite_id', suiteId)
+          .single();
+        if (sp) {
+          profileContext = {
+            owner_name: sp.owner_name,
+            business_name: sp.business_name,
+            industry: sp.industry,
+            team_size: sp.team_size,
+            industry_specialty: sp.industry_specialty,
+            business_goals: sp.business_goals,
+            pain_point: sp.pain_point,
+            preferred_channel: sp.preferred_channel,
+          };
+        }
+      } catch {
+        logger.warn('Anam LLM: suite_profiles lookup failed (non-fatal)', { correlationId, suiteId });
+      }
+    }
+
+    // Step 4: Call orchestrator (Law #1: Single Brain decides)
+    const ORCHESTRATOR_URL = resolveOrchestratorUrl();
+    if (!ORCHESTRATOR_URL) {
+      return res.status(503).json({ error: { message: 'Orchestrator not configured', type: 'server_error' } });
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ORCHESTRATOR_TIMEOUT_MS);
+
+    const orchResponse = await fetch(`${ORCHESTRATOR_URL}/v1/intents`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Suite-Id': suiteId,
+        'X-Office-Id': officeId || suiteId,
+        'X-Actor-Id': userId,
+        'X-Correlation-Id': correlationId,
+      },
+      body: JSON.stringify({
+        text: utterance,
+        agent: agentName,
+        requested_agent: agentName,
+        channel: 'avatar',
+        message_history: history,
+        user_profile: profileContext,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    let responseText = "I'm here to help. Could you repeat that?";
+    if (orchResponse.ok) {
+      const data = await orchResponse.json();
+      responseText = data.text || data.message || responseText;
+    } else {
+      const errorText = await orchResponse.text();
+      logger.error('Anam LLM: orchestrator error', { correlationId, status: orchResponse.status, error: errorText.substring(0, 200) });
+      responseText = 'Let me try that again in a moment.';
+    }
+
+    // Step 5: Return response in OpenAI Chat Completions format
+    const completionId = `chatcmpl-${correlationId}`;
+    const created = Math.floor(Date.now() / 1000);
+
+    if (stream) {
+      // SSE streaming format (what Anam expects)
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      // Send the full response as one chunk (orchestrator is non-streaming)
+      // Anam's TTS processes this into speech — chunking adds unnecessary latency.
+      const chunk = {
+        id: completionId,
+        object: 'chat.completion.chunk',
+        created,
+        model: 'aspire-orchestrator',
+        choices: [{
+          index: 0,
+          delta: { role: 'assistant', content: responseText },
+          finish_reason: null,
+        }],
+      };
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+
+      // Send finish chunk
+      const finishChunk = {
+        id: completionId,
+        object: 'chat.completion.chunk',
+        created,
+        model: 'aspire-orchestrator',
+        choices: [{
+          index: 0,
+          delta: {},
+          finish_reason: 'stop',
+        }],
+      };
+      res.write(`data: ${JSON.stringify(finishChunk)}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } else {
+      // Non-streaming response
+      res.json({
+        id: completionId,
+        object: 'chat.completion',
+        created,
+        model: 'aspire-orchestrator',
+        choices: [{
+          index: 0,
+          message: { role: 'assistant', content: responseText },
+          finish_reason: 'stop',
+        }],
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      });
+    }
+
+    logger.info('Anam LLM: response sent', {
+      correlationId,
+      suiteId,
+      agent: agentName,
+      stream: !!stream,
+      responseLength: responseText.length,
+    });
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      logger.error('Anam LLM: orchestrator timeout', { correlationId });
+      return res.status(504).json({ error: { message: 'Request timeout', type: 'server_error' } });
+    }
+    logger.error('Anam LLM endpoint error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
+    return res.status(500).json({ error: { message: 'Internal server error', type: 'server_error' } });
   }
 });
 

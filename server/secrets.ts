@@ -49,6 +49,8 @@ const KEY_MAP: Record<string, string> = {
   livekit_key: 'LIVEKIT_API_KEY',
   livekit_secret: 'LIVEKIT_SECRET',
   anam_key: 'ANAM_API_KEY',
+  anam_custom_llm_id: 'ANAM_CUSTOM_LLM_ID',
+  anam_llm_secret: 'ANAM_LLM_SECRET',
   pandadoc_api_key: 'ASPIRE_PANDADOC_API_KEY',
   pandadoc_webhook_secret: 'PANDADOC_WEBHOOK_SECRET',
   tavily_key: 'TAVILY_API_KEY',
