@@ -14,7 +14,7 @@ import { AvatarTileSurface } from '@/components/session/AvatarTileSurface';
 import { Image } from 'expo-image';
 import { Platform } from 'react-native';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
-import { useSupabase } from '@/providers';
+import { useSupabase, useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useParticipants, useTracks, useRoomContext } from '@livekit/components-react';
 import { Track } from 'livekit-client';
@@ -501,10 +501,17 @@ export default function ConferenceLive() {
   // when token prop changes. No manual connect/disconnect needed.
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
+  const { tenant } = useTenant();
   const noraVoice = useAgentVoice({
     agent: 'nora',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
+    userProfile: tenant ? {
+      ownerName: tenant.ownerName,
+      businessName: tenant.businessName,
+      industry: tenant.industry ?? undefined,
+      teamSize: tenant.teamSize ?? undefined,
+    } : undefined,
     onStatusChange: (voiceStatus) => {
       if (voiceStatus === 'speaking') setAvaState('speaking');
       else if (voiceStatus === 'listening') setAvaState('listening');

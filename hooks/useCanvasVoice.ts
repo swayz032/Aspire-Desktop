@@ -20,7 +20,7 @@ import {
   setPersonaState,
   type AgentName,
 } from '@/lib/chatCanvasStore';
-import { useSupabase } from '@/providers';
+import { useSupabase, useTenant } from '@/providers';
 import type { BrowserScreenshotEvent } from '@/hooks/useBrowserStream';
 
 // ---------------------------------------------------------------------------
@@ -77,6 +77,7 @@ function mapStatusToPersona(status: VoiceStatus): 'idle' | 'listening' | 'thinki
 
 export function useCanvasVoice(agent: AgentName): UseCanvasVoiceReturn {
   const { session, suiteId } = useSupabase();
+  const { tenant } = useTenant();
 
   const [voiceError, setVoiceError] = useState<Error | null>(null);
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnosticEvent[]>([]);
@@ -91,6 +92,12 @@ export function useCanvasVoice(agent: AgentName): UseCanvasVoiceReturn {
     agent,
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token ?? undefined,
+    userProfile: tenant ? {
+      ownerName: tenant.ownerName,
+      businessName: tenant.businessName,
+      industry: tenant.industry ?? undefined,
+      teamSize: tenant.teamSize ?? undefined,
+    } : undefined,
     onStatusChange: (newStatus) => {
       setActiveAgent(agent);
       setPersonaState(mapStatusToPersona(newStatus));

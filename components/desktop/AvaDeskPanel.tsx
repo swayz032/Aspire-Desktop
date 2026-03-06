@@ -203,6 +203,10 @@ export function AvaDeskPanel() {
       businessName: tenant.businessName,
       industry: tenant.industry ?? undefined,
       teamSize: tenant.teamSize ?? undefined,
+      industrySpecialty: tenant.industrySpecialty ?? undefined,
+      businessGoals: tenant.businessGoals ?? undefined,
+      painPoint: tenant.painPoint ?? undefined,
+      preferredChannel: tenant.preferredChannel ?? undefined,
     } : undefined,
     onStatusChange: (voiceStatus) => {
       setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');

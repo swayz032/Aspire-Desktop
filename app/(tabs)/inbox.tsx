@@ -1085,6 +1085,12 @@ export default function InboxScreen() {
     agent: 'eli',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
+    userProfile: tenant ? {
+      ownerName: tenant.ownerName,
+      businessName: tenant.businessName,
+      industry: tenant.industry ?? undefined,
+      teamSize: tenant.teamSize ?? undefined,
+    } : undefined,
     onStatusChange: (voiceStatus) => {
       setEliVoiceStatus(voiceStatus);
       setEliVoiceActive(voiceStatus !== 'idle' && voiceStatus !== 'error');

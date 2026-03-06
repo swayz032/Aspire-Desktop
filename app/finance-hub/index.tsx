@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { FinanceRightRail } from '@/components/finance/FinanceRightRail';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
-import { useSupabase } from '@/providers';
+import { useSupabase, useTenant } from '@/providers';
 import SourceBadge from '@/components/finance/SourceBadge';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import { AuthorityQueueCard } from '@/components/AuthorityQueueCard';
@@ -609,10 +609,17 @@ function FinanceHubContent() {
 
   // Finn voice — ElevenLabs TTS output, STT degrades gracefully if unavailable
   const { suiteId, session } = useSupabase();
+  const { tenant } = useTenant();
   const finnVoice = useAgentVoice({
     agent: 'finn',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
+    userProfile: tenant ? {
+      ownerName: tenant.ownerName,
+      businessName: tenant.businessName,
+      industry: tenant.industry ?? undefined,
+      teamSize: tenant.teamSize ?? undefined,
+    } : undefined,
     onResponse: (_text) => {},
     onError: (_err) => {},
   });

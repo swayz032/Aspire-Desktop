@@ -65,6 +65,10 @@ interface UseAgentVoiceOptions {
     businessName?: string;
     industry?: string;
     teamSize?: string;
+    industrySpecialty?: string;
+    businessGoals?: string[];
+    painPoint?: string;
+    preferredChannel?: string;
   };
   onTranscript?: (text: string) => void;
   onResponse?: (text: string, receiptId?: string) => void;

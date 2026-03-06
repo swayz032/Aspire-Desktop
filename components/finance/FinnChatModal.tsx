@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Ani
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
-import { useSupabase } from '@/providers';
+import { useSupabase, useTenant } from '@/providers';
 import {
   MessageBubble,
   ThinkingIndicator,
@@ -35,11 +35,18 @@ export function FinnChatModal({ visible, onClose }: Props) {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const currentRunIdRef = useRef<string | null>(null);
   const { suiteId, session } = useSupabase();
+  const { tenant } = useTenant();
 
   const finnVoice = useAgentVoice({
     agent: 'finn',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
+    userProfile: tenant ? {
+      ownerName: tenant.ownerName,
+      businessName: tenant.businessName,
+      industry: tenant.industry ?? undefined,
+      teamSize: tenant.teamSize ?? undefined,
+    } : undefined,
     onResponse: (text) => {
       const runId = currentRunIdRef.current || undefined;
       setMessages(prev => [...prev, { id: `finn_${Date.now()}`, from: 'finn', text, runId }]);
