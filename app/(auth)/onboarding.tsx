@@ -1348,6 +1348,23 @@ export default function OnboardingScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* Logo — top-left, no border, transparent bg, matches login/landing height */}
+      {Platform.OS === 'web' ? (
+        <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 10, pointerEvents: 'none' } as React.CSSProperties}>
+          <img
+            src="/aspire-logo-full.png"
+            alt="Aspire"
+            style={{ height: 140, objectFit: 'contain', display: 'block' } as React.CSSProperties}
+          />
+        </div>
+      ) : (
+        <View style={styles.logoWrap}>
+          <View style={{ width: 32, height: 32 }}>
+            <Ionicons name="trending-up" size={28} color="#3B82F6" />
+          </View>
+        </View>
+      )}
+
       <View style={styles.inner}>
         {/* Progress bar */}
         <View style={styles.progressTrack}>
@@ -1501,6 +1518,13 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingBottom: 80,
+  },
+  logoWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 10,
+    padding: 16,
   },
   inner: {
     maxWidth: 640,
