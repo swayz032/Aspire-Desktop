@@ -60,14 +60,22 @@ export async function getSuiteProfile() {
 }
 
 export async function getTenantIdentity() {
-  const res = await fetch('/api/tenant/identity');
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch('/api/tenant/identity', { headers });
   if (!res.ok) throw new Error('Failed to resolve tenant identity');
   return res.json();
 }
 
 // ── Cash Position (from ops-snapshot server endpoint) ────────────────────────
 export async function getCashPosition() {
-  const res = await fetch('/api/ops-snapshot');
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch('/api/ops-snapshot', { headers });
   if (!res.ok) throw new Error('Failed to fetch cash position');
   return res.json();
 }

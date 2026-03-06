@@ -845,6 +845,23 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
     }
 
     const identity = await resolveSuiteOfficeIdentity(suiteId);
+
+    // 8. Persist display IDs in suite_profiles so client-side RLS queries return them
+    // Without this, getTenantIdentity() is the only source, and if it fails the UI shows "Suite Pending"
+    try {
+      await supabaseAdmin!
+        .from('suite_profiles')
+        .update({
+          display_id: identity.suiteDisplayId,
+          office_display_id: identity.officeDisplayId,
+        })
+        .eq('suite_id', suiteId);
+    } catch (displayIdErr: unknown) {
+      logger.warn('display_id persistence failed (non-fatal — identity API fallback still works)', {
+        correlationId, error: displayIdErr instanceof Error ? displayIdErr.message : 'unknown'
+      });
+    }
+
     res.json({
       suiteId,
       created: true,
