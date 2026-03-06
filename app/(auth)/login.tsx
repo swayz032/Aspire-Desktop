@@ -357,9 +357,13 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
     fontFamily: 'inherit',
   };
 
-  const tx = offset * 620;
-  const scale = isActive ? 1 : 0.88;
-  const opacity = isActive ? 1 : Math.abs(offset) <= 1 ? 0.45 : 0;
+  const tx = offset * 760;
+  const scale = isActive ? 1 : 0.86;
+  const opacity = isActive ? 1 : Math.abs(offset) <= 1 ? 0.5 : 0;
+  const arcY = offset === 0 ? 0 : -offset * 32;
+  const tz = offset === 0 ? 0 : -90;
+  const rotY = arcY + (isActive ? tilt.y : 0);
+  const rotX = isActive ? tilt.x : 0;
 
   return (
     <div
@@ -371,11 +375,11 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
         position: 'absolute',
         left: '50%',
         top: '50%',
-        transform: `perspective(1400px) translateX(calc(-50% + ${tx}px)) translateY(-50%) scale(${scale}) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+        transform: `perspective(1600px) translateX(calc(-50% + ${tx}px)) translateY(-50%) rotateY(${rotY}deg) rotateX(${rotX}deg) translateZ(${tz}px) scale(${scale})`,
         transition: 'transform 0.58s cubic-bezier(0.34,1.12,0.64,1), opacity 0.4s ease',
         opacity,
         zIndex: isActive ? 10 : 1,
-        width: 'clamp(560px, 58vw, 720px)',
+        width: 'clamp(780px, 72vw, 940px)',
         height: 'clamp(460px, 70vh, 560px)',
         display: 'flex',
         flexDirection: 'row',
@@ -582,38 +586,6 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
         />
       </div>
 
-      {/* ── Floating frosted label (AI Staff style) ── */}
-      <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        background: 'rgba(4,6,14,0.82)',
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
-        borderTop: '1px solid rgba(255,255,255,0.07)',
-        padding: '13px 28px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 3,
-        zIndex: 20,
-        pointerEvents: 'none',
-      } as React.CSSProperties}>
-        <span style={{
-          fontSize: 17,
-          fontWeight: 800,
-          color: '#fff',
-          letterSpacing: '-0.03em',
-          fontFamily: 'inherit',
-        }}>{consoleDef.title}</span>
-        <span style={{
-          fontSize: 11,
-          color: consoleDef.accent,
-          opacity: 0.85,
-          letterSpacing: '0.01em',
-          fontFamily: 'inherit',
-        }}>{consoleDef.tagline}</span>
-      </div>
     </div>
   );
 }
@@ -629,6 +601,14 @@ function WebLoginScreen() {
         @keyframes floatGlobe {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-13px); }
+        }
+        @keyframes floatCards {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-10px); }
+        }
+        @keyframes fadeLabel {
+          0% { opacity: 0; transform: translateX(-50%) translateY(8px); }
+          100% { opacity: 1; transform: translateX(-50%) translateY(0px); }
         }
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #000000; }
@@ -659,9 +639,15 @@ function WebLoginScreen() {
               style={{ height: 140, objectFit: 'contain', display: 'block' } as React.CSSProperties}
             />
           </div>
-          {CONSOLES.map((c, i) => (
-            <ConsoleCard key={c.id} consoleDef={c} index={i} activeIndex={activeIndex} onSetActive={setActiveIndex} />
-          ))}
+          {/* Float wrapper — makes all cards gently float together */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            animation: 'floatCards 6s ease-in-out infinite',
+          } as React.CSSProperties}>
+            {CONSOLES.map((c, i) => (
+              <ConsoleCard key={c.id} consoleDef={c} index={i} activeIndex={activeIndex} onSetActive={setActiveIndex} />
+            ))}
+          </div>
 
           {/* Left arrow */}
           {activeIndex > 0 && (
@@ -698,6 +684,36 @@ function WebLoginScreen() {
               ›
             </button>
           )}
+
+          {/* Floating console label — below the carousel, in free space */}
+          <div
+            key={activeIndex}
+            style={{
+              position: 'absolute',
+              bottom: 44,
+              left: '50%',
+              zIndex: 50,
+              textAlign: 'center',
+              pointerEvents: 'none',
+              animation: 'fadeLabel 0.35s ease forwards',
+            } as React.CSSProperties}
+          >
+            <div style={{
+              fontSize: 22, fontWeight: 800, color: '#fff',
+              letterSpacing: '-0.03em', lineHeight: 1.1,
+              fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif',
+            }}>
+              {active.title}
+            </div>
+            <div style={{
+              fontSize: 13, fontWeight: 500,
+              color: active.accent,
+              marginTop: 5,
+              fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif',
+            }}>
+              {active.tagline}
+            </div>
+          </div>
 
         </div>
 
