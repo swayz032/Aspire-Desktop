@@ -249,7 +249,8 @@ const emptyAddress: AddressFields = {
 interface FormState {
   // Step 1
   businessName: string;
-  ownerName: string;
+  firstName: string;
+  lastName: string;
   dateOfBirth: string;
   gender: string;
   ownerTitle: string;
@@ -279,7 +280,8 @@ interface FormState {
 
 const initialFormState: FormState = {
   businessName: '',
-  ownerName: '',
+  firstName: '',
+  lastName: '',
   dateOfBirth: '',
   gender: '',
   ownerTitle: '',
@@ -432,9 +434,12 @@ export default function OnboardingScreen() {
   useEffect(() => {
     if (!session?.user) return;
     const meta = session.user.user_metadata ?? {};
-    const name = meta.full_name || meta.name || '';
-    if (name && !form.ownerName) {
-      updateForm({ ownerName: name });
+    const fullName = meta.full_name || meta.name || '';
+    if (fullName && !form.firstName) {
+      const parts = fullName.trim().split(' ');
+      const first = parts[0] || '';
+      const last = parts.slice(1).join(' ') || '';
+      updateForm({ firstName: first, lastName: last });
     }
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -465,7 +470,7 @@ export default function OnboardingScreen() {
 
 
   // Google Places REST address search helpers
-  const GPLACES_KEY = (typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY : '') || '';
+  const GPLACES_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
 
   const parsePlaceDetails = (details: any): AddressFields => {
     const comps: any[] = details.addressComponents || [];
@@ -480,16 +485,18 @@ export default function OnboardingScreen() {
   };
 
   const searchPlaces = async (query: string, onResults: (r: any[]) => void) => {
-    if (!query || query.length < 2 || !GPLACES_KEY) { onResults([]); return; }
+    if (!query || query.length < 2) { onResults([]); return; }
+    if (!GPLACES_KEY) { console.warn('[Places] EXPO_PUBLIC_GOOGLE_PLACES_API_KEY not set'); onResults([]); return; }
     try {
       const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GPLACES_KEY },
-        body: JSON.stringify({ input: query, includedPrimaryTypes: ['address'], includedRegionCodes: ['us','ca','gb','au','mx'] }),
+        body: JSON.stringify({ input: query, includedRegionCodes: ['us','ca','gb','au','mx'] }),
       });
       const data = await res.json();
+      if (data.error) { console.error('[Places] API error:', data.error.message); onResults([]); return; }
       onResults(data.suggestions || []);
-    } catch { onResults([]); }
+    } catch (e: any) { console.error('[Places] fetch failed:', e?.message); onResults([]); }
   };
 
   const getPlaceDetails = async (placeId: string): Promise<AddressFields | null> => {
@@ -582,7 +589,7 @@ export default function OnboardingScreen() {
     form.industry !== '' &&
     form.industrySpecialty !== '' &&
     form.teamSize !== '' &&
-    form.ownerName.trim() !== '' &&
+    form.firstName.trim() !== '' &&
     form.gender !== '' &&
     isAdultDob(form.dateOfBirth) &&
     form.entityType !== '' &&
@@ -622,7 +629,7 @@ export default function OnboardingScreen() {
       const effectiveSuiteId = suiteId || bootstrappedSuiteId;
       const payload = {
         businessName: form.businessName.trim(),
-        ownerName: form.ownerName.trim(),
+        ownerName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
         dateOfBirth: form.dateOfBirth,
         gender: form.gender,
         ownerTitle: form.ownerTitle.trim() || null,
@@ -803,64 +810,85 @@ export default function OnboardingScreen() {
         Tell us a bit about yourself so Ava can personalize your experience
       </Text>
 
-      {/* Row: Name + DOB */}
+      {/* Row: First Name + Last Name */}
       <View style={styles.fieldRow}>
-        <View style={{ flex: 1.5 }}>
-          <Text style={styles.label}>Your Name</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>First Name</Text>
           <TextInput
             style={styles.input}
-            placeholder="Full name"
+            placeholder="First name"
             placeholderTextColor="#555"
-            value={form.ownerName}
-            onChangeText={(v) => updateForm({ ownerName: v })}
+            value={form.firstName}
+            onChangeText={(v) => updateForm({ firstName: v })}
           />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Date of Birth</Text>
-          {Platform.OS === 'web' ? (
-            <input
-              type="date"
-              value={form.dateOfBirth}
-              onChange={(e: any) => updateForm({ dateOfBirth: e.target.value })}
-              max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
-              style={webDateStyle}
-            />
-          ) : (
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#555"
-              value={form.dateOfBirth}
-              onChangeText={(v) => updateForm({ dateOfBirth: v.trim() })}
-              autoCapitalize="none"
-            />
-          )}
-          {form.dateOfBirth !== '' && !isAdultDob(form.dateOfBirth) && (
-            <Text style={styles.helperErrorText}>Must be 18+</Text>
-          )}
+          <Text style={styles.label}>Last Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Last name"
+            placeholderTextColor="#555"
+            value={form.lastName}
+            onChangeText={(v) => updateForm({ lastName: v })}
+          />
         </View>
       </View>
 
-      {/* Row: Gender + Title */}
+      {/* Date of Birth — full width */}
+      <Text style={styles.label}>Date of Birth</Text>
+      {Platform.OS === 'web' ? (
+        <input
+          type="date"
+          value={form.dateOfBirth}
+          onChange={(e: any) => updateForm({ dateOfBirth: e.target.value })}
+          max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
+          style={webDateStyle}
+        />
+      ) : (
+        <TextInput
+          style={styles.input}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor="#555"
+          value={form.dateOfBirth}
+          onChangeText={(v) => updateForm({ dateOfBirth: v.trim() })}
+          autoCapitalize="none"
+        />
+      )}
+      {form.dateOfBirth !== '' && !isAdultDob(form.dateOfBirth) && (
+        <Text style={styles.helperErrorText}>Must be 18+</Text>
+      )}
+
+      {/* Row: Gender + Role */}
       <View style={styles.fieldRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Gender</Text>
-          <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
-            {GENDER_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={opt.value}
-                style={[styles.pill, form.gender === opt.value && styles.pillSelected]}
-                onPress={() => updateForm({ gender: opt.value })}
-              >
-                <Text style={[styles.pillText, form.gender === opt.value && styles.pillTextSelected]}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {Platform.OS === 'web' ? (
+            <select
+              value={form.gender}
+              onChange={(e: any) => updateForm({ gender: e.target.value })}
+              style={webSelectStyle}
+            >
+              <option value="">Select gender</option>
+              {GENDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          ) : (
+            <View style={styles.dropdown}>
+              {GENDER_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.pill, form.gender === opt.value && styles.pillSelected, { marginBottom: 0 }]}
+                  onPress={() => updateForm({ gender: opt.value })}
+                >
+                  <Text style={[styles.pillText, form.gender === opt.value && styles.pillTextSelected]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Your Title</Text>
+          <Text style={styles.label}>Role</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g. Owner, CEO"
@@ -963,35 +991,61 @@ export default function OnboardingScreen() {
         )}
       </View>
 
-      {/* Row: Team Size + Years in Business */}
+      {/* Row: Team Size + Years in Business — dropdowns */}
       <View style={styles.fieldRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Team Size</Text>
-          <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
-            {TEAM_SIZES.map((size) => (
-              <TouchableOpacity
-                key={size}
-                style={[styles.pill, form.teamSize === size && styles.pillSelected]}
-                onPress={() => updateForm({ teamSize: size })}
-              >
-                <Text style={[styles.pillText, form.teamSize === size && styles.pillTextSelected]}>{size}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {Platform.OS === 'web' ? (
+            <select
+              value={form.teamSize}
+              onChange={(e: any) => updateForm({ teamSize: e.target.value })}
+              style={webSelectStyle}
+            >
+              <option value="">Select team size</option>
+              {TEAM_SIZES.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          ) : (
+            <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
+              {TEAM_SIZES.map((size) => (
+                <TouchableOpacity
+                  key={size}
+                  style={[styles.pill, form.teamSize === size && styles.pillSelected]}
+                  onPress={() => updateForm({ teamSize: size })}
+                >
+                  <Text style={[styles.pillText, form.teamSize === size && styles.pillTextSelected]}>{size}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Years in Business</Text>
-          <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
-            {YEARS_OPTIONS.map((yr) => (
-              <TouchableOpacity
-                key={yr}
-                style={[styles.pill, form.yearsInBusiness === yr && styles.pillSelected]}
-                onPress={() => updateForm({ yearsInBusiness: yr })}
-              >
-                <Text style={[styles.pillText, form.yearsInBusiness === yr && styles.pillTextSelected]}>{yr}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {Platform.OS === 'web' ? (
+            <select
+              value={form.yearsInBusiness}
+              onChange={(e: any) => updateForm({ yearsInBusiness: e.target.value })}
+              style={webSelectStyle}
+            >
+              <option value="">Select years</option>
+              {YEARS_OPTIONS.map((yr) => (
+                <option key={yr} value={yr}>{yr}</option>
+              ))}
+            </select>
+          ) : (
+            <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
+              {YEARS_OPTIONS.map((yr) => (
+                <TouchableOpacity
+                  key={yr}
+                  style={[styles.pill, form.yearsInBusiness === yr && styles.pillSelected]}
+                  onPress={() => updateForm({ yearsInBusiness: yr })}
+                >
+                  <Text style={[styles.pillText, form.yearsInBusiness === yr && styles.pillTextSelected]}>{yr}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </View>
 
