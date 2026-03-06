@@ -1,8 +1,12 @@
 node_modules
 .expo
+.expo-test
 dist
 android
 ios
 *.tsbuildinfo
 .git
 attached_assets
+test-results
+e2e
+playwright.config.ts
