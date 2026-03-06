@@ -252,7 +252,9 @@ interface CardProps {
 function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps) {
   const router = useRouter();
   const isActive = index === activeIndex;
-  const offset = index - activeIndex;
+  const total = CONSOLES.length;
+  const rawOffset = index - activeIndex;
+  const offset = ((rawOffset + Math.floor(total / 2) + total) % total) - Math.floor(total / 2);
 
   const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
