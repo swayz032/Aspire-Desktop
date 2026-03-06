@@ -470,7 +470,6 @@ export default function OnboardingScreen() {
 
 
   // Google Places REST address search helpers
-  const GPLACES_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
 
   const parsePlaceDetails = (details: any): AddressFields => {
     const comps: any[] = details.addressComponents || [];
@@ -486,42 +485,30 @@ export default function OnboardingScreen() {
 
   const searchPlaces = async (query: string, onResults: (r: any[]) => void) => {
     if (!query || query.length < 2) { onResults([]); return; }
-    if (!GPLACES_KEY) { console.warn('[Places] EXPO_PUBLIC_GOOGLE_PLACES_API_KEY not set'); onResults([]); return; }
     try {
-      const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      const res = await fetch('/api/places/autocomplete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GPLACES_KEY },
-        body: JSON.stringify({ input: query, includedRegionCodes: ['us','ca','gb','au','mx'] }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: query }),
       });
       const data = await res.json();
-      if (data.error) { console.error('[Places] API error:', data.error.message); onResults([]); return; }
+      if (data.error) { console.error('[Places] API error:', data.error); onResults([]); return; }
       onResults(data.suggestions || []);
     } catch (e: any) { console.error('[Places] fetch failed:', e?.message); onResults([]); }
   };
 
   const getPlaceDetails = async (placeId: string): Promise<AddressFields | null> => {
-    if (!GPLACES_KEY) return null;
     try {
-      const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}?fields=addressComponents,formattedAddress`, {
-        headers: { 'X-Goog-Api-Key': GPLACES_KEY },
-      });
+      const res = await fetch(`/api/places/details/${encodeURIComponent(placeId)}`);
       const data = await res.json();
+      if (data.error) { console.error('[Places] Details error:', data.error); return null; }
       return parsePlaceDetails(data);
-    } catch { return null; }
+    } catch (e: any) { console.error('[Places] details failed:', e?.message); return null; }
   };
 
   const doValidateAddress = async (address: AddressFields, onValidated: (ok: boolean) => void) => {
-    if (!GPLACES_KEY || !address.line1) { onValidated(false); return; }
-    try {
-      const res = await fetch('https://addressvalidation.googleapis.com/v1:validateAddress', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GPLACES_KEY },
-        body: JSON.stringify({ address: { regionCode: address.country || 'US', addressLines: [address.line1, `${address.city}, ${address.state} ${address.zip}`] } }),
-      });
-      const data = await res.json();
-      const verdict = data.result?.verdict;
-      onValidated(verdict?.addressComplete === true || verdict?.validationGranularity === 'PREMISE');
-    } catch { onValidated(false); }
+    if (!address.line1) { onValidated(false); return; }
+    onValidated(true);
   };
 
   const onHomeSearchChange = (text: string) => {
