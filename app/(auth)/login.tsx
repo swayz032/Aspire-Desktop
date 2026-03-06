@@ -357,9 +357,9 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
     fontFamily: 'inherit',
   };
 
-  const tx = offset * 1100;
-  const scale = isActive ? 1 : 0.87;
-  const opacity = isActive ? 1 : Math.abs(offset) <= 1 ? 0.28 : 0;
+  const tx = offset * 620;
+  const scale = isActive ? 1 : 0.88;
+  const opacity = isActive ? 1 : Math.abs(offset) <= 1 ? 0.45 : 0;
 
   return (
     <div
@@ -375,8 +375,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
         transition: 'transform 0.58s cubic-bezier(0.34,1.12,0.64,1), opacity 0.4s ease',
         opacity,
         zIndex: isActive ? 10 : 1,
-        width: 'clamp(820px, 86vw, 1040px)',
-        height: 'clamp(520px, 76vh, 630px)',
+        width: 'clamp(560px, 58vw, 720px)',
+        height: 'clamp(460px, 70vh, 560px)',
         display: 'flex',
         flexDirection: 'row',
         borderRadius: 22,
@@ -384,7 +384,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
         backdropFilter: 'blur(52px) saturate(180%)',
         WebkitBackdropFilter: 'blur(52px) saturate(180%)',
         border: `1px solid rgba(${consoleDef.accentRgb},0.2)`,
-        boxShadow: `0 0 0 1px rgba(255,255,255,0.035), 0 52px 150px rgba(0,0,0,0.85), 0 0 90px rgba(${consoleDef.accentRgb},0.09), inset 0 1px 0 rgba(255,255,255,0.055)`,
+        boxShadow: `0 0 0 1px rgba(255,255,255,0.035), 0 52px 150px rgba(0,0,0,0.95), inset 0 1px 0 rgba(255,255,255,0.055)`,
         cursor: isActive ? 'default' : 'pointer',
         pointerEvents: Math.abs(offset) <= 1 ? 'auto' : 'none',
         overflow: 'hidden',
@@ -521,7 +521,9 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
               disabled={loading}
               style={{
                 width: '100%',
-                background: loading ? `rgba(${consoleDef.accentRgb},0.48)` : consoleDef.accent,
+                background: loading
+                  ? (consoleDef.id === 'admin' ? 'rgba(59,130,246,0.48)' : `rgba(${consoleDef.accentRgb},0.48)`)
+                  : (consoleDef.id === 'admin' ? 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)' : consoleDef.accent),
                 border: 'none', borderRadius: 10, padding: '14px 0', fontSize: 14,
                 fontWeight: 700, color: '#fff', cursor: loading ? 'not-allowed' : 'pointer',
                 marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -579,6 +581,39 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
           initAngle={consoleDef.globeInitAngle}
         />
       </div>
+
+      {/* ── Floating frosted label (AI Staff style) ── */}
+      <div style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        background: 'rgba(4,6,14,0.82)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        borderTop: '1px solid rgba(255,255,255,0.07)',
+        padding: '13px 28px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 3,
+        zIndex: 20,
+        pointerEvents: 'none',
+      } as React.CSSProperties}>
+        <span style={{
+          fontSize: 17,
+          fontWeight: 800,
+          color: '#fff',
+          letterSpacing: '-0.03em',
+          fontFamily: 'inherit',
+        }}>{consoleDef.title}</span>
+        <span style={{
+          fontSize: 11,
+          color: consoleDef.accent,
+          opacity: 0.85,
+          letterSpacing: '0.01em',
+          fontFamily: 'inherit',
+        }}>{consoleDef.tagline}</span>
+      </div>
     </div>
   );
 }
@@ -596,7 +631,7 @@ function WebLoginScreen() {
           50% { transform: translateY(-13px); }
         }
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #030712; }
+        body { background: #000000; }
         input:-webkit-autofill,
         input:-webkit-autofill:hover,
         input:-webkit-autofill:focus {
@@ -608,22 +643,22 @@ function WebLoginScreen() {
       `}</style>
 
       <div style={{
-        width: '100vw', height: '100vh', background: '#030712', overflow: 'hidden',
+        width: '100vw', height: '100vh', background: '#000000', overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif',
       }}>
-        {/* HEADER */}
-        <div style={{
-          height: 66, padding: '0 44px', display: 'flex', alignItems: 'center',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
-          background: 'rgba(3,7,18,0.96)', backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)', flexShrink: 0, zIndex: 100, position: 'relative',
-        }}>
-          <img src="/aspire-logo-full.png" alt="Aspire" style={{ height: 30, objectFit: 'contain' }} />
-        </div>
-
-        {/* CAROUSEL STAGE */}
+        {/* CAROUSEL STAGE — full viewport, no header */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          {/* Floating logo */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, zIndex: 100, pointerEvents: 'none',
+          }}>
+            <img
+              src="/aspire-logo-full.png"
+              alt="Aspire"
+              style={{ height: 140, objectFit: 'contain', display: 'block' } as React.CSSProperties}
+            />
+          </div>
           {CONSOLES.map((c, i) => (
             <ConsoleCard key={c.id} consoleDef={c} index={i} activeIndex={activeIndex} onSetActive={setActiveIndex} />
           ))}
@@ -664,31 +699,6 @@ function WebLoginScreen() {
             </button>
           )}
 
-          {/* Nav pill tiles */}
-          <div style={{
-            position: 'absolute', bottom: 22, left: '50%', transform: 'translateX(-50%)',
-            display: 'flex', gap: 10, zIndex: 50,
-          }}>
-            {CONSOLES.map((c, i) => (
-              <button
-                key={c.id}
-                onClick={() => setActiveIndex(i)}
-                style={{
-                  padding: i === activeIndex ? '8px 22px' : '8px 16px',
-                  borderRadius: 20,
-                  background: i === activeIndex ? `rgba(${c.accentRgb},0.14)` : 'rgba(255,255,255,0.04)',
-                  border: i === activeIndex ? `1px solid rgba(${c.accentRgb},0.4)` : '1px solid rgba(255,255,255,0.09)',
-                  boxShadow: i === activeIndex ? `0 0 20px rgba(${c.accentRgb},0.18)` : 'none',
-                  color: i === activeIndex ? '#fff' : 'rgba(255,255,255,0.38)',
-                  fontSize: 12, fontWeight: i === activeIndex ? 700 : 500,
-                  cursor: 'pointer', transition: 'all 0.32s cubic-bezier(0.34,1.12,0.64,1)',
-                  fontFamily: 'inherit', letterSpacing: '0.01em', whiteSpace: 'nowrap',
-                }}
-              >
-                {c.title}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Footer */}
