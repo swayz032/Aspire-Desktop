@@ -305,47 +305,6 @@ const initialFormState: FormState = {
 };
 
 // ---------------------------------------------------------------------------
-// Google Places helpers (web only)
-// ---------------------------------------------------------------------------
-
-function parseGooglePlace(place: google.maps.places.PlaceResult): {
-  address: AddressFields;
-  timezone: string;
-  currency: string;
-} {
-  const address: AddressFields = { ...emptyAddress };
-  let stateCode = '';
-  let countryCode = '';
-
-  for (const comp of place.address_components ?? []) {
-    const types = comp.types;
-    if (types.includes('street_number')) {
-      address.line1 = comp.long_name + (address.line1 ? ' ' + address.line1 : '');
-    } else if (types.includes('route')) {
-      address.line1 = (address.line1 ? address.line1 + ' ' : '') + comp.long_name;
-    } else if (types.includes('locality') || types.includes('sublocality_level_1')) {
-      address.city = comp.long_name;
-    } else if (types.includes('administrative_area_level_1')) {
-      address.state = comp.short_name;
-      stateCode = comp.short_name;
-    } else if (types.includes('postal_code')) {
-      address.zip = comp.long_name;
-    } else if (types.includes('country')) {
-      address.country = comp.short_name;
-      countryCode = comp.short_name;
-    }
-  }
-
-  const tz =
-    (countryCode === 'US' && STATE_TIMEZONES[stateCode]) ||
-    COUNTRY_TIMEZONES[countryCode] ||
-    '';
-  const cur = COUNTRY_CURRENCY[countryCode] || 'USD';
-
-  return { address, timezone: tz, currency: cur };
-}
-
-// ---------------------------------------------------------------------------
 // Draft persistence
 // ---------------------------------------------------------------------------
 
@@ -444,9 +403,11 @@ export default function OnboardingScreen() {
   // Form state
   const [form, setForm] = useState<FormState>(initialFormState);
 
-  // Nominatim address autocomplete
+  // Google Places address autocomplete
   const [homeSuggestions, setHomeSuggestions] = useState<any[]>([]);
   const [businessSuggestions, setBusinessSuggestions] = useState<any[]>([]);
+  const [homeValidated, setHomeValidated] = useState(false);
+  const [businessValidated, setBusinessValidated] = useState(false);
   const homeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const businessDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -503,54 +464,116 @@ export default function OnboardingScreen() {
   }, [step, progressAnim]);
 
 
-  // Nominatim address search helpers
-  const parseNominatimResult = (place: any): AddressFields => {
-    const a = place.address || {};
-    const line1 = [a.house_number, a.road].filter(Boolean).join(' ') || (place.display_name || '').split(',')[0] || '';
-    const city = a.city || a.town || a.village || a.municipality || a.county || '';
-    const state = a.state || '';
-    const zip = a.postcode || '';
-    const country = (a.country_code || 'us').toUpperCase();
-    return { line1, line2: '', city, state, zip, country };
+  // Google Places REST address search helpers
+  const GPLACES_KEY = (typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY : '') || '';
+
+  const parsePlaceDetails = (details: any): AddressFields => {
+    const comps: any[] = details.addressComponents || [];
+    const get = (...types: string[]) => comps.find((ac: any) => types.some(t => ac.types?.includes(t)));
+    const streetNum = get('street_number')?.longText || '';
+    const route = get('route')?.longText || '';
+    const city = get('locality', 'postal_town', 'sublocality')?.longText || get('administrative_area_level_2')?.longText || '';
+    const state = get('administrative_area_level_1')?.shortText || '';
+    const zip = get('postal_code')?.longText || '';
+    const country = get('country')?.shortText || 'US';
+    return { line1: [streetNum, route].filter(Boolean).join(' '), line2: '', city, state, zip, country };
   };
 
-  const searchNominatim = async (query: string, onResults: (r: any[]) => void) => {
-    if (!query || query.length < 3) { onResults([]); return; }
+  const searchPlaces = async (query: string, onResults: (r: any[]) => void) => {
+    if (!query || query.length < 2 || !GPLACES_KEY) { onResults([]); return; }
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=${encodeURIComponent(query)}`;
-      const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GPLACES_KEY },
+        body: JSON.stringify({ input: query, includedPrimaryTypes: ['address'], includedRegionCodes: ['us','ca','gb','au','mx'] }),
+      });
       const data = await res.json();
-      onResults(data);
+      onResults(data.suggestions || []);
     } catch { onResults([]); }
   };
 
-  const onHomeSearchChange = (text: string) => {
-    updateForm({ homeSearchText: text, homeEditable: true });
-    if (homeDebounceRef.current) clearTimeout(homeDebounceRef.current);
-    homeDebounceRef.current = setTimeout(() => searchNominatim(text, setHomeSuggestions), 400);
+  const getPlaceDetails = async (placeId: string): Promise<AddressFields | null> => {
+    if (!GPLACES_KEY) return null;
+    try {
+      const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}?fields=addressComponents,formattedAddress`, {
+        headers: { 'X-Goog-Api-Key': GPLACES_KEY },
+      });
+      const data = await res.json();
+      return parsePlaceDetails(data);
+    } catch { return null; }
   };
 
-  const onHomeSelect = (place: any) => {
-    const address = parseNominatimResult(place);
-    const tz = (address.country === 'US' && STATE_TIMEZONES[address.state]) || COUNTRY_TIMEZONES[address.country] || '';
-    const cur = COUNTRY_CURRENCY[address.country] || 'USD';
-    updateForm({ homeAddress: address, homeSearchText: place.display_name, timezone: tz, currency: cur, homeEditable: false });
+  const doValidateAddress = async (address: AddressFields, onValidated: (ok: boolean) => void) => {
+    if (!GPLACES_KEY || !address.line1) { onValidated(false); return; }
+    try {
+      const res = await fetch('https://addressvalidation.googleapis.com/v1:validateAddress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GPLACES_KEY },
+        body: JSON.stringify({ address: { regionCode: address.country || 'US', addressLines: [address.line1, `${address.city}, ${address.state} ${address.zip}`] } }),
+      });
+      const data = await res.json();
+      const verdict = data.result?.verdict;
+      onValidated(verdict?.addressComplete === true || verdict?.validationGranularity === 'PREMISE');
+    } catch { onValidated(false); }
+  };
+
+  const onHomeSearchChange = (text: string) => {
+    updateForm({ homeSearchText: text });
+    setHomeValidated(false);
+    if (homeDebounceRef.current) clearTimeout(homeDebounceRef.current);
+    homeDebounceRef.current = setTimeout(() => searchPlaces(text, setHomeSuggestions), 350);
+  };
+
+  const onHomeSelect = async (suggestion: any) => {
+    const placeId = suggestion.placePrediction?.placeId;
+    const displayText = suggestion.placePrediction?.text?.text || '';
+    setHomeSuggestions([]);
+    updateForm({ homeSearchText: displayText });
+    if (placeId) {
+      const address = await getPlaceDetails(placeId);
+      if (address) {
+        const tz = (address.country === 'US' && STATE_TIMEZONES[address.state]) || COUNTRY_TIMEZONES[address.country] || '';
+        const cur = COUNTRY_CURRENCY[address.country] || 'USD';
+        updateForm({ homeAddress: address, timezone: tz, currency: cur, homeEditable: false });
+        doValidateAddress(address, setHomeValidated);
+      }
+    }
+  };
+
+  const onHomeClear = () => {
+    updateForm({ homeSearchText: '', homeAddress: { ...emptyAddress }, homeEditable: true });
+    setHomeValidated(false);
     setHomeSuggestions([]);
   };
 
   const onBusinessSearchChange = (text: string) => {
-    updateForm({ businessSearchText: text, businessEditable: true });
+    updateForm({ businessSearchText: text });
+    setBusinessValidated(false);
     if (businessDebounceRef.current) clearTimeout(businessDebounceRef.current);
-    businessDebounceRef.current = setTimeout(() => searchNominatim(text, setBusinessSuggestions), 400);
+    businessDebounceRef.current = setTimeout(() => searchPlaces(text, setBusinessSuggestions), 350);
   };
 
-  const onBusinessSelect = (place: any) => {
-    const address = parseNominatimResult(place);
-    updateForm({ businessAddress: address, businessSearchText: place.display_name, businessEditable: false });
+  const onBusinessSelect = async (suggestion: any) => {
+    const placeId = suggestion.placePrediction?.placeId;
+    const displayText = suggestion.placePrediction?.text?.text || '';
+    setBusinessSuggestions([]);
+    updateForm({ businessSearchText: displayText });
+    if (placeId) {
+      const address = await getPlaceDetails(placeId);
+      if (address) {
+        updateForm({ businessAddress: address, businessEditable: false });
+        doValidateAddress(address, setBusinessValidated);
+      }
+    }
+  };
+
+  const onBusinessClear = () => {
+    updateForm({ businessSearchText: '', businessAddress: { ...emptyAddress }, businessEditable: true });
+    setBusinessValidated(false);
     setBusinessSuggestions([]);
   };
 
-  // ---------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------
   // Validation
   // ---------------------------------------------------------------------------
 
@@ -770,134 +793,6 @@ export default function OnboardingScreen() {
   };
 
   // ---------------------------------------------------------------------------
-  // Render: Address fields (manual fallback or editable parsed)
-  // ---------------------------------------------------------------------------
-
-  const renderAddressFields = (
-    addr: AddressFields,
-    editable: boolean,
-    onToggleEdit: () => void,
-    onChange: (patch: Partial<AddressFields>) => void,
-  ) => {
-    if (!addr.line1 && !addr.city) return null;
-    return (
-      <View style={styles.parsedAddressBox}>
-        <View style={styles.parsedHeaderRow}>
-          <Ionicons name="location-outline" size={16} color={ACCENT} />
-          <Text style={styles.parsedLabel}>Parsed Address</Text>
-          <TouchableOpacity onPress={onToggleEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.editLink}>{editable ? 'Lock' : 'Edit'}</Text>
-          </TouchableOpacity>
-        </View>
-        {editable ? (
-          <View style={styles.parsedFieldsGrid}>
-            <TextInput
-              style={[styles.input, styles.addressField]}
-              value={addr.line1}
-              onChangeText={(v) => onChange({ line1: v })}
-              placeholder="Street address"
-              placeholderTextColor="#555"
-            />
-            <TextInput
-              style={[styles.input, styles.addressField]}
-              value={addr.line2}
-              onChangeText={(v) => onChange({ line2: v })}
-              placeholder="Apt, suite (optional)"
-              placeholderTextColor="#555"
-            />
-            <View style={styles.addressRow}>
-              <TextInput
-                style={[styles.input, styles.addressField, { flex: 2 }]}
-                value={addr.city}
-                onChangeText={(v) => onChange({ city: v })}
-                placeholder="City"
-                placeholderTextColor="#555"
-              />
-              <TextInput
-                style={[styles.input, styles.addressField, { flex: 1 }]}
-                value={addr.state}
-                onChangeText={(v) => onChange({ state: v })}
-                placeholder="State"
-                placeholderTextColor="#555"
-              />
-              <TextInput
-                style={[styles.input, styles.addressField, { flex: 1 }]}
-                value={addr.zip}
-                onChangeText={(v) => onChange({ zip: v })}
-                placeholder="ZIP"
-                placeholderTextColor="#555"
-              />
-            </View>
-          </View>
-        ) : (
-          <Text style={styles.parsedAddressText}>
-            {addr.line1}
-            {addr.line2 ? `, ${addr.line2}` : ''}
-            {'\n'}
-            {addr.city}, {addr.state} {addr.zip}
-            {addr.country ? ` ${addr.country}` : ''}
-          </Text>
-        )}
-      </View>
-    );
-  };
-
-  // Manual address input (non-web fallback)
-  const renderManualAddress = (
-    addr: AddressFields,
-    onChange: (patch: Partial<AddressFields>) => void,
-    label: string,
-  ) => (
-    <View>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={addr.line1}
-        onChangeText={(v) => onChange({ line1: v })}
-        placeholder="Street address"
-        placeholderTextColor="#555"
-      />
-      <TextInput
-        style={[styles.input, { marginTop: 8 }]}
-        value={addr.line2}
-        onChangeText={(v) => onChange({ line2: v })}
-        placeholder="Apt, suite, unit (optional)"
-        placeholderTextColor="#555"
-      />
-      <View style={[styles.addressRow, { marginTop: 8 }]}>
-        <TextInput
-          style={[styles.input, { flex: 2 }]}
-          value={addr.city}
-          onChangeText={(v) => onChange({ city: v })}
-          placeholder="City"
-          placeholderTextColor="#555"
-        />
-        <TextInput
-          style={[styles.input, { flex: 1 }]}
-          value={addr.state}
-          onChangeText={(v) => onChange({ state: v })}
-          placeholder="State"
-          placeholderTextColor="#555"
-        />
-        <TextInput
-          style={[styles.input, { flex: 1 }]}
-          value={addr.zip}
-          onChangeText={(v) => onChange({ zip: v })}
-          placeholder="ZIP"
-          placeholderTextColor="#555"
-        />
-      </View>
-      <TextInput
-        style={[styles.input, { marginTop: 8 }]}
-        value={addr.country}
-        onChangeText={(v) => onChange({ country: v })}
-        placeholder="Country code (US, CA, GB...)"
-        placeholderTextColor="#555"
-      />
-    </View>
-  );
-
-  // ---------------------------------------------------------------------------
   // Step 1: You & Your Business
   // ---------------------------------------------------------------------------
 
@@ -908,45 +803,75 @@ export default function OnboardingScreen() {
         Tell us a bit about yourself so Ava can personalize your experience
       </Text>
 
-      {/* Owner Name (pre-filled from auth) */}
-      <Text style={styles.label}>Your Name</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Full name"
-        placeholderTextColor="#555"
-        value={form.ownerName}
-        onChangeText={(v) => updateForm({ ownerName: v })}
-      />
-
-      <Text style={styles.label}>Date of Birth</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor="#555"
-        value={form.dateOfBirth}
-        onChangeText={(v) => updateForm({ dateOfBirth: v.trim() })}
-        autoCapitalize="none"
-      />
-      {form.dateOfBirth !== '' && !isAdultDob(form.dateOfBirth) && (
-        <Text style={styles.helperErrorText}>You must be at least 18 years old.</Text>
-      )}
-
-      <Text style={styles.label}>Gender</Text>
-      <View style={styles.pillRow}>
-        {GENDER_OPTIONS.map((opt) => (
-          <TouchableOpacity
-            key={opt.value}
-            style={[styles.pill, form.gender === opt.value && styles.pillSelected]}
-            onPress={() => updateForm({ gender: opt.value })}
-          >
-            <Text style={[styles.pillText, form.gender === opt.value && styles.pillTextSelected]}>
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Row: Name + DOB */}
+      <View style={styles.fieldRow}>
+        <View style={{ flex: 1.5 }}>
+          <Text style={styles.label}>Your Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Full name"
+            placeholderTextColor="#555"
+            value={form.ownerName}
+            onChangeText={(v) => updateForm({ ownerName: v })}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Date of Birth</Text>
+          {Platform.OS === 'web' ? (
+            <input
+              type="date"
+              value={form.dateOfBirth}
+              onChange={(e: any) => updateForm({ dateOfBirth: e.target.value })}
+              max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
+              style={webDateStyle}
+            />
+          ) : (
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#555"
+              value={form.dateOfBirth}
+              onChangeText={(v) => updateForm({ dateOfBirth: v.trim() })}
+              autoCapitalize="none"
+            />
+          )}
+          {form.dateOfBirth !== '' && !isAdultDob(form.dateOfBirth) && (
+            <Text style={styles.helperErrorText}>Must be 18+</Text>
+          )}
+        </View>
       </View>
 
-      {/* Email (read-only from session) */}
+      {/* Row: Gender + Title */}
+      <View style={styles.fieldRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Gender</Text>
+          <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
+            {GENDER_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.pill, form.gender === opt.value && styles.pillSelected]}
+                onPress={() => updateForm({ gender: opt.value })}
+              >
+                <Text style={[styles.pillText, form.gender === opt.value && styles.pillTextSelected]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Your Title</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. Owner, CEO"
+            placeholderTextColor="#555"
+            value={form.ownerTitle}
+            onChangeText={(v) => updateForm({ ownerTitle: v })}
+          />
+        </View>
+      </View>
+
+      {/* Email read-only */}
       {session?.user?.email && (
         <>
           <Text style={styles.label}>Email</Text>
@@ -1038,89 +963,76 @@ export default function OnboardingScreen() {
         )}
       </View>
 
-      {/* Team Size */}
-      <Text style={styles.label}>Team Size</Text>
-      <View style={styles.pillRow}>
-        {TEAM_SIZES.map((size) => (
-          <TouchableOpacity
-            key={size}
-            style={[styles.pill, form.teamSize === size && styles.pillSelected]}
-            onPress={() => updateForm({ teamSize: size })}
-          >
-            <Text style={[styles.pillText, form.teamSize === size && styles.pillTextSelected]}>
-              {size}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Row: Team Size + Years in Business */}
+      <View style={styles.fieldRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Team Size</Text>
+          <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
+            {TEAM_SIZES.map((size) => (
+              <TouchableOpacity
+                key={size}
+                style={[styles.pill, form.teamSize === size && styles.pillSelected]}
+                onPress={() => updateForm({ teamSize: size })}
+              >
+                <Text style={[styles.pillText, form.teamSize === size && styles.pillTextSelected]}>{size}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Years in Business</Text>
+          <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
+            {YEARS_OPTIONS.map((yr) => (
+              <TouchableOpacity
+                key={yr}
+                style={[styles.pill, form.yearsInBusiness === yr && styles.pillSelected]}
+                onPress={() => updateForm({ yearsInBusiness: yr })}
+              >
+                <Text style={[styles.pillText, form.yearsInBusiness === yr && styles.pillTextSelected]}>{yr}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
       </View>
 
       {/* Entity Type */}
       <Text style={styles.label}>Entity Type</Text>
-      <TouchableOpacity
-        style={styles.dropdown}
-        onPress={() => setEntityDropdownOpen((v) => !v)}
-      >
-        <Text style={form.entityType ? styles.dropdownValue : styles.dropdownPlaceholder}>
-          {form.entityType || 'Select entity type'}
-        </Text>
-        <Ionicons
-          name={entityDropdownOpen ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color="#888"
-        />
-      </TouchableOpacity>
-      {entityDropdownOpen && (
-        <View style={styles.dropdownList}>
+      {Platform.OS === 'web' ? (
+        <select
+          value={form.entityType}
+          onChange={(e: any) => updateForm({ entityType: e.target.value })}
+          style={webSelectStyle}
+        >
+          <option value="">Select entity type</option>
           {ENTITY_TYPES.map((et) => (
-            <TouchableOpacity
-              key={et}
-              style={[styles.dropdownItem, form.entityType === et && styles.dropdownItemSelected]}
-              onPress={() => {
-                updateForm({ entityType: et });
-                setEntityDropdownOpen(false);
-              }}
-            >
-              <Text
-                style={[
-                  styles.dropdownItemText,
-                  form.entityType === et && styles.dropdownItemTextSelected,
-                ]}
-              >
-                {et}
-              </Text>
-            </TouchableOpacity>
+            <option key={et} value={et}>{et}</option>
           ))}
-        </View>
-      )}
-
-      {/* Years in Business */}
-      <Text style={styles.label}>Years in Business</Text>
-      <View style={styles.pillRow}>
-        {YEARS_OPTIONS.map((yr) => (
-          <TouchableOpacity
-            key={yr}
-            style={[styles.pill, form.yearsInBusiness === yr && styles.pillSelected]}
-            onPress={() => updateForm({ yearsInBusiness: yr })}
-          >
-            <Text style={[styles.pillText, form.yearsInBusiness === yr && styles.pillTextSelected]}>
-              {yr}
+        </select>
+      ) : (
+        <>
+          <TouchableOpacity style={styles.dropdown} onPress={() => setEntityDropdownOpen((v) => !v)}>
+            <Text style={form.entityType ? styles.dropdownValue : styles.dropdownPlaceholder}>
+              {form.entityType || 'Select entity type'}
             </Text>
+            <Ionicons name={entityDropdownOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#888" />
           </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Owner Title */}
-      <Text style={styles.label}>Your Title</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. Owner, CEO, Manager"
-        placeholderTextColor="#555"
-        value={form.ownerTitle}
-        onChangeText={(v) => updateForm({ ownerTitle: v })}
-      />
+          {entityDropdownOpen && (
+            <View style={styles.dropdownList}>
+              {ENTITY_TYPES.map((et) => (
+                <TouchableOpacity
+                  key={et}
+                  style={[styles.dropdownItem, form.entityType === et && styles.dropdownItemSelected]}
+                  onPress={() => { updateForm({ entityType: et }); setEntityDropdownOpen(false); }}
+                >
+                  <Text style={[styles.dropdownItemText, form.entityType === et && styles.dropdownItemTextSelected]}>{et}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </>
+      )}
     </View>
   );
-
   // ---------------------------------------------------------------------------
   // Step 2: Address & Location
   // ---------------------------------------------------------------------------
@@ -1128,44 +1040,81 @@ export default function OnboardingScreen() {
   const renderStep2 = () => {
     const isWeb = Platform.OS === 'web';
 
-    const AddressSearch = ({
-      value, suggestions, onChangeText, onSelect, placeholder,
-    }: {
-      value: string; suggestions: any[]; onChangeText: (t: string) => void; onSelect: (p: any) => void; placeholder: string;
-    }) => (
-      <View style={isWeb ? ({ position: 'relative', zIndex: 100 } as any) : {}}>
-        <View style={styles.searchInputWrap}>
-          <Ionicons name="search-outline" size={18} color="#888" style={styles.searchIcon} />
-          {isWeb ? (
-            <input
-              type="text"
-              placeholder={placeholder}
-              value={value}
-              onChange={(e: any) => onChangeText(e.target.value)}
-              style={webInputStyle}
-            />
-          ) : (
-            <TextInput
-              style={{ flex: 1, color: '#fff', fontSize: 16, paddingVertical: 14, paddingRight: 16 }}
-              placeholder={placeholder}
-              placeholderTextColor="#555"
-              value={value}
-              onChangeText={onChangeText}
-            />
+    const renderAddressField = (
+      searchText: string,
+      address: AddressFields,
+      validated: boolean,
+      suggestions: any[],
+      onChangeText: (t: string) => void,
+      onSelect: (s: any) => void,
+      onClear: () => void,
+      placeholder: string,
+    ) => {
+      const confirmed = !!address.line1;
+      if (confirmed) {
+        return (
+          <View style={styles.confirmedAddressRow}>
+            <Ionicons name={validated ? 'checkmark-circle' : 'location'} size={18} color={validated ? '#22C55E' : ACCENT} />
+            <Text style={styles.confirmedAddressText} numberOfLines={2}>{searchText}</Text>
+            {validated && (
+              <View style={styles.verifiedBadge}>
+                <Text style={styles.verifiedBadgeText}>Verified</Text>
+              </View>
+            )}
+            <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.changeLink}>Change</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      return (
+        <View style={isWeb ? ({ position: 'relative', zIndex: 200 } as any) : {}}>
+          <View style={styles.searchInputWrap}>
+            <Ionicons name="search-outline" size={18} color="#888" style={styles.searchIcon} />
+            {isWeb ? (
+              <input
+                type="text"
+                placeholder={placeholder}
+                value={searchText}
+                onChange={(e: any) => onChangeText(e.target.value)}
+                style={webInputStyle}
+                autoComplete="off"
+              />
+            ) : (
+              <TextInput
+                style={{ flex: 1, color: '#fff', fontSize: 16, paddingVertical: 14, paddingRight: 16 }}
+                placeholder={placeholder}
+                placeholderTextColor="#555"
+                value={searchText}
+                onChangeText={onChangeText}
+              />
+            )}
+            {searchText.length > 0 && (
+              <TouchableOpacity onPress={onClear} style={{ paddingRight: 14 }}>
+                <Ionicons name="close-circle" size={18} color="#555" />
+              </TouchableOpacity>
+            )}
+          </View>
+          {suggestions.length > 0 && (
+            <View style={styles.placesDropdown}>
+              {suggestions.map((s: any, i: number) => (
+                <TouchableOpacity key={i} style={styles.placesItem} onPress={() => onSelect(s)}>
+                  <Ionicons name="location-outline" size={14} color={ACCENT} style={{ marginRight: 10, flexShrink: 0 } as any} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.placesItemMain} numberOfLines={1}>
+                      {s.placePrediction?.structuredFormat?.mainText?.text || s.placePrediction?.text?.text || ''}
+                    </Text>
+                    <Text style={styles.placesItemSub} numberOfLines={1}>
+                      {s.placePrediction?.structuredFormat?.secondaryText?.text || ''}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
           )}
         </View>
-        {suggestions.length > 0 && (
-          <View style={styles.nominatimDropdown}>
-            {suggestions.map((s: any, i: number) => (
-              <TouchableOpacity key={i} style={styles.nominatimItem} onPress={() => onSelect(s)}>
-                <Ionicons name="location-outline" size={14} color={ACCENT} style={{ marginRight: 8 } as any} />
-                <Text style={styles.nominatimItemText} numberOfLines={2}>{s.display_name}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </View>
-    );
+      );
+    };
 
     return (
       <View>
@@ -1175,18 +1124,15 @@ export default function OnboardingScreen() {
         </Text>
 
         <Text style={styles.label}>Home Address</Text>
-        <AddressSearch
-          value={form.homeSearchText}
-          suggestions={homeSuggestions}
-          onChangeText={onHomeSearchChange}
-          onSelect={onHomeSelect}
-          placeholder="Search your home address…"
-        />
-        {renderAddressFields(
+        {renderAddressField(
+          form.homeSearchText,
           form.homeAddress,
-          form.homeEditable,
-          () => updateForm({ homeEditable: !form.homeEditable }),
-          (patch) => updateForm({ homeAddress: { ...form.homeAddress, ...patch } }),
+          homeValidated,
+          homeSuggestions,
+          onHomeSearchChange,
+          onHomeSelect,
+          onHomeClear,
+          'Search your home address…',
         )}
 
         {(form.timezone || form.currency) && (
@@ -1206,7 +1152,7 @@ export default function OnboardingScreen() {
           </View>
         )}
 
-        <View style={styles.toggleRow}>
+        <View style={[styles.toggleRow, { marginTop: 24 }]}>
           <Text style={styles.toggleLabel}>Business address same as home?</Text>
           <Switch
             value={form.businessAddressSameAsHome}
@@ -1217,22 +1163,19 @@ export default function OnboardingScreen() {
         </View>
 
         {!form.businessAddressSameAsHome && (
-          <>
-            <Text style={styles.label}>Business Address</Text>
-            <AddressSearch
-              value={form.businessSearchText}
-              suggestions={businessSuggestions}
-              onChangeText={onBusinessSearchChange}
-              onSelect={onBusinessSelect}
-              placeholder="Search business address…"
-            />
-            {renderAddressFields(
+          <View style={isWeb ? ({ zIndex: 100 } as any) : {}}>
+            <Text style={[styles.label, { marginTop: 20 }]}>Business Address</Text>
+            {renderAddressField(
+              form.businessSearchText,
               form.businessAddress,
-              form.businessEditable,
-              () => updateForm({ businessEditable: !form.businessEditable }),
-              (patch) => updateForm({ businessAddress: { ...form.businessAddress, ...patch } }),
+              businessValidated,
+              businessSuggestions,
+              onBusinessSearchChange,
+              onBusinessSelect,
+              onBusinessClear,
+              'Search business address…',
             )}
-          </>
+          </View>
         )}
       </View>
     );
@@ -1250,21 +1193,30 @@ export default function OnboardingScreen() {
 
       {/* Income Range */}
       <Text style={styles.label}>Annual Income Range</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
-        <View style={styles.pillRow}>
+      {Platform.OS === 'web' ? (
+        <select
+          value={form.incomeRange}
+          onChange={(e: any) => updateForm({ incomeRange: e.target.value })}
+          style={webSelectStyle}
+        >
+          <option value="">Select income range</option>
+          {INCOME_RANGES.map((ir) => (
+            <option key={ir.value} value={ir.value}>{ir.label}</option>
+          ))}
+        </select>
+      ) : (
+        <View style={[styles.pillRow, { flexWrap: 'wrap', gap: 8 }]}>
           {INCOME_RANGES.map((ir) => (
             <TouchableOpacity
               key={ir.value}
               style={[styles.pill, form.incomeRange === ir.value && styles.pillSelected]}
               onPress={() => updateForm({ incomeRange: ir.value })}
             >
-              <Text style={[styles.pillText, form.incomeRange === ir.value && styles.pillTextSelected]}>
-                {ir.label}
-              </Text>
+              <Text style={[styles.pillText, form.incomeRange === ir.value && styles.pillTextSelected]}>{ir.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
-      </ScrollView>
+      )}
 
       {/* Referral Source */}
       <Text style={[styles.label, { marginTop: 18 }]}>How did you hear about Aspire?</Text>
@@ -1521,6 +1473,22 @@ const webSelectStyle: React.CSSProperties = {
   backgroundPosition: 'right 14px center',
   marginTop: 6,
 };
+const webDateStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#1a1a1a',
+  border: '1px solid #333',
+  borderRadius: 10,
+  padding: '14px 16px',
+  fontSize: 16,
+  color: '#fff',
+  cursor: 'pointer',
+  outline: 'none',
+  fontFamily: 'inherit',
+  marginTop: 6,
+  colorScheme: 'dark',
+  boxSizing: 'border-box' as any,
+};
+
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -1940,6 +1908,79 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
+  // 2-column field pairing
+  fieldRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+
+  // Google Places confirmed address
+  confirmedAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#0d1a2e',
+    borderWidth: 1,
+    borderColor: '#1d3a5e',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    flexWrap: 'wrap' as const,
+  },
+  confirmedAddressText: {
+    flex: 1,
+    color: '#e2e8f0',
+    fontSize: 14,
+    lineHeight: 20,
+    minWidth: 0,
+  },
+  verifiedBadge: {
+    backgroundColor: 'rgba(34,197,94,0.15)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  verifiedBadgeText: {
+    color: '#22C55E',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  changeLink: {
+    color: ACCENT,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // Google Places suggestion dropdown
+  placesDropdown: {
+    backgroundColor: '#111',
+    borderWidth: 1,
+    borderColor: ACCENT,
+    borderRadius: 10,
+    marginTop: 4,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? { position: 'absolute' as any, top: '100%' as any, left: 0, right: 0, zIndex: 9999 } : {}),
+  } as ViewStyle,
+  placesItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e1e1e',
+  },
+  placesItemMain: {
+    color: '#e2e8f0',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  placesItemSub: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: 1,
+  },
+
   buttonDisabled: {
     opacity: 0.45,
   },
