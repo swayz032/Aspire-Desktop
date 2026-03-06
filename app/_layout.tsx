@@ -169,7 +169,7 @@ function useAuthGate() {
     }
 
     if (!session && !inAuthGroup && !inPublicGroup) {
-      router.replace('/landing' as any);
+      router.replace('/' as any);
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
       router.replace('/(auth)/onboarding' as any);
     } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {

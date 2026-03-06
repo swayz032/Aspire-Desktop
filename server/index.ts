@@ -632,12 +632,8 @@ const TERMS_HTML = `<!DOCTYPE html>
 </html>`;
 
 app.get('/', (req, res) => {
-  if (DEV_BYPASS_AUTH) {
-    const distPath = path.join(process.cwd(), 'dist');
-    return res.sendFile(path.join(distPath, 'index.html'));
-  }
-  res.setHeader('Content-Type', 'text/html');
-  res.send(LANDING_HTML);
+  const distPath = path.join(process.cwd(), 'dist');
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 app.get('/privacy-policy', (req, res) => {

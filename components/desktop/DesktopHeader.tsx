@@ -338,9 +338,9 @@ export function DesktopHeader({
                       }
                       // Redirect to landing page and force clean state
                       if (typeof window !== 'undefined') {
-                        window.location.href = '/landing';
+                        window.location.href = '/';
                       } else {
-                        router.replace('/landing' as any);
+                        router.replace('/' as any);
                       }
                     } else {
                       // Open settings panel at the corresponding section

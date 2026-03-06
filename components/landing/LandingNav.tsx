@@ -39,7 +39,7 @@ export default function LandingNav() {
       }}
     >
       {/* Logo */}
-      <a href="/landing" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+      <a href="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
         <img
           src="/aspire-logo-full.png"
           alt="Aspire"
