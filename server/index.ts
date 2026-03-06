@@ -314,6 +314,14 @@ app.use(express.json());
 app.use(routes);
 
 try {
+  const placesRoutes = require('./placesRoutes').default;
+  app.use(placesRoutes);
+  logger.info('Places proxy routes registered');
+} catch (e) {
+  logger.warn('Places proxy routes not available, skipping');
+}
+
+try {
   const gustoRoutes = require('./gustoRoutes').default;
   app.use(gustoRoutes);
   logger.info('Gusto routes registered');
