@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Tenant } from '@/types';
 import { getSuiteProfile, getTenantIdentity } from '@/lib/api';
+import { useSupabase } from './SupabaseProvider';
 
 interface TenantContextType {
   tenant: Tenant | null;
@@ -71,6 +72,7 @@ function mapSuiteProfileToTenant(profile: any): Tenant {
 }
 
 export function TenantProvider({ children }: TenantProviderProps) {
+  const { session, isLoading: authLoading } = useSupabase();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,8 +148,16 @@ export function TenantProvider({ children }: TenantProviderProps) {
   };
 
   useEffect(() => {
+    // Wait for auth to finish loading before querying RLS-protected tables
+    if (authLoading) return;
+    // Only fetch if we have a session (authenticated user)
+    if (!session) {
+      setTenant(null);
+      setIsLoading(false);
+      return;
+    }
     loadTenant();
-  }, []);
+  }, [session, authLoading]);
 
   const value: TenantContextType = {
     tenant,

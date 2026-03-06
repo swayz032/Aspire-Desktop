@@ -273,33 +273,27 @@ function isAdultDate(value: string | null): boolean {
 /**
  * Deterministic hash from seed string. Returns unsigned 32-bit integer.
  */
-function deterministicHash(seed: string): number {
-  const clean = (seed || '').replace(/[^a-zA-Z0-9]/g, '');
-  let hash = 0;
-  for (let i = 0; i < clean.length; i++) {
-    hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
-  }
-  return hash;
+/**
+ * Allocate the next unique suite display ID from Postgres sequence.
+ * Race-safe — sequences are concurrency-safe. Returns "122", "123", etc.
+ * Each company gets a globally unique number. Admin portal uses this to
+ * identify and track companies.
+ */
+async function allocateSuiteDisplayId(): Promise<string> {
+  const result = await db.execute(sql`SELECT nextval('suite_display_id_seq')::text AS id`);
+  const row = ((result.rows || result) as any[])[0];
+  return row?.id || '999'; // fallback should never hit
 }
 
 /**
- * Generate suite display number: 3-digit (100-999), e.g., "600"
- * Frontend prepends "Suite" → "Suite 600"
+ * Allocate the next office display ID within a suite.
+ * Owner = A01, next member = A02, etc. Unique within each suite.
+ * Admin portal uses this to identify team members within a company.
  */
-function suiteDisplayNumber(suiteId: string): string {
-  const n = (deterministicHash(suiteId + ':suite') % 900) + 100;
-  return String(n);
-}
-
-/**
- * Generate office display number: letter + 3-digit, e.g., "A907"
- * Frontend prepends "Office" → "Office A907"
- */
-function officeDisplayNumber(suiteId: string): string {
-  const hash = deterministicHash(suiteId + ':office');
-  const letter = String.fromCharCode(65 + (hash % 26)); // A-Z
-  const n = (Math.floor(hash / 26) % 900) + 100; // 100-999
-  return `${letter}${n}`;
+async function allocateOfficeDisplayId(suiteId: string): Promise<string> {
+  const result = await db.execute(sql`SELECT allocate_office_display_id(${suiteId}::uuid) AS id`);
+  const row = ((result.rows || result) as any[])[0];
+  return row?.id || 'A01'; // owner default
 }
 
 async function resolveSuiteOfficeIdentity(suiteId: string): Promise<{
@@ -346,9 +340,17 @@ async function resolveSuiteOfficeIdentity(suiteId: string): Promise<{
     // best effort
   }
 
+  // If no display IDs found in DB, allocate new unique ones from sequences
+  if (!suiteDisplayId) {
+    suiteDisplayId = await allocateSuiteDisplayId();
+  }
+  if (!officeDisplayId) {
+    officeDisplayId = await allocateOfficeDisplayId(suiteId);
+  }
+
   return {
-    suiteDisplayId: suiteDisplayId || suiteDisplayNumber(suiteId),
-    officeDisplayId: officeDisplayId || officeDisplayNumber(suiteId),
+    suiteDisplayId,
+    officeDisplayId,
     businessName,
   };
 }
