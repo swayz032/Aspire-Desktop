@@ -59,6 +59,13 @@ interface UseAgentVoiceOptions {
   suiteId?: string;
   /** JWT access token for auth (Law #3). Required in production. */
   accessToken?: string;
+  /** User profile for personalized greetings and context. */
+  userProfile?: {
+    ownerName?: string;
+    businessName?: string;
+    industry?: string;
+    teamSize?: string;
+  };
   onTranscript?: (text: string) => void;
   onResponse?: (text: string, receiptId?: string) => void;
   onStatusChange?: (status: VoiceStatus) => void;
@@ -430,6 +437,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
             text,
             voiceId: getVoiceId(agent),
             channel: 'voice',
+            ...(options.userProfile ? { userProfile: options.userProfile } : {}),
           }),
         });
 
