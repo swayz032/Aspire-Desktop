@@ -60,6 +60,7 @@ const PUBLIC_PATHS = [
   '/api/ava/chat-stream',   // Anam CUSTOMER_CLIENT_V1 callback — auth via session store, not JWT
   '/api/auth/validate-invite-code', // Private beta invite gate — rate-limited, no JWT needed
   '/api/auth/signup',               // Private beta signup — rate-limited, invite code validated server-side
+  '/api/config/public',             // Public client config (Google Places key) — no secrets, referrer-restricted
 ];
 
 // /v1/ paths that REQUIRE auth (Law #3: Fail Closed — default deny)
@@ -314,14 +315,6 @@ app.use(express.json());
 app.use(routes);
 
 try {
-  const placesRoutes = require('./placesRoutes').default;
-  app.use(placesRoutes);
-  logger.info('Places proxy routes registered');
-} catch (e) {
-  logger.warn('Places proxy routes not available, skipping');
-}
-
-try {
   const gustoRoutes = require('./gustoRoutes').default;
   app.use(gustoRoutes);
   logger.info('Gusto routes registered');
@@ -424,6 +417,15 @@ try {
 if (registerObjectStorageRoutes) {
   registerObjectStorageRoutes(app);
 }
+
+// Public client config — returns non-secret keys that the browser needs at runtime.
+// Google Places API key is browser-facing by design (restricted by HTTP referrer in GCP).
+// This avoids the EXPO_PUBLIC_* build-time limitation: the key comes from SM at server startup.
+app.get('/api/config/public', (_req, res) => {
+  res.json({
+    googlePlacesApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
+  });
+});
 
 // Enhanced health check (D-C15 + B-H10) — checks DB connectivity
 app.get('/api/health', async (req, res) => {
