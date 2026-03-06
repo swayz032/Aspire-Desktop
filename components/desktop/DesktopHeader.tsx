@@ -696,11 +696,13 @@ const s = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: PANEL_BORDER,
-    overflow: 'hidden',
+    overflow: 'visible',
     ...(Platform.OS === 'web' ? { boxShadow: PANEL_SHADOW } : {}),
   } as any,
   profileDropdown: {
     width: 300,
+    overflow: 'hidden',
+    borderRadius: 16,
   },
 
   panelHeader: {
@@ -925,7 +927,7 @@ const s = StyleSheet.create({
   },
 
   profileScroll: {
-    maxHeight: 360,
+    maxHeight: 480,
   },
   /* Lighter section divider with vertical breathing room */
   menuSectionDivider: {
