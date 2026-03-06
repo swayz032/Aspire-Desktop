@@ -444,10 +444,18 @@ export function AvaDeskPanel() {
       setVideoState('connected');
       setConnectionStatus('');
 
-      // Send initial greeting since CUSTOMER_CLIENT_V1 has no built-in LLM
+      // Send personalized greeting since CUSTOMER_CLIENT_V1 has no built-in LLM
+      // Ava knows who she works for — address by name (Law #9: no raw PII, just business name)
       setTimeout(() => {
         if (anamClientRef.current && typeof (anamClientRef.current as any).talk === 'function') {
-          (anamClientRef.current as any).talk("Hi! I'm Ava, your Aspire assistant. How can I help you today?");
+          const ownerName = tenant?.ownerName;
+          const lastName = ownerName?.trim().split(' ').pop();
+          const hour = new Date().getHours();
+          const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+          const greeting = lastName
+            ? `${timeGreeting}, Mr. ${lastName}. I'm Ava, your chief of staff. What can I help you with?`
+            : `${timeGreeting}! I'm Ava, your chief of staff. How can I help you today?`;
+          (anamClientRef.current as any).talk(greeting);
         }
       }, 1500);
     } catch (error: any) {

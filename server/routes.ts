@@ -3409,7 +3409,9 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     }
 
     // Build profile context for Ava avatar personalization (PII-filtered — Law #9)
-    const profileContext = userProfile ? {
+    // When Anam's brain routing calls this endpoint, userProfile is NOT in the request body.
+    // Fall back to querying suite_profiles server-side so the LLM knows who it's talking to.
+    let profileContext = userProfile ? {
       owner_name: userProfile.ownerName,
       business_name: userProfile.businessName,
       industry: userProfile.industry,
@@ -3419,6 +3421,30 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
       pain_point: userProfile.painPoint,
       preferred_channel: userProfile.preferredChannel,
     } : undefined;
+
+    if (!profileContext && suiteId && supabaseAdmin) {
+      try {
+        const { data: sp } = await supabaseAdmin
+          .from('suite_profiles')
+          .select('owner_name, business_name, industry, team_size, industry_specialty, business_goals, pain_point, preferred_channel')
+          .eq('suite_id', suiteId)
+          .single();
+        if (sp) {
+          profileContext = {
+            owner_name: sp.owner_name,
+            business_name: sp.business_name,
+            industry: sp.industry,
+            team_size: sp.team_size,
+            industry_specialty: sp.industry_specialty,
+            business_goals: sp.business_goals,
+            pain_point: sp.pain_point,
+            preferred_channel: sp.preferred_channel,
+          };
+        }
+      } catch (profileErr) {
+        logger.warn('Anam chat-stream: suite_profiles lookup failed (non-fatal)', { correlationId });
+      }
+    }
 
     // Forward to orchestrator (Law #1: Single Brain decides)
     const controller = new AbortController();

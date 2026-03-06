@@ -477,10 +477,17 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       setVideoError(null);
       setConnectionStatus('');
 
-      // Send initial greeting since CUSTOMER_CLIENT_V1 has no built-in LLM
+      // Send personalized greeting — Finn knows who he works for (Law #9: no raw PII)
       setTimeout(() => {
         if (anamClientRef.current) {
-          finnTalk(anamClientRef.current, "Hi, I'm Finn. How can I help with your finances?");
+          const ownerName = tenant?.ownerName;
+          const lastName = ownerName?.trim().split(' ').pop();
+          const hour = new Date().getHours();
+          const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+          const greeting = lastName
+            ? `${timeGreeting}, Mr. ${lastName}. I'm Finn, your finance manager. How can I help with your finances?`
+            : `${timeGreeting}! I'm Finn, your finance manager. How can I help with your finances?`;
+          finnTalk(anamClientRef.current, greeting);
         }
       }, 1500);
     } catch (e) {
