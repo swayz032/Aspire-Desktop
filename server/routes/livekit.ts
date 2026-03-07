@@ -201,8 +201,11 @@ router.get('/api/conference/members', async (req: Request, res: Response) => {
         const resolvedId = row.email ? userIdMap[row.email] : null;
         return !userId || resolvedId !== userId;
       })
+      // Exclude members without a resolved user_id (can't receive invitations)
+      .filter((row: any) => row.email && userIdMap[row.email])
       .map((row: any) => ({
-        userId: row.email ? userIdMap[row.email] || row.suite_id : row.suite_id,
+        userId: userIdMap[row.email],
+        suiteId: row.suite_id,
         name: row.owner_name || row.name || row.email?.split('@')[0] || 'Unknown',
         email: row.email || '',
         officeId: row.office_display_id || '',

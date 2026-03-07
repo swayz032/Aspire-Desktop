@@ -112,18 +112,21 @@ const LIVEKIT_ASPIRE_CSS = `
   border-radius: 10px !important;
   overflow: hidden !important;
   background: #141414 !important;
-  transition: box-shadow 0.3s ease, transform 0.2s ease !important;
+  /* No transform/box-shadow transitions — causes GPU recompositing that blanks <video> */
 }
 
 .lk-participant-tile video {
-  border-radius: 10px !important;
+  /* No border-radius on <video> — parent overflow:hidden handles clipping.
+     border-radius on video forces separate GPU compositing layer = blanking/glitches */
   object-fit: contain !important;
   background: #0a0a0c !important;
 }
 
-/* Speaking indicator — animated green glow (not harsh border) */
+/* Speaking indicator — static green glow (NOT animated).
+   Infinite box-shadow animation on video containers causes constant GPU
+   recompositing = frame drops and video blanking. Use static glow instead. */
 .lk-participant-tile[data-lk-speaking="true"]:not([data-lk-source="screen_share"]) {
-  animation: aspire-lk-speakingPulse 1.8s ease-in-out infinite !important;
+  box-shadow: 0 0 0 2px rgba(52, 199, 89, 0.7), 0 0 14px rgba(52, 199, 89, 0.25) !important;
 }
 /* Override the base ::after border approach — we use box-shadow glow instead */
 .lk-participant-tile[data-lk-speaking="true"]::after {
@@ -908,12 +911,103 @@ const LIVEKIT_ASPIRE_CSS = `
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ * iOS / MOBILE WEB — Safe area insets, touch optimization, viewport fixes
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* iOS Safari: pad control bar above home indicator / safe area */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .lk-control-bar,
+  .lk-agent-control-bar {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    max-height: calc(var(--lk-control-bar-height) + env(safe-area-inset-bottom)) !important;
+  }
+  /* Chat form also needs safe area when at bottom */
+  .lk-chat-form {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom)) !important;
+  }
+  /* Grid layout needs to account for bottom safe area */
+  .lk-grid-layout-wrapper,
+  .lk-focus-layout-wrapper {
+    height: calc(100% - var(--lk-control-bar-height) - env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* Touch optimization — prevent double-tap zoom, improve tap responsiveness */
+[data-lk-theme="default"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* iOS: prevent text selection on interactive elements during conference */
+.lk-control-bar button,
+.lk-control-bar [role="button"],
+.lk-chat-toggle,
+.lk-disconnect-button {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  touch-action: manipulation !important;
+}
+
+/* Landscape on mobile — ultra compact to maximize video area */
+@media (max-height: 500px) and (orientation: landscape) {
+  .lk-control-bar,
+  .lk-agent-control-bar {
+    padding: 4px 8px !important;
+    max-height: 48px !important;
+    gap: 4px !important;
+  }
+  @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .lk-control-bar,
+    .lk-agent-control-bar {
+      padding-bottom: calc(4px + env(safe-area-inset-bottom)) !important;
+    }
+  }
+  .lk-control-bar .lk-button,
+  .lk-control-bar .lk-chat-toggle,
+  .lk-disconnect-button {
+    min-width: 36px !important;
+    min-height: 36px !important;
+    padding: 4px 6px !important;
+    font-size: 0 !important;
+  }
+  .lk-control-bar .lk-button svg,
+  .lk-control-bar .lk-chat-toggle svg,
+  .lk-disconnect-button svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+  .lk-grid-layout {
+    gap: 2px !important;
+    padding: 2px !important;
+  }
+  .lk-participant-name {
+    font-size: 9px !important;
+  }
+  .lk-participant-metadata {
+    bottom: 2px !important;
+    right: 2px !important;
+    left: 2px !important;
+  }
+  /* PreJoin in landscape — side-by-side layout */
+  .lk-prejoin {
+    flex-direction: row !important;
+    max-width: 100% !important;
+    padding: 8px 16px !important;
+    gap: 12px !important;
+  }
+  .lk-prejoin .lk-video-container {
+    max-height: none !important;
+    max-width: 50% !important;
+    flex-shrink: 0 !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  * REDUCED MOTION — Respect user preferences
  * ═══════════════════════════════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
   .lk-participant-tile[data-lk-speaking="true"]:not([data-lk-source="screen_share"]) {
-    animation: none !important;
-    box-shadow: 0 0 0 2px rgba(52, 199, 89, 0.6), 0 0 12px rgba(52, 199, 89, 0.2) !important;
+    box-shadow: 0 0 0 2px rgba(52, 199, 89, 0.6) !important;
   }
   .lk-prejoin {
     animation: none !important;

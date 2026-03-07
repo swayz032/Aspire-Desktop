@@ -95,7 +95,8 @@ function LiveKitVideoView({ trackRef }: { trackRef: TrackReferenceOrPlaceholder 
       video.style.position = 'absolute';
       video.style.top = '0';
       video.style.left = '0';
-      video.style.borderRadius = 'inherit';
+      // No borderRadius on <video> — parent overflow:hidden handles clipping.
+      // borderRadius on video forces separate GPU compositing layer = blanking/glitches.
       video.style.background = '#0a0a0c';
       container.appendChild(video);
       videoRef.current = video;
@@ -115,7 +116,10 @@ function LiveKitVideoView({ trackRef }: { trackRef: TrackReferenceOrPlaceholder 
         videoRef.current = null;
       }
     };
-  }, [trackRef, trackRef.publication?.track?.mediaStreamTrack]);
+    // Depend on the actual MediaStreamTrack identity, not the trackRef object
+    // (which may be a new object reference each render, causing the video to
+    // constantly destroy and recreate = blanking/glitching).
+  }, [trackRef.publication?.track?.mediaStreamTrack]);
 
   return (
     <View

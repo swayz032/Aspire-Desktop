@@ -87,7 +87,7 @@ function ensureMobileViewport() {
     viewport.setAttribute('name', 'viewport');
     document.head.appendChild(viewport);
   }
-  viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+  viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
 }
 
 function injectGuestKeyframes() {
@@ -127,6 +127,103 @@ function injectGuestKeyframes() {
     @keyframes errorCardShimmer {
       0% { background-position: -200px 0; }
       100% { background-position: 200px 0; }
+    }
+
+    /* ── iOS / Mobile Web Optimization ── */
+
+    /* Fallback for browsers without dvh support (older iOS Safari <15.4) */
+    @supports not (height: 100dvh) {
+      .aspire-guest-conference-root {
+        height: -webkit-fill-available !important;
+      }
+    }
+
+    /* Prevent iOS Safari overscroll / rubber-banding on conference page */
+    html, body {
+      overscroll-behavior: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* iOS Safari: prevent text selection on interactive elements */
+    .aspire-guest-conference-root button,
+    .aspire-guest-conference-root [role="button"] {
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Mobile: ensure LiveKit control bar has safe area padding at bottom */
+    @supports (padding-bottom: env(safe-area-inset-bottom)) {
+      .lk-control-bar {
+        padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+      }
+    }
+
+    /* Mobile: ensure touch targets are at least 44px (Apple HIG) */
+    @media (max-width: 768px) {
+      .lk-control-bar .lk-button {
+        min-width: 44px !important;
+        min-height: 44px !important;
+      }
+      /* Tighter grid gaps on small screens */
+      .lk-grid-layout {
+        gap: 4px !important;
+      }
+      /* Hide chat sidebar on very small screens to maximize video area */
+      .lk-chat {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        z-index: 100 !important;
+        background: rgba(10, 10, 12, 0.98) !important;
+      }
+    }
+
+    /* Extra small screens (phones in portrait) */
+    @media (max-width: 480px) {
+      .lk-control-bar {
+        gap: 4px !important;
+        padding: 8px 4px !important;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+      }
+      .lk-control-bar .lk-button {
+        padding: 8px !important;
+        font-size: 0 !important; /* Hide button labels, show only icons */
+      }
+      .lk-control-bar .lk-button svg {
+        width: 20px !important;
+        height: 20px !important;
+      }
+      /* Guest badge compact on small screens */
+      .guest-badge-overlay {
+        top: calc(4px + env(safe-area-inset-top, 0px)) !important;
+        left: 4px !important;
+        padding: 4px 10px !important;
+        font-size: 10px !important;
+      }
+      .nora-assistant-indicator {
+        top: calc(4px + env(safe-area-inset-top, 0px)) !important;
+        right: 4px !important;
+        padding: 4px 10px !important;
+      }
+    }
+
+    /* Landscape orientation on mobile — maximize video area */
+    @media (max-height: 500px) and (orientation: landscape) {
+      .lk-control-bar {
+        padding: 4px 8px !important;
+        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px)) !important;
+      }
+      .lk-grid-layout {
+        gap: 2px !important;
+      }
+      .guest-badge-overlay,
+      .nora-assistant-indicator {
+        opacity: 0.6 !important;
+        transform: scale(0.85) !important;
+      }
     }
   `;
   document.head.appendChild(style);
@@ -556,12 +653,21 @@ function GuestActiveConference({
   return (
     <div
       data-lk-theme="default"
+      className="aspire-guest-conference-root"
       style={{
-        height: '100vh',
+        height: '100dvh',
         width: '100vw',
         background: Colors.background.primary,
         position: 'relative',
-      }}
+        // iOS Safari safe area insets for notched devices
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
+        // Prevent iOS rubber-band overscroll
+        overflow: 'hidden',
+        touchAction: 'manipulation',
+      } as React.CSSProperties}
     >
       <LiveKitRoom
         serverUrl={serverUrl}
@@ -583,6 +689,7 @@ function GuestActiveConference({
         <VideoConference />
         <RoomAudioRenderer />
         <GuestBadgeOverlay guestName={guestName} />
+        <NoraAssistantIndicator />
       </LiveKitRoom>
     </div>
   );
@@ -655,6 +762,53 @@ function GuestBadgeOverlay({ guestName }: { guestName: string }) {
         <span style={{ color: Colors.text.muted, fontSize: 11 }}>Powered by Aspire</span>
       </div>
     </>
+  );
+}
+
+// ── Nora AI Assistant Indicator ──────────────────────────────────────────────
+// Shows guests that Nora (AI room assistant) is present in the conference.
+// Non-interactive for guests — Nora is controlled by the host on the internal side.
+
+function NoraAssistantIndicator() {
+  return (
+    <div
+      className="nora-assistant-indicator"
+      role="status"
+      aria-label="Nora AI assistant is active in this conference"
+      style={{
+        position: 'absolute',
+        top: Spacing.md,
+        right: Spacing.md,
+        zIndex: 10,
+        background: 'rgba(6, 182, 212, 0.08)',
+        border: '1px solid rgba(6, 182, 212, 0.2)',
+        borderRadius: BorderRadius.full,
+        padding: `${Spacing.sm - 2}px ${Spacing.lg - 2}px`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        pointerEvents: 'none' as const,
+      }}
+    >
+      {/* Animated breathing dot — cyan for Nora */}
+      <span style={{
+        width: 6, height: 6, borderRadius: 3,
+        background: '#06b6d4',
+        display: 'inline-block',
+        boxShadow: '0 0 6px rgba(6, 182, 212, 0.6)',
+        animation: 'guestBreatheDot 2s ease-in-out infinite',
+      }} />
+      <span style={{
+        color: Colors.text.tertiary,
+        fontSize: 11, fontWeight: 600,
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.8px',
+      }}>AI</span>
+      <span style={{ color: Colors.text.disabled, fontSize: 11 }}>|</span>
+      <span style={{ color: 'rgba(6, 182, 212, 0.8)', fontSize: 11, fontWeight: 500 }}>Nora</span>
+    </div>
   );
 }
 

@@ -195,6 +195,7 @@ type Tab = 'team' | 'aspire' | 'external' | 'link';
 
 interface MemberResult {
   userId: string;
+  suiteId: string;
   name: string;
   email: string;
   officeId: string;
@@ -358,7 +359,7 @@ export function InviteTabContent({
     setInvitedIds(prev => new Set(prev).add(member.userId));
     setFlashMemberId(member.userId);
     setTimeout(() => setFlashMemberId(null), 800);
-    onInviteMember(member.userId, member.name, 'internal');
+    onInviteMember(member.userId, member.name, 'internal', member.suiteId);
   };
 
   // ─── Tab 2: Cross-suite lookup ───────────────────────────────────────────
