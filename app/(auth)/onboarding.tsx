@@ -365,6 +365,7 @@ export default function OnboardingScreen() {
     businessName: string;
     suiteDisplayId: string;
     officeDisplayId: string;
+    ownerName: string;
   } | null>(null);
 
   // Premium loading screen state (Wave 4A)
@@ -580,7 +581,6 @@ export default function OnboardingScreen() {
     setLoading(true);
     setShowLoading(true);
     setError(null);
-    const bootstrapStartTime = Date.now();
 
     try {
       const effectiveSuiteId = suiteId || bootstrappedSuiteId;
@@ -631,10 +631,6 @@ export default function OnboardingScreen() {
           return;
         }
 
-        // 25s timeout — prevents hanging on Railway cold starts or network issues
-        const controller = new AbortController();
-        const fetchTimeout = setTimeout(() => controller.abort(), 25000);
-
         const resp = await fetch('/api/onboarding/bootstrap', {
           method: 'POST',
           headers: {
@@ -642,9 +638,7 @@ export default function OnboardingScreen() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(payload),
-          signal: controller.signal,
         });
-        clearTimeout(fetchTimeout);
 
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
@@ -659,35 +653,28 @@ export default function OnboardingScreen() {
         const { suiteId: newSuiteId, suiteDisplayId, officeDisplayId, businessName: bName } = bootstrapResult;
         setBootstrappedSuiteId(newSuiteId);
 
-        // NOTE: We intentionally DO NOT call supabase.auth.refreshSession() here.
-        // Refreshing the session would update the JWT with the new suite_id, which
-        // triggers useAuthGate in _layout.tsx → fetches /api/onboarding/status →
-        // gets {complete: true} → router.replace('/(tabs)') → UNMOUNTS this component
-        // before the celebration modal can render. The session refresh is deferred
-        // to handleEnterAspire(), called when the user clicks "Enter Aspire".
+        // Session refresh with retry polling — prevents redirect loop back to onboarding.
+        // Retries up to 3x (500ms intervals) checking /api/onboarding/status for completion.
+        await supabase.auth.refreshSession();
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          try {
+            const statusResp = await fetch('/api/onboarding/status', {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const statusData = await statusResp.json();
+            if (statusData.complete) break;
+          } catch (_) { /* retry */ }
+        }
 
-        // Store celebration data — loading screen will fade, then celebration shows.
-        // Ensure minimum 12s of loading so n8n intake-activation + Adam daily brief
-        // have time to process, and all 4 status messages cycle at least twice.
-        const elapsed = Date.now() - bootstrapStartTime;
-        const MIN_LOADING_MS = 12000;
-        const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
-
-        const celebData = {
+        // Store celebration data — loading screen will fade, then celebration shows
+        setCelebrationData({
           businessName: bName || form.businessName.trim(),
           suiteDisplayId: suiteDisplayId || '',
           officeDisplayId: officeDisplayId || '',
-        };
-
-        if (remaining > 0) {
-          setTimeout(() => {
-            setCelebrationData(celebData);
-            setLoadingComplete(true);
-          }, remaining);
-        } else {
-          setCelebrationData(celebData);
-          setLoadingComplete(true);
-        }
+          ownerName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
+        });
+        setLoadingComplete(true);
         clearDraft();
         return;
       }
@@ -753,37 +740,6 @@ export default function OnboardingScreen() {
     setLoadingComplete(false);
     setShowCelebration(true);
   }, []);
-
-  // Safety net #1: if onFadeComplete isn't called within 5s after loadingComplete,
-  // auto-transition to celebration. Prevents the eternal spinner dead-end.
-  useEffect(() => {
-    if (loadingComplete && showLoading) {
-      const timer = setTimeout(() => {
-        setShowLoading(false);
-        setLoadingComplete(false);
-        setShowCelebration(true);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [loadingComplete, showLoading]);
-
-  // Safety net #2: absolute maximum loading time (30s). If the bootstrap API call
-  // hangs or never resolves, escape the loading screen and show the form with an error.
-  // This prevents the infinite spinner when Railway cold-starts or the API is down.
-  useEffect(() => {
-    if (showLoading) {
-      const maxTimer = setTimeout(() => {
-        if (!loadingComplete) {
-          console.warn('[Onboarding] Loading timeout — bootstrap may have hung');
-          setError('Setup is taking longer than expected. Please try again.');
-          setShowLoading(false);
-          setLoadingComplete(false);
-          submittingRef.current = false;
-        }
-      }, 30000);
-      return () => clearTimeout(maxTimer);
-    }
-  }, [showLoading, loadingComplete]);
 
   // ---------------------------------------------------------------------------
   // Step transitions
@@ -1365,12 +1321,8 @@ export default function OnboardingScreen() {
   // ---------------------------------------------------------------------------
   // Celebration modal dismiss → navigate to home
   // ---------------------------------------------------------------------------
-  const handleEnterAspire = async () => {
-    // Refresh session NOW — updates the JWT with the new suite_id so the auth
-    // gate in _layout.tsx sees onboarding as complete and won't redirect back.
-    // We kept the celebration modal visible during this (no setShowCelebration(false))
-    // to avoid a flash of the onboarding form.
-    await supabase.auth.refreshSession();
+  const handleEnterAspire = () => {
+    setShowCelebration(false);
     router.replace('/(tabs)');
   };
 
@@ -1379,7 +1331,6 @@ export default function OnboardingScreen() {
   // ---------------------------------------------------------------------------
 
   // Show premium loading screen during bootstrap API call
-  // Pure CSS animations — no 3D libs, no lazy loading, guaranteed to work on all platforms.
   if (showLoading) {
     return (
       <PremiumLoadingScreen
@@ -1396,6 +1347,7 @@ export default function OnboardingScreen() {
         businessName={celebrationData.businessName}
         suiteDisplayId={celebrationData.suiteDisplayId}
         officeDisplayId={celebrationData.officeDisplayId}
+        ownerName={celebrationData.ownerName}
         onEnter={handleEnterAspire}
       />
     );
