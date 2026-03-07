@@ -733,6 +733,21 @@ export default function OnboardingScreen() {
     setShowCelebration(true);
   }, []);
 
+  // Safety net: if onFadeComplete doesn't fire within 3s after loadingComplete,
+  // auto-transition to celebration. Prevents permanent loading screen if the
+  // reanimated fade callback fails (known issue on Expo web with runOnJS).
+  useEffect(() => {
+    if (loadingComplete && showLoading) {
+      const timer = setTimeout(() => {
+        console.warn('[Onboarding] Safety net: auto-transitioning to celebration');
+        setShowLoading(false);
+        setLoadingComplete(false);
+        setShowCelebration(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [loadingComplete, showLoading]);
+
   // ---------------------------------------------------------------------------
   // Step transitions
   // ---------------------------------------------------------------------------

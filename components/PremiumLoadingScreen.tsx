@@ -138,15 +138,17 @@ export function PremiumLoadingScreen({
   useEffect(() => {
     if (isComplete && !fadeTriggeredRef.current) {
       fadeTriggeredRef.current = true;
-      screenOpacity.value = withTiming(
-        0,
-        { duration: FADE_OUT_MS, easing: Easing.out(Easing.ease) },
-        (finished) => {
-          if (finished) {
-            runOnJS(onFadeComplete)();
-          }
-        },
-      );
+      // Start the opacity fade animation
+      screenOpacity.value = withTiming(0, {
+        duration: FADE_OUT_MS,
+        easing: Easing.out(Easing.ease),
+      });
+      // Fire onFadeComplete via setTimeout instead of runOnJS callback.
+      // runOnJS inside reanimated worklet callbacks is unreliable on Expo web
+      // and can silently fail, permanently blocking the celebration transition.
+      setTimeout(() => {
+        onFadeComplete();
+      }, FADE_OUT_MS + 50);
     }
   }, [isComplete, screenOpacity, onFadeComplete]);
 
