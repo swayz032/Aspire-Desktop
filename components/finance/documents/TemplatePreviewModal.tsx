@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
   modalContainer: {
     width: '100%',
     maxWidth: 920,
-    maxHeight: '92vh' as any,
+    maxHeight: '95vh' as any,
     backgroundColor: Colors.background.elevated,
     borderRadius: 16,
     borderWidth: 1,
@@ -500,7 +500,6 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     minHeight: 400,
-    maxHeight: 600,
     backgroundColor: Colors.background.primary,
   },
   loadingContainer: {
@@ -525,6 +524,7 @@ const styles = StyleSheet.create({
   },
   iframeContainer: {
     flex: 1,
+    /** flex: 1 fills remaining body space naturally — avoids viewport overflow on smaller screens */
     position: 'relative',
   },
   iframePlaceholder: {

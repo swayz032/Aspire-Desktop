@@ -57,6 +57,16 @@
 - **Shimmer sweep**: `linear-gradient(90deg, transparent 25%, rgba(59,130,246,0.06) 50%, transparent 75%)` over loading overlay
 - **Draft CTA**: `minHeight: 48`, solid `Colors.accent.cyan` bg, hover uses `Colors.accent.cyanDark`
 - **Colors.text.primary** for white icon/text on CTA (NOT hardcoded `#fff`)
+- **iframe sizing**: Use `flex: 1` only (NO minHeight vh units) -- vh minHeight can overflow on smaller viewports when combined with maxHeight container
+- **Modal maxHeight**: `95vh` with 24px backdrop padding = ~2.5vh breathing room per side (borderline tight on 768px)
+
+## TemplateCard Thumbnail Patterns
+- **resizeMode**: `contain` (shows full template, dark bg visible around edges)
+- **aspectRatio**: `816/940` (PandaDoc template natural dimensions, ~0.87)
+- **maxHeight cap**: 220px prevents cards from becoming thumbnail-dominated in 3-col grid
+- **Divider rule**: 1px `rgba(255,255,255,0.06)` between thumbnail and card body -- smooths light-to-dark transition
+- **Placeholder height**: 120px with matching bottom border for grid alignment consistency
+- **Grid context**: 3-col FlatList, `cardCell: flex 1 / maxWidth 33.33%`, `gridRow gap: 14`
 
 ## Accessibility Patterns
 - All toggles: `accessibilityRole="radiogroup"` on container, `accessibilityRole="radio"` on segments

@@ -127,36 +127,33 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
         Platform.OS === 'web' ? { cursor: isAvailable ? 'pointer' : 'default' } as any : {},
       ]}
     >
-      {/* Template preview image — 180px for visual impact */}
+      {/* Template preview image — capped at 220px to keep grid proportions balanced */}
       {template.preview_image_url ? (
-        <View style={styles.previewImageWrap}>
-          {/* Shimmer loading background — visible while image loads */}
-          {!imageLoaded && (
-            <View
-              style={[styles.shimmerBg, shimmerStyle]}
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
+        <>
+          <View style={styles.previewImageWrap}>
+            {/* Shimmer loading background — visible while image loads */}
+            {!imageLoaded && (
+              <View
+                style={[styles.shimmerBg, shimmerStyle]}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              />
+            )}
+            <Image
+              source={{ uri: template.preview_image_url }}
+              style={[
+                styles.previewImage,
+                { opacity: imageLoaded ? 1 : 0 },
+                Platform.OS === 'web' ? { transition: 'opacity 0.3s ease' } as any : {},
+              ]}
+              resizeMode="contain"
+              onLoad={() => setImageLoaded(true)}
+              accessibilityLabel={`${displayName} template thumbnail`}
             />
-          )}
-          <Image
-            source={{ uri: template.preview_image_url }}
-            style={[
-              styles.previewImage,
-              { opacity: imageLoaded ? 1 : 0 },
-              Platform.OS === 'web' ? { transition: 'opacity 0.3s ease' } as any : {},
-            ]}
-            resizeMode="cover"
-            onLoad={() => setImageLoaded(true)}
-            accessibilityLabel={`${displayName} template thumbnail`}
-          />
-          {/* Bottom gradient fade into card body */}
-          <View style={[
-            styles.previewFade,
-            Platform.OS === 'web' ? {
-              background: `linear-gradient(transparent, ${CARD_BG})`,
-            } as any : {},
-          ]} />
-        </View>
+          </View>
+          {/* Subtle rule to smooth the light thumbnail → dark card body transition */}
+          <View style={styles.previewDivider} />
+        </>
       ) : (
         <View style={[styles.previewPlaceholder, { backgroundColor: risk.bg }]}>
           <Ionicons name="document-text-outline" size={32} color={risk.color} />
@@ -279,13 +276,20 @@ const styles = StyleSheet.create({
   },
   previewImageWrap: {
     marginHorizontal: -18,
-    height: 180,
+    aspectRatio: 816 / 940,
+    maxHeight: 220,
     overflow: 'hidden',
     borderTopLeftRadius: 13,
     borderTopRightRadius: 13,
-    marginBottom: 14,
     backgroundColor: Colors.background.elevated,
     position: 'relative',
+  },
+  /** Thin rule separating thumbnail from card body — smooths the light-to-dark transition */
+  previewDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 14,
+    marginHorizontal: -18,
   },
   shimmerBg: {
     position: 'absolute',
@@ -299,21 +303,16 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  previewFade: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 48,
-  },
   previewPlaceholder: {
     marginHorizontal: -18,
-    height: 100,
+    height: 120,
     borderTopLeftRadius: 13,
     borderTopRightRadius: 13,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   cardHovered: {
     backgroundColor: '#222224',
