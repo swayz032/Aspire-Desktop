@@ -93,15 +93,17 @@ export function PremiumLoadingScreen({
   useEffect(() => {
     if (isComplete && !fadeTriggeredRef.current) {
       fadeTriggeredRef.current = true;
-      screenOpacity.value = withTiming(
-        0,
-        { duration: FADE_OUT_MS, easing: Easing.out(Easing.ease) },
-        (finished) => {
-          if (finished) {
-            runOnJS(onFadeComplete)();
-          }
-        },
-      );
+      // Animate opacity to 0
+      screenOpacity.value = withTiming(0, {
+        duration: FADE_OUT_MS,
+        easing: Easing.out(Easing.ease),
+      });
+      // IMPORTANT: Do NOT use runOnJS(onFadeComplete) inside the withTiming
+      // callback — it silently fails on Expo web, permanently blocking the
+      // celebration modal. Use setTimeout to guarantee the callback fires.
+      setTimeout(() => {
+        onFadeComplete();
+      }, FADE_OUT_MS + 50);
     }
   }, [isComplete, screenOpacity, onFadeComplete]);
 
