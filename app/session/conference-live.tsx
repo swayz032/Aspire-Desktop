@@ -78,40 +78,8 @@ function LiveKitSync({ onSync }: { onSync: (data: LiveKitSyncData) => void }) {
   return null;
 }
 
-function WebcamView({ stream }: { stream: MediaStream }) {
-  const containerRef = useRef<any>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !containerRef.current || !stream) return;
-    const container = containerRef.current;
-    if (!videoRef.current) {
-      const video = document.createElement('video');
-      video.autoplay = true;
-      video.muted = true;
-      video.playsInline = true;
-      video.style.width = '100%';
-      video.style.height = '100%';
-      video.style.objectFit = 'cover';
-      video.style.transform = 'scaleX(-1)';
-      video.style.position = 'absolute';
-      video.style.top = '0';
-      video.style.left = '0';
-      video.style.borderRadius = 'inherit';
-      container.appendChild(video);
-      videoRef.current = video;
-    }
-    videoRef.current.srcObject = stream;
-    return () => {
-      if (videoRef.current && container.contains(videoRef.current)) {
-        container.removeChild(videoRef.current);
-        videoRef.current = null;
-      }
-    };
-  }, [stream]);
-
-  return <View ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' } as any} />;
-}
+// WebcamView removed — LiveKit manages camera capture and rendering via <LiveKitRoom>
+// Dual getUserMedia was causing: poor video quality, audio failures, screen glitching
 
 const avaLogo = require('../../assets/images/ava-logo.png');
 
@@ -308,28 +276,25 @@ function AvaTile({
   );
 }
 
-function VideoTile({ 
-  participant, 
+function VideoTile({
+  participant,
   size = 'normal',
   isActiveSpeaker = false,
   onPin,
   onSpotlight,
   showPinControls = false,
-  webcamStream,
-}: { 
-  participant: Participant; 
+}: {
+  participant: Participant;
   size?: 'normal' | 'small' | 'spotlight';
   isActiveSpeaker?: boolean;
   onPin?: () => void;
   onSpotlight?: () => void;
   showPinControls?: boolean;
-  webcamStream?: MediaStream | null;
 }) {
   const isSpeaking = participant.isSpeaking || isActiveSpeaker;
   const isSpotlight = size === 'spotlight';
   const isSmall = size === 'small';
   const tileSize = isSmall ? 'small' : isSpotlight ? 'spotlight' : 'normal';
-  const showWebcam = participant.id === 'you' && webcamStream && !participant.isVideoOff;
 
   return (
     <View style={[
@@ -345,8 +310,6 @@ function VideoTile({
         videoOff={participant.isVideoOff}
         style={styles.videoFeed}
       />
-      {showWebcam && Platform.OS === 'web' && <WebcamView stream={webcamStream} />}
-
       {isSpeaking && <View style={styles.speakingBorder} />}
 
       <LinearGradient
@@ -476,7 +439,8 @@ export default function ConferenceLive() {
   const chromeOpacity = useRef(new Animated.Value(1)).current;
   const chromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInteractingRef = useRef(false);
-  const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
+  // webcamStream removed — LiveKit handles all camera capture via <LiveKitRoom audio={true} video={true}>
+  // Dual getUserMedia was competing with LiveKit for the camera, causing poor quality and glitching
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();
@@ -567,31 +531,8 @@ export default function ConferenceLive() {
     }
   }, [noraVoice]);
 
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    let active = true;
-    navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false })
-      .then(stream => {
-        if (active) setWebcamStream(stream);
-        else stream.getTracks().forEach(t => t.stop());
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-      setWebcamStream(prev => {
-        prev?.getTracks().forEach(t => t.stop());
-        return null;
-      });
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isVideoOff && webcamStream) {
-      webcamStream.getVideoTracks().forEach(t => { t.enabled = false; });
-    } else if (!isVideoOff && webcamStream) {
-      webcamStream.getVideoTracks().forEach(t => { t.enabled = true; });
-    }
-  }, [isVideoOff, webcamStream]);
+  // getUserMedia removed — LiveKit manages camera/audio capture directly
+  // Video on/off is handled via lkRoom.localParticipant.setCameraEnabled()
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1120,7 +1061,7 @@ export default function ConferenceLive() {
                       name={participant.name}
                       isActiveSpeaker={participant.id === activeSpeakerId}
                       isLocal={participant.isHost}
-                      webcamStream={webcamStream}
+
                     />
                   )}
                 </View>
@@ -1161,8 +1102,7 @@ export default function ConferenceLive() {
             size="spotlight"
             isActiveSpeaker={true}
             isLocal={stageParticipant.isHost}
-            webcamStream={webcamStream}
-          />
+                     />
         ) : (
           <AvaTile
             avaState={avaState}
@@ -1196,8 +1136,7 @@ export default function ConferenceLive() {
                   size="small"
                   isActiveSpeaker={false}
                   isLocal={p.isHost}
-                  webcamStream={webcamStream}
-                />
+                                 />
               )}
             </Pressable>
           ))}
@@ -1220,7 +1159,7 @@ export default function ConferenceLive() {
         <View style={desktopStyles.multiStage}>
           {topSpeakers.map((p) => (
             <View key={p.id} style={[desktopStyles.multiStageTile, { width: `${100 / Math.max(topSpeakers.length, 1) - 1}%` as any }]}>
-              <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="spotlight" isActiveSpeaker={p.id === activeSpeakerId} isLocal={p.isHost} webcamStream={webcamStream} />
+              <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="spotlight" isActiveSpeaker={p.id === activeSpeakerId} isLocal={p.isHost} />
             </View>
           ))}
         </View>
@@ -1231,7 +1170,7 @@ export default function ConferenceLive() {
                 {p.id === 'ava' ? (
                   <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
                 ) : (
-                  <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="small" isLocal={p.isHost} webcamStream={webcamStream} />
+                  <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="small" isLocal={p.isHost} />
                 )}
               </View>
             ))}

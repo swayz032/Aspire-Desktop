@@ -54,8 +54,6 @@ interface LiveKitVideoTileProps {
   isLocal?: boolean;
   /** Size variant matching existing VideoTile interface */
   size?: 'normal' | 'small' | 'spotlight';
-  /** Local webcam stream (for 'you' participant) */
-  webcamStream?: MediaStream | null;
 }
 
 /**
@@ -487,7 +485,6 @@ export function LiveKitVideoTile({
   isActiveSpeaker = false,
   isLocal = false,
   size = 'normal',
-  webcamStream: _webcamStream,
 }: LiveKitVideoTileProps) {
   const participant = trackRef?.participant;
   const displayName = nameProp || participant?.name || participant?.identity || 'Unknown';
