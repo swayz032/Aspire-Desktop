@@ -358,6 +358,8 @@ export default function OnboardingScreen() {
 
   // Double-submission guard (Bug fix: prevents concurrent bootstrap calls)
   const submittingRef = useRef(false);
+  // Tracks when loading screen appeared (for min 12s enforcement)
+  const loadingStartRef = useRef(Date.now());
 
   // Celebration flow state (Wave 4)
   const [showCelebration, setShowCelebration] = useState(false);
@@ -581,6 +583,7 @@ export default function OnboardingScreen() {
     setLoading(true);
     setShowLoading(true);
     setError(null);
+    loadingStartRef.current = Date.now();
 
     try {
       const effectiveSuiteId = suiteId || bootstrappedSuiteId;
@@ -659,14 +662,29 @@ export default function OnboardingScreen() {
         // UNMOUNTS this component before the celebration modal renders.
         // Session refresh is deferred to handleEnterAspire().
 
-        // Store celebration data — loading screen will fade, then celebration shows
-        setCelebrationData({
+        // Store celebration data — loading screen will fade, then celebration shows.
+        // Enforce minimum 12s loading so n8n intake-activation webhook and Adam
+        // daily brief have time to populate the Founder Hub before the user lands.
+        const elapsed = Date.now() - loadingStartRef.current;
+        const MIN_LOADING_MS = 12000;
+        const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
+
+        const celebData = {
           businessName: bName || form.businessName.trim(),
           suiteDisplayId: suiteDisplayId || '',
           officeDisplayId: officeDisplayId || '',
           ownerName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
-        });
-        setLoadingComplete(true);
+        };
+
+        if (remaining > 0) {
+          setTimeout(() => {
+            setCelebrationData(celebData);
+            setLoadingComplete(true);
+          }, remaining);
+        } else {
+          setCelebrationData(celebData);
+          setLoadingComplete(true);
+        }
         clearDraft();
         return;
       }
