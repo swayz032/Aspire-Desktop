@@ -653,19 +653,11 @@ export default function OnboardingScreen() {
         const { suiteId: newSuiteId, suiteDisplayId, officeDisplayId, businessName: bName } = bootstrapResult;
         setBootstrappedSuiteId(newSuiteId);
 
-        // Session refresh with retry polling — prevents redirect loop back to onboarding.
-        // Retries up to 3x (500ms intervals) checking /api/onboarding/status for completion.
-        await supabase.auth.refreshSession();
-        for (let attempt = 0; attempt < 3; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          try {
-            const statusResp = await fetch('/api/onboarding/status', {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            const statusData = await statusResp.json();
-            if (statusData.complete) break;
-          } catch (_) { /* retry */ }
-        }
+        // NOTE: DO NOT call supabase.auth.refreshSession() here.
+        // Refreshing the session updates the JWT with the new suite_id, which
+        // triggers useAuthGate in _layout.tsx → router.replace('/(tabs)') →
+        // UNMOUNTS this component before the celebration modal renders.
+        // Session refresh is deferred to handleEnterAspire().
 
         // Store celebration data — loading screen will fade, then celebration shows
         setCelebrationData({
@@ -1321,8 +1313,10 @@ export default function OnboardingScreen() {
   // ---------------------------------------------------------------------------
   // Celebration modal dismiss → navigate to home
   // ---------------------------------------------------------------------------
-  const handleEnterAspire = () => {
-    setShowCelebration(false);
+  const handleEnterAspire = async () => {
+    // Refresh session NOW so the auth gate sees the new suite_id
+    // and won't redirect back to onboarding after we navigate.
+    await supabase.auth.refreshSession();
     router.replace('/(tabs)');
   };
 
