@@ -163,21 +163,16 @@ router.get('/api/conference/members', async (req: Request, res: Response) => {
     // Commas stripped because PostgREST .or() uses comma as condition separator
     const q = rawQuery.replace(/[%_\\'"();,.]/g, '').slice(0, 50);
 
-    // Query suite_profiles for members of the same suite, exclude self
+    // Query suite_profiles for members of the same suite
+    // Note: suite_profiles has no user_id column — resolve via profiles table join by email
     let query = supabaseAdmin
       .from('suite_profiles')
-      .select('user_id, full_name, email, office_id, avatar_url')
+      .select('suite_id, owner_name, name, email, office_display_id')
       .eq('suite_id', suiteId)
       .limit(10);
 
-    if (userId) {
-      query = query.neq('user_id', userId);
-    }
-
     if (q) {
-      // Search by name or email (case-insensitive) using PostgREST .or() filter
-      // Input is sanitized above to prevent filter injection
-      query = query.or(`full_name.ilike.*${q}*,email.ilike.*${q}*`);
+      query = query.or(`owner_name.ilike.*${q}*,name.ilike.*${q}*,email.ilike.*${q}*`);
     }
 
     const { data, error } = await query;
@@ -187,14 +182,33 @@ router.get('/api/conference/members', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Failed to search members' });
     }
 
-    const members = (data || []).map((row: any) => ({
-      userId: row.user_id,
-      name: row.full_name || row.email?.split('@')[0] || 'Unknown',
-      email: row.email || '',
-      officeId: row.office_id || '',
-      officeLabel: row.office_id ? `Office ${row.office_id.slice(0, 8)}` : '',
-      avatarUrl: row.avatar_url || null,
-    }));
+    // Resolve user_ids from profiles table via email match
+    const emails = (data || []).map((r: any) => r.email).filter(Boolean);
+    let userIdMap: Record<string, string> = {};
+    if (emails.length > 0) {
+      const { data: profiles } = await supabaseAdmin
+        .from('profiles')
+        .select('user_id, email')
+        .in('email', emails);
+      for (const p of profiles || []) {
+        if (p.email) userIdMap[p.email] = p.user_id;
+      }
+    }
+
+    const members = (data || [])
+      .filter((row: any) => {
+        // Exclude self by resolved user_id
+        const resolvedId = row.email ? userIdMap[row.email] : null;
+        return !userId || resolvedId !== userId;
+      })
+      .map((row: any) => ({
+        userId: row.email ? userIdMap[row.email] || row.suite_id : row.suite_id,
+        name: row.owner_name || row.name || row.email?.split('@')[0] || 'Unknown',
+        email: row.email || '',
+        officeId: row.office_display_id || '',
+        officeLabel: row.office_display_id ? `Office ${row.office_display_id}` : '',
+        avatarUrl: null,
+      }));
 
     res.json(members);
   } catch (error: unknown) {
@@ -387,11 +401,11 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
       return res.status(503).json({ error: 'Database not configured' });
     }
 
-    // Query suite_profiles directly — display_id is bare number, office_display_id is like "A01"
-    // Include user_id so cross-suite invites match the realtime filter (invitee_user_id=eq.auth_uid)
+    // Query suite_profiles — display_id is bare number, office_display_id is like "A01"
+    // Note: suite_profiles has no user_id — resolve via profiles table join by email
     const { data: members, error: memberError } = await supabaseAdmin
       .from('suite_profiles')
-      .select('suite_id, user_id, name, owner_name, business_name, email, office_display_id')
+      .select('suite_id, name, owner_name, business_name, email, office_display_id')
       .eq('display_id', suiteDisplayId)
       .eq('office_display_id', officeDisplayId)
       .limit(10);
@@ -405,8 +419,21 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No users found with that Suite ID and Office ID' });
     }
 
-    const results = (members || []).map((row: any) => ({
-      userId: row.user_id || row.suite_id,  // Prefer auth user_id for realtime matching, fallback to suite_id
+    // Resolve user_ids from profiles table via email match (needed for realtime invitations)
+    const lookupEmails = members.map((r: any) => r.email).filter(Boolean);
+    let lookupUserIdMap: Record<string, string> = {};
+    if (lookupEmails.length > 0) {
+      const { data: profiles } = await supabaseAdmin
+        .from('profiles')
+        .select('user_id, email')
+        .in('email', lookupEmails);
+      for (const p of profiles || []) {
+        if (p.email) lookupUserIdMap[p.email] = p.user_id;
+      }
+    }
+
+    const results = members.map((row: any) => ({
+      userId: row.email ? lookupUserIdMap[row.email] || row.suite_id : row.suite_id,
       suiteId: row.suite_id,
       name: row.owner_name || row.name || 'Unknown',
       businessName: row.business_name || '',
