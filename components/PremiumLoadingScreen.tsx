@@ -1,23 +1,19 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Platform, Image } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withRepeat,
-  withSequence,
   withTiming,
   runOnJS,
   Easing,
 } from 'react-native-reanimated';
-import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { Colors, Typography, Spacing } from '@/constants/tokens';
 import { MagicLoader } from '@/components/MagicLoader';
 import { ShinyText } from '@/components/ShinyText';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const ASPIRE_LOGO = require('@/assets/aspire-a-logo.png');
 
 const STATUS_MESSAGES = [
   'Creating your suite...',
@@ -29,8 +25,7 @@ const STATUS_MESSAGES = [
 const STATUS_CYCLE_MS = 1500;
 const FADE_OUT_MS = 400;
 const TEXT_FADE_MS = 280;
-const LOGO_BREATH_MS = 2000;
-const LOADER_SIZE = 280;
+const LOADER_SIZE = 380;
 
 // ---------------------------------------------------------------------------
 // Props
@@ -74,52 +69,12 @@ function StatusText() {
     <Animated.View style={[styles.statusTextContainer, animatedStyle]}>
       <ShinyText
         style={styles.statusText}
-        speed={2.5}
-        baseColor="rgba(110,110,115,0.9)"
-        shineColor="rgba(255,255,255,0.85)"
+        speed={3}
+        baseColor="rgba(200,210,230,0.75)"
+        shineColor="rgba(255,255,255,1)"
       >
         {STATUS_MESSAGES[index]}
       </ShinyText>
-    </Animated.View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Breathing Logo
-// ---------------------------------------------------------------------------
-
-function BreathingLogo() {
-  const scale = useSharedValue(1);
-
-  useEffect(() => {
-    scale.value = withRepeat(
-      withSequence(
-        withTiming(1.03, {
-          duration: LOGO_BREATH_MS / 2,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        withTiming(1.0, {
-          duration: LOGO_BREATH_MS / 2,
-          easing: Easing.inOut(Easing.ease),
-        }),
-      ),
-      -1,
-      false,
-    );
-  }, [scale]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View style={[styles.logoContainer, animatedStyle]}>
-      <Image
-        source={ASPIRE_LOGO}
-        style={styles.logo}
-        resizeMode="contain"
-        accessibilityLabel="Aspire logo"
-      />
     </Animated.View>
   );
 }
@@ -138,17 +93,15 @@ export function PremiumLoadingScreen({
   useEffect(() => {
     if (isComplete && !fadeTriggeredRef.current) {
       fadeTriggeredRef.current = true;
-      // Start the opacity fade animation
-      screenOpacity.value = withTiming(0, {
-        duration: FADE_OUT_MS,
-        easing: Easing.out(Easing.ease),
-      });
-      // Fire onFadeComplete via setTimeout instead of runOnJS callback.
-      // runOnJS inside reanimated worklet callbacks is unreliable on Expo web
-      // and can silently fail, permanently blocking the celebration transition.
-      setTimeout(() => {
-        onFadeComplete();
-      }, FADE_OUT_MS + 50);
+      screenOpacity.value = withTiming(
+        0,
+        { duration: FADE_OUT_MS, easing: Easing.out(Easing.ease) },
+        (finished) => {
+          if (finished) {
+            runOnJS(onFadeComplete)();
+          }
+        },
+      );
     }
   }, [isComplete, screenOpacity, onFadeComplete]);
 
@@ -163,15 +116,9 @@ export function PremiumLoadingScreen({
       accessibilityLabel="Setting up your Aspire workspace"
       accessibilityState={{ busy: !isComplete }}
     >
-      {/* Radial glow backdrop (web-only) */}
-      {Platform.OS === 'web' && <View style={styles.radialGlowWeb} />}
-
-      {/* Breathing logo */}
-      <BreathingLogo />
-
-      {/* MagicLoader particle animation */}
+      {/* MagicLoader — center stage hero */}
       <View style={styles.loaderContainer}>
-        <MagicLoader size={LOADER_SIZE} particleCount={3} speed={1} />
+        <MagicLoader size={LOADER_SIZE} particleCount={10} speed={1.2} />
       </View>
 
       {/* Cycling shiny status text */}
@@ -187,39 +134,12 @@ export function PremiumLoadingScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background.primary,
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  radialGlowWeb: {
-    position: 'absolute',
-    width: LOADER_SIZE * 2.5,
-    height: LOADER_SIZE * 2.5,
-    borderRadius: LOADER_SIZE * 1.25,
-    top: '50%',
-    marginTop: Spacing.lg,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(59, 130, 246, 0.05)',
-    ...(Platform.OS === 'web'
-      ? ({
-          filter: 'blur(100px)',
-          transform: 'translateY(-45%)',
-        } as unknown as Record<string, string>)
-      : {}),
-  },
-
-  logoContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logo: {
-    width: 56,
-    height: 56,
   },
 
   loaderContainer: {
-    marginTop: Spacing.xxxl + Spacing.sm,
     width: LOADER_SIZE,
     height: LOADER_SIZE,
     alignItems: 'center',
@@ -227,15 +147,17 @@ const styles = StyleSheet.create({
   },
 
   statusTextContainer: {
-    marginTop: Spacing.xxxl,
+    marginTop: Spacing.xl,
     alignItems: 'center',
-    minHeight: Spacing.xxl,
+    minHeight: 32,
   },
   statusText: {
-    ...Typography.caption,
+    ...Typography.body,
+    fontSize: 16,
+    fontWeight: '300',
     color: Colors.text.muted,
-    letterSpacing: 0.3,
-  },
+    letterSpacing: 3,
+  } as any,
 });
 
 export default PremiumLoadingScreen;
