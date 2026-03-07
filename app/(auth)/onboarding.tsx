@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,38 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSupabase } from '@/providers';
 import { supabase } from '@/lib/supabase';
 import { CelebrationModal } from '@/components/CelebrationModal';
-
-// Lazy-load PremiumLoadingScreen — it imports @react-three/fiber + three.js (heavy 3D libs).
-// Static import would execute these modules at bundle init for ALL users, even those
-// who never see onboarding. If the 3D libs crash at module init, the entire app white-screens.
-const PremiumLoadingScreen = React.lazy(() =>
-  import('@/components/PremiumLoadingScreen').then(m => ({ default: m.PremiumLoadingScreen }))
-);
-
-// Simple fallback while PremiumLoadingScreen loads (or if it crashes)
-function LoadingFallback() {
-  return (
-    <View style={{ flex: 1, backgroundColor: '#0a0a0a', alignItems: 'center', justifyContent: 'center' }}>
-      <ActivityIndicator size="large" color="#3B82F6" />
-      <Text style={{ color: '#6e6e73', marginTop: 16, fontSize: 14 }}>Setting up your workspace...</Text>
-    </View>
-  );
-}
-
-// Error boundary to catch three.js / R3F crashes without white-screening the app
-class LoadingErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallback: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-  static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(error: Error) {
-    console.warn('[PremiumLoadingScreen] 3D render failed, using fallback:', error.message);
-  }
-  render() {
-    return this.state.hasError ? this.props.fallback : this.props.children;
-  }
-}
+import { PremiumLoadingScreen } from '@/components/PremiumLoadingScreen';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -662,6 +631,10 @@ export default function OnboardingScreen() {
           return;
         }
 
+        // 25s timeout — prevents hanging on Railway cold starts or network issues
+        const controller = new AbortController();
+        const fetchTimeout = setTimeout(() => controller.abort(), 25000);
+
         const resp = await fetch('/api/onboarding/bootstrap', {
           method: 'POST',
           headers: {
@@ -669,7 +642,9 @@ export default function OnboardingScreen() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
+        clearTimeout(fetchTimeout);
 
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
@@ -684,19 +659,12 @@ export default function OnboardingScreen() {
         const { suiteId: newSuiteId, suiteDisplayId, officeDisplayId, businessName: bName } = bootstrapResult;
         setBootstrappedSuiteId(newSuiteId);
 
-        // Session refresh with retry polling — prevents redirect loop back to onboarding.
-        // Retries up to 3x (500ms intervals) checking /api/onboarding/status for completion.
-        await supabase.auth.refreshSession();
-        for (let attempt = 0; attempt < 3; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          try {
-            const statusResp = await fetch('/api/onboarding/status', {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            const statusData = await statusResp.json();
-            if (statusData.complete) break;
-          } catch (_) { /* retry */ }
-        }
+        // NOTE: We intentionally DO NOT call supabase.auth.refreshSession() here.
+        // Refreshing the session would update the JWT with the new suite_id, which
+        // triggers useAuthGate in _layout.tsx → fetches /api/onboarding/status →
+        // gets {complete: true} → router.replace('/(tabs)') → UNMOUNTS this component
+        // before the celebration modal can render. The session refresh is deferred
+        // to handleEnterAspire(), called when the user clicks "Enter Aspire".
 
         // Store celebration data — loading screen will fade, then celebration shows.
         // Ensure minimum 12s of loading so n8n intake-activation + Adam daily brief
@@ -786,9 +754,8 @@ export default function OnboardingScreen() {
     setShowCelebration(true);
   }, []);
 
-  // Safety net: if PremiumLoadingScreen crashes (LoadingFallback renders) or doesn't call
-  // onFadeComplete within 5s after loadingComplete, auto-transition to celebration.
-  // Prevents the eternal spinner dead-end.
+  // Safety net #1: if onFadeComplete isn't called within 5s after loadingComplete,
+  // auto-transition to celebration. Prevents the eternal spinner dead-end.
   useEffect(() => {
     if (loadingComplete && showLoading) {
       const timer = setTimeout(() => {
@@ -799,6 +766,24 @@ export default function OnboardingScreen() {
       return () => clearTimeout(timer);
     }
   }, [loadingComplete, showLoading]);
+
+  // Safety net #2: absolute maximum loading time (30s). If the bootstrap API call
+  // hangs or never resolves, escape the loading screen and show the form with an error.
+  // This prevents the infinite spinner when Railway cold-starts or the API is down.
+  useEffect(() => {
+    if (showLoading) {
+      const maxTimer = setTimeout(() => {
+        if (!loadingComplete) {
+          console.warn('[Onboarding] Loading timeout — bootstrap may have hung');
+          setError('Setup is taking longer than expected. Please try again.');
+          setShowLoading(false);
+          setLoadingComplete(false);
+          submittingRef.current = false;
+        }
+      }, 30000);
+      return () => clearTimeout(maxTimer);
+    }
+  }, [showLoading, loadingComplete]);
 
   // ---------------------------------------------------------------------------
   // Step transitions
@@ -1380,8 +1365,12 @@ export default function OnboardingScreen() {
   // ---------------------------------------------------------------------------
   // Celebration modal dismiss → navigate to home
   // ---------------------------------------------------------------------------
-  const handleEnterAspire = () => {
-    setShowCelebration(false);
+  const handleEnterAspire = async () => {
+    // Refresh session NOW — updates the JWT with the new suite_id so the auth
+    // gate in _layout.tsx sees onboarding as complete and won't redirect back.
+    // We kept the celebration modal visible during this (no setShowCelebration(false))
+    // to avoid a flash of the onboarding form.
+    await supabase.auth.refreshSession();
     router.replace('/(tabs)');
   };
 
@@ -1390,18 +1379,13 @@ export default function OnboardingScreen() {
   // ---------------------------------------------------------------------------
 
   // Show premium loading screen during bootstrap API call
-  // Wrapped in ErrorBoundary + Suspense — if the 3D libs crash, we show a simple fallback
-  // instead of white-screening the entire app.
+  // Pure CSS animations — no 3D libs, no lazy loading, guaranteed to work on all platforms.
   if (showLoading) {
     return (
-      <LoadingErrorBoundary fallback={<LoadingFallback />}>
-        <Suspense fallback={<LoadingFallback />}>
-          <PremiumLoadingScreen
-            isComplete={loadingComplete}
-            onFadeComplete={handleLoadingFadeComplete}
-          />
-        </Suspense>
-      </LoadingErrorBoundary>
+      <PremiumLoadingScreen
+        isComplete={loadingComplete}
+        onFadeComplete={handleLoadingFadeComplete}
+      />
     );
   }
 
