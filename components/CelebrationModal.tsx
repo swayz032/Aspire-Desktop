@@ -42,14 +42,6 @@ function injectCelebrationStyles() {
       from { opacity: 0; transform: translateY(24px) scale(0.97); }
       to   { opacity: 1; transform: translateY(0px) scale(1); }
     }
-    @keyframes cardFlip {
-      from { transform: rotateY(0deg); }
-      to   { transform: rotateY(180deg); }
-    }
-    @keyframes cardFlipBack {
-      from { transform: rotateY(180deg); }
-      to   { transform: rotateY(0deg); }
-    }
   `;
   document.head.appendChild(style);
 }
@@ -92,6 +84,56 @@ function EMVChip() {
 }
 
 // ---------------------------------------------------------------------------
+// Engraved Aspire A (SVG, metal relief, no glow)
+// ---------------------------------------------------------------------------
+
+function EngravingMedallion() {
+  const ovalStyle: React.CSSProperties = {
+    width: 88,
+    height: 88,
+    borderRadius: '50%',
+    background: 'linear-gradient(155deg, #0e0e1a 0%, #171724 55%, #111120 100%)',
+    boxShadow: [
+      'inset 0 4px 10px rgba(0,0,0,0.75)',
+      'inset 0 1px 4px rgba(0,0,0,0.55)',
+      'inset 0 -1px 0 rgba(255,255,255,0.04)',
+      '0 1px 0 rgba(255,255,255,0.06)',
+    ].join(', '),
+    border: '1px solid rgba(255,255,255,0.06)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  return (
+    <div style={ovalStyle}>
+      {/* Engraved Aspire A — solid metal color, inset appearance */}
+      <svg
+        width="46"
+        height="46"
+        viewBox="0 0 100 100"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: 'block' } as React.CSSProperties}
+      >
+        <defs>
+          <filter id="engrave" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="0.8" floodColor="rgba(255,255,255,0.14)" />
+            <feDropShadow dx="0" dy="-1.5" stdDeviation="1.2" floodColor="rgba(0,0,0,0.9)" />
+          </filter>
+        </defs>
+        {/* Aspire A shape — two outer legs + inner notch */}
+        <path
+          d="M50 8 L88 88 L70 88 L50 46 L30 88 L12 88 Z"
+          fill="rgba(255,255,255,0.52)"
+          filter="url(#engrave)"
+        />
+      </svg>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Web 3D Titanium Card
 // ---------------------------------------------------------------------------
 
@@ -100,13 +142,11 @@ function TitaniumCard3D({
   ownerName,
   suiteDisplayId,
   officeDisplayId,
-  onEnter,
 }: {
   businessName: string;
   ownerName: string;
   suiteDisplayId: string;
   officeDisplayId: string;
-  onEnter: () => void;
 }) {
   useEffect(() => { injectCelebrationStyles(); }, []);
 
@@ -209,7 +249,6 @@ function TitaniumCard3D({
     transform: 'rotateY(180deg)',
   };
 
-  // Specular highlight overlay
   const specularStyle: React.CSSProperties = {
     position: 'absolute',
     inset: 0,
@@ -249,13 +288,10 @@ function TitaniumCard3D({
 
         {/* ── FRONT FACE ── */}
         <div style={faceBase}>
-          {/* Specular */}
           <div style={specularStyle} />
-
-          {/* EMV Chip */}
           <EMVChip />
 
-          {/* Center: company + logo */}
+          {/* Center: company name + engraved medallion */}
           <div style={{
             position: 'absolute',
             inset: 0,
@@ -263,7 +299,7 @@ function TitaniumCard3D({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 14,
+            gap: 16,
           }}>
             <div style={{
               fontSize: 17,
@@ -278,29 +314,7 @@ function TitaniumCard3D({
               {businessName}
             </div>
 
-            {/* Aspire "A" medallion */}
-            <div style={{
-              width: 80,
-              height: 80,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle at 40% 35%, rgba(59,130,246,0.18) 0%, rgba(10,10,20,0.6) 70%)',
-              border: '1px solid rgba(59,130,246,0.25)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 30px rgba(59,130,246,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
-            }}>
-              <img
-                src="/aspire-icon-glow.png"
-                alt="Aspire"
-                style={{
-                  width: 50,
-                  height: 50,
-                  objectFit: 'contain',
-                  filter: 'drop-shadow(0 0 14px rgba(59,130,246,0.95))',
-                }}
-              />
-            </div>
+            <EngravingMedallion />
           </div>
 
           {/* Bottom-left: owner name */}
@@ -341,14 +355,13 @@ function TitaniumCard3D({
               color: 'rgba(255,255,255,0.22)',
               letterSpacing: 1,
             }}>
-              tap to activate ↻
+              tap to reveal ↻
             </span>
           </div>
         </div>
 
         {/* ── BACK FACE ── */}
         <div style={backFaceStyle}>
-          {/* Specular */}
           <div style={specularStyle} />
 
           {/* Magnetic strip */}
@@ -369,9 +382,8 @@ function TitaniumCard3D({
             flexDirection: 'column',
             justifyContent: 'center',
             padding: '0 36px',
-            paddingTop: 30,
+            paddingTop: 40,
           }}>
-            {/* Suite ID */}
             {suiteDisplayId ? (
               <div style={{ marginBottom: 22 }}>
                 <div style={labelStyle}>Suite</div>
@@ -381,9 +393,8 @@ function TitaniumCard3D({
               </div>
             ) : null}
 
-            {/* Office ID */}
             {officeDisplayId ? (
-              <div style={{ marginBottom: 32 }}>
+              <div style={{ marginBottom: 16 }}>
                 <div style={labelStyle}>Office</div>
                 <div style={valueStyle}>
                   {officeDisplayId.match(/.{1,4}/g)?.join('  ·  ') ?? officeDisplayId}
@@ -391,59 +402,15 @@ function TitaniumCard3D({
               </div>
             ) : null}
 
-            {/* Enter Aspire button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={(e) => { e.stopPropagation(); onEnter(); }}
-                style={{
-                  background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: 50,
-                  padding: '13px 30px',
-                  color: '#ffffff',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  letterSpacing: 1.5,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  boxShadow: '0 8px 24px rgba(59,130,246,0.45), 0 0 0 1px rgba(255,255,255,0.08)',
-                  transition: 'all 0.2s ease',
-                  textTransform: 'uppercase',
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 12px 32px rgba(59,130,246,0.65), 0 0 0 1px rgba(255,255,255,0.15)';
-                  (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 24px rgba(59,130,246,0.45), 0 0 0 1px rgba(255,255,255,0.08)';
-                  (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
-                }}
-              >
-                ENTER ASPIRE
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                </svg>
-              </button>
+            <div style={{
+              fontSize: 9,
+              color: 'rgba(255,255,255,0.2)',
+              letterSpacing: 1.5,
+              marginTop: 8,
+            }}>
+              tap to return ↻
             </div>
           </div>
-
-          {/* Back Aspire icon top-right */}
-          <img
-            src="/aspire-icon-glow.png"
-            alt=""
-            style={{
-              position: 'absolute',
-              top: 20,
-              right: 24,
-              width: 28,
-              height: 28,
-              objectFit: 'contain',
-              opacity: 0.5,
-              filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.6))',
-            }}
-          />
         </div>
 
       </div>
@@ -502,24 +469,38 @@ function CelebrationWeb({
         zIndex: 1,
       }} />
 
-      {/* Card */}
+      {/* Top-left Aspire logo — no border, transparent, matches onboarding size */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        zIndex: 3,
+        pointerEvents: 'none',
+      } as React.CSSProperties}>
+        <img
+          src="/aspire-logo-full.png"
+          alt="Aspire"
+          style={{ height: 140, objectFit: 'contain', display: 'block' } as React.CSSProperties}
+        />
+      </div>
+
+      {/* Main content */}
       <div style={{ position: 'relative', zIndex: 2 }}>
         <TitaniumCard3D
           businessName={businessName}
-          ownerName={ownerName}
+          ownerName={ownerName ?? ''}
           suiteDisplayId={suiteDisplayId}
           officeDisplayId={officeDisplayId}
-          onEnter={onEnter}
         />
 
-        {/* Congratulations text below card */}
+        {/* Below-card text + Enter Aspire button */}
         <div style={{
           textAlign: 'center',
           marginTop: 28,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 6,
+          gap: 10,
         }}>
           <ShinyText
             style={{ fontSize: 22, fontWeight: '300' } as any}
@@ -537,6 +518,42 @@ function CelebrationWeb({
           }}>
             Your AI-powered suite is ready
           </span>
+
+          {/* Enter Aspire button */}
+          <button
+            onClick={onEnter}
+            style={{
+              marginTop: 10,
+              background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 50,
+              padding: '13px 36px',
+              color: '#ffffff',
+              fontSize: 13,
+              fontWeight: 500,
+              letterSpacing: 1.5,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: '0 8px 24px rgba(59,130,246,0.45), 0 0 0 1px rgba(255,255,255,0.08)',
+              transition: 'all 0.2s ease',
+              textTransform: 'uppercase',
+            } as React.CSSProperties}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 12px 32px rgba(59,130,246,0.65), 0 0 0 1px rgba(255,255,255,0.15)';
+              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 24px rgba(59,130,246,0.45), 0 0 0 1px rgba(255,255,255,0.08)';
+              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+            }}
+          >
+            ENTER ASPIRE
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -630,24 +647,27 @@ export function CelebrationModal(props: CelebrationModalProps) {
 // Native Styles
 // ---------------------------------------------------------------------------
 
-const CARD_PADDING = Spacing.xxxl + Spacing.sm;
-
 const nativeStyles = StyleSheet.create({
   overlay: {
-    flex: 1,
-    backgroundColor: Colors.background.overlay,
-    justifyContent: 'center',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.85)',
     alignItems: 'center',
-    padding: Spacing.xl,
+    justifyContent: 'center',
+    zIndex: 9999,
   },
   card: {
-    maxWidth: 520,
-    width: '100%',
-    backgroundColor: Colors.surface.premium,
-    borderWidth: 1,
-    borderColor: Colors.border.premium,
+    width: '88%',
+    maxWidth: 420,
+    backgroundColor: Colors.surface.secondary,
     borderRadius: BorderRadius.xl,
-    padding: CARD_PADDING,
+    padding: Spacing.xl,
+    ...Shadows.elevated,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
     overflow: 'hidden',
   },
   accentLine: {
@@ -655,66 +675,84 @@ const nativeStyles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 1,
-    backgroundColor: Colors.accent.cyan,
-    opacity: 0.4,
+    height: 3,
+    backgroundColor: Colors.accent.blue,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
   },
-  logoContainer: { alignItems: 'center', marginBottom: Spacing.xl },
-  logo: { width: 48, height: 48 },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    marginTop: Spacing.xs,
+  },
+  logo: {
+    width: 44,
+    height: 44,
+  },
   congratsText: {
-    ...Typography.display,
+    ...Typography.h2,
     color: Colors.text.primary,
     textAlign: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   businessName: {
-    ...Typography.title,
-    color: Colors.accent.cyan,
+    ...Typography.body,
+    color: Colors.text.secondary,
     textAlign: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   divider: {
     height: 1,
     backgroundColor: Colors.border.subtle,
-    marginVertical: Spacing.xl,
+    marginBottom: Spacing.md,
   },
   badgeRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: Spacing.md,
-    marginBottom: Spacing.xl,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+    flexWrap: 'wrap',
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.accent.cyanLight,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
+    gap: Spacing.xs,
+    backgroundColor: Colors.surface.tertiary,
     borderRadius: BorderRadius.full,
-    minHeight: 44,
-    ...Shadows.glow(Colors.accent.cyan),
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
   },
-  badgeText: { ...Typography.captionMedium, color: Colors.accent.cyan },
-  welcomeText: {
-    ...Typography.body,
+  badgeText: {
+    ...Typography.caption,
     color: Colors.text.secondary,
-    textAlign: 'center',
-    marginBottom: Spacing.xxxl,
   },
-  buttonContainer: { flexDirection: 'row', alignItems: 'center' },
+  welcomeText: {
+    ...Typography.caption,
+    color: Colors.text.muted,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: Spacing.lg,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   enterButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.accent.cyan,
-    paddingHorizontal: Spacing.xxl,
-    paddingVertical: Spacing.lg,
-    minHeight: 44,
-    borderRadius: BorderRadius.lg,
-    ...Shadows.glow(Colors.accent.cyan),
+    gap: Spacing.xs,
+    backgroundColor: Colors.accent.blue,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    ...Shadows.md,
   },
-  enterButtonText: { ...Typography.bodyMedium, color: Colors.text.primary },
+  enterButtonText: {
+    ...Typography.bodyMedium,
+    color: Colors.text.primary,
+  },
 });
 
 export default CelebrationModal;
