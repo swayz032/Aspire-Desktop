@@ -8,9 +8,9 @@
  * Flow: loading → prejoin (name + device preview) → connecting → active → disconnected
  * Error states: expired (410) | invalid (404) | error
  *
- * Uses LiveKit's official prefab components:
+ * Uses LiveKit components:
  * - PreJoin: name entry + camera/mic preview (before connecting)
- * - VideoConference: full conference UI (grid, controls, chat, screen share)
+ * - Custom GuestVideoConference: grid layout with ParticipantTile + NoraTile + ControlBar
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -27,12 +27,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import {
   LiveKitRoom,
-  VideoConference,
   RoomAudioRenderer,
   PreJoin,
+  ParticipantTile,
+  ControlBar,
+  useTracks,
+  LayoutContextProvider,
+  useCreateLayoutContext,
 } from '@livekit/components-react';
 import type { LocalUserChoices } from '@livekit/components-core';
-import { DisconnectReason, MediaDeviceFailure } from 'livekit-client';
+import { DisconnectReason, MediaDeviceFailure, Track } from 'livekit-client';
+import { Image } from 'expo-image';
 import { injectLiveKitStyles } from '@/lib/livekit-styles';
 import { buildRoomOptionsWithDevices } from '@/lib/livekit-config';
 
@@ -58,6 +63,9 @@ type PageState =
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
+
+// Aspire "A" logo for Nora AI tile (matches internal conference AvaTile)
+const avaLogoSrc = require('../../assets/images/ava-logo.png');
 
 // ── Guest-specific color refinements ─────────────────────────────────────────
 
@@ -127,6 +135,16 @@ function injectGuestKeyframes() {
     @keyframes errorCardShimmer {
       0% { background-position: -200px 0; }
       100% { background-position: 200px 0; }
+    }
+    @keyframes noraPulse {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 8px 2px rgba(79, 172, 254, 0.6), 0 0 15px 3px rgba(0, 242, 254, 0.4), 0 0 25px 5px rgba(79, 172, 254, 0.3);
+      }
+      50% {
+        transform: scale(1.04);
+        box-shadow: 0 0 12px 4px rgba(0, 255, 255, 0.8), 0 0 25px 8px rgba(79, 172, 254, 0.6), 0 0 40px 12px rgba(0, 242, 254, 0.4);
+      }
     }
 
     /* ── iOS / Mobile Web Optimization ── */
@@ -203,11 +221,6 @@ function injectGuestKeyframes() {
         padding: 4px 10px !important;
         font-size: 10px !important;
       }
-      .nora-assistant-indicator {
-        top: calc(4px + env(safe-area-inset-top, 0px)) !important;
-        right: 4px !important;
-        padding: 4px 10px !important;
-      }
     }
 
     /* Landscape orientation on mobile — maximize video area */
@@ -219,8 +232,7 @@ function injectGuestKeyframes() {
       .lk-grid-layout {
         gap: 2px !important;
       }
-      .guest-badge-overlay,
-      .nora-assistant-indicator {
+      .guest-badge-overlay {
         opacity: 0.6 !important;
         transform: scale(0.85) !important;
       }
@@ -686,10 +698,9 @@ function GuestActiveConference({
           videoDeviceId: userChoices?.videoDeviceId,
         })}
       >
-        <VideoConference />
+        <GuestVideoConference />
         <RoomAudioRenderer />
         <GuestBadgeOverlay guestName={guestName} />
-        <NoraAssistantIndicator />
       </LiveKitRoom>
     </div>
   );
@@ -765,50 +776,120 @@ function GuestBadgeOverlay({ guestName }: { guestName: string }) {
   );
 }
 
-// ── Nora AI Assistant Indicator ──────────────────────────────────────────────
-// Shows guests that Nora (AI room assistant) is present in the conference.
-// Non-interactive for guests — Nora is controlled by the host on the internal side.
+// ── Nora AI Participant Tile ─────────────────────────────────────────────────
+// Full participant tile for Nora (AI room assistant) in the guest conference grid.
+// Matches the AvaTile from internal conference (conference-live.tsx):
+// 180x180 inner glow box, cyan border, Aspire "A" logo, pulse animation,
+// "Nora - Room Assistant" label with green status dot.
 
-function NoraAssistantIndicator() {
+function NoraTile() {
   return (
     <div
-      className="nora-assistant-indicator"
       role="status"
-      aria-label="Nora AI assistant is active in this conference"
+      aria-label="Nora - AI Room Assistant"
       style={{
-        position: 'absolute',
-        top: Spacing.md,
-        right: Spacing.md,
-        zIndex: 10,
-        background: 'rgba(6, 182, 212, 0.08)',
-        border: '1px solid rgba(6, 182, 212, 0.2)',
-        borderRadius: BorderRadius.full,
-        padding: `${Spacing.sm - 2}px ${Spacing.lg - 2}px`,
+        position: 'relative' as const,
+        overflow: 'hidden',
+        borderRadius: '8px',
+        border: '2px solid #3B82F6',
+        background: '#000000',
         display: 'flex',
+        flexDirection: 'column' as const,
         alignItems: 'center',
-        gap: Spacing.sm,
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        pointerEvents: 'none' as const,
+        justifyContent: 'center',
+        gap: '16px',
       }}
     >
-      {/* Animated breathing dot — cyan for Nora */}
-      <span style={{
-        width: 6, height: 6, borderRadius: 3,
-        background: '#06b6d4',
-        display: 'inline-block',
-        boxShadow: '0 0 6px rgba(6, 182, 212, 0.6)',
-        animation: 'guestBreatheDot 2s ease-in-out infinite',
-      }} />
-      <span style={{
-        color: Colors.text.tertiary,
-        fontSize: 11, fontWeight: 600,
-        textTransform: 'uppercase' as const,
-        letterSpacing: '0.8px',
-      }}>AI</span>
-      <span style={{ color: Colors.text.disabled, fontSize: 11 }}>|</span>
-      <span style={{ color: 'rgba(6, 182, 212, 0.8)', fontSize: 11, fontWeight: 500 }}>Nora</span>
+      {/* Inner glow box with animated pulse — matches avaInnerGlowBox */}
+      <div style={{
+        width: '180px',
+        height: '180px',
+        borderRadius: '12px',
+        background: '#000000',
+        border: '2px solid #3B82F6',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        animation: 'noraPulse 2.4s ease-in-out infinite',
+      }}>
+        <Image
+          source={avaLogoSrc}
+          style={{ width: 140, height: 140 }}
+          contentFit="contain"
+        />
+      </div>
+
+      {/* Label row — matches avaLabelContainer */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+      }}>
+        <span style={{
+          fontSize: '14px',
+          fontWeight: 500,
+          color: 'rgba(255, 255, 255, 0.9)',
+          letterSpacing: '0.3px',
+        }}>Nora - Room Assistant</span>
+        <span style={{
+          width: '8px',
+          height: '8px',
+          borderRadius: '4px',
+          background: '#4ade80',
+          display: 'inline-block',
+          boxShadow: '0 0 6px rgba(74, 222, 128, 0.5)',
+        }} />
+      </div>
     </div>
+  );
+}
+
+// ── Custom Video Conference with Nora Tile ──────────────────────────────────
+// Replaces <VideoConference /> prefab to inject Nora as a participant tile
+// in the grid, matching the internal conference experience.
+
+function GuestVideoConference() {
+  const tracks = useTracks([
+    { source: Track.Source.Camera, withPlaceholder: true },
+    { source: Track.Source.ScreenShare, withPlaceholder: false },
+  ]);
+  const layoutContext = useCreateLayoutContext();
+  const tileCount = tracks.length + 1; // +1 for Nora tile
+
+  // Grid columns: 1 col for solo, 2 cols for 2-4 tiles, 3 cols for 5-9, 4 for more
+  const cols = tileCount <= 1 ? 1 : tileCount <= 4 ? 2 : tileCount <= 9 ? 3 : 4;
+
+  return (
+    <LayoutContextProvider value={layoutContext}>
+      <div className="lk-video-conference" style={{
+        position: 'relative' as const,
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        overflow: 'hidden',
+      }}>
+        {/* Video grid: participants + Nora */}
+        <div
+          className="lk-grid-layout"
+          style={{
+            flex: 1,
+            display: 'grid',
+            gridTemplateColumns: `repeat(${cols}, 1fr)`,
+            gridAutoRows: '1fr',
+            gap: '0.25rem',
+            padding: '0.25rem',
+          }}
+        >
+          {tracks.map((trackRef, i) => (
+            <ParticipantTile key={i} trackRef={trackRef} />
+          ))}
+          <NoraTile />
+        </div>
+
+        {/* Control bar — camera, mic, disconnect, chat */}
+        <ControlBar controls={{ chat: true, screenShare: false }} />
+      </div>
+    </LayoutContextProvider>
   );
 }
 
