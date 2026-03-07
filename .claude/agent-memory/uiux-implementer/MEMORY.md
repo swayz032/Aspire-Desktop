@@ -74,3 +74,25 @@
 - Grid/decorative elements: `accessibilityElementsHidden` + `importantForAccessibility="no-hide-descendants"`
 - Keyboard: Arrow keys cycle modes, web-only `onKeyDown` handler
 - Reduced motion: singleton `matchMedia` listener, animations snap to target
+- Loading states: `accessibilityRole="progressbar"` + descriptive `accessibilityLabel`
+- Error states: `accessibilityRole="alert"` + combined title+subtitle label
+- Headers in state views: `accessibilityRole="header"` on title text
+
+## LiveKit Conference Styling (2026-03-07)
+- **Files**: `lib/livekit-styles.ts` (CSS injection), `app/join/[code].tsx` (guest join page)
+- **Injection**: Two `<style>` tags — base structural CSS + Aspire theme overrides
+- **Pattern**: `LIVEKIT_BASE_CSS` (minified from @livekit/components-styles) + `LIVEKIT_ASPIRE_CSS` (!important overrides)
+- **CSS variables**: Override `[data-lk-theme="default"]` custom properties for Aspire dark palette
+- **Guest page**: 8 states: loading/prejoin/connecting/active/disconnected/expired/invalid/error
+- **GuestColors**: Derived from `Colors` tokens, NOT hardcoded hex
+- **Active conference**: `data-lk-theme="default"` wrapper div with 100vh/100vw
+- **LiveKit classes**: `.lk-prejoin`, `.lk-video-conference`, `.lk-control-bar`, `.lk-chat`, `.lk-participant-tile`, `.lk-disconnect-button`, `.lk-device-menu`, etc.
+- **Glassmorphism**: Control bar uses `backdrop-filter: blur(12px)` + `rgba(20,20,20,0.85)` bg
+- **Speaking indicator**: Animated green glow via `@keyframes` (NOT the base ::after border)
+- **Focus rings**: `box-shadow: 0 0 0 2px rgba(59,130,246,0.5)` via `:focus-visible`
+- **Chat bubbles**: Local = blue tint `rgba(59,130,246,0.12)`, Remote = dark `#1C1C1E`
+- **Scrollbars**: 4-6px width, `#2C2C2E` thumb, transparent track, Firefox `scrollbar-width: thin`
+- **Responsive**: 3 breakpoints: 768px (tablet), 600px (LiveKit internal), 480px (phone)
+- **Phone**: Button text hidden (font-size:0), icon-only, chat goes fullscreen overlay
+- **Reduced motion**: All animations disabled, speaking indicator static glow
+- **GuestBadgeOverlay**: Inline `<div>` + `<span>` (web-only, not RN View) with glassmorphism pill

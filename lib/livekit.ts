@@ -10,10 +10,10 @@
 import {
   Room,
   RoomEvent,
-  VideoPresets,
   RoomOptions,
   ConnectionState,
 } from 'livekit-client';
+import { ENTERPRISE_ROOM_OPTIONS } from '@/lib/livekit-config';
 
 // ---------------------------------------------------------------------------
 // Env helpers
@@ -23,18 +23,6 @@ const LIVEKIT_URL =
   process.env.EXPO_PUBLIC_LIVEKIT_URL || 'wss://aspire-3rdm9zjn.livekit.cloud';
 
 // ---------------------------------------------------------------------------
-// Default room options
-// ---------------------------------------------------------------------------
-
-const DEFAULT_ROOM_OPTIONS: RoomOptions = {
-  adaptiveStream: true,
-  dynacast: true,
-  videoCaptureDefaults: {
-    resolution: VideoPresets.h1080.resolution,
-  },
-};
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -42,7 +30,7 @@ const DEFAULT_ROOM_OPTIONS: RoomOptions = {
  * Create a new Room instance with Aspire defaults.
  */
 export function createRoom(options?: Partial<RoomOptions>): Room {
-  return new Room({ ...DEFAULT_ROOM_OPTIONS, ...options });
+  return new Room({ ...ENTERPRISE_ROOM_OPTIONS, ...options });
 }
 
 /**

@@ -5,20 +5,21 @@
  * to join a LiveKit conference room. The join code is resolved via
  * GET /api/conference/join/:code (a PUBLIC endpoint).
  *
- * Flow: loading → prejoin (name + device preview) → active (full conference)
+ * Flow: loading → prejoin (name + device preview) → connecting → active → disconnected
  * Error states: expired (410) | invalid (404) | error
  *
  * Uses LiveKit's official prefab components:
  * - PreJoin: name entry + camera/mic preview (before connecting)
  * - VideoConference: full conference UI (grid, controls, chat, screen share)
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Animated,
   Platform,
+  Pressable,
   ViewStyle,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -30,8 +31,10 @@ import {
   RoomAudioRenderer,
   PreJoin,
 } from '@livekit/components-react';
-import { VideoPreset } from 'livekit-client';
+import type { LocalUserChoices } from '@livekit/components-core';
+import { DisconnectReason, MediaDeviceFailure } from 'livekit-client';
 import { injectLiveKitStyles } from '@/lib/livekit-styles';
+import { buildRoomOptionsWithDevices } from '@/lib/livekit-config';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,16 +45,15 @@ interface JoinResponse {
   serverUrl: string;
 }
 
-/** PreJoin onSubmit returns these user choices */
-interface PreJoinChoices {
-  username: string;
-  audioEnabled: boolean;
-  videoEnabled: boolean;
-  audioDeviceId: string;
-  videoDeviceId: string;
-}
-
-type PageState = 'loading' | 'prejoin' | 'active' | 'expired' | 'invalid' | 'error';
+type PageState =
+  | 'loading'
+  | 'prejoin'
+  | 'connecting'
+  | 'active'
+  | 'disconnected'
+  | 'expired'
+  | 'invalid'
+  | 'error';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -59,13 +61,16 @@ const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
 
 // ── Guest-specific color refinements ─────────────────────────────────────────
 
+/** Guest page colors — derived from Aspire design tokens for consistency */
 const GuestColors = {
-  canvas: '#060608',
-  guestBadgeBg: 'rgba(59, 130, 246, 0.08)',
+  /** Deep background matching Aspire's #0a0a0c background.primary */
+  canvas: Colors.background.primary,
+  guestBadgeBg: Colors.accent.cyanLight,
   guestBadgeBorder: 'rgba(59, 130, 246, 0.18)',
   ringPulse: 'rgba(59, 130, 246, 0.25)',
-  errorCard: '#111114',
-  errorCardBorder: '#1e1e22',
+  /** Error card surface — slightly elevated above canvas */
+  errorCard: Colors.background.elevated,
+  errorCardBorder: Colors.border.subtle,
 } as const;
 
 // ── Web Setup ────────────────────────────────────────────────────────────────
@@ -144,7 +149,11 @@ function LoadingView() {
   }, []);
 
   return (
-    <Animated.View style={[styles.centerContainer, { opacity: fadeIn }]}>
+    <Animated.View
+      style={[styles.centerContainer, { opacity: fadeIn }]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Joining conference, please wait"
+    >
       <View
         style={[
           styles.ringOutermost,
@@ -156,6 +165,7 @@ function LoadingView() {
           } as unknown as ViewStyle : undefined,
         ]}
         accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
       />
       <Animated.View
         style={[
@@ -169,6 +179,7 @@ function LoadingView() {
           } as unknown as ViewStyle : undefined,
         ]}
         accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
       />
       <View
         style={[
@@ -181,6 +192,7 @@ function LoadingView() {
           } as unknown as ViewStyle : undefined,
         ]}
         accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
       />
       <View
         style={[
@@ -193,6 +205,7 @@ function LoadingView() {
           } as unknown as ViewStyle : undefined,
         ]}
         accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
       />
       <View
         style={[
@@ -204,6 +217,7 @@ function LoadingView() {
             animationTimingFunction: 'ease-in-out',
           } as unknown as ViewStyle : undefined,
         ]}
+        accessibilityElementsHidden
       >
         <View style={styles.logoInner}>
           <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
@@ -220,8 +234,8 @@ function LoadingView() {
           } as unknown as ViewStyle : undefined,
         ]}
       >
-        <Text style={styles.loadingTitle}>Joining Conference</Text>
-        <View style={styles.loadingDotRow}>
+        <Text style={styles.loadingTitle} accessibilityRole="header">Joining Conference</Text>
+        <View style={styles.loadingDotRow} accessibilityElementsHidden>
           {[0, 1, 2].map(i => (
             <View
               key={i}
@@ -245,7 +259,15 @@ function LoadingView() {
 
 // ── Error / Expired / Invalid State ──────────────────────────────────────────
 
-function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error'; message: string }) {
+function ErrorView({
+  state,
+  message,
+  onRetry,
+}: {
+  state: 'expired' | 'invalid' | 'error';
+  message: string;
+  onRetry?: () => void;
+}) {
   const fadeIn = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -259,6 +281,7 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
       subtitle: 'This conference link is no longer valid. Join links expire after 60 minutes.',
       iconColor: Colors.semantic.warning,
       borderColor: 'rgba(212, 160, 23, 0.2)',
+      showRetry: false,
     },
     invalid: {
       icon: 'close-circle-outline' as const,
@@ -266,6 +289,7 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
       subtitle: 'This conference link could not be found. It may have already been used or the code is incorrect.',
       iconColor: Colors.semantic.error,
       borderColor: 'rgba(255, 59, 48, 0.15)',
+      showRetry: false,
     },
     error: {
       icon: 'warning-outline' as const,
@@ -273,11 +297,16 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
       subtitle: message || 'Something went wrong while joining the conference. Please try again.',
       iconColor: Colors.semantic.error,
       borderColor: 'rgba(255, 59, 48, 0.15)',
+      showRetry: true,
     },
   }[state];
 
   return (
-    <Animated.View style={[styles.centerContainer, { opacity: fadeIn }]}>
+    <Animated.View
+      style={[styles.centerContainer, { opacity: fadeIn }]}
+      accessibilityRole="alert"
+      accessibilityLabel={`${config.title}. ${config.subtitle}`}
+    >
       <View
         style={[
           styles.errorCard,
@@ -296,6 +325,7 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
             { background: `linear-gradient(90deg, ${config.iconColor}40, transparent)` } as unknown as ViewStyle,
           ]}
           accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
         />
         <View
           style={[
@@ -305,11 +335,26 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
               boxShadow: `0 0 24px ${config.iconColor}20, inset 0 0 12px ${config.iconColor}08`,
             } as unknown as ViewStyle : undefined,
           ]}
+          accessibilityElementsHidden
         >
           <Ionicons name={config.icon} size={36} color={config.iconColor} />
         </View>
-        <Text style={styles.errorTitle}>{config.title}</Text>
+        <Text style={styles.errorTitle} accessibilityRole="header">{config.title}</Text>
         <Text style={styles.errorSubtitle}>{config.subtitle}</Text>
+        {config.showRetry && onRetry && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.retryButton,
+              pressed && styles.retryButtonPressed,
+            ]}
+            onPress={onRetry}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+          >
+            <Ionicons name="refresh-outline" size={16} color={Colors.text.primary} />
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </Pressable>
+        )}
         <View style={styles.errorBranding}>
           <View style={styles.brandingDot} />
           <Text style={styles.brandingText}>Aspire Conference</Text>
@@ -321,7 +366,13 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
 
 // ── PreJoin Lobby ─────────────────────────────────────────────────────────────
 
-function GuestPreJoin({ onJoin }: { onJoin: (choices: PreJoinChoices) => void }) {
+function GuestPreJoin({
+  onJoin,
+  onDeviceError,
+}: {
+  onJoin: (choices: LocalUserChoices) => void;
+  onDeviceError: (error: Error) => void;
+}) {
   return (
     <View style={styles.prejoinContainer}>
       {/* Aspire branding header */}
@@ -329,7 +380,7 @@ function GuestPreJoin({ onJoin }: { onJoin: (choices: PreJoinChoices) => void })
         <View style={styles.prejoinIconRow}>
           <Ionicons name="videocam" size={24} color={Colors.accent.cyan} />
         </View>
-        <Text style={styles.prejoinTitle}>Aspire Conference</Text>
+        <Text style={styles.prejoinTitle} accessibilityRole="header">Aspire Conference</Text>
         <Text style={styles.prejoinSubtitle}>
           Enter your name and check your devices before joining
         </Text>
@@ -351,6 +402,7 @@ function GuestPreJoin({ onJoin }: { onJoin: (choices: PreJoinChoices) => void })
         <PreJoin
           defaults={{ username: '', audioEnabled: true, videoEnabled: true }}
           onSubmit={onJoin}
+          onError={onDeviceError}
           joinLabel="Join Conference"
           userLabel="Your Name"
           onValidate={(values) => values.username.trim().length >= 2}
@@ -366,24 +418,148 @@ function GuestPreJoin({ onJoin }: { onJoin: (choices: PreJoinChoices) => void })
   );
 }
 
+// ── Connecting State ──────────────────────────────────────────────────────────
+
+function ConnectingView() {
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(0.6)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeIn, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+      ]),
+    ).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={[styles.centerContainer, { opacity: fadeIn }]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Connecting to conference, setting up audio and video"
+    >
+      <View style={styles.logoContainer} accessibilityElementsHidden>
+        <View style={styles.logoInner}>
+          <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
+        </View>
+      </View>
+      <Text style={styles.loadingTitle} accessibilityRole="header">Connecting</Text>
+      <Animated.View style={{ opacity: pulseAnim }}>
+        <Text style={styles.loadingSubtitle}>Setting up your audio and video...</Text>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+// ── Disconnected State ───────────────────────────────────────────────────────
+
+function DisconnectedView({
+  reason,
+  onRejoin,
+}: {
+  reason: string;
+  onRejoin: (() => void) | null;
+}) {
+  const fadeIn = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeIn, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={[styles.centerContainer, { opacity: fadeIn }]}
+      accessibilityRole="alert"
+      accessibilityLabel={`Call ended. ${reason}`}
+    >
+      <View
+        style={[
+          styles.errorCard,
+          { borderColor: Colors.accent.cyanMedium },
+          Platform.OS === 'web' ? {
+            animationName: 'guestFadeInUp',
+            animationDuration: '0.5s',
+            animationFillMode: 'both',
+            boxShadow: '0 24px 64px -16px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(59, 130, 246, 0.15)',
+          } as unknown as ViewStyle : undefined,
+        ]}
+      >
+        <View
+          style={[
+            styles.errorAccentStripe,
+            { background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.4), transparent)' } as unknown as ViewStyle,
+          ]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
+        <View
+          style={[
+            styles.errorIconRing,
+            { borderColor: Colors.accent.cyanMedium },
+          ]}
+          accessibilityElementsHidden
+        >
+          <Ionicons name="call-outline" size={36} color={Colors.accent.cyan} />
+        </View>
+        <Text style={styles.errorTitle} accessibilityRole="header">Call Ended</Text>
+        <Text style={styles.errorSubtitle}>{reason}</Text>
+        {onRejoin && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.rejoinButton,
+              pressed && styles.rejoinButtonPressed,
+            ]}
+            onPress={onRejoin}
+            accessibilityRole="button"
+            accessibilityLabel="Rejoin conference"
+          >
+            <Ionicons name="arrow-forward-circle-outline" size={18} color={Colors.text.primary} />
+            <Text style={styles.rejoinButtonText}>Rejoin</Text>
+          </Pressable>
+        )}
+        <View style={styles.errorBranding}>
+          <View style={styles.brandingDot} />
+          <Text style={styles.brandingText}>Aspire Conference</Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
 // ── Active Conference (Full LiveKit Prefab) ──────────────────────────────────
 
 function GuestActiveConference({
   token,
   serverUrl,
   guestName,
+  userChoices,
+  onDisconnected,
+  onError,
+  onMediaDeviceFailure,
+  onConnected,
 }: {
   token: string;
   serverUrl: string;
   guestName: string;
+  userChoices: LocalUserChoices | null;
+  onDisconnected: (reason?: DisconnectReason) => void;
+  onError: (error: Error) => void;
+  onMediaDeviceFailure: (failure?: MediaDeviceFailure) => void;
+  onConnected: () => void;
 }) {
+  // Honor guest's PreJoin device selections. If no choices (edge case), default to on.
+  const audioEnabled = userChoices?.audioEnabled ?? true;
+  const videoEnabled = userChoices?.videoEnabled ?? true;
+
   return (
     <div
       data-lk-theme="default"
       style={{
         height: '100vh',
         width: '100vw',
-        background: '#0a0a0c',
+        background: Colors.background.primary,
         position: 'relative',
       }}
     >
@@ -391,35 +567,18 @@ function GuestActiveConference({
         serverUrl={serverUrl}
         token={token}
         connect={true}
-        audio={true}
-        video={true}
+        audio={audioEnabled}
+        video={videoEnabled}
+        onConnected={onConnected}
+        onDisconnected={onDisconnected}
+        onError={onError}
+        onMediaDeviceFailure={onMediaDeviceFailure}
         style={{ height: '100%', width: '100%' }}
-        options={{
-          adaptiveStream: true,
-          dynacast: true,
-          videoCaptureDefaults: {
-            resolution: { width: 1920, height: 1080, frameRate: 30 },
-            facingMode: 'user',
-          },
-          audioCaptureDefaults: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-          publishDefaults: {
-            videoEncoding: { maxBitrate: 3_000_000, maxFramerate: 30 },
-            simulcast: true,
-            videoSimulcastLayers: [
-              new VideoPreset(1280, 720, 1_500_000, 30),
-              new VideoPreset(640, 360, 400_000, 24),
-            ],
-            screenShareEncoding: { maxBitrate: 5_000_000, maxFramerate: 15 },
-            screenShareSimulcastLayers: [],
-            dtx: true,
-            red: true,
-            audioPreset: { maxBitrate: 48_000 },
-          },
-        }}
+        options={buildRoomOptionsWithDevices({
+          // Honor guest's selected devices from PreJoin lobby
+          audioDeviceId: userChoices?.audioDeviceId,
+          videoDeviceId: userChoices?.videoDeviceId,
+        })}
       >
         <VideoConference />
         <RoomAudioRenderer />
@@ -437,41 +596,63 @@ function GuestBadgeOverlay({ guestName }: { guestName: string }) {
       {/* Guest badge — floating frosted pill, top-left */}
       <div
         className="guest-badge-overlay"
+        role="status"
+        aria-label={`Joined as guest: ${guestName}`}
         style={{
           position: 'absolute',
-          top: 12,
-          left: 12,
+          top: Spacing.md,
+          left: Spacing.md,
           zIndex: 10,
-          background: 'rgba(59,130,246,0.08)',
-          border: '1px solid rgba(59,130,246,0.18)',
-          borderRadius: 20,
-          padding: '6px 14px',
+          background: GuestColors.guestBadgeBg,
+          border: `1px solid ${GuestColors.guestBadgeBorder}`,
+          borderRadius: BorderRadius.full,
+          padding: `${Spacing.sm - 2}px ${Spacing.lg - 2}px`,
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
+          gap: Spacing.sm,
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
+          transition: 'opacity 0.3s ease',
         }}
       >
-        <span style={{ width: 6, height: 6, borderRadius: 3, background: '#3B82F6', display: 'inline-block' }} />
-        <span style={{ color: '#9CA3AF', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Guest</span>
-        <span style={{ color: '#4B5563', fontSize: 11 }}>|</span>
-        <span style={{ color: '#D1D5DB', fontSize: 11 }}>{guestName}</span>
+        <span style={{
+          width: 6, height: 6, borderRadius: 3,
+          background: Colors.accent.blue,
+          display: 'inline-block',
+          boxShadow: `0 0 6px ${Colors.accent.blueMedium}`,
+        }} />
+        <span style={{
+          color: Colors.text.tertiary,
+          fontSize: 11, fontWeight: 600,
+          textTransform: 'uppercase' as const,
+          letterSpacing: '0.8px',
+        }}>Guest</span>
+        <span style={{ color: Colors.text.disabled, fontSize: 11 }}>|</span>
+        <span style={{ color: Colors.text.secondary, fontSize: 11 }}>{guestName}</span>
       </div>
 
-      {/* Powered by Aspire — bottom-left */}
-      <div style={{
-        position: 'absolute',
-        bottom: 80,
-        left: 16,
-        zIndex: 10,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        opacity: 0.5,
-      }}>
-        <span style={{ width: 4, height: 4, borderRadius: 2, background: '#3B82F6', display: 'inline-block' }} />
-        <span style={{ color: '#6B7280', fontSize: 11 }}>Powered by Aspire</span>
+      {/* Powered by Aspire — bottom-left, above control bar */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          bottom: 80,
+          left: Spacing.lg,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: Spacing.sm - 2,
+          opacity: 0.5,
+          transition: 'opacity 0.3s ease',
+        }}
+      >
+        <span style={{
+          width: Spacing.xs, height: Spacing.xs,
+          borderRadius: 2,
+          background: Colors.accent.blue,
+          display: 'inline-block',
+        }} />
+        <span style={{ color: Colors.text.muted, fontSize: 11 }}>Powered by Aspire</span>
       </div>
     </>
   );
@@ -484,6 +665,8 @@ export default function GuestJoinPage() {
   const [pageState, setPageState] = useState<PageState>('loading');
   const [joinData, setJoinData] = useState<JoinResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [disconnectReason, setDisconnectReason] = useState('');
+  const [userChoices, setUserChoices] = useState<LocalUserChoices | null>(null);
 
   // Inject styles + mobile viewport on mount
   useEffect(() => {
@@ -550,40 +733,136 @@ export default function GuestJoinPage() {
   }, [code]);
 
   // Step 2: PreJoin submit → fetch token with guest's chosen name → connect
-  const handlePreJoinSubmit = async (choices: PreJoinChoices) => {
+  const handlePreJoinSubmit = useCallback(async (choices: LocalUserChoices) => {
+    setUserChoices(choices);
+    setPageState('connecting');
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       const res = await fetch(
-        `${API_BASE}/api/conference/join/${encodeURIComponent(code!)}?name=${encodeURIComponent(choices.username)}`
+        `${API_BASE}/api/conference/join/${encodeURIComponent(code!)}?name=${encodeURIComponent(choices.username)}`,
+        { signal: controller.signal },
       );
+      clearTimeout(timeoutId);
+
+      if (res.status === 410) {
+        setPageState('expired');
+        return;
+      }
+      if (res.status === 404) {
+        setPageState('invalid');
+        return;
+      }
       if (!res.ok) throw new Error('Failed to get conference token');
+
       const data: JoinResponse = await res.json();
       setJoinData(data);
+      // Move to 'active' — LiveKitRoom mounts and handles its own connection UI.
       setPageState('active');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to join conference';
-      setErrorMessage(msg);
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.name === 'AbortError') {
+        setErrorMessage('Connection timed out. Please check your network and try again.');
+      } else {
+        const msg = err instanceof Error ? err.message : 'Failed to join conference';
+        setErrorMessage(msg);
+      }
       setPageState('error');
     }
-  };
+  }, [code]);
+
+  // Handle PreJoin device errors (camera/mic permission denied)
+  const handleDeviceError = useCallback((error: Error) => {
+    // Don't crash — PreJoin will still render with camera-off placeholder.
+    // Only transition to error if the error message indicates a hard failure.
+    console.warn('[GuestJoin] Device error:', error.message);
+  }, []);
+
+  // LiveKit room event handlers
+  const handleConnected = useCallback(() => {
+    setPageState('active');
+  }, []);
+
+  const handleDisconnected = useCallback((reason?: DisconnectReason) => {
+    let message = 'You have left the conference.';
+    if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
+      message = 'You were removed from the conference by the host.';
+    } else if (reason === DisconnectReason.ROOM_DELETED) {
+      message = 'The conference has ended.';
+    } else if (reason === DisconnectReason.STATE_MISMATCH) {
+      message = 'Connection lost due to a state mismatch. You may rejoin.';
+    } else if (reason === DisconnectReason.JOIN_FAILURE) {
+      message = 'Failed to join the conference. The room may be full or unavailable.';
+    }
+    setDisconnectReason(message);
+    setPageState('disconnected');
+  }, []);
+
+  const handleRoomError = useCallback((error: Error) => {
+    setErrorMessage(error.message || 'A connection error occurred.');
+    setPageState('error');
+  }, []);
+
+  const handleMediaDeviceFailure = useCallback((failure?: MediaDeviceFailure) => {
+    // MediaDeviceFailure is non-fatal — user can still participate with
+    // reduced capabilities (e.g. audio-only if camera fails).
+    // Only log a warning; do not kick them out of the conference.
+    const msg = failure ? `Device failure: ${failure}` : 'Unknown device failure';
+    console.warn('[GuestJoin] Media device failure:', msg);
+  }, []);
+
+  // Retry handler — reload the page to re-validate join code and start fresh
+  const handleRetry = useCallback(() => {
+    if (Platform.OS === 'web') {
+      window.location.reload();
+    }
+  }, []);
+
+  // Rejoin handler — go back to PreJoin so guest can recheck devices
+  const handleRejoin = useCallback(() => {
+    if (joinData) {
+      setDisconnectReason('');
+      setPageState('prejoin');
+    }
+  }, [joinData]);
 
   return (
     <View style={styles.page}>
       {pageState === 'loading' && <LoadingView />}
 
       {pageState === 'prejoin' && (
-        <GuestPreJoin onJoin={handlePreJoinSubmit} />
+        <GuestPreJoin
+          onJoin={handlePreJoinSubmit}
+          onDeviceError={handleDeviceError}
+        />
       )}
+
+      {pageState === 'connecting' && <ConnectingView />}
 
       {pageState === 'active' && joinData && (
         <GuestActiveConference
           token={joinData.token}
           serverUrl={joinData.serverUrl}
           guestName={joinData.guestName}
+          userChoices={userChoices}
+          onConnected={handleConnected}
+          onDisconnected={handleDisconnected}
+          onError={handleRoomError}
+          onMediaDeviceFailure={handleMediaDeviceFailure}
+        />
+      )}
+
+      {pageState === 'disconnected' && (
+        <DisconnectedView
+          reason={disconnectReason}
+          onRejoin={joinData ? handleRejoin : null}
         />
       )}
 
       {(pageState === 'expired' || pageState === 'invalid' || pageState === 'error') && (
-        <ErrorView state={pageState} message={errorMessage} />
+        <ErrorView state={pageState} message={errorMessage} onRetry={handleRetry} />
       )}
     </View>
   );
@@ -652,7 +931,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(59, 130, 246, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 48,
+    marginBottom: Spacing.xxxl + Spacing.lg, /* 48px — visual separation between orb and text */
   },
   logoInner: {
     width: 56,
@@ -674,7 +953,7 @@ const styles = StyleSheet.create({
   },
   loadingDotRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: Spacing.sm - 2, /* 6px — tight spacing between loading indicator dots */
     marginBottom: Spacing.md,
   },
   loadingDot: {
@@ -792,9 +1071,56 @@ const styles = StyleSheet.create({
   prejoinFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.sm - 2, /* 6px — compact branding footer spacing */
     marginTop: Spacing.xxl,
     opacity: 0.4,
+  },
+
+  // ── Retry button (error state) ──
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.xl,
+    minHeight: 44, /* a11y minimum tap target */
+  },
+  retryButtonPressed: {
+    opacity: 0.7,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  retryButtonText: {
+    ...Typography.small,
+    color: Colors.text.primary,
+    fontWeight: '500' as const,
+  },
+
+  // ── Rejoin button (disconnected state) ──
+  rejoinButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.accent.cyan,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.xl,
+    minHeight: 44, /* a11y minimum tap target */
+  },
+  rejoinButtonPressed: {
+    opacity: 0.8,
+  },
+  rejoinButtonText: {
+    ...Typography.body,
+    color: Colors.text.primary,
+    fontWeight: '600' as const,
   },
 
   // ── Shared branding elements ──
