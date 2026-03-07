@@ -24,8 +24,8 @@ import { createTrustSpineReceipt } from '../receiptService';
 const router = Router();
 
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
-const LIVEKIT_SERVER_URL = process.env.LIVEKIT_WS_URL || process.env.LIVEKIT_SERVER_URL || '';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || process.env.LIVEKIT_SECRET || '';
+const LIVEKIT_SERVER_URL = process.env.LIVEKIT_WS_URL || process.env.LIVEKIT_SERVER_URL || process.env.LIVEKIT_URL || 'wss://aspire-3rdm9zjn.livekit.cloud';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://www.aspireos.app';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -347,57 +347,28 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
       lookupRateLimit.set(userId, { count: 1, resetAt: now + LOOKUP_RATE_WINDOW_MS });
     }
 
-    let suiteDisplayId = (req.query.suiteId as string || '').trim().toUpperCase();
-    let officeDisplayId = (req.query.officeId as string || '').trim().toUpperCase();
+    const rawSuiteId = (req.query.suiteId as string || '').trim();
+    const rawOfficeId = (req.query.officeId as string || '').trim();
 
-    if (!suiteDisplayId || !officeDisplayId) {
+    if (!rawSuiteId || !rawOfficeId) {
       return res.status(400).json({ error: 'suiteId and officeId display IDs are required' });
     }
 
-    // Normalize: accept "122" or "STE-122" (migration 063 format)
-    if (!suiteDisplayId.startsWith('STE-')) {
-      suiteDisplayId = `STE-${suiteDisplayId.padStart(3, '0')}`;
-    }
-    // Normalize: accept "001" or "OFF-001"
-    if (!officeDisplayId.startsWith('OFF-')) {
-      officeDisplayId = `OFF-${officeDisplayId.padStart(3, '0')}`;
-    }
+    // Normalize: strip prefixes if provided (accept "122", "STE-122", "STE122")
+    // DB stores bare numbers ("128") and alphanumeric office IDs ("A01")
+    const suiteDisplayId = rawSuiteId.replace(/^STE-?/i, '');
+    const officeDisplayId = rawOfficeId.replace(/^OFF-?/i, '').toUpperCase();
 
     if (!supabaseAdmin) {
       return res.status(503).json({ error: 'Database not configured' });
     }
 
-    // Resolve suite display_id to actual suite
-    const { data: suiteData, error: suiteError } = await supabaseAdmin
-      .from('suites')
-      .select('id, business_name')
-      .eq('display_id', suiteDisplayId)
-      .limit(1)
-      .maybeSingle();
-
-    if (suiteError || !suiteData) {
-      return res.status(404).json({ error: 'Suite not found' });
-    }
-
-    // Resolve office display_id within that suite
-    const { data: officeData, error: officeError } = await supabaseAdmin
-      .from('offices')
-      .select('id')
-      .eq('suite_id', suiteData.id)
-      .eq('display_id', officeDisplayId)
-      .limit(1)
-      .maybeSingle();
-
-    if (officeError || !officeData) {
-      return res.status(404).json({ error: 'Office not found in this suite' });
-    }
-
-    // Get members of that office — limited info only (display names)
+    // Query suite_profiles directly — display_id is bare number, office_display_id is like "A01"
     const { data: members, error: memberError } = await supabaseAdmin
       .from('suite_profiles')
-      .select('user_id, full_name')
-      .eq('suite_id', suiteData.id)
-      .eq('office_id', officeData.id)
+      .select('suite_id, name, owner_name, business_name, email, office_display_id')
+      .eq('display_id', suiteDisplayId)
+      .eq('office_display_id', officeDisplayId)
       .limit(10);
 
     if (memberError) {
@@ -405,10 +376,14 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Lookup failed' });
     }
 
+    if (!members || members.length === 0) {
+      return res.status(404).json({ error: 'No users found with that Suite ID and Office ID' });
+    }
+
     const results = (members || []).map((row: any) => ({
-      userId: row.user_id,
-      name: row.full_name || 'Unknown',
-      businessName: suiteData.business_name || '',
+      userId: row.suite_id,  // suite_id as unique identifier for cross-suite invites
+      name: row.owner_name || row.name || 'Unknown',
+      businessName: row.business_name || '',
     }));
 
     // Law #2: Audit trail for cross-suite lookups (privacy-sensitive operation)
