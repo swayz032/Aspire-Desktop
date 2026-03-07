@@ -60,6 +60,15 @@ const GuestColors = {
 
 // ── Web Keyframes ────────────────────────────────────────────────────────────
 
+function ensureMobileViewport() {
+  if (Platform.OS !== 'web') return;
+  if (document.querySelector('meta[name="viewport"]')) return;
+  const meta = document.createElement('meta');
+  meta.name = 'viewport';
+  meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+  document.head.appendChild(meta);
+}
+
 function injectGuestKeyframes() {
   if (Platform.OS !== 'web') return;
   if (document.getElementById('aspire-guest-join-keyframes')) return;
@@ -118,6 +127,14 @@ function injectGuestKeyframes() {
     }
     .guest-leave-btn:active {
       transform: scale(0.95);
+    }
+
+    /* Mobile responsive — smaller controls on narrow screens */
+    @media (max-width: 640px) {
+      .guest-control-btn {
+        width: 40px !important;
+        height: 40px !important;
+      }
     }
   `;
   document.head.appendChild(style);
@@ -296,7 +313,7 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
     expired: {
       icon: 'time-outline' as const,
       title: 'Link Expired',
-      subtitle: 'This conference link is no longer valid. Join links expire after 10 minutes.',
+      subtitle: 'This conference link is no longer valid. Join links expire after 60 minutes.',
       iconColor: Colors.semantic.warning,
       borderColor: 'rgba(212, 160, 23, 0.2)',
     },
@@ -622,8 +639,9 @@ export default function GuestJoinPage() {
   const [joinData, setJoinData] = useState<JoinResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Inject web keyframes on mount
+  // Inject web keyframes + mobile viewport on mount
   useEffect(() => {
+    ensureMobileViewport();
     injectGuestKeyframes();
   }, []);
 
@@ -998,9 +1016,11 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     paddingHorizontal: 8,
     paddingVertical: 6,
-    // Center horizontally
-    left: '50%' as unknown as number,
-    transform: [{ translateX: -120 }],
+    // Center horizontally — use left/right margins instead of hardcoded translateX
+    left: 0,
+    right: 0,
+    marginHorizontal: 'auto' as unknown as number,
+    maxWidth: 260,
     // Premium shadow for floating island
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03) inset',

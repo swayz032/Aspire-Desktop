@@ -18,9 +18,32 @@ import { useSupabase, useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useParticipants, useTracks, useRoomContext } from '@livekit/components-react';
 import { Track } from 'livekit-client';
-import { LiveKitConferenceProvider } from '@/components/session/LiveKitConferenceProvider';
+import { LiveKitConferenceProvider, useKrisp } from '@/components/session/LiveKitConferenceProvider';
 import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
+
+/**
+ * KrispToggle — renders inside LiveKitConferenceProvider to access Krisp context.
+ * Shows a toggle button for Krisp enhanced noise cancellation.
+ */
+function KrispToggle() {
+  const krisp = useKrisp();
+  if (!krisp.isSupported) return null;
+  return (
+    <Pressable
+      style={[desktopStyles.controlButton, krisp.isEnabled && desktopStyles.controlButtonActive]}
+      onPress={() => { krisp.toggle(); }}
+      disabled={krisp.isPending}
+    >
+      <Ionicons
+        name={krisp.isEnabled ? 'shield-checkmark' : 'shield-outline'}
+        size={20}
+        color={krisp.isEnabled ? Colors.accent.cyan : '#fff'}
+      />
+      <Text style={desktopStyles.controlLabel}>{krisp.isPending ? 'Loading...' : krisp.isEnabled ? 'Krisp ON' : 'Krisp'}</Text>
+    </Pressable>
+  );
+}
 
 /**
  * LiveKitSync — renders as invisible child INSIDE LiveKitConferenceProvider
@@ -413,8 +436,12 @@ export default function ConferenceLive() {
 
   // Build a lookup: participant identity → TrackReferenceOrPlaceholder for camera
   const trackRefMap = new Map<string, TrackReferenceOrPlaceholder>();
+  // Active screen share track (rendered as priority large tile when present)
+  let activeScreenShareTrack: TrackReferenceOrPlaceholder | null = null;
   for (const tr of lkVideoTracks) {
-    if (tr.source === Track.Source.Camera && tr.participant) {
+    if (tr.source === Track.Source.ScreenShare && tr.participant) {
+      activeScreenShareTrack = tr;
+    } else if (tr.source === Track.Source.Camera && tr.participant) {
       trackRefMap.set(tr.participant.identity, tr);
     }
   }
@@ -543,7 +570,7 @@ export default function ConferenceLive() {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     let active = true;
-    navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false })
+    navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false })
       .then(stream => {
         if (active) setWebcamStream(stream);
         else stream.getTracks().forEach(t => t.stop());
@@ -578,6 +605,16 @@ export default function ConferenceLive() {
     const speaking = participants.find(p => p.isSpeaking);
     if (speaking) setActiveSpeakerId(speaking.id);
   }, [participants]);
+
+  // Auto-switch to share mode when a screen share track appears from any participant
+  useEffect(() => {
+    const hasScreenShare = lkVideoTracks.some(tr => tr.source === Track.Source.ScreenShare && tr.participant);
+    if (hasScreenShare && shareMode === 'none') {
+      setShareMode('standard');
+    } else if (!hasScreenShare && shareMode === 'standard') {
+      setShareMode('none');
+    }
+  }, [lkVideoTracks]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToastMessage(message);
@@ -1213,10 +1250,19 @@ export default function ConferenceLive() {
         {isSideBySide ? (
           <View style={desktopStyles.sideBySideContainer}>
             <View style={[desktopStyles.shareContent, { flex: sideBySideDivider }]}>
-              <View style={desktopStyles.sharePlaceholder}>
-                <Ionicons name="desktop-outline" size={48} color="#555" />
-                <Text style={desktopStyles.sharePlaceholderText}>Screen Share</Text>
-              </View>
+              {activeScreenShareTrack ? (
+                <LiveKitVideoTile
+                  trackRef={activeScreenShareTrack}
+                  name={`${activeScreenShareTrack.participant?.name || 'Screen'} (Screen)`}
+                  size="spotlight"
+                  isLocal={activeScreenShareTrack.participant?.isLocal}
+                />
+              ) : (
+                <View style={desktopStyles.sharePlaceholder}>
+                  <Ionicons name="desktop-outline" size={48} color="#555" />
+                  <Text style={desktopStyles.sharePlaceholderText}>Screen Share</Text>
+                </View>
+              )}
             </View>
             <Pressable
               style={desktopStyles.dividerHandle}
@@ -1236,10 +1282,21 @@ export default function ConferenceLive() {
           </View>
         ) : (
           <View style={desktopStyles.standardShareContainer}>
-            <View style={desktopStyles.sharePlaceholder}>
-              <Ionicons name="desktop-outline" size={64} color="#555" />
-              <Text style={desktopStyles.sharePlaceholderText}>Screen Share</Text>
-            </View>
+            {activeScreenShareTrack ? (
+              <View style={{ flex: 1 }}>
+                <LiveKitVideoTile
+                  trackRef={activeScreenShareTrack}
+                  name={`${activeScreenShareTrack.participant?.name || 'Screen'} (Screen)`}
+                  size="spotlight"
+                  isLocal={activeScreenShareTrack.participant?.isLocal}
+                />
+              </View>
+            ) : (
+              <View style={desktopStyles.sharePlaceholder}>
+                <Ionicons name="desktop-outline" size={64} color="#555" />
+                <Text style={desktopStyles.sharePlaceholderText}>Screen Share</Text>
+              </View>
+            )}
             <View style={desktopStyles.shareThumbnails}>
               {pagedTiles.slice(0, 6).map((p) => (
                 <View key={p.id} style={desktopStyles.shareThumbnail}>
@@ -1492,12 +1549,22 @@ export default function ConferenceLive() {
                   <Text style={desktopStyles.controlLabel}>{isVideoOff ? 'Start Video' : 'Stop Video'}</Text>
                 </Pressable>
                 <Pressable
-                  style={desktopStyles.controlButton}
-                  onPress={() => setShareMode(shareMode === 'none' ? 'standard' : 'none')}
+                  style={[desktopStyles.controlButton, shareMode !== 'none' && desktopStyles.controlButtonActive]}
+                  onPress={async () => {
+                    if (!lkRoom?.localParticipant) return;
+                    try {
+                      const isSharing = lkRoom.localParticipant.isScreenShareEnabled;
+                      await lkRoom.localParticipant.setScreenShareEnabled(!isSharing);
+                      setShareMode(!isSharing ? 'standard' : 'none');
+                    } catch (_e) {
+                      // User cancelled screen share picker or browser denied — fail closed
+                    }
+                  }}
                 >
                   <Ionicons name="desktop-outline" size={20} color={shareMode !== 'none' ? Colors.accent.cyan : '#fff'} />
                   <Text style={desktopStyles.controlLabel}>Share Screen</Text>
                 </Pressable>
+                <KrispToggle />
                 <Pressable
                   style={desktopStyles.controlButton}
                   onPress={() => setParticipantsPanelVisible(!participantsPanelVisible)}
@@ -1755,6 +1822,7 @@ const desktopStyles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   galleryTile: {
+    flex: 1,
     borderRadius: 10,
     overflow: 'hidden',
   },

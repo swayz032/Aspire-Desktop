@@ -25,11 +25,13 @@ const LIVEKIT_ASPIRE_CSS = `
   --lk-success-bg: #34C759;
 }
 
-/* Ensure LiveKit room fills container */
+/* Ensure LiveKit room fills container — display:flex fixes broken flex chain */
 .lk-room-container {
   background: #0a0a0c !important;
   height: 100% !important;
   width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 /* Participant tiles — match Aspire rounded dark style */
