@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useTenant } from '@/providers/TenantProvider';
+import { useSupabase } from '@/providers';
 import { 
   getDefaultSession, 
   updateSessionPurpose, 
@@ -77,6 +78,7 @@ export default function ConferenceSession() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { tenant } = useTenant();
+  const { session: supabaseSession, suiteId: authSuiteId } = useSupabase();
   const session = getDefaultSession();
   const roomNumber = `CR-${tenant?.displayId || '001'}`;
 
@@ -173,22 +175,51 @@ export default function ConferenceSession() {
     showToast(`Purpose changed to ${newPurpose}`, 'success');
   };
 
-  const handleInviteMember = (memberId: string, name: string) => {
+  const handleInviteMember = async (memberId: string, name: string, inviteType?: 'internal' | 'cross-suite', suiteId?: string) => {
     const member = MEMBER_DIRECTORY.find(m => m.id === memberId);
-    if (member) {
-      const newParticipant: SessionParticipant = {
-        id: memberId,
-        name: member.name,
-        role: 'Member',
-        initial: member.name.charAt(0),
-        color: '#8B5CF6',
-        isSpeaking: false,
-        isMuted: false,
-        presence: 'good',
-      };
-      addParticipant(newParticipant);
-      setParticipants([...participants, newParticipant]);
-      showToast(`${member.name} invited`, 'success');
+    const displayName = member?.name || name;
+    const newParticipant: SessionParticipant = {
+      id: memberId,
+      name: displayName,
+      role: inviteType === 'cross-suite' ? 'Guest' : 'Member',
+      initial: displayName.charAt(0),
+      color: inviteType === 'cross-suite' ? '#F59E0B' : '#8B5CF6',
+      isSpeaking: false,
+      isMuted: false,
+      presence: 'good',
+    };
+    addParticipant(newParticipant);
+    setParticipants([...participants, newParticipant]);
+
+    // Send real-time invitation via API for Aspire user invites
+    if (inviteType === 'cross-suite' || inviteType === 'internal') {
+      try {
+        const inviteHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (supabaseSession?.access_token) {
+          inviteHeaders['Authorization'] = `Bearer ${supabaseSession.access_token}`;
+        }
+        if (authSuiteId) {
+          inviteHeaders['X-Suite-Id'] = authSuiteId;
+        }
+        const resp = await fetch('/api/conference/invite-internal', {
+          method: 'POST',
+          headers: inviteHeaders,
+          body: JSON.stringify({
+            invitee_suite_id: suiteId || memberId,
+            invitee_user_id: memberId,
+            room_name: roomNumber,
+          }),
+        });
+        if (resp.ok) {
+          showToast(`${displayName} invited to conference`, 'success');
+        } else {
+          showToast(`${displayName} added locally (invite delivery pending)`, 'info');
+        }
+      } catch {
+        showToast(`${displayName} added locally (invite delivery pending)`, 'info');
+      }
+    } else {
+      showToast(`${displayName} invited`, 'success');
     }
   };
 

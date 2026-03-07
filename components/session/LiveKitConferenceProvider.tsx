@@ -106,12 +106,16 @@ export function LiveKitConferenceProvider({
       data-lk-theme="default"
       style={{ height: '100%', width: '100%', background: '#0a0a0c' }}
       options={{
-        adaptiveStream: true,   // Auto-select simulcast layer matching element size
+        // adaptiveStream selects simulcast layer based on video element size.
+        // With proper 3-layer simulcast (1080p / 720p / 360p), this prevents
+        // wasting bandwidth while maintaining crisp video at every tile size.
+        adaptiveStream: true,
         dynacast: true,         // Pause unused video layers to save bandwidth
 
-        // --- VIDEO CAPTURE (1080p) ---
+        // --- VIDEO CAPTURE (1080p, explicit constraints for iOS Safari) ---
         videoCaptureDefaults: {
           resolution: { width: 1920, height: 1080, frameRate: 30 },
+          facingMode: 'user',
         },
 
         // --- AUDIO CAPTURE (enterprise quality) ---
@@ -123,12 +127,20 @@ export function LiveKitConferenceProvider({
 
         // --- PUBLISH DEFAULTS ---
         publishDefaults: {
-          // Video: 2.5Mbps VP8 (between VP8 2.0 and H264 2.7 per LiveKit bitrate guide)
-          videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 },
+          // Video: 3.0Mbps main track — ensures 1080p source is sharp.
+          // LiveKit bitrate guide: 1080p VP8 needs 2.0-3.5Mbps for clarity.
+          videoEncoding: { maxBitrate: 3_000_000, maxFramerate: 30 },
           simulcast: true,
+          // 3-layer simulcast with NO quality gaps:
+          //   Main:    1920x1080 @ 30fps, 3.0Mbps (above)
+          //   Layer 1: 1280x720  @ 30fps, 1.5Mbps — mid-quality, covers most tile sizes
+          //   Layer 2:  640x360  @ 24fps, 400kbps — small tiles, low bandwidth fallback
+          // Previous config had 360p+180p with a HUGE gap from 1080p.
+          // Adding 720p mid-layer prevents adaptiveStream from dropping to 360p
+          // for any tile larger than ~640px. This is the #1 fix for blurry video.
           videoSimulcastLayers: [
-            new VideoPreset(640, 360, 500_000, 20),
-            new VideoPreset(320, 180, 150_000, 15),
+            new VideoPreset(1280, 720, 1_500_000, 30),
+            new VideoPreset(640, 360, 400_000, 24),
           ],
 
           // Screen share: 5Mbps at 15fps (optimized for text/slides clarity)

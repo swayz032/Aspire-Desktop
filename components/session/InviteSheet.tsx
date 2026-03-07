@@ -33,7 +33,7 @@ interface InviteSheetProps {
   hostName: string;
   purpose: string;
   correlationId?: string;
-  onInviteMember: (userId: string, name: string, inviteType?: 'internal' | 'cross-suite') => void;
+  onInviteMember: (userId: string, name: string, inviteType?: 'internal' | 'cross-suite', suiteId?: string) => void;
   onInviteGuest: (name: string, contact: string) => void;
 }
 

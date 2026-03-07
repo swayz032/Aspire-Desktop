@@ -34,6 +34,30 @@
 5. Content (z:5)
 6-11: LiveLens, ContextMenu, SnapGhost, DragPreview, Stage, CommandPalette
 
+## Finance Hub Card Patterns
+- **Card tokens**: `CARD_BG=#1C1C1E`, `CARD_BORDER=rgba(255,255,255,0.06)`, `CARD_BORDER_HOVER=rgba(255,255,255,0.10)` from `constants/cardPatterns.ts`
+- **Card hover lift**: Pressable with `cardHovered` bg `#222224` + web `translateY(-2)` + `boxShadow: '0 8px 24px rgba(0,0,0,0.3)'` + `CARD_BORDER_HOVER`
+- **Card pressed**: bg `#1a1a1c` + `opacity: 0.95`
+- **Staggered entrance**: `fadeInUp` keyframe, 40ms delay per card index, `cubic-bezier(0.16, 1, 0.3, 1)` easing
+- **Button tap targets**: ALL buttons `minHeight: 44` + `paddingVertical: 10` (a11y compliance)
+- **Button hover**: Glass = `rgba(255,255,255,0.10)`, Cyan = `rgba(59,130,246,0.18)`
+- **Button pressed**: Dimmer bg + `opacity: 0.9` (NOT brighter — subtraction feedback)
+- **Shimmer loading**: `background-position` animation (-200% to 200%), 1.8s ease-in-out infinite, gradient `#161618 -> #222224 -> #161618`
+- **Keyframe injection**: Idempotent `document.createElement('style')` with ID check, per-component blocks
+- **Web transitions**: `transition: 'all 0.2s ease'` on buttons, `outlineOffset: 2` for focus-visible
+- **stopPropagation**: Inner Pressables call `e.stopPropagation()` to prevent card-level handler firing
+- **ContractCard is the reference pattern** for all Finance Hub cards — TemplateCard now matches
+
+## Modal Patterns (TemplatePreviewModal)
+- **Backdrop**: `rgba(0,0,0,0.75)` + `backdropFilter: blur(8px)` + click-to-close via Pressable
+- **Modal entrance**: `scale(0.96) + opacity: 0` -> `scale(1) + opacity: 1`, 0.25s cubic-bezier
+- **Crossfade**: iframe `opacity 0->1` + placeholder `opacity 1->0` both with `transition: 'opacity 0.3s ease'`
+- **Close button**: 44x44 min (was 32x32 -- fixed), borderRadius 10
+- **Escape key**: `document.addEventListener('keydown')` in useEffect, cleanup on unmount
+- **Shimmer sweep**: `linear-gradient(90deg, transparent 25%, rgba(59,130,246,0.06) 50%, transparent 75%)` over loading overlay
+- **Draft CTA**: `minHeight: 48`, solid `Colors.accent.cyan` bg, hover uses `Colors.accent.cyanDark`
+- **Colors.text.primary** for white icon/text on CTA (NOT hardcoded `#fff`)
+
 ## Accessibility Patterns
 - All toggles: `accessibilityRole="radiogroup"` on container, `accessibilityRole="radio"` on segments
 - `accessibilityState={{ checked: isActive }}` on toggle segments

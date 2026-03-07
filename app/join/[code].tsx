@@ -2,21 +2,21 @@
  * Guest Join Page — Public, NO auth required.
  *
  * External guests receive a link like /join/{code} and land on this page
- * to join a LiveKit conference room. The join code is resolved to a LiveKit
- * token via GET /api/conference/join/:code (a PUBLIC endpoint).
+ * to join a LiveKit conference room. The join code is resolved via
+ * GET /api/conference/join/:code (a PUBLIC endpoint).
  *
- * States: loading -> active | expired (410) | invalid (404) | error
+ * Flow: loading → prejoin (name + device preview) → active (full conference)
+ * Error states: expired (410) | invalid (404) | error
  *
- * Design: "Control Room" — utilitarian dark interface with floating control
- * island, frosted guest badge, and breathing ring loader. Guest-only: no
- * chat drawer, no authority queue, no Ava tile.
+ * Uses LiveKit's official prefab components:
+ * - PreJoin: name entry + camera/mic preview (before connecting)
+ * - VideoConference: full conference UI (grid, controls, chat, screen share)
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   Animated,
   Platform,
   ViewStyle,
@@ -24,11 +24,14 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
-import { LiveKitConferenceProvider } from '@/components/session/LiveKitConferenceProvider';
-import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
-import { useParticipants, useTracks, useRoomContext } from '@livekit/components-react';
-import { Track } from 'livekit-client';
-import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
+import {
+  LiveKitRoom,
+  VideoConference,
+  RoomAudioRenderer,
+  PreJoin,
+} from '@livekit/components-react';
+import { VideoPreset } from 'livekit-client';
+import { injectLiveKitStyles } from '@/lib/livekit-styles';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,7 +42,16 @@ interface JoinResponse {
   serverUrl: string;
 }
 
-type PageState = 'loading' | 'active' | 'expired' | 'invalid' | 'error';
+/** PreJoin onSubmit returns these user choices */
+interface PreJoinChoices {
+  username: string;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+  audioDeviceId: string;
+  videoDeviceId: string;
+}
+
+type PageState = 'loading' | 'prejoin' | 'active' | 'expired' | 'invalid' | 'error';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -49,8 +61,6 @@ const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
 
 const GuestColors = {
   canvas: '#060608',
-  controlIsland: 'rgba(20, 20, 22, 0.92)',
-  controlIslandBorder: 'rgba(255, 255, 255, 0.06)',
   guestBadgeBg: 'rgba(59, 130, 246, 0.08)',
   guestBadgeBorder: 'rgba(59, 130, 246, 0.18)',
   ringPulse: 'rgba(59, 130, 246, 0.25)',
@@ -58,15 +68,21 @@ const GuestColors = {
   errorCardBorder: '#1e1e22',
 } as const;
 
-// ── Web Keyframes ────────────────────────────────────────────────────────────
+// ── Web Setup ────────────────────────────────────────────────────────────────
 
+/**
+ * Ensure mobile viewport is set correctly for the guest page.
+ * Defense-in-depth: also handles the case where _layout.tsx already set width=1440.
+ */
 function ensureMobileViewport() {
   if (Platform.OS !== 'web') return;
-  if (document.querySelector('meta[name="viewport"]')) return;
-  const meta = document.createElement('meta');
-  meta.name = 'viewport';
-  meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
-  document.head.appendChild(meta);
+  let viewport = document.querySelector('meta[name="viewport"]');
+  if (!viewport) {
+    viewport = document.createElement('meta');
+    viewport.setAttribute('name', 'viewport');
+    document.head.appendChild(viewport);
+  }
+  viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
 }
 
 function injectGuestKeyframes() {
@@ -107,67 +123,8 @@ function injectGuestKeyframes() {
       0% { background-position: -200px 0; }
       100% { background-position: 200px 0; }
     }
-    .guest-control-btn {
-      transition: all 0.15s ease !important;
-    }
-    .guest-control-btn:hover {
-      background-color: rgba(255, 255, 255, 0.08) !important;
-      transform: scale(1.06);
-    }
-    .guest-control-btn:active {
-      transform: scale(0.95);
-    }
-    .guest-leave-btn {
-      transition: all 0.15s ease !important;
-    }
-    .guest-leave-btn:hover {
-      background-color: rgba(255, 59, 48, 0.9) !important;
-      transform: scale(1.06);
-      box-shadow: 0 4px 16px rgba(255, 59, 48, 0.3);
-    }
-    .guest-leave-btn:active {
-      transform: scale(0.95);
-    }
-
-    /* Mobile responsive — smaller controls on narrow screens */
-    @media (max-width: 640px) {
-      .guest-control-btn {
-        width: 40px !important;
-        height: 40px !important;
-      }
-    }
   `;
   document.head.appendChild(style);
-}
-
-// ── LiveKit Sync (same pattern as conference-live.tsx) ────────────────────────
-
-interface LiveKitSyncData {
-  participants: ReturnType<typeof useParticipants>;
-  videoTracks: TrackReferenceOrPlaceholder[];
-  room: ReturnType<typeof useRoomContext> | null;
-}
-
-function LiveKitSync({ onSync }: { onSync: (data: LiveKitSyncData) => void }) {
-  const participants = useParticipants();
-  const videoTracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-  );
-  let room: ReturnType<typeof useRoomContext> | null = null;
-  try {
-    room = useRoomContext();
-  } catch {
-    // Room context not ready yet
-  }
-
-  useEffect(() => {
-    onSync({ participants, videoTracks, room });
-  }, [participants, videoTracks, room]);
-
-  return null;
 }
 
 // ── Loading State ────────────────────────────────────────────────────────────
@@ -177,21 +134,17 @@ function LoadingView() {
   const fadeIn = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Breathing ring animation (native fallback)
     Animated.loop(
       Animated.sequence([
         Animated.timing(breatheAnim, { toValue: 1.12, duration: 1200, useNativeDriver: true }),
         Animated.timing(breatheAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
       ]),
     ).start();
-
-    // Fade in the content
     Animated.timing(fadeIn, { toValue: 1, duration: 600, delay: 100, useNativeDriver: true }).start();
   }, []);
 
   return (
     <Animated.View style={[styles.centerContainer, { opacity: fadeIn }]}>
-      {/* Outermost ring — very diffuse, slowest pulse */}
       <View
         style={[
           styles.ringOutermost,
@@ -204,8 +157,6 @@ function LoadingView() {
         ]}
         accessibilityElementsHidden
       />
-
-      {/* Pulsing outer ring — primary breathing ring */}
       <Animated.View
         style={[
           styles.ringOuter,
@@ -219,8 +170,6 @@ function LoadingView() {
         ]}
         accessibilityElementsHidden
       />
-
-      {/* Rotating dashed ring — orbital track */}
       <View
         style={[
           styles.ringDashed,
@@ -233,8 +182,6 @@ function LoadingView() {
         ]}
         accessibilityElementsHidden
       />
-
-      {/* Counter-rotating inner accent ring */}
       <View
         style={[
           styles.ringInnerAccent,
@@ -247,8 +194,6 @@ function LoadingView() {
         ]}
         accessibilityElementsHidden
       />
-
-      {/* Center logo area — Aspire brand mark with glow */}
       <View
         style={[
           styles.logoContainer,
@@ -264,8 +209,6 @@ function LoadingView() {
           <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
         </View>
       </View>
-
-      {/* Status text */}
       <View
         style={[
           styles.loadingTextContainer,
@@ -347,7 +290,6 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
           } as unknown as ViewStyle : undefined,
         ]}
       >
-        {/* Top accent gradient stripe — color-coded by error type */}
         <View
           style={[
             styles.errorAccentStripe,
@@ -355,8 +297,6 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
           ]}
           accessibilityElementsHidden
         />
-
-        {/* Icon ring with glow */}
         <View
           style={[
             styles.errorIconRing,
@@ -368,11 +308,8 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
         >
           <Ionicons name={config.icon} size={36} color={config.iconColor} />
         </View>
-
         <Text style={styles.errorTitle}>{config.title}</Text>
         <Text style={styles.errorSubtitle}>{config.subtitle}</Text>
-
-        {/* Aspire branding footer */}
         <View style={styles.errorBranding}>
           <View style={styles.brandingDot} />
           <Text style={styles.brandingText}>Aspire Conference</Text>
@@ -382,252 +319,161 @@ function ErrorView({ state, message }: { state: 'expired' | 'invalid' | 'error';
   );
 }
 
-// ── Active Conference (Guest View) ───────────────────────────────────────────
+// ── PreJoin Lobby ─────────────────────────────────────────────────────────────
 
-interface GuestConferenceProps {
-  guestName: string;
-  roomName: string;
-  token: string;
-  serverUrl: string;
+function GuestPreJoin({ onJoin }: { onJoin: (choices: PreJoinChoices) => void }) {
+  return (
+    <View style={styles.prejoinContainer}>
+      {/* Aspire branding header */}
+      <View style={styles.prejoinHeader}>
+        <View style={styles.prejoinIconRow}>
+          <Ionicons name="videocam" size={24} color={Colors.accent.cyan} />
+        </View>
+        <Text style={styles.prejoinTitle}>Aspire Conference</Text>
+        <Text style={styles.prejoinSubtitle}>
+          Enter your name and check your devices before joining
+        </Text>
+      </View>
+
+      {/* LiveKit PreJoin — handles camera preview, mic/cam toggles, device menus, username input */}
+      <div
+        data-lk-theme="default"
+        style={{
+          flex: 1,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          width: '100%',
+          maxWidth: '480px',
+          margin: '0 auto',
+        }}
+      >
+        <PreJoin
+          defaults={{ username: '', audioEnabled: true, videoEnabled: true }}
+          onSubmit={onJoin}
+          joinLabel="Join Conference"
+          userLabel="Your Name"
+          onValidate={(values) => values.username.trim().length >= 2}
+        />
+      </div>
+
+      {/* Footer branding */}
+      <View style={styles.prejoinFooter}>
+        <View style={styles.brandingDotSmall} />
+        <Text style={styles.brandingFooterText}>Powered by Aspire</Text>
+      </View>
+    </View>
+  );
 }
 
-function GuestConference({ guestName, roomName, token, serverUrl }: GuestConferenceProps) {
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [lkParticipants, setLkParticipants] = useState<ReturnType<typeof useParticipants>>([]);
-  const [lkVideoTracks, setLkVideoTracks] = useState<TrackReferenceOrPlaceholder[]>([]);
-  const [lkRoom, setLkRoom] = useState<ReturnType<typeof useRoomContext> | null>(null);
-  const [elapsed, setElapsed] = useState(0);
-  const controlsFadeIn = useRef(new Animated.Value(0)).current;
+// ── Active Conference (Full LiveKit Prefab) ──────────────────────────────────
 
-  useEffect(() => {
-    Animated.timing(controlsFadeIn, { toValue: 1, duration: 500, delay: 300, useNativeDriver: true }).start();
-  }, []);
-
-  // Elapsed time counter
-  useEffect(() => {
-    const timer = setInterval(() => setElapsed(e => e + 1), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const handleLiveKitSync = useCallback((data: LiveKitSyncData) => {
-    setLkParticipants(data.participants);
-    setLkVideoTracks(data.videoTracks);
-    setLkRoom(data.room);
-  }, []);
-
-  // Build track reference map for video tiles
-  const trackRefMap = new Map<string, TrackReferenceOrPlaceholder>();
-  for (const tr of lkVideoTracks) {
-    if (tr.source === Track.Source.Camera && tr.participant) {
-      trackRefMap.set(tr.participant.identity, tr);
-    }
-  }
-
-  // Toggle mute via LiveKit room
-  const toggleMute = useCallback(() => {
-    if (lkRoom) {
-      try {
-        const newMuted = !isMuted;
-        lkRoom.localParticipant.setMicrophoneEnabled(!newMuted);
-        setIsMuted(newMuted);
-      } catch (_e) {
-        // Silent fail — Law #3 fail closed, no side effects
-      }
-    }
-  }, [lkRoom, isMuted]);
-
-  const toggleVideo = useCallback(() => {
-    if (lkRoom) {
-      try {
-        const newOff = !isVideoOff;
-        lkRoom.localParticipant.setCameraEnabled(!newOff);
-        setIsVideoOff(newOff);
-      } catch (_e) {
-        // Silent fail
-      }
-    }
-  }, [lkRoom, isVideoOff]);
-
-  const leaveRoom = useCallback(() => {
-    if (lkRoom) {
-      try {
-        lkRoom.disconnect();
-      } catch (_e) {
-        // Silent fail
-      }
-    }
-    // Navigate away — close tab for guests
-    if (Platform.OS === 'web') {
-      window.close();
-      // If window.close() doesn't work (not opened by script), show a message
-      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a0a;color:#6e6e73;font-family:system-ui;font-size:16px;">You have left the conference. You may close this tab.</div>';
-    }
-  }, [lkRoom]);
-
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-  };
-
-  // Compute grid layout based on participant count
-  const participantCount = lkParticipants.length || 1;
-  const gridCols = participantCount <= 1 ? 1 : participantCount <= 4 ? 2 : participantCount <= 9 ? 3 : 4;
-
+function GuestActiveConference({
+  token,
+  serverUrl,
+  guestName,
+}: {
+  token: string;
+  serverUrl: string;
+  guestName: string;
+}) {
   return (
-    <LiveKitConferenceProvider token={token} serverUrl={serverUrl}>
-      <LiveKitSync onSync={handleLiveKitSync} />
+    <div
+      data-lk-theme="default"
+      style={{
+        height: '100vh',
+        width: '100vw',
+        background: '#0a0a0c',
+        position: 'relative',
+      }}
+    >
+      <LiveKitRoom
+        serverUrl={serverUrl}
+        token={token}
+        connect={true}
+        audio={true}
+        video={true}
+        style={{ height: '100%', width: '100%' }}
+        options={{
+          adaptiveStream: true,
+          dynacast: true,
+          videoCaptureDefaults: {
+            resolution: { width: 1920, height: 1080, frameRate: 30 },
+            facingMode: 'user',
+          },
+          audioCaptureDefaults: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          publishDefaults: {
+            videoEncoding: { maxBitrate: 3_000_000, maxFramerate: 30 },
+            simulcast: true,
+            videoSimulcastLayers: [
+              new VideoPreset(1280, 720, 1_500_000, 30),
+              new VideoPreset(640, 360, 400_000, 24),
+            ],
+            screenShareEncoding: { maxBitrate: 5_000_000, maxFramerate: 15 },
+            screenShareSimulcastLayers: [],
+            dtx: true,
+            red: true,
+            audioPreset: { maxBitrate: 48_000 },
+          },
+        }}
+      >
+        <VideoConference />
+        <RoomAudioRenderer />
+        <GuestBadgeOverlay guestName={guestName} />
+      </LiveKitRoom>
+    </div>
+  );
+}
 
-      <View style={styles.conferenceContainer}>
-        {/* Guest badge — floating frosted pill, top-left */}
-        <View
-          style={[
-            styles.guestBadge,
-            Platform.OS === 'web' ? {
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              animationName: 'guestFadeInUp',
-              animationDuration: '0.4s',
-              animationFillMode: 'both',
-            } as unknown as ViewStyle : undefined,
-          ]}
-        >
-          <View style={styles.guestBadgeDot} />
-          <Text style={styles.guestBadgeText}>Guest</Text>
-          <Text style={styles.guestBadgeSep}>|</Text>
-          <Text style={styles.guestBadgeName} numberOfLines={1}>{guestName}</Text>
-        </View>
+// ── Guest Badge Overlay ──────────────────────────────────────────────────────
 
-        {/* Room info — top-right */}
-        <View
-          style={[
-            styles.roomInfoBadge,
-            Platform.OS === 'web' ? {
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              animationName: 'guestFadeInUp',
-              animationDuration: '0.4s',
-              animationDelay: '0.1s',
-              animationFillMode: 'both',
-            } as unknown as ViewStyle : undefined,
-          ]}
-        >
-          <View style={styles.liveDot} />
-          <Text style={styles.roomInfoTime}>{formatTime(elapsed)}</Text>
-          <Text style={styles.roomInfoSep}>|</Text>
-          <Ionicons name="people" size={12} color={Colors.text.tertiary} />
-          <Text style={styles.roomInfoCount}>{participantCount}</Text>
-        </View>
+function GuestBadgeOverlay({ guestName }: { guestName: string }) {
+  return (
+    <>
+      {/* Guest badge — floating frosted pill, top-left */}
+      <div
+        className="guest-badge-overlay"
+        style={{
+          position: 'absolute',
+          top: 12,
+          left: 12,
+          zIndex: 10,
+          background: 'rgba(59,130,246,0.08)',
+          border: '1px solid rgba(59,130,246,0.18)',
+          borderRadius: 20,
+          padding: '6px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+        }}
+      >
+        <span style={{ width: 6, height: 6, borderRadius: 3, background: '#3B82F6', display: 'inline-block' }} />
+        <span style={{ color: '#9CA3AF', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Guest</span>
+        <span style={{ color: '#4B5563', fontSize: 11 }}>|</span>
+        <span style={{ color: '#D1D5DB', fontSize: 11 }}>{guestName}</span>
+      </div>
 
-        {/* Video grid — full bleed */}
-        <View style={styles.videoGrid}>
-          <View style={[styles.videoGridInner, { flexWrap: 'wrap' }]}>
-            {lkParticipants.length > 0 ? (
-              lkParticipants.map(p => {
-                const trackRef = trackRefMap.get(p.identity);
-                return (
-                  <View
-                    key={p.identity}
-                    style={[
-                      styles.videoTileWrapper,
-                      {
-                        width: `${100 / gridCols}%` as unknown as number,
-                        height: gridCols <= 2 ? '50%' as unknown as number : `${100 / Math.ceil(participantCount / gridCols)}%` as unknown as number,
-                      },
-                    ]}
-                  >
-                    <View style={styles.videoTileInner}>
-                      <LiveKitVideoTile
-                        trackRef={trackRef}
-                        name={p.name || p.identity}
-                        isLocal={p.isLocal}
-                        size="normal"
-                      />
-                    </View>
-                  </View>
-                );
-              })
-            ) : (
-              // Waiting for participants — show placeholder
-              <View style={styles.waitingContainer}>
-                <Ionicons name="hourglass-outline" size={28} color={Colors.text.muted} />
-                <Text style={styles.waitingTitle}>Connecting to room</Text>
-                <Text style={styles.waitingSubtitle}>Waiting for other participants</Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* Floating control island — bottom center */}
-        <Animated.View
-          style={[
-            styles.controlIsland,
-            { opacity: controlsFadeIn },
-            Platform.OS === 'web' ? {
-              backdropFilter: 'blur(16px)',
-              WebkitBackdropFilter: 'blur(16px)',
-            } as unknown as ViewStyle : undefined,
-          ]}
-        >
-          {/* Mute toggle */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.controlBtn,
-              isMuted && styles.controlBtnActive,
-              pressed && { opacity: 0.8 },
-            ]}
-            onPress={toggleMute}
-            {...(Platform.OS === 'web' ? { className: 'guest-control-btn' } as Record<string, string> : {})}
-          >
-            <Ionicons
-              name={isMuted ? 'mic-off' : 'mic'}
-              size={20}
-              color={isMuted ? Colors.semantic.error : Colors.text.primary}
-            />
-          </Pressable>
-
-          {/* Video toggle */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.controlBtn,
-              isVideoOff && styles.controlBtnActive,
-              pressed && { opacity: 0.8 },
-            ]}
-            onPress={toggleVideo}
-            {...(Platform.OS === 'web' ? { className: 'guest-control-btn' } as Record<string, string> : {})}
-          >
-            <Ionicons
-              name={isVideoOff ? 'videocam-off' : 'videocam'}
-              size={20}
-              color={isVideoOff ? Colors.semantic.error : Colors.text.primary}
-            />
-          </Pressable>
-
-          {/* Divider */}
-          <View style={styles.controlDivider} />
-
-          {/* Leave */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.leaveBtn,
-              pressed && { opacity: 0.8 },
-            ]}
-            onPress={leaveRoom}
-            {...(Platform.OS === 'web' ? { className: 'guest-leave-btn' } as Record<string, string> : {})}
-          >
-            <Ionicons name="call" size={18} color="#ffffff" style={{ transform: [{ rotate: '135deg' }] }} />
-            <Text style={styles.leaveBtnText}>Leave</Text>
-          </Pressable>
-        </Animated.View>
-
-        {/* Aspire branding — bottom-left subtle */}
-        <View style={styles.brandingFooter}>
-          <View style={styles.brandingDotSmall} />
-          <Text style={styles.brandingFooterText}>Powered by Aspire</Text>
-        </View>
-      </View>
-    </LiveKitConferenceProvider>
+      {/* Powered by Aspire — bottom-left */}
+      <div style={{
+        position: 'absolute',
+        bottom: 80,
+        left: 16,
+        zIndex: 10,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        opacity: 0.5,
+      }}>
+        <span style={{ width: 4, height: 4, borderRadius: 2, background: '#3B82F6', display: 'inline-block' }} />
+        <span style={{ color: '#6B7280', fontSize: 11 }}>Powered by Aspire</span>
+      </div>
+    </>
   );
 }
 
@@ -639,13 +485,16 @@ export default function GuestJoinPage() {
   const [joinData, setJoinData] = useState<JoinResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Inject web keyframes + mobile viewport on mount
+  // Inject styles + mobile viewport on mount
   useEffect(() => {
     ensureMobileViewport();
     injectGuestKeyframes();
+    if (Platform.OS === 'web') {
+      injectLiveKitStyles();
+    }
   }, []);
 
-  // Resolve join code on mount
+  // Step 1: Validate join code exists (loading → prejoin or error)
   useEffect(() => {
     if (!code) {
       setPageState('invalid');
@@ -674,13 +523,14 @@ export default function GuestJoinPage() {
       })
       .then((data: JoinResponse | null) => {
         if (!data) return;
-        if (!data.token || !data.serverUrl) {
+        if (!data.serverUrl) {
           setPageState('error');
           setErrorMessage('Invalid response from server');
           return;
         }
+        // Store initial data but go to PreJoin for name entry
         setJoinData(data);
-        setPageState('active');
+        setPageState('prejoin');
       })
       .catch((err: Error) => {
         clearTimeout(timeoutId);
@@ -699,21 +549,41 @@ export default function GuestJoinPage() {
     };
   }, [code]);
 
+  // Step 2: PreJoin submit → fetch token with guest's chosen name → connect
+  const handlePreJoinSubmit = async (choices: PreJoinChoices) => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/conference/join/${encodeURIComponent(code!)}?name=${encodeURIComponent(choices.username)}`
+      );
+      if (!res.ok) throw new Error('Failed to get conference token');
+      const data: JoinResponse = await res.json();
+      setJoinData(data);
+      setPageState('active');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to join conference';
+      setErrorMessage(msg);
+      setPageState('error');
+    }
+  };
+
   return (
     <View style={styles.page}>
       {pageState === 'loading' && <LoadingView />}
 
-      {(pageState === 'expired' || pageState === 'invalid' || pageState === 'error') && (
-        <ErrorView state={pageState} message={errorMessage} />
+      {pageState === 'prejoin' && (
+        <GuestPreJoin onJoin={handlePreJoinSubmit} />
       )}
 
       {pageState === 'active' && joinData && (
-        <GuestConference
-          guestName={joinData.guestName}
-          roomName={joinData.roomName}
+        <GuestActiveConference
           token={joinData.token}
           serverUrl={joinData.serverUrl}
+          guestName={joinData.guestName}
         />
+      )}
+
+      {(pageState === 'expired' || pageState === 'invalid' || pageState === 'error') && (
+        <ErrorView state={pageState} message={errorMessage} />
       )}
     </View>
   );
@@ -725,7 +595,6 @@ const styles = StyleSheet.create({
   page: {
     flex: 1,
     backgroundColor: GuestColors.canvas,
-    // Subtle radial vignette at edges for depth on web
     ...(Platform.OS === 'web' ? {
       backgroundImage: 'radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.4) 100%)',
     } as unknown as ViewStyle : {}),
@@ -825,7 +694,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xl,
     borderWidth: 1,
     padding: Spacing.xxxl,
-    paddingTop: Spacing.xxxl + 4, // Account for accent stripe
+    paddingTop: Spacing.xxxl + 4,
     alignItems: 'center',
     maxWidth: 420,
     width: '100%' as unknown as number,
@@ -886,190 +755,49 @@ const styles = StyleSheet.create({
     color: Colors.text.muted,
   },
 
-  // ── Conference ──
-  conferenceContainer: {
+  // ── PreJoin lobby ──
+  prejoinContainer: {
     flex: 1,
     backgroundColor: GuestColors.canvas,
-  },
-
-  // Guest badge — top-left floating pill
-  guestBadge: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    zIndex: 10,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: GuestColors.guestBadgeBg,
-    borderWidth: 1,
-    borderColor: GuestColors.guestBadgeBorder,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    justifyContent: 'center',
+    padding: Spacing.xl,
   },
-  guestBadgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.accent.cyan,
-  },
-  guestBadgeText: {
-    ...Typography.micro,
-    color: Colors.accent.cyan,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  guestBadgeSep: {
-    ...Typography.micro,
-    color: 'rgba(59, 130, 246, 0.25)',
-  },
-  guestBadgeName: {
-    ...Typography.smallMedium,
-    color: Colors.text.secondary,
-    maxWidth: 160,
-  },
-
-  // Room info — top-right
-  roomInfoBadge: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    zIndex: 10,
-    flexDirection: 'row',
+  prejoinHeader: {
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(20, 20, 22, 0.8)',
+    marginBottom: Spacing.xxl,
+  },
+  prejoinIconRow: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.04)',
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderColor: 'rgba(59, 130, 246, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
   },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.semantic.success,
+  prejoinTitle: {
+    ...Typography.title,
+    color: Colors.text.primary,
+    marginBottom: Spacing.sm,
   },
-  roomInfoTime: {
-    ...Typography.smallMedium,
-    color: Colors.text.secondary,
-    fontVariant: ['tabular-nums'],
-  },
-  roomInfoSep: {
-    ...Typography.micro,
-    color: 'rgba(255, 255, 255, 0.1)',
-  },
-  roomInfoCount: {
-    ...Typography.smallMedium,
+  prejoinSubtitle: {
+    ...Typography.caption,
     color: Colors.text.tertiary,
+    textAlign: 'center',
+    maxWidth: 320,
   },
-
-  // Video grid
-  videoGrid: {
-    flex: 1,
-    padding: 4,
-  },
-  videoGridInner: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  videoTileWrapper: {
-    padding: 3,
-  },
-  videoTileInner: {
-    flex: 1,
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: Colors.background.elevated,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.04)',
-  },
-  waitingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
-  },
-  waitingTitle: {
-    ...Typography.bodyMedium,
-    color: Colors.text.secondary,
-  },
-  waitingSubtitle: {
-    ...Typography.small,
-    color: Colors.text.muted,
-  },
-
-  // Floating control island — frosted glass pill
-  controlIsland: {
-    position: 'absolute',
-    bottom: 24,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: GuestColors.controlIsland,
-    borderWidth: 1,
-    borderColor: GuestColors.controlIslandBorder,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    // Center horizontally — use left/right margins instead of hardcoded translateX
-    left: 0,
-    right: 0,
-    marginHorizontal: 'auto' as unknown as number,
-    maxWidth: 260,
-    // Premium shadow for floating island
-    ...(Platform.OS === 'web' ? {
-      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03) inset',
-    } as unknown as ViewStyle : {}),
-  },
-  controlBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease', cursor: 'pointer' } as unknown as ViewStyle : {}),
-  },
-  controlBtnActive: {
-    backgroundColor: 'rgba(255, 59, 48, 0.15)',
-  },
-  controlDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    marginHorizontal: 4,
-  },
-  leaveBtn: {
+  prejoinFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: Colors.semantic.error,
-    borderRadius: 22,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease', cursor: 'pointer' } as unknown as ViewStyle : {}),
-  },
-  leaveBtnText: {
-    ...Typography.smallMedium,
-    color: '#ffffff',
-    fontWeight: '600',
-  },
-
-  // Branding footer
-  brandingFooter: {
-    position: 'absolute',
-    bottom: 28,
-    left: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    marginTop: Spacing.xxl,
     opacity: 0.4,
   },
+
+  // ── Shared branding elements ──
   brandingDotSmall: {
     width: 4,
     height: 4,

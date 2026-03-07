@@ -89,11 +89,14 @@ function LiveKitVideoView({ trackRef }: { trackRef: TrackReferenceOrPlaceholder 
       video.playsInline = true;
       video.style.width = '100%';
       video.style.height = '100%';
-      video.style.objectFit = 'cover';
+      // object-fit: contain preserves full resolution without cropping/resampling.
+      // cover was causing multi-pass resampling blur, especially on iOS Safari.
+      video.style.objectFit = 'contain';
       video.style.position = 'absolute';
       video.style.top = '0';
       video.style.left = '0';
       video.style.borderRadius = 'inherit';
+      video.style.background = '#0a0a0c';
       container.appendChild(video);
       videoRef.current = video;
     }

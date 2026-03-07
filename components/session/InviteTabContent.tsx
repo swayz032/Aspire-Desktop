@@ -185,7 +185,7 @@ export interface InviteTabContentProps {
   hostName: string;
   purpose: string;
   correlationId?: string;
-  onInviteMember: (userId: string, name: string, inviteType?: 'internal' | 'cross-suite') => void;
+  onInviteMember: (userId: string, name: string, inviteType?: 'internal' | 'cross-suite', suiteId?: string) => void;
   onInviteGuest: (name: string, contact: string) => void;
   /** When true, uses tighter spacing for embedding inside UnifiedSessionModal */
   compact?: boolean;
@@ -204,6 +204,7 @@ interface MemberResult {
 
 interface LookupResult {
   userId: string;
+  suiteId?: string;
   name: string;
   businessName: string;
 }
@@ -395,7 +396,7 @@ export function InviteTabContent({
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }
     setInvitedIds(prev => new Set(prev).add(user.userId));
-    onInviteMember(user.userId, user.name, 'cross-suite');
+    onInviteMember(user.userId, user.name, 'cross-suite', user.suiteId);
   };
 
   // ─── Tab 3: External email invite ────────────────────────────────────────

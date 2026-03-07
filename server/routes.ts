@@ -5167,6 +5167,30 @@ router.get('/api/health/pandadoc', async (_req: Request, res: Response) => {
 // Any template added to the PandaDoc workspace appears here automatically.
 // Clara uses the same API endpoint — single source of truth.
 
+// Custom thumbnail map — premium screenshots served from /templates/*.png
+// Local thumbnails are PRIMARY, PandaDoc API images are FALLBACK.
+const TEMPLATE_THUMBNAIL_MAP: Record<string, string> = {
+  'Pc5saWpynSmb4NT63FPZPS': 'contractor-sow.png',
+  '6SUHv5KfZ58umgoLu9vsNm': 'painting-proposal.png',
+  'A4PQkBwRPKjTT38xGLHicN': 'hvac-proposal.png',
+  '7V367zKUvGHFtgnoqT2e7V': 'roofing-proposal.png',
+  'xzFYgP5NuaQhfTwsmByuDX': 'architecture-proposal.png',
+  'RMqD3gn7qZRZRPVcMbdnUQ': 'construction-proposal.png',
+  'Yxd5Hd8GxvAkCLvUjN9TwC': 'residential-construction.png',
+  '7kruQeak5EaHZBy92CC4qT': 'residential-contract.png',
+  'rp2knmUFyfhAghLF8E9iB5': 'accounting-proposal.png',
+  'FLsK6snwy6yPjU4jajrJ5E': '1040-form.png',
+  'VuVk8KwBFLCAJNWhvnofA7': 'commercial-sublease.png',
+  'aVPGZtb2PCBxvrZokgeRri': 'nda-mutual.png',
+  'sq8j7CH94xPRu6UbDUm6u8': 'nda-basic.png',
+  'dg8UdHiAcncid5KhBTUB7i': 'w9-form.png',
+};
+
+// Name-based fallback for templates not in UUID map (e.g. newly added)
+const TEMPLATE_THUMBNAIL_NAME_MAP: Record<string, string> = {
+  'residential landlord': 'residential-landlord-tenant.png',
+};
+
 router.get('/api/contracts/templates', async (req: Request, res: Response) => {
   try {
     const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
@@ -5219,6 +5243,18 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
           }
 
           const detail = await detailResp.json() as any;
+          // Resolve thumbnail: local custom > name-based fallback > API image
+          const templateName = (detail.name || t.name || '').toLowerCase();
+          let thumbnailFile = TEMPLATE_THUMBNAIL_MAP[t.id];
+          if (!thumbnailFile) {
+            for (const [keyword, file] of Object.entries(TEMPLATE_THUMBNAIL_NAME_MAP)) {
+              if (templateName.includes(keyword)) { thumbnailFile = file; break; }
+            }
+          }
+          const resolvedPreviewUrl = thumbnailFile
+            ? `/templates/${thumbnailFile}`
+            : (detail.images?.[0]?.urls?.[0] || null);
+
           return {
             id: t.id,
             name: detail.name || t.name,
@@ -5233,7 +5269,7 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
             })),
             roles: (detail.roles || []).map((r: any) => ({ id: r.id, name: r.name })),
             images: (detail.images || []).length,
-            preview_image_url: detail.images?.[0]?.urls?.[0] || null,
+            preview_image_url: resolvedPreviewUrl,
             content_placeholders: (detail.content_placeholders || []).length,
             has_pricing: Boolean(detail.pricing?.quotes?.length),
           };
@@ -5260,6 +5296,61 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     logger.error('Contracts templates error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: 'Failed to fetch templates' });
+  }
+});
+
+// ─── PandaDoc Template Preview Session ───
+// Creates a short-lived editing session for live template preview (read-only visual).
+// Returns an E-Token for embedding the template editor in an iframe.
+router.post('/api/contracts/templates/:id/preview-session', async (req: Request, res: Response) => {
+  try {
+    const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
+
+    const templateId = req.params.id as string;
+    if (!templateId) return res.status(400).json({ error: 'Template ID required' });
+    // Validate PandaDoc template ID format (alphanumeric, 22 chars base62)
+    if (!/^[A-Za-z0-9]{10,30}$/.test(templateId)) {
+      return res.status(400).json({ error: 'Invalid template ID format' });
+    }
+
+    const editorEmail = process.env.ASPIRE_PANDADOC_EDITOR_EMAIL || 'admin@aspireos.app';
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const sessionResp = await fetch(
+      `https://api.pandadoc.com/public/v1/templates/${templateId}/editing-sessions`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `API-Key ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_email: editorEmail,
+          lifetime: 300, // 5 minutes — preview-only
+        }),
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeoutId);
+
+    if (!sessionResp.ok) {
+      const errBody = await sessionResp.text().catch(() => 'unknown');
+      logger.warn('PandaDoc editing session failed', { templateId, status: sessionResp.status, body: errBody });
+      return res.status(sessionResp.status).json({ error: 'Failed to create preview session' });
+    }
+
+    const session = await sessionResp.json() as { id: string; expires_at: string };
+    res.json({
+      token: session.id,
+      template_id: templateId,
+      expires_at: session.expires_at,
+    });
+  } catch (error: unknown) {
+    logger.error('Template preview session error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: 'Failed to create preview session' });
   }
 });
 

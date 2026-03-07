@@ -133,7 +133,7 @@ interface UnifiedSessionModalProps {
   purpose: SessionPurpose;
   onPurposeChange: (purpose: SessionPurpose) => void;
   participants: Participant[];
-  onAddParticipant: (userId: string, name: string, inviteType?: 'internal' | 'cross-suite') => void;
+  onAddParticipant: (userId: string, name: string, inviteType?: 'internal' | 'cross-suite', suiteId?: string) => void;
   onAddGuest: (name: string, contact: string) => void;
   onRemoveParticipant: (id: string) => void;
   roomName: string;

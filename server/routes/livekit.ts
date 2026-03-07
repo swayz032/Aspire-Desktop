@@ -8,6 +8,8 @@
  * POST /api/conference/invite-external — Send email invite to non-Aspire user
  * POST /api/conference/room-link  — Generate shareable room link with guest token
  * GET  /api/conference/join/:code — Resolve join code to LiveKit token (PUBLIC)
+ * POST /api/conference/invite-internal     — Create FaceTime-style video call invitation
+ * PATCH /api/conference/invite-internal/:id — Accept or decline a video call invitation
  *
  * All endpoints require JWT auth (not in PUBLIC_PATHS) except /join/:code.
  * Law #3: Fail Closed — no unauthenticated access to conference infrastructure.
@@ -312,10 +314,32 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
       return res.status(410).json({ error: 'This join link has expired. Please request a new link from the host.' });
     }
 
+    // If guest provided their name via ?name= query param, mint a fresh token
+    // with their chosen identity instead of using the stored pre-generated token.
+    const requestedName = (req.query.name as string)?.trim().slice(0, 50);
+    let token = entry.token;
+    let guestName = entry.guest_name;
+
+    if (requestedName && LIVEKIT_API_KEY && LIVEKIT_API_SECRET) {
+      guestName = requestedName;
+      const guestToken = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+        identity: requestedName,
+        ttl: '60m',
+        metadata: JSON.stringify({ guest: true }),
+      });
+      guestToken.addGrant({
+        roomJoin: true,
+        room: entry.room_name,
+        canPublish: true,
+        canSubscribe: true,
+      });
+      token = await guestToken.toJwt();
+    }
+
     res.json({
-      token: entry.token,
+      token,
       roomName: entry.room_name,
-      guestName: entry.guest_name,
+      guestName,
       serverUrl: entry.server_url || LIVEKIT_SERVER_URL,
     });
   } catch (error: unknown) {
@@ -364,9 +388,10 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
     }
 
     // Query suite_profiles directly — display_id is bare number, office_display_id is like "A01"
+    // Include user_id so cross-suite invites match the realtime filter (invitee_user_id=eq.auth_uid)
     const { data: members, error: memberError } = await supabaseAdmin
       .from('suite_profiles')
-      .select('suite_id, name, owner_name, business_name, email, office_display_id')
+      .select('suite_id, user_id, name, owner_name, business_name, email, office_display_id')
       .eq('display_id', suiteDisplayId)
       .eq('office_display_id', officeDisplayId)
       .limit(10);
@@ -381,7 +406,8 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
     }
 
     const results = (members || []).map((row: any) => ({
-      userId: row.suite_id,  // suite_id as unique identifier for cross-suite invites
+      userId: row.user_id || row.suite_id,  // Prefer auth user_id for realtime matching, fallback to suite_id
+      suiteId: row.suite_id,
       name: row.owner_name || row.name || 'Unknown',
       businessName: row.business_name || '',
     }));
@@ -661,6 +687,304 @@ router.post('/api/conference/room-link', async (req: Request, res: Response) => 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Conference room-link error', { error: msg });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Wave 2E: POST /api/conference/invite-internal ────────────────────────────
+// Internal FaceTime-style invitation — creates a realtime DB record that pushes
+// to the invitee's connected client via Supabase Realtime.
+// YELLOW tier: inter-user notification + conference session initiation
+// Rate-limited: max 5 invitations per sender per minute to prevent spam/DoS
+
+const inviteRateLimit = new Map<string, { count: number; resetAt: number }>();
+const INVITE_RATE_LIMIT = 5;
+const INVITE_RATE_WINDOW_MS = 60 * 1000; // 1 minute
+
+// UUID v4 format validation
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+router.post('/api/conference/invite-internal', async (req: Request, res: Response) => {
+  try {
+    const { invitee_suite_id, invitee_user_id, room_name } = req.body;
+    const suiteId = (req as any).authenticatedSuiteId as string | undefined;
+    const userId = (req as any).authenticatedUserId as string | undefined;
+    const correlationId = req.headers['x-correlation-id'] as string | undefined;
+
+    if (!invitee_suite_id || !invitee_user_id || !room_name) {
+      return res.status(400).json({ error: 'invitee_suite_id, invitee_user_id, and room_name are required' });
+    }
+
+    // Input validation: UUID format + room_name length cap (matches /api/livekit/token pattern)
+    if (typeof room_name !== 'string' || room_name.length > 200) {
+      return res.status(400).json({ error: 'room_name must be 200 characters or fewer' });
+    }
+    if (!UUID_RE.test(invitee_suite_id)) {
+      return res.status(400).json({ error: 'invitee_suite_id must be a valid UUID' });
+    }
+    if (!UUID_RE.test(invitee_user_id)) {
+      return res.status(400).json({ error: 'invitee_user_id must be a valid UUID' });
+    }
+
+    if (!suiteId || !userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Rate limit: 5 invitations per sender per minute (prevent spam/DoS — THREAT-002)
+    const now = Date.now();
+    const senderLimit = inviteRateLimit.get(userId);
+    if (senderLimit && now < senderLimit.resetAt) {
+      if (senderLimit.count >= INVITE_RATE_LIMIT) {
+        return res.status(429).json({ error: 'Too many invitations. Please wait before sending more.' });
+      }
+      senderLimit.count++;
+    } else {
+      inviteRateLimit.set(userId, { count: 1, resetAt: now + INVITE_RATE_WINDOW_MS });
+    }
+
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    // Look up inviter's profile for display in the notification
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('suite_profiles')
+      .select('display_id, office_display_id, owner_name, business_name, avatar_url')
+      .eq('suite_id', suiteId)
+      .single();
+
+    if (profileError || !profile) {
+      logger.error('Failed to load inviter profile', {
+        error: profileError?.message || 'no profile found',
+        suiteId,
+      });
+      return res.status(500).json({ error: 'Failed to load your profile' });
+    }
+
+    // Best-effort cleanup: expire stale pending invitations before inserting
+    await supabaseAdmin
+      .from('conference_invitations')
+      .update({ status: 'expired' })
+      .eq('status', 'pending')
+      .lt('expires_at', new Date().toISOString());
+
+    // Insert the invitation — Supabase Realtime will push to invitee
+    const { data: invitation, error: insertError } = await supabaseAdmin
+      .from('conference_invitations')
+      .insert({
+        inviter_suite_id: suiteId,
+        inviter_user_id: userId,
+        inviter_name: profile.owner_name || 'Unknown',
+        inviter_avatar_url: profile.avatar_url || null,
+        inviter_suite_display_id: profile.display_id || '',
+        inviter_office_display_id: profile.office_display_id || '',
+        inviter_business_name: profile.business_name || null,
+        invitee_suite_id,
+        invitee_user_id,
+        room_name,
+        livekit_server_url: LIVEKIT_SERVER_URL,
+      })
+      .select('id')
+      .single();
+
+    if (insertError || !invitation) {
+      logger.error('Failed to create conference invitation', {
+        error: insertError?.message || 'no data returned',
+        suiteId,
+        invitee_user_id,
+      });
+      return res.status(500).json({ error: 'Failed to create invitation' });
+    }
+
+    // Law #2: YELLOW tier receipt — mandatory (fail-closed)
+    try {
+      await createTrustSpineReceipt({
+        suiteId,
+        receiptType: 'conference.invite_internal',
+        status: 'SUCCEEDED',
+        actorType: 'USER',
+        actorId: userId,
+        ...(correlationId ? { correlationId } : {}),
+        action: {
+          invitee_suite_id,
+          invitee_user_id,
+          room_name,
+          invitation_id: invitation.id,
+        },
+        result: { invitation_created: true },
+      });
+    } catch (receiptErr) {
+      // YELLOW tier fail-closed: receipt is mandatory
+      logger.error('YELLOW receipt write failed for invite-internal', {
+        error: receiptErr instanceof Error ? receiptErr.message : 'unknown',
+        suiteId, userId, receiptType: 'conference.invite_internal',
+      });
+      return res.status(500).json({
+        error: 'Audit trail unavailable. Invitation cannot be completed without a receipt.',
+      });
+    }
+
+    res.json({ success: true, invitation_id: invitation.id });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Conference invite-internal error', { error: msg });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Wave 2F: PATCH /api/conference/invite-internal/:id ───────────────────────
+// Accept or decline a conference invitation.
+// Accept: generates a LiveKit token for the invitee to join the room.
+// YELLOW tier: state change + potential room join
+
+router.patch('/api/conference/invite-internal/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body;
+    const userId = (req as any).authenticatedUserId as string | undefined;
+    const suiteId = (req as any).authenticatedSuiteId as string | undefined;
+    const correlationId = req.headers['x-correlation-id'] as string | undefined;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Invitation ID required' });
+    }
+
+    if (!action || (action !== 'accept' && action !== 'decline')) {
+      return res.status(400).json({ error: 'action must be "accept" or "decline"' });
+    }
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    // Fetch the invitation and verify ownership + status
+    const { data: invitation, error: fetchError } = await supabaseAdmin
+      .from('conference_invitations')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !invitation) {
+      return res.status(404).json({ error: 'Invitation not found' });
+    }
+
+    // Law #6: Tenant isolation — only the invitee can respond
+    if (invitation.invitee_user_id !== userId) {
+      // Law #2: Receipt for denial (ownership mismatch is a security event)
+      try {
+        await createTrustSpineReceipt({
+          suiteId: suiteId || 'unknown',
+          receiptType: 'conference.invite_response_denied',
+          status: 'DENIED',
+          actorType: 'USER',
+          actorId: userId,
+          ...(correlationId ? { correlationId } : {}),
+          action: { invitation_id: id, attempted_action: action },
+          result: { reason: 'ownership_mismatch', denied: true },
+        });
+      } catch {
+        // Best-effort denial receipt — don't block the 403 response
+      }
+      return res.status(403).json({ error: 'Not authorized to respond to this invitation' });
+    }
+
+    if (invitation.status !== 'pending') {
+      return res.status(409).json({ error: `Invitation already ${invitation.status}` });
+    }
+
+    // Check expiry
+    if (new Date(invitation.expires_at) <= new Date()) {
+      // Auto-expire the stale invitation
+      await supabaseAdmin
+        .from('conference_invitations')
+        .update({ status: 'expired' })
+        .eq('id', id);
+      return res.status(410).json({ error: 'Invitation has expired' });
+    }
+
+    const newStatus = action === 'accept' ? 'accepted' : 'declined';
+
+    // Update the invitation status
+    // Defense-in-depth: .eq('invitee_user_id', userId) enforces ownership at DB layer
+    // in addition to the application-level check above (THREAT-004)
+    const { error: updateError } = await supabaseAdmin
+      .from('conference_invitations')
+      .update({
+        status: newStatus,
+        responded_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('invitee_user_id', userId);
+
+    if (updateError) {
+      logger.error('Failed to update invitation', { error: updateError.message, id });
+      return res.status(500).json({ error: 'Failed to update invitation' });
+    }
+
+    // Law #2: YELLOW tier receipt
+    try {
+      await createTrustSpineReceipt({
+        suiteId: suiteId || invitation.invitee_suite_id,
+        receiptType: `conference.invite_${newStatus}`,
+        status: 'SUCCEEDED',
+        actorType: 'USER',
+        actorId: userId,
+        ...(correlationId ? { correlationId } : {}),
+        action: {
+          invitation_id: id,
+          room_name: invitation.room_name,
+          response: newStatus,
+        },
+        result: { status_updated: true },
+      });
+    } catch (receiptErr) {
+      logger.error(`YELLOW receipt write failed for invite_${newStatus}`, {
+        error: receiptErr instanceof Error ? receiptErr.message : 'unknown',
+        suiteId, userId, receiptType: `conference.invite_${newStatus}`,
+      });
+      return res.status(500).json({
+        error: 'Audit trail unavailable. Response cannot be completed without a receipt.',
+      });
+    }
+
+    if (action === 'decline') {
+      return res.json({ success: true });
+    }
+
+    // Accept: generate LiveKit token for the invitee to join
+    if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+      return res.status(503).json({ error: 'Conference service not configured' });
+    }
+
+    await ensureRoom(invitation.room_name);
+
+    const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+      identity: userId,
+      ttl: '10m',
+      metadata: JSON.stringify({ suiteId: invitation.invitee_suite_id, invitationId: id }),
+    });
+
+    token.addGrant({
+      roomJoin: true,
+      room: invitation.room_name,
+      canPublish: true,
+      canSubscribe: true,
+    });
+
+    const jwt = await token.toJwt();
+
+    res.json({
+      token: jwt,
+      serverUrl: LIVEKIT_SERVER_URL,
+      roomName: invitation.room_name,
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Conference invite-internal PATCH error', { error: msg });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

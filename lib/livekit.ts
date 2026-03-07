@@ -30,7 +30,7 @@ const DEFAULT_ROOM_OPTIONS: RoomOptions = {
   adaptiveStream: true,
   dynacast: true,
   videoCaptureDefaults: {
-    resolution: VideoPresets.h720.resolution,
+    resolution: VideoPresets.h1080.resolution,
   },
 };
 

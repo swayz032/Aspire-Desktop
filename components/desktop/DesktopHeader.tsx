@@ -7,6 +7,12 @@ import { CanvasToggle } from '@/components/canvas/CanvasToggle';
 import { useSupabase, useTenant } from '@/providers';
 import { getInitials, getAvatarColor } from '@/utils/avatar';
 import { SettingsPanel, SettingsSectionId } from '@/components/settings/SettingsPanel';
+import {
+  subscribeIncomingVideoCall,
+  showIncomingVideoCall,
+  getIncomingVideoCallState,
+  type VideoCallInvitation,
+} from '@/lib/incomingVideoCallStore';
 
 interface Notification {
   id: string;
@@ -139,6 +145,34 @@ export function DesktopHeader({
   };
   const closeSettings = () => setSettingsVisible(false);
 
+  // Subscribe to incoming video call store — inject notification into bell panel
+  useEffect(() => {
+    const unsubscribe = subscribeIncomingVideoCall((videoState) => {
+      if (videoState.visible && videoState.invitation && videoState.invitation.status === 'pending') {
+        setNotifications(prev => {
+          if (prev.some(n => n.id === videoState.invitation!.id)) return prev;
+          return [{
+            id: videoState.invitation!.id,
+            type: 'activity' as const,
+            title: 'Video Conference Invitation',
+            message: `${videoState.invitation!.inviterName} from Suite ${videoState.invitation!.inviterSuiteDisplayId} is inviting you`,
+            time: 'Just now',
+            read: false,
+            icon: 'videocam' as keyof typeof Ionicons.glyphMap,
+            iconColor: '#22C55E',
+            iconBg: 'rgba(34, 197, 94, 0.15)',
+          }, ...prev];
+        });
+      }
+      if (!videoState.visible && videoState.invitation === null) {
+        setNotifications(prev => prev.map(n =>
+          n.icon === 'videocam' ? { ...n, read: true } : n
+        ));
+      }
+    });
+    return unsubscribe;
+  }, []);
+
   const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
   const filteredNotifications = useMemo(() => {
@@ -224,7 +258,16 @@ export function DesktopHeader({
           filteredNotifications.map((notif) => (
             <Pressable
               key={notif.id}
-              onPress={() => markRead(notif.id)}
+              onPress={() => {
+                markRead(notif.id);
+                if (notif.icon === 'videocam') {
+                  const currentState = getIncomingVideoCallState();
+                  if (currentState.invitation && currentState.invitation.id === notif.id && currentState.invitation.status === 'pending') {
+                    showIncomingVideoCall(currentState.invitation);
+                  }
+                }
+                setActivePanel('none');
+              }}
               style={({ hovered }: any) => [
                 s.notifItem,
                 !notif.read && s.notifItemUnread,

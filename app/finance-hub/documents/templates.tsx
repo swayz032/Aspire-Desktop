@@ -20,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
-import { TemplateCard, type TemplateData, LANE_META, type TemplateLane } from '@/components/finance/documents';
+import { TemplateCard, TemplatePreviewModal, type TemplateData, LANE_META, type TemplateLane } from '@/components/finance/documents';
 import { getPandaDocTemplates, type PandaDocTemplate } from '@/lib/api';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { FinnDeskOverlay } from '@/components/finance/FinnDeskOverlay';
@@ -120,6 +120,10 @@ export default function TemplatesPage() {
   const [showFinnOverlay, setShowFinnOverlay] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateData | null>(null);
 
+  // Preview modal state
+  const [previewTemplate, setPreviewTemplate] = useState<TemplateData | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
   const handleUseTemplate = useCallback((key: string) => {
     const template = liveTemplates.find(t => t.key === key);
     if (!template) return;
@@ -127,6 +131,18 @@ export default function TemplatesPage() {
     setSelectedTemplate(template);
     setShowFinnOverlay(true);
   }, [liveTemplates]);
+
+  const handlePreview = useCallback((template: TemplateData) => {
+    setPreviewTemplate(template);
+    setShowPreview(true);
+  }, []);
+
+  const handleDraftFromPreview = useCallback((template: TemplateData) => {
+    setShowPreview(false);
+    setPreviewTemplate(null);
+    setSelectedTemplate(template);
+    setShowFinnOverlay(true);
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     setLoading(true);
@@ -143,9 +159,9 @@ export default function TemplatesPage() {
 
   const renderCard = useCallback(({ item, index }: { item: TemplateData; index: number }) => (
     <View style={styles.cardCell}>
-      <TemplateCard template={item} index={index} onUseTemplate={handleUseTemplate} />
+      <TemplateCard template={item} index={index} onUseTemplate={handleUseTemplate} onPreview={handlePreview} />
     </View>
-  ), [handleUseTemplate]);
+  ), [handleUseTemplate, handlePreview]);
 
   const keyExtractor = useCallback((item: TemplateData) => item.key, []);
 
@@ -253,6 +269,14 @@ export default function TemplatesPage() {
           </View>
         </View>
       </View>
+
+      {/* Template Preview Modal — live embedded preview or full-size thumbnail fallback */}
+      <TemplatePreviewModal
+        visible={showPreview}
+        onClose={() => { setShowPreview(false); setPreviewTemplate(null); }}
+        template={previewTemplate}
+        onDraftWithFinn={handleDraftFromPreview}
+      />
 
       {/* Finn Video Overlay — auto-opens Video tab with template context for Clara */}
       {showFinnOverlay && selectedTemplate && (

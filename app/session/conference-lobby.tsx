@@ -27,6 +27,13 @@ import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { formatDisplayId } from '@/lib/formatters';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
 import { UnifiedSessionModal } from '@/components/session/UnifiedSessionModal';
+import {
+  subscribeIncomingVideoCall,
+  acceptVideoCall,
+  declineVideoCall,
+  dismissIncomingVideoCall,
+  type VideoCallInvitation,
+} from '@/lib/incomingVideoCallStore';
 
 // ─── Pulsing dot for pending/invited participants ────────────────────────────
 function PulsingDot({ color }: { color: string }) {
@@ -242,7 +249,8 @@ export default function ConferenceLobby() {
   ]);
   const [menuVisible, setMenuVisible] = useState(false);
   const [authorityItems, setAuthorityItems] = useState<AuthorityItem[]>(INITIAL_AUTHORITY_QUEUE);
-  
+  const [pendingInvitation, setPendingInvitation] = useState<VideoCallInvitation | null>(null);
+
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
@@ -326,6 +334,41 @@ export default function ConferenceLobby() {
     return `conf-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   });
 
+  // Subscribe to incoming video call store — auto-flip card when invitation arrives
+  useEffect(() => {
+    const unsubscribe = subscribeIncomingVideoCall((videoState) => {
+      if (videoState.visible && videoState.invitation && videoState.invitation.status === 'pending') {
+        setPendingInvitation(videoState.invitation);
+        setIsSessionActive(true);
+      } else if (!videoState.visible || !videoState.invitation) {
+        if (pendingInvitation && !videoState.invitation) {
+          setPendingInvitation(null);
+          setIsSessionActive(false);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [pendingInvitation]);
+
+  // Add/remove conference invitation from authority queue
+  useEffect(() => {
+    if (pendingInvitation) {
+      setAuthorityItems(prev => {
+        if (prev.some(i => i.id === pendingInvitation.id)) return prev;
+        return [...prev, {
+          id: pendingInvitation.id,
+          title: `${pendingInvitation.inviterName} invited you to join`,
+          description: `Suite ${pendingInvitation.inviterSuiteDisplayId} \u00b7 Office ${pendingInvitation.inviterOfficeDisplayId}`,
+          risk: 'Low' as const,
+          status: 'pending' as const,
+          icon: 'videocam' as keyof typeof Ionicons.glyphMap,
+        }];
+      });
+    } else {
+      setAuthorityItems(prev => prev.filter(i => i.icon !== 'videocam'));
+    }
+  }, [pendingInvitation]);
+
   // Pre-join validation: check if LiveKit is configured before starting a session
   // Law #3: Fail Closed — 5s timeout prevents indefinite hang
   const checkConferenceReady = async (): Promise<boolean> => {
@@ -404,17 +447,55 @@ export default function ConferenceLobby() {
     }
   };
 
-  const handleApprove = (itemId: string) => {
+  const handleApprove = async (itemId: string) => {
     const item = authorityItems.find(i => i.id === itemId);
-    setAuthorityItems(prev => prev.map(i => 
+    // Handle conference invitation approval
+    if (item?.icon === 'videocam' && pendingInvitation && pendingInvitation.id === itemId && session?.access_token) {
+      try {
+        const result = await acceptVideoCall(pendingInvitation.id, session.access_token, suiteId ?? undefined);
+        dismissIncomingVideoCall();
+        setPendingInvitation(null);
+        setAuthorityItems(prev => prev.map(i =>
+          i.id === itemId ? { ...i, status: 'approved' as const } : i
+        ));
+        router.push({
+          pathname: '/session/conference-live' as any,
+          params: {
+            roomName: result.roomName,
+            token: result.token,
+            serverUrl: result.serverUrl,
+          },
+        });
+        return;
+      } catch {
+        showToast('Failed to join conference', 'error');
+        return;
+      }
+    }
+    setAuthorityItems(prev => prev.map(i =>
       i.id === itemId ? { ...i, status: 'approved' as const } : i
     ));
     showToast(`Approved: ${item?.title}`, 'success');
   };
 
-  const handleDeny = (itemId: string) => {
+  const handleDeny = async (itemId: string) => {
     const item = authorityItems.find(i => i.id === itemId);
-    setAuthorityItems(prev => prev.map(i => 
+    // Handle conference invitation denial
+    if (item?.icon === 'videocam' && pendingInvitation && pendingInvitation.id === itemId && session?.access_token) {
+      try {
+        await declineVideoCall(pendingInvitation.id, session.access_token, suiteId ?? undefined);
+      } catch {
+        // Best effort — still dismiss locally
+      }
+      dismissIncomingVideoCall();
+      setPendingInvitation(null);
+      setAuthorityItems(prev => prev.map(i =>
+        i.id === itemId ? { ...i, status: 'denied' as const } : i
+      ));
+      showToast('Conference invitation declined', 'info');
+      return;
+    }
+    setAuthorityItems(prev => prev.map(i =>
       i.id === itemId ? { ...i, status: 'denied' as const } : i
     ));
     showToast(`Denied: ${item?.title}`, 'error');
@@ -645,15 +726,38 @@ export default function ConferenceLobby() {
                     {/* Join Button */}
                     <Pressable
                       style={[styles.joinButton, isJoining && { opacity: 0.6 }]}
-                      onPress={handleStartSession}
+                      onPress={async () => {
+                        if (pendingInvitation && session?.access_token) {
+                          try {
+                            setIsJoining(true);
+                            const result = await acceptVideoCall(pendingInvitation.id, session.access_token, suiteId ?? undefined);
+                            dismissIncomingVideoCall();
+                            setPendingInvitation(null);
+                            router.push({
+                              pathname: '/session/conference-live' as any,
+                              params: {
+                                roomName: result.roomName,
+                                token: result.token,
+                                serverUrl: result.serverUrl,
+                              },
+                            });
+                          } catch {
+                            showToast('Failed to join conference', 'error');
+                          } finally {
+                            setIsJoining(false);
+                          }
+                        } else {
+                          handleStartSession();
+                        }
+                      }}
                       disabled={isJoining}
-                      accessibilityLabel={isJoining ? 'Checking conference status' : 'Join session'}
+                      accessibilityLabel={isJoining ? 'Checking conference status' : pendingInvitation ? 'Accept and join conference' : 'Join session'}
                       accessibilityRole="button"
                       accessibilityState={{ disabled: isJoining }}
                       {...(Platform.OS === 'web' ? { className: 'lobby-join-btn' } as Record<string, string> : {})}
                     >
                       <Ionicons name={isJoining ? "hourglass" : "videocam"} size={16} color="#FFFFFF" />
-                      <Text style={styles.joinButtonText}>{isJoining ? 'Checking...' : 'Join Session'}</Text>
+                      <Text style={styles.joinButtonText}>{isJoining ? 'Checking...' : pendingInvitation ? 'Accept & Join' : 'Join Session'}</Text>
                     </Pressable>
                   </LinearGradient>
                 </ImageBackground>
@@ -804,7 +908,7 @@ export default function ConferenceLobby() {
         purpose={purpose}
         onPurposeChange={setPurpose}
         participants={participants}
-        onAddParticipant={(userId, name, inviteType) => {
+        onAddParticipant={async (userId, name, inviteType, suiteIdParam) => {
           if (!participants.find(p => p.id === userId)) {
             if (Platform.OS !== 'web') {
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -817,7 +921,30 @@ export default function ConferenceLobby() {
               status: 'invited',
               inviteType: inviteType || 'internal',
             }]);
-            showToast(`${name} invited`, 'success');
+
+            // Send real-time invitation via API for Aspire user invites
+            if (inviteType === 'cross-suite' || inviteType === 'internal') {
+              try {
+                const resp = await authenticatedFetch('/api/conference/invite-internal', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    invitee_suite_id: suiteIdParam || userId,
+                    invitee_user_id: userId,
+                    room_name: roomName,
+                  }),
+                });
+                if (resp.ok) {
+                  showToast(`${name} invited to conference`, 'success');
+                } else {
+                  showToast(`${name} added locally (invite delivery pending)`, 'info');
+                }
+              } catch {
+                showToast(`${name} added locally (invite delivery pending)`, 'info');
+              }
+            } else {
+              showToast(`${name} invited`, 'success');
+            }
           }
         }}
         onAddGuest={(name, contact) => {

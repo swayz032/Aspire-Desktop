@@ -11,6 +11,8 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
 import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
 import { IncomingCallOverlay } from '@/components/calls/IncomingCallOverlay';
+import { IncomingVideoCallOverlay } from '@/components/calls/IncomingVideoCallOverlay';
+import { useRealtimeConferenceInvitations } from '@/hooks/useRealtimeConferenceInvitations';
 import { useDesktop } from '@/lib/useDesktop';
 import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 
@@ -101,7 +103,8 @@ function useWebDesktopSetup() {
     document.documentElement.style.backgroundColor = '#0a0a0a';
 
     const viewport = document.querySelector('meta[name="viewport"]');
-    if (viewport) {
+    const isGuestJoinPage = window.location.pathname.startsWith('/join/');
+    if (viewport && !isGuestJoinPage) {
       viewport.setAttribute('content', 'width=1440, initial-scale=1, shrink-to-fit=no');
     }
   }, []);
@@ -182,6 +185,7 @@ function AppNavigator() {
   const isDesktop = useDesktop();
   const colorScheme = useColorScheme();
   useAuthGate();
+  useRealtimeConferenceInvitations();
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -297,6 +301,7 @@ function AppNavigator() {
         <Stack.Screen name="+not-found" />
       </Stack>
       <IncomingCallOverlay />
+      <IncomingVideoCallOverlay />
       {!isDesktop && <AvaMiniPlayer />}
       <StatusBar style="light" />
     </ThemeProvider>
