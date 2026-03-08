@@ -748,7 +748,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 router.post('/api/conference/invite-internal', async (req: Request, res: Response) => {
   try {
     const { invitee_suite_id, invitee_user_id, room_name } = req.body;
-    const suiteId = (req as any).authenticatedSuiteId as string | undefined;
+    // Prefer X-Suite-Id header (active suite selection) over JWT metadata suite_id
+    const headerSuiteId = typeof req.headers['x-suite-id'] === 'string' ? req.headers['x-suite-id'].trim() : '';
+    const suiteId = headerSuiteId || (req as any).authenticatedSuiteId as string | undefined;
     const userId = (req as any).authenticatedUserId as string | undefined;
     const correlationId = req.headers['x-correlation-id'] as string | undefined;
 
@@ -788,16 +790,27 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
     }
 
     // Look up inviter's profile for display in the notification
+    logger.info('Profile lookup for invite', { suiteId, headerSuiteId, authSuiteId: (req as any).authenticatedSuiteId });
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('suite_profiles')
       .select('display_id, office_display_id, owner_name, business_name, avatar_url, owner_title')
       .eq('suite_id', suiteId)
       .single();
 
+    logger.info('Profile lookup result', {
+      found: !!profile,
+      error: profileError?.message || null,
+      suiteId,
+      profileName: profile?.owner_name || null,
+      profileDisplayId: profile?.display_id || null,
+    });
+
     if (profileError || !profile) {
       logger.warn('Profile lookup failed via Supabase client', {
         error: profileError?.message || 'no profile found',
         suiteId,
+        code: profileError?.code || null,
+        hint: profileError?.hint || null,
       });
     }
 

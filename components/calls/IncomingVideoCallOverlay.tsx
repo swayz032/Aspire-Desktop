@@ -26,14 +26,43 @@ import {
 const conferenceHero = require('@/assets/images/conference-room-meeting.jpg');
 
 /* ─── Premium Ringtone ─── */
-function playRingTone(): void {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+// Persistent AudioContext — avoids Chrome autoplay policy blocking new contexts
+let _ringCtx: AudioContext | null = null;
 
+function getRingContext(): AudioContext | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const AudioContextClass =
+    (window as any).AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextClass) return null;
+
+  if (!_ringCtx || _ringCtx.state === 'closed') {
+    _ringCtx = new AudioContextClass();
+  }
+  return _ringCtx;
+}
+
+function closeRingContext(): void {
+  if (_ringCtx && _ringCtx.state !== 'closed') {
+    _ringCtx.close().catch(() => {});
+    _ringCtx = null;
+  }
+}
+
+function playRingTone(): void {
   try {
-    const AudioContextClass =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
+    const ctx = getRingContext();
+    if (!ctx) return;
+
+    // Resume suspended context (Chrome autoplay policy)
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => {
+        console.log('[VideoCallRing] AudioContext resumed from suspended');
+      }).catch((e) => {
+        console.warn('[VideoCallRing] AudioContext resume failed:', e);
+      });
+    }
+
+    console.log('[VideoCallRing] Playing chime, ctx.state:', ctx.state);
 
     // Two-tone ascending chime: C5 (523Hz) → E5 (659Hz)
     const notes = [523, 659];
@@ -45,17 +74,13 @@ function playRingTone(): void {
       const startTime = ctx.currentTime + index * 0.18;
       oscillator.frequency.setValueAtTime(freq, startTime);
       gain.gain.setValueAtTime(0.0001, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.2, startTime + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.3);
+      gain.gain.exponentialRampToValueAtTime(0.5, startTime + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.35);
       oscillator.connect(gain);
       gain.connect(ctx.destination);
       oscillator.start(startTime);
-      oscillator.stop(startTime + 0.35);
+      oscillator.stop(startTime + 0.4);
     });
-
-    setTimeout(() => {
-      ctx.close().catch(() => {});
-    }, 1000);
   } catch {
     // no-op
   }
@@ -239,6 +264,7 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
 
     return () => {
       clearInterval(interval);
+      closeRingContext();
       if (ringLoopRef.current) {
         ringLoopRef.current.stop();
         ringLoopRef.current = null;
