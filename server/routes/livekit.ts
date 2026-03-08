@@ -788,12 +788,20 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
       .single();
 
     if (profileError || !profile) {
-      logger.error('Failed to load inviter profile', {
+      logger.warn('Inviter profile not found — using fallback values', {
         error: profileError?.message || 'no profile found',
         suiteId,
       });
-      return res.status(500).json({ error: 'Failed to load your profile' });
     }
+
+    // Fallback: use whatever we have — profile may be null for new/incomplete accounts
+    const inviterProfile = profile || {
+      display_id: suiteId.slice(0, 8),
+      office_display_id: '',
+      owner_name: (req as any).authenticatedUserName || 'Unknown',
+      business_name: null,
+      avatar_url: null,
+    };
 
     // Best-effort cleanup: expire stale pending invitations before inserting
     await supabaseAdmin
@@ -811,11 +819,11 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
       .insert({
         inviter_suite_id: suiteId,
         inviter_user_id: userId,
-        inviter_name: profile.owner_name || 'Unknown',
-        inviter_avatar_url: profile.avatar_url || null,
-        inviter_suite_display_id: profile.display_id || '',
-        inviter_office_display_id: profile.office_display_id || '',
-        inviter_business_name: profile.business_name || null,
+        inviter_name: inviterProfile.owner_name || 'Unknown',
+        inviter_avatar_url: inviterProfile.avatar_url || null,
+        inviter_suite_display_id: inviterProfile.display_id || '',
+        inviter_office_display_id: inviterProfile.office_display_id || '',
+        inviter_business_name: inviterProfile.business_name || null,
         invitee_suite_id,
         invitee_user_id,
         room_name,

@@ -199,6 +199,7 @@ app.use(async (req, res, next) => {
     // Attach user info for receipt actor binding
     (req as any).authenticatedUserId = user.id;
     (req as any).authenticatedSuiteId = suiteId;
+    (req as any).authenticatedUserName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
 
     next();
   } catch (error) {
