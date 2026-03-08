@@ -28,44 +28,75 @@ const conferenceHero = require('@/assets/images/conference-room-meeting.jpg');
 /* ─── Premium Ringtone (served from public/ via express.static) ─── */
 const RINGTONE_URL = '/audio/incoming-call-ringtone.mp3';
 let _ringAudio: HTMLAudioElement | null = null;
-let _audioWarmed = false;
+let _audioUnlocked = false;
+let _audioCtx: AudioContext | null = null;
 
 /**
- * Safari/WebKit blocks Audio.play() unless the Audio element was first
- * played during a user gesture (click/tap/keydown). We listen for any
- * interaction, play+pause at volume 0 to "unlock" the element, then
- * remove the listener. Subsequent programmatic .play() calls work.
+ * Safari/WebKit autoplay policy: Audio.play() is blocked unless the
+ * element was first interacted with during a user gesture. This is a
+ * hard browser constraint — Slack, Teams, Discord all face it.
+ *
+ * Strategy (production-grade):
+ * 1. Self-invoke at module load (before React mount) to attach listeners
+ * 2. On ANY user gesture (click/touch/key/scroll), silently unlock both
+ *    the HTML5 Audio element AND a Web AudioContext (belt + suspenders)
+ * 3. Listeners use capture phase to fire before any stopPropagation
+ * 4. On unlock failure, keep listeners alive to retry on next gesture
+ *
+ * In a desktop productivity app, users interact within seconds of load.
  */
-function warmAudioForSafari(): void {
-  if (Platform.OS !== 'web' || typeof window === 'undefined' || _audioWarmed) return;
+const UNLOCK_EVENTS = ['click', 'touchstart', 'keydown', 'scroll'] as const;
 
-  const unlock = (): void => {
-    if (_audioWarmed) return;
-    _audioWarmed = true;
+function unlockAudio(): void {
+  if (_audioUnlocked) return;
 
-    if (!_ringAudio) {
-      _ringAudio = new Audio(RINGTONE_URL);
-      _ringAudio.loop = true;
-      _ringAudio.volume = 0;
+  // Create and pre-load the Audio element
+  if (!_ringAudio) {
+    _ringAudio = new Audio(RINGTONE_URL);
+    _ringAudio.loop = true;
+    _ringAudio.preload = 'auto';
+    _ringAudio.volume = 0;
+  }
+
+  // Strategy 1: HTML5 Audio silent play+pause
+  const htmlUnlock = _ringAudio.play().then(() => {
+    _ringAudio!.pause();
+    _ringAudio!.currentTime = 0;
+    _ringAudio!.volume = 0.7;
+    return true;
+  }).catch(() => false);
+
+  // Strategy 2: Web AudioContext resume (some Safari versions need this)
+  let ctxUnlock = Promise.resolve(false);
+  try {
+    if (!_audioCtx) {
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      if (AC) _audioCtx = new AC();
     }
-    // Silent play+pause unlocks the element for Safari
-    _ringAudio.play().then(() => {
-      _ringAudio!.pause();
-      _ringAudio!.currentTime = 0;
-      _ringAudio!.volume = 0.7;
-    }).catch(() => {
-      // Still blocked — will retry on next interaction
-      _audioWarmed = false;
-    });
+    if (_audioCtx?.state === 'suspended') {
+      ctxUnlock = _audioCtx.resume().then(() => true).catch(() => false);
+    } else if (_audioCtx?.state === 'running') {
+      ctxUnlock = Promise.resolve(true);
+    }
+  } catch { /* AudioContext not available */ }
 
-    window.removeEventListener('click', unlock, true);
-    window.removeEventListener('touchstart', unlock, true);
-    window.removeEventListener('keydown', unlock, true);
-  };
+  Promise.all([htmlUnlock, ctxUnlock]).then(([html, ctx]) => {
+    if (html || ctx) {
+      _audioUnlocked = true;
+      // Clean up all listeners
+      for (const evt of UNLOCK_EVENTS) {
+        document.removeEventListener(evt, unlockAudio, true);
+      }
+    }
+    // If both failed, listeners stay alive to retry on next gesture
+  });
+}
 
-  window.addEventListener('click', unlock, true);
-  window.addEventListener('touchstart', unlock, true);
-  window.addEventListener('keydown', unlock, true);
+// Self-invoke at module load — attaches listeners before React mount
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  for (const evt of UNLOCK_EVENTS) {
+    document.addEventListener(evt, unlockAudio, { capture: true, passive: true });
+  }
 }
 
 function startRingtone(): void {
@@ -163,7 +194,6 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
   /* Request notification permission on first mount */
   useEffect(() => {
     requestNotificationPermission();
-    warmAudioForSafari();
   }, []);
 
   /* Subscribe to store */
