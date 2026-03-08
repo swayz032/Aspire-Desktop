@@ -147,8 +147,9 @@ function emitTraceEvent(event: {
           ${JSON.stringify(event.metadata ?? {})}::jsonb
         )
       `);
-    } catch {
-      // telemetry must not fail user requests
+    } catch (e) {
+      // Telemetry must not fail user requests, but log for observability
+      console.error('[Trace] Event insert failed:', e);
     }
   })();
 }

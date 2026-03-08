@@ -1,25 +1,44 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, Dimensions } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { BlurView } from 'expo-blur';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { AvaOrbVideo, OrbState } from '@/components/AvaOrbVideo';
-import { useTenant } from '@/providers/TenantProvider';
+import { useSupabase, useTenant } from '@/providers';
+import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
+import { getCurrentSession } from '@/data/session';
+import type { AgentName } from '@/lib/elevenlabs';
 import { ConfirmationModal } from '@/components/session/ConfirmationModal';
 import { Toast } from '@/components/session/Toast';
 import { BottomSheet } from '@/components/session/BottomSheet';
 import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-type GeneratedContent = {
-  id: string;
-  type: 'pdf' | 'document' | 'code';
-  name: string;
-  preview?: string;
+/** Map staff participant IDs from the session wizard to AgentName for useAgentVoice. */
+const STAFF_TO_AGENT: Record<string, AgentName> = {
+  'staff-eli': 'eli',
+  'staff-finn': 'finn',
+  'staff-nora': 'nora',
+  'staff-sarah': 'sarah',
+  'staff-quinn': 'ava',   // Quinn routes through Ava orchestrator
+  'staff-clara': 'ava',   // Clara routes through Ava orchestrator
+  'staff-adam': 'ava',    // Adam routes through Ava orchestrator
+  'staff-tec': 'ava',     // Tec routes through Ava orchestrator
+  'staff-teressa': 'ava', // Teressa routes through Ava orchestrator
+  'staff-milo': 'ava',    // Milo routes through Ava orchestrator
+  'ai-ava': 'ava',
 };
+
+function resolveAgentFromSession(): AgentName {
+  const session = getCurrentSession();
+  if (!session?.participants) return 'ava';
+  // Find the first AI participant that maps to a specific agent voice
+  for (const p of session.participants) {
+    const mapped = STAFF_TO_AGENT[p.id];
+    if (mapped) return mapped;
+  }
+  return 'ava';
+}
 
 const MENU_OPTIONS = [
   { id: 'mute', label: 'Mute Microphone', icon: 'mic-off' as const },
@@ -32,22 +51,22 @@ const MENU_OPTIONS = [
 export default function VoiceSession() {
   const router = useRouter();
   const isDesktop = useDesktop();
+  const { session: authSession, suiteId } = useSupabase();
   const { tenant } = useTenant();
   const [orbState, setOrbState] = useState<OrbState>('idle');
-  const [currentActivity, setCurrentActivity] = useState<string>('Connecting to Ava...');
-  const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
+  const [currentActivity, setCurrentActivity] = useState<string>('Connecting...');
   const [isMuted, setIsMuted] = useState(false);
   const [endSessionVisible, setEndSessionVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
-  
+
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
-  
+
   const shimmerAnim = useRef(new Animated.Value(0)).current;
-  const cardSlideAnim = useRef(new Animated.Value(50)).current;
-  const cardFadeAnim = useRef(new Animated.Value(0)).current;
-  
+
+  // Resolve which agent to talk to from the session wizard selection
+  const agentName = useRef<AgentName>(resolveAgentFromSession()).current;
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage(message);
@@ -55,6 +74,76 @@ export default function VoiceSession() {
     setToastVisible(true);
   };
 
+  // --- Real voice pipeline via useAgentVoice (same hook used in AvaDeskPanel) ---
+  const voice = useAgentVoice({
+    agent: agentName,
+    suiteId: suiteId ?? undefined,
+    accessToken: authSession?.access_token,
+    userProfile: tenant ? {
+      ownerName: tenant.ownerName,
+      businessName: tenant.businessName,
+      industry: tenant.industry ?? undefined,
+      teamSize: tenant.teamSize ?? undefined,
+      industrySpecialty: tenant.industrySpecialty ?? undefined,
+      businessGoals: tenant.businessGoals ?? undefined,
+      painPoint: tenant.painPoint ?? undefined,
+      preferredChannel: tenant.preferredChannel ?? undefined,
+    } : undefined,
+    onStatusChange: (s) => {
+      const map: Record<string, OrbState> = {
+        idle: 'idle',
+        listening: 'listening',
+        thinking: 'processing',
+        speaking: 'responding',
+        error: 'idle',
+      };
+      setOrbState(map[s] || 'idle');
+      if (s === 'listening') setCurrentActivity('Listening...');
+      else if (s === 'thinking') setCurrentActivity('Thinking...');
+      else if (s === 'speaking') setCurrentActivity('');
+      else if (s === 'error') setCurrentActivity('');
+    },
+    onTranscript: (text) => {
+      setCurrentActivity(`"${text}"`);
+    },
+    onResponse: () => {
+      setCurrentActivity('');
+    },
+    onError: (error) => {
+      const msg = error.message || String(error);
+      if (/auth_required/i.test(msg)) {
+        showToast('Session expired. Please sign in again.', 'error');
+      } else if (/autoplay|not allowed|play\(\)/i.test(msg)) {
+        showToast('Tap anywhere, then try again.', 'error');
+      } else if (/permission|denied|microphone/i.test(msg)) {
+        showToast('Microphone access denied. Check permissions.', 'error');
+      } else if (/tts|voice.*unavailable|synthesis/i.test(msg)) {
+        showToast('Voice unavailable — try again.', 'error');
+      } else {
+        showToast(msg.length > 80 ? msg.slice(0, 80) + '...' : msg, 'error');
+      }
+    },
+    onDiagnostic: (diag: VoiceDiagnosticEvent) => {
+      if (diag.stage === 'autoplay') {
+        showToast('Audio blocked by browser. Tap the mic button to retry.', 'error');
+      }
+    },
+  });
+
+  // Destructure stable refs to avoid eslint-disable on useEffect deps
+  const { startSession, endSession } = voice;
+
+  // Start voice session on mount, cleanup on unmount
+  useEffect(() => {
+    startSession().catch((err: Error) => {
+      showToast(err.message || 'Failed to start voice session', 'error');
+    });
+    return () => {
+      endSession();
+    };
+  }, [startSession, endSession]);
+
+  // Shimmer animation for status text
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -72,87 +161,27 @@ export default function VoiceSession() {
     ).start();
   }, []);
 
-  useEffect(() => {
-    const timer0 = setTimeout(() => {
-      setOrbState('listening');
-      setCurrentActivity('Listening...');
-    }, 1500);
-    
-    const timer1 = setTimeout(() => {
-      setOrbState('processing');
-      setCurrentActivity('Thinking...');
-    }, 3500);
-
-    const timer2 = setTimeout(() => {
-      setCurrentActivity('Searching contract templates...');
-    }, 5000);
-
-    const timer3 = setTimeout(() => {
-      setCurrentActivity('Reading NDA requirements...');
-    }, 6500);
-
-    const timer4 = setTimeout(() => {
-      setCurrentActivity('Generating document...');
-    }, 8000);
-
-    const timer5 = setTimeout(() => {
-      setOrbState('responding');
-      setCurrentActivity('');
-      setGeneratedContent({
-        id: '1',
-        type: 'pdf',
-        name: 'NDA_Agreement.pdf',
-        preview: 'Non-Disclosure Agreement between your company and...',
-      });
-      
-      Animated.parallel([
-        Animated.timing(cardSlideAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-        Animated.timing(cardFadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-      ]).start();
-    }, 9500);
-
-    const timer7 = setTimeout(() => {
-      setOrbState('listening');
-      setCurrentActivity('Listening...');
-      setGeneratedContent(null);
-      cardSlideAnim.setValue(50);
-      cardFadeAnim.setValue(0);
-    }, 13500);
-
-    return () => {
-      clearTimeout(timer0);
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
-      clearTimeout(timer4);
-      clearTimeout(timer5);
-      clearTimeout(timer7);
-    };
-  }, []);
-
   const shimmerOpacity = shimmerAnim.interpolate({
     inputRange: [0, 0.5, 1],
     outputRange: [0.4, 0.8, 0.4],
   });
 
-  const handleEndSession = () => {
-    showToast('Session ended. Transcript saved.', 'success');
-    setTimeout(() => router.replace('/(tabs)'), 1000);
-  };
+  const handleEndSession = useCallback(() => {
+    voice.endSession();
+    showToast('Session ended.', 'success');
+    setTimeout(() => router.replace('/(tabs)'), 500);
+  }, [voice, router]);
+
+  const handleToggleMute = useCallback(() => {
+    const willMute = !isMuted;
+    setIsMuted(willMute);
+    showToast(willMute ? 'Microphone muted' : 'Microphone on', 'info');
+  }, [isMuted]);
 
   const handleMenuSelect = (optionId: string) => {
     switch (optionId) {
       case 'mute':
-        setIsMuted(!isMuted);
-        showToast(isMuted ? 'Microphone on' : 'Microphone muted', 'info');
+        handleToggleMute();
         break;
       case 'speaker':
         showToast('Speaker mode enabled', 'info');
@@ -167,14 +196,6 @@ export default function VoiceSession() {
         setEndSessionVisible(true);
         break;
     }
-  };
-
-  const handleViewDocument = () => {
-    showToast('Opening document preview...', 'info');
-  };
-
-  const handleDownloadDocument = () => {
-    showToast('Document downloaded', 'success');
   };
 
   const voiceContent = (
@@ -216,59 +237,13 @@ export default function VoiceSession() {
           ) : null}
         </View>
 
-        {generatedContent && (
-          <Animated.View 
-            style={[
-              styles.contentCardWrapper,
-              {
-                opacity: cardFadeAnim,
-                transform: [{ translateY: cardSlideAnim }],
-              }
-            ]}
-          >
-            <BlurView 
-              intensity={40} 
-              tint="dark" 
-              style={styles.contentCard}
-            >
-              <View style={styles.contentCardInner}>
-                <View style={styles.contentCardHeader}>
-                  <Ionicons 
-                    name={generatedContent.type === 'pdf' ? 'document-text' : 'code-slash'} 
-                    size={20} 
-                    color={Colors.text.secondary} 
-                  />
-                  <Text style={styles.contentCardTitle}>{generatedContent.name}</Text>
-                </View>
-                {generatedContent.preview && (
-                  <Text style={styles.contentCardPreview} numberOfLines={2}>
-                    {generatedContent.preview}
-                  </Text>
-                )}
-                <View style={styles.contentCardActions}>
-                  <Pressable style={styles.contentCardButton} onPress={handleViewDocument}>
-                    <Ionicons name="eye-outline" size={16} color={Colors.accent.cyan} />
-                    <Text style={styles.contentCardButtonText}>View</Text>
-                  </Pressable>
-                  <Pressable style={styles.contentCardButton} onPress={handleDownloadDocument}>
-                    <Ionicons name="download-outline" size={16} color={Colors.accent.cyan} />
-                    <Text style={styles.contentCardButtonText}>Download</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </BlurView>
-          </Animated.View>
-        )}
       </View>
 
       <View style={styles.footer}>
         <View style={styles.controlsRow}>
-          <Pressable 
+          <Pressable
             style={[styles.controlButton, isMuted && styles.controlButtonActive]}
-            onPress={() => {
-              setIsMuted(!isMuted);
-              showToast(isMuted ? 'Microphone on' : 'Microphone muted', 'info');
-            }}
+            onPress={handleToggleMute}
           >
             <Ionicons 
               name={isMuted ? "mic-off" : "mic"} 
@@ -397,56 +372,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '400',
     letterSpacing: 0.3,
-  },
-  contentCardWrapper: {
-    width: SCREEN_WIDTH - Spacing.lg * 2,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  contentCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  contentCardInner: {
-    padding: Spacing.lg,
-    backgroundColor: 'rgba(30, 30, 40, 0.5)',
-  },
-  contentCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  contentCardTitle: {
-    color: Colors.text.primary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  contentCardPreview: {
-    color: Colors.text.muted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: Spacing.md,
-  },
-  contentCardActions: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  contentCardButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(52, 152, 219, 0.15)',
-    borderRadius: 8,
-  },
-  contentCardButtonText: {
-    color: Colors.accent.cyan,
-    fontSize: 13,
-    fontWeight: '500',
   },
   footer: {
     alignItems: 'center',
