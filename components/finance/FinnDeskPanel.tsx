@@ -870,8 +870,8 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
               style={immersiveStyles.preConnectBg}
               resizeMode="cover"
               imageStyle={Platform.OS === 'web'
-                ? { opacity: 0.15, objectPosition: 'center 40%' } as any
-                : { opacity: 0.15 }
+                ? { opacity: 0.18, objectPosition: '55% center', objectFit: 'cover', filter: 'saturate(0.7) contrast(1.05)' } as any
+                : { opacity: 0.18 }
               }
             >
               {/* Animated ambient gradient overlay for visual life */}
