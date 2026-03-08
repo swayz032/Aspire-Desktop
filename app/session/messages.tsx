@@ -9,6 +9,7 @@ import {
   ImageBackground,
   FlatList,
   ViewStyle,
+  Platform,
   Animated as RNAnimated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +25,7 @@ import type { SmsThread, SmsMessage } from '@/types/frontdesk';
 // Constants
 // ---------------------------------------------------------------------------
 
-const HERO_IMAGE = require('@/assets/images/team-workspace-hero.jpg');
+const HERO_IMAGE = require('@/assets/images/messages-hero.jpg');
 const THREAD_LIST_WIDTH = 340;
 
 // ---------------------------------------------------------------------------
@@ -771,7 +772,10 @@ const styles = StyleSheet.create({
   },
   heroImage: {
     resizeMode: 'cover',
-  },
+    ...(Platform.OS === 'web'
+      ? { objectPosition: '40% center', objectFit: 'cover', filter: 'brightness(0.9) saturate(1.1)' }
+      : {}),
+  } as Record<string, unknown>,
   heroOverlay: {
     flex: 1,
     paddingHorizontal: Spacing.xl,

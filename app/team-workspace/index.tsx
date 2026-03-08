@@ -1518,7 +1518,10 @@ const styles = StyleSheet.create({
   },
   headerBannerImage: {
     resizeMode: 'cover',
-  },
+    ...(Platform.OS === 'web'
+      ? { objectPosition: '35% 30%', objectFit: 'cover', filter: 'saturate(0.85) contrast(1.05)' }
+      : {}),
+  } as Record<string, unknown>,
   headerOverlay: {
     flex: 1,
     paddingHorizontal: 48,

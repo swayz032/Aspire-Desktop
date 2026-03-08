@@ -152,8 +152,8 @@ function injectLobbyKeyframes() {
   document.head.appendChild(style);
 }
 
-const CONFERENCE_ROOM_IMAGE = require('@/assets/images/conference-room-meeting.jpg');
-const TEAM_MEETING_IMAGE = require('@/assets/images/session-lobby-hero.jpg');
+const CONFERENCE_ROOM_IMAGE = require('@/assets/images/session-lobby-hero.jpg');
+const TEAM_MEETING_IMAGE = require('@/assets/images/conference-room-meeting.jpg');
 const NORA_AVATAR = require('@/assets/images/nora-avatar.png');
 
 const PURPOSE_OPTIONS: { id: SessionPurpose; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -711,10 +711,10 @@ export default function ConferenceLobby() {
               {...(Platform.OS === 'web' ? { className: 'lobby-flip-card' } as Record<string, string> : {})}
             >
               <View style={styles.sessionPreviewCard}>
-                <ImageBackground 
+                <ImageBackground
                   source={CONFERENCE_ROOM_IMAGE}
                   style={styles.sessionImageBackground}
-                  imageStyle={styles.sessionImage}
+                  imageStyle={styles.sessionImageBack}
                 >
                   <LinearGradient
                     colors={['rgba(0,0,0,0.25)', 'rgba(0,0,0,0.7)']}
@@ -1162,7 +1162,13 @@ const styles = StyleSheet.create({
   sessionImage: {
     borderRadius: 15,
     ...(Platform.OS === 'web'
-      ? { objectPosition: 'center 45%' } as any
+      ? { objectPosition: 'center 45%', objectFit: 'cover' } as any
+      : {}),
+  },
+  sessionImageBack: {
+    borderRadius: 15,
+    ...(Platform.OS === 'web'
+      ? { objectPosition: 'center 20%', objectFit: 'cover' } as any
       : {}),
   },
   sessionGradientOverlay: {
