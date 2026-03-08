@@ -1,10 +1,13 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import crypto from 'crypto';
 import routes from './routes';
-import { db } from './db';
+import { db, pool } from './db';
 import { sql } from 'drizzle-orm';
 import { setDefaultSuiteId, setDefaultOfficeId } from './suiteContext';
 import { createClient } from '@supabase/supabase-js';
@@ -283,6 +286,85 @@ try {
   logger.warn('Stripe finance webhook handler not available, skipping');
 }
 
+// Trust Railway's reverse proxy for correct client IP (1 hop)
+app.set('trust proxy', 1);
+
+// Global API rate limiter — 200 requests per minute per IP
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: (req) => !req.path.startsWith('/api') && !req.path.startsWith('/v1'),
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many requests. Please try again shortly.',
+      retryAfter: 60,
+    });
+  },
+});
+
+// Stricter limiter for auth endpoints — 10 attempts per 15 min
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: 'AUTH_RATE_LIMIT',
+      message: 'Too many authentication attempts. Try again in 15 minutes.',
+      retryAfter: 900,
+    });
+  },
+});
+
+app.use(apiLimiter);
+app.use('/api/auth/', authLimiter);
+
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: [
+        "'self'",
+        "https://*.supabase.co",
+        "wss://*.supabase.co",
+        "https://*.elevenlabs.io",
+        "wss://*.elevenlabs.io",
+        "https://*.livekit.cloud",
+        "wss://*.livekit.cloud",
+        "https://*.anam.ai",
+        "wss://*.anam.ai",
+        "https://*.pandadoc.com",
+        "https://*.stripe.com",
+        "https://*.plaid.com",
+        "https://maps.googleapis.com",
+      ],
+      frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com"],
+      fontSrc: ["'self'", "data:"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  frameguard: { action: 'sameorigin' },
+}));
+
+// Response compression (skip SSE streams)
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers.accept === 'text/event-stream') return false;
+    return compression.filter(req, res);
+  },
+}));
+
 // CORS — restricted to known origins (D-C4 fix: no wildcards in production)
 const CORS_ALLOWED_ORIGINS = (process.env.ASPIRE_CORS_ORIGINS || 'https://www.aspireos.app,https://aspireos.app,http://localhost:5000,http://localhost:5173,http://localhost:3000').split(',');
 
@@ -313,7 +395,30 @@ app.use((req, res, next) => {
   res.setHeader('Expires', '0');
   next();
 });
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+
+// Request timeout — 30s (Law #10: timeout enforcement)
+app.use((req, res, next) => {
+  if (req.headers.upgrade === 'websocket') return next();
+  if (req.headers.accept === 'text/event-stream') return next();
+
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      logger.warn('Request timeout', { path: req.path, method: req.method });
+      res.status(504).json({
+        error: 'REQUEST_TIMEOUT',
+        message: 'Request timed out after 30 seconds',
+      });
+    }
+  }, 30_000);
+
+  res.on('finish', () => clearTimeout(timeout));
+  res.on('close', () => clearTimeout(timeout));
+
+  next();
+});
+
 app.use(routes);
 
 try {
@@ -437,29 +542,50 @@ app.get('/api/config/public', (_req, res) => {
   });
 });
 
-// Enhanced health check (D-C15 + B-H10) — checks DB connectivity
-app.get('/api/health', async (req, res) => {
-  const checks: Record<string, boolean> = {
+// Deep health check — DB connectivity, pool stats, memory, latency
+app.get('/api/health', async (_req, res) => {
+  const checks: Record<string, unknown> = {
     server: true,
+    uptime_s: Math.floor(process.uptime()),
+    memory_mb: Math.round(process.memoryUsage().rss / 1024 / 1024),
   };
 
-  // Check database connectivity
+  // Database connectivity + latency
+  const dbStart = Date.now();
   try {
     await db.execute(sql`SELECT 1`);
     checks.database = true;
+    checks.db_latency_ms = Date.now() - dbStart;
   } catch {
     checks.database = false;
+    checks.db_latency_ms = Date.now() - dbStart;
   }
 
-  // Check Supabase admin client
+  // Pool statistics
+  checks.pool = {
+    total: pool.totalCount,
+    idle: pool.idleCount,
+    waiting: pool.waitingCount,
+  };
+
+  // Supabase admin client
   checks.supabase_admin = supabaseAdmin !== null;
 
-  const allHealthy = Object.values(checks).every(Boolean);
-  const status = allHealthy ? 'ok' : 'degraded';
+  // Overall status
+  const isHealthy = checks.database === true && checks.supabase_admin === true;
+  const isDegraded = checks.database === true && !checks.supabase_admin;
+  const status = isHealthy ? 'ok' : isDegraded ? 'degraded' : 'unhealthy';
 
-  res.status(allHealthy ? 200 : 503).json({
+  // Pool pressure warning
+  if (pool.waitingCount > 5) {
+    checks.pool_pressure = 'high';
+    logger.warn('Health check: high pool pressure', { waiting: pool.waitingCount });
+  }
+
+  res.status(isHealthy || isDegraded ? 200 : 503).json({
     status,
     service: 'aspire-desktop',
+    version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || 'dev',
     timestamp: new Date().toISOString(),
     checks,
   });

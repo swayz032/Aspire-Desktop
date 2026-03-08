@@ -25,64 +25,28 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const conferenceHero = require('@/assets/images/conference-room-meeting.jpg');
 
-/* ─── Premium Ringtone ─── */
-// Persistent AudioContext — avoids Chrome autoplay policy blocking new contexts
-let _ringCtx: AudioContext | null = null;
+/* ─── Premium Ringtone (HTML5 Audio — real MP3, loops) ─── */
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const ringtoneSrc = require('@/assets/audio/incoming-call-ringtone.mp3');
+let _ringAudio: HTMLAudioElement | null = null;
 
-function getRingContext(): AudioContext | null {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
-  const AudioContextClass =
-    (window as any).AudioContext || (window as any).webkitAudioContext;
-  if (!AudioContextClass) return null;
-
-  if (!_ringCtx || _ringCtx.state === 'closed') {
-    _ringCtx = new AudioContextClass();
-  }
-  return _ringCtx;
-}
-
-function closeRingContext(): void {
-  if (_ringCtx && _ringCtx.state !== 'closed') {
-    _ringCtx.close().catch(() => {});
-    _ringCtx = null;
-  }
-}
-
-function playRingTone(): void {
+function startRingtone(): void {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   try {
-    const ctx = getRingContext();
-    if (!ctx) return;
-
-    // Resume suspended context (Chrome autoplay policy)
-    if (ctx.state === 'suspended') {
-      ctx.resume().then(() => {
-        console.log('[VideoCallRing] AudioContext resumed from suspended');
-      }).catch((e) => {
-        console.warn('[VideoCallRing] AudioContext resume failed:', e);
-      });
+    if (!_ringAudio) {
+      _ringAudio = new Audio(ringtoneSrc);
+      _ringAudio.loop = true;
+      _ringAudio.volume = 0.7;
     }
+    _ringAudio.currentTime = 0;
+    _ringAudio.play().catch(() => {});
+  } catch { /* no-op */ }
+}
 
-    console.log('[VideoCallRing] Playing chime, ctx.state:', ctx.state);
-
-    // Two-tone ascending chime: C5 (523Hz) → E5 (659Hz)
-    const notes = [523, 659];
-
-    notes.forEach((freq: number, index: number) => {
-      const oscillator = ctx.createOscillator();
-      const gain = ctx.createGain();
-      oscillator.type = 'sine';
-      const startTime = ctx.currentTime + index * 0.18;
-      oscillator.frequency.setValueAtTime(freq, startTime);
-      gain.gain.setValueAtTime(0.0001, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.5, startTime + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.35);
-      oscillator.connect(gain);
-      gain.connect(ctx.destination);
-      oscillator.start(startTime);
-      oscillator.stop(startTime + 0.4);
-    });
-  } catch {
-    // no-op
+function stopRingtone(): void {
+  if (_ringAudio) {
+    _ringAudio.pause();
+    _ringAudio.currentTime = 0;
   }
 }
 
@@ -250,9 +214,8 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
     ringLoopRef.current = loop;
     loop.start();
 
-    /* Ringer — premium chime every 3s */
-    playRingTone();
-    const interval = setInterval(playRingTone, 3000);
+    /* Ringer — real MP3, loops automatically */
+    startRingtone();
 
     /* Browser notification for away users */
     if (overlayState.invitation) {
@@ -263,8 +226,7 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
     }
 
     return () => {
-      clearInterval(interval);
-      closeRingContext();
+      stopRingtone();
       if (ringLoopRef.current) {
         ringLoopRef.current.stop();
         ringLoopRef.current = null;
@@ -476,14 +438,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow: `0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px ${ACCENT.borderInner}, 0 0 60px ${ACCENT.glow}`,
+          boxShadow: [
+            '0 1px 3px rgba(0,0,0,0.25)',
+            '0 8px 24px rgba(0,0,0,0.4)',
+            '0 24px 64px rgba(0,0,0,0.5)',
+            '0 0 0 1px rgba(255,255,255,0.06)',
+            'inset 0 1px 0 rgba(255,255,255,0.04)',
+          ].join(', '),
+          transform: 'perspective(1200px) rotateX(0.5deg)',
         } as unknown as ViewStyle)
       : {
-          shadowColor: '#000',
-          shadowOpacity: 0.55,
-          shadowRadius: 28,
-          shadowOffset: { width: 0, height: 12 },
-          elevation: 20,
+          elevation: 24,
         }),
   },
 

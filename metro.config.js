@@ -18,10 +18,10 @@ config.server = {
       if (req.url && (req.url.startsWith('/api') || req.url.startsWith('/objects'))) {
         const options = {
           hostname: 'localhost',
-          port: 3001,
+          port: 5000,
           path: req.url,
           method: req.method,
-          headers: { ...req.headers, host: 'localhost:3001' },
+          headers: { ...req.headers, host: 'localhost:5000' },
         };
         
         const proxyReq = http.request(options, (proxyRes) => {
