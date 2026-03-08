@@ -2,10 +2,14 @@
  * Incoming Video Call Store
  *
  * Listener-based store for FaceTime-style incoming video call notifications.
- * Follows the exact pattern of incomingCallOverlayStore.ts.
  *
  * Flow: Supabase Realtime INSERT → useRealtimeConferenceInvitations → showIncomingVideoCall
  *       → IncomingVideoCallOverlay renders → user accepts/declines → PATCH API
+ *
+ * Production features:
+ * - Dismissed invitation tracking (prevents polling from re-showing dismissed calls)
+ * - Expiration-aware state (auto-dismisses expired invitations)
+ * - Deduplication (same invitation ID won't trigger duplicate overlays)
  */
 
 export interface VideoCallInvitation {
@@ -35,6 +39,11 @@ let state: IncomingVideoCallState = {
 
 const subscribers = new Set<Subscriber>();
 
+// Track dismissed invitation IDs so polling doesn't re-show them
+// Uses a Set with max size to prevent unbounded growth
+const dismissedIds = new Set<string>();
+const MAX_DISMISSED_IDS = 50;
+
 function emit(): void {
   for (const sub of subscribers) {
     sub(state);
@@ -53,7 +62,24 @@ export function getIncomingVideoCallState(): IncomingVideoCallState {
   return state;
 }
 
+/** Check if an invitation ID was already dismissed (accepted/declined/expired) */
+export function wasInvitationDismissed(id: string): boolean {
+  return dismissedIds.has(id);
+}
+
 export function showIncomingVideoCall(invitation: VideoCallInvitation): void {
+  // Don't re-show dismissed invitations (prevents polling re-trigger)
+  if (dismissedIds.has(invitation.id)) return;
+
+  // Don't re-show if already displaying this exact invitation
+  if (state.visible && state.invitation?.id === invitation.id) return;
+
+  // Check if already expired
+  if (new Date(invitation.expiresAt) <= new Date()) {
+    dismissedIds.add(invitation.id);
+    return;
+  }
+
   state = {
     visible: true,
     invitation,
@@ -62,6 +88,16 @@ export function showIncomingVideoCall(invitation: VideoCallInvitation): void {
 }
 
 export function dismissIncomingVideoCall(): void {
+  // Track the dismissed invitation ID
+  if (state.invitation?.id) {
+    // Prune old IDs if set is too large
+    if (dismissedIds.size >= MAX_DISMISSED_IDS) {
+      const first = dismissedIds.values().next().value;
+      if (first) dismissedIds.delete(first);
+    }
+    dismissedIds.add(state.invitation.id);
+  }
+
   state = {
     visible: false,
     invitation: null,

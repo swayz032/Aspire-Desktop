@@ -799,6 +799,9 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
       .lt('expires_at', new Date().toISOString());
 
     // Insert the invitation — Supabase Realtime will push to invitee
+    // TTL: 5 minutes (override SQL default of 60s for production reliability)
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
     const { data: invitation, error: insertError } = await supabaseAdmin
       .from('conference_invitations')
       .insert({
@@ -813,8 +816,9 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
         invitee_user_id,
         room_name,
         livekit_server_url: LIVEKIT_SERVER_URL,
+        expires_at: expiresAt,
       })
-      .select('id')
+      .select('id, expires_at')
       .single();
 
     if (insertError || !invitation) {
@@ -825,6 +829,14 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
       });
       return res.status(500).json({ error: 'Failed to create invitation' });
     }
+
+    logger.info('Conference invitation created', {
+      invitationId: invitation.id,
+      inviterSuiteId: suiteId,
+      inviteeUserId: invitee_user_id,
+      roomName: room_name,
+      expiresAt,
+    });
 
     // Law #2: YELLOW tier receipt — mandatory (fail-closed)
     try {

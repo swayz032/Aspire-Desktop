@@ -1,49 +1,71 @@
 /**
  * useRealtimeConferenceInvitations
  *
- * Subscribes to Supabase Realtime for conference_invitations table changes
- * filtered by the current user's ID. When a new pending invitation arrives,
- * it triggers the incoming video call overlay. When an invitation is updated
- * to non-pending status, it dismisses the overlay.
+ * Dual-path notification system for conference invitations:
+ * 1. Supabase Realtime (primary) — instant push via postgres_changes
+ * 2. Polling fallback (secondary) — catches missed events every 5 seconds
  *
- * Mount this hook once at the app layout level (e.g., DesktopShell or _layout).
+ * When a new pending invitation arrives, triggers the incoming video call
+ * overlay + bell notification. When accepted/declined/expired, dismisses.
+ *
+ * Mount this hook once at the app layout level (_layout.tsx).
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/providers';
-import { showIncomingVideoCall, dismissIncomingVideoCall } from '@/lib/incomingVideoCallStore';
+import {
+  showIncomingVideoCall,
+  dismissIncomingVideoCall,
+  getIncomingVideoCallState,
+} from '@/lib/incomingVideoCallStore';
+
+const LOG_PREFIX = '[ConferenceInvitations]';
+const POLL_INTERVAL_MS = 5000;
+
+/** Map a Supabase row to a VideoCallInvitation for the store */
+function rowToInvitation(row: Record<string, unknown>) {
+  return {
+    id: row.id as string,
+    inviterName: row.inviter_name as string,
+    inviterAvatarUrl: (row.inviter_avatar_url as string) || null,
+    inviterSuiteDisplayId: row.inviter_suite_display_id as string,
+    inviterOfficeDisplayId: row.inviter_office_display_id as string,
+    inviterBusinessName: (row.inviter_business_name as string) || null,
+    roomName: row.room_name as string,
+    serverUrl: row.livekit_server_url as string,
+    expiresAt: row.expires_at as string,
+    status: 'pending' as const,
+  };
+}
 
 export function useRealtimeConferenceInvitations(): void {
   const { session } = useSupabase();
+  const realtimeConnected = useRef(false);
 
   useEffect(() => {
     if (!session?.user?.id) return;
 
+    const userId = session.user.id;
+    console.log(`${LOG_PREFIX} Initializing for user ${userId.slice(0, 8)}...`);
+
+    // ── 1. Supabase Realtime subscription (primary — instant) ──────────
+
+    const channelName = `conference-invitations-${userId.slice(0, 8)}`;
     const channel = supabase
-      .channel('conference-invitations')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'conference_invitations',
-          filter: `invitee_user_id=eq.${session.user.id}`,
+          filter: `invitee_user_id=eq.${userId}`,
         },
         (payload) => {
+          console.log(`${LOG_PREFIX} Realtime INSERT received:`, payload.new);
           const row = payload.new as Record<string, unknown>;
           if (row.status === 'pending') {
-            showIncomingVideoCall({
-              id: row.id as string,
-              inviterName: row.inviter_name as string,
-              inviterAvatarUrl: (row.inviter_avatar_url as string) || null,
-              inviterSuiteDisplayId: row.inviter_suite_display_id as string,
-              inviterOfficeDisplayId: row.inviter_office_display_id as string,
-              inviterBusinessName: (row.inviter_business_name as string) || null,
-              roomName: row.room_name as string,
-              serverUrl: row.livekit_server_url as string,
-              expiresAt: row.expires_at as string,
-              status: 'pending',
-            });
+            showIncomingVideoCall(rowToInvitation(row));
           }
         },
       )
@@ -53,19 +75,72 @@ export function useRealtimeConferenceInvitations(): void {
           event: 'UPDATE',
           schema: 'public',
           table: 'conference_invitations',
-          filter: `invitee_user_id=eq.${session.user.id}`,
+          filter: `invitee_user_id=eq.${userId}`,
         },
         (payload) => {
+          console.log(`${LOG_PREFIX} Realtime UPDATE received:`, payload.new);
           const row = payload.new as Record<string, unknown>;
           if (row.status !== 'pending') {
             dismissIncomingVideoCall();
           }
         },
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log(`${LOG_PREFIX} Subscription status: ${status}`, err || '');
+        realtimeConnected.current = status === 'SUBSCRIBED';
+        if (status === 'CHANNEL_ERROR') {
+          console.error(`${LOG_PREFIX} Channel error — falling back to polling only`);
+        }
+        if (status === 'TIMED_OUT') {
+          console.warn(`${LOG_PREFIX} Subscription timed out — retrying...`);
+        }
+      });
+
+    // ── 2. Polling fallback (secondary — catches missed events) ────────
+    // Runs every 5s. If Realtime is working, polling typically finds nothing.
+    // If Realtime is down, polling is the safety net.
+
+    const checkPendingInvitations = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('conference_invitations')
+          .select('*')
+          .eq('invitee_user_id', userId)
+          .eq('status', 'pending')
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (error) {
+          console.warn(`${LOG_PREFIX} Poll error:`, error.message);
+          return;
+        }
+
+        if (data && data.length > 0) {
+          const row = data[0];
+          const currentState = getIncomingVideoCallState();
+          // Only show if not already displaying this invitation
+          if (!currentState.visible || currentState.invitation?.id !== row.id) {
+            console.log(`${LOG_PREFIX} Poll found pending invitation:`, row.id);
+            showIncomingVideoCall(rowToInvitation(row));
+          }
+        }
+      } catch (err) {
+        console.warn(`${LOG_PREFIX} Poll exception:`, err);
+      }
+    };
+
+    // Initial check + periodic polling
+    checkPendingInvitations();
+    const pollTimer = setInterval(checkPendingInvitations, POLL_INTERVAL_MS);
+
+    // ── Cleanup ────────────────────────────────────────────────────────
 
     return () => {
+      console.log(`${LOG_PREFIX} Cleaning up subscriptions`);
+      realtimeConnected.current = false;
       supabase.removeChannel(channel);
+      clearInterval(pollTimer);
     };
   }, [session?.user?.id]);
 }
