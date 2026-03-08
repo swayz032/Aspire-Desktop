@@ -175,8 +175,9 @@ export default function VoiceSession() {
   const handleToggleMute = useCallback(() => {
     const willMute = !isMuted;
     setIsMuted(willMute);
+    voice.setMuted(willMute);
     showToast(willMute ? 'Microphone muted' : 'Microphone on', 'info');
-  }, [isMuted]);
+  }, [isMuted, voice]);
 
   const handleMenuSelect = (optionId: string) => {
     switch (optionId) {

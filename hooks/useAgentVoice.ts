@@ -90,6 +90,8 @@ interface UseAgentVoiceReturn {
   startSession: () => Promise<void>;
   endSession: () => void;
   sendText: (text: string) => Promise<void>;
+  /** Mute/unmute the microphone (disables audio track without stopping STT). */
+  setMuted: (muted: boolean) => void;
   /** Replay last audio that was blocked by browser autoplay policy. */
   replayLastAudio: () => Promise<boolean>;
 }
@@ -907,6 +909,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     startSession,
     endSession,
     sendText,
+    setMuted: stt.setMuted,
     replayLastAudio,
   };
 }

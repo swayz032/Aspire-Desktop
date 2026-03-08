@@ -24,6 +24,8 @@ interface UseDeepgramSTTResult {
   start: () => Promise<void>;
   /** Stop listening */
   stop: () => void;
+  /** Mute/unmute the microphone track (pauses audio capture without stopping STT) */
+  setMuted: (muted: boolean) => void;
   /** Any error that occurred */
   error: string | null;
 }
@@ -131,6 +133,13 @@ export function useDeepgramSTT(
     }
   }, [stop]);
 
+  /** Mute/unmute the mic track without stopping STT. */
+  const setMuted = useCallback((muted: boolean) => {
+    if (streamRef.current) {
+      streamRef.current.getAudioTracks().forEach((t) => { t.enabled = !muted; });
+    }
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -144,6 +153,7 @@ export function useDeepgramSTT(
     isListening,
     start,
     stop,
+    setMuted,
     error,
   };
 }

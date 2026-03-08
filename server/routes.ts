@@ -1873,9 +1873,10 @@ function voiceErrorPayload(params: {
 }
 
 router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const traceId = resolveTraceId(req, correlationId);
-  const suiteId = (req as any).authenticatedSuiteId || null;
   const startedAt = Date.now();
   res.setHeader('X-Trace-Id', traceId);
   res.setHeader('X-Correlation-Id', correlationId);
@@ -2011,9 +2012,10 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
 });
 
 router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) => {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-tts-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const traceId = resolveTraceId(req, correlationId);
-  const suiteId = (req as any).authenticatedSuiteId || null;
   const startedAt = Date.now();
   res.setHeader('X-Trace-Id', traceId);
   res.setHeader('X-Correlation-Id', correlationId);
@@ -2161,9 +2163,10 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
 
 // ─── ElevenLabs STT — Speech-to-Text via server proxy (no API key on client) ───
 router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-stt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const traceId = resolveTraceId(req, correlationId);
-  const suiteId = (req as any).authenticatedSuiteId || null;
   const startedAt = Date.now();
   res.setHeader('X-Trace-Id', traceId);
   res.setHeader('X-Correlation-Id', correlationId);
