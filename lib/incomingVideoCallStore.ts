@@ -19,6 +19,7 @@ export interface VideoCallInvitation {
   inviterSuiteDisplayId: string;
   inviterOfficeDisplayId: string;
   inviterBusinessName: string | null;
+  inviterRole: string | null;
   roomName: string;
   serverUrl: string;
   expiresAt: string;

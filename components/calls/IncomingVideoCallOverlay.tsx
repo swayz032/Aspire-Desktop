@@ -25,7 +25,7 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const conferenceHero = require('@/assets/images/conference-room-meeting.jpg');
 
-/* ─── Ringer (reused from IncomingCallOverlay) ─── */
+/* ─── Premium Ringtone ─── */
 function playRingTone(): void {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
@@ -34,34 +34,78 @@ function playRingTone(): void {
       (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
-    const notes = [740, 880, 988];
+
+    // Two-tone ascending chime: C5 (523Hz) → E5 (659Hz)
+    const notes = [523, 659];
 
     notes.forEach((freq: number, index: number) => {
       const oscillator = ctx.createOscillator();
       const gain = ctx.createGain();
       oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(freq, ctx.currentTime + index * 0.14);
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + index * 0.14);
-      gain.gain.exponentialRampToValueAtTime(
-        0.08,
-        ctx.currentTime + index * 0.14 + 0.02,
-      );
-      gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        ctx.currentTime + index * 0.14 + 0.16,
-      );
+      const startTime = ctx.currentTime + index * 0.18;
+      oscillator.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(0.0001, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.2, startTime + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.3);
       oscillator.connect(gain);
       gain.connect(ctx.destination);
-      oscillator.start(ctx.currentTime + index * 0.14);
-      oscillator.stop(ctx.currentTime + index * 0.14 + 0.18);
+      oscillator.start(startTime);
+      oscillator.stop(startTime + 0.35);
     });
 
     setTimeout(() => {
       ctx.close().catch(() => {});
-    }, 800);
+    }, 1000);
   } catch {
     // no-op
   }
+}
+
+/* ─── Browser Notification ─── */
+let notificationPermissionRequested = false;
+
+function requestNotificationPermission(): void {
+  if (
+    Platform.OS !== 'web' ||
+    typeof Notification === 'undefined' ||
+    notificationPermissionRequested
+  )
+    return;
+  notificationPermissionRequested = true;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+function showBrowserNotification(callerName: string, businessName: string | null): void {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  if (!document.hidden) return;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+
+  try {
+    new Notification('Incoming Video Call', {
+      body: businessName
+        ? `${callerName} from ${businessName} is calling`
+        : `${callerName} is calling you`,
+      icon: '/favicon.ico',
+      requireInteraction: true,
+      tag: 'aspire-video-call',
+    });
+  } catch {
+    // no-op
+  }
+}
+
+/* ─── Caller Detail Row ─── */
+function CallerDetailRow({ label, value }: { label: string; value: string }): React.ReactElement {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
+  );
 }
 
 /* ─── Component ─── */
@@ -76,6 +120,12 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const ringPulse = useRef(new Animated.Value(0)).current;
+  const ringLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  /* Request notification permission on first mount */
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   /* Subscribe to store */
   useEffect(() => {
@@ -105,11 +155,17 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [overlayState.visible, overlayState.invitation]);
+  }, [overlayState.visible, overlayState.invitation?.id]);
 
-  /* Animations + ringer */
+  /* Animations + ringer + browser notification */
   useEffect(() => {
     if (!overlayState.visible) {
+      // Stop ring pulse loop
+      if (ringLoopRef.current) {
+        ringLoopRef.current.stop();
+        ringLoopRef.current = null;
+      }
+
       Animated.parallel([
         Animated.timing(cardOpacity, {
           toValue: 0,
@@ -152,11 +208,11 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
 
     /* Ring pulse loop */
     ringPulse.setValue(0);
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(ringPulse, {
           toValue: 1,
-          duration: 1200,
+          duration: 1400,
           useNativeDriver: true,
         }),
         Animated.timing(ringPulse, {
@@ -165,12 +221,29 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
           useNativeDriver: true,
         }),
       ]),
-    ).start();
+    );
+    ringLoopRef.current = loop;
+    loop.start();
 
-    /* Ringer */
+    /* Ringer — premium chime every 3s */
     playRingTone();
-    const interval = setInterval(playRingTone, 2000);
-    return () => clearInterval(interval);
+    const interval = setInterval(playRingTone, 3000);
+
+    /* Browser notification for away users */
+    if (overlayState.invitation) {
+      showBrowserNotification(
+        overlayState.invitation.inviterName,
+        overlayState.invitation.inviterBusinessName,
+      );
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (ringLoopRef.current) {
+        ringLoopRef.current.stop();
+        ringLoopRef.current = null;
+      }
+    };
   }, [overlayState.visible]);
 
   /* ─── Gate ─── */
@@ -178,26 +251,29 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
 
   const invitation = overlayState.invitation;
   const callerName = invitation.inviterName || 'Unknown';
-  const suiteDisplay = invitation.inviterSuiteDisplayId
-    ? `Suite ${invitation.inviterSuiteDisplayId}`
-    : null;
-  const officeDisplay = invitation.inviterOfficeDisplayId
-    ? `Office ${invitation.inviterOfficeDisplayId}`
-    : null;
-  const locationLine = [suiteDisplay, officeDisplay].filter(Boolean).join(' \u2022 ');
   const businessName = invitation.inviterBusinessName || null;
+  const callerRole = invitation.inviterRole || null;
+  const suiteDisplay = invitation.inviterSuiteDisplayId || null;
+  const officeDisplay = invitation.inviterOfficeDisplayId || null;
 
-  /* Ring pulse style */
+  // Build caller details array
+  const callerDetails: { label: string; value: string }[] = [];
+  if (businessName) callerDetails.push({ label: 'Company', value: businessName });
+  if (callerRole) callerDetails.push({ label: 'Role', value: callerRole });
+  if (suiteDisplay) callerDetails.push({ label: 'Suite', value: suiteDisplay });
+  if (officeDisplay) callerDetails.push({ label: 'Office', value: officeDisplay });
+
+  /* Ring pulse style — gentler expansion with smooth fade */
   const ringStyle = {
     opacity: ringPulse.interpolate({
-      inputRange: [0, 0.8, 1],
-      outputRange: [0.4, 0.1, 0],
+      inputRange: [0, 0.4, 1],
+      outputRange: [0.45, 0.2, 0],
     }),
     transform: [
       {
         scale: ringPulse.interpolate({
           inputRange: [0, 1],
-          outputRange: [1, 2.3],
+          outputRange: [1, 2.0],
         }),
       },
     ],
@@ -208,7 +284,7 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
     if (!invitation || !session?.access_token) return;
     try {
       const result = await acceptVideoCall(invitation.id, session.access_token, suiteId ?? undefined);
-      dismissIncomingVideoCall();
+      // dismissIncomingVideoCall is already called inside acceptVideoCall
       router.push({
         pathname: '/session/conference-live' as any,
         params: {
@@ -225,11 +301,12 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
   const handleDecline = async (): Promise<void> => {
     if (!invitation || !session?.access_token) return;
     try {
+      // declineVideoCall calls dismissIncomingVideoCall internally on success
       await declineVideoCall(invitation.id, session.access_token, suiteId ?? undefined);
     } catch {
-      // Best effort
+      // API failed — still dismiss the overlay locally
+      dismissIncomingVideoCall();
     }
-    dismissIncomingVideoCall();
   };
 
   /* ─── Render ─── */
@@ -259,32 +336,38 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
             accessibilityLabel="Conference room"
           >
             <LinearGradient
-              colors={['transparent', 'rgba(10,18,34,0.9)']}
+              colors={['transparent', 'rgba(8,12,28,0.95)']}
               style={styles.heroGradient}
             />
           </ImageBackground>
 
           {/* Pulsing ring glow overlaying hero */}
           <Animated.View style={[styles.heroRing, ringStyle]} />
+          {/* Static inner ring */}
+          <View style={styles.heroRingInner} />
         </View>
 
         {/* Label */}
         <Text style={styles.label}>INCOMING VIDEO CALL</Text>
 
-        {/* Caller info */}
+        {/* Caller name */}
         <Text style={styles.name} numberOfLines={1}>
           {callerName}
         </Text>
-        {locationLine ? (
-          <Text style={styles.detail} numberOfLines={1}>
-            {locationLine}
-          </Text>
-        ) : null}
-        {businessName ? (
-          <Text style={styles.business} numberOfLines={1}>
-            {businessName}
-          </Text>
-        ) : null}
+        <Text style={styles.subtitle}>is calling you</Text>
+
+        {/* Caller details grid */}
+        {callerDetails.length > 0 && (
+          <View style={styles.detailsCard}>
+            {callerDetails.map((detail) => (
+              <CallerDetailRow
+                key={detail.label}
+                label={detail.label}
+                value={detail.value}
+              />
+            ))}
+          </View>
+        )}
 
         {/* Countdown */}
         <Text style={styles.countdown}>
@@ -294,28 +377,49 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
         {/* Action buttons */}
         <View style={styles.actions}>
           <Pressable
-            style={[styles.actionBtn, styles.decline]}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              styles.decline,
+              pressed && styles.declinePressed,
+            ]}
             onPress={handleDecline}
             accessibilityRole="button"
             accessibilityLabel="Decline video call"
           >
-            <Ionicons name="close" size={18} color="#fff" />
-            <Text style={styles.actionText}>Decline</Text>
+            <Ionicons name="close" size={18} color="#EF4444" />
+            <Text style={styles.declineText}>Decline</Text>
           </Pressable>
           <Pressable
-            style={[styles.actionBtn, styles.join]}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              styles.join,
+              pressed && styles.joinPressed,
+            ]}
             onPress={handleAccept}
             accessibilityRole="button"
             accessibilityLabel="Join video session"
           >
             <Ionicons name="videocam" size={18} color="#fff" />
-            <Text style={styles.actionText}>Join Session</Text>
+            <Text style={styles.joinText}>Join Session</Text>
           </Pressable>
         </View>
       </Animated.View>
     </View>
   );
 }
+
+/* ─── Accent color palette (sky-400 family, consistent throughout) ─── */
+const ACCENT = {
+  solid: '#38BDF8',
+  ring: 'rgba(56,189,248,0.6)',
+  ringDim: 'rgba(56,189,248,0.3)',
+  ringFill: 'rgba(56,189,248,0.08)',
+  border: 'rgba(56,189,248,0.15)',
+  borderInner: 'rgba(56,189,248,0.12)',
+  glow: 'rgba(56,189,248,0.08)',
+} as const;
+
+const CARD_BG = 'rgba(8,12,28,0.95)';
 
 /* ─── Styles ─── */
 const styles = StyleSheet.create({
@@ -330,37 +434,39 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.72)',
     ...(Platform.OS === 'web'
       ? ({
-          backdropFilter: 'blur(12px)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
         } as unknown as ViewStyle)
       : {}),
   },
   card: {
-    width: 340,
-    borderRadius: 20,
+    width: 480,
+    maxWidth: '92%',
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: ACCENT.border,
     alignItems: 'center',
-    backgroundColor: 'rgba(10,18,34,0.9)',
+    backgroundColor: CARD_BG,
     overflow: 'hidden',
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow:
-            '0 20px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(56,189,248,0.2)',
+          boxShadow: `0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px ${ACCENT.borderInner}, 0 0 60px ${ACCENT.glow}`,
         } as unknown as ViewStyle)
       : {
           shadowColor: '#000',
-          shadowOpacity: 0.5,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 18,
+          shadowOpacity: 0.55,
+          shadowRadius: 28,
+          shadowOffset: { width: 0, height: 12 },
+          elevation: 20,
         }),
   },
 
   /* Hero image */
   heroContainer: {
     width: '100%',
-    height: 140,
+    height: 148,
     position: 'relative',
+    alignItems: 'center',
   },
   heroImage: {
     width: '100%',
@@ -371,81 +477,154 @@ const styles = StyleSheet.create({
   },
   heroRing: {
     position: 'absolute',
-    bottom: 10,
-    alignSelf: 'center',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    bottom: -8,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     borderWidth: 2,
-    borderColor: 'rgba(56,189,248,0.65)',
+    borderColor: ACCENT.ring,
+  },
+  heroRingInner: {
+    position: 'absolute',
+    bottom: 0,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: ACCENT.ringDim,
+    backgroundColor: ACCENT.ringFill,
   },
 
   /* Label */
   label: {
-    marginTop: 16,
+    marginTop: 24,
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 1.2,
+    letterSpacing: 1.6,
     textTransform: 'uppercase',
-    color: '#38BDF8',
+    color: ACCENT.solid,
   },
 
   /* Caller info */
   name: {
-    marginTop: 10,
-    fontSize: 20,
+    marginTop: 8,
+    fontSize: 24,
     fontWeight: '700',
     color: '#fff',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     textAlign: 'center',
+    ...(Platform.OS === 'web'
+      ? ({ lineHeight: '1.2' } as unknown as ViewStyle)
+      : { lineHeight: 30 }),
   },
-  detail: {
+  subtitle: {
     marginTop: 4,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
-    paddingHorizontal: 20,
+    fontSize: 15,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.45)',
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
-  business: {
-    marginTop: 2,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-    paddingHorizontal: 20,
-    textAlign: 'center',
+
+  /* Caller details grid */
+  detailsCard: {
+    marginTop: 20,
+    marginHorizontal: 32,
+    alignSelf: 'stretch',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  detailLabel: {
+    width: 72,
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.35)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  detailValue: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.88)',
   },
 
   /* Countdown */
   countdown: {
-    marginTop: 12,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
+    marginTop: 16,
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.35)',
+    letterSpacing: 0.3,
   },
 
   /* Actions */
   actions: {
-    marginTop: 16,
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 28,
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 20,
+    gap: 12,
+    paddingHorizontal: 32,
     width: '100%',
   },
   actionBtn: {
     flex: 1,
-    height: 56,
-    borderRadius: 16,
+    height: 52,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    ...(Platform.OS === 'web'
+      ? ({
+          transition: 'background-color 0.15s ease, opacity 0.15s ease, transform 0.15s ease',
+          cursor: 'pointer',
+        } as unknown as ViewStyle)
+      : {}),
   },
   decline: {
-    backgroundColor: '#EF4444',
+    backgroundColor: 'rgba(239,68,68,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.20)',
+  },
+  declinePressed: {
+    backgroundColor: 'rgba(239,68,68,0.22)',
+    borderColor: 'rgba(239,68,68,0.35)',
+  },
+  declineText: {
+    color: '#EF4444',
+    fontSize: 14,
+    fontWeight: '700',
   },
   join: {
     backgroundColor: '#22C55E',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'linear-gradient(135deg, #22C55E 0%, #16A34A 100%)',
+          boxShadow: '0 4px 16px rgba(34,197,94,0.25)',
+        } as unknown as ViewStyle)
+      : {}),
   },
-  actionText: {
+  joinPressed: {
+    backgroundColor: '#16A34A',
+    opacity: 0.9,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)',
+          boxShadow: '0 2px 8px rgba(34,197,94,0.20)',
+        } as unknown as ViewStyle)
+      : {}),
+  },
+  joinText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',

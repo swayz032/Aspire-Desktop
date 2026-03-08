@@ -31,6 +31,7 @@ function rowToInvitation(row: Record<string, unknown>) {
     inviterSuiteDisplayId: row.inviter_suite_display_id as string,
     inviterOfficeDisplayId: row.inviter_office_display_id as string,
     inviterBusinessName: (row.inviter_business_name as string) || null,
+    inviterRole: (row.inviter_role as string) || null,
     roomName: row.room_name as string,
     serverUrl: row.livekit_server_url as string,
     expiresAt: row.expires_at as string,

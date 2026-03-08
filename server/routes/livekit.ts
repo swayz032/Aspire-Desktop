@@ -20,8 +20,10 @@ import { Router, Request, Response } from 'express';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { sql } from 'drizzle-orm';
 import { logger } from '../logger';
 import { createTrustSpineReceipt } from '../receiptService';
+import { db } from '../db';
 
 const router = Router();
 
@@ -108,7 +110,8 @@ router.post('/api/livekit/token', async (req: Request, res: Response) => {
     await ensureRoom(roomName);
 
     const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
-      identity: participantName,
+      identity: `${(req as any).authenticatedUserId || participantName}-${suiteId || 'default'}`,
+      name: participantName,
       ttl: '10m',
       metadata: suiteId ? JSON.stringify({ suiteId }) : undefined,
     });
@@ -787,25 +790,46 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
     // Look up inviter's profile for display in the notification
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('suite_profiles')
-      .select('display_id, office_display_id, owner_name, business_name, avatar_url')
+      .select('display_id, office_display_id, owner_name, business_name, avatar_url, owner_title')
       .eq('suite_id', suiteId)
       .single();
 
     if (profileError || !profile) {
-      logger.warn('Inviter profile not found — using fallback values', {
+      logger.warn('Profile lookup failed via Supabase client', {
         error: profileError?.message || 'no profile found',
         suiteId,
       });
     }
 
-    // Fallback: resolve best available identity for incomplete/test accounts
-    const inviterProfile = profile || {
-      display_id: '',
-      office_display_id: '',
-      owner_name: (req as any).authenticatedUserName || 'Aspire User',
-      business_name: null,
-      avatar_url: null,
-    };
+    // Direct SQL fallback — bypasses any Supabase client/RLS issues
+    let inviterProfile = profile;
+    if (!inviterProfile) {
+      try {
+        const result = await db.execute(sql`
+          SELECT display_id, office_display_id, owner_name, business_name, avatar_url, owner_title
+          FROM suite_profiles WHERE suite_id = ${suiteId} LIMIT 1
+        `);
+        const rows = (result.rows || result) as any[];
+        if (rows.length > 0) {
+          inviterProfile = rows[0];
+          logger.info('Profile resolved via direct SQL fallback', { suiteId });
+        }
+      } catch (e) {
+        logger.error('Direct SQL profile fallback also failed', { error: (e as Error).message, suiteId });
+      }
+    }
+
+    // Final fallback — at least use auth context name
+    if (!inviterProfile) {
+      inviterProfile = {
+        display_id: '',
+        office_display_id: '',
+        owner_name: (req as any).authenticatedUserName || 'Aspire User',
+        business_name: null,
+        avatar_url: null,
+        owner_title: null,
+      };
+    }
 
     // Best-effort cleanup: expire stale pending invitations before inserting
     await supabaseAdmin
@@ -828,6 +852,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
         inviter_suite_display_id: inviterProfile.display_id || '',
         inviter_office_display_id: inviterProfile.office_display_id || '',
         inviter_business_name: inviterProfile.business_name || null,
+        inviter_role: inviterProfile.owner_title || null,
         invitee_suite_id,
         invitee_user_id,
         room_name,
@@ -1020,8 +1045,16 @@ router.patch('/api/conference/invite-internal/:id', async (req: Request, res: Re
 
     await ensureRoom(invitation.room_name);
 
+    // Look up invitee's display name for LiveKit participant
+    const { data: inviteeProfile } = await supabaseAdmin
+      .from('suite_profiles')
+      .select('owner_name')
+      .eq('suite_id', invitation.invitee_suite_id)
+      .single();
+
     const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
-      identity: userId,
+      identity: `${userId}-${invitation.invitee_suite_id}`,
+      name: inviteeProfile?.owner_name || 'Participant',
       ttl: '10m',
       metadata: JSON.stringify({ suiteId: invitation.invitee_suite_id, invitationId: id }),
     });
