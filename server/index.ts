@@ -760,6 +760,9 @@ const TERMS_HTML = `<!DOCTYPE html>
 
 app.get('/', (req, res) => {
   const distPath = path.join(process.cwd(), 'dist');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
@@ -774,14 +777,46 @@ app.get('/terms', (req, res) => {
 });
 
 const publicPath = path.join(process.cwd(), 'public');
-app.use(express.static(publicPath, { maxAge: 0, etag: false }));
-
 const distPath = path.join(process.cwd(), 'dist');
-app.use('/assets', express.static(path.join(distPath, 'assets'), { maxAge: 0, etag: false, setHeaders: (res) => { res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); } }));
-app.use(express.static(distPath, { maxAge: 0, etag: false }));
 
+// Hashed assets (JS/CSS bundles) — cache forever, content hash guarantees freshness
+app.use('/assets', express.static(path.join(distPath, 'assets'), {
+  maxAge: '1y',
+  immutable: true,
+}));
+app.use('/_expo', express.static(path.join(distPath, '_expo'), {
+  maxAge: '1y',
+  immutable: true,
+}));
+
+// Non-hashed static files (favicon, public/) — short cache with revalidation
+app.use(express.static(publicPath, {
+  maxAge: 0,
+  etag: true,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  },
+}));
+
+// dist/ root (index.html etc.) — NEVER cache
+app.use(express.static(distPath, {
+  maxAge: 0,
+  etag: false,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  },
+}));
+
+// SPA fallback — always serve fresh index.html
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api') && req.method === 'GET') {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(distPath, 'index.html'));
   } else {
     next();

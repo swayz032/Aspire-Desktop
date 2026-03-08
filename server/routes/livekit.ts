@@ -793,7 +793,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
     logger.info('Profile lookup for invite', { suiteId, headerSuiteId, authSuiteId: (req as any).authenticatedSuiteId });
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('suite_profiles')
-      .select('display_id, office_display_id, owner_name, business_name, avatar_url, owner_title')
+      .select('display_id, office_display_id, owner_name, business_name, logo_url, owner_title')
       .eq('suite_id', suiteId)
       .single();
 
@@ -819,7 +819,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
     if (!inviterProfile) {
       try {
         const result = await db.execute(sql`
-          SELECT display_id, office_display_id, owner_name, business_name, avatar_url, owner_title
+          SELECT display_id, office_display_id, owner_name, business_name, logo_url, owner_title
           FROM suite_profiles WHERE suite_id = ${suiteId} LIMIT 1
         `);
         const rows = (result.rows || result) as any[];
@@ -839,7 +839,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
         office_display_id: '',
         owner_name: (req as any).authenticatedUserName || 'Aspire User',
         business_name: null,
-        avatar_url: null,
+        logo_url: null,
         owner_title: null,
       };
     }
@@ -861,7 +861,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
         inviter_suite_id: suiteId,
         inviter_user_id: userId,
         inviter_name: inviterProfile.owner_name || 'Unknown',
-        inviter_avatar_url: inviterProfile.avatar_url || null,
+        inviter_avatar_url: inviterProfile.logo_url || null,
         inviter_suite_display_id: inviterProfile.display_id || '',
         inviter_office_display_id: inviterProfile.office_display_id || '',
         inviter_business_name: inviterProfile.business_name || null,
