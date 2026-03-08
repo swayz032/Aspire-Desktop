@@ -1161,6 +1161,9 @@ const styles = StyleSheet.create({
   },
   sessionImage: {
     borderRadius: 15,
+    ...(Platform.OS === 'web'
+      ? { objectPosition: 'center 45%' } as any
+      : {}),
   },
   sessionGradientOverlay: {
     flex: 1,

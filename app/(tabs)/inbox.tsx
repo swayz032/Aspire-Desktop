@@ -2940,6 +2940,9 @@ const styles = StyleSheet.create({
   },
   headerBannerImage: {
     resizeMode: 'cover',
+    ...(Platform.OS === 'web'
+      ? { objectPosition: 'center 35%' } as any
+      : {}),
   },
   headerOverlay: {
     flex: 1,

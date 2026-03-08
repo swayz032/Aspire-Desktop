@@ -868,7 +868,11 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
             <ImageBackground
               source={financeConnectHero}
               style={immersiveStyles.preConnectBg}
-              imageStyle={{ opacity: 0.12 }}
+              resizeMode="cover"
+              imageStyle={Platform.OS === 'web'
+                ? { opacity: 0.15, objectPosition: 'center 40%' } as any
+                : { opacity: 0.15 }
+              }
             >
               {/* Animated ambient gradient overlay for visual life */}
               <View
@@ -1222,7 +1226,11 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
               <ImageBackground
                 source={financeConnectHero}
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}
-                imageStyle={{ opacity: 0.2 }}
+                resizeMode="cover"
+                imageStyle={Platform.OS === 'web'
+                  ? { opacity: 0.2, objectPosition: 'center 40%' } as any
+                  : { opacity: 0.2 }
+                }
               >
                 <LinearGradient
                   colors={['rgba(0,0,0,0.6)', 'transparent']}

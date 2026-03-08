@@ -1747,6 +1747,9 @@ const desktopStyles = StyleSheet.create({
   },
   headerBannerImage: {
     resizeMode: 'cover',
+    ...(Platform.OS === 'web'
+      ? { objectPosition: 'center 25%' } as any
+      : {}),
   },
   headerOverlay: {
     flex: 1,
