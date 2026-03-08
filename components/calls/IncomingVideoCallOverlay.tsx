@@ -28,6 +28,45 @@ const conferenceHero = require('@/assets/images/conference-room-meeting.jpg');
 /* ─── Premium Ringtone (served from public/ via express.static) ─── */
 const RINGTONE_URL = '/audio/incoming-call-ringtone.mp3';
 let _ringAudio: HTMLAudioElement | null = null;
+let _audioWarmed = false;
+
+/**
+ * Safari/WebKit blocks Audio.play() unless the Audio element was first
+ * played during a user gesture (click/tap/keydown). We listen for any
+ * interaction, play+pause at volume 0 to "unlock" the element, then
+ * remove the listener. Subsequent programmatic .play() calls work.
+ */
+function warmAudioForSafari(): void {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || _audioWarmed) return;
+
+  const unlock = (): void => {
+    if (_audioWarmed) return;
+    _audioWarmed = true;
+
+    if (!_ringAudio) {
+      _ringAudio = new Audio(RINGTONE_URL);
+      _ringAudio.loop = true;
+      _ringAudio.volume = 0;
+    }
+    // Silent play+pause unlocks the element for Safari
+    _ringAudio.play().then(() => {
+      _ringAudio!.pause();
+      _ringAudio!.currentTime = 0;
+      _ringAudio!.volume = 0.7;
+    }).catch(() => {
+      // Still blocked — will retry on next interaction
+      _audioWarmed = false;
+    });
+
+    window.removeEventListener('click', unlock, true);
+    window.removeEventListener('touchstart', unlock, true);
+    window.removeEventListener('keydown', unlock, true);
+  };
+
+  window.addEventListener('click', unlock, true);
+  window.addEventListener('touchstart', unlock, true);
+  window.addEventListener('keydown', unlock, true);
+}
 
 function startRingtone(): void {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -124,6 +163,7 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
   /* Request notification permission on first mount */
   useEffect(() => {
     requestNotificationPermission();
+    warmAudioForSafari();
   }, []);
 
   /* Subscribe to store */
