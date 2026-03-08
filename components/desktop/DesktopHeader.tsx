@@ -388,28 +388,24 @@ export function DesktopHeader({
                     pressed && s.profileMenuItemPressed,
                   ]}
                   onPress={async () => {
-                    setActivePanel('none');
                     if (item.id === 'signout') {
+                      // Sign out BEFORE closing panel — prevents dropdown unmount aborting async chain
                       try {
-                        // Clear bootstrap identity cache
-                        if (typeof window !== 'undefined') {
-                          window.localStorage.removeItem('aspire.bootstrap.identity');
-                        }
                         await signOut();
                       } catch (e) {
-                        // Sign out even if Supabase call fails
                         console.error('Sign out error:', e);
                       }
-                      // Redirect to landing page and force clean state
+                      setActivePanel('none');
+                      // Redirect to login — full page reload clears all state
                       if (typeof window !== 'undefined') {
-                        window.location.href = '/';
+                        window.location.href = '/(auth)/login';
                       } else {
-                        router.replace('/' as any);
+                        router.replace('/(auth)/login' as any);
                       }
-                    } else {
-                      // Open settings panel at the corresponding section
-                      openSettings(item.id as SettingsSectionId);
+                      return;
                     }
+                    setActivePanel('none');
+                    openSettings(item.id as SettingsSectionId);
                   }}
                 >
                   <View style={s.profileMenuLeft}>

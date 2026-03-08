@@ -9,6 +9,8 @@ import React, { useEffect, useState } from 'react';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
+import { useIdleTimeout } from '@/hooks/useIdleTimeout';
+import { SessionTimeoutWarning } from '@/components/ui/SessionTimeoutWarning';
 import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
 import { IncomingCallOverlay } from '@/components/calls/IncomingCallOverlay';
 import { IncomingVideoCallOverlay } from '@/components/calls/IncomingVideoCallOverlay';
@@ -173,7 +175,7 @@ function useAuthGate() {
     }
 
     if (!session && !inAuthGroup && !inPublicGroup) {
-      router.replace('/' as any);
+      router.replace('/(auth)/login' as any);
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
       router.replace('/(auth)/onboarding' as any);
     } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
@@ -185,9 +187,11 @@ function useAuthGate() {
 function AppNavigator() {
   const isDesktop = useDesktop();
   const colorScheme = useColorScheme();
+  const { session, signOut } = useSupabase();
   useAuthGate();
   useRealtimeConferenceInvitations();
   useRealtimeApprovalRequests();
+  const { showWarning, secondsLeft, extendSession } = useIdleTimeout();
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -305,6 +309,13 @@ function AppNavigator() {
       <IncomingCallOverlay />
       <IncomingVideoCallOverlay />
       {!isDesktop && <AvaMiniPlayer />}
+      {session && showWarning && (
+        <SessionTimeoutWarning
+          secondsLeft={secondsLeft}
+          onExtend={extendSession}
+          onSignOut={signOut}
+        />
+      )}
       <StatusBar style="light" />
     </ThemeProvider>
   );
