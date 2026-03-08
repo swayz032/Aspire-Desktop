@@ -13,6 +13,7 @@ import {
   getIncomingVideoCallState,
   type VideoCallInvitation,
 } from '@/lib/incomingVideoCallStore';
+import { getAuthorityQueue } from '@/lib/api';
 
 interface Notification {
   id: string;
@@ -172,6 +173,37 @@ export function DesktopHeader({
     });
     return unsubscribe;
   }, []);
+
+  // Poll authority queue for bell notifications (approval_requests)
+  useEffect(() => {
+    if (!session?.access_token) return;
+
+    const fetchApprovals = async () => {
+      try {
+        const pendingApprovals = await getAuthorityQueue(session.access_token, suiteIdProp);
+
+        setNotifications(prev => {
+          const nonApproval = prev.filter(n => n.type !== 'approval');
+          const approvalNotifs: Notification[] = pendingApprovals.slice(0, 20).map((a: any) => ({
+            id: `approval-${a.id}`,
+            type: 'approval' as const,
+            title: a.draftSummary || a.title || 'Pending Approval',
+            message: `${a.assignedAgent || 'Agent'} requests ${(a.risk || 'YELLOW').toUpperCase()} tier action`,
+            time: a.createdAt ? new Date(a.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Now',
+            read: prev.find(n => n.id === `approval-${a.id}`)?.read ?? false,
+            icon: 'shield-checkmark' as keyof typeof Ionicons.glyphMap,
+            iconColor: a.risk === 'red' ? '#EF4444' : a.risk === 'yellow' ? '#F59E0B' : '#22C55E',
+            iconBg: a.risk === 'red' ? 'rgba(239,68,68,0.15)' : a.risk === 'yellow' ? 'rgba(245,158,11,0.15)' : 'rgba(34,197,94,0.15)',
+          }));
+          return [...approvalNotifs, ...nonApproval];
+        });
+      } catch { /* polling fallback — silent */ }
+    };
+
+    fetchApprovals();
+    const timer = setInterval(fetchApprovals, 15_000);
+    return () => clearInterval(timer);
+  }, [session?.access_token, suiteIdProp]);
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 

@@ -76,6 +76,10 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
     })
   : null;
 
+if (!supabaseAdmin) {
+  logger.warn('[CRITICAL] supabaseAdmin NOT initialized. Conference invitations, member search, and join codes will fail. Missing env: SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY');
+}
+
 // ─── Existing: POST /api/livekit/token ───────────────────────────────────────
 
 router.post('/api/livekit/token', async (req: Request, res: Response) => {
@@ -156,7 +160,7 @@ router.get('/api/conference/members', async (req: Request, res: Response) => {
     }
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured' });
+      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
     }
 
     // Sanitize search input: strip PostgREST special chars to prevent filter injection
@@ -307,7 +311,7 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
     }
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured' });
+      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
     }
 
     const { data: entry, error: dbError } = await supabaseAdmin
@@ -401,7 +405,7 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
     const officeDisplayId = rawOfficeId.replace(/^OFF-?/i, '').toUpperCase();
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured' });
+      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
     }
 
     // Query suite_profiles — display_id is bare number, office_display_id is like "A01"
@@ -773,7 +777,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
     }
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured' });
+      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
     }
 
     // Look up inviter's profile for display in the notification
@@ -900,7 +904,7 @@ router.patch('/api/conference/invite-internal/:id', async (req: Request, res: Re
     }
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured' });
+      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
     }
 
     // Fetch the invitation and verify ownership + status

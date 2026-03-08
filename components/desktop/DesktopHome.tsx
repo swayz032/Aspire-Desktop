@@ -181,28 +181,7 @@ export function DesktopHome() {
       } catch (e) { /* ops-snapshot not available */ }
     })();
 
-    // Fetch authority queue from Supabase
-    (async () => {
-      try {
-        const rows = await getAuthorityQueue();
-        if (rows.length > 0) {
-          setSupabaseAuthority(
-            rows.map((r: any) => ({
-              id: r.id ?? r.request_id ?? '',
-              title: r.title ?? r.action_type ?? 'Approval Request',
-              subtitle: r.subtitle ?? `Suite ${r.suite_id ?? ''}`,
-              type: r.type ?? 'approval',
-              status: r.status ?? 'pending',
-              priority: r.priority ?? 'medium',
-              timestamp: r.created_at ?? new Date().toISOString(),
-              actions: ['review', 'approve', 'deny'],
-              staffRole: r.actor ?? r.staff_role ?? '',
-              pandadocDocumentId: r.execution_payload?.document_id ?? undefined,
-            })),
-          );
-        }
-      } catch (e) { /* authority queue not available */ }
-    })();
+    // Authority queue is now fetched with polling in a separate useEffect below
 
     // Fetch calendar events from Supabase
     (async () => {
@@ -268,6 +247,34 @@ export function DesktopHome() {
       } catch (e) { /* plan not available */ }
     })();
   }, []);
+
+  // ── Authority Queue: poll every 10s for real approval_requests data ──
+  useEffect(() => {
+    const fetchAuthority = async () => {
+      try {
+        const rows = await getAuthorityQueue(session?.access_token);
+        setSupabaseAuthority(
+          rows.map((r: any) => ({
+            id: r.id ?? '',
+            title: r.draftSummary || r.title || r.type || 'Approval Request',
+            subtitle: r.assignedAgent ? `Agent: ${r.assignedAgent}` : (r.type || ''),
+            type: 'approval' as const,
+            status: 'pending' as const,
+            priority: r.risk === 'red' ? 'high' as const : r.risk === 'yellow' ? 'medium' as const : 'low' as const,
+            timestamp: r.createdAt ?? new Date().toISOString(),
+            actions: ['review', 'approve', 'deny'] as const,
+            riskTier: r.risk || 'yellow',
+            assignedAgent: r.assignedAgent || '',
+            staffRole: r.assignedAgent || '',
+            pandadocDocumentId: r.pandadocDocumentId || undefined,
+          })),
+        );
+      } catch { /* authority queue not available */ }
+    };
+    fetchAuthority();
+    const authorityPollTimer = setInterval(fetchAuthority, 10_000);
+    return () => clearInterval(authorityPollTimer);
+  }, [session?.access_token]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
   const leftWidth = isTablet ? 0 : isLaptop ? Canvas.layout.leftColLaptop : Canvas.layout.leftColDesktop;

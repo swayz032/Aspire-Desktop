@@ -261,7 +261,7 @@ export function TemplatePreviewModal({
                     src={sessionUrl}
                     style={{
                       width: '100%',
-                      height: '100%',
+                      height: 'calc(95vh - 180px)',
                       border: 'none',
                       borderRadius: 8,
                       backgroundColor: '#ffffff',

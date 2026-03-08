@@ -15,15 +15,24 @@ export async function getReceipts(limit = 50) {
   return data ?? [];
 }
 
-// ── Authority Queue (approval_requests) ─────────────────────────────────────
-export async function getAuthorityQueue() {
-  const { data, error } = await supabase
-    .from('approval_requests')
-    .select('*')
-    .in('status', ['pending', 'live'])
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+// ── Authority Queue (approval_requests via server API) ──────────────────────
+// Uses GET /api/authority-queue which maps approval_requests fields correctly:
+// approval_id AS id, tool.operation AS type, draft_summary AS title,
+// risk_tier AS risk, assigned_agent AS assignedAgent, created_at AS createdAt
+export async function getAuthorityQueue(accessToken?: string, suiteId?: string): Promise<any[]> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (!accessToken) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+  } else {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  if (suiteId) headers['X-Suite-Id'] = suiteId;
+
+  const resp = await fetch('/api/authority-queue', { headers });
+  if (!resp.ok) return [];
+  const data = await resp.json();
+  return data.pendingApprovals ?? [];
 }
 
 // ── Outbox Jobs ─────────────────────────────────────────────────────────────

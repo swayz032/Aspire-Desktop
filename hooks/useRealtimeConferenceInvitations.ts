@@ -41,60 +41,87 @@ function rowToInvitation(row: Record<string, unknown>) {
 export function useRealtimeConferenceInvitations(): void {
   const { session } = useSupabase();
   const realtimeConnected = useRef(false);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const MAX_RETRIES = 3;
+  const RETRY_BASE_MS = 3000;
 
   useEffect(() => {
     if (!session?.user?.id) return;
 
     const userId = session.user.id;
+    let disposed = false;
+    const channels: ReturnType<typeof supabase.channel>[] = [];
+
     console.log(`${LOG_PREFIX} Initializing for user ${userId.slice(0, 8)}...`);
 
     // ── 1. Supabase Realtime subscription (primary — instant) ──────────
 
-    const channelName = `conference-invitations-${userId.slice(0, 8)}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'conference_invitations',
-          filter: `invitee_user_id=eq.${userId}`,
-        },
-        (payload) => {
-          console.log(`${LOG_PREFIX} Realtime INSERT received:`, payload.new);
-          const row = payload.new as Record<string, unknown>;
-          if (row.status === 'pending') {
-            showIncomingVideoCall(rowToInvitation(row));
+    const createSubscription = () => {
+      if (disposed) return;
+
+      const channelName = `conference-invitations-${userId.slice(0, 8)}-${Date.now()}`;
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'conference_invitations',
+            filter: `invitee_user_id=eq.${userId}`,
+          },
+          (payload) => {
+            console.log(`${LOG_PREFIX} Realtime INSERT received:`, payload.new);
+            const row = payload.new as Record<string, unknown>;
+            if (row.status === 'pending') {
+              showIncomingVideoCall(rowToInvitation(row));
+            }
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'conference_invitations',
+            filter: `invitee_user_id=eq.${userId}`,
+          },
+          (payload) => {
+            console.log(`${LOG_PREFIX} Realtime UPDATE received:`, payload.new);
+            const row = payload.new as Record<string, unknown>;
+            if (row.status !== 'pending') {
+              dismissIncomingVideoCall();
+            }
+          },
+        )
+        .subscribe((status, err) => {
+          console.log(`${LOG_PREFIX} Subscription status: ${status}`, err || '');
+          if (status === 'SUBSCRIBED') {
+            realtimeConnected.current = true;
+            retryCountRef.current = 0;
           }
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'conference_invitations',
-          filter: `invitee_user_id=eq.${userId}`,
-        },
-        (payload) => {
-          console.log(`${LOG_PREFIX} Realtime UPDATE received:`, payload.new);
-          const row = payload.new as Record<string, unknown>;
-          if (row.status !== 'pending') {
-            dismissIncomingVideoCall();
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            realtimeConnected.current = false;
+            if (retryCountRef.current < MAX_RETRIES) {
+              const delay = RETRY_BASE_MS * Math.pow(2, retryCountRef.current);
+              retryCountRef.current++;
+              console.warn(`${LOG_PREFIX} Retry ${retryCountRef.current}/${MAX_RETRIES} in ${delay}ms...`);
+              retryTimerRef.current = setTimeout(() => {
+                supabase.removeChannel(channel);
+                createSubscription();
+              }, delay);
+            } else {
+              console.error(`${LOG_PREFIX} Max retries (${MAX_RETRIES}) reached. Falling back to polling only.`);
+            }
           }
-        },
-      )
-      .subscribe((status, err) => {
-        console.log(`${LOG_PREFIX} Subscription status: ${status}`, err || '');
-        realtimeConnected.current = status === 'SUBSCRIBED';
-        if (status === 'CHANNEL_ERROR') {
-          console.error(`${LOG_PREFIX} Channel error — falling back to polling only`);
-        }
-        if (status === 'TIMED_OUT') {
-          console.warn(`${LOG_PREFIX} Subscription timed out — retrying...`);
-        }
-      });
+        });
+
+      channels.push(channel);
+    };
+
+    createSubscription();
 
     // ── 2. Polling fallback (secondary — catches missed events) ────────
     // Runs every 5s. If Realtime is working, polling typically finds nothing.
@@ -138,9 +165,11 @@ export function useRealtimeConferenceInvitations(): void {
 
     return () => {
       console.log(`${LOG_PREFIX} Cleaning up subscriptions`);
+      disposed = true;
       realtimeConnected.current = false;
-      supabase.removeChannel(channel);
+      channels.forEach(ch => supabase.removeChannel(ch));
       clearInterval(pollTimer);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
   }, [session?.user?.id]);
 }

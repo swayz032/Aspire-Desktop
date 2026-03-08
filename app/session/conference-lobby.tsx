@@ -350,6 +350,41 @@ export default function ConferenceLobby() {
     return unsubscribe;
   }, [pendingInvitation]);
 
+  // Fetch real approval_requests from server + poll every 10s
+  useEffect(() => {
+    if (!session?.access_token) return;
+
+    const fetchApprovals = async () => {
+      try {
+        const resp = await authenticatedFetch('/api/authority-queue');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const pendingApprovals = data.pendingApprovals || [];
+
+        const mapped: AuthorityItem[] = pendingApprovals.slice(0, 10).map((a: any) => ({
+          id: a.id,
+          title: a.draftSummary || a.title || a.type || 'Pending Approval',
+          description: a.assignedAgent
+            ? `${a.assignedAgent} \u00b7 ${(a.risk || 'YELLOW').toUpperCase()} tier`
+            : (a.type || 'Awaiting review'),
+          risk: a.risk === 'red' ? 'High' as const : a.risk === 'green' ? 'Low' as const : 'Medium' as const,
+          status: 'pending' as const,
+          icon: 'shield-checkmark' as keyof typeof Ionicons.glyphMap,
+        }));
+
+        // Merge: keep video-call invitation items (icon === 'videocam'), replace approval items
+        setAuthorityItems(prev => {
+          const inviteItems = prev.filter(i => i.icon === 'videocam');
+          return [...mapped, ...inviteItems];
+        });
+      } catch { /* silent */ }
+    };
+
+    fetchApprovals();
+    const timer = setInterval(fetchApprovals, 10_000);
+    return () => clearInterval(timer);
+  }, [session?.access_token, authenticatedFetch]);
+
   // Add/remove conference invitation from authority queue
   useEffect(() => {
     if (pendingInvitation) {
@@ -937,10 +972,13 @@ export default function ConferenceLobby() {
                 if (resp.ok) {
                   showToast(`${name} invited to conference`, 'success');
                 } else {
-                  showToast(`${name} added locally (invite delivery pending)`, 'info');
+                  const body = await resp.json().catch(() => ({ error: 'Unknown error' }));
+                  console.error('[ConferenceLobby] Invite failed:', resp.status, body);
+                  showToast(body.detail || body.error || `Failed to invite ${name}`, 'error');
                 }
-              } catch {
-                showToast(`${name} added locally (invite delivery pending)`, 'info');
+              } catch (err) {
+                console.error('[ConferenceLobby] Invite exception:', err);
+                showToast(`Failed to send invite to ${name}`, 'error');
               }
             } else {
               showToast(`${name} invited`, 'success');

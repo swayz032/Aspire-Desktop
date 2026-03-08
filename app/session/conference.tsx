@@ -213,10 +213,13 @@ export default function ConferenceSession() {
         if (resp.ok) {
           showToast(`${displayName} invited to conference`, 'success');
         } else {
-          showToast(`${displayName} added locally (invite delivery pending)`, 'info');
+          const body = await resp.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('[Conference] Invite failed:', resp.status, body);
+          showToast(body.detail || body.error || `Failed to invite ${displayName}`, 'error');
         }
-      } catch {
-        showToast(`${displayName} added locally (invite delivery pending)`, 'info');
+      } catch (err) {
+        console.error('[Conference] Invite exception:', err);
+        showToast(`Failed to send invite to ${displayName}`, 'error');
       }
     } else {
       showToast(`${displayName} invited`, 'success');

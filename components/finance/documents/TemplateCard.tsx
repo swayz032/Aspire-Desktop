@@ -146,7 +146,7 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
                 { opacity: imageLoaded ? 1 : 0 },
                 Platform.OS === 'web' ? { transition: 'opacity 0.3s ease' } as any : {},
               ]}
-              resizeMode="cover"
+              resizeMode="stretch"
               onLoad={() => setImageLoaded(true)}
               accessibilityLabel={`${displayName} template thumbnail`}
             />
@@ -276,8 +276,6 @@ const styles = StyleSheet.create({
   },
   previewImageWrap: {
     marginHorizontal: -18,
-    aspectRatio: 816 / 940,
-    maxHeight: 220,
     overflow: 'hidden',
     borderTopLeftRadius: 13,
     borderTopRightRadius: 13,
@@ -301,7 +299,7 @@ const styles = StyleSheet.create({
   },
   previewImage: {
     width: '100%',
-    height: '100%',
+    aspectRatio: 816 / 940,
   },
   previewPlaceholder: {
     marginHorizontal: -18,
