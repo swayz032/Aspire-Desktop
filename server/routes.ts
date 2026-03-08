@@ -5213,10 +5213,13 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
     const listData = await listResp.json() as { results: Array<{ id: string; name: string; date_created: string; date_modified: string; version: string }> };
     const templates = listData.results || [];
 
-    // Fetch details for each template (tokens, fields, roles)
-    // Safe for small workspace counts (<50 templates)
-    const enriched = await Promise.all(
-      templates.map(async (t) => {
+    // Fetch details in batches of 5 to avoid PandaDoc rate limits
+    const BATCH_SIZE = 5;
+    const enriched: any[] = [];
+    for (let i = 0; i < templates.length; i += BATCH_SIZE) {
+      const batch = templates.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (t) => {
         try {
           const detailCtrl = new AbortController();
           const detailTimeout = setTimeout(() => detailCtrl.abort(), 10000);
@@ -5228,6 +5231,14 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
           clearTimeout(detailTimeout);
 
           if (!detailResp.ok) {
+            // Still resolve local thumbnail even if detail fetch fails
+            const fallbackName = (t.name || '').toLowerCase();
+            let fallbackThumb = TEMPLATE_THUMBNAIL_MAP[t.id];
+            if (!fallbackThumb) {
+              for (const [keyword, file] of Object.entries(TEMPLATE_THUMBNAIL_NAME_MAP)) {
+                if (fallbackName.includes(keyword)) { fallbackThumb = file; break; }
+              }
+            }
             return {
               id: t.id,
               name: t.name,
@@ -5237,6 +5248,7 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
               fields: [],
               roles: [],
               images: [],
+              preview_image_url: fallbackThumb ? `/templates/${fallbackThumb}` : null,
               content_placeholders: [],
               has_pricing: false,
             };
@@ -5274,7 +5286,14 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
             has_pricing: Boolean(detail.pricing?.quotes?.length),
           };
         } catch {
-          // Graceful degradation — return basic info if detail fetch fails
+          // Graceful degradation — still resolve local thumbnail
+          const fallbackName = (t.name || '').toLowerCase();
+          let fallbackThumb = TEMPLATE_THUMBNAIL_MAP[t.id];
+          if (!fallbackThumb) {
+            for (const [keyword, file] of Object.entries(TEMPLATE_THUMBNAIL_NAME_MAP)) {
+              if (fallbackName.includes(keyword)) { fallbackThumb = file; break; }
+            }
+          }
           return {
             id: t.id,
             name: t.name,
@@ -5284,13 +5303,15 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
             fields: [],
             roles: [],
             images: 0,
-            preview_image_url: null,
+            preview_image_url: fallbackThumb ? `/templates/${fallbackThumb}` : null,
             content_placeholders: 0,
             has_pricing: false,
           };
         }
       })
-    );
+      );
+      enriched.push(...batchResults);
+    }
 
     res.json({ templates: enriched, count: enriched.length });
   } catch (error: unknown) {

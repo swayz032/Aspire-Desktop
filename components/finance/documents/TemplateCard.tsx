@@ -146,7 +146,7 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
                 { opacity: imageLoaded ? 1 : 0 },
                 Platform.OS === 'web' ? { transition: 'opacity 0.3s ease' } as any : {},
               ]}
-              resizeMode="contain"
+              resizeMode="cover"
               onLoad={() => setImageLoaded(true)}
               accessibilityLabel={`${displayName} template thumbnail`}
             />
