@@ -34,6 +34,7 @@ import {
   dismissIncomingVideoCall,
   type VideoCallInvitation,
 } from '@/lib/incomingVideoCallStore';
+import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 
 // ─── Pulsing dot for pending/invited participants ────────────────────────────
 function PulsingDot({ color }: { color: string }) {
@@ -248,7 +249,30 @@ export default function ConferenceLobby() {
     { id: 'you', name: userName, role: 'Founder', avatarColor: Colors.accent.cyan, status: 'ready' },
   ]);
   const [menuVisible, setMenuVisible] = useState(false);
-  const [authorityItems, setAuthorityItems] = useState<AuthorityItem[]>(INITIAL_AUTHORITY_QUEUE);
+  // Authority items from realtime store (global) + local video invitation items
+  const storeItems = useDynamicAuthorityQueue();
+  const [localVideoItems, setLocalVideoItems] = useState<AuthorityItem[]>([]);
+  const authorityItems = React.useMemo(() => {
+    // Filter store items for conference-relevant types + merge local video invitation items
+    const conferenceItems: AuthorityItem[] = storeItems
+      .filter(i => {
+        const dt = (i as any).documentType;
+        const t = (i as any).type;
+        return dt === 'pdf' || dt === 'report' || dt === 'document'
+          || (typeof t === 'string' && /document|report|pdf/i.test(t));
+      })
+      .map(i => ({
+        id: i.id,
+        title: (i as any).draftSummary || i.title || (i as any).type || 'Pending Approval',
+        description: (i as any).assignedAgent
+          ? `${(i as any).assignedAgent} \u00b7 ${((i as any).risk || 'YELLOW').toUpperCase()} tier`
+          : ((i as any).type || 'Awaiting review'),
+        risk: (i as any).risk === 'red' ? 'High' as const : (i as any).risk === 'green' ? 'Low' as const : 'Medium' as const,
+        status: i.status === 'approved' ? 'approved' as const : i.status === 'denied' ? 'denied' as const : 'pending' as const,
+        icon: 'shield-checkmark' as keyof typeof Ionicons.glyphMap,
+      }));
+    return [...conferenceItems, ...localVideoItems];
+  }, [storeItems, localVideoItems]);
   const [pendingInvitation, setPendingInvitation] = useState<VideoCallInvitation | null>(null);
 
   const [toastMessage, setToastMessage] = useState('');
@@ -350,45 +374,13 @@ export default function ConferenceLobby() {
     return unsubscribe;
   }, [pendingInvitation]);
 
-  // Fetch real approval_requests from server + poll every 10s
-  useEffect(() => {
-    if (!session?.access_token) return;
+  // REMOVED: Polling useEffect for /api/authority-queue — now driven by
+  // useDynamicAuthorityQueue() from authorityQueueStore (fed by Supabase Realtime in _layout.tsx)
 
-    const fetchApprovals = async () => {
-      try {
-        const resp = await authenticatedFetch('/api/authority-queue');
-        if (!resp.ok) return;
-        const data = await resp.json();
-        const pendingApprovals = data.pendingApprovals || [];
-
-        const mapped: AuthorityItem[] = pendingApprovals.slice(0, 10).map((a: any) => ({
-          id: a.id,
-          title: a.draftSummary || a.title || a.type || 'Pending Approval',
-          description: a.assignedAgent
-            ? `${a.assignedAgent} \u00b7 ${(a.risk || 'YELLOW').toUpperCase()} tier`
-            : (a.type || 'Awaiting review'),
-          risk: a.risk === 'red' ? 'High' as const : a.risk === 'green' ? 'Low' as const : 'Medium' as const,
-          status: 'pending' as const,
-          icon: 'shield-checkmark' as keyof typeof Ionicons.glyphMap,
-        }));
-
-        // Merge: keep video-call invitation items (icon === 'videocam'), replace approval items
-        setAuthorityItems(prev => {
-          const inviteItems = prev.filter(i => i.icon === 'videocam');
-          return [...mapped, ...inviteItems];
-        });
-      } catch { /* silent */ }
-    };
-
-    fetchApprovals();
-    const timer = setInterval(fetchApprovals, 10_000);
-    return () => clearInterval(timer);
-  }, [session?.access_token, authenticatedFetch]);
-
-  // Add/remove conference invitation from authority queue
+  // Add/remove conference invitation from local video items
   useEffect(() => {
     if (pendingInvitation) {
-      setAuthorityItems(prev => {
+      setLocalVideoItems(prev => {
         if (prev.some(i => i.id === pendingInvitation.id)) return prev;
         return [...prev, {
           id: pendingInvitation.id,
@@ -400,7 +392,7 @@ export default function ConferenceLobby() {
         }];
       });
     } else {
-      setAuthorityItems(prev => prev.filter(i => i.icon !== 'videocam'));
+      setLocalVideoItems([]);
     }
   }, [pendingInvitation]);
 
@@ -490,7 +482,7 @@ export default function ConferenceLobby() {
         const result = await acceptVideoCall(pendingInvitation.id, session.access_token, suiteId ?? undefined);
         dismissIncomingVideoCall();
         setPendingInvitation(null);
-        setAuthorityItems(prev => prev.map(i =>
+        setLocalVideoItems(prev => prev.map(i =>
           i.id === itemId ? { ...i, status: 'approved' as const } : i
         ));
         router.push({
@@ -507,10 +499,19 @@ export default function ConferenceLobby() {
         return;
       }
     }
-    setAuthorityItems(prev => prev.map(i =>
-      i.id === itemId ? { ...i, status: 'approved' as const } : i
-    ));
-    showToast(`Approved: ${item?.title}`, 'success');
+    // Non-video items: call server API to persist the approval
+    try {
+      const resp = await authenticatedFetch(`/api/authority-queue/${itemId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvedBy: 'owner' }),
+      });
+      if (!resp.ok) throw new Error('Approve failed');
+      // Store update handled by Realtime subscription when DB row changes
+      showToast(`Approved: ${item?.title}`, 'success');
+    } catch {
+      showToast('Failed to approve', 'error');
+    }
   };
 
   const handleDeny = async (itemId: string) => {
@@ -524,16 +525,25 @@ export default function ConferenceLobby() {
       }
       dismissIncomingVideoCall();
       setPendingInvitation(null);
-      setAuthorityItems(prev => prev.map(i =>
+      setLocalVideoItems(prev => prev.map(i =>
         i.id === itemId ? { ...i, status: 'denied' as const } : i
       ));
       showToast('Conference invitation declined', 'info');
       return;
     }
-    setAuthorityItems(prev => prev.map(i =>
-      i.id === itemId ? { ...i, status: 'denied' as const } : i
-    ));
-    showToast(`Denied: ${item?.title}`, 'error');
+    // Non-video items: call server API to persist the denial
+    try {
+      const resp = await authenticatedFetch(`/api/authority-queue/${itemId}/deny`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deniedBy: 'owner', reason: '' }),
+      });
+      if (!resp.ok) throw new Error('Deny failed');
+      // Store update handled by Realtime subscription when DB row changes
+      showToast(`Denied: ${item?.title}`, 'info');
+    } catch {
+      showToast('Failed to deny', 'error');
+    }
   };
 
   const handleMenuSelect = (optionId: string) => {
@@ -959,12 +969,18 @@ export default function ConferenceLobby() {
 
             // Send real-time invitation via API for Aspire user invites
             if (inviteType === 'cross-suite' || inviteType === 'internal') {
+              // Law #3: Fail closed — suiteId must be present
+              if (!suiteIdParam) {
+                console.error('[ConferenceLobby] Missing suiteId for invite — cannot send');
+                showToast(`Cannot invite ${name}: missing suite identity`, 'error');
+                return;
+              }
               try {
                 const resp = await authenticatedFetch('/api/conference/invite-internal', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    invitee_suite_id: suiteIdParam || userId,
+                    invitee_suite_id: suiteIdParam,
                     invitee_user_id: userId,
                     room_name: roomName,
                   }),

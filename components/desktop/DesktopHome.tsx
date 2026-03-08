@@ -26,10 +26,10 @@ import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useBreakpoint } from '@/lib/useDesktop';
 import { playSound } from '@/lib/soundManager';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
-import { getAuthorityQueue, getCalendarEvents, getCashPosition } from '@/lib/api';
-import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
+import { getCalendarEvents } from '@/lib/api';
+import { useDynamicAuthorityQueue, removeAuthorityItem } from '@/lib/authorityQueueStore';
 import { useTenant, useSupabase } from '@/providers';
-import type { CashPosition, AuthorityItem } from '@/types';
+import type { CashPosition } from '@/types';
 
 const INTERACTION_MODES = [
   { id: 'conference', icon: 'people', title: 'Conference Call', subtitle: 'Multi-party business calls', route: '/session/conference-lobby' },
@@ -82,7 +82,6 @@ export function DesktopHome() {
   const { tenant } = useTenant();
   const { session } = useSupabase();
   const [liveCashData, setLiveCashData] = useState<CashPosition>(EMPTY_CASH);
-  const [supabaseAuthority, setSupabaseAuthority] = useState<AuthorityItem[]>([]);
   const [planItems, setPlanItems] = useState<any[]>([]);
   const [pipelineStages, setPipelineStages] = useState<any[]>([]);
   const [businessScore, setBusinessScore] = useState<any>(null);
@@ -93,13 +92,13 @@ export function DesktopHome() {
     type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording';
     documentName?: string;
     pandadocDocumentId?: string;
+    draftSummary?: string;
+    amount?: number;
+    customerName?: string;
+    currency?: string;
   }>({ visible: false, type: 'document' });
 
-  const dynamicItems = useDynamicAuthorityQueue();
-  const allAuthorityItems = useMemo(
-    () => [...dynamicItems, ...supabaseAuthority],
-    [dynamicItems, supabaseAuthority],
-  );
+  const allAuthorityItems = useDynamicAuthorityQueue();
 
   // ── Canvas interaction state ──
   const [hoveredTile, setHoveredTile] = useState<string | null>(null);
@@ -181,8 +180,6 @@ export function DesktopHome() {
       } catch (e) { /* ops-snapshot not available */ }
     })();
 
-    // Authority queue is now fetched with polling in a separate useEffect below
-
     // Fetch calendar events from Supabase
     (async () => {
       try {
@@ -247,34 +244,6 @@ export function DesktopHome() {
       } catch (e) { /* plan not available */ }
     })();
   }, []);
-
-  // ── Authority Queue: poll every 10s for real approval_requests data ──
-  useEffect(() => {
-    const fetchAuthority = async () => {
-      try {
-        const rows = await getAuthorityQueue(session?.access_token);
-        setSupabaseAuthority(
-          rows.map((r: any) => ({
-            id: r.id ?? '',
-            title: r.draftSummary || r.title || r.type || 'Approval Request',
-            subtitle: r.assignedAgent ? `Agent: ${r.assignedAgent}` : (r.type || ''),
-            type: 'approval' as const,
-            status: 'pending' as const,
-            priority: r.risk === 'red' ? 'high' as const : r.risk === 'yellow' ? 'medium' as const : 'low' as const,
-            timestamp: r.createdAt ?? new Date().toISOString(),
-            actions: ['review', 'approve', 'deny'] as const,
-            riskTier: r.risk || 'yellow',
-            assignedAgent: r.assignedAgent || '',
-            staffRole: r.assignedAgent || '',
-            pandadocDocumentId: r.pandadocDocumentId || undefined,
-          })),
-        );
-      } catch { /* authority queue not available */ }
-    };
-    fetchAuthority();
-    const authorityPollTimer = setInterval(fetchAuthority, 10_000);
-    return () => clearInterval(authorityPollTimer);
-  }, [session?.access_token]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
   const leftWidth = isTablet ? 0 : isLaptop ? Canvas.layout.leftColLaptop : Canvas.layout.leftColDesktop;
@@ -469,17 +438,19 @@ export function DesktopHome() {
                                 if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
                                 const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
                                 if (res.ok) {
-                                  // Remove from local state — approval is done
-                                  setSupabaseAuthority((prev) => prev.filter((a) => a.id !== item.id));
+                                  // Remove from store — approval is done
+                                  removeAuthorityItem(item.id);
                                 }
                               } catch (e) { /* approve failed — user can retry */ }
                             } else if (action === 'deny') {
                               try {
                                 const headers: Record<string, string> = { 'Content-Type': 'application/json' };
                                 if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                                await fetch(`/api/authority-queue/${item.id}/deny`, { method: 'POST', headers });
-                                setSupabaseAuthority((prev) => prev.filter((a) => a.id !== item.id));
-                              } catch (e) { /* deny failed */ }
+                                const denyRes = await fetch(`/api/authority-queue/${item.id}/deny`, { method: 'POST', headers });
+                                if (denyRes.ok) {
+                                  removeAuthorityItem(item.id);
+                                }
+                              } catch (e) { /* deny failed — user can retry */ }
                             } else if (action === 'review') {
                               // Open real PandaDoc preview for contracts, static preview for others
                               const docType = item.type === 'invoice' ? 'invoice' as const
@@ -490,6 +461,7 @@ export function DesktopHome() {
                                 type: docType,
                                 documentName: item.title,
                                 pandadocDocumentId: item.pandadocDocumentId,
+                                draftSummary: item.draftSummary,
                               });
                             }
                           }}
@@ -553,6 +525,10 @@ export function DesktopHome() {
             type={reviewPreview.type}
             documentName={reviewPreview.documentName}
             pandadocDocumentId={reviewPreview.pandadocDocumentId}
+            draftSummary={reviewPreview.draftSummary}
+            amount={reviewPreview.amount}
+            customerName={reviewPreview.customerName}
+            currency={reviewPreview.currency}
           />
         </>
       )}

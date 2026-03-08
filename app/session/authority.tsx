@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, Pressable, ActivityIndicator, Animated, Platform, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -8,6 +8,8 @@ import { Toast } from '@/components/session/Toast';
 import { ConfirmationModal } from '@/components/session/ConfirmationModal';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
+import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
+import type { AuthorityItem } from '@/types';
 
 const PANDADOC_SESSION_BASE = 'https://app.pandadoc.com/s/';
 
@@ -46,10 +48,43 @@ function mapAuthorityItem(item: any): SessionAuthorityItem {
   };
 }
 
+const FINANCE_KEYWORDS = [
+  'invoice', 'quote', 'estimate', 'contract', 'payment',
+  'stripe', 'pandadoc', 'quickbooks', 'finance', 'billing',
+];
+
+function isFinanceDomain(item: AuthorityItem): boolean {
+  if (item.pandadocDocumentId) return true;
+  const searchText = `${item.title} ${item.subtitle} ${item.type}`.toLowerCase();
+  return FINANCE_KEYWORDS.some(kw => searchText.includes(kw));
+}
+
+function mapStoreItemToSession(item: AuthorityItem): SessionAuthorityItem {
+  const statusMap: Record<string, 'pending' | 'approved' | 'denied'> = {
+    live: 'pending',
+    pending: 'pending',
+    blocked: 'pending',
+    failed: 'denied',
+    logged: 'approved',
+  };
+  return {
+    id: item.id,
+    title: item.title,
+    description: item.subtitle || item.type || '',
+    risk: mapRiskTier(item.riskTier || (item.priority === 'high' ? 'red' : item.priority === 'low' ? 'green' : 'yellow')),
+    whyRequired: item.draftSummary || `${item.priority} priority — approval required`,
+    status: statusMap[item.status] || 'pending',
+    evidence: item.receiptId ? [`receipt: ${item.receiptId}`] : [],
+    createdAt: new Date(item.timestamp),
+    pandadocDocumentId: item.pandadocDocumentId,
+  };
+}
+
 export default function AuthorityScreen() {
   const router = useRouter();
   const { authenticatedFetch } = useAuthFetch();
-  const [authorityItems, setAuthorityItems] = useState<SessionAuthorityItem[]>([]);
+  const storeItems = useDynamicAuthorityQueue();
+  const [historyItems, setHistoryItems] = useState<SessionAuthorityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
@@ -69,6 +104,14 @@ export default function AuthorityScreen() {
     pandadocDocumentId?: string;
   }>({ visible: false });
 
+  // Pending items: derived from realtime store, filtered to finance domain
+  const pendingItems = useMemo(() => {
+    return storeItems
+      .filter(item => item.status === 'pending' || item.status === 'live' || item.status === 'blocked')
+      .filter(isFinanceDomain)
+      .map(mapStoreItemToSession);
+  }, [storeItems]);
+
   const fetchItems = useCallback(async (status: string): Promise<SessionAuthorityItem[]> => {
     try {
       const resp = await authenticatedFetch(`/api/authority-queue?domain=finance&status=${status}`);
@@ -80,21 +123,20 @@ export default function AuthorityScreen() {
     }
   }, [authenticatedFetch]);
 
+  // Load only approved/denied history from API — pending comes from the store
   const loadItems = useCallback(async () => {
     setLoading(true);
-    const [pending, resolved, denied] = await Promise.all([
-      fetchItems('pending'),
+    const [resolved, denied] = await Promise.all([
       fetchItems('approved'),
       fetchItems('denied'),
     ]);
-    setAuthorityItems([...pending, ...resolved, ...denied]);
+    setHistoryItems([...resolved, ...denied]);
     setLoading(false);
   }, [fetchItems]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
-  const pendingItems = authorityItems.filter(i => i.status === 'pending');
-  const resolvedItems = authorityItems.filter(i => i.status !== 'pending');
+  const resolvedItems = historyItems;
 
   const handleApprove = (item: SessionAuthorityItem) => {
     setConfirmModal({ visible: true, action: 'approve', item });
@@ -120,9 +162,11 @@ export default function AuthorityScreen() {
       if (resp.ok) {
         const responseData = await resp.json();
         const newStatus = action === 'approve' ? 'approved' : 'denied';
-        setAuthorityItems(prev => prev.map(item =>
-          item.id === itemId ? { ...item, status: newStatus as any } : item
-        ));
+        // Move the resolved item into history so it shows under Resolved
+        const resolvedItem = pendingItems.find(i => i.id === itemId);
+        if (resolvedItem) {
+          setHistoryItems(prev => [{ ...resolvedItem, status: newStatus as any }, ...prev]);
+        }
 
         // Check if the response contains a signing session (contract.sign flow)
         const sessionId = responseData?.data?.signing_session?.session_id;

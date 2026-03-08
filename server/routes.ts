@@ -3042,9 +3042,15 @@ router.get('/api/inbox/items', async (_req: Request, res: Response) => {
   }
 });
 
-router.get('/api/authority-queue', async (_req: Request, res: Response) => {
+router.get('/api/authority-queue', async (req: Request, res: Response) => {
+  // Law #6: Tenant isolation — require authenticated suite context
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
+
   try {
-    // Query pending approval requests — aligned with orchestrator schema
+    // Query pending approval requests — scoped to authenticated tenant (Law #6)
     const approvalResult = await db.execute(sql`
       SELECT approval_id AS id,
              tool || '.' || operation AS type,
@@ -3064,7 +3070,7 @@ router.get('/api/authority-queue', async (_req: Request, res: Response) => {
              execution_payload->>'customer_name' AS "customerName",
              execution_payload->>'document_id' AS "pandadocDocumentId"
       FROM approval_requests
-      WHERE status = 'pending'
+      WHERE status = 'pending' AND tenant_id = ${suiteId}
       ORDER BY created_at DESC
       LIMIT 20
     `);
@@ -3102,22 +3108,30 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
   const userId = (req as any).authenticatedUserId;
   const { id } = req.params;
   try {
-    // Update approval request status — aligned with orchestrator schema
-    await db.execute(sql`
+    // Update approval request status — scoped by tenant_id (Law #6)
+    const updateResult = await db.execute(sql`
       UPDATE approval_requests
       SET status = 'approved', decided_at = NOW(), decided_by_user_id = ${userId || null},
           decision_surface = 'desktop_authority_queue', decision_reason = 'user_approved'
-      WHERE approval_id = ${id}
+      WHERE approval_id = ${id} AND tenant_id = ${suiteId}
     `);
+
+    // Law #3: Fail Closed — verify the update actually matched a row
+    const rowCount = (updateResult as any).rowCount ?? (updateResult as any).changes ?? 0;
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Approval request not found or not in your tenant.' });
+    }
 
     // Generate approval receipt (Law #2: Receipt for All)
     const receiptId = crypto.randomUUID();
     const correlationId = req.headers['x-correlation-id'] as string || `corr-${Date.now()}`;
+    const approveAction = JSON.stringify({ type: 'approval.approve', target_id: id, risk_tier: 'yellow' });
+    const approveResult = JSON.stringify({ status: 'approved', decision_surface: 'desktop_authority_queue' });
     await db.execute(sql`
-      INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
-                            correlation_id, actor_type, actor_id, created_at)
-      VALUES (${receiptId}, 'approval.approve', 'success', ${suiteId}, ${suiteId},
-              ${correlationId}, 'user', ${userId || null}, NOW())
+      INSERT INTO receipts (receipt_id, receipt_type, action, result, status, suite_id, tenant_id,
+                            correlation_id, actor_type, actor_id, hash_alg, created_at)
+      VALUES (${receiptId}, 'approval', ${approveAction}::jsonb, ${approveResult}::jsonb, 'SUCCEEDED', ${suiteId}, ${suiteId},
+              ${correlationId}, 'user', ${userId || null}, 'sha256', NOW())
     `);
 
     // After successful approval, trigger resume execution via orchestrator
@@ -3170,23 +3184,31 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
   const { id } = req.params;
   const { reason } = req.body;
   try {
-    // Update approval request status — aligned with orchestrator schema
-    await db.execute(sql`
+    // Update approval request status — scoped by tenant_id (Law #6)
+    const denyResult = await db.execute(sql`
       UPDATE approval_requests
       SET status = 'denied', decided_at = NOW(), decided_by_user_id = ${userId || null},
           decision_surface = 'desktop_authority_queue',
           decision_reason = ${reason || 'No reason provided'}
-      WHERE approval_id = ${id}
+      WHERE approval_id = ${id} AND tenant_id = ${suiteId}
     `);
+
+    // Law #3: Fail Closed — verify the update actually matched a row
+    const denyRowCount = (denyResult as any).rowCount ?? (denyResult as any).changes ?? 0;
+    if (denyRowCount === 0) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Approval request not found or not in your tenant.' });
+    }
 
     // Generate denial receipt (Law #2: Receipt for All)
     const receiptId = crypto.randomUUID();
     const correlationId = req.headers['x-correlation-id'] as string || `corr-${Date.now()}`;
+    const denyAction = JSON.stringify({ type: 'approval.deny', target_id: id, risk_tier: 'yellow' });
+    const denyResultPayload = JSON.stringify({ status: 'denied', reason: reason || 'user_denied', decision_surface: 'desktop_authority_queue' });
     await db.execute(sql`
-      INSERT INTO receipts (receipt_id, action, result, suite_id, tenant_id,
-                            correlation_id, actor_type, actor_id, created_at)
-      VALUES (${receiptId}, 'approval.deny', 'denied', ${suiteId}, ${suiteId},
-              ${correlationId}, 'user', ${userId || null}, NOW())
+      INSERT INTO receipts (receipt_id, receipt_type, action, result, status, suite_id, tenant_id,
+                            correlation_id, actor_type, actor_id, hash_alg, created_at)
+      VALUES (${receiptId}, 'approval', ${denyAction}::jsonb, ${denyResultPayload}::jsonb, 'DENIED', ${suiteId}, ${suiteId},
+              ${correlationId}, 'user', ${userId || null}, 'sha256', NOW())
     `);
 
     res.json({ id, status: 'denied', reason, deniedAt: new Date().toISOString(), receiptId });

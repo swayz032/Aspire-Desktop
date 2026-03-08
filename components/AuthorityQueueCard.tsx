@@ -60,6 +60,8 @@ export function AuthorityQueueCard({ item, onAction }: AuthorityQueueCardProps) 
     blocked: 'warning',
     failed: 'error',
     logged: 'muted',
+    approved: 'live',
+    denied: 'error',
   }[item.status] as 'live' | 'pending' | 'warning' | 'error' | 'muted';
 
   const isSession = item.type === 'session';

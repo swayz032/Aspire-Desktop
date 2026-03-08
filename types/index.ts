@@ -41,7 +41,7 @@ export interface AuthorityItem {
   title: string;
   subtitle: string;
   type: 'session' | 'invoice' | 'contract' | 'call' | 'email' | 'approval';
-  status: 'live' | 'pending' | 'blocked' | 'failed' | 'logged';
+  status: 'live' | 'pending' | 'blocked' | 'failed' | 'logged' | 'approved' | 'denied';
   priority: 'high' | 'medium' | 'low';
   timestamp: string;
   dueDate?: string;

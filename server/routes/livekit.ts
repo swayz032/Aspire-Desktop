@@ -439,12 +439,16 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
       }
     }
 
-    const results = members.map((row: any) => ({
-      userId: row.email ? lookupUserIdMap[row.email] || row.suite_id : row.suite_id,
-      suiteId: row.suite_id,
-      name: row.owner_name || row.name || 'Unknown',
-      businessName: row.business_name || '',
-    }));
+    const results = members
+      // Law #3: Only return users with a resolved auth user_id — suite_id fallback
+      // would cause invite to target wrong entity and Realtime subscription miss
+      .filter((row: any) => row.email && lookupUserIdMap[row.email])
+      .map((row: any) => ({
+        userId: lookupUserIdMap[row.email],
+        suiteId: row.suite_id,
+        name: row.owner_name || row.name || 'Unknown',
+        businessName: row.business_name || '',
+      }));
 
     // Law #2: Audit trail for cross-suite lookups (privacy-sensitive operation)
     const correlationId = req.headers['x-correlation-id'] as string | undefined;
@@ -794,11 +798,11 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
       });
     }
 
-    // Fallback: use whatever we have — profile may be null for new/incomplete accounts
+    // Fallback: resolve best available identity for incomplete/test accounts
     const inviterProfile = profile || {
-      display_id: suiteId.slice(0, 8),
+      display_id: '',
       office_display_id: '',
-      owner_name: (req as any).authenticatedUserName || 'Unknown',
+      owner_name: (req as any).authenticatedUserName || 'Aspire User',
       business_name: null,
       avatar_url: null,
     };

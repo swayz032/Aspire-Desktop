@@ -648,8 +648,12 @@ router.get('/api/finance/exceptions', async (req: Request, res: Response) => {
 
 // ── Finn v2: Authority Queue endpoints ────────────────────────────────────────
 router.get('/api/authority-queue', async (req: Request, res: Response) => {
+  // Law #6: Tenant isolation — use authenticated context, never trust client-supplied IDs
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
     const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
     const domain = getQueryParam(req.query.domain, 'finance');
     const statusFilter = getQueryParam(req.query.status, 'pending');
@@ -692,9 +696,13 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
 });
 
 router.post('/api/authority-queue/:id/approve', async (req: Request, res: Response) => {
+  // Law #6: Tenant isolation — use authenticated context, never trust client-supplied IDs
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
     const eventId = parseInt(req.params.id as string, 10);
-    const suiteId = req.body.suiteId || getDefaultSuiteId();
     const officeId = req.body.officeId || getDefaultOfficeId();
     const approvedBy = req.body.approvedBy || 'owner';
     const correlationId = (req.headers['x-correlation-id'] as string) || req.body.correlation_id || `corr_${crypto.randomUUID()}`;
@@ -745,9 +753,13 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
 });
 
 router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response) => {
+  // Law #6: Tenant isolation — use authenticated context, never trust client-supplied IDs
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
     const eventId = parseInt(req.params.id as string, 10);
-    const suiteId = req.body.suiteId || getDefaultSuiteId();
     const officeId = req.body.officeId || getDefaultOfficeId();
     const deniedBy = req.body.deniedBy || 'owner';
     const reason = req.body.reason || '';

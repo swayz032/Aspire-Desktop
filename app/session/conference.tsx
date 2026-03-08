@@ -193,6 +193,12 @@ export default function ConferenceSession() {
 
     // Send real-time invitation via API for Aspire user invites
     if (inviteType === 'cross-suite' || inviteType === 'internal') {
+      // Law #3: Fail closed — both suite and user IDs must be valid UUIDs
+      if (!suiteId) {
+        console.error('[Conference] Missing suiteId for invite — cannot send');
+        showToast(`Cannot invite ${displayName}: missing suite identity`, 'error');
+        return;
+      }
       try {
         const inviteHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
         if (supabaseSession?.access_token) {
@@ -205,7 +211,7 @@ export default function ConferenceSession() {
           method: 'POST',
           headers: inviteHeaders,
           body: JSON.stringify({
-            invitee_suite_id: suiteId || memberId,
+            invitee_suite_id: suiteId,
             invitee_user_id: memberId,
             room_name: roomNumber,
           }),

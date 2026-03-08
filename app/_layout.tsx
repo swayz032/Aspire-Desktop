@@ -13,6 +13,7 @@ import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
 import { IncomingCallOverlay } from '@/components/calls/IncomingCallOverlay';
 import { IncomingVideoCallOverlay } from '@/components/calls/IncomingVideoCallOverlay';
 import { useRealtimeConferenceInvitations } from '@/hooks/useRealtimeConferenceInvitations';
+import { useRealtimeApprovalRequests } from '@/hooks/useRealtimeApprovalRequests';
 import { useDesktop } from '@/lib/useDesktop';
 import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 
@@ -186,6 +187,7 @@ function AppNavigator() {
   const colorScheme = useColorScheme();
   useAuthGate();
   useRealtimeConferenceInvitations();
+  useRealtimeApprovalRequests();
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

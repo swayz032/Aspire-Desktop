@@ -10,6 +10,11 @@ interface DocumentPreviewModalProps {
   type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording';
   documentName?: string;
   pandadocDocumentId?: string;
+  /** Real data props — when provided, shown instead of hardcoded template content */
+  amount?: number;
+  customerName?: string;
+  currency?: string;
+  draftSummary?: string;
 }
 
 /** Identity fields derived from intake form (suite_profiles via useTenant) */
@@ -363,7 +368,7 @@ function GenericDocContent({ businessName }: IdentityProps) {
   );
 }
 
-export function DocumentPreviewModal({ visible, onClose, type, documentName, pandadocDocumentId }: DocumentPreviewModalProps) {
+export function DocumentPreviewModal({ visible, onClose, type, documentName, pandadocDocumentId, amount, customerName, currency, draftSummary }: DocumentPreviewModalProps) {
   const meta = TYPE_META[type] || TYPE_META.document;
   const { session } = useSupabase();
   const { tenant } = useTenant();
@@ -426,6 +431,49 @@ export function DocumentPreviewModal({ visible, onClose, type, documentName, pan
   };
 
   const renderContent = () => {
+    // If draftSummary or real data props are provided (and no PandaDoc), show real data preview
+    if (!pandadocDocumentId && (draftSummary || amount || customerName)) {
+      const formattedAmount = amount
+        ? new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(amount)
+        : null;
+      return (
+        <View>
+          <View style={p.docHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={p.companyName}>{documentName || meta.title}</Text>
+              <Text style={p.companyDetail}>Approval Details</Text>
+            </View>
+            <View style={p.statusBadge}>
+              <Text style={p.statusBadgeText}>PENDING APPROVAL</Text>
+            </View>
+          </View>
+          <View style={p.divider} />
+          {customerName && (
+            <View style={p.billTo}>
+              <Text style={p.sectionLabel}>{type === 'invoice' ? 'BILL TO' : 'PARTY'}</Text>
+              <Text style={p.billToName}>{customerName}</Text>
+            </View>
+          )}
+          {formattedAmount && (
+            <View style={[p.totalSection, { alignItems: 'flex-start', borderTopWidth: 0, paddingTop: 0 }]}>
+              <View style={[p.totalRow, p.grandTotal, { borderTopWidth: 0, marginTop: 0, paddingTop: 0 }]}>
+                <Text style={p.grandTotalLabel}>Amount</Text>
+                <Text style={p.grandTotalValue}>{formattedAmount}</Text>
+              </View>
+            </View>
+          )}
+          {draftSummary && (
+            <>
+              <View style={p.divider} />
+              <Text style={p.sectionLabel}>SUMMARY</Text>
+              <Text style={p.clauseBody}>{draftSummary}</Text>
+            </>
+          )}
+        </View>
+      );
+    }
+
+    // Fallback: template previews
     switch (type) {
       case 'invoice': return <InvoiceContent {...identity} />;
       case 'contract': return <ContractContent {...identity} />;
