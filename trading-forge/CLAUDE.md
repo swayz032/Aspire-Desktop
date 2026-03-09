@@ -14,7 +14,11 @@ Personal futures/derivatives strategy research lab. Single user (swayz032). Not 
   - **Databento** — Institutional-grade historical tick/futures data ($125 credits)
   - **Massive** — Free real-time WebSocket streaming (currencies, indices, options, stocks)
   - **Alpha Vantage** — 60+ technical indicators, news/sentiment API, MCP support
-- **Orchestration**: n8n (external, local)
+- **Orchestration**: n8n (external, local, Docker Compose in `docker-compose.local-ai.yml`)
+- **AI Lab**: Ollama + n8n + Trading Forge loop (see ROADMAP "Local AI Lab Setup" section)
+  - Custom Modelfile: `ollama/Modelfile.trading-quant` (Qwen2.5-Coder:14b tuned for vectorbt)
+  - Critic model: Llama 3.1:8b (fast analysis loop)
+  - Webhooks: `/api/agent/run-strategy`, `/api/agent/critique`, `/api/agent/batch`
 
 ## Commands
 - `npm run dev` — Start Express server with hot reload

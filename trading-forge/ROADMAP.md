@@ -9,7 +9,8 @@
 
 1. [Architecture Overview](#architecture-overview)
 2. [Infrastructure Map](#infrastructure-map)
-3. [Institutional Edge — What the Top 1% Do](#institutional-edge--what-the-top-1-do)
+3. [Local AI Lab Setup — Skytech RTX + Ollama + n8n](#local-ai-lab-setup--skytech-rtx--ollama--n8n)
+4. [Institutional Edge — What the Top 1% Do](#institutional-edge--what-the-top-1-do)
 4. [Phase 0 — Foundation](#phase-0--foundation-week-1-2)
 4. [Phase 1 — Data Pipeline](#phase-1--data-pipeline-week-3-4)
 5. [Phase 2 — Backtest Engine](#phase-2--backtest-engine-week-5-7)
@@ -67,6 +68,243 @@
 | **Total monthly burn (infra)** | | **~$7/mo** | |
 | **Runway on $100 AWS** | | **~14 months** | |
 | **Databento credits** | | **$125 one-time** | **Use for historical futures downloads** |
+
+---
+
+## Local AI Lab Setup — Skytech RTX + Ollama + n8n
+
+> Community-validated setup (r/algotrading, r/LocalLLaMA, r/n8n, 2025-2026).
+> This is the exact stack people are shipping for AI trading research labs.
+
+### How It Works (division of labor)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    AI STRATEGY RESEARCH LAB                       │
+│                                                                  │
+│  ┌─────────────┐     ┌─────────────┐     ┌──────────────────┐   │
+│  │   Ollama     │     │    n8n       │     │  Trading Forge   │   │
+│  │  (the brain) │────▶│ (the glue)   │────▶│  (the muscle)    │   │
+│  │             │     │             │     │                  │   │
+│  │ • Generate   │     │ • Schedule   │     │ • vectorbt       │   │
+│  │   strategy   │     │ • Orchestrate│     │ • Monte Carlo    │   │
+│  │   ideas      │     │ • Loop       │     │ • Walk-forward   │   │
+│  │ • Critique   │     │ • Route      │     │ • Prop firm sim  │   │
+│  │   results    │     │   results    │     │ • Crisis stress  │   │
+│  │ • Refine     │     │ • Alert      │     │   test           │   │
+│  │   params     │     │              │     │                  │   │
+│  └─────────────┘     └─────────────┘     └──────────────────┘   │
+│        ▲                                         │               │
+│        └─────────────────────────────────────────┘               │
+│              Results feed back for iteration                     │
+│                                                                  │
+│  KEY: Ollama does NOT run simulations (it's terrible at math).   │
+│       Ollama generates the code/params. Forge RUNS the sims.     │
+│       n8n orchestrates the loop. This is 100% private, $0/mo.    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Step 1: Ollama GPU Setup on Skytech (5-10 mins)
+
+Ollama auto-detects RTX and uses CUDA — 40-120+ tokens/sec depending on model.
+
+```bash
+# Windows (Skytech gaming PCs):
+# 1. Download & run installer from ollama.com (200 MB .exe)
+# 2. Update NVIDIA Game Ready drivers (or Studio drivers)
+# 3. (Optional) Install latest CUDA Toolkit from NVIDIA
+# 4. Test:
+ollama run llama3.2
+ollama run --verbose  # confirms "using CUDA" + VRAM usage
+
+# Linux (Ubuntu 24.04):
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve  # runs in background
+```
+
+**GPU Tips:**
+- RTX 5060 (8-16 GB VRAM): Run 7B-14B models at full speed; 32B+ with layer offloading
+- Monitor: `nvidia-smi` (keep VRAM under 80-90% for stability)
+
+**Best Models for Trading Strategy Research:**
+| Model | Size | Use Case |
+|-------|------|----------|
+| `qwen2.5-coder:14b` | ~9 GB | Best at generating clean vectorbt code |
+| `deepseek-coder-r1` | ~8 GB | Excellent for analysis & critique |
+| `llama3.1:8b` | ~5 GB | Fast general reasoning, critique loop |
+
+```bash
+# Pull once, runs forever:
+ollama pull qwen2.5-coder:14b
+ollama pull llama3.1:8b
+```
+
+### Step 2: Custom Modelfile for Trading Quant Agent
+
+```dockerfile
+# File: trading-forge/ollama/Modelfile.trading-quant
+FROM qwen2.5-coder:14b
+
+SYSTEM You are an expert futures quantitative strategist. Your job is to generate, critique, and refine trading strategies for ES, NQ, and CL futures.
+
+RULES:
+- Always output valid Python code using vectorbt for backtesting
+- Include JSON params for every strategy (max 5 parameters)
+- Every strategy must be describable in ONE sentence
+- Use only proven edges: trend following, mean reversion, volatility expansion, session patterns
+- Include slippage modeling as a function of ATR (not a constant)
+- Include walk-forward validation logic
+- Never suggest strategies that require tight parameter optimization
+- Output Monte Carlo simulation parameters (num_sims, confidence_intervals)
+- Score against prop firm rules: max drawdown < $2,000 for Topstep 50K
+- Target: avg daily P&L >= $250, 60%+ winning days, profit factor >= 1.75
+
+OUTPUT FORMAT:
+{
+  "strategy_name": "...",
+  "one_sentence": "...",
+  "edge_hypothesis": "...",
+  "params": {...},
+  "python_code": "...",
+  "expected_metrics": {...}
+}
+
+PARAMETER num_ctx 8192
+PARAMETER temperature 0.7
+PARAMETER num_gpu 35
+```
+
+```bash
+# Build:
+ollama create trading-quant -f ollama/Modelfile.trading-quant
+# Test:
+ollama run trading-quant "Generate a mean reversion strategy for ES 15min using Bollinger Bands"
+```
+
+### Step 3: Docker Compose — Full Local Stack
+
+```yaml
+# File: trading-forge/docker-compose.local-ai.yml
+# The full AI research lab stack — Ollama + n8n + Postgres + pgvector
+services:
+  ollama:
+    image: ollama/ollama
+    ports: ["11434:11434"]
+    volumes: [ollama_data:/root/.ollama]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  n8n:
+    image: n8nio/n8n
+    ports: ["5678:5678"]
+    environment:
+      - N8N_HOST=localhost
+      - WEBHOOK_URL=http://localhost:5678
+      - OLLAMA_HOST=http://ollama:11434
+    volumes: [n8n_data:/home/node/.n8n]
+    depends_on: [ollama]
+
+  # Optional: pgvector for RAG — so Ollama "remembers" past backtest results
+  pgvector:
+    image: pgvector/pgvector:pg16
+    ports: ["5433:5432"]
+    environment:
+      POSTGRES_DB: forge_memory
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:-localdev}
+    volumes: [pgvector_data:/var/lib/postgresql/data]
+
+  # Optional: Open WebUI for ChatGPT-like interface to test agents manually
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports: ["3001:8080"]
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes: [openwebui_data:/app/backend/data]
+    depends_on: [ollama]
+
+volumes:
+  ollama_data:
+  n8n_data:
+  pgvector_data:
+  openwebui_data:
+```
+
+```bash
+# Start everything:
+docker compose -f docker-compose.local-ai.yml up -d
+
+# Access:
+# n8n:       http://localhost:5678
+# Open WebUI: http://localhost:3001
+# Ollama API: http://localhost:11434
+```
+
+### Step 4: n8n → Ollama → Trading Forge Loop
+
+**Connect n8n to Ollama (30 seconds):**
+1. Create Credential → Ollama → Base URL = `http://ollama:11434`
+2. Add Ollama Chat Model node → pick `trading-quant` model
+3. Test connection — it just works
+
+**The Loop Pattern (what everyone uses):**
+```
+1. Trigger (schedule or webhook from dashboard)
+       │
+2. Ollama "Strategy Finder" Agent
+   Prompt: "Generate 5 new vectorbt strategies for ES futures
+            using Databento tick data. Output valid Python code
+            + JSON params. Max 5 params each."
+       │
+3. n8n HTTP Node → POST to Trading Forge Express API
+   URL: http://localhost:3000/api/backtest/run
+   Body: { strategy_code, params, symbol: "ES", timeframe: "15min" }
+       │
+4. Trading Forge runs:
+   - vectorbt backtest
+   - Walk-forward validation
+   - Performance gate check ($250/day, 60% win days)
+   - Monte Carlo (1000 sims)
+   - Prop firm compliance (docs/prop-firm-rules.md)
+   - Crisis stress test (8 scenarios)
+       │
+5. Ollama "Analyst" Agent → reviews results
+   Prompt: "Review these backtest results. Which strategies
+            pass all gates? Suggest parameter refinements for
+            borderline strategies."
+       │
+6. Loop (n8n) → refine or save to DB → dashboard update
+```
+
+**n8n exposes a webhook in Trading Forge for this:**
+- `POST /api/agent/run-strategy` — accepts Ollama-generated code, returns backtest results
+- `POST /api/agent/critique` — accepts results, returns Ollama analysis
+- This is the "strategy generation loop" that scales to 1,000s of tests via n8n batching
+
+### Why This Stack Wins
+
+```
+Traditional cloud approach:
+  GPT-4 API calls × 1,000 strategies = $50-200/month in API costs
+  + data leaves your machine (privacy risk)
+  + rate limits slow you down
+  + vendor lock-in
+
+Your Skytech approach:
+  Ollama (free, local, private) × n8n (free, local) × Trading Forge
+  = $0/month after hardware
+  = 40-120 tokens/sec on RTX
+  = No rate limits
+  = 100% private (strategies never leave your PC)
+  = Scales perfectly (just loop more)
+
+Community consensus: "This is the smart low-cost way" (r/algotrading, 2025-2026)
+```
 
 ---
 
@@ -579,9 +817,12 @@ BAD:  "Optimize RSI period from 2-50, MA type from SMA/EMA/WMA/DEMA/TEMA,
 ### Tasks
 
 - [ ] **4.1** Ollama integration
-  - Local model: Llama 3.1 70B or Mistral Large (fits RTX 5060 16GB with quantization)
+  - Primary: `qwen2.5-coder:14b` (best vectorbt code gen, ~9 GB VRAM)
+  - Critic: `llama3.1:8b` (fast reasoning for result analysis, ~5 GB VRAM)
+  - Custom Modelfile: `ollama/Modelfile.trading-quant` (tuned system prompt with Forge rules baked in)
   - Structured output: strategy JSON generation
-  - Cost: $0
+  - Tool-calling: Ollama agent can directly trigger `/api/agent/run-strategy` webhook
+  - Cost: $0 (runs on Skytech RTX 5060)
 
 - [ ] **4.2** Strategy Finder Agent
   ```
@@ -699,25 +940,52 @@ BAD:  "Optimize RSI period from 2-50, MA type from SMA/EMA/WMA/DEMA/TEMA,
 
 - [ ] **4.5** n8n orchestration workflows
   ```
+  Setup: Docker Compose (see "Local AI Lab Setup" section above)
+    - n8n native Ollama node (built-in since 2025, no HTTP hacks)
+    - Connect: Credential → Ollama → Base URL = http://ollama:11434
+    - Select model: trading-quant (custom Modelfile)
+
+  API Webhooks (expose in Trading Forge Express server):
+    POST /api/agent/run-strategy    — accepts Ollama-generated code, returns backtest results
+    POST /api/agent/critique        — accepts results, returns Ollama analysis
+    POST /api/agent/batch           — run N strategies in parallel (n8n batching)
+
   Workflow 1: Nightly Research
     Trigger: 8 PM EST daily
     → Fetch latest data
-    → Run Market Analyst
+    → Run Market Analyst (regime detection)
     → If regime changed → alert via SNS
     → Update watchlist
+    → Check strategy decay metrics on all DEPLOYED strategies
 
-  Workflow 2: Weekly Strategy Hunt
+  Workflow 2: Weekly Strategy Hunt (the 1,000-strategy loop)
     Trigger: Saturday 10 AM
-    → Strategy Finder on top 3 symbols (ES, NQ, CL)
-    → Enforce simplicity constraints
-    → Auto-backtest + walk-forward + MC
+    → Ollama generates 5 strategy variations per prompt × 3 symbols (ES, NQ, CL)
+    → n8n HTTP Node → POST /api/agent/run-strategy for each
+    → Trading Forge runs: vectorbt + walk-forward + performance gate + MC + crisis stress test
+    → Ollama Analyst reviews results, suggests refinements
+    → Loop: refine borderline strategies (up to 3 iterations)
+    → Save passing strategies to DB with lifecycle state = CANDIDATE
     → Email digest of new discoveries (only strategies scoring B+ or above)
+    → This loop generates 15-45 strategies/week, testing 100s of variations
 
   Workflow 3: Monthly Robustness Check
     Trigger: Monthly
-    → Re-run robustness tests on active strategies
+    → Re-run robustness tests on active strategies (Optuna re-validation)
     → Walk-forward validation on new data
-    → Alert if strategy is degrading
+    → Check execution quality drift (live vs backtest)
+    → Alert if strategy is degrading (decay monitor)
+    → Pipeline health check: alert if < 2 strategies in CANDIDATE/TESTING
+
+  Workflow 4: Daily Portfolio Monitor (new)
+    Trigger: 5 PM EST daily (after market close)
+    → Pull today's execution data (fills, slippage)
+    → Update rolling Sharpe for each DEPLOYED strategy
+    → Check live vs backtest drift
+    → Check portfolio correlation (all strategies)
+    → Update portfolio heat metric
+    → Alert on any Level 2+ decay warnings
+    → Daily P&L summary email (per-strategy + portfolio aggregate)
   ```
 
 - [ ] **4.6** Strategy Pipeline & Lifecycle Management (Institutional Edge #8)
@@ -1137,6 +1405,10 @@ Forge strategies validated via backtest/MC, scored against each firm's rules. AI
 | 2026-03-09 | Polars + DuckDB over Pandas | Polars for 5-10x faster Parquet reads, DuckDB for querying S3 directly without download. Pandas kept only for vectorbt compatibility |
 | 2026-03-09 | Optuna for robustness testing | Bayesian param search (TPE) maps parameter landscapes in ~800 trials vs 100K+ grid search. Used to find stable plateaus, not "best" params |
 | 2026-03-09 | Community validation (Reddit/YouTube 2025-2026) | Exact stack (Databento→Parquet→S3, vectorbt, Ollama+n8n, TradingView lightweight-charts, $7-12/mo infra) confirmed as "the smart low-cost way" by r/algotrading, PyQuant, multiple YouTube creators |
+| 2026-03-09 | Local AI Lab setup guide (Ollama + n8n + Docker) | Full operational runbook added: custom Modelfile for trading-quant agent, Docker Compose with Ollama + n8n + pgvector + Open WebUI, n8n webhook pattern for strategy generation loop, GPU tips for RTX 5060. Community-validated stack (r/algotrading, r/LocalLLaMA, r/n8n 2025-2026) |
+| 2026-03-09 | Qwen2.5-Coder over Llama 3.1 70B for code gen | Community consensus: Qwen2.5-Coder:14b (~9 GB) generates cleaner vectorbt code than larger general models. Use Llama 3.1:8b as fast critic. Fits RTX 5060 VRAM comfortably |
+| 2026-03-09 | n8n Workflow 4 — Daily Portfolio Monitor | Added daily post-market workflow: execution quality tracking, rolling Sharpe updates, live vs backtest drift checks, portfolio correlation monitoring, daily P&L summary |
+| 2026-03-09 | Agent API webhooks for n8n integration | Three endpoints: /api/agent/run-strategy, /api/agent/critique, /api/agent/batch. Ollama generates code → n8n triggers Forge → results feed back. Scales to 1,000s of tests via batching |
 | 2026-03-09 | Institutional Edge research (top 1% practices) | 8 capabilities identified from prop firm traders, institutional quants, and practitioner sources. Strategy selection matters less than risk management, execution quality, and process discipline |
 | 2026-03-09 | Regime detection with strategy gating | ADX + ATR percentile for regime classification. Every strategy gets a preferred regime tag. Regime filter pauses strategies in unfavorable regimes. Study showed 495% vs 117% S&P with regime-based rebalancing |
 | 2026-03-09 | Dynamic (volatility-scaled) position sizing | Scale inversely to ATR: contracts = target_risk / (ATR × tick_value). Institutions do this; retail uses fixed sizes and gets killed in vol spikes |
