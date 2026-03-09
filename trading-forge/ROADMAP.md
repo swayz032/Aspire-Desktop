@@ -166,6 +166,49 @@ Server running locally, CRUD on strategies table, migrations working.
   - Support for: ES, NQ, YM, RTY, CL, GC, SI, ZB, ZN, 6E, 6J
   - **Budget: $125 credits — prioritize core contracts (ES, NQ, CL) first**
 
+- [ ] **1.1a** Continuous contract back-adjustment (**CRITICAL — data integrity**)
+  - Raw Databento continuous contracts (ES.v.0) have price gaps on quarterly rolls (Mar→Jun, Jun→Sep, etc.)
+  - **Without adjustment, backtests produce fake signals from roll gaps** — this is the #1 data pitfall in futures backtesting
+  - Implement ratio-adjusted (proportional) continuous contracts as the default method
+  - Also support Panama (additive) back-adjustment as a secondary option
+  - Store both raw and adjusted Parquet files in S3 (raw for reference, adjusted for backtesting)
+  - Roll calendar: detect roll dates from volume crossover or use Databento's roll metadata
+  - Validation: compare adjusted prices against known benchmarks to verify no artifacts
+  ```python
+  # Ratio adjustment (preferred — preserves percentage returns)
+  def ratio_adjust(prices, roll_dates):
+      """
+      Adjust continuous contract prices to remove roll gaps.
+      Ratio method: multiply historical prices by (new_front / old_front) at each roll.
+      Preserves percentage returns — critical for strategy backtesting.
+      """
+      adjusted = prices.copy()
+      for roll_date in reversed(roll_dates):
+          ratio = prices[roll_date]['new_front'] / prices[roll_date]['old_front']
+          adjusted.loc[:roll_date] *= ratio
+      return adjusted
+
+  # Panama adjustment (additive — preserves dollar returns)
+  def panama_adjust(prices, roll_dates):
+      """
+      Additive adjustment: subtract the gap at each roll from all prior prices.
+      Preserves dollar P&L but distorts percentage returns for older data.
+      """
+      adjusted = prices.copy()
+      for roll_date in reversed(roll_dates):
+          gap = prices[roll_date]['new_front'] - prices[roll_date]['old_front']
+          adjusted.loc[:roll_date] -= gap
+      return adjusted
+  ```
+  - **S3 structure with adjusted data:**
+  ```
+  s3://trading-forge-data/futures/ES/
+  ├── raw/           # Unadjusted Databento prices (reference only)
+  ├── ratio_adj/     # Ratio-adjusted (default for backtesting)
+  ├── panama_adj/    # Panama-adjusted (alternative)
+  └── roll_calendar/ # Roll dates + ratios for each contract
+  ```
+
 - [ ] **1.1b** Massive client wrapper (real-time + supplemental)
   - REST client for on-demand historical bars
   - WebSocket client for real-time streaming (Phase 6)
@@ -201,11 +244,39 @@ Server running locally, CRUD on strategies table, migrations working.
   - Store as Parquet in S3
   - Update `market_data_meta` table with source tracking
 
+- [ ] **1.3a** Polars + DuckDB data layer (high-performance Parquet access)
+  - **Polars** replaces Pandas as primary data loading library (5-10x faster for Parquet reads)
+  - **DuckDB** for querying Parquet files directly on S3 without downloading (zero-copy, SQL interface)
+  - Pandas kept for vectorbt compatibility layer only — all internal data ops use Polars
+  - DuckDB enables: `SELECT * FROM 's3://trading-forge-data/futures/ES/ratio_adj/5min/*.parquet' WHERE date > '2023-01-01'`
+  - Eliminates full-file S3 downloads for selective backtests (query only the date range you need)
+  - Lazy evaluation: Polars scans only the columns/rows needed, not the entire dataset
+  ```python
+  # Polars: Load 5 years of ES 5min data in ~2 seconds (vs ~15s with Pandas)
+  import polars as pl
+  df = pl.scan_parquet("s3://trading-forge-data/futures/ES/ratio_adj/5min/*.parquet")
+  df = df.filter(pl.col("date") >= "2020-01-01").collect()
+
+  # DuckDB: Query S3 Parquet directly with SQL (no download needed)
+  import duckdb
+  conn = duckdb.connect()
+  conn.execute("INSTALL httpfs; LOAD httpfs;")
+  result = conn.execute("""
+      SELECT date, open, high, low, close, volume
+      FROM 's3://trading-forge-data/futures/ES/ratio_adj/5min/*.parquet'
+      WHERE date BETWEEN '2024-01-01' AND '2024-12-31'
+  """).pl()  # Returns Polars DataFrame directly
+
+  # vectorbt bridge: Convert Polars → Pandas only at the backtest boundary
+  vbt_data = df.to_pandas()  # One-time conversion for vectorbt
+  ```
+
 - [ ] **1.4** Local data sync
   - CLI command: `forge data sync ES --from 2020-01-01 --to 2025-01-01`
   - Downloads from S3 to local `data/` directory
   - Supports incremental sync (only fetch what's missing)
   - Source-aware: tracks which provider supplied each data segment
+  - Polars/DuckDB can also query S3 directly — local sync is optional for performance
 
 - [ ] **1.5** Data serving API
   ```
@@ -233,6 +304,9 @@ Server running locally, CRUD on strategies table, migrations working.
   - Entry/exit signal generation
   - Position sizing: fixed, percent-risk, Kelly criterion
   - Slippage + commission modeling (realistic futures costs)
+  - **Data loading via Polars** (fast) → convert to Pandas at vectorbt boundary only
+  - **Must use ratio-adjusted continuous contracts** — never raw Databento prices
+  - Vectorized/Numba approach: 1,000,000+ MC sims in ~20 seconds on modest hardware
 
 - [ ] **2.2** Strategy templates
   ```python
@@ -466,17 +540,37 @@ BAD:  "Optimize RSI period from 2-50, MA type from SMA/EMA/WMA/DEMA/TEMA,
   Input:  Existing strategy + parameter ranges
 
   Purpose: Test if strategy is ROBUST, not find the "best" parameters.
+  Tool:   Optuna (Bayesian optimization) for intelligent parameter search.
+
+  Why Optuna over grid search:
+    - Grid search: 5 params × 10 values each = 100,000 backtests (brute force, wasteful)
+    - Optuna: Bayesian search finds the stable regions in ~500-1,000 trials
+    - Optuna's Tree-Structured Parzen Estimator (TPE) learns which param regions
+      produce stable results and focuses search there
+    - 100x fewer backtests to map the same parameter landscape
+    - Still respects "robustness > optimization" — we use Optuna to MAP the landscape,
+      not to find one magic set of params
 
   Process:
-    1. Agent tests strategy across a coarse parameter grid
-    2. If performance varies wildly with small param changes → REJECT (overfit)
-    3. If performance is stable across wide range → PASS (robust)
-    4. Walk-forward validation on the stable parameter region
-    5. Monte Carlo on best walk-forward results
+    1. Optuna runs 500-1,000 trials with TPE sampler across parameter space
+    2. Agent analyzes the Optuna study: plot param importance, interaction effects
+    3. Identify "plateau regions" where performance is stable across wide ranges
+    4. If no plateau exists (performance is spiky/peaked) → REJECT (overfit)
+    5. If plateau exists → extract the robust parameter range
+    6. Walk-forward validation on the center of the plateau
+    7. Monte Carlo on best walk-forward results
+    8. Performance gate check: does robust region still meet $250/day minimum?
 
-  Output: Robustness report — "This strategy works with fast_ma anywhere
-          from 15-25 and slow_ma from 40-60" = GOOD
-          "This strategy only works with fast_ma=17 and slow_ma=43" = BAD
+  Output: Robustness report —
+    "Optuna mapped 800 trials. fast_ma has a stable plateau from 15-25,
+     slow_ma from 40-60. Performance varies only ±8% across this range.
+     Center of plateau (fast_ma=20, slow_ma=50) passes all performance gates."
+     = GOOD (robust, deploy)
+
+    "Optuna mapped 800 trials. Performance peaks sharply at fast_ma=17,
+     slow_ma=43 and drops >50% with ±2 change in either parameter.
+     No stable plateau found."
+     = BAD (overfit, reject)
   ```
 
 - [ ] **4.4** Market Analyst Agent
@@ -749,6 +843,10 @@ Forge strategies validated via backtest/MC, scored against each firm's rules. AI
 | 2026-03-09 | High-earning strategies or nothing | Min $250/day, 60%+ win days, 12+ green days per month. ONE account must be profitable. No multi-account scaling |
 | 2026-03-09 | Performance gate before Monte Carlo | Reject strategies below minimums BEFORE wasting compute on MC. Earnings power is heaviest Forge Score weight (30/100) |
 | 2026-03-09 | 3-tier strategy classification | Tier 1: $500+/day, Tier 2: $350+/day, Tier 3: $250+/day. Below Tier 3 = auto-reject |
+| 2026-03-09 | Continuous contract back-adjustment | CRITICAL: Raw Databento prices have roll gaps that create fake signals. Ratio-adjust all continuous contracts before backtesting |
+| 2026-03-09 | Polars + DuckDB over Pandas | Polars for 5-10x faster Parquet reads, DuckDB for querying S3 directly without download. Pandas kept only for vectorbt compatibility |
+| 2026-03-09 | Optuna for robustness testing | Bayesian param search (TPE) maps parameter landscapes in ~800 trials vs 100K+ grid search. Used to find stable plateaus, not "best" params |
+| 2026-03-09 | Community validation (Reddit/YouTube 2025-2026) | Exact stack (Databento→Parquet→S3, vectorbt, Ollama+n8n, TradingView lightweight-charts, $7-12/mo infra) confirmed as "the smart low-cost way" by r/algotrading, PyQuant, multiple YouTube creators |
 
 ---
 

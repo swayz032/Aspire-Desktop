@@ -6,7 +6,7 @@ Personal futures/derivatives strategy research lab. Single user (swayz032). Not 
 ## Tech Stack
 - **API Server**: Express.js 5 + TypeScript (src/server/)
 - **Database**: PostgreSQL + Drizzle ORM
-- **Backtest Engine**: Python + vectorbt (src/engine/)
+- **Backtest Engine**: Python + vectorbt + Polars + DuckDB (src/engine/)
 - **AI Agents**: Python + Ollama (src/agents/)
 - **Dashboard**: React + Vite + TailwindCSS (src/dashboard/)
 - **Data Lake**: AWS S3 (Parquet files)
@@ -170,6 +170,14 @@ Rules:
 - **Alpha Vantage** → Server-side indicators + sentiment for AI agents (Phase 4). MCP-enabled.
 - All three are free ($0/mo). Databento has $125 one-time credits.
 
+## Data Layer Rules
+- **Polars is the primary data library** — use for all Parquet loading, transforms, and filtering. 5-10x faster than Pandas.
+- **DuckDB for S3 queries** — query Parquet on S3 directly with SQL, no download needed for selective date ranges.
+- **Pandas only at the vectorbt boundary** — convert Polars → Pandas with `.to_pandas()` only when passing data to vectorbt.
+- **ALWAYS use ratio-adjusted continuous contracts for backtesting** — never raw Databento prices. Roll gaps create fake signals.
+- Raw prices stored in S3 for reference, but all backtests run on `ratio_adj/` data.
+- **Optuna for parameter robustness testing** — Bayesian search (TPE) to map stable plateaus, not find "best" params. ~800 trials vs 100K+ grid search.
+
 ## Don't
 - Don't add Supabase or complex auth — it's just one user
 - Don't over-engineer — MVP each phase, iterate
@@ -181,3 +189,6 @@ Rules:
 - Don't waste Databento credits on data you can get from Massive/Alpha Vantage for free
 - Don't simulate strategies against a firm without loading `docs/prop-firm-rules.md` first
 - Don't ignore consistency rules (TPT 50%, FFN Express 15%) — these disqualify many strategies
+- Don't use Pandas for data loading — use Polars (only convert to Pandas at vectorbt boundary)
+- Don't backtest on raw/unadjusted continuous contracts — always use ratio-adjusted data
+- Don't use grid search for parameter testing — use Optuna (Bayesian/TPE) for 100x fewer trials
