@@ -359,7 +359,45 @@ Any backtest can be Monte Carlo validated. Forge Score assigned. GPU burst worki
 
 ## Phase 4 — AI Research Agents (Week 10-12)
 
-**Goal:** Use local LLMs + Claude to discover and refine strategies.
+**Goal:** Use local LLMs + Claude to discover and refine **simple, robust** strategies.
+
+### Strategy Philosophy
+
+> **Simple strategies that survive Monte Carlo > complex strategies that overfit.**
+
+Agents MUST follow these constraints:
+
+1. **Max 3-5 parameters** per strategy. More parameters = more overfitting surface.
+2. **Explainable logic** — if you can't describe the strategy in one sentence, it's too complex.
+3. **Proven edge categories only:**
+   - Trend following (moving average crossovers, breakouts, momentum)
+   - Mean reversion (Bollinger Bands, RSI extremes, VWAP reversion)
+   - Volatility expansion/contraction (squeeze plays, range breakouts)
+   - Session/time-of-day patterns (opening range, London/NY overlap)
+4. **No black-box ML strategies** — no neural nets, no random forests for signal generation. ML is fine for regime detection and position sizing, not for entry/exit signals.
+5. **Walk-forward validation is mandatory** — no strategy passes without out-of-sample testing.
+6. **If a strategy needs optimization to work, it doesn't work.** Good strategies are robust across a wide parameter range.
+
+### What "Simple" Looks Like
+
+```
+GOOD: "Buy ES when 20 EMA crosses above 50 EMA, sell when it crosses below.
+       Stop loss at 2x ATR. Take profit at 3x ATR."
+       → 4 parameters: fast_ma=20, slow_ma=50, stop_atr=2, tp_atr=3
+
+GOOD: "Short NQ when RSI(14) > 80 and price is above upper Bollinger Band(20,2).
+       Exit when RSI < 50."
+       → 3 parameters: rsi_period=14, bb_period=20, bb_std=2
+
+BAD:  "Use a 7-layer LSTM to predict next-bar direction, combine with
+       sentiment from 3 news APIs, weight by regime classifier output,
+       then size position using Kelly criterion adjusted for skewness."
+       → 50+ parameters, untestable, will overfit
+
+BAD:  "Optimize RSI period from 2-50, MA type from SMA/EMA/WMA/DEMA/TEMA,
+       stop from 0.5-5.0 ATR in 0.1 increments, across 6 timeframes."
+       → 15,000+ combinations, guaranteed to find something that backtests well
+```
 
 ### Tasks
 
@@ -371,23 +409,39 @@ Any backtest can be Monte Carlo validated. Forge Score assigned. GPU burst worki
 - [ ] **4.2** Strategy Finder Agent
   ```
   Input:  "Find mean reversion strategies for ES futures, 15min timeframe"
+
+  Constraints (enforced by agent):
+    - Max 5 parameters
+    - Must use standard indicators only (MA, RSI, BB, ATR, VWAP)
+    - Must be describable in one sentence
+    - Must have a clear, logical edge hypothesis
+
   Process:
-    1. Agent generates 10 strategy variations
-    2. Each auto-backtested
+    1. Agent generates 5 simple strategy variations (not 50)
+    2. Each auto-backtested with walk-forward validation
     3. Top 3 by Sharpe sent to Monte Carlo
     4. Results ranked by Forge Score
-  Output: Ranked strategy recommendations with full metrics
+    5. Strategies also scored against prop firm rules (docs/prop-firm-rules.md)
+
+  Output: Ranked strategies with metrics + prop firm compatibility
   ```
 
-- [ ] **4.3** Parameter Optimizer Agent
+- [ ] **4.3** Parameter Robustness Agent (replaces "optimizer")
   ```
-  Input:  Existing strategy + "optimize for max Sharpe with <20% drawdown"
+  Input:  Existing strategy + parameter ranges
+
+  Purpose: Test if strategy is ROBUST, not find the "best" parameters.
+
   Process:
-    1. Agent proposes parameter grid
-    2. Grid search via vectorbt
-    3. Walk-forward validation on top params
-    4. Monte Carlo on best walk-forward results
-  Output: Optimized params + overfitting risk assessment
+    1. Agent tests strategy across a coarse parameter grid
+    2. If performance varies wildly with small param changes → REJECT (overfit)
+    3. If performance is stable across wide range → PASS (robust)
+    4. Walk-forward validation on the stable parameter region
+    5. Monte Carlo on best walk-forward results
+
+  Output: Robustness report — "This strategy works with fast_ma anywhere
+          from 15-25 and slow_ma from 40-60" = GOOD
+          "This strategy only works with fast_ma=17 and slow_ma=43" = BAD
   ```
 
 - [ ] **4.4** Market Analyst Agent
@@ -395,9 +449,9 @@ Any backtest can be Monte Carlo validated. Forge Score assigned. GPU burst worki
   Input:  "Analyze ES market regime for the last 30 days"
   Process:
     1. Fetch recent data
-    2. Compute regime indicators (volatility, trend, correlation)
-    3. Compare to historical regimes
-    4. Recommend which strategies to activate/deactivate
+    2. Compute simple regime indicators (ATR for volatility, slope of 50 MA for trend)
+    3. Classify: trending-up, trending-down, range-bound, high-vol, low-vol
+    4. Recommend which simple strategies to use/avoid in current regime
   Output: Market regime report + strategy activation recommendations
   ```
 
@@ -412,28 +466,29 @@ Any backtest can be Monte Carlo validated. Forge Score assigned. GPU burst worki
 
   Workflow 2: Weekly Strategy Hunt
     Trigger: Saturday 10 AM
-    → Strategy Finder on top 5 symbols
-    → Auto-backtest + MC
-    → Email digest of new discoveries
+    → Strategy Finder on top 3 symbols (ES, NQ, CL)
+    → Enforce simplicity constraints
+    → Auto-backtest + walk-forward + MC
+    → Email digest of new discoveries (only strategies scoring B+ or above)
 
-  Workflow 3: Continuous Optimization
+  Workflow 3: Monthly Robustness Check
     Trigger: Monthly
-    → Re-optimize active strategies
-    → Walk-forward validation
-    → Alert if degradation detected
+    → Re-run robustness tests on active strategies
+    → Walk-forward validation on new data
+    → Alert if strategy is degrading
   ```
 
 - [ ] **4.6** Agent API endpoints
   ```
-  POST   /api/agents/find-strategies    -- Strategy discovery
-  POST   /api/agents/optimize           -- Parameter optimization
+  POST   /api/agents/find-strategies    -- Strategy discovery (simple only)
+  POST   /api/agents/robustness         -- Parameter robustness testing
   POST   /api/agents/analyze-market     -- Market regime analysis
   GET    /api/agents/jobs               -- Active agent jobs
   GET    /api/agents/jobs/:id           -- Job status + results
   ```
 
 ### Deliverable
-AI agents discovering strategies, auto-backtesting, scoring, and alerting you.
+AI agents discovering **simple, robust** strategies. Auto-backtesting with walk-forward validation. Scoring against prop firm rules. Rejecting complex/overfit strategies automatically.
 
 ---
 
@@ -653,6 +708,8 @@ Forge strategies validated via backtest/MC, scored against each firm's rules. AI
 | 2026-03-09 | 7 prop firms documented for AI agents | MFFU, Topstep, TPT, Apex, FFN, Alpha Futures, Tradeify — full rules in docs/prop-firm-rules.md |
 | 2026-03-09 | MFFU as best-value firm | $77/mo, $0 activation, 90/10 split, no consistency rule |
 | 2026-03-09 | Agent-parseable prop firm rules | YAML configs, Python simulation code, payout formulas for each firm |
+| 2026-03-09 | Simple strategies only | Max 5 params, one-sentence logic, proven edges. Agents REJECT complex/overfit strategies |
+| 2026-03-09 | Robustness over optimization | Test parameter stability, not find "best" params. Wide range = robust = good |
 
 ---
 

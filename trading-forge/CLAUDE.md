@@ -47,6 +47,15 @@ src/
 └── dashboard/        # React frontend
 ```
 
+## Strategy Philosophy — SIMPLE WINS
+- **Max 3-5 parameters per strategy.** More = overfitting. No exceptions.
+- **One-sentence rule:** If you can't describe the strategy in one sentence, it's too complex. Reject it.
+- **Proven edges only:** Trend following, mean reversion, volatility expansion, session patterns. No exotic ML signals.
+- **Robustness > optimization.** A strategy that works with MA=15-25 is better than one that only works with MA=17.
+- **Walk-forward validation is mandatory.** No strategy passes without out-of-sample testing.
+- **No black-box ML for entries/exits.** ML is fine for regime detection and position sizing, not for signal generation.
+- Agents must REJECT strategies that require tight parameter optimization to be profitable.
+
 ## Key Patterns
 - **Audit Log**: Every significant action (backtest, MC run, strategy change) gets an audit_log entry — borrowed from Aspire's Trust Spine pattern
 - **Forge Score**: 0-100 composite score for strategy quality (Sharpe + Drawdown + MC survival + Walk-forward)
@@ -75,6 +84,9 @@ src/
 ## Don't
 - Don't add Supabase or complex auth — it's just one user
 - Don't over-engineer — MVP each phase, iterate
+- Don't generate complex strategies — max 5 parameters, one-sentence logic, proven edges only
+- Don't optimize parameters to find "the best" — test robustness across a wide range instead
+- Don't use ML/neural nets for entry/exit signals — only for regime detection and sizing
 - Don't store secrets in code — use .env
 - Don't commit the data/ directory — it's gitignored (lives in S3)
 - Don't waste Databento credits on data you can get from Massive/Alpha Vantage for free
