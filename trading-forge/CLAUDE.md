@@ -180,6 +180,24 @@ Rules:
 - Agents calculate payout projections after splits, fees, and ongoing costs
 - User trades manually — Forge provides strategy signals and firm rule compliance tracking
 
+## System Journal (AI Self-Learning Loop)
+- **Table:** `system_journal` — logs every AI-generated strategy's full backtest results, equity curve, daily P&Ls, and prop compliance
+- **Purpose:** Ollama Analyst reviews its own past generations nightly via n8n and self-critiques. The system gets smarter every day.
+- **n8n integration:** After every backtest, n8n POSTs to `/api/journal` to log the result. Nightly, Ollama Analyst reads recent entries and adds `analystNotes`.
+- **Routes:**
+  - `GET /api/journal` — List entries (filter by `?status=`, `?tier=`, `?source=`, `?limit=`)
+  - `GET /api/journal/:id` — Single entry
+  - `POST /api/journal` — Log new entry (called by n8n after backtest)
+  - `PATCH /api/journal/:id` — Update (Ollama adds self-critique notes)
+  - `GET /api/journal/stats/summary` — Aggregate stats (total, pass rate, by tier/source)
+
+## Prop Risk Calculator
+- **Routes:**
+  - `POST /api/risk/max-contracts` — Given symbol, ATR, firm, account size, returns safe max contracts per account and across all accounts
+  - `POST /api/risk/portfolio-heat` — Given all open positions, returns total exposure, unrealized P&L, drawdown usage per account, and heat percentage
+- **Purpose:** Call before every live session to ensure you never breach drawdown limits across multiple prop accounts
+- Supports all 7 firms (Topstep, MFFU, TPT, Apex, Tradeify, Alpha, FFN) and all contract specs (ES, NQ, CL, YM, RTY, GC, MES, MNQ)
+
 ## Data Provider Roles
 - **Databento** → Historical bulk downloads (Phase 1 backfill). Download once to S3, never re-pay.
 - **Massive** → Real-time streaming for paper/live trading (Phase 6). Free WebSocket.

@@ -142,6 +142,39 @@ export const alerts = pgTable("alerts", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ─── System Journal (AI Self-Learning Loop) ─────────────────
+// Logs every AI-generated strategy's simulated performance so
+// Ollama Analyst can review its own past generations nightly and
+// self-improve. This is the "memory" that makes the system smarter.
+export const systemJournal = pgTable(
+  "system_journal",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    strategyId: uuid("strategy_id").references(() => strategies.id),
+    backtestId: uuid("backtest_id").references(() => backtests.id),
+    source: text("source").notNull(), // ollama | openclaw | manual | n8n
+    generationPrompt: text("generation_prompt"), // What Ollama was asked
+    strategyCode: text("strategy_code"), // The Python code Ollama generated
+    strategyParams: jsonb("strategy_params"), // JSON params for the strategy
+    simulatedEquity: jsonb("simulated_equity"), // Full vectorbt equity curve
+    dailyPnls: jsonb("daily_pnls"), // Array of daily P&L values
+    forgeScore: numeric("forge_score"), // 0-100 at time of test
+    propComplianceResults: jsonb("prop_compliance_results"), // Per-firm pass/fail
+    performanceGateResult: jsonb("performance_gate_result"), // Gate pass/fail + reasons
+    tier: text("tier"), // TIER_1 | TIER_2 | TIER_3 | REJECTED
+    analystNotes: text("analyst_notes"), // Ollama Analyst self-critique
+    parentJournalId: uuid("parent_journal_id"), // Links refinements to original
+    status: text("status").notNull().default("tested"), // tested | promoted | archived | failed
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("journal_strategy_idx").on(table.strategyId),
+    index("journal_status_idx").on(table.status),
+    index("journal_tier_idx").on(table.tier),
+    index("journal_source_idx").on(table.source),
+  ]
+);
+
 // ─── Audit Log (Trust Spine) ─────────────────────────────────
 export const auditLog = pgTable(
   "audit_log",
