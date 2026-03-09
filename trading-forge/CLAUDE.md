@@ -145,6 +145,17 @@ Rules:
   - If recovery after max_drawdown > 5 days → FLAG for review
 ```
 
+## Institutional Edge — Monitoring & Risk (Top 1% Practices)
+- **Regime detection is mandatory.** Every strategy must have a "preferred regime" tag. Regime filter pauses strategies when their preferred regime is NOT active. Use ADX + ATR percentile for classification.
+- **Dynamic position sizing.** Scale position size inversely to trailing ATR: `contracts = target_risk / (ATR * tick_value)`. Never use fixed position sizes in production.
+- **Stress test against historical crises.** Every strategy must survive 2008, COVID crash, 2022 rate shock with 3x spreads and 50% reduced fill rates. If any scenario exceeds prop firm max drawdown → FAIL.
+- **Track execution quality.** Log expected vs actual fill price on every trade. If average slippage > backtest assumptions → strategy is NOT actually profitable. Use stop-limit orders, never stop-market.
+- **Monitor for alpha decay.** Track 30-day rolling Sharpe. Shrinking average wins (before win rate drops) is the earliest decay signal. Reduce allocation gradually to decaying strategies.
+- **Detect live vs backtest drift.** If live 30-day rolling metrics deviate > 1 std dev from backtest expectations → investigate. > 2 std dev → ALERT.
+- **Multi-strategy portfolio.** Target 2-3 uncorrelated strategies (correlation < 0.3 on returns). Track total portfolio heat, not just per-trade risk. If correlation > 0.5 → treat as one strategy for sizing.
+- **Strategy pipeline.** Always have at least 1 strategy in development while others are deployed. Strategies have lifespans — plan to replace them, not run forever.
+- **Build execution cost as a VARIABLE** in backtests, not a constant. Slippage increases during volatility spikes and around news events.
+
 ## Key Patterns
 - **Audit Log**: Every significant action (backtest, MC run, strategy change) gets an audit_log entry — borrowed from Aspire's Trust Spine pattern
 - **Forge Score**: 0-100 composite score for strategy quality (Sharpe + Drawdown + MC survival + Walk-forward)
@@ -192,3 +203,10 @@ Rules:
 - Don't use Pandas for data loading — use Polars (only convert to Pandas at vectorbt boundary)
 - Don't backtest on raw/unadjusted continuous contracts — always use ratio-adjusted data
 - Don't use grid search for parameter testing — use Optuna (Bayesian/TPE) for 100x fewer trials
+- Don't use fixed position sizes in production — scale inversely to volatility (ATR-based)
+- Don't deploy a strategy without a preferred regime tag — regime filter must gate every strategy
+- Don't use stop-market orders — use stop-limit orders (stop-market can cause catastrophic slippage)
+- Don't ignore execution quality — if slippage > backtest assumptions, the strategy isn't profitable
+- Don't run just one strategy — target 2-3 uncorrelated strategies (correlation < 0.3 on returns)
+- Don't treat strategies as permanent — they have lifespans, always be developing replacements
+- Don't model slippage as a constant — it's a function of volatility (higher during vol spikes)

@@ -9,7 +9,8 @@
 
 1. [Architecture Overview](#architecture-overview)
 2. [Infrastructure Map](#infrastructure-map)
-3. [Phase 0 — Foundation](#phase-0--foundation-week-1-2)
+3. [Institutional Edge — What the Top 1% Do](#institutional-edge--what-the-top-1-do)
+4. [Phase 0 — Foundation](#phase-0--foundation-week-1-2)
 4. [Phase 1 — Data Pipeline](#phase-1--data-pipeline-week-3-4)
 5. [Phase 2 — Backtest Engine](#phase-2--backtest-engine-week-5-7)
 6. [Phase 3 — Monte Carlo & Risk](#phase-3--monte-carlo--risk-week-8-9)
@@ -66,6 +67,61 @@
 | **Total monthly burn (infra)** | | **~$7/mo** | |
 | **Runway on $100 AWS** | | **~14 months** | |
 | **Databento credits** | | **$125 one-time** | **Use for historical futures downloads** |
+
+---
+
+## Institutional Edge — What the Top 1% Do
+
+> Research from prop firm traders, institutional quants, and practitioner sources (2024-2026).
+> **The top 1% aren't using secret strategies. They're executing simple, well-understood principles with extraordinary consistency, risk management, and process discipline.**
+
+### The 8 Capabilities That Separate Winners From Losers
+
+| # | Capability | Phase | Why It Matters |
+|---|-----------|-------|----------------|
+| 1 | **Regime Detection** | Phase 4 | Only run strategies in their favorable regime. A trend strategy in a range-bound market loses money. |
+| 2 | **Dynamic Position Sizing** | Phase 2 | Scale position size inversely to volatility. Fixed sizing is amateur hour. |
+| 3 | **Stress Testing** | Phase 3 | Run portfolios through 2008, March 2020, 2022 rate shock. If any scenario wipes you out, sizing is wrong. |
+| 4 | **Multi-Strategy Portfolio** | Phase 6 | 2-3 uncorrelated strategies, not 1. Target correlation < 0.3 between strategies. |
+| 5 | **Execution Tracking** | Phase 6 | Log expected vs actual fill price. Slippage erodes 1-3% annually — 7-20% of your edge. |
+| 6 | **Strategy Decay Monitoring** | Phase 6 | Track rolling Sharpe. Every strategy eventually loses its edge (5-10% alpha decay/year in liquid markets). |
+| 7 | **Live vs Backtest Drift** | Phase 6 | Catch problems in days, not months. If live underperforms backtest by >1 std dev, investigate. |
+| 8 | **Strategy Pipeline** | Phase 4 | Always developing the next strategy while running current ones. Strategies have lifespans. |
+
+### Key Research Findings
+
+**On Strategy Robustness:**
+- If a 37-period MA works but 36 and 38 don't → you've curve-fitted noise (already handled by Optuna plateau detection)
+- Fees and slippage reduce projected profits by 30-50% vs backtests → stress test with 2x expected slippage
+- Require positive expectancy across at least 2 distinct market regimes (trending + mean-reverting)
+- Cap position size at a fraction of average daily volume (liquidity constraint)
+- Test with 3x normal spreads and 50% reduced fill rates (structural fragility test)
+
+**On Risk Management:**
+- Track total portfolio exposure as percentage, not just per-trade risk ("portfolio heat")
+- If 2+ strategies are effectively long the same factor → treat them as ONE strategy for sizing
+- Hedge tail risks with options/event contracts rather than relying on stop-losses (gaps kill stops)
+- Scale capital gradually — never go from backtesting to full-size live in one step
+
+**On Process Discipline:**
+- The #1 killer: inability to tolerate losing streaks without abandoning a sound strategy
+- Separate PROCESS review from OUTCOME review (losing trade executed on plan = success)
+- Paper trade 6+ months minimum before going live
+- Automation reduces emotional decision-making by ~40% — but only if you trust the system
+- Start with the expectation that slightly more than half your trades will lose
+
+**On Alpha Decay:**
+- Predictive signals lose ~5-10% effectiveness annually in liquid markets
+- Track rolling Sharpe (6-month) — declining Sharpe is the earliest warning sign
+- Shrinking average wins (before win rate drops) = early decay signal
+- Maintain a pipeline of strategies in development. Always have the next one being tested.
+- Reduce allocation to decaying strategies gradually rather than shutting off abruptly
+
+**On Execution:**
+- Use TWAP/VWAP for larger orders instead of market orders
+- Use stop-limit orders instead of stop-market orders (one trader experienced 10R slippage on a stop-market)
+- Build execution cost into backtests as a VARIABLE, not a constant (slippage increases during vol spikes)
+- Co-location and latency matter — even a few basis points per trade compounds
 
 ---
 
@@ -302,7 +358,12 @@ Server running locally, CRUD on strategies table, migrations working.
   - Strategy definition format (JSON/YAML → Python)
   - Indicator library: SMA, EMA, RSI, MACD, VWAP, Bollinger, ATR, etc.
   - Entry/exit signal generation
-  - Position sizing: fixed, percent-risk, Kelly criterion
+  - Position sizing: fixed, percent-risk, Kelly criterion, **volatility-scaled (institutional)**
+  - **Dynamic position sizing** (Institutional Edge #2):
+    - Scale position size inversely to trailing ATR or realized volatility
+    - High vol → smaller size, low vol → larger size (same dollar risk per trade)
+    - Implement as `contracts = target_risk / (ATR * tick_value)`
+    - This is what institutions do — retail traders use fixed sizes and get killed in vol spikes
   - Slippage + commission modeling (realistic futures costs)
   - **Data loading via Polars** (fast) → convert to Pandas at vectorbt boundary only
   - **Must use ratio-adjusted continuous contracts** — never raw Databento prices
@@ -441,7 +502,28 @@ Can define a strategy, run backtest on ES 5-year data, see equity curve + stats.
   A strategy earning $800/day with $3K drawdown still fails (drawdown = 0 pts).
   ```
 
-- [ ] **3.5** EC2 Spot GPU burst for heavy MC runs
+- [ ] **3.5** Historical crisis stress testing (Institutional Edge #3)
+  - Run every strategy through known crisis periods:
+    ```
+    Crisis Scenarios:
+      - 2008 Financial Crisis (Sep-Nov 2008)     — liquidity evaporation, gap downs
+      - 2010 Flash Crash (May 6, 2010)            — 1000-point drop in minutes
+      - 2015 China Devaluation (Aug 24, 2015)     — overnight gap, VIX spike
+      - 2018 Volmageddon (Feb 5, 2018)            — VIX 100%+ in one day
+      - COVID Crash (Feb-Mar 2020)                — fastest bear market ever
+      - 2021 Meme Stock / Archegos (Jan-Mar 2021) — correlation spike
+      - 2022 Rate Shock (Jun-Oct 2022)            — sustained bear, no bounces
+      - 2023 SVB / Banking Crisis (Mar 2023)      — overnight gap risk
+    ```
+  - Stress test parameters:
+    - 3x normal spreads (liquidity crunch simulation)
+    - 50% reduced fill rates (partial fills during stress)
+    - 2x expected slippage (market impact during panic)
+  - **Hard rule: If any single crisis scenario causes a drawdown > prop firm max → strategy FAILS**
+  - Output: crisis survival matrix showing pass/fail per scenario with max drawdown in each
+  - Integrate into Forge Score: strategies that survive all crises get bonus points (0-5 pts)
+
+- [ ] **3.6** EC2 Spot GPU burst for heavy MC runs
   - Lambda triggers EC2 spot instance
   - Runs MC simulation batch
   - Results → Postgres
@@ -573,15 +655,46 @@ BAD:  "Optimize RSI period from 2-50, MA type from SMA/EMA/WMA/DEMA/TEMA,
      = BAD (overfit, reject)
   ```
 
-- [ ] **4.4** Market Analyst Agent
+- [ ] **4.4** Market Analyst Agent + Regime Detection System (Institutional Edge #1)
   ```
   Input:  "Analyze ES market regime for the last 30 days"
+
+  Regime Detection — Three Levels of Sophistication:
+
+  LEVEL 1 — Indicator-Based (implement first):
+    - ADX > 25 → trending regime. ADX < 20 → range-bound regime.
+    - ATR percentile (current ATR vs 252-day ATR distribution):
+      · Top 20% → high-volatility regime
+      · Bottom 20% → low-volatility regime
+    - 50 MA slope → trend direction (up/down/flat)
+    - Gate strategies: only run trend-following when ADX > 25,
+      only run mean-reversion when ADX < 20
+
+  LEVEL 2 — Statistical (implement in Phase 7):
+    - Hidden Markov Models (HMMs) to classify 2-3 latent market states
+      based on returns and volatility distributions
+    - This is the institutional standard for regime detection
+    - Python: hmmlearn library
+
+  LEVEL 3 — ML-Based (future, optional):
+    - UMAP clustering or SVM on multi-dimensional feature vectors
+      (volatility, correlation, breadth, momentum)
+    - Only if Level 1+2 prove insufficient
+
+  Strategy Gating Rule:
+    - Every strategy has a "preferred regime" tag
+    - Regime filter pauses or reduces size when preferred regime is NOT active
+    - A study using regime-based rebalancing achieved 495% returns (Sharpe 1.88)
+      vs S&P 500's 117% from 2019-2024
+
   Process:
     1. Fetch recent data
-    2. Compute simple regime indicators (ATR for volatility, slope of 50 MA for trend)
+    2. Run Level 1 regime indicators (ADX, ATR percentile, MA slope)
     3. Classify: trending-up, trending-down, range-bound, high-vol, low-vol
-    4. Recommend which simple strategies to use/avoid in current regime
-  Output: Market regime report + strategy activation recommendations
+    4. Match each active strategy to current regime
+    5. Output: activation/deactivation recommendations per strategy
+
+  Output: Market regime report + strategy activation/pause recommendations
   ```
 
 - [ ] **4.5** n8n orchestration workflows
@@ -607,7 +720,38 @@ BAD:  "Optimize RSI period from 2-50, MA type from SMA/EMA/WMA/DEMA/TEMA,
     → Alert if strategy is degrading
   ```
 
-- [ ] **4.6** Agent API endpoints
+- [ ] **4.6** Strategy Pipeline & Lifecycle Management (Institutional Edge #8)
+  ```
+  The "Alpha Life Cycle" Framework:
+    Every strategy moves through: Discovery → Validation → Deployment → Monitoring → Decay → Retirement
+
+  Pipeline Rules:
+    - ALWAYS have at least 1 strategy in Discovery/Validation while others are Deployed
+    - A deployed strategy is NOT "set and forget" — it has a lifespan
+    - Plan to REPLACE strategies, not run them forever
+    - Target: 2-3 uncorrelated deployed strategies at any time (not 1, not 10)
+
+  Strategy Lifecycle States:
+    1. CANDIDATE  — Generated by Strategy Finder, untested
+    2. TESTING    — In walk-forward + Monte Carlo validation
+    3. PAPER      — Passed validation, running paper for 30+ days
+    4. DEPLOYED   — Live on prop firm account, monitored daily
+    5. DECLINING  — Rolling Sharpe dropping, reduced allocation
+    6. RETIRED    — Edge exhausted, archived for reference
+
+  Pipeline Dashboard View:
+    - Visual Kanban of strategies across lifecycle stages
+    - Auto-promotion: PAPER → DEPLOYED after 30 days if metrics hold
+    - Auto-demotion: DEPLOYED → DECLINING if rolling Sharpe drops below threshold
+    - Alerts when pipeline is empty (no strategies in CANDIDATE/TESTING)
+
+  n8n Automation:
+    - Weekly: Strategy Finder generates new CANDIDATEs
+    - Daily: Monitor DEPLOYED strategies for decay signals
+    - Monthly: Force pipeline health check — alert if < 2 strategies in pipeline
+  ```
+
+- [ ] **4.7** Agent API endpoints
   ```
   POST   /api/agents/find-strategies    -- Strategy discovery (simple only)
   POST   /api/agents/robustness         -- Parameter robustness testing
@@ -706,14 +850,152 @@ Full dashboard with all visualizations. Can monitor everything from browser.
   GET    /api/paper/trades              -- Trade history
   ```
 
-- [ ] **6.4** Alert system
+- [ ] **6.4** Execution Quality Tracker (Institutional Edge #5)
+  ```
+  Per-Trade Logging:
+    - Expected fill price (signal price at time of signal generation)
+    - Actual fill price (what you actually got)
+    - Slippage = actual - expected (in ticks and dollars)
+    - Commission paid
+    - Time-to-fill (latency)
+    - Order type used (market, limit, stop-market, stop-limit, TWAP)
+
+  Aggregate Metrics (rolling):
+    - Average slippage per trade (ticks + dollars)
+    - Slippage as % of gross P&L (target: < 10%)
+    - Slippage by time of day (higher around opens/closes)
+    - Slippage by volatility regime (higher during vol spikes)
+    - Fill rate on limit orders (% of orders filled)
+
+  Execution Rules:
+    - Use stop-LIMIT orders, never stop-market (avoid catastrophic slippage)
+    - Use TWAP/VWAP for entries > 2 contracts
+    - Build execution cost as VARIABLE in backtests (f(volatility), not constant)
+    - If average slippage > backtest assumptions → strategy is NOT actually profitable
+
+  Alert: If slippage exceeds 2x backtest assumption for 5+ consecutive trades → PAUSE strategy
+  ```
+
+- [ ] **6.5** Strategy Decay Monitor (Institutional Edge #6)
+  ```
+  What to Track (rolling windows):
+    - 30-day rolling Sharpe ratio (primary decay signal)
+    - 60-day rolling Sharpe ratio (confirmation)
+    - Rolling win rate (separate from Sharpe — decay shows as shrinking avg wins first)
+    - Rolling average win / average loss ratio
+    - Rolling profit factor
+
+  Alpha Decay Warning Levels:
+    LEVEL 1 — WATCH (yellow):
+      - Rolling Sharpe drops below 1.5 (from deployment baseline)
+      - OR average win shrinks by 20%+ while win rate holds steady
+      → Action: Flag for review, continue trading at full size
+
+    LEVEL 2 — REDUCE (orange):
+      - Rolling Sharpe drops below 1.0
+      - OR rolling profit factor drops below 1.5
+      → Action: Reduce allocation by 50%, accelerate pipeline for replacement
+
+    LEVEL 3 — RETIRE (red):
+      - Rolling Sharpe drops below 0.5 for 30+ days
+      - OR rolling profit factor drops below 1.2
+      → Action: Move to RETIRED state, stop trading, archive
+
+  Signal Crowding Detection:
+    - If strategy uses publicly available signals (RSI, MA crossovers on popular timeframes)
+      → assume faster decay (monitor on 14-day rolling windows instead of 30-day)
+    - Proprietary or alternative data signals → slower decay expected
+
+  Decay Rate Tracking:
+    - Log monthly Sharpe decline rate
+    - Estimate remaining strategy lifespan based on decay curve
+    - Alert when estimated remaining life < 3 months → start replacement process
+  ```
+
+- [ ] **6.6** Live vs Backtest Drift Detection (Institutional Edge #7)
+  ```
+  Continuous Comparison Engine:
+    - For each deployed strategy, maintain a "backtest expectation" baseline:
+      · Expected daily P&L mean and std dev (from walk-forward OOS)
+      · Expected win rate
+      · Expected max drawdown
+      · Expected Sharpe ratio
+
+  Drift Detection:
+    - Compare live 30-day rolling metrics to backtest expectations
+    - Flag when live performance deviates by > 1 standard deviation
+    - ALERT when live performance deviates by > 2 standard deviations
+
+  Specific Checks:
+    - Daily P&L: Is live avg daily P&L within 1 std dev of backtest expectation?
+    - Win rate: Is live win rate within 5% of backtest win rate?
+    - Drawdown: Is live max DD tracking proportionally to backtest max DD?
+    - Trade frequency: Are we taking the expected number of trades?
+      (Too few = signals not firing; too many = noise trades)
+
+  Root Cause Analysis:
+    When drift detected, auto-diagnose:
+    1. Execution issue? (slippage > expected → check execution tracker)
+    2. Regime mismatch? (strategy running in wrong regime → check regime detector)
+    3. Alpha decay? (signals losing effectiveness → check decay monitor)
+    4. Data issue? (feed problems, missing bars → check data pipeline)
+
+  Dashboard: Side-by-side chart of expected equity curve (backtest) vs actual (live)
+  ```
+
+- [ ] **6.7** Multi-Strategy Portfolio Manager (Institutional Edge #4)
+  ```
+  Portfolio Construction:
+    - Target: 2-3 uncorrelated strategies running simultaneously
+    - Measure strategy-to-strategy correlation on RETURNS, not on trades
+    - Two strategies can trade different instruments but correlate if they
+      share the same underlying factor (e.g., both effectively "long risk-on")
+
+  Correlation Management:
+    - Target: correlation < 0.3 between any two deployed strategies
+    - If correlation > 0.5 → treat them as ONE strategy for sizing purposes
+    - Recalculate correlation monthly on rolling 60-day windows
+
+  Portfolio Heat Control:
+    - Track TOTAL portfolio exposure as a percentage
+    - The "2% rule" applies to TOTAL portfolio heat, not just individual trades
+    - If 3 strategies are all long simultaneously → actual risk is 3x what it looks like
+    - Limit: total portfolio risk never exceeds 4% of account at any moment
+
+  Factor Decomposition:
+    - Decompose portfolio returns into factor exposures:
+      · Equity beta (directional market exposure)
+      · Volatility factor (long/short vol)
+      · Momentum factor
+      · Mean-reversion factor
+    - Ensure portfolio is not accidentally concentrated in one factor
+    - Alert if single factor explains > 60% of portfolio returns
+
+  Strategy Allocation Overlay:
+    - Cross-sectional momentum on your OWN strategies:
+      · Increase allocation to strategies with strong recent risk-adjusted performance
+      · Decrease allocation to underperformers
+    - Time-series filter: if strategy equity curve < its own 30-day MA → reduce allocation
+    - This overlay adds value per Quantpedia research
+
+  Portfolio-Level Risk:
+    - Portfolio Sharpe (not just per-strategy Sharpe)
+    - Portfolio max drawdown (can be WORSE than worst single strategy during correlation spikes)
+    - Tail risk: what happens if all strategies lose on the same day? (correlation → 1 in crises)
+  ```
+
+- [ ] **6.8** Alert system
   - SNS → SMS/Email for trade signals
   - Drawdown threshold alerts
-  - Strategy degradation warnings
-  - Daily P&L summary
+  - Strategy degradation warnings (from decay monitor)
+  - Execution quality warnings (from execution tracker)
+  - Live vs backtest drift alerts (from drift detector)
+  - Portfolio correlation spike alerts (from portfolio manager)
+  - Pipeline health alerts (no strategies in development)
+  - Daily P&L summary (per-strategy + portfolio aggregate)
 
 ### Deliverable
-Strategies running on live data (paper). Alerts firing. Forward-test validation.
+Strategies running on live data (paper). Full institutional monitoring suite: execution tracking, decay detection, drift monitoring, multi-strategy portfolio management. Alerts firing. Forward-test validation.
 
 ---
 
@@ -814,6 +1096,14 @@ Forge strategies validated via backtest/MC, scored against each firm's rules. AI
 | Prop firm rule violation | Account terminated, lose funded status | Dashboard tracks drawdown/consistency in real-time, alerts before limits |
 | Prop firm policy changes | Rules change, strategy no longer fits | Multi-firm approach, agents re-rank firms on rule changes |
 | Prop firm insolvency | Unpaid profits, lost account | Withdraw frequently, diversify across firms |
+| Alpha decay (strategy edge dying) | Gradual P&L decline, unnoticed for months | Rolling Sharpe monitor, decay alerting, strategy pipeline always has replacements |
+| Regime mismatch | Trend strategy running in range market | Regime detection gates every strategy, auto-pause in wrong regime |
+| Execution slippage eating edge | Backtest shows profit, live shows loss | Per-trade slippage tracking, stop-limit orders, TWAP for larger orders |
+| Correlation spike in crisis | All strategies lose simultaneously | Multi-strategy correlation monitoring, portfolio heat limits, crisis stress testing |
+| Single strategy dependency | One strategy dies = zero income | Maintain 2-3 uncorrelated deployed strategies, pipeline always developing replacements |
+| Emotional override of system | Turning off algo during drawdown (the #1 killer) | Automation reduces emotional decisions by ~40%, process review separate from outcome review |
+| Live vs backtest divergence | Strategy behaves differently live than expected | Continuous drift detection, auto-diagnose root cause (execution/regime/decay/data) |
+| Stop-market slippage | Catastrophic fill far from stop price | Use stop-LIMIT orders exclusively, never stop-market |
 
 ---
 
@@ -847,6 +1137,15 @@ Forge strategies validated via backtest/MC, scored against each firm's rules. AI
 | 2026-03-09 | Polars + DuckDB over Pandas | Polars for 5-10x faster Parquet reads, DuckDB for querying S3 directly without download. Pandas kept only for vectorbt compatibility |
 | 2026-03-09 | Optuna for robustness testing | Bayesian param search (TPE) maps parameter landscapes in ~800 trials vs 100K+ grid search. Used to find stable plateaus, not "best" params |
 | 2026-03-09 | Community validation (Reddit/YouTube 2025-2026) | Exact stack (Databento→Parquet→S3, vectorbt, Ollama+n8n, TradingView lightweight-charts, $7-12/mo infra) confirmed as "the smart low-cost way" by r/algotrading, PyQuant, multiple YouTube creators |
+| 2026-03-09 | Institutional Edge research (top 1% practices) | 8 capabilities identified from prop firm traders, institutional quants, and practitioner sources. Strategy selection matters less than risk management, execution quality, and process discipline |
+| 2026-03-09 | Regime detection with strategy gating | ADX + ATR percentile for regime classification. Every strategy gets a preferred regime tag. Regime filter pauses strategies in unfavorable regimes. Study showed 495% vs 117% S&P with regime-based rebalancing |
+| 2026-03-09 | Dynamic (volatility-scaled) position sizing | Scale inversely to ATR: contracts = target_risk / (ATR × tick_value). Institutions do this; retail uses fixed sizes and gets killed in vol spikes |
+| 2026-03-09 | Historical crisis stress testing | Run every strategy through 8 known crises (2008, Flash Crash, COVID, 2022 rate shock). Test with 3x spreads, 50% fill rates, 2x slippage. Any crisis exceeding prop firm max DD = auto-fail |
+| 2026-03-09 | Multi-strategy portfolio (2-3 uncorrelated) | Target correlation < 0.3 between strategies on returns. Track total portfolio heat. Factor decomposition to avoid hidden concentration. Cross-sectional momentum overlay on strategy allocation |
+| 2026-03-09 | Execution quality tracking | Log expected vs actual fill price per trade. Slippage erodes 1-3% annually (7-20% of edge). Stop-limit over stop-market. TWAP/VWAP for larger orders |
+| 2026-03-09 | Alpha decay monitoring | Track 30-day rolling Sharpe, 60-day confirmation. Shrinking avg wins = earliest signal. 5-10% annual effectiveness loss in liquid markets. Strategy lifespan estimation |
+| 2026-03-09 | Live vs backtest drift detection | Continuous comparison of live rolling metrics to backtest expectations. >1 std dev = flag, >2 std dev = alert. Auto-diagnose: execution, regime, decay, or data issue |
+| 2026-03-09 | Strategy pipeline lifecycle | 6 states: Candidate → Testing → Paper → Deployed → Declining → Retired. Always have replacement strategies in development. Auto-promote/demote based on metrics |
 
 ---
 
