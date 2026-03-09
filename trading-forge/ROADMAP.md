@@ -333,17 +333,38 @@ Can define a strategy, run backtest on ES 5-year data, see equity curve + stats.
 - [ ] **3.4** Strategy scoring system
   ```
   FORGE SCORE (0-100):
-    - Sharpe ratio contribution    (0-25 pts)
-    - Max drawdown severity        (0-25 pts)
-    - Monte Carlo survival rate    (0-25 pts)
-    - Walk-forward consistency     (0-25 pts)
+    - Earnings power               (0-30 pts)  ← HEAVIEST WEIGHT
+      · $250/day avg = 15 pts (minimum viable)
+      · $350/day avg = 22 pts (solid edge)
+      · $500+/day avg = 30 pts (bread and butter)
+      · Below $250/day = 0 pts → AUTO-REJECT
+
+    - Daily survival rate          (0-25 pts)
+      · 12/20 winning days = 15 pts (minimum)
+      · 14/20 winning days = 20 pts (solid)
+      · 16+/20 winning days = 25 pts (exceptional)
+      · Below 10/20 in any month = 0 pts → AUTO-REJECT
+
+    - Drawdown vs prop firm limits (0-20 pts)
+      · Max DD < $1,500 = 20 pts (fits every firm)
+      · Max DD < $2,000 = 15 pts (fits most firms)
+      · Max DD < $2,500 = 10 pts (fits some firms)
+      · Max DD >= $2,500 = 0 pts → AUTO-REJECT
+
+    - Monte Carlo + walk-forward   (0-25 pts)
+      · MC survival rate (0-10 pts)
+      · Walk-forward OOS consistency (0-10 pts)
+      · Sharpe ratio stability (0-5 pts)
 
   Grades:
-    A+ (90-100) — Deploy with confidence
-    A  (80-89)  — Strong, monitor closely
-    B  (70-79)  — Promising, needs refinement
-    C  (60-69)  — Marginal, high risk
-    F  (<60)    — Do not trade
+    A+ (90-100) — Deploy immediately, Tier 1 strategy
+    A  (80-89)  — Strong edge, Tier 2, deploy with monitoring
+    B  (70-79)  — Minimum viable, Tier 3, best-fit firm only
+    C  (60-69)  — Below minimums, do NOT trade
+    F  (<60)    — Rejected, not worth the trader's time
+
+  HARD GATE: Score of 0 in ANY category = auto-reject regardless of total.
+  A strategy earning $800/day with $3K drawdown still fails (drawdown = 0 pts).
   ```
 
 - [ ] **3.5** EC2 Spot GPU burst for heavy MC runs
@@ -415,15 +436,29 @@ BAD:  "Optimize RSI period from 2-50, MA type from SMA/EMA/WMA/DEMA/TEMA,
     - Must use standard indicators only (MA, RSI, BB, ATR, VWAP)
     - Must be describable in one sentence
     - Must have a clear, logical edge hypothesis
+    - Technical strategies ONLY — no ICT/SMC concepts (order blocks, FVGs, liquidity sweeps)
+    - ICT/SMC is the trader's discretionary overlay, not the agent's job
+
+  Performance Gate (enforced BEFORE Monte Carlo):
+    - Avg daily P&L >= $250 on walk-forward OOS data
+    - 60%+ winning days (12+ out of 20 trading days/month)
+    - Profit factor >= 1.75
+    - Max drawdown < $2,500 (must fit prop firm limits)
+    - Max 4 consecutive losing days
+    - Avg win > 1.5x avg loss
+    - REJECT anything below these gates — do NOT waste Monte Carlo compute
 
   Process:
     1. Agent generates 5 simple strategy variations (not 50)
     2. Each auto-backtested with walk-forward validation
-    3. Top 3 by Sharpe sent to Monte Carlo
-    4. Results ranked by Forge Score
-    5. Strategies also scored against prop firm rules (docs/prop-firm-rules.md)
+    3. Performance gate check — REJECT strategies below $250/day or <60% win days
+    4. Surviving strategies sent to Monte Carlo
+    5. Results ranked by Forge Score (earnings-weighted)
+    6. Strategies scored against prop firm rules (docs/prop-firm-rules.md)
+    7. Tier classification: Tier 1 ($500+/day), Tier 2 ($350+/day), Tier 3 ($250+/day)
 
-  Output: Ranked strategies with metrics + prop firm compatibility
+  Output: Ranked strategies with tier, metrics, and prop firm compatibility
+          ONE account must be enough. No multi-account scaling strategies.
   ```
 
 - [ ] **4.3** Parameter Robustness Agent (replaces "optimizer")
@@ -710,6 +745,10 @@ Forge strategies validated via backtest/MC, scored against each firm's rules. AI
 | 2026-03-09 | Agent-parseable prop firm rules | YAML configs, Python simulation code, payout formulas for each firm |
 | 2026-03-09 | Simple strategies only | Max 5 params, one-sentence logic, proven edges. Agents REJECT complex/overfit strategies |
 | 2026-03-09 | Robustness over optimization | Test parameter stability, not find "best" params. Wide range = robust = good |
+| 2026-03-09 | Technical strategies only for agents | Agents find technical strategies (MAs, RSI, BB, breakouts). ICT/SMC is trader's discretionary overlay |
+| 2026-03-09 | High-earning strategies or nothing | Min $250/day, 60%+ win days, 12+ green days per month. ONE account must be profitable. No multi-account scaling |
+| 2026-03-09 | Performance gate before Monte Carlo | Reject strategies below minimums BEFORE wasting compute on MC. Earnings power is heaviest Forge Score weight (30/100) |
+| 2026-03-09 | 3-tier strategy classification | Tier 1: $500+/day, Tier 2: $350+/day, Tier 3: $250+/day. Below Tier 3 = auto-reject |
 
 ---
 

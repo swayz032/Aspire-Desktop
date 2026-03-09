@@ -589,6 +589,111 @@ total_cost = monthly_fee * months_to_pass  # No activation fee
 
 ## Agent Simulation Rules
 
+### Performance Gate — BEFORE Firm Simulation
+
+> Agents MUST check these BEFORE simulating against any firm.
+> If a strategy fails the performance gate, do NOT waste compute on firm simulation.
+
+```python
+def check_performance_gate(strategy_stats):
+    """
+    Hard minimum performance requirements. Strategy must pass ALL gates.
+    All metrics from walk-forward OUT-OF-SAMPLE data only.
+
+    Returns:
+        (passed: bool, rejection_reasons: list[str])
+    """
+    rejections = []
+
+    # --- EARNINGS POWER ---
+    if strategy_stats['avg_daily_pnl'] < 250:
+        rejections.append(
+            f"avg_daily_pnl ${strategy_stats['avg_daily_pnl']:.0f} < $250 minimum. "
+            f"Strategy earns ${strategy_stats['avg_daily_pnl'] * 20:.0f}/month — not worth one account."
+        )
+
+    # --- DAILY SURVIVAL ---
+    # Must be profitable on 60%+ of trading days (12 out of 20)
+    win_day_rate = strategy_stats['winning_days'] / strategy_stats['total_trading_days']
+    if win_day_rate < 0.60:
+        rejections.append(
+            f"Win rate by days {win_day_rate:.0%} < 60% minimum. "
+            f"Trader would have {strategy_stats['total_trading_days'] - strategy_stats['winning_days']} "
+            f"losing days out of {strategy_stats['total_trading_days']} — too inconsistent."
+        )
+
+    # Worst month must still have 10+ winning days
+    if strategy_stats.get('worst_month_win_days', 0) < 10:
+        rejections.append(
+            f"Worst month had only {strategy_stats['worst_month_win_days']} winning days. "
+            f"Minimum 10 required. Strategy is too streaky."
+        )
+
+    # --- PROFIT QUALITY ---
+    if strategy_stats['profit_factor'] < 1.75:
+        rejections.append(
+            f"Profit factor {strategy_stats['profit_factor']:.2f} < 1.75 minimum. "
+            f"Winners don't outweigh losers enough."
+        )
+
+    if strategy_stats['sharpe_ratio'] < 1.5:
+        rejections.append(
+            f"Sharpe ratio {strategy_stats['sharpe_ratio']:.2f} < 1.5 minimum. "
+            f"Risk-adjusted returns too weak."
+        )
+
+    if strategy_stats.get('avg_winner_to_loser_ratio', 0) < 1.5:
+        rejections.append(
+            f"Avg winner/loser ratio {strategy_stats['avg_winner_to_loser_ratio']:.2f} < 1.5. "
+            f"Average loss is too close to average win."
+        )
+
+    # --- DRAWDOWN ---
+    if strategy_stats['max_drawdown'] >= 2500:
+        rejections.append(
+            f"Max drawdown ${strategy_stats['max_drawdown']:.0f} >= $2,500. "
+            f"Exceeds most prop firm limits. Would blow Topstep 50K ($2K limit)."
+        )
+
+    # --- CONSECUTIVE LOSSES ---
+    if strategy_stats.get('max_consecutive_losing_days', 0) > 4:
+        rejections.append(
+            f"Max consecutive losing days: {strategy_stats['max_consecutive_losing_days']}. "
+            f"Maximum 4 allowed. Drawdown + mental capital risk too high."
+        )
+
+    # --- RECOVERY ---
+    if strategy_stats.get('avg_loss_on_red_days', 0) > strategy_stats.get('avg_win_on_green_days', 0):
+        rejections.append(
+            f"Avg loss on red days (${abs(strategy_stats['avg_loss_on_red_days']):.0f}) > "
+            f"avg win on green days (${strategy_stats['avg_win_on_green_days']:.0f}). "
+            f"Red days hit harder than green days pay — unsustainable."
+        )
+
+    return (len(rejections) == 0, rejections)
+
+
+def classify_strategy_tier(strategy_stats):
+    """
+    Classify strategy into performance tier.
+    Only called AFTER check_performance_gate passes.
+    """
+    pnl = strategy_stats['avg_daily_pnl']
+    win_days = strategy_stats['winning_days'] / strategy_stats['total_trading_days'] * 20
+    dd = strategy_stats['max_drawdown']
+    pf = strategy_stats['profit_factor']
+    sharpe = strategy_stats['sharpe_ratio']
+
+    if pnl >= 500 and win_days >= 14 and dd < 1500 and pf >= 2.5 and sharpe >= 2.0:
+        return "TIER_1_BREAD_AND_BUTTER"  # Deploy immediately, $10K+/month
+    elif pnl >= 350 and win_days >= 13 and dd < 2000 and pf >= 2.0 and sharpe >= 1.75:
+        return "TIER_2_SOLID_EDGE"  # Deploy with monitoring, $7K+/month
+    elif pnl >= 250 and win_days >= 12 and dd < 2500 and pf >= 1.75 and sharpe >= 1.5:
+        return "TIER_3_MINIMUM_VIABLE"  # Best-fit firm only, $5K+/month
+    else:
+        return "REJECTED"  # Should not reach here if gate passed
+```
+
 ### Universal Constraints (Apply to ALL Firms)
 
 ```yaml
