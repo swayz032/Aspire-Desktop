@@ -63,8 +63,6 @@
 | **Databento** | **Institutional-grade tick/futures data (CME, NASDAQ)** | **$0 ($125 credits)** | **Databento** |
 | **Massive** | **Real-time streaming: currencies, indices, options, stocks** | **$0/mo (free tier)** | **Massive** |
 | **Alpha Vantage** | **60+ indicators, news/sentiment, MCP for AI agents** | **$0/mo (free tier)** | **Alpha Vantage** |
-| Rithmic API | Order routing to prop firms (MFFU, TPT, Apex) | Included | Via prop firm |
-| TopstepX API | Order routing to Topstep accounts | $29/mo | Topstep |
 | **Total monthly burn (infra)** | | **~$7/mo** | |
 | **Runway on $100 AWS** | | **~14 months** | |
 | **Databento credits** | | **$125 one-time** | **Use for historical futures downloads** |
@@ -556,113 +554,31 @@ Production-ready system. Can run unattended. Self-healing where possible.
 
 ## Phase 8 — Prop Firm Integration (Week 19-22)
 
-**Goal:** Connect Trading Forge to prop firm funded accounts for live execution.
+**Goal:** Use Forge-validated strategies to pass prop firm evaluations and trade funded accounts.
 
-### Prop Firm Landscape
+> Full rules, payout formulas, simulation code, and firm-matching logic: **[docs/prop-firm-rules.md](docs/prop-firm-rules.md)**
 
-| Firm | Data Feed | Algo Trading? | Monthly (50K) | Profit Target | Max Drawdown | Split | Activation |
-|------|-----------|--------------|---------------|---------------|-------------|-------|------------|
-| **My Funded Futures** | Rithmic | **Yes (semi-auto)** | $77 | Varies | Varies | 90/10 | $0 |
-| **Topstep** | TopstepX (proprietary) | API $29/mo, no VPS | $49 | $3,000 (6%) | $2,000 (4%) | 90/10 | $149 |
-| **Take Profit Trader** | Rithmic or CQG | No EAs/bots | $150 | $3,000 (6%) | $3,000 (6%) | 80→90% | $130 |
-| **Apex Trader Funding** | Rithmic | Semi-auto only | ~$165 | Varies | Varies | 100% first $25K | Varies |
-| **Tradeify** | DXtrade | Algo-friendly | ~$103 | Varies | Varies | 100% first $15K | $0 |
-| **Funded Futures Network** | Rithmic | Unclear/verify | ~$150 | Varies | Varies | 80→90% | $120 |
-| **Alpha Futures** | CQG | Semi-auto only | $99-$149 | 6-8% | 3.5-4% | 70→90% | $149 |
+### Quick Comparison
 
-### Integration Priority
+| Firm | Monthly (50K) | Profit Target | Max Drawdown | Split | Activation | Standout |
+|------|--------------|---------------|-------------|-------|------------|----------|
+| **MFFU** | $77 | $3,000 | $2,500 (5%) | 90/10 | $0 | Best value, no activation |
+| **Topstep** | $49 | $3,000 (6%) | $2,000 (4%) | 90/10 | $149 | Cheapest monthly |
+| **Tradeify** | $99 | $2,500 | $2,500 | 100% first $15K | $0 | Cheapest total |
+| **Apex** | ~$167 | $3,000 | $2,500 | 100% first $25K | $85 | 20 accounts, news OK |
+| **TPT** | $150 | $3,000 (6%) | $3,000 (6%) | 80→90% | $130 | Daily payouts, 15+ platforms |
+| **FFN** | ~$150 | $3,000 | $2,500 | 80→90% | $120 | Free Quantower + MotiveWave |
+| **Alpha Futures** | $99-$149 | 6-8% | 3.5-4% | 70→90% | $0-$149 | Advanced = 90% day one |
 
-1. **My Funded Futures** (primary) — Only Rithmic firm that explicitly allows algo trading. $77/mo, no activation fee, 90/10 split from day one.
-2. **Topstep** (secondary) — TopstepX API available at $29/mo. Cheapest eval at $49/mo. No VPS restriction limits deployment options.
-3. **Tradeify** (tertiary) — Algo-friendly, cheapest total cost, but DXtrade platform may limit API options.
+### What AI Agents Use From This
 
-### Tasks
-
-- [ ] **8.1** Rithmic API integration (primary execution layer)
-  - R|Protocol API (WebSocket + Protobuf) — language-agnostic, works from Node.js
-  - Alternative: R|API+ (native C++ libraries with Python bindings)
-  - Order routing: market, limit, stop, bracket orders
-  - Position management: open/close, P&L tracking
-  - Account info: balance, buying power, margin
-  - Works with any Rithmic-connected prop firm (MFFU, TPT, Apex, FFN)
-
-- [ ] **8.2** TopstepX API integration (secondary)
-  - TopstepX proprietary REST/WebSocket API ($29/mo)
-  - Order execution + account monitoring
-  - Must run from personal device (no VPS/VPN)
-  - No HFT or exploitative algorithms
-
-- [ ] **8.3** Prop firm rule engine
-  ```
-  Per-firm configurable rules:
-    - Max daily loss limit (if applicable)
-    - Max trailing drawdown (EOD)
-    - Profit target tracking
-    - Consistency rules (e.g., no single day > 50% of total profit)
-    - Contract limits per account size
-    - Trading hours restrictions (no overnight for some firms)
-    - News trading restrictions (if applicable)
-
-  Safety features:
-    - Auto-flatten positions before drawdown limit hit
-    - Pre-trade risk check: "Will this trade violate any firm rule?"
-    - Daily P&L circuit breaker
-    - Trailing drawdown real-time tracker with alert thresholds
-  ```
-
-- [ ] **8.4** Multi-account management
-  ```
-  Support for running strategies across multiple prop firm accounts:
-    - Account registry: firm, account ID, rules, status
-    - Strategy ↔ account assignment
-    - Aggregate P&L dashboard across all accounts
-    - Per-account drawdown tracking
-    - Copy trading across accounts (same strategy, multiple firms)
-  ```
-
-- [ ] **8.5** Evaluation account automation
-  ```
-  Workflow for passing prop firm evaluations:
-    1. Select firm + account size
-    2. Assign a Forge-scored strategy (minimum A grade)
-    3. System applies firm-specific rules as constraints
-    4. Auto-executes strategy within evaluation rules
-    5. Tracks progress toward profit target
-    6. Alerts when evaluation passed or at risk
-
-  Dashboard:
-    /evaluations           -- Active evaluation accounts
-    /evaluations/:id       -- Progress, P&L, rules compliance
-  ```
-
-- [ ] **8.6** Prop firm API endpoints
-  ```
-  POST   /api/prop/accounts              -- Register prop firm account
-  GET    /api/prop/accounts              -- List all accounts
-  GET    /api/prop/accounts/:id          -- Account detail + rules + P&L
-  PATCH  /api/prop/accounts/:id          -- Update account config
-  POST   /api/prop/accounts/:id/start    -- Start live execution
-  POST   /api/prop/accounts/:id/stop     -- Stop execution (flatten)
-  GET    /api/prop/accounts/:id/rules    -- Rule compliance status
-  GET    /api/prop/evaluations           -- Active evaluations
-  POST   /api/prop/evaluations           -- Start evaluation run
-  GET    /api/prop/evaluations/:id       -- Evaluation progress
-  ```
-
-- [ ] **8.7** Prop firm comparison tool
-  ```
-  AI-assisted firm selection:
-    Input:  Strategy profile (avg daily P&L, max drawdown, trade frequency)
-    Output: Ranked list of best-fit prop firms based on:
-      - Rule compatibility (drawdown fits within firm limits)
-      - Cost efficiency (monthly fee vs expected profit)
-      - Algo policy (can you automate on this firm?)
-      - Profit split optimization
-      - Payout frequency
-  ```
+- **Backtest simulation:** Apply firm-specific trailing drawdown, consistency rules, and contract limits as hard constraints
+- **Strategy scoring:** Report PASS/FAIL per firm with exact rule violations
+- **Firm ranking:** Given a strategy profile, rank firms by expected ROI after fees and splits
+- **Payout projection:** Calculate net profit after splits, activation fees, and ongoing costs
 
 ### Deliverable
-Forge-scored strategies executing on funded prop firm accounts. Rule compliance automated. Multi-account management working.
+Forge strategies validated via backtest/MC, scored against each firm's rules. AI agents simulate evaluation feasibility and project payouts.
 
 ---
 
@@ -680,10 +596,9 @@ Forge-scored strategies executing on funded prop firm accounts. Rule compliance 
 | Alpha Vantage | $0 | $0 | Free tier: indicators, sentiment, MCP |
 | Ollama / Local AI | $0 | $0 | Runs on Skytech |
 | Claude API (occasional) | $5 | $60 | Heavy research months |
-| **Prop Firm Evals** | **$77-150** | **$924-1800** | **MFFU $77, Topstep $49+$29 API, TPT $150** |
-| **TopstepX API** | **$29** | **$348** | **Only if using Topstep** |
+| **Prop Firm Evals** | **$49-150** | **$588-1800** | **Topstep $49, MFFU $77, TPT $150** |
 | **Total (infra only)** | **$12** | **$144** | **All data providers are free** |
-| **Total (with 1 prop eval)** | **$89-162** | **$1,068-1,944** | **Revenue-generating cost** |
+| **Total (with 1 prop eval)** | **$61-162** | **$732-1,944** | **Revenue-generating cost** |
 
 **AWS $100 credits allocation:**
 - S3: $24/year → covers ~4 years
@@ -712,10 +627,9 @@ Forge-scored strategies executing on funded prop firm accounts. Rule compliance 
 | RTX 5060 not enough VRAM | Can't run large MC on GPU | Fall back to CPU, use EC2 spot for heavy jobs |
 | Scope creep | Never finish | Strict phase gates, MVP each phase |
 | Single point of failure (you) | If you're away, nothing runs | n8n automation, alerts, self-healing |
-| Prop firm rule violation | Account terminated, lose funded status | Rule engine pre-trade checks, auto-flatten before limits |
-| Prop firm policy changes | Algo trading banned retroactively | Multi-firm strategy, don't depend on single firm |
+| Prop firm rule violation | Account terminated, lose funded status | Dashboard tracks drawdown/consistency in real-time, alerts before limits |
+| Prop firm policy changes | Rules change, strategy no longer fits | Multi-firm approach, agents re-rank firms on rule changes |
 | Prop firm insolvency | Unpaid profits, lost account | Withdraw frequently, diversify across firms |
-| Rithmic API downtime | Can't execute trades | Alert + auto-flatten, manual override via platform UI |
 
 ---
 
@@ -736,10 +650,9 @@ Forge-scored strategies executing on funded prop firm accounts. Rule compliance 
 | 2026-03-09 | Alpha Vantage for indicators + sentiment | 60+ server-side indicators, news API, MCP for AI agents |
 | 2026-03-09 | Three providers over single provider | Redundancy, cost optimization ($0/mo), each excels at different role |
 | 2026-03-09 | Three chart libraries | lightweight-charts for CME futures (no TradingView widget CME support), TradingView widgets for stocks/indices/overview, Recharts for analytics |
-| 2026-03-09 | My Funded Futures as primary prop firm | Only Rithmic firm allowing algo trading, $77/mo, no activation fee, 90/10 split |
-| 2026-03-09 | Rithmic R|Protocol API for execution | WebSocket + Protobuf, language-agnostic, works with MFFU/TPT/Apex/FFN |
-| 2026-03-09 | Topstep as secondary prop firm | Cheapest eval ($49), has API ($29/mo), but locked to TopstepX platform |
-| 2026-03-09 | Prop firm rule engine | Auto-enforce drawdown limits, consistency rules, daily loss limits per firm |
+| 2026-03-09 | 7 prop firms documented for AI agents | MFFU, Topstep, TPT, Apex, FFN, Alpha Futures, Tradeify — full rules in docs/prop-firm-rules.md |
+| 2026-03-09 | MFFU as best-value firm | $77/mo, $0 activation, 90/10 split, no consistency rule |
+| 2026-03-09 | Agent-parseable prop firm rules | YAML configs, Python simulation code, payout formulas for each firm |
 
 ---
 
@@ -772,12 +685,9 @@ forge paper status                           # Show active sessions
 forge paper stop <session-id>                # Stop session
 
 # Prop Firms
-forge prop accounts                          # List registered prop accounts
-forge prop add mffu --size 50k              # Register MFFU 50K account
-forge prop add topstep --size 100k          # Register Topstep 100K account
-forge prop start <account-id> <strategy-id> # Start live execution
-forge prop stop <account-id>                # Stop + flatten positions
-forge prop rules <account-id>               # Check rule compliance
-forge prop eval status                      # Evaluation progress
-forge prop compare <strategy-id>            # AI-rank best firms for strategy
+forge prop simulate <strategy-id> --firm mffu   # Simulate strategy against MFFU rules
+forge prop simulate <strategy-id> --all         # Simulate against all 7 firms
+forge prop rank <strategy-id>                   # AI-rank best firms for strategy
+forge prop payout <strategy-id> --firm topstep  # Project payout after fees/splits
+forge prop rules                                # Show all firm rules summary
 ```
