@@ -58,6 +58,14 @@ src/
 - Migrations via drizzle-kit
 - All IDs are UUIDs
 
+## Prop Firm Integration
+- **Primary: My Funded Futures (MFFU)** — Only Rithmic firm allowing algo trading, $77/mo, 90/10 split, no activation fee
+- **Secondary: Topstep** — TopstepX API ($29/mo), cheapest eval ($49), no VPS allowed
+- **Tertiary: Tradeify** — Algo-friendly, cheapest total cost ($103), DXtrade platform
+- **Execution API: Rithmic R|Protocol** — WebSocket + Protobuf, works with MFFU/TPT/Apex/FFN
+- **Rule Engine** — Auto-enforce each firm's drawdown, consistency, and daily loss rules
+- Firms that ban algos: Take Profit Trader (no EAs), Alpha Futures (semi-auto only)
+
 ## Data Provider Roles
 - **Databento** → Historical bulk downloads (Phase 1 backfill). Download once to S3, never re-pay.
 - **Massive** → Real-time streaming for paper/live trading (Phase 6). Free WebSocket.
@@ -70,3 +78,5 @@ src/
 - Don't store secrets in code — use .env
 - Don't commit the data/ directory — it's gitignored (lives in S3)
 - Don't waste Databento credits on data you can get from Massive/Alpha Vantage for free
+- Don't send algo trades to firms that ban it (TPT, Alpha Futures) — account termination risk
+- Don't exceed prop firm drawdown limits — always auto-flatten before hitting the threshold
