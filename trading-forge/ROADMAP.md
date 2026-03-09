@@ -12,14 +12,15 @@
 3. [Local AI Lab Setup — Skytech RTX + Ollama + n8n](#local-ai-lab-setup--skytech-rtx--ollama--n8n)
 4. [Institutional Edge — What the Top 1% Do](#institutional-edge--what-the-top-1-do)
 4. [Phase 0 — Foundation](#phase-0--foundation-week-1-2)
-4. [Phase 1 — Data Pipeline](#phase-1--data-pipeline-week-3-4)
-5. [Phase 2 — Backtest Engine](#phase-2--backtest-engine-week-5-7)
-6. [Phase 3 — Monte Carlo & Risk](#phase-3--monte-carlo--risk-week-8-9)
-7. [Phase 4 — AI Research Agents](#phase-4--ai-research-agents-week-10-12)
-8. [Phase 5 — Dashboard](#phase-5--dashboard-week-13-14)
-9. [Phase 6 — Live Paper Trading](#phase-6--live-paper-trading-week-15-16)
-10. [Phase 7 — Production Hardening](#phase-7--production-hardening-week-17-18)
-11. [Phase 8 — Prop Firm Integration](#phase-8--prop-firm-integration-week-19-22)
+5. [Phase 1 — Data Pipeline](#phase-1--data-pipeline-week-3-4)
+6. [Phase 2 — Backtest Engine](#phase-2--backtest-engine-week-5-7)
+7. [Phase 3 — Monte Carlo & Risk](#phase-3--monte-carlo--risk-week-8-9)
+8. [Phase 4 — AI Research Agents](#phase-4--ai-research-agents-week-10-12)
+9. [Phase 4.5 — OpenClaw Strategy Scout](#phase-45--openclaw-strategy-scout-week-12-13)
+10. [Phase 5 — Dashboard](#phase-5--dashboard-week-14-15)
+11. [Phase 6 — Live Paper Trading](#phase-6--live-paper-trading-week-16-17)
+12. [Phase 7 — Production Hardening](#phase-7--production-hardening-week-18-19)
+13. [Phase 8 — Prop Firm Integration](#phase-8--prop-firm-integration-week-20-23)
 12. [Budget Tracker](#budget-tracker)
 12. [Risk Register](#risk-register)
 13. [Decision Log](#decision-log)
@@ -44,7 +45,17 @@
 │  │ Data Lake│   │ (Railway)    │   │ (React + Express) │   │
 │  └──────────┘   └──────────────┘   └───────────────────┘   │
 │                                                             │
-│  LOCAL: Skytech PC (RTX 5060, Ollama, n8n)                  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ OpenClaw Strategy Scout (autonomous research layer)  │   │
+│  │                                                      │   │
+│  │  Brave Search ─┐                                     │   │
+│  │  Reddit MCP   ─┤                                     │   │
+│  │  Tavily       ─┼──▶ Ollama summarizes ──▶ n8n webhook│   │
+│  │  YouTube MCP  ─┤         to JSON            (scout)  │   │
+│  │  Academic MCP ─┘                                     │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                             │
+│  LOCAL: Skytech PC (RTX 5060, Ollama, n8n, OpenClaw)        │
 │  CLOUD: AWS ($100 credits) + Railway (free/hobby)           │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -65,6 +76,12 @@
 | **Databento** | **Institutional-grade tick/futures data (CME, NASDAQ)** | **$0 ($125 credits)** | **Databento** |
 | **Massive** | **Real-time streaming: currencies, indices, options, stocks** | **$0/mo (free tier)** | **Massive** |
 | **Alpha Vantage** | **60+ indicators, news/sentiment, MCP for AI agents** | **$0/mo (free tier)** | **Alpha Vantage** |
+| **OpenClaw** | **Autonomous strategy research scout** | **$0** | **Local (Skytech)** |
+| **Brave Search** | **Web search for trading ideas, prop firm news** | **$0 (free tier, 2K queries/mo)** | **Brave** |
+| **Reddit MCP** | **r/algotrading, r/futurestrading, r/prop_firms** | **$0** | **Reddit** |
+| **Tavily** | **AI-optimized deep search for strategy research** | **$0 (free tier, 1K queries/mo)** | **Tavily** |
+| **YouTube MCP** | **Transcribe & summarize algo trading videos** | **$0** | **YouTube** |
+| **Academic MCP** | **arXiv/SSRN quantitative finance papers** | **$0** | **arXiv/SSRN** |
 | **Total monthly burn (infra)** | | **~$7/mo** | |
 | **Runway on $100 AWS** | | **~14 months** | |
 | **Databento credits** | | **$125 one-time** | **Use for historical futures downloads** |
@@ -1033,7 +1050,182 @@ AI agents discovering **simple, robust** strategies. Auto-backtesting with walk-
 
 ---
 
-## Phase 5 — Dashboard (Week 13-14)
+## Phase 4.5 — OpenClaw Strategy Scout (Week 12-13)
+
+**Goal:** Add an autonomous research layer that feeds the pipeline with strategy ideas — without manual input. OpenClaw + Ollama browses trading forums, Reddit, academic papers, and YouTube to discover new strategy concepts and automatically triggers the n8n → Trading Forge backtest loop.
+
+> **Innovation:** Closes the loop. Pipeline goes from `human idea → AI generates → backtest` to `AI finds idea → AI generates → backtest → human reviews winners`. You become the **curator**, not the operator.
+
+### Why OpenClaw
+
+- **Model-agnostic** — runs on your existing Ollama instance ($0/mo)
+- **Autonomous execution** — browses, reads, writes, runs code independently
+- **No new infrastructure** — drops into existing n8n webhook pipeline
+- **MIT licensed, 200K+ GitHub stars** — battle-tested open-source project
+
+### Research Tool Stack (staged rollout)
+
+| Priority | Tool | Purpose | Cost | Week |
+|----------|------|---------|------|------|
+| 1 | **Brave Search** | General web: trading blogs, prop firm sites, forums | Free (2K queries/mo) | Week 12 |
+| 2 | **Reddit MCP** | r/algotrading, r/futurestrading, r/prop_firms | Free | Week 12 |
+| 3 | **Tavily** | AI-optimized search, structured results for targeted queries | Free (1K queries/mo) | Week 12.5 |
+| 4 | **YouTube MCP** | Transcribe & summarize strategy breakdown videos | Free | Week 13 |
+| 5 | **Academic MCP** | arXiv/SSRN quantitative finance papers, new indicators | Free | Week 13 |
+
+**Total cost: $0/mo** — all free tiers, ~50-100 targeted queries/day across all sources.
+
+### Architecture
+
+```
+OpenClaw + Ollama (local, free)
+    │
+    ├── Brave Search  → "FTMO rule changes March 2026"
+    ├── Reddit MCP    → r/algotrading top posts this week
+    ├── Tavily        → "mean reversion futures strategy research"
+    ├── YouTube MCP   → transcribe top algo trading videos
+    ├── Academic MCP  → arxiv quantitative finance new papers
+    │
+    └── Ollama summarizes ALL into structured JSON
+            │
+            └── Posts to n8n webhook (POST /api/agent/scout-ideas)
+                    │
+                    └── n8n Workflow 2 (Weekly Strategy Hunt) picks up ideas
+                            │
+                            └── Trading Forge backtests → MC → prop firm sim
+```
+
+### Tasks
+
+- [ ] **4.5.1** Install & configure OpenClaw
+  ```
+  - Install OpenClaw alongside existing Ollama
+  - ollama launch openclaw (auto-configures connection)
+  - Requires 64K+ context model (qwen3-coder or glm-4.7 recommended)
+  - Verify: OpenClaw can communicate with local Ollama instance
+  ```
+
+- [ ] **4.5.2** Wire up Brave Search + Reddit MCP (Week 12)
+  ```
+  Phase 1 — Prove the concept
+
+  Brave Search:
+    - Sign up for free tier (2,000 queries/month)
+    - Configure as OpenClaw search tool
+    - Test queries: "futures trading strategy 2026", "prop firm rule changes"
+    - Output: structured JSON with title, URL, summary, relevance score
+
+  Reddit MCP:
+    - Connect to subreddits: r/algotrading, r/futurestrading, r/prop_firms,
+      r/daytrading, r/quantfinance
+    - Scan: top posts (weekly), comments with strategy descriptions
+    - Filter: posts mentioning backtesting, specific indicators, prop firms
+    - Output: structured JSON with strategy concept, indicators mentioned,
+      timeframe, asset class, upvote count (social proof signal)
+  ```
+
+- [ ] **4.5.3** Add Tavily for deep research (Week 12.5)
+  ```
+  Phase 2 — Targeted depth
+
+  - Sign up for free tier (1,000 queries/month)
+  - Use for targeted queries where Brave is too broad:
+    "walk-forward optimization futures strategy 2026"
+    "ATR trailing stop backtest results"
+    "mean reversion RSI Bollinger Bands futures"
+  - Tavily returns pre-structured, AI-friendly results
+  - Complements Brave: Brave for breadth, Tavily for depth
+  ```
+
+- [ ] **4.5.4** Add YouTube MCP + Academic MCP (Week 13)
+  ```
+  Phase 3 — Edge discovery
+
+  YouTube MCP:
+    - Transcribe and summarize top algo trading channels
+    - Focus on: strategy breakdowns, backtesting walkthroughs, indicator tutorials
+    - Extract: strategy logic, parameters, claimed performance, timeframes
+    - Flag videos with actual backtest results (higher signal)
+
+  Academic MCP:
+    - Search arXiv quantitative finance (q-fin) and SSRN
+    - Focus on: new indicators, novel strategy concepts, market microstructure
+    - Extract: paper title, abstract summary, key findings, proposed strategy logic
+    - Flag papers with out-of-sample results (higher signal)
+    - This is where genuine EDGE ideas come from — not Reddit
+  ```
+
+- [ ] **4.5.5** OpenClaw → n8n webhook integration
+  ```
+  New API endpoint in Trading Forge:
+    POST /api/agent/scout-ideas
+
+  Payload schema:
+    {
+      "source": "brave|reddit|tavily|youtube|academic",
+      "strategy_concept": "Buy ES when RSI(14) < 30 and price touches lower BB",
+      "indicators_mentioned": ["RSI", "Bollinger Bands"],
+      "asset_class": "futures",
+      "instruments": ["ES", "NQ"],
+      "timeframe": "15min",
+      "source_url": "https://...",
+      "source_quality": "high|medium|low",
+      "confidence_score": 0.0-1.0,
+      "raw_summary": "..."
+    }
+
+  n8n receives payload → deduplicates → feeds into Workflow 2 (Weekly Strategy Hunt)
+  → Ollama generates vectorbt code from concept → backtest → MC → prop firm sim
+
+  Deduplication:
+    - Hash strategy_concept + indicators + timeframe
+    - Skip if same concept already tested in last 30 days
+    - Track: ideas_received, ideas_tested, ideas_passed_gates
+  ```
+
+- [ ] **4.5.6** OpenClaw daily/weekly schedule
+  ```
+  Schedule (via n8n or OpenClaw native scheduler):
+
+  Daily (6 PM EST — before Nightly Research workflow):
+    - Brave Search: prop firm rule changes, market news
+    - Reddit: scan top posts from subscribed subreddits
+    - Output: 5-10 raw ideas → POST /api/agent/scout-ideas
+
+  Weekly (Saturday 8 AM — before Weekly Strategy Hunt):
+    - Tavily: deep research on specific strategy categories
+    - YouTube: transcribe top 5 new algo trading videos
+    - Academic: new arXiv q-fin papers from the week
+    - Output: 10-20 curated ideas → POST /api/agent/scout-ideas
+
+  Monthly:
+    - Full scan of all sources for emerging trends
+    - Summary report: what's trending in algo trading this month
+    - Update search queries based on what's working
+  ```
+
+- [ ] **4.5.7** Metrics & monitoring
+  ```
+  Track OpenClaw Scout effectiveness:
+    - ideas_received_total: total raw ideas from all sources
+    - ideas_deduplicated: skipped (already tested)
+    - ideas_tested: sent to backtest pipeline
+    - ideas_passed_performance_gate: met $250/day minimum
+    - ideas_passed_monte_carlo: survived MC simulation
+    - ideas_deployed: reached PAPER or DEPLOYED status
+    - source_hit_rate: % of ideas per source that pass gates
+      (expect: Academic > Reddit > YouTube > Brave)
+    - time_to_discovery: idea received → strategy deployed
+
+  Dashboard widget: "Strategy Scout" panel showing pipeline funnel
+  ```
+
+### Deliverable
+Self-feeding research pipeline. OpenClaw autonomously discovers strategy ideas from web, Reddit, YouTube, and academic papers. Ideas flow into the existing n8n → Trading Forge backtest loop without manual intervention. You review winners, not generate ideas.
+
+---
+
+## Phase 5 — Dashboard (Week 14-15)
 
 **Goal:** Visual interface for monitoring strategies, backtests, and market data.
 
@@ -1090,7 +1282,7 @@ Full dashboard with all visualizations. Can monitor everything from browser.
 
 ---
 
-## Phase 6 — Live Paper Trading (Week 15-16)
+## Phase 6 — Live Paper Trading (Week 16-17)
 
 **Goal:** Forward-test strategies with real-time data, no real money.
 
@@ -1267,7 +1459,7 @@ Strategies running on live data (paper). Full institutional monitoring suite: ex
 
 ---
 
-## Phase 7 — Production Hardening (Week 17-18)
+## Phase 7 — Production Hardening (Week 18-19)
 
 **Goal:** Make everything robust, monitored, and maintainable.
 
@@ -1286,7 +1478,7 @@ Production-ready system. Can run unattended. Self-healing where possible.
 
 ---
 
-## Phase 8 — Prop Firm Integration (Week 19-22)
+## Phase 8 — Prop Firm Integration (Week 20-23)
 
 **Goal:** Use Forge-validated strategies to pass prop firm evaluations and trade funded accounts.
 
