@@ -34,42 +34,42 @@ AWS S3 (Parquet data lake)         Lucide React icons
 
 ---
 
-### PHASE 1 — Data Pipeline (Week 3-4)
+### PHASE 1 — Data Pipeline ✅ DONE
 > Download historical futures data, store in S3, serve via API
 
-- [ ] **1.1** Databento bulk download (ES, NQ, CL — 5 years)
-- [ ] **1.1a** Ratio-adjusted continuous contracts (remove roll gaps)
-- [ ] **1.2** S3 upload pipeline (raw + adjusted Parquet)
-- [ ] **1.3** Alpha Vantage indicator fetcher (RSI, MACD, Bollinger, ATR)
-- [ ] **1.4** Market data API endpoints
+- [x] **1.1** Databento bulk download (ES, NQ, CL — 5 years)
+- [x] **1.1a** Ratio-adjusted continuous contracts (remove roll gaps)
+- [x] **1.2** S3 upload pipeline (raw + adjusted Parquet)
+- [x] **1.3** Alpha Vantage indicator fetcher (RSI, MACD, Bollinger, ATR)
+- [x] **1.4** Market data API endpoints
   ```
   GET  /api/data/symbols          — available symbols
   GET  /api/data/:symbol/ohlcv    — OHLCV bars with timeframe/range params
   GET  /api/data/:symbol/info     — metadata (earliest, latest, records)
   POST /api/data/fetch             — trigger new data download
   ```
-- [ ] **1.5** DuckDB for querying S3 Parquet directly (no full download needed)
+- [x] **1.5** DuckDB for querying S3 Parquet directly (no full download needed)
 
 **Deliverable:** 5 years of ES/NQ/CL data in S3. API serves it. $125 Databento credits spent wisely.
 
 ---
 
-### PHASE 2 — Backtest Engine (Week 5-7)
+### PHASE 2 — Backtest Engine ✅ DONE
 > Python backtest engine with vectorbt, walk-forward validation, prop firm compliance
 
-- [ ] **2.1** vectorbt backtest runner (accepts JSON config from Express)
-- [ ] **2.2** Strategy templates (trend following, mean reversion, breakout, session)
-- [ ] **2.3** Walk-forward validation (mandatory — no in-sample-only results)
-- [ ] **2.4** Dynamic position sizing (ATR-based, not fixed contracts)
-- [ ] **2.5** Slippage as a variable (scales with ATR, not constant)
-- [ ] **2.6** Backtest API endpoints
+- [x] **2.1** vectorbt backtest runner (accepts JSON config from Express)
+- [x] **2.2** Strategy templates (trend following, mean reversion, breakout, session)
+- [x] **2.3** Walk-forward validation (mandatory — no in-sample-only results)
+- [x] **2.4** Dynamic position sizing (ATR-based, not fixed contracts)
+- [x] **2.5** Slippage as a variable (scales with ATR, not constant)
+- [x] **2.6** Backtest API endpoints
   ```
   POST /api/backtests/run          — run backtest (async, returns job ID)
   GET  /api/backtests              — list all runs
   GET  /api/backtests/:id          — results + equity curve + trades
   GET  /api/backtests/:id/trades   — individual trade list
   ```
-- [ ] **2.7** Performance gate enforcement (hard minimums from CLAUDE.md)
+- [x] **2.7** Performance gate enforcement (hard minimums from CLAUDE.md)
   ```
   $250/day avg  |  60% win days  |  1.75 profit factor
   $2K max DD    |  4 max losing streak  |  $75 expectancy/trade
@@ -102,14 +102,14 @@ AWS S3 (Parquet data lake)         Lucide React icons
 
 ---
 
-### PHASE 4 — AI Research Agents (Week 10-12)
+### PHASE 4 — AI Research Agents (Week 10-12) 🔄 PARTIAL
 > Ollama generates strategies, Trading Forge validates them, n8n orchestrates the loop
 
-- [ ] **4.1** Custom Ollama Modelfile (`trading-quant` — Qwen2.5-Coder:14b)
-- [ ] **4.2** Strategy generation agent (outputs vectorbt code + JSON params)
-- [ ] **4.3** Critique agent (Llama 3.1:8b reviews backtest results)
+- [x] **4.1** Custom Ollama Modelfile (`trading-quant` — Qwen2.5-Coder:14b)
+- [x] **4.2** Strategy generation agent (outputs vectorbt code + JSON params)
+- [x] **4.3** Critique agent (Llama 3.1:8b reviews backtest results)
 - [ ] **4.4** n8n workflow: generate → backtest → critique → refine → save
-- [ ] **4.5** Agent webhooks for n8n integration
+- [x] **4.5** Agent webhooks for n8n integration
   ```
   POST /api/agent/run-strategy     — accept Ollama code, return results
   POST /api/agent/critique         — accept results, return analysis
@@ -228,10 +228,10 @@ AWS S3 (Parquet data lake)         Lucide React icons
 
 ```
 Phase 0  ████████████████████  DONE
-Phase 1  ░░░░░░░░░░░░░░░░░░░░  UP NEXT
-Phase 2  ░░░░░░░░░░░░░░░░░░░░
-Phase 3  ░░░░░░░░░░░░░░░░░░░░
-Phase 4  ░░░░░░░░░░░░░░░░░░░░
+Phase 1  ████████████████████  DONE
+Phase 2  ████████████████████  DONE
+Phase 3  ░░░░░░░░░░░░░░░░░░░░  UP NEXT (Monte Carlo stub only)
+Phase 4  ██████████░░░░░░░░░░  PARTIAL (agent service + ollama client + routes done, n8n + regime pending)
 Phase 4.5░░░░░░░░░░░░░░░░░░░░
 Phase 5  ░░░░░░░░░░░░░░░░░░░░  ← Lovable (dashboard)
 Phase 6  ░░░░░░░░░░░░░░░░░░░░

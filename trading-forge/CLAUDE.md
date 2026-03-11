@@ -7,7 +7,7 @@ Personal futures/derivatives strategy research lab. Single user (swayz032). Not 
 - **API Server**: Express.js 5 + TypeScript (src/server/)
 - **Database**: PostgreSQL + Drizzle ORM
 - **Backtest Engine**: Python + vectorbt + Polars + DuckDB (src/engine/)
-- **AI Agents**: Python + Ollama (src/agents/)
+- **AI Agents**: TypeScript + Ollama (src/server/services/agent-service.ts, src/server/routes/agent.ts)
 - **Dashboard**: React + Vite + TailwindCSS (src/dashboard/)
 - **Data Lake**: AWS S3 (Parquet files)
 - **Data Providers**:

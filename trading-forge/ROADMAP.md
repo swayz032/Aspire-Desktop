@@ -11,19 +11,19 @@
 2. [Infrastructure Map](#infrastructure-map)
 3. [Local AI Lab Setup — Skytech RTX + Ollama + n8n](#local-ai-lab-setup--skytech-rtx--ollama--n8n)
 4. [Institutional Edge — What the Top 1% Do](#institutional-edge--what-the-top-1-do)
-4. [Phase 0 — Foundation](#phase-0--foundation-week-1-2)
-5. [Phase 1 — Data Pipeline](#phase-1--data-pipeline-week-3-4)
-6. [Phase 2 — Backtest Engine](#phase-2--backtest-engine-week-5-7)
-7. [Phase 3 — Monte Carlo & Risk](#phase-3--monte-carlo--risk-week-8-9)
-8. [Phase 4 — AI Research Agents](#phase-4--ai-research-agents-week-10-12)
-9. [Phase 4.5 — OpenClaw Strategy Scout](#phase-45--openclaw-strategy-scout-week-12-13)
-10. [Phase 5 — Dashboard](#phase-5--dashboard-week-14-15)
-11. [Phase 6 — Live Paper Trading](#phase-6--live-paper-trading-week-16-17)
-12. [Phase 7 — Production Hardening](#phase-7--production-hardening-week-18-19)
-13. [Phase 8 — Prop Firm Integration](#phase-8--prop-firm-integration-week-20-23)
-12. [Budget Tracker](#budget-tracker)
-12. [Risk Register](#risk-register)
-13. [Decision Log](#decision-log)
+5. [Phase 0 — Foundation](#phase-0--foundation-week-1-2)
+6. [Phase 1 — Data Pipeline](#phase-1--data-pipeline-week-3-4)
+7. [Phase 2 — Backtest Engine](#phase-2--backtest-engine-week-5-7)
+8. [Phase 3 — Monte Carlo & Risk](#phase-3--monte-carlo--risk-week-8-9)
+9. [Phase 4 — AI Research Agents](#phase-4--ai-research-agents-week-10-12)
+10. [Phase 4.5 — OpenClaw Strategy Scout](#phase-45--openclaw-strategy-scout-week-12-13)
+11. [Phase 5 — Dashboard](#phase-5--dashboard-week-14-15)
+12. [Phase 6 — Live Paper Trading](#phase-6--live-paper-trading-week-16-17)
+13. [Phase 7 — Production Hardening](#phase-7--production-hardening-week-18-19)
+14. [Phase 8 — Prop Firm Integration](#phase-8--prop-firm-integration-week-20-23)
+15. [Budget Tracker](#budget-tracker)
+16. [Risk Register](#risk-register)
+17. [Decision Log](#decision-log)
 
 ---
 
@@ -36,7 +36,7 @@
 │  ┌──────────┐   ┌──────────────┐   ┌───────────────────┐   │
 │  │ Data     │   │ Backtest     │   │ AI Research       │   │
 │  │ Pipeline │──▶│ Engine       │──▶│ Agents            │   │
-│  │ (Node)   │   │ (Python)     │   │ (Ollama+Claude)   │   │
+│  │ (Node)   │   │ (Python)     │   │ (Ollama+n8n)   │   │
 │  └────┬─────┘   └──────┬───────┘   └────────┬──────────┘   │
 │       │                │                     │              │
 │       ▼                ▼                     ▼              │
@@ -791,7 +791,7 @@ Any backtest can be Monte Carlo validated. Forge Score assigned. GPU burst worki
 
 ## Phase 4 — AI Research Agents (Week 10-12)
 
-**Goal:** Use local LLMs + Claude to discover and refine **simple, robust** strategies.
+**Goal:** Use local LLMs (Ollama) + n8n + OpenClaw to discover and refine **simple, robust** strategies.
 
 ### Strategy Philosophy
 
@@ -1521,10 +1521,9 @@ Forge strategies validated via backtest/MC, scored against each firm's rules. AI
 | Massive | $0 | $0 | Free tier: Currencies, Indices, Options, Stocks Basic |
 | Alpha Vantage | $0 | $0 | Free tier: indicators, sentiment, MCP |
 | Ollama / Local AI | $0 | $0 | Runs on Skytech |
-| Claude API (occasional) | $5 | $60 | Heavy research months |
 | **Prop Firm Evals** | **$49-150** | **$588-1800** | **Topstep $49, MFFU $77, TPT $150** |
-| **Total (infra only)** | **$12** | **$144** | **All data providers are free** |
-| **Total (with 1 prop eval)** | **$61-162** | **$732-1,944** | **Revenue-generating cost** |
+| **Total (infra only)** | **$7** | **$84** | **All data providers and AI are free/local** |
+| **Total (with 1 prop eval)** | **$56-157** | **$672-1,884** | **Revenue-generating cost** |
 
 **AWS $100 credits allocation:**
 - S3: $24/year → covers ~4 years
