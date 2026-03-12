@@ -11,6 +11,7 @@
 
 import { useCallback } from 'react';
 import { useSupabase } from '@/providers';
+import { buildTraceHeaders } from '@/lib/traceHeaders';
 
 /**
  * Hook that returns an authenticated fetch function.
@@ -22,6 +23,10 @@ export function useAuthFetch() {
   const authenticatedFetch = useCallback(
     async (url: string, options: RequestInit = {}): Promise<Response> => {
       const headers = new Headers(options.headers);
+      const trace = buildTraceHeaders({
+        correlationId: headers.get('X-Correlation-Id'),
+        traceId: headers.get('X-Trace-Id'),
+      });
 
       // Inject JWT if available
       if (session?.access_token) {
@@ -32,6 +37,9 @@ export function useAuthFetch() {
       if (suiteId) {
         headers.set('X-Suite-Id', suiteId);
       }
+
+      headers.set('X-Correlation-Id', trace.correlationId);
+      headers.set('X-Trace-Id', trace.traceId);
 
       return fetch(url, { ...options, headers });
     },
@@ -48,6 +56,10 @@ export function useAuthFetch() {
 export function createAuthenticatedFetch(accessToken: string | null, suiteId: string | null) {
   return async (url: string, options: RequestInit = {}): Promise<Response> => {
     const headers = new Headers(options.headers);
+    const trace = buildTraceHeaders({
+      correlationId: headers.get('X-Correlation-Id'),
+      traceId: headers.get('X-Trace-Id'),
+    });
 
     if (accessToken) {
       headers.set('Authorization', `Bearer ${accessToken}`);
@@ -56,6 +68,9 @@ export function createAuthenticatedFetch(accessToken: string | null, suiteId: st
     if (suiteId) {
       headers.set('X-Suite-Id', suiteId);
     }
+
+    headers.set('X-Correlation-Id', trace.correlationId);
+    headers.set('X-Trace-Id', trace.traceId);
 
     return fetch(url, { ...options, headers });
   };

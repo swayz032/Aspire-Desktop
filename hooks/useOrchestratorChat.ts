@@ -22,6 +22,7 @@ import type {
   OrchestratorResponse,
 } from '@/components/chat/types';
 import { buildActivityFromResponse } from '@/components/chat/buildActivity';
+import { buildTraceHeaders } from '@/lib/traceHeaders';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,8 +85,10 @@ export function useOrchestratorChat({
       setError(null);
 
       try {
+        const trace = buildTraceHeaders();
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
+          ...trace.headers,
         };
         if (suiteId) {
           headers['X-Suite-Id'] = suiteId;
@@ -135,10 +138,12 @@ export function useOrchestratorChat({
     if (!suiteId || !accessToken) return null;
 
     try {
+      const trace = buildTraceHeaders();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'X-Suite-Id': suiteId,
         'Authorization': `Bearer ${accessToken}`,
+        ...trace.headers,
       };
 
       const resp = await doFetch('/api/orchestrator/intent', {

@@ -18,6 +18,7 @@ import { useRealtimeConferenceInvitations } from '@/hooks/useRealtimeConferenceI
 import { useRealtimeApprovalRequests } from '@/hooks/useRealtimeApprovalRequests';
 import { useDesktop } from '@/lib/useDesktop';
 import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
+import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 
 /**
  * Global Error Boundary — prevents white screen on uncaught errors.
@@ -35,6 +36,11 @@ class GlobalErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[Aspire] Fatal render error:', error.message, info.componentStack);
+    emitCanvasEvent('error', {
+      source: 'global_error_boundary',
+      message: error.message.slice(0, 180),
+      has_stack: !!info.componentStack,
+    });
   }
 
   render() {

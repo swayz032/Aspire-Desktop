@@ -96,6 +96,25 @@ if (DEV_BYPASS_AUTH) {
   logger.info('DEV_BYPASS_AUTH enabled — all requests will skip JWT verification');
 }
 
+app.use((req, res, next) => {
+  const headerCorrelationId = typeof req.headers['x-correlation-id'] === 'string'
+    ? req.headers['x-correlation-id'].replace(/[\r\n]/g, '').trim()
+    : '';
+  const headerTraceId = typeof req.headers['x-trace-id'] === 'string'
+    ? req.headers['x-trace-id'].replace(/[\r\n]/g, '').trim()
+    : '';
+  const correlationId = headerCorrelationId || `corr_${crypto.randomUUID()}`;
+  const traceId = headerTraceId || correlationId;
+
+  req.headers['x-correlation-id'] = correlationId;
+  req.headers['x-trace-id'] = traceId;
+  (req as any).correlationId = correlationId;
+  (req as any).traceId = traceId;
+  res.setHeader('X-Correlation-Id', correlationId);
+  res.setHeader('X-Trace-Id', traceId);
+  next();
+});
+
 // RLS context middleware — Law #3: Fail Closed + Law #6: Tenant Isolation
 // JWT-based suite derivation for authenticated routes.
 // Public routes use defaultSuiteId (read-only, RLS-scoped).

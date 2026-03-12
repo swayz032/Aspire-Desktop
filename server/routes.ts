@@ -7,6 +7,7 @@ import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import { logger } from './logger';
+import { reportAdminIncident } from './incidentReporter';
 
 // Supabase admin client for bootstrap operations (user_metadata updates)
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -152,6 +153,38 @@ function emitTraceEvent(event: {
       console.error('[Trace] Event insert failed:', e);
     }
   })();
+}
+
+async function reportPipelineIncident(details: {
+  title: string;
+  severity?: 'sev1' | 'sev2' | 'sev3' | 'sev4';
+  correlationId: string;
+  traceId: string;
+  suiteId?: string | null;
+  component: string;
+  fingerprint: string;
+  agent?: string | null;
+  errorCode?: string | null;
+  statusCode?: number | null;
+  message?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  const orchestratorUrl = resolveOrchestratorUrl();
+  await reportAdminIncident(orchestratorUrl, {
+    title: details.title,
+    severity: details.severity || 'sev2',
+    correlationId: details.correlationId,
+    traceId: details.traceId,
+    suiteId: details.suiteId || null,
+    source: 'aspire_desktop',
+    component: details.component,
+    fingerprint: details.fingerprint,
+    agent: details.agent || null,
+    errorCode: details.errorCode || null,
+    statusCode: typeof details.statusCode === 'number' ? details.statusCode : null,
+    message: details.message || null,
+    metadata: details.metadata,
+  });
 }
 
 async function fetchWithTimeoutAndRetry(
@@ -2461,6 +2494,95 @@ router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
   });
 });
 
+router.post('/api/telemetry/canvas', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-canvas-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const traceId = resolveTraceId(req, correlationId);
+  const suiteId = (req as any).authenticatedSuiteId || null;
+  const actorId = (req as any).authenticatedUserId || 'unknown';
+  const events = Array.isArray(req.body?.events) ? req.body.events : [];
+
+  if (!suiteId) {
+    return res.status(401).json({
+      error: 'AUTH_REQUIRED',
+      message: 'Authenticated suite context required.',
+      correlation_id: correlationId,
+      trace_id: traceId,
+    });
+  }
+
+  if (!events.length) {
+    return res.status(400).json({
+      error: 'INVALID_EVENTS',
+      message: 'Expected non-empty events array.',
+      correlation_id: correlationId,
+      trace_id: traceId,
+    });
+  }
+
+  const cappedEvents = events.slice(0, 50);
+  let incidentReports = 0;
+
+  for (const rawEvent of cappedEvents) {
+    const eventName = typeof rawEvent?.event === 'string' ? rawEvent.event : 'unknown';
+    const eventData = rawEvent?.data && typeof rawEvent.data === 'object' ? rawEvent.data : {};
+    const sessionId = typeof rawEvent?.sessionId === 'string' ? rawEvent.sessionId : 'unknown';
+    const eventTimestamp = typeof rawEvent?.timestamp === 'number'
+      ? new Date(rawEvent.timestamp).toISOString()
+      : new Date().toISOString();
+
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      stage: 'session',
+      status: eventName === 'error' || eventName === 'slo_violation' ? 'error' : 'ok',
+      message: `Canvas telemetry: ${eventName}`,
+      errorCode: eventName === 'error' || eventName === 'slo_violation' ? `CANVAS_${eventName.toUpperCase()}` : undefined,
+      metadata: {
+        actor_id: actorId,
+        session_id: sessionId,
+        event_timestamp: eventTimestamp,
+        event: eventName,
+        payload: eventData,
+      },
+    });
+
+    if (eventName === 'error' || eventName === 'slo_violation') {
+      incidentReports += 1;
+      const eventMessage = typeof eventData.message === 'string' ? eventData.message.slice(0, 180) : `Canvas ${eventName}`;
+      const errorCode = typeof eventData.error_code === 'string'
+        ? eventData.error_code
+        : `CANVAS_${eventName.toUpperCase()}`;
+
+      await reportPipelineIncident({
+        title: eventName === 'error' ? 'Desktop canvas error detected' : 'Desktop canvas SLO violation detected',
+        severity: eventName === 'error' ? 'sev2' : 'sev3',
+        correlationId,
+        traceId,
+        suiteId,
+        component: '/api/telemetry/canvas',
+        fingerprint: `desktop:canvas:${suiteId}:${eventName}:${errorCode}`,
+        errorCode,
+        message: eventMessage,
+        metadata: {
+          actor_id: actorId,
+          session_id: sessionId,
+          event: eventName,
+          payload: eventData,
+        },
+      });
+    }
+  }
+
+  res.status(202).json({
+    accepted: true,
+    event_count: cappedEvents.length,
+    incident_reports: incidentReports,
+    correlation_id: correlationId,
+    trace_id: traceId,
+  });
+});
+
 /**
  * Orchestrator Intent Proxy — Law #1: Single Brain
  *
@@ -2572,6 +2694,19 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
   const ORCHESTRATOR_URL = resolveOrchestratorUrl();
   if (!ORCHESTRATOR_URL) {
+    await reportPipelineIncident({
+      title: 'Desktop SSE proxy missing orchestrator configuration',
+      severity: 'sev1',
+      correlationId,
+      traceId,
+      suiteId,
+      component: '/api/orchestrator/intent:sse',
+      fingerprint: 'desktop:sse:orchestrator:not_configured',
+      agent: parsedAgent.value,
+      errorCode: 'ORCHESTRATOR_NOT_CONFIGURED',
+      message: 'ORCHESTRATOR_URL is required in production.',
+      metadata: { stream: true },
+    });
     return res.status(503).json({
       error: 'ORCHESTRATOR_NOT_CONFIGURED',
       message: 'ORCHESTRATOR_URL is required in production.',
@@ -2604,6 +2739,22 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errorText = await response.text();
+      if (response.status >= 500) {
+        await reportPipelineIncident({
+          title: 'Desktop SSE proxy upstream orchestrator failure',
+          severity: response.status >= 503 ? 'sev1' : 'sev2',
+          correlationId,
+          traceId,
+          suiteId,
+          component: '/api/orchestrator/intent:sse',
+          fingerprint: `desktop:sse:orchestrator:${suiteId || 'global'}:${parsedAgent.value}:http_${response.status}`,
+          agent: parsedAgent.value,
+          errorCode: `ORCHESTRATOR_HTTP_${response.status}`,
+          statusCode: response.status,
+          message: errorText.substring(0, 200),
+          metadata: { stream: true },
+        });
+      }
       emitTraceEvent({
         traceId,
         correlationId,
@@ -2630,6 +2781,19 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
     }
 
     if (!response.body) {
+      await reportPipelineIncident({
+        title: 'Desktop SSE proxy upstream returned no stream body',
+        severity: 'sev2',
+        correlationId,
+        traceId,
+        suiteId,
+        component: '/api/orchestrator/intent:sse',
+        fingerprint: `desktop:sse:orchestrator:${suiteId || 'global'}:${parsedAgent.value}:no_stream`,
+        agent: parsedAgent.value,
+        errorCode: 'ORCHESTRATOR_NO_STREAM',
+        message: 'Orchestrator returned no stream body.',
+        metadata: { stream: true },
+      });
       emitTraceEvent({
         traceId,
         correlationId,
@@ -2677,6 +2841,19 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
     const code = error instanceof Error && error.name === 'AbortError'
       ? 'ORCHESTRATOR_TIMEOUT'
       : 'ORCHESTRATOR_UNAVAILABLE';
+    await reportPipelineIncident({
+      title: 'Desktop SSE proxy request failed',
+      severity: code === 'ORCHESTRATOR_TIMEOUT' ? 'sev2' : 'sev1',
+      correlationId,
+      traceId,
+      suiteId,
+      component: '/api/orchestrator/intent:sse',
+      fingerprint: `desktop:sse:orchestrator:${suiteId || 'global'}:${parsedAgent.value}:${code.toLowerCase()}`,
+      agent: parsedAgent.value,
+      errorCode: code,
+      message: error instanceof Error ? error.message : 'Unknown stream error',
+      metadata: { stream: true },
+    });
     emitTraceEvent({
       traceId,
       correlationId,
@@ -2763,6 +2940,18 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
     const ORCHESTRATOR_URL = resolveOrchestratorUrl();
     if (!ORCHESTRATOR_URL) {
+      await reportPipelineIncident({
+        title: 'Desktop intent proxy missing orchestrator configuration',
+        severity: 'sev1',
+        correlationId,
+        traceId,
+        suiteId,
+        component: '/api/orchestrator/intent',
+        fingerprint: 'desktop:intent:orchestrator:not_configured',
+        errorCode: 'ORCHESTRATOR_NOT_CONFIGURED',
+        message: 'ORCHESTRATOR_URL is required in production.',
+        metadata: { stream: false },
+      });
       return res.status(503).json({
         error: 'ORCHESTRATOR_NOT_CONFIGURED',
         message: 'ORCHESTRATOR_URL is required in production.',
@@ -2792,6 +2981,20 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       (now - orchestratorLastFailureAt) < CIRCUIT_BREAKER_RESET_MS
     ) {
       const retryAfterMs = Math.max(0, CIRCUIT_BREAKER_RESET_MS - (now - orchestratorLastFailureAt));
+      const breakerAgent = parseRequestedAgent(agent).value;
+      await reportPipelineIncident({
+        title: 'Desktop intent proxy circuit breaker open',
+        severity: 'sev1',
+        correlationId,
+        traceId,
+        suiteId,
+        component: '/api/orchestrator/intent',
+        fingerprint: `desktop:intent:orchestrator:${suiteId || 'global'}:${breakerAgent}:circuit_open`,
+        agent: breakerAgent,
+        errorCode: 'ORCHESTRATOR_CIRCUIT_OPEN',
+        message: 'Orchestrator circuit breaker open. Retrying automatically.',
+        metadata: { retry_after_ms: retryAfterMs },
+      });
       emitTraceEvent({
         traceId,
         correlationId,
@@ -2887,6 +3090,22 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       orchestratorLastFailureAt = Date.now();
       const errorText = await response.text();
       logger.error('Orchestrator error', { correlationId, status: response.status, error: errorText.substring(0, 200) });
+      if (response.status >= 500) {
+        await reportPipelineIncident({
+          title: 'Desktop intent proxy upstream orchestrator failure',
+          severity: response.status >= 503 ? 'sev1' : 'sev2',
+          correlationId,
+          traceId,
+          suiteId,
+          component: '/api/orchestrator/intent',
+          fingerprint: `desktop:intent:orchestrator:${suiteId || 'global'}:${requestedAgent}:http_${response.status}`,
+          agent: requestedAgent,
+          errorCode: `ORCHESTRATOR_HTTP_${response.status}`,
+          statusCode: response.status,
+          message: errorText.substring(0, 200),
+          metadata: { stream: false },
+        });
+      }
       emitTraceEvent({
         traceId,
         correlationId,
@@ -2983,6 +3202,18 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
     if (error instanceof Error && error.name === 'AbortError') {
       logger.error('Orchestrator timeout', { correlationId, timeout_ms: ORCHESTRATOR_TIMEOUT_MS });
+      await reportPipelineIncident({
+        title: 'Desktop intent proxy timed out waiting for orchestrator',
+        severity: 'sev2',
+        correlationId,
+        traceId,
+        suiteId,
+        component: '/api/orchestrator/intent',
+        fingerprint: `desktop:intent:orchestrator:${suiteId || 'global'}:timeout`,
+        errorCode: 'ORCHESTRATOR_TIMEOUT',
+        message: `Orchestrator request timed out after ${ORCHESTRATOR_TIMEOUT_MS / 1000}s`,
+        metadata: { timeout_ms: ORCHESTRATOR_TIMEOUT_MS },
+      });
       emitTraceEvent({
         traceId,
         correlationId,
@@ -3005,6 +3236,18 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     }
 
     logger.error('Orchestrator intent error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
+    await reportPipelineIncident({
+      title: 'Desktop intent proxy could not reach orchestrator',
+      severity: 'sev1',
+      correlationId,
+      traceId,
+      suiteId,
+      component: '/api/orchestrator/intent',
+      fingerprint: `desktop:intent:orchestrator:${suiteId || 'global'}:unavailable`,
+      errorCode: 'ORCHESTRATOR_UNAVAILABLE',
+      message: error instanceof Error ? error.message : 'unknown',
+      metadata: { stream: false },
+    });
     emitTraceEvent({
       traceId,
       correlationId,

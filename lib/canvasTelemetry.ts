@@ -1,4 +1,6 @@
 import { Platform } from 'react-native';
+import { buildTraceHeaders } from './traceHeaders';
+import { supabase } from './supabase';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -149,9 +151,22 @@ export async function flushTelemetry(): Promise<void> {
   if (Platform.OS !== 'web') return;
 
   try {
+    const trace = buildTraceHeaders();
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...trace.headers,
+    };
+    if (session?.access_token) {
+      headers.Authorization = `Bearer ${session.access_token}`;
+      const suiteId = session.user?.user_metadata?.suite_id;
+      if (typeof suiteId === 'string' && suiteId.trim()) {
+        headers['X-Suite-Id'] = suiteId.trim();
+      }
+    }
     await fetch(TELEMETRY_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ events: batch }),
     });
   } catch {
