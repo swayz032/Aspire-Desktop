@@ -233,3 +233,9 @@ Rules:
 - Don't run just one strategy — target 2-3 uncorrelated strategies (correlation < 0.3 on returns)
 - Don't treat strategies as permanent — they have lifespans, always be developing replacements
 - Don't model slippage as a constant — it's a function of volatility (higher during vol spikes)
+- Don't ignore time-of-day liquidity — overnight ES has 2x spreads vs RTH core; slippage multipliers by session are mandatory
+- Don't trade through FOMC/CPI/NFP without explicit event handling — default is SIT_OUT ±30 min
+- Don't assume limit orders always fill — model fill probability, especially for mean reversion entries at extremes
+- Don't use gross P&L for performance gates — use net P&L per firm (commissions differ: MFFU $1.58/side vs Apex $2.64/side)
+- Don't ignore firm contract caps in backtests — ATR sizing capped to `min(ATR_size, firm_max_contracts)`
+- Don't ignore overnight gap risk — strategies holding across sessions need gap-adjusted MAE and drawdown

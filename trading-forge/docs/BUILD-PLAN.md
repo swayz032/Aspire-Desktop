@@ -97,8 +97,14 @@ AWS S3 (Parquet data lake)         Lucide React icons
   POST /api/monte-carlo/run        — run MC simulation
   GET  /api/monte-carlo/:id        — fan chart data + risk metrics
   ```
+- [ ] **3.5** Time-of-day liquidity profiles (session-based slippage multipliers: overnight 2x, pre-market 1.5x, RTH 1x, FOMC 3x)
+- [ ] **3.6** Economic calendar filter (FOMC/CPI/NFP — widen stops, reduce size, or sit out)
+- [ ] **3.7** Overnight gap risk model (separate from intraday slippage for strategies holding across sessions)
+- [ ] **3.8** Fill probability model (partial/missed limit fills, especially mean reversion at extremes)
+- [ ] **3.9** Per-firm commission modeling (net P&L per firm, not just gross)
+- [ ] **3.10** Firm contract cap enforcement in position sizing (`min(ATR_size, firm_max_contracts)`)
 
-**Deliverable:** Every strategy gets a Forge Score. MC fan chart shows survival probability.
+**Deliverable:** Every strategy gets a Forge Score. MC fan chart shows survival probability. Backtest realism hardened.
 
 ---
 
@@ -176,8 +182,10 @@ AWS S3 (Parquet data lake)         Lucide React icons
   GET  /api/paper/trades            — trade history
   ```
 - [ ] **6.9** SSE (Server-Sent Events) for real-time dashboard updates
+- [ ] **6.10** Dynamic correlation monitoring (daily recalc, alert when corr spikes > 0.5 during vol events)
+- [ ] **6.11** Proactive decay prediction (regime shift → reduce allocation before Sharpe drops)
 
-**Deliverable:** Paper trade with live data. Track execution quality. Detect drift.
+**Deliverable:** Paper trade with live data. Track execution quality. Detect drift. Proactive risk management.
 
 ---
 
@@ -190,8 +198,9 @@ AWS S3 (Parquet data lake)         Lucide React icons
 - [ ] **7.4** CI/CD pipeline
 - [ ] **7.5** Alert routing (SNS → phone/email for drawdown, drift, system down)
 - [ ] **7.6** Rate limiting + input validation on all endpoints
+- [ ] **7.7** Cross-strategy signal confirmation (boost size when 2+ uncorrelated strategies agree on direction)
 
-**Deliverable:** System runs unattended. Alerts if anything breaks.
+**Deliverable:** System runs unattended. Alerts if anything breaks. Multi-strategy synergy.
 
 ---
 
