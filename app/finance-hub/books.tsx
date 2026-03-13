@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import { View, Text, StyleSheet, Pressable, Platform, ScrollView, TextInput, ActivityIndicator, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -696,7 +697,7 @@ function JournalEntriesTab({ entries, accounts }: { entries: any[]; accounts: an
     setSubmitting(true);
     setSubmitError('');
     try {
-      const res = await fetch('/api/quickbooks/journal-entries', {
+      const res = await authenticatedFetch('/api/quickbooks/journal-entries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1005,7 +1006,7 @@ function GeneralLedgerTab({ initialData }: { initialData: any }) {
   const fetchLedger = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/quickbooks/general-ledger?start_date=${startDate}&end_date=${endDate}`);
+      const res = await authenticatedFetch(`/api/quickbooks/general-ledger?start_date=${startDate}&end_date=${endDate}`);
       const data = await res.json();
       setLedgerData(data);
     } catch (e) {
@@ -1194,7 +1195,7 @@ function MoneyShelvesOwner({ accounts }: { accounts: any[] }) {
 
 function MoneyMovesOwner({ accounts }: { accounts: any[] }) {
   const handleWizardSubmit = async (journalEntry: { date: string; memo: string; lines: { accountId: string; accountName: string; type: 'Debit' | 'Credit'; amount: string; description: string }[] }) => {
-    const res = await fetch('/api/quickbooks/journal-entries', {
+    const res = await authenticatedFetch('/api/quickbooks/journal-entries', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1444,19 +1445,19 @@ export default function BooksScreen() {
   }, []);
 
   useEffect(() => {
-    fetch('/api/quickbooks/status')
+    authenticatedFetch('/api/quickbooks/status')
       .then(r => r.json())
       .then(data => {
         setQbConnected(data.connected);
         if (data.connected) {
           Promise.all([
-            fetch('/api/quickbooks/profit-and-loss').then(r => r.json()),
-            fetch('/api/quickbooks/balance-sheet').then(r => r.json()),
-            fetch('/api/quickbooks/cash-flow').then(r => r.json()),
-            fetch('/api/quickbooks/trial-balance').then(r => r.json()),
-            fetch('/api/quickbooks/accounts').then(r => r.json()),
-            fetch('/api/quickbooks/journal-entries').then(r => r.json()),
-            fetch('/api/quickbooks/general-ledger').then(r => r.json()),
+            authenticatedFetch('/api/quickbooks/profit-and-loss').then(r => r.json()),
+            authenticatedFetch('/api/quickbooks/balance-sheet').then(r => r.json()),
+            authenticatedFetch('/api/quickbooks/cash-flow').then(r => r.json()),
+            authenticatedFetch('/api/quickbooks/trial-balance').then(r => r.json()),
+            authenticatedFetch('/api/quickbooks/accounts').then(r => r.json()),
+            authenticatedFetch('/api/quickbooks/journal-entries').then(r => r.json()),
+            authenticatedFetch('/api/quickbooks/general-ledger').then(r => r.json()),
           ]).then(([pnl, bs, cf, tb, acct, je, gl]) => {
             setReports({ pnl, balanceSheet: bs, cashFlow: cf, trialBalance: tb });
             setAccounts(acct.accounts || []);
