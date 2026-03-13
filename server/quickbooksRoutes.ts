@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { saveToken, loadToken, deleteToken } from './tokenStore';
 import { createTrustSpineReceipt } from './receiptService';
 import { logger } from './logger';
+import { isQuickBooksSandbox } from './providerEnvironment';
 const QuickBooks = require('node-quickbooks');
 
 const router = Router();
@@ -98,7 +99,7 @@ function initQBO() {
     accessToken,
     false,
     realmId,
-    true,
+    isQuickBooksSandbox(),
     false,
     null,
     '2.0',

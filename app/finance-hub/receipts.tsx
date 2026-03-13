@@ -1,13 +1,26 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
-import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 
 const filters = ['All', 'Payments', 'Proposals', 'Approvals', 'Transfers'];
 
+type TimelineEvent = {
+  eventId: string;
+  provider: string;
+  eventType: string;
+  occurredAt: string;
+  amount: number | null;
+  currency: string | null;
+  status: string | null;
+  entityRefs: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+};
+
 type ReceiptItem = {
+  id: string;
   icon: keyof typeof Ionicons.glyphMap;
   iconColor: string;
   accentColor: string;
@@ -19,55 +32,142 @@ type ReceiptItem = {
   badgeColor: string;
   badgeBg: string;
   category: string;
+  successLike: boolean;
 };
-
-const receipts: ReceiptItem[] = [
-  { icon: 'checkmark-circle', iconColor: Colors.semantic.success, accentColor: Colors.semantic.success, title: 'Payment processed', description: 'Apex Corp — Invoice #1847', amount: '+$4,200', time: '2h ago', badge: 'Success', badgeColor: Colors.semantic.success, badgeBg: Colors.semantic.successLight, category: 'Payments' },
-  { icon: 'shield-checkmark', iconColor: Colors.accent.cyan, accentColor: Colors.accent.cyan, title: 'Proposal approved', description: 'Fund payroll buffer', amount: '$12,400', time: 'Yesterday', badge: 'Approved', badgeColor: Colors.accent.cyan, badgeBg: Colors.accent.cyanLight, category: 'Proposals' },
-  { icon: 'checkmark-circle', iconColor: Colors.semantic.success, accentColor: Colors.semantic.success, title: 'Transfer completed', description: 'Checking → Emergency Fund', amount: '$3,000', time: 'Yesterday', badge: 'Success', badgeColor: Colors.semantic.success, badgeBg: Colors.semantic.successLight, category: 'Transfers' },
-  { icon: 'close-circle', iconColor: Colors.semantic.error, accentColor: Colors.semantic.error, title: 'Payment declined', description: 'Vendor — Delta Partners', amount: '$3,200', time: 'Yesterday', badge: 'Failed', badgeColor: Colors.semantic.error, badgeBg: Colors.semantic.errorLight, category: 'Payments' },
-  { icon: 'alert-circle', iconColor: Colors.accent.amber, accentColor: Colors.accent.amber, title: 'Proposal pending', description: 'Increase tax reserve', amount: '$2,500', time: '2 days ago', badge: 'Pending', badgeColor: Colors.accent.amber, badgeBg: Colors.accent.amberLight, category: 'Proposals' },
-  { icon: 'checkmark-circle', iconColor: Colors.semantic.success, accentColor: Colors.semantic.success, title: 'Payroll processed', description: 'Jan 31 payroll run', amount: '$12,200', time: '3 days ago', badge: 'Success', badgeColor: Colors.semantic.success, badgeBg: Colors.semantic.successLight, category: 'Payments' },
-  { icon: 'shield-checkmark', iconColor: Colors.accent.cyan, accentColor: Colors.accent.cyan, title: 'Approval granted', description: 'Vendor payment — Apex', amount: '$1,850', time: '3 days ago', badge: 'Approved', badgeColor: Colors.accent.cyan, badgeBg: Colors.accent.cyanLight, category: 'Approvals' },
-  { icon: 'checkmark-circle', iconColor: Colors.semantic.success, accentColor: Colors.semantic.success, title: 'Payment processed', description: 'BlueSky Partners', amount: '+$2,100', time: '4 days ago', badge: 'Success', badgeColor: Colors.semantic.success, badgeBg: Colors.semantic.successLight, category: 'Payments' },
-  { icon: 'checkmark-circle', iconColor: Colors.semantic.success, accentColor: Colors.semantic.success, title: 'Transfer completed', description: 'Savings → Checking', amount: '$5,000', time: '5 days ago', badge: 'Success', badgeColor: Colors.semantic.success, badgeBg: Colors.semantic.successLight, category: 'Transfers' },
-  { icon: 'alert-circle', iconColor: Colors.accent.amber, accentColor: Colors.accent.amber, title: 'Proposal created', description: 'Collect overdue AR', amount: '$6,800', time: '5 days ago', badge: 'Pending', badgeColor: Colors.accent.amber, badgeBg: Colors.accent.amberLight, category: 'Proposals' },
-];
-
-const stats = [
-  { label: '42 total receipts', color: Colors.text.secondary },
-  { label: '38 successful', color: Colors.semantic.success },
-  { label: '2 pending', color: Colors.accent.amber },
-  { label: '2 failed', color: Colors.semantic.error },
-];
 
 const premiumCardStyle = {
   backgroundColor: CARD_BG,
   borderColor: CARD_BORDER,
 };
 
+function formatMoney(cents: number | null, currency?: string | null): string {
+  if (cents === null || cents === undefined) return '-';
+  const value = cents / 100;
+  const code = (currency || 'usd').toUpperCase();
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(value);
+  } catch {
+    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+}
+
+function relativeTime(ts: string): string {
+  const ms = Date.now() - new Date(ts).getTime();
+  if (Number.isNaN(ms)) return ts;
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function mapEventToCategory(eventType: string): string {
+  if (eventType.includes('proposal')) return 'Proposals';
+  if (eventType.includes('approval') || eventType.includes('approved') || eventType.includes('denied')) return 'Approvals';
+  if (eventType.includes('transfer') || eventType.includes('payout')) return 'Transfers';
+  return 'Payments';
+}
+
+function mapEventToReceipt(evt: TimelineEvent): ReceiptItem {
+  const statusRaw = (evt.status || '').toLowerCase();
+  const category = mapEventToCategory((evt.eventType || '').toLowerCase());
+  const isSuccess = statusRaw === 'posted' || statusRaw === 'succeeded' || statusRaw === 'approved' || statusRaw === 'paid';
+  const isPending = statusRaw === 'pending' || statusRaw === 'open';
+
+  const icon = isSuccess ? 'checkmark-circle' : isPending ? 'alert-circle' : 'close-circle';
+  const accentColor = isSuccess ? Colors.semantic.success : isPending ? Colors.accent.amber : Colors.semantic.error;
+  const badge = isSuccess ? 'Success' : isPending ? 'Pending' : 'Failed';
+  const badgeBg = isSuccess ? Colors.semantic.successLight : isPending ? Colors.accent.amberLight : Colors.semantic.errorLight;
+
+  const metaTitle = typeof evt.metadata?.title === 'string' ? evt.metadata.title : null;
+  const eventName = evt.eventType.replace(/_/g, ' ');
+  const title = metaTitle || `${evt.provider.toUpperCase()} ${eventName}`.replace(/\b\w/g, m => m.toUpperCase());
+  const summary = typeof evt.metadata?.summary === 'string'
+    ? evt.metadata.summary
+    : `${evt.provider} ${evt.eventType}`.replace(/_/g, ' ');
+
+  return {
+    id: evt.eventId,
+    icon,
+    iconColor: accentColor,
+    accentColor,
+    title,
+    description: summary,
+    amount: formatMoney(evt.amount, evt.currency),
+    time: relativeTime(evt.occurredAt),
+    badge,
+    badgeColor: accentColor,
+    badgeBg,
+    category,
+    successLike: isSuccess,
+  };
+}
+
 export default function ReceiptsScreen() {
   const [activeFilter, setActiveFilter] = useState('All');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] = useState<ReceiptItem[]>([]);
 
-  const filtered = activeFilter === 'All' ? receipts : receipts.filter((r) => r.category === activeFilter);
+  const loadTimeline = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/finance/timeline?range=30d&limit=200');
+      if (!res.ok) throw new Error(`Timeline fetch failed (${res.status})`);
+      const data = await res.json();
+      const events: TimelineEvent[] = Array.isArray(data.events) ? data.events : [];
+      setItems(events.map(mapEventToReceipt));
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load receipts timeline');
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTimeline();
+  }, [loadTimeline]);
+
+  const filtered = useMemo(
+    () => (activeFilter === 'All' ? items : items.filter((r) => r.category === activeFilter)),
+    [activeFilter, items],
+  );
+
+  const stats = useMemo(() => {
+    const total = items.length;
+    const successful = items.filter(i => i.successLike).length;
+    const failed = items.filter(i => i.badge === 'Failed').length;
+    const pending = items.filter(i => i.badge === 'Pending').length;
+    return [
+      { label: `${total} total receipts`, color: Colors.text.secondary },
+      { label: `${successful} successful`, color: Colors.semantic.success },
+      { label: `${pending} pending`, color: Colors.accent.amber },
+      { label: `${failed} failed`, color: Colors.semantic.error },
+    ];
+  }, [items]);
 
   return (
     <FinanceHubShell>
       <View style={styles.headerRow}>
         <View>
           <Text style={[Typography.display, { color: Colors.text.primary, marginBottom: 4 }]}>Finance Receipts</Text>
-          <Text style={[Typography.body, { color: Colors.text.tertiary }]}>Audit trail for all financial actions</Text>
+          <Text style={[Typography.body, { color: Colors.text.tertiary }]}>Live audit trail for financial actions</Text>
         </View>
         <Pressable
+          onPress={loadTimeline}
           style={({ hovered }: any) => [
             styles.filterDropdown,
             { backgroundColor: CARD_BG, borderColor: CARD_BORDER },
             hovered && { borderColor: Colors.border.strong },
           ]}
         >
-          <Ionicons name="filter" size={16} color={Colors.text.tertiary} />
-          <Text style={styles.filterDropdownText}>Filter</Text>
-          <Ionicons name="chevron-down" size={14} color={Colors.text.muted} />
+          <Ionicons name="refresh" size={16} color={Colors.text.tertiary} />
+          <Text style={styles.filterDropdownText}>Refresh</Text>
         </Pressable>
       </View>
 
@@ -87,35 +187,54 @@ export default function ReceiptsScreen() {
         ))}
       </View>
 
-      <View style={styles.receiptsList}>
-        {filtered.map((r, i) => (
-          <Pressable
-            key={`${r.title}-${i}`}
-            style={({ hovered }: any) => [
-              styles.receiptCard,
-              premiumCardStyle as any,
-              hovered && styles.receiptCardHover,
-            ]}
-          >
-            {Platform.OS === 'web' && (
-              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', backgroundImage: svgPatterns.invoice(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '15% auto', opacity: 0.5 } as any} />
-            )}
-            <View style={[styles.accentBorder, { backgroundColor: r.accentColor }]} />
-            <View style={[styles.receiptIcon, { backgroundColor: `${r.accentColor}15` }]}>
-              <Ionicons name={r.icon} size={22} color={r.iconColor} />
-            </View>
-            <View style={styles.receiptContent}>
-              <Text style={styles.receiptTitle}>{r.title}</Text>
-              <Text style={styles.receiptDesc}>{r.description}</Text>
-            </View>
-            <Text style={styles.receiptAmount}>{r.amount}</Text>
-            <Text style={styles.receiptTime}>{r.time}</Text>
-            <View style={[styles.badge, { backgroundColor: r.badgeBg }, Platform.OS === 'web' && { boxShadow: `0 0 8px ${r.badgeColor}30` } as any]}>
-              <Text style={[styles.badgeText, { color: r.badgeColor }]}>{r.badge}</Text>
-            </View>
-          </Pressable>
-        ))}
-      </View>
+      {loading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.emptyTitle}>Loading live finance receipts...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="alert-circle" size={22} color={Colors.semantic.error} />
+          <Text style={styles.emptyTitle}>Could not load receipts timeline</Text>
+          <Text style={styles.emptySub}>{error}</Text>
+        </View>
+      ) : filtered.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="document-text-outline" size={22} color={Colors.text.muted} />
+          <Text style={styles.emptyTitle}>No live receipts for this filter</Text>
+          <Text style={styles.emptySub}>New provider events will appear here automatically.</Text>
+        </View>
+      ) : (
+        <View style={styles.receiptsList}>
+          {filtered.map((r) => (
+            <Pressable
+              key={r.id}
+              style={({ hovered }: any) => [
+                styles.receiptCard,
+                premiumCardStyle as any,
+                hovered && styles.receiptCardHover,
+              ]}
+            >
+              {Platform.OS === 'web' && (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', backgroundImage: svgPatterns.invoice(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '15% auto', opacity: 0.5 } as any} />
+              )}
+              <View style={[styles.accentBorder, { backgroundColor: r.accentColor }]} />
+              <View style={[styles.receiptIcon, { backgroundColor: `${r.accentColor}15` }]}>
+                <Ionicons name={r.icon} size={22} color={r.iconColor} />
+              </View>
+              <View style={styles.receiptContent}>
+                <Text style={styles.receiptTitle}>{r.title}</Text>
+                <Text style={styles.receiptDesc}>{r.description}</Text>
+              </View>
+              <Text style={styles.receiptAmount}>{r.amount}</Text>
+              <Text style={styles.receiptTime}>{r.time}</Text>
+              <View style={[styles.badge, { backgroundColor: r.badgeBg }, Platform.OS === 'web' && { boxShadow: `0 0 8px ${r.badgeColor}30` } as any]}>
+                <Text style={[styles.badgeText, { color: r.badgeColor }]}>{r.badge}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       <View style={[styles.statsBar, premiumCardStyle as any]}>
         {Platform.OS === 'web' && (
@@ -187,6 +306,26 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+    gap: 8,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    color: Colors.text.secondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptySub: {
+    color: Colors.text.muted,
+    fontSize: 12,
+  },
   receiptsList: {
     gap: 8,
   },
@@ -240,7 +379,7 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     fontSize: 14,
     fontWeight: '700',
-    minWidth: 70,
+    minWidth: 90,
     textAlign: 'right',
   },
   receiptTime: {
@@ -274,31 +413,25 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  decorativeOrbStats: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-  },
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    paddingHorizontal: 8,
   },
   statDivider: {
     width: 1,
-    height: 14,
+    height: 16,
     backgroundColor: CARD_BORDER,
     marginRight: 8,
   },
   statDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   statLabel: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });

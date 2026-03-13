@@ -8,12 +8,13 @@ import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
 import { isProductionEnv } from './runtimeGuards';
+import { resolveGustoBaseUrl } from './providerEnvironment';
 
 const router = Router();
 
-const GUSTO_API_BASE = 'https://api.gusto-demo.com';
+const GUSTO_API_BASE = resolveGustoBaseUrl();
 const GUSTO_API_VERSION = '2025-06-15';
-const GUSTO_TOKEN_URL = 'https://api.gusto-demo.com/oauth/token';
+const GUSTO_TOKEN_URL = `${GUSTO_API_BASE}/oauth/token`;
 
 const GUSTO_EVENT_MAP: Record<string, string> = {
   'payroll.calculated': 'payroll_calculated',

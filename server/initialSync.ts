@@ -3,8 +3,9 @@ import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { loadToken, loadAllTokens } from './tokenStore';
 import { createReceipt } from './receiptService';
-import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
+import { Configuration, PlaidApi } from 'plaid';
 import { logger } from './logger';
+import { resolvePlaidBasePath, resolveGustoBaseUrl } from './providerEnvironment';
 
 async function upsertConnection(suiteId: string, officeId: string, provider: string, externalAccountId: string): Promise<string> {
   const result = await db.execute(sql`
@@ -53,7 +54,7 @@ async function syncPlaid(suiteId: string, officeId: string, receiptId: string): 
   }
 
   const configuration = new Configuration({
-    basePath: PlaidEnvironments.sandbox,
+    basePath: resolvePlaidBasePath(),
     baseOptions: {
       headers: {
         'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
@@ -324,10 +325,11 @@ async function syncGusto(suiteId: string, officeId: string, receiptId: string): 
   }
 
   const connectionId = await upsertConnection(suiteId, officeId, 'gusto', token.company_uuid);
+  const gustoBaseUrl = resolveGustoBaseUrl();
 
   try {
     const response = await fetch(
-      `https://api.gusto-demo.com/v1/companies/${token.company_uuid}/payrolls?processed=true`,
+      `${gustoBaseUrl}/v1/companies/${token.company_uuid}/payrolls?processed=true`,
       {
         headers: {
           'Authorization': `Bearer ${token.access_token}`,

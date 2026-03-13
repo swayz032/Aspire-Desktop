@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode } from 'plaid';
+import { Configuration, PlaidApi, Products, CountryCode } from 'plaid';
 import { saveToken, deleteToken, loadAllTokens, deleteAllTokens } from './tokenStore';
 import { createTrustSpineReceipt } from './receiptService';
 import { logger } from './logger';
+import { resolvePlaidBasePath, resolveGustoBaseUrl } from './providerEnvironment';
 
 const configuration = new Configuration({
-  basePath: PlaidEnvironments.sandbox,
+  basePath: resolvePlaidBasePath(),
   baseOptions: {
     headers: {
       'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
@@ -13,6 +14,7 @@ const configuration = new Configuration({
     },
   },
 });
+const GUSTO_API_BASE = resolveGustoBaseUrl();
 
 const plaidClient = new PlaidApi(configuration);
 
@@ -246,7 +248,6 @@ router.post('/api/plaid/processor/gusto', async (req: Request, res: Response) =>
     });
     const processorToken = processorResponse.data.processor_token;
 
-    const GUSTO_API_BASE = 'https://api.gusto-demo.com';
     const { getCurrentAccessToken } = await import('./gustoRoutes');
     const gustoToken = getCurrentAccessToken();
 

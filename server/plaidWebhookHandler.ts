@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
+import { Configuration, PlaidApi } from 'plaid';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
@@ -7,9 +7,10 @@ import { updateConnectionSyncTime } from './financeTokenStore';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
+import { resolvePlaidBasePath } from './providerEnvironment';
 
 const configuration = new Configuration({
-  basePath: PlaidEnvironments.sandbox,
+  basePath: resolvePlaidBasePath(),
   baseOptions: {
     headers: {
       'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,

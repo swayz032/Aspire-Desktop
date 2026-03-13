@@ -125,7 +125,7 @@ export function categorizeToDepartments(accounts: any[]): DepartmentShelf[] {
 
   return Object.entries(deptMap).map(([name, dept]) => {
     const total = dept.accounts.reduce((s, a) => s + (parseFloat(a.CurrentBalance) || 0), 0);
-    const fakeSparkline = [total * 0.85, total * 0.88, total * 0.92, total * 0.87, total * 0.95, total * 0.93, total * 0.97, total];
+    const stableTrend = Array(8).fill(total);
     return {
       id: name.toLowerCase(),
       name,
@@ -133,20 +133,14 @@ export function categorizeToDepartments(accounts: any[]): DepartmentShelf[] {
       icon: dept.icon,
       color: dept.color,
       totalBalance: total,
-      trend: fakeSparkline,
+      trend: stableTrend,
       accounts: dept.accounts.map(a => ({
         id: a.Id || a.id || '',
         name: a.Name || a.name || '',
         balance: parseFloat(a.CurrentBalance) || 0,
         subType: a.AccountSubType || a.SubAccount || '',
         lastActivity: a.MetaData?.LastUpdatedTime,
-        trend: [
-          (parseFloat(a.CurrentBalance) || 0) * 0.9,
-          (parseFloat(a.CurrentBalance) || 0) * 0.92,
-          (parseFloat(a.CurrentBalance) || 0) * 0.88,
-          (parseFloat(a.CurrentBalance) || 0) * 0.95,
-          parseFloat(a.CurrentBalance) || 0,
-        ],
+        trend: Array(5).fill(parseFloat(a.CurrentBalance) || 0),
       })),
     };
   }).filter(d => d.accounts.length > 0);

@@ -8,6 +8,7 @@ import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
 import { isProductionEnv } from './runtimeGuards';
+import { resolveQboApiBase } from './providerEnvironment';
 
 const router = Router();
 
@@ -22,7 +23,7 @@ const QBO_EVENT_MAP: Record<string, string> = {
   'BillPayment': 'qbo_payment_changed',
 };
 
-const QBO_API_BASE = 'https://sandbox-quickbooks.api.intuit.com';
+const QBO_API_BASE = resolveQboApiBase();
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 
 function computeRawHash(data: any): string {

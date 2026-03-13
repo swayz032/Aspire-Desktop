@@ -3,13 +3,14 @@ import crypto from 'crypto';
 import { saveToken, loadToken, deleteToken } from './tokenStore';
 import { createTrustSpineReceipt } from './receiptService';
 import { logger } from './logger';
+import { resolveGustoBaseUrl } from './providerEnvironment';
 
 const router = Router();
 
-const GUSTO_API_BASE = 'https://api.gusto-demo.com';
+const GUSTO_API_BASE = resolveGustoBaseUrl();
 const GUSTO_API_VERSION = '2025-06-15';
-const GUSTO_AUTH_URL = 'https://api.gusto-demo.com/oauth/authorize';
-const GUSTO_TOKEN_URL = 'https://api.gusto-demo.com/oauth/token';
+const GUSTO_AUTH_URL = `${GUSTO_API_BASE}/oauth/authorize`;
+const GUSTO_TOKEN_URL = `${GUSTO_API_BASE}/oauth/token`;
 
 const DOMAIN = process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000';
 const BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || (DOMAIN.includes('localhost') ? `http://${DOMAIN}` : `https://${DOMAIN}`);
