@@ -55,6 +55,7 @@ logger.info('Supabase admin initialized', { initialized: supabaseAdmin !== null 
 const PUBLIC_PATHS = [
   '/api/health',
   '/api/stripe/webhook',
+  '/api/stripe/finance-webhook',  // Stripe Connect webhooks (signature-validated, no JWT)
   '/api/book/',             // Public booking pages
   '/api/sandbox/health',
   '/api/webhooks/twilio/',  // Twilio webhooks (signature-validated, no JWT)
