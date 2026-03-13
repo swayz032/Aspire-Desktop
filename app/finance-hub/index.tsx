@@ -43,39 +43,6 @@ interface ConnectionStatus {
 }
 
 
-const fallbackCashTrendData = [
-  { day: 'Jan 25', value: 42000 }, { day: 'Jan 26', value: 41200 }, { day: 'Jan 27', value: 43800 },
-  { day: 'Jan 28', value: 44500 }, { day: 'Jan 29', value: 39200 }, { day: 'Jan 30', value: 40100 },
-  { day: 'Jan 31', value: 41800 }, { day: 'Feb 1', value: 43200 }, { day: 'Feb 2', value: 44900 },
-  { day: 'Feb 3', value: 42100 }, { day: 'Feb 4', value: 45600 }, { day: 'Feb 5', value: 44200 },
-  { day: 'Feb 6', value: 46800 }, { day: 'Feb 7', value: 47200 },
-];
-
-const fallbackMoneyInOutData = [
-  { day: 'Mon', inflow: 6200, outflow: 3100 },
-  { day: 'Tue', inflow: 4800, outflow: 5200 },
-  { day: 'Wed', inflow: 7100, outflow: 2800 },
-  { day: 'Thu', inflow: 3400, outflow: 4100 },
-  { day: 'Fri', inflow: 5900, outflow: 8400 },
-  { day: 'Sat', inflow: 1200, outflow: 600 },
-  { day: 'Sun', inflow: 800, outflow: 200 },
-];
-
-const fallbackExpenseData = [
-  { name: 'Payroll', value: 42, color: '#2563EB' },
-  { name: 'Operations', value: 24, color: '#059669' },
-  { name: 'Software', value: 15, color: '#D97706' },
-  { name: 'Marketing', value: 12, color: '#DC2626' },
-  { name: 'Other', value: 7, color: '#6366F1' },
-];
-
-const fallbackKpiSparkData = {
-  balance: [38, 40, 42, 41, 43, 44, 45, 47],
-  income: [3, 5, 4, 7, 6, 8, 7, 8],
-  savings: [12, 13, 13, 14, 14, 14, 15, 15],
-  expenses: [8, 9, 7, 8, 7, 7, 7, 7],
-};
-
 function formatCurrency(cents: number | null | undefined): string {
   const safe = cents ?? 0;
   const abs = Math.abs(safe);
@@ -634,25 +601,48 @@ function FinanceHubContent() {
   const isConnected = connections?.summary?.connected ? connections.summary.connected > 0 : false;
   const hasSnapshot = snapshot?.connected && snapshot?.generatedAt;
 
-  const cashTrendData = fallbackCashTrendData;
-  const moneyInOutData = fallbackMoneyInOutData;
-  const expenseData = hasSnapshot && snapshot.chapters.month.expenses > 0
+  const cashTrendData = hasSnapshot
     ? [
-        { name: 'Payroll', value: 42, color: '#2563EB' },
-        { name: 'Operations', value: 24, color: '#059669' },
-        { name: 'Software', value: 15, color: '#D97706' },
-        { name: 'Marketing', value: 12, color: '#DC2626' },
-        { name: 'Other', value: 7, color: '#6366F1' },
+        { day: 'Now', value: (snapshot.chapters.now.cashAvailable || 0) / 100 },
+        {
+          day: '7d',
+          value:
+            ((snapshot.chapters.now.cashAvailable || 0) + (snapshot.chapters.next.netCashFlow7d || 0)) / 100,
+        },
       ]
-    : fallbackExpenseData;
-  const kpiSparkData = fallbackKpiSparkData;
+    : [];
+  const moneyInOutData = hasSnapshot
+    ? [
+        {
+          day: '7d',
+          inflow: (snapshot.chapters.next.expectedInflows7d || 0) / 100,
+          outflow: (snapshot.chapters.next.expectedOutflows7d || 0) / 100,
+        },
+      ]
+    : [];
+  const expenseData = hasSnapshot && snapshot.chapters.month.expenses > 0
+    ? [{ name: 'Total Expenses', value: 100, color: '#2563EB' }]
+    : [];
+  const kpiSparkData = hasSnapshot
+    ? {
+        balance: Array(8).fill((snapshot.chapters.now.cashAvailable || 0) / 100),
+        income: Array(8).fill((snapshot.chapters.month.revenue || 0) / 100),
+        savings: Array(8).fill((snapshot.chapters.now.stripeAvailable || 0) / 100),
+        expenses: Array(8).fill((snapshot.chapters.month.expenses || 0) / 100),
+      }
+    : {
+        balance: [],
+        income: [],
+        savings: [],
+        expenses: [],
+      };
 
 
   const kpiCards = hasSnapshot ? [
-    { label: 'Balance', value: formatShortCurrency(snapshot.chapters.now.cashAvailable), change: '+3.2%', up: true, icon: 'wallet', sparkKey: 'balance' as const, color: '#10B981', metricId: 'cash_available' },
-    { label: 'Income', value: `+${formatShortCurrency(snapshot.chapters.month.revenue)}`, change: '+12.4%', up: (snapshot.chapters.month.revenue || 0) > 0, icon: 'chart', sparkKey: 'income' as const, color: '#10B981', metricId: 'monthly_revenue' },
-    { label: 'Savings', value: formatShortCurrency(snapshot.chapters.now.stripeAvailable), change: '+10.0%', up: true, icon: 'shield', sparkKey: 'savings' as const, color: '#10B981', metricId: 'stripe_available' },
-    { label: 'Expenses', value: `-${formatShortCurrency(snapshot.chapters.month.expenses)}`, change: '-5.2%', up: false, icon: 'receipt', sparkKey: 'expenses' as const, color: '#ef4444', metricId: 'monthly_expenses' },
+    { label: 'Balance', value: formatShortCurrency(snapshot.chapters.now.cashAvailable), change: 'Live', up: true, icon: 'wallet', sparkKey: 'balance' as const, color: '#10B981', metricId: 'cash_available' },
+    { label: 'Income', value: `+${formatShortCurrency(snapshot.chapters.month.revenue)}`, change: 'Live', up: (snapshot.chapters.month.revenue || 0) > 0, icon: 'chart', sparkKey: 'income' as const, color: '#10B981', metricId: 'monthly_revenue' },
+    { label: 'Savings', value: formatShortCurrency(snapshot.chapters.now.stripeAvailable), change: 'Live', up: true, icon: 'shield', sparkKey: 'savings' as const, color: '#10B981', metricId: 'stripe_available' },
+    { label: 'Expenses', value: `-${formatShortCurrency(snapshot.chapters.month.expenses)}`, change: 'Live', up: false, icon: 'receipt', sparkKey: 'expenses' as const, color: '#ef4444', metricId: 'monthly_expenses' },
   ] : [
     { label: 'Balance', value: '\u2014', change: '\u2014', up: true, icon: 'wallet', sparkKey: 'balance' as const, color: '#666', metricId: 'cash_available' },
     { label: 'Income', value: '\u2014', change: '\u2014', up: true, icon: 'chart', sparkKey: 'income' as const, color: '#666', metricId: 'monthly_revenue' },
@@ -709,8 +699,7 @@ function FinanceHubContent() {
       financeAgents.includes(item.assignedAgent?.toLowerCase() || '') ||
       financeAgents.includes(item.staffRole?.toLowerCase() || '')
     );
-    // If no finance-specific items found, show all items as safe fallback
-    return filtered.length > 0 ? filtered : merged;
+    return filtered;
   }, [dynamicItems, supabaseAuthority]);
 
   const webHover = (key: string) => Platform.OS === 'web' ? {
@@ -910,7 +899,7 @@ function FinanceHubContent() {
             ) : (
               <View style={[s.liveBadge, { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.12)' }]}>
                 <Ionicons name="unlink" size={10} color="#888" />
-                <Text style={[s.liveText, { color: '#888' }]}>Demo</Text>
+                <Text style={[s.liveText, { color: '#888' }]}>Disconnected</Text>
               </View>
             )}
           </View>
@@ -944,7 +933,7 @@ function FinanceHubContent() {
               <Text style={{ color: '#888', fontSize: 11 }}>Connect providers in Finance Hub → Connections for live data</Text>
             </View>
           )}
-          {Platform.OS === 'web' && (
+          {Platform.OS === 'web' && hasSnapshot && (
             <div style={{
               marginTop: 16, marginLeft: -4, marginRight: -4,
               position: 'relative',
@@ -1096,7 +1085,7 @@ function FinanceHubContent() {
               </View>
             </View>
           </View>
-          {Platform.OS === 'web' && (
+          {Platform.OS === 'web' && hasSnapshot ? (
             <div className="bar-chart-container" style={{
               position: 'relative',
               animation: 'fadeSlideUp 0.8s ease-out both',
@@ -1130,6 +1119,10 @@ function FinanceHubContent() {
               borderRadius: 8,
             }} />
             </div>
+          ) : (
+            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+              <Text style={{ color: '#888', fontSize: 12 }}>Awaiting live flow data from connected providers.</Text>
+            </View>
           )}
         </GlassCard>
 
@@ -1200,14 +1193,16 @@ function FinanceHubContent() {
               </ResponsiveContainer>
             </div>
           )}
-          <View style={s.expenseLegend}>
-            {expenseData.map((item, i) => (
+            <View style={s.expenseLegend}>
+            {expenseData.length > 0 ? expenseData.map((item, i) => (
               <View key={i} style={s.expenseLegendItem}>
                 <View style={[s.expenseLegendDot, { backgroundColor: item.color }]} />
                 <Text style={s.expenseLegendName}>{item.name}</Text>
                 <Text style={s.expenseLegendVal}>{item.value}%</Text>
               </View>
-            ))}
+            )) : (
+              <Text style={{ color: '#888', fontSize: 12 }}>No live expense composition available yet.</Text>
+            )}
           </View>
           </GlassCard>
         </View>

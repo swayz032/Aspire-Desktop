@@ -480,7 +480,7 @@ export default function RunPayrollScreen() {
       {demoMode && (
         <View style={styles.demoBanner}>
           <Ionicons name="information-circle-outline" size={16} color="#f59e0b" />
-          <Text style={styles.demoBannerText}>No employees found in payroll system. Add employees in the People tab or connect your payroll provider in Connections to get started.</Text>
+          <Text style={styles.demoBannerText}>No live payroll employees found from your connected provider. Add employees in your payroll system, then refresh.</Text>
         </View>
       )}
       <View style={styles.summaryGrid}>
@@ -511,7 +511,7 @@ export default function RunPayrollScreen() {
         <Pressable
           style={[styles.primaryBtn, (retrieving || (!gustoConnected || gustoEmployees.length === 0)) && styles.primaryBtnDisabled, hoveredBtn === 'create' && styles.primaryBtnHover]}
           onPress={handleCreatePayroll}
-          disabled={retrieving}
+          disabled={retrieving || (!gustoConnected || gustoEmployees.length === 0)}
           {...webHover('create')}
         >
           {retrieving ? (
@@ -1181,18 +1181,20 @@ export default function RunPayrollScreen() {
               const hasGustoData = empGustoStubs.length > 0;
               const latestStub = hasGustoData ? empGustoStubs[0] : null;
 
-              const gross = hasGustoData ? parseFloat(latestStub.gross_pay || '0') : calcGross(emp);
-              const net = hasGustoData ? parseFloat(latestStub.net_pay || '0') : calcNet(emp);
+              const gross = hasGustoData ? parseFloat(latestStub.gross_pay || '0') : null;
+              const net = hasGustoData ? parseFloat(latestStub.net_pay || '0') : null;
               const stubCheckDate = hasGustoData ? latestStub.check_date : checkDate;
               const payMethod = hasGustoData ? (latestStub.payment_method || 'Direct Deposit') : 'Direct Deposit';
-              const checkAmt = hasGustoData ? parseFloat(latestStub.check_amount || '0') : net;
+              const checkAmt = hasGustoData ? parseFloat(latestStub.check_amount || '0') : null;
 
               const regular = calcRegularPay(emp);
               const overtime = calcOvertimePay(emp);
               const bonus = parseFloat(emp.bonus || '0');
-              const ficaEe = gross * 0.0765;
-              const fedWithholding = gross * 0.12;
-              const stateWithholding = gross * 0.04;
+              const grossAmount = gross ?? 0;
+              const netAmount = net ?? 0;
+              const ficaEe = grossAmount * 0.0765;
+              const fedWithholding = grossAmount * 0.12;
+              const stateWithholding = grossAmount * 0.04;
               const totalTaxes = ficaEe + fedWithholding + stateWithholding;
               const totalDed = emp.deductions;
               return (
@@ -1221,10 +1223,10 @@ export default function RunPayrollScreen() {
                       <Text style={stubStyles.liveDataText}>Fetching paystub data...</Text>
                     </View>
                   )}
-                  {demoMode && !hasGustoData && !paystubLoading && (
+                  {!hasGustoData && !paystubLoading && (
                     <View style={stubStyles.demoBannerSmall}>
                       <Ionicons name="information-circle" size={14} color="#f59e0b" />
-                      <Text style={stubStyles.demoBannerSmallText}>Demo Mode — Calculated estimates</Text>
+                      <Text style={stubStyles.demoBannerSmallText}>Live paystub data unavailable for this employee.</Text>
                     </View>
                   )}
 
@@ -1243,65 +1245,83 @@ export default function RunPayrollScreen() {
 
                   <View style={stubStyles.section}>
                     <Text style={stubStyles.sectionTitle}>Earnings</Text>
-                    <View style={stubStyles.lineItem}>
-                      <Text style={stubStyles.lineLabel}>Regular ({emp.hours} hrs @ {fmt(emp.rate)}/hr)</Text>
-                      <Text style={stubStyles.lineValue}>{fmt(regular)}</Text>
-                    </View>
-                    {overtime > 0 && (
-                      <View style={stubStyles.lineItem}>
-                        <Text style={stubStyles.lineLabel}>Overtime ({emp.overtime} hrs @ {fmt(emp.rate * 1.5)}/hr)</Text>
-                        <Text style={stubStyles.lineValue}>{fmt(overtime)}</Text>
-                      </View>
+                    {hasGustoData ? (
+                      <>
+                        <View style={stubStyles.lineItem}>
+                          <Text style={stubStyles.lineLabel}>Regular ({emp.hours} hrs @ {fmt(emp.rate)}/hr)</Text>
+                          <Text style={stubStyles.lineValue}>{fmt(regular)}</Text>
+                        </View>
+                        {overtime > 0 && (
+                          <View style={stubStyles.lineItem}>
+                            <Text style={stubStyles.lineLabel}>Overtime ({emp.overtime} hrs @ {fmt(emp.rate * 1.5)}/hr)</Text>
+                            <Text style={stubStyles.lineValue}>{fmt(overtime)}</Text>
+                          </View>
+                        )}
+                        {bonus > 0 && (
+                          <View style={stubStyles.lineItem}>
+                            <Text style={stubStyles.lineLabel}>Bonus</Text>
+                            <Text style={stubStyles.lineValue}>{fmt(bonus)}</Text>
+                          </View>
+                        )}
+                        <View style={stubStyles.totalLine}>
+                          <Text style={stubStyles.totalLabel}>Gross Pay</Text>
+                          <Text style={stubStyles.totalValue}>{gross !== null ? fmt(gross) : '—'}</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <Text style={stubStyles.demoBannerSmallText}>Earnings are only shown from live provider paystubs.</Text>
                     )}
-                    {bonus > 0 && (
-                      <View style={stubStyles.lineItem}>
-                        <Text style={stubStyles.lineLabel}>Bonus</Text>
-                        <Text style={stubStyles.lineValue}>{fmt(bonus)}</Text>
-                      </View>
-                    )}
-                    <View style={stubStyles.totalLine}>
-                      <Text style={stubStyles.totalLabel}>Gross Pay</Text>
-                      <Text style={stubStyles.totalValue}>{fmt(gross)}</Text>
-                    </View>
                   </View>
 
                   <View style={stubStyles.section}>
                     <Text style={stubStyles.sectionTitle}>Taxes & Withholdings</Text>
-                    <View style={stubStyles.lineItem}>
-                      <Text style={stubStyles.lineLabel}>Federal Income Tax (12%)</Text>
-                      <Text style={[stubStyles.lineValue, { color: '#ef4444' }]}>-{fmt(fedWithholding)}</Text>
-                    </View>
-                    <View style={stubStyles.lineItem}>
-                      <Text style={stubStyles.lineLabel}>State Income Tax (4%)</Text>
-                      <Text style={[stubStyles.lineValue, { color: '#ef4444' }]}>-{fmt(stateWithholding)}</Text>
-                    </View>
-                    <View style={stubStyles.lineItem}>
-                      <Text style={stubStyles.lineLabel}>FICA (Social Security + Medicare)</Text>
-                      <Text style={[stubStyles.lineValue, { color: '#ef4444' }]}>-{fmt(ficaEe)}</Text>
-                    </View>
-                    <View style={stubStyles.totalLine}>
-                      <Text style={stubStyles.totalLabel}>Total Taxes</Text>
-                      <Text style={[stubStyles.totalValue, { color: '#ef4444' }]}>-{fmt(totalTaxes)}</Text>
-                    </View>
+                    {hasGustoData ? (
+                      <>
+                        <View style={stubStyles.lineItem}>
+                          <Text style={stubStyles.lineLabel}>Federal Income Tax (12%)</Text>
+                          <Text style={[stubStyles.lineValue, { color: '#ef4444' }]}>-{fmt(fedWithholding)}</Text>
+                        </View>
+                        <View style={stubStyles.lineItem}>
+                          <Text style={stubStyles.lineLabel}>State Income Tax (4%)</Text>
+                          <Text style={[stubStyles.lineValue, { color: '#ef4444' }]}>-{fmt(stateWithholding)}</Text>
+                        </View>
+                        <View style={stubStyles.lineItem}>
+                          <Text style={stubStyles.lineLabel}>FICA (Social Security + Medicare)</Text>
+                          <Text style={[stubStyles.lineValue, { color: '#ef4444' }]}>-{fmt(ficaEe)}</Text>
+                        </View>
+                        <View style={stubStyles.totalLine}>
+                          <Text style={stubStyles.totalLabel}>Total Taxes</Text>
+                          <Text style={[stubStyles.totalValue, { color: '#ef4444' }]}>-{fmt(totalTaxes)}</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <Text style={stubStyles.demoBannerSmallText}>Tax detail requires live provider paystubs.</Text>
+                    )}
                   </View>
 
                   <View style={stubStyles.section}>
                     <Text style={stubStyles.sectionTitle}>Deductions</Text>
-                    <View style={stubStyles.lineItem}>
-                      <Text style={stubStyles.lineLabel}>Benefits (Health, Dental, Vision, 401k)</Text>
-                      <Text style={[stubStyles.lineValue, { color: '#f59e0b' }]}>-{fmt(totalDed)}</Text>
-                    </View>
-                    <View style={stubStyles.totalLine}>
-                      <Text style={stubStyles.totalLabel}>Total Deductions</Text>
-                      <Text style={[stubStyles.totalValue, { color: '#f59e0b' }]}>-{fmt(totalDed)}</Text>
-                    </View>
+                    {hasGustoData ? (
+                      <>
+                        <View style={stubStyles.lineItem}>
+                          <Text style={stubStyles.lineLabel}>Benefits (Health, Dental, Vision, 401k)</Text>
+                          <Text style={[stubStyles.lineValue, { color: '#f59e0b' }]}>-{fmt(totalDed)}</Text>
+                        </View>
+                        <View style={stubStyles.totalLine}>
+                          <Text style={stubStyles.totalLabel}>Total Deductions</Text>
+                          <Text style={[stubStyles.totalValue, { color: '#f59e0b' }]}>-{fmt(totalDed)}</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <Text style={stubStyles.demoBannerSmallText}>Deduction detail requires live provider paystubs.</Text>
+                    )}
                   </View>
 
                   <View style={stubStyles.netSection}>
                     <Text style={stubStyles.netLabel}>Net Pay</Text>
-                    <Text style={stubStyles.netValue}>{fmt(net)}</Text>
+                    <Text style={stubStyles.netValue}>{net !== null ? fmt(net) : '—'}</Text>
                   </View>
-                  {hasGustoData && checkAmt !== net && (
+                  {hasGustoData && checkAmt !== null && net !== null && checkAmt !== net && (
                     <View style={stubStyles.lineItem}>
                       <Text style={stubStyles.lineLabel}>Check Amount</Text>
                       <Text style={stubStyles.lineValue}>{fmt(checkAmt)}</Text>
@@ -1326,7 +1346,7 @@ export default function RunPayrollScreen() {
                     </Pressable>
                   )}
 
-                  {Platform.OS === 'web' && (
+                  {Platform.OS === 'web' && hasGustoData && (
                     <Pressable
                       style={[stubStyles.pdfBtn, { backgroundColor: 'rgba(139,92,246,0.2)', marginTop: hasGustoData && latestStub?.payroll_uuid ? 8 : 0 }]}
                       onPress={() => {
@@ -1354,7 +1374,7 @@ td{padding:10px 12px;border-bottom:1px solid #eee;font-size:14px}
 <tr><td>Regular Wages</td><td class="amount">${emp.hours}</td><td class="amount">$${emp.rate.toFixed(2)}</td><td class="amount">$${regular.toFixed(2)}</td></tr>
 ${overtime > 0 ? `<tr><td>Overtime (1.5x)</td><td class="amount">${emp.overtime}</td><td class="amount">$${(emp.rate * 1.5).toFixed(2)}</td><td class="amount">$${overtime.toFixed(2)}</td></tr>` : ''}
 ${bonus > 0 ? `<tr><td>Bonus</td><td class="amount">—</td><td class="amount">—</td><td class="amount">$${bonus.toFixed(2)}</td></tr>` : ''}
-<tr class="total-row"><td>Gross Pay</td><td></td><td></td><td class="amount">$${gross.toFixed(2)}</td></tr>
+<tr class="total-row"><td>Gross Pay</td><td></td><td></td><td class="amount">$${grossAmount.toFixed(2)}</td></tr>
 </tbody></table>
 <table><thead><tr><th>Taxes & Deductions</th><th class="amount">Rate</th><th class="amount">Amount</th></tr></thead><tbody>
 <tr><td>Federal Income Tax</td><td class="amount">12.0%</td><td class="amount">-$${fedWithholding.toFixed(2)}</td></tr>
@@ -1363,7 +1383,7 @@ ${bonus > 0 ? `<tr><td>Bonus</td><td class="amount">—</td><td class="amount">�
 <tr><td>Benefits & Other</td><td class="amount">—</td><td class="amount">-$${totalDed.toFixed(2)}</td></tr>
 <tr class="total-row"><td>Total Deductions</td><td></td><td class="amount">-$${(totalTaxes + totalDed).toFixed(2)}</td></tr>
 </tbody></table>
-<div class="net-box"><div class="net-label">NET PAY</div><div class="net-value">$${net.toFixed(2)}</div></div>
+<div class="net-box"><div class="net-label">NET PAY</div><div class="net-value">$${netAmount.toFixed(2)}</div></div>
 <div class="footer">${displayCompanyName} &bull; Payment Method: ${payMethod} &bull; Generated ${new Date().toLocaleDateString()}</div>
 <button onclick="window.print()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;display:block;margin-left:auto;margin-right:auto">Print / Save as PDF</button>
 </body></html>`);
