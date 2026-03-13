@@ -60,6 +60,7 @@ const PUBLIC_PATHS = [
   '/api/sandbox/health',
   '/api/webhooks/twilio/',  // Twilio webhooks (signature-validated, no JWT)
   '/api/mail/oauth/google/callback', // Google redirects here without JWT
+  '/api/quickbooks/callback',        // Intuit OAuth redirect — no JWT, server validates state+code
   '/api/conference/join/',  // Join code resolution — guests authenticate via short-lived code, not JWT
   '/api/ava/chat-stream',   // Anam CUSTOMER_CLIENT_V1 callback — auth via session store, not JWT
   '/api/auth/validate-invite-code', // Private beta invite gate — rate-limited, no JWT needed
