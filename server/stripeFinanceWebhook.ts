@@ -7,6 +7,7 @@ import { updateConnectionSyncTime, getConnectionByProvider } from './financeToke
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
+import { isProductionEnv } from './runtimeGuards';
 
 const STRIPE_EVENT_MAP: Record<string, string> = {
   'invoice.sent': 'invoice_sent',
@@ -259,6 +260,10 @@ router.post(
           return res.status(400).json({ error: 'Signature verification failed' });
         }
       } else {
+        if (isProductionEnv()) {
+          logger.error('STRIPE_WEBHOOK_SECRET missing in production');
+          return res.status(503).json({ error: 'Webhook secret not configured' });
+        }
         logger.warn('STRIPE_WEBHOOK_SECRET not set — accepting webhook without signature verification (sandbox mode)');
         try {
           event = JSON.parse(typeof req.body === 'string' ? req.body : req.body.toString());

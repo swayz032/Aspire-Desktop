@@ -19,6 +19,7 @@ import { useRealtimeApprovalRequests } from '@/hooks/useRealtimeApprovalRequests
 import { useDesktop } from '@/lib/useDesktop';
 import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
+import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
 
 /**
  * Global Error Boundary — prevents white screen on uncaught errors.
@@ -119,7 +120,7 @@ function useWebDesktopSetup() {
   }, []);
 }
 
-const DEV_BYPASS_AUTH = !process.env.EXPO_PUBLIC_SUPABASE_URL;
+const DEV_BYPASS_AUTH = allowDevSupabaseBypass();
 
 function useAuthGate() {
   const { session, isLoading, suiteId } = useSupabase();

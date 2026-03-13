@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
 import type { Session } from '@supabase/supabase-js';
 
-const DEV_BYPASS_AUTH = !process.env.EXPO_PUBLIC_SUPABASE_URL;
+const DEV_BYPASS_AUTH = allowDevSupabaseBypass();
 
 const DEV_FAKE_SESSION = {
   access_token: 'dev-bypass-token',

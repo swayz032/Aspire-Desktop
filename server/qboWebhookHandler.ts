@@ -7,6 +7,7 @@ import { loadToken } from './tokenStore';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
+import { isProductionEnv } from './runtimeGuards';
 
 const router = Router();
 
@@ -31,6 +32,10 @@ function computeRawHash(data: any): string {
 function verifyQBOSignature(payload: string, signature: string): boolean {
   const verifierToken = process.env.QBO_WEBHOOK_VERIFIER_TOKEN;
   if (!verifierToken) {
+    if (isProductionEnv()) {
+      logger.error('QBO_WEBHOOK_VERIFIER_TOKEN not set — rejecting webhook in production');
+      return false;
+    }
     logger.warn('QBO_WEBHOOK_VERIFIER_TOKEN not set — accepting webhook without signature verification (sandbox mode)');
     return true;
   }
@@ -407,6 +412,11 @@ export async function fetchQBOReports(suiteId?: string, officeId?: string): Prom
 
 router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
   try {
+    if (isProductionEnv() && !(process.env.QBO_WEBHOOK_VERIFIER_TOKEN || '').trim()) {
+      logger.error('QBO_WEBHOOK_VERIFIER_TOKEN missing in production');
+      return res.status(503).json({ error: 'Webhook verifier token not configured' });
+    }
+
     const signature = req.headers['intuit-signature'] as string;
     const rawBody = JSON.stringify(req.body);
 

@@ -7,6 +7,7 @@ import { loadToken, saveToken } from './tokenStore';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
+import { isProductionEnv } from './runtimeGuards';
 
 const router = Router();
 
@@ -32,6 +33,10 @@ function computeRawHash(data: any): string {
 function verifyGustoSignature(payload: string, signature: string): boolean {
   const webhookSecret = process.env.GUSTO_WEBHOOK_SECRET;
   if (!webhookSecret) {
+    if (isProductionEnv()) {
+      logger.error('GUSTO_WEBHOOK_SECRET not set — rejecting webhook in production');
+      return false;
+    }
     logger.warn('GUSTO_WEBHOOK_SECRET not set — accepting webhook without signature verification (sandbox mode)');
     return true;
   }
@@ -388,6 +393,11 @@ router.post('/api/gusto/verify-subscription', async (req: Request, res: Response
 
 router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) => {
   try {
+    if (isProductionEnv() && !(process.env.GUSTO_WEBHOOK_SECRET || '').trim()) {
+      logger.error('GUSTO_WEBHOOK_SECRET missing in production');
+      return res.status(503).json({ error: 'Webhook secret not configured' });
+    }
+
     if (req.body && req.body.verification_token && !req.body.event_type && !req.body.type) {
       capturedVerificationToken = req.body.verification_token;
       logger.info('GUSTO VERIFICATION TOKEN RECEIVED (redacted from logs for security)');

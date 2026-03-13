@@ -1,8 +1,18 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { allowDevSupabaseBypass, hasSupabaseWebConfig, isProductionRuntime } from './supabaseRuntime';
 
-const DEV_BYPASS = !process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const SUPABASE_WEB_CONFIGURED = hasSupabaseWebConfig();
+const DEV_BYPASS = allowDevSupabaseBypass();
+const SUPABASE_URL = SUPABASE_WEB_CONFIGURED
+  ? process.env.EXPO_PUBLIC_SUPABASE_URL!
+  : 'https://placeholder.supabase.co';
+const SUPABASE_ANON_KEY = SUPABASE_WEB_CONFIGURED
+  ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
+  : 'placeholder-anon-key';
+
+if (!SUPABASE_WEB_CONFIGURED && isProductionRuntime()) {
+  throw new Error('Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY in production.');
+}
 
 if (DEV_BYPASS) {
   console.warn(
