@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
 import { createTrustSpineReceipt } from './receiptService';
 import { logger } from './logger';
+import { saveToken, loadToken, deleteToken } from './tokenStore';
 
 const router = Router();
 
@@ -12,6 +13,27 @@ const DOMAIN = process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000';
 const BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || (DOMAIN.includes('localhost') ? `http://${DOMAIN}` : `https://${DOMAIN}`);
 
 let connectedAccountId: string | null = null;
+const STRIPE_CONNECT_PROVIDER_KEY = 'stripe_connect';
+
+async function setConnectedAccount(accountId: string): Promise<void> {
+  connectedAccountId = accountId;
+  await saveToken(STRIPE_CONNECT_PROVIDER_KEY, {
+    access_token: 'connected',
+    item_id: accountId,
+  });
+}
+
+export async function loadStripeConnectState(): Promise<void> {
+  try {
+    const stored = await loadToken(STRIPE_CONNECT_PROVIDER_KEY);
+    connectedAccountId = stored?.item_id || null;
+    if (connectedAccountId) {
+      logger.info('Stripe Connect: Loaded connected account from token store', { accountId: connectedAccountId });
+    }
+  } catch (error: unknown) {
+    logger.warn('Stripe Connect: Failed to load persisted account', { error: error instanceof Error ? error.message : 'unknown' });
+  }
+}
 
 // --- Helper: extract suite context from headers ---
 function getSuiteContext(req: Request) {
@@ -65,7 +87,7 @@ router.post('/api/stripe-connect/create-account', async (req: Request, res: Resp
         transfers: { requested: true },
       },
     });
-    connectedAccountId = account.id;
+    await setConnectedAccount(account.id);
     await emitReceipt(req, 'stripe.account.create', 'SUCCEEDED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', country: country || 'US', business_type: business_type || 'individual' },
       { account_id: account.id },
@@ -120,7 +142,7 @@ router.get('/api/stripe-connect/authorize', async (req: Request, res: Response) 
         transfers: { requested: true },
       },
     });
-    connectedAccountId = account.id;
+    await setConnectedAccount(account.id);
 
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
@@ -147,25 +169,29 @@ router.get('/api/stripe-connect/authorize', async (req: Request, res: Response) 
 router.get('/api/stripe-connect/status', async (_req: Request, res: Response) => {
   try {
     if (!connectedAccountId) {
-      return res.json({ connected: false, accountId: null });
+      return res.json({ connected: false, healthy: false, accountId: null, detail: 'Not connected' });
     }
     const account = await stripe.accounts.retrieve(connectedAccountId);
+    const onboardingComplete = !!(account.details_submitted && account.charges_enabled && account.payouts_enabled);
     res.json({
       connected: true,
+      healthy: onboardingComplete,
       accountId: connectedAccountId,
       chargesEnabled: account.charges_enabled,
       payoutsEnabled: account.payouts_enabled,
       detailsSubmitted: account.details_submitted,
+      detail: onboardingComplete ? 'Healthy · Payouts and charges enabled' : 'Connected · Onboarding incomplete',
     });
   } catch {
     connectedAccountId = null;
-    res.json({ connected: false, accountId: null });
+    res.json({ connected: false, healthy: false, accountId: null, detail: 'Unable to verify Stripe account' });
   }
 });
 
 router.post('/api/stripe-connect/disconnect', async (req: Request, res: Response) => {
   const oldId = connectedAccountId;
   connectedAccountId = null;
+  await deleteToken(STRIPE_CONNECT_PROVIDER_KEY);
   await emitReceipt(req, 'stripe.account.disconnect', 'SUCCEEDED',
     { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
     { disconnected_account_id: oldId },

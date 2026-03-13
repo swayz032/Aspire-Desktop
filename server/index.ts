@@ -861,6 +861,12 @@ async function loadOAuthTokens() {
   } catch (e: unknown) {
     logger.warn('Failed to load QuickBooks tokens', { error: e instanceof Error ? e.message : 'unknown' });
   }
+  try {
+    const { loadStripeConnectState } = require('./stripeConnectRoutes');
+    await loadStripeConnectState();
+  } catch (e: unknown) {
+    logger.warn('Failed to load Stripe Connect state', { error: e instanceof Error ? e.message : 'unknown' });
+  }
   logger.info('OAuth tokens loaded from database');
 
   try {

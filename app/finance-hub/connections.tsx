@@ -86,26 +86,33 @@ export default function ConnectionsScreen() {
         safeFetchStatus('/api/stripe-connect/status', 'Stripe'),
       ]);
 
+      const resolveStatus = (r: any): ProviderStatus => {
+        if (r?._unavailable) return 'unavailable';
+        if (r?.connected && (r?.healthy === undefined || r?.healthy === true)) return 'connected';
+        if (r?.connected && r?.healthy === false) return 'error';
+        return 'disconnected';
+      };
+
       setProviders({
         plaid: {
-          status: plaidRes.connected ? 'connected' : plaidRes._unavailable ? 'unavailable' : 'disconnected',
-          detail: plaidRes.connected ? 'Bank accounts linked' : plaidRes._unavailable ? 'Service temporarily unavailable' : 'Banking & transactions',
+          status: resolveStatus(plaidRes),
+          detail: plaidRes.detail || (plaidRes.connected ? 'Bank accounts linked' : plaidRes._unavailable ? 'Service temporarily unavailable' : 'Banking & transactions'),
           lastSync: plaidRes.connected ? 'Just now' : null,
         },
         quickbooks: {
-          status: qbRes.connected ? 'connected' : qbRes._unavailable ? 'unavailable' : 'disconnected',
-          detail: qbRes.connected ? 'Syncing financial data' : qbRes._unavailable ? 'Service temporarily unavailable' : 'Accounting & bookkeeping',
+          status: resolveStatus(qbRes),
+          detail: qbRes.detail || (qbRes.connected ? 'Syncing financial data' : qbRes._unavailable ? 'Service temporarily unavailable' : 'Accounting & bookkeeping'),
           lastSync: qbRes.connected ? 'Just now' : null,
           realmId: qbRes.realmId || null,
         },
         gusto: {
-          status: gustoRes.connected ? 'connected' : gustoRes._unavailable ? 'unavailable' : 'disconnected',
-          detail: gustoRes.connected ? 'Payroll data syncing' : gustoRes._unavailable ? 'Service temporarily unavailable' : 'Payroll & HR',
+          status: resolveStatus(gustoRes),
+          detail: gustoRes.detail || (gustoRes.connected ? 'Payroll data syncing' : gustoRes._unavailable ? 'Service temporarily unavailable' : 'Payroll & HR'),
           lastSync: gustoRes.connected ? 'Just now' : null,
         },
         stripe: {
-          status: stripeRes.connected ? 'connected' : stripeRes._unavailable ? 'unavailable' : 'disconnected',
-          detail: stripeRes.connected ? 'Payments active' : stripeRes._unavailable ? 'Service temporarily unavailable' : 'Payments & invoicing',
+          status: resolveStatus(stripeRes),
+          detail: stripeRes.detail || (stripeRes.connected ? 'Payments active' : stripeRes._unavailable ? 'Service temporarily unavailable' : 'Payments & invoicing'),
           lastSync: stripeRes.connected ? 'Just now' : null,
           accountId: stripeRes.accountId || null,
         },
@@ -907,13 +914,19 @@ export default function ConnectionsScreen() {
           {providerConfigs.map((config, i) => {
             const state = providers[config.key as keyof ProviderState];
             const isConnected = state.status === 'connected';
-            const dotColor = isConnected ? '#34D399' : state.status === 'error' ? '#EF4444' : Colors.text.muted;
-            const statusText = isConnected ? 'Healthy \u00B7 Syncing' : state.status === 'error' ? 'Error \u00B7 Check credentials' : 'Not connected';
+            const dotColor = isConnected ? '#34D399' : state.status === 'error' ? '#EF4444' : state.status === 'unavailable' ? '#FF9500' : Colors.text.muted;
+            const statusText = isConnected
+              ? 'Healthy · Syncing'
+              : state.status === 'error'
+                ? 'Degraded · Action needed'
+                : state.status === 'unavailable'
+                  ? 'Unavailable · Retry'
+                  : 'Not connected';
             return (
               <View key={config.key} style={[s.healthRow, i < providerConfigs.length - 1 && s.healthDivider]}>
                 <View style={[s.healthDot, { backgroundColor: dotColor }, Platform.OS === 'web' && { boxShadow: `0 0 8px ${dotColor}` } as any]} />
                 <Text style={s.healthName}>{config.name}</Text>
-                <Text style={[s.healthStatus, { color: isConnected ? '#34D399' : state.status === 'error' ? '#EF4444' : Colors.text.muted }]}>{statusText}</Text>
+                <Text style={[s.healthStatus, { color: isConnected ? '#34D399' : state.status === 'error' ? '#EF4444' : state.status === 'unavailable' ? '#FF9500' : Colors.text.muted }]}>{statusText}</Text>
                 <Text style={s.healthTime}>{state.lastSync || '\u2014'}</Text>
               </View>
             );

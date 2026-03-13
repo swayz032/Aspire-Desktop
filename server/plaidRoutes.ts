@@ -452,11 +452,40 @@ router.get('/api/plaid/identity', async (_req: Request, res: Response) => {
   }
 });
 
-router.get('/api/plaid/status', (_req: Request, res: Response) => {
+router.get('/api/plaid/status', async (_req: Request, res: Response) => {
+  if (plaidItems.length === 0) {
+    return res.json({
+      connected: false,
+      healthy: false,
+      connections: 0,
+      items: [],
+      detail: 'Not connected',
+    });
+  }
+
+  let healthyCount = 0;
+  for (const item of plaidItems) {
+    try {
+      await plaidClient.accountsGet({ access_token: item.accessToken });
+      healthyCount += 1;
+    } catch (error: unknown) {
+      logger.warn('Plaid health check failed for item', {
+        item_id: item.itemId,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
+
+  const fullyHealthy = healthyCount === plaidItems.length;
   res.json({
-    connected: plaidItems.length > 0,
+    connected: true,
+    healthy: fullyHealthy,
     connections: plaidItems.length,
+    healthyConnections: healthyCount,
     items: plaidItems.map(item => ({ item_id: item.itemId })),
+    detail: fullyHealthy
+      ? 'Healthy · All bank links reachable'
+      : `Degraded · ${healthyCount}/${plaidItems.length} bank links reachable`,
   });
 });
 

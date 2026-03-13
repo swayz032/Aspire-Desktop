@@ -353,11 +353,35 @@ router.post('/api/quickbooks/refresh', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/api/quickbooks/status', (_req: Request, res: Response) => {
-  res.json({
-    connected: !!(accessToken && realmId),
-    realmId: realmId || null,
-  });
+router.get('/api/quickbooks/status', async (_req: Request, res: Response) => {
+  const hasToken = !!(accessToken && realmId);
+  if (!hasToken) {
+    return res.json({
+      connected: false,
+      healthy: false,
+      realmId: null,
+      detail: 'Not connected',
+    });
+  }
+
+  try {
+    await qboQueryWithRefresh('getCompanyInfo', realmId);
+    return res.json({
+      connected: true,
+      healthy: true,
+      realmId: realmId || null,
+      detail: 'Healthy · API reachable',
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'QuickBooks status check failed';
+    logger.warn('QuickBooks health check failed', { error: msg });
+    return res.json({
+      connected: true,
+      healthy: false,
+      realmId: realmId || null,
+      detail: msg,
+    });
+  }
 });
 
 router.post('/api/quickbooks/disconnect', async (req: Request, res: Response) => {

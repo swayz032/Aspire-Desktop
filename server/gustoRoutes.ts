@@ -480,19 +480,21 @@ router.post('/api/gusto/migrate', async (req: Request, res: Response) => {
 router.get('/api/gusto/status', async (_req: Request, res: Response) => {
   const companyUuid = getCompanyUuid();
   if (!companyUuid || !currentAccessToken) {
-    return res.json({ connected: false, detail: 'Gusto credentials not configured' });
+    return res.json({ connected: false, healthy: false, detail: 'Not connected' });
   }
 
   try {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}`) as Record<string, unknown>;
     res.json({
       connected: true,
+      healthy: true,
       companyName: data.name || data.trade_name || 'Connected',
       ein: data.ein,
+      detail: 'Healthy · API reachable',
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
-    res.json({ connected: false, detail: msg });
+    res.json({ connected: true, healthy: false, detail: msg });
   }
 });
 
