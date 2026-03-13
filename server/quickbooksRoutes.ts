@@ -19,7 +19,34 @@ let refreshToken: string | null = null;
 let realmId: string | null = null;
 let qbo: any = null;
 let tokenExpiresAt: Date | null = null;
-const pendingOAuthStates = new Map<string, number>();
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const OAUTH_STATE_SECRET = process.env.QUICKBOOKS_OAUTH_STATE_SECRET || process.env.TOKEN_ENCRYPTION_KEY || process.env.QUICKBOOKS_CLIENT_SECRET || 'quickbooks-oauth-state';
+
+function createOAuthState(): string {
+  const payload = `${Date.now()}.${crypto.randomBytes(16).toString('hex')}`;
+  const signature = crypto.createHmac('sha256', OAUTH_STATE_SECRET).update(payload).digest('hex');
+  return Buffer.from(`${payload}.${signature}`).toString('base64url');
+}
+
+function validateOAuthState(encodedState: string | undefined): boolean {
+  if (!encodedState) return false;
+  try {
+    const decoded = Buffer.from(encodedState, 'base64url').toString('utf8');
+    const parts = decoded.split('.');
+    if (parts.length !== 3) return false;
+    const issuedAt = Number(parts[0]);
+    const nonce = parts[1];
+    const providedSignature = parts[2];
+    if (!Number.isFinite(issuedAt) || !nonce || !providedSignature) return false;
+    if (Date.now() - issuedAt > OAUTH_STATE_TTL_MS) return false;
+
+    const payload = `${issuedAt}.${nonce}`;
+    const expectedSignature = crypto.createHmac('sha256', OAUTH_STATE_SECRET).update(payload).digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(providedSignature), Buffer.from(expectedSignature));
+  } catch {
+    return false;
+  }
+}
 
 // --- Helper: extract suite context from headers ---
 function getSuiteContext(req: Request) {
@@ -235,11 +262,7 @@ router.get('/api/quickbooks/authorize', (_req: Request, res: Response) => {
     return res.status(503).json({ error: 'QuickBooks credentials not configured' });
   }
 
-  const state = crypto.randomBytes(16).toString('hex');
-  pendingOAuthStates.set(state, Date.now());
-  for (const [k, v] of pendingOAuthStates) {
-    if (Date.now() - v > 600000) pendingOAuthStates.delete(k);
-  }
+  const state = createOAuthState();
 
   const params = new URLSearchParams({
     client_id: creds.clientId,
@@ -265,10 +288,9 @@ router.get('/api/quickbooks/callback', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Missing code or realmId' });
   }
 
-  if (!state || !pendingOAuthStates.has(state as string)) {
-    return res.status(403).json({ error: 'Invalid OAuth state — possible CSRF attack' });
+  if (!validateOAuthState(typeof state === 'string' ? state : undefined)) {
+    return res.status(403).json({ error: 'Invalid OAuth state - possible CSRF attack' });
   }
-  pendingOAuthStates.delete(state as string);
 
   try {
     const response = await fetch(TOKEN_URL, {
@@ -694,3 +716,4 @@ router.get('/api/quickbooks/transaction-list', async (req: Request, res: Respons
 });
 
 export default router;
+
