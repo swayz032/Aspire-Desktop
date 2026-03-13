@@ -6,6 +6,7 @@ import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern } from '@/constants/cardPatterns';
 import { getPlaidConsent, setPlaidConsent } from '@/lib/security/plaidConsent';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { getMfaStatus, isMfaVerifiedRecently, verifyMfaCode, generateMfaSecret, storeMfaSecret, updateMfaStatus, getQrCodeDataUrl } from '@/lib/security/mfa';
 
 const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
@@ -51,6 +52,7 @@ export default function ConnectionsScreen() {
   const [crossLinking, setCrossLinking] = useState<string | null>(null);
   const [crossLinkSuccess, setCrossLinkSuccess] = useState<Record<string, boolean>>({});
   const plaidRouter = useRouter();
+  const { authenticatedFetch } = useAuthFetch();
 
   const [consentModalVisible, setConsentModalVisible] = useState(false);
   const [mfaModalVisible, setMfaModalVisible] = useState(false);
@@ -67,7 +69,7 @@ export default function ConnectionsScreen() {
     try {
       const safeFetchStatus = async (url: string, label: string) => {
         try {
-          const r = await fetch(url);
+          const r = await authenticatedFetch(url);
           if (!r.ok) {
             console.warn(`[Connections] ${label} status returned ${r.status}`);
             return { connected: false, _unavailable: true, _error: `Server returned ${r.status}` };
@@ -122,15 +124,15 @@ export default function ConnectionsScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authenticatedFetch]);
 
   const fetchLinkedAccounts = useCallback(async () => {
     try {
-      const res = await fetch('/api/plaid/linked-accounts');
+      const res = await authenticatedFetch('/api/plaid/linked-accounts');
       const data = await res.json();
       if (data.accounts) setLinkedAccounts(data.accounts);
     } catch (e) {}
-  }, []);
+  }, [authenticatedFetch]);
 
   useEffect(() => {
     checkAllStatuses();
@@ -149,7 +151,7 @@ export default function ConnectionsScreen() {
         const signatoryEmail = localStorage.getItem('gusto_migrate_email');
         if (signatoryEmail) {
           localStorage.removeItem('gusto_migrate_email');
-          fetch('/api/gusto/migrate', {
+          authenticatedFetch('/api/gusto/migrate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: signatoryEmail }),
@@ -174,7 +176,7 @@ export default function ConnectionsScreen() {
   const crossLinkToStripe = async (accountId: string) => {
     setCrossLinking('stripe');
     try {
-      const res = await fetch('/api/plaid/processor/stripe', {
+      const res = await authenticatedFetch('/api/plaid/processor/stripe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ account_id: accountId }),
@@ -193,7 +195,7 @@ export default function ConnectionsScreen() {
   const crossLinkToGusto = async (accountId: string) => {
     setCrossLinking('gusto');
     try {
-      const res = await fetch('/api/plaid/processor/gusto', {
+      const res = await authenticatedFetch('/api/plaid/processor/gusto', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ account_id: accountId }),
@@ -239,14 +241,14 @@ export default function ConnectionsScreen() {
     setActionLoading('plaid');
     try {
       await loadPlaidSdk();
-      const res = await fetch('/api/plaid/create-link-token', { method: 'POST' });
+      const res = await authenticatedFetch('/api/plaid/create-link-token', { method: 'POST' });
       const data = await res.json();
       if (data.link_token && typeof window !== 'undefined' && (window as any).Plaid) {
         const handler = (window as any).Plaid.create({
           token: data.link_token,
           onSuccess: async (publicToken: string) => {
             try {
-              await fetch('/api/plaid/exchange-token', {
+              await authenticatedFetch('/api/plaid/exchange-token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ public_token: publicToken }),
@@ -357,7 +359,7 @@ export default function ConnectionsScreen() {
   const connectQuickBooks = async () => {
     setActionLoading('quickbooks');
     try {
-      const res = await fetch('/api/quickbooks/authorize');
+      const res = await authenticatedFetch('/api/quickbooks/authorize');
       const data = await res.json();
       if (data.url && typeof window !== 'undefined') {
         window.location.href = data.url;
@@ -383,7 +385,7 @@ export default function ConnectionsScreen() {
     setSetupLoading(true);
     setSetupError(null);
     try {
-      const res = await fetch('/api/gusto/create-company', {
+      const res = await authenticatedFetch('/api/gusto/create-company', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -418,7 +420,7 @@ export default function ConnectionsScreen() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('gusto_migrate_email', emailPrompt);
       }
-      const res = await fetch('/api/gusto/authorize');
+      const res = await authenticatedFetch('/api/gusto/authorize');
       const data = await res.json();
       if (data.url) {
         if (Platform.OS === 'web') {
@@ -440,7 +442,7 @@ export default function ConnectionsScreen() {
   const connectStripe = async () => {
     setActionLoading('stripe');
     try {
-      const res = await fetch('/api/stripe-connect/authorize');
+      const res = await authenticatedFetch('/api/stripe-connect/authorize');
       const data = await res.json();
       if (data.url && typeof window !== 'undefined') {
         window.location.href = data.url;
@@ -460,7 +462,7 @@ export default function ConnectionsScreen() {
         stripe: '/api/stripe-connect/disconnect',
       };
       if (endpoints[provider]) {
-        await fetch(endpoints[provider], { method: 'POST' });
+        await authenticatedFetch(endpoints[provider], { method: 'POST' });
         checkAllStatuses();
       }
     } catch (err) {
@@ -1741,3 +1743,4 @@ const s = StyleSheet.create({
     paddingVertical: 16,
   },
 });
+
