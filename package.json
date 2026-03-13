@@ -6,7 +6,7 @@
     "start": "npm run build && tsx server/index.ts",
     "serve": "tsx server/index.ts",
     "dev": "expo start",
-    "build": "expo export -p web && node scripts/fix-viewport.js",
+    "build": "expo export -p web --clear && node scripts/fix-viewport.js",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
