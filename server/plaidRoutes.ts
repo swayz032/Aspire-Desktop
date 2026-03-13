@@ -85,16 +85,27 @@ export async function loadPlaidTokens() {
   }
 }
 
+// ─── OAuth Callback (Plaid redirects here after bank auth) ───────────
+// Plaid Link OAuth flow: bank auth → redirect to this URL → page re-opens Plaid Link
+// to complete the flow. This just serves the connections page which re-initializes Link.
+router.get('/api/plaid/oauth-callback', (_req: Request, res: Response) => {
+  const baseUrl = process.env.PUBLIC_BASE_URL?.trim() || 'https://www.aspireos.app';
+  res.redirect(`${baseUrl}/finance-hub/connections`);
+});
+
 // ─── State-Changing Routes (receipts required) ───────────────────────
 
 router.post('/api/plaid/create-link-token', async (req: Request, res: Response) => {
   try {
+    const baseUrl = process.env.PUBLIC_BASE_URL?.trim() || 'https://www.aspireos.app';
+    const redirectUri = `${baseUrl}/api/plaid/oauth-callback`;
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: 'aspire-user-1' },
       client_name: 'Aspire',
       products: [Products.Auth, Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
+      redirect_uri: redirectUri,
     });
     await emitReceipt(req, 'plaid.link_token.create', 'SUCCEEDED',
       { method: 'POST', path: req.path, risk_tier: 'GREEN' },
