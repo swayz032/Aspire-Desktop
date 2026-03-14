@@ -240,13 +240,23 @@ export default function ConnectionsScreen() {
   const openPlaidLink = async () => {
     setActionLoading('plaid');
     try {
+      console.log('[Plaid] Loading SDK...');
       await loadPlaidSdk();
+      console.log('[Plaid] SDK loaded, creating link token...');
       const res = await authenticatedFetch('/api/plaid/create-link-token', { method: 'POST' });
       const data = await res.json();
+      console.log('[Plaid] Link token response:', { ok: res.ok, status: res.status, hasToken: !!data.link_token, error: data.error });
+      if (!res.ok) {
+        console.error('[Plaid] create-link-token failed:', data);
+        setActionLoading(null);
+        return;
+      }
       if (data.link_token && typeof window !== 'undefined' && (window as any).Plaid) {
+        console.log('[Plaid] Creating Link handler...');
         const handler = (window as any).Plaid.create({
           token: data.link_token,
           onSuccess: async (publicToken: string) => {
+            console.log('[Plaid] Link success, exchanging token...');
             try {
               await authenticatedFetch('/api/plaid/exchange-token', {
                 method: 'POST',
@@ -254,20 +264,27 @@ export default function ConnectionsScreen() {
                 body: JSON.stringify({ public_token: publicToken }),
               });
             } catch (e) {
-              console.error('Plaid token exchange error:', e);
+              console.error('[Plaid] Token exchange error:', e);
             }
             setActionLoading(null);
             checkAllStatuses();
           },
-          onExit: () => setActionLoading(null),
+          onExit: (err: any) => {
+            console.log('[Plaid] Link exited', err ? { error: err } : 'no error');
+            setActionLoading(null);
+          },
+          onEvent: (eventName: string, metadata: any) => {
+            console.log('[Plaid] Event:', eventName, metadata);
+          },
         });
+        console.log('[Plaid] Opening Link...');
         handler.open();
       } else {
-        console.error('Plaid SDK not available after load');
+        console.error('[Plaid] SDK not available after load. Plaid on window:', !!(window as any)?.Plaid, 'link_token:', !!data.link_token);
         setActionLoading(null);
       }
     } catch (err) {
-      console.error('Plaid connect error:', err);
+      console.error('[Plaid] Connect error:', err);
       setActionLoading(null);
     }
   };

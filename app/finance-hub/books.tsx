@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { authenticatedFetch } from '@/lib/authenticatedFetch';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { View, Text, StyleSheet, Pressable, Platform, ScrollView, TextInput, ActivityIndicator, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1363,6 +1363,7 @@ function MoneyTrailOwner({ ledgerData }: { ledgerData: any }) {
 }
 
 export default function BooksScreen() {
+  const { authenticatedFetch } = useAuthFetch();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [qbConnected, setQbConnected] = useState(false);
