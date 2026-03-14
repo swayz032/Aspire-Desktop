@@ -255,6 +255,10 @@ export default function ConnectionsScreen() {
         console.log('[Plaid] Creating Link handler...');
         const handler = (window as any).Plaid.create({
           token: data.link_token,
+          onLoad: () => {
+            console.log('[Plaid] Link loaded, opening...');
+            handler.open();
+          },
           onSuccess: async (publicToken: string) => {
             console.log('[Plaid] Link success, exchanging token...');
             try {
@@ -277,8 +281,7 @@ export default function ConnectionsScreen() {
             console.log('[Plaid] Event:', eventName, metadata);
           },
         });
-        console.log('[Plaid] Opening Link...');
-        handler.open();
+        console.log('[Plaid] Handler created, waiting for onLoad...');
       } else {
         console.error('[Plaid] SDK not available after load. Plaid on window:', !!(window as any)?.Plaid, 'link_token:', !!data.link_token);
         setActionLoading(null);
