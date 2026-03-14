@@ -174,11 +174,22 @@ Rules:
 
 ## Prop Firm Integration
 - **Full rules reference:** `docs/prop-firm-rules.md` — agents MUST load this when simulating strategies
-- 7 firms tracked: MFFU, Topstep, TPT, Apex, FFN, Alpha Futures, Tradeify
+- 7 firms tracked: MFFU, Topstep, TPT, Apex, FFN, Alpha Futures, Tradeify (+ Earn2Trade)
 - Agents simulate strategies against each firm's exact rules (drawdown, consistency, contract limits)
 - Agents rank firms by expected ROI given a strategy's profile
 - Agents calculate payout projections after splits, fees, and ongoing costs
 - User trades manually — Forge provides strategy signals and firm rule compliance tracking
+
+## Prop Firm Compliance (Live Rule Enforcement)
+- **Architecture:** `docs/PROP-FIRM-COMPLIANCE.md` — three-layer compliance architecture
+- **OpenClaw Compliance Guard:** `src/agents/OPENCLAW_COMPLIANCE_GUARD.md` — system prompt for compliance sidecar
+- **Rule Engine:** `src/engine/compliance/compliance_gate.py` — deterministic enforcement (no AI judgment)
+- **API Routes:** `src/server/routes/compliance.ts` — `/api/compliance/*`
+- **Three layers:** OpenClaw monitors → Rule engine enforces → Human approves
+- **Freshness gate:** `ruleset_max_age_hours` — 24h for active trading, 72h for research, 0h after drift
+- **Drift detection:** Content hash comparison on every doc fetch — blocks approvals until human revalidates
+- **Tables:** `compliance_rulesets`, `compliance_reviews`, `compliance_drift_log`
+- **Critical rule:** No strategy runs if current rules are stale, ambiguous, or violated. Compliance beats profit.
 
 ## System Journal (AI Self-Learning Loop)
 - **Table:** `system_journal` — logs every AI-generated strategy's full backtest results, equity curve, daily P&Ls, and prop compliance

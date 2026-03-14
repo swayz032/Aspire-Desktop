@@ -175,6 +175,90 @@ export const systemJournal = pgTable(
   ]
 );
 
+// ─── Compliance Rulesets ─────────────────────────────────────
+// Stores normalized prop firm rules with freshness tracking.
+// OpenClaw produces these. The rule engine consumes them.
+export const complianceRulesets = pgTable(
+  "compliance_rulesets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firm: text("firm").notNull(), // topstep | tpt | mffu | apex | ffn | alpha | tradeify | earn2trade
+    accountType: text("account_type").notNull(), // e.g. "50k_standard"
+    status: text("status").notNull().default("verified"), // verified | stale_pending_review | stale_or_ambiguous | needs_human_review
+    sourceBundle: jsonb("source_bundle").notNull(), // [{title, url, retrieved_at_utc, effective_date, official}]
+    contentHash: text("content_hash").notNull(), // SHA-256 of raw source content
+    normalizedRules: jsonb("normalized_rules").notNull(), // structured rules object
+    driftDetected: boolean("drift_detected").default(false),
+    driftDiff: jsonb("drift_diff"), // diff when drift detected
+    retrievedAt: timestamp("retrieved_at").notNull(), // when rules were last fetched
+    verifiedBy: text("verified_by"), // 'openclaw' | 'human'
+    verifiedAt: timestamp("verified_at"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("compliance_firm_account_idx").on(table.firm, table.accountType),
+    index("compliance_status_idx").on(table.status),
+    index("compliance_retrieved_idx").on(table.retrievedAt),
+  ]
+);
+
+// ─── Compliance Reviews ─────────────────────────────────────
+// Per-strategy, per-firm compliance review results.
+export const complianceReviews = pgTable(
+  "compliance_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    strategyId: uuid("strategy_id")
+      .references(() => strategies.id)
+      .notNull(),
+    firm: text("firm").notNull(),
+    accountType: text("account_type").notNull(),
+    rulesetId: uuid("ruleset_id").references(() => complianceRulesets.id),
+    complianceResult: text("compliance_result").notNull(), // pass | fail | review
+    riskScore: integer("risk_score"),
+    violations: jsonb("violations").default([]),
+    warnings: jsonb("warnings").default([]),
+    requiredChanges: jsonb("required_changes").default([]),
+    reasoningSummary: text("reasoning_summary"),
+    executionGate: jsonb("execution_gate").notNull(), // {approved, blocker_type, blocker_reason}
+    reviewedBy: text("reviewed_by").notNull(), // 'openclaw' | 'human'
+    expiresAt: timestamp("expires_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("review_strategy_idx").on(table.strategyId),
+    index("review_firm_idx").on(table.firm),
+    index("review_result_idx").on(table.complianceResult),
+  ]
+);
+
+// ─── Compliance Drift Log ───────────────────────────────────
+// Tracks every detected rule change across all firms.
+export const complianceDriftLog = pgTable(
+  "compliance_drift_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firm: text("firm").notNull(),
+    detectedAt: timestamp("detected_at").defaultNow().notNull(),
+    sourceUrl: text("source_url").notNull(),
+    oldContentHash: text("old_content_hash"),
+    newContentHash: text("new_content_hash"),
+    diff: jsonb("diff").notNull(),
+    severity: text("severity").notNull(), // info | warning | critical
+    resolved: boolean("resolved").default(false),
+    resolvedAt: timestamp("resolved_at"),
+    resolvedBy: text("resolved_by"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("drift_firm_idx").on(table.firm),
+    index("drift_resolved_idx").on(table.resolved),
+  ]
+);
+
 // ─── Audit Log (Trust Spine) ─────────────────────────────────
 export const auditLog = pgTable(
   "audit_log",
