@@ -97,16 +97,21 @@ router.get('/api/plaid/oauth-callback', (_req: Request, res: Response) => {
 
 router.post('/api/plaid/create-link-token', async (req: Request, res: Response) => {
   try {
-    const baseUrl = process.env.PUBLIC_BASE_URL?.trim() || 'https://www.aspireos.app';
-    const redirectUri = `${baseUrl}/api/plaid/oauth-callback`;
-    const response = await plaidClient.linkTokenCreate({
+    const plaidEnv = process.env.PLAID_ENV || 'sandbox';
+    const linkConfig: Parameters<typeof plaidClient.linkTokenCreate>[0] = {
       user: { client_user_id: 'aspire-user-1' },
       client_name: 'Aspire',
       products: [Products.Auth, Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
-      redirect_uri: redirectUri,
-    });
+    };
+    // redirect_uri is only needed for production OAuth institutions — Sandbox test banks don't use it,
+    // and Plaid rejects unregistered URIs. Only include when running in production/development.
+    if (plaidEnv !== 'sandbox') {
+      const baseUrl = process.env.PUBLIC_BASE_URL?.trim() || 'https://www.aspireos.app';
+      linkConfig.redirect_uri = `${baseUrl}/api/plaid/oauth-callback`;
+    }
+    const response = await plaidClient.linkTokenCreate(linkConfig);
     await emitReceipt(req, 'plaid.link_token.create', 'SUCCEEDED',
       { method: 'POST', path: req.path, risk_tier: 'GREEN' },
       { link_token_generated: true },
