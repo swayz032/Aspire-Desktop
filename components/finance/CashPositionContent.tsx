@@ -1,87 +1,89 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions, Platform, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
-
-let usePlaidLinkHook: any = null;
-if (Platform.OS === 'web') {
-  try {
-    const mod = require('react-plaid-link');
-    usePlaidLinkHook = mod.usePlaidLink;
-  } catch (e) {
-  }
-}
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 
 const formatCurrency = (amount: number) => {
   const absAmount = Math.abs(amount);
   return `${amount < 0 ? '-' : ''}$${absAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-function PlaidLinkButtonInner({ linkToken, onLinkSuccess, label, compact }: { linkToken: string; onLinkSuccess: () => void; label?: string; compact?: boolean }) {
-  const onPlaidSuccess = useCallback(async (publicToken: string) => {
-    try {
-      const res = await fetch('/api/plaid/exchange-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ public_token: publicToken }),
-      });
-      if (res.ok) {
-        onLinkSuccess();
-      }
-    } catch (e) {
-      console.error('Token exchange failed:', e);
-    }
-  }, [onLinkSuccess]);
+function PlaidLinkButton({ onSuccess: onLinkSuccess, label, compact, authenticatedFetch }: { onSuccess: () => void; label?: string; compact?: boolean; authenticatedFetch: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [loading, setLoading] = useState(false);
+  const plaidSdkRef = useRef<Promise<void> | null>(null);
 
-  const plaidConfig = usePlaidLinkHook
-    ? usePlaidLinkHook({
-        token: linkToken,
-        onSuccess: (public_token: string) => onPlaidSuccess(public_token),
-      })
-    : { open: () => {}, ready: false };
+  const loadPlaidSdk = useCallback(() => {
+    if (plaidSdkRef.current) return plaidSdkRef.current;
+    if (typeof window === 'undefined') return Promise.reject(new Error('Not in browser'));
+    const p = new Promise<void>((resolve, reject) => {
+      const check = setInterval(() => {
+        if ((window as any).Plaid) { clearInterval(check); clearTimeout(timeout); resolve(); }
+      }, 100);
+      const timeout = setTimeout(() => { clearInterval(check); plaidSdkRef.current = null; reject(new Error('Plaid SDK load timeout')); }, 10000);
+      const existing = document.getElementById('plaid-link-sdk');
+      if (existing) return;
+      const script = document.createElement('script');
+      script.id = 'plaid-link-sdk';
+      script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+      script.onerror = () => { plaidSdkRef.current = null; reject(new Error('Failed to load Plaid SDK')); };
+      document.head.appendChild(script);
+    });
+    plaidSdkRef.current = p;
+    return p;
+  }, []);
+
+  const openPlaidLink = async () => {
+    setLoading(true);
+    try {
+      await loadPlaidSdk();
+      const res = await authenticatedFetch('/api/plaid/create-link-token', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.link_token) {
+        console.error('[Plaid Cash] create-link-token failed:', data);
+        setLoading(false);
+        return;
+      }
+      const handler = (window as any).Plaid.create({
+        token: data.link_token,
+        onLoad: () => handler.open(),
+        onSuccess: async (publicToken: string) => {
+          try {
+            await authenticatedFetch('/api/plaid/exchange-token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ public_token: publicToken }),
+            });
+            onLinkSuccess();
+          } catch (e) {
+            console.error('[Plaid Cash] Token exchange error:', e);
+          }
+          setLoading(false);
+        },
+        onExit: () => setLoading(false),
+      });
+    } catch (err) {
+      console.error('[Plaid Cash] Connect error:', err);
+      setLoading(false);
+    }
+  };
 
   return (
     <TouchableOpacity
-      style={[compact ? styles.addBankBtn : styles.connectBankBtn, !plaidConfig.ready && { opacity: 0.5 }]}
-      onPress={() => plaidConfig.open()}
-      disabled={!plaidConfig.ready}
+      style={[compact ? styles.addBankBtn : styles.connectBankBtn, loading && { opacity: 0.5 }]}
+      onPress={openPlaidLink}
+      disabled={loading}
     >
-      <Ionicons name={compact ? "add-outline" : "link-outline"} size={compact ? 16 : 18} color="#fff" />
-      <Text style={compact ? styles.addBankText : styles.connectBankText}>{label || 'Connect Bank Account'}</Text>
+      <Ionicons name={compact ? "add-outline" : "link-outline"} size={compact ? 16 : 18} color={compact ? '#3B82F6' : '#fff'} />
+      <Text style={compact ? styles.addBankText : styles.connectBankText}>{loading ? 'Connecting…' : (label || 'Connect Bank Account')}</Text>
     </TouchableOpacity>
   );
 }
 
-function PlaidLinkButton({ onSuccess: onLinkSuccess, label, compact }: { onSuccess: () => void; label?: string; compact?: boolean }) {
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/plaid/create-link-token', { method: 'POST' });
-        const data = await res.json();
-        if (data.link_token) setLinkToken(data.link_token);
-      } catch (e) {
-        console.error('Failed to create link token:', e);
-      }
-    })();
-  }, []);
-
-  if (!linkToken || !usePlaidLinkHook) {
-    return (
-      <TouchableOpacity style={[compact ? styles.addBankBtn : styles.connectBankBtn, { opacity: 0.5 }]} disabled>
-        <Ionicons name={compact ? "add-outline" : "link-outline"} size={compact ? 16 : 18} color="#fff" />
-        <Text style={compact ? styles.addBankText : styles.connectBankText}>{label || 'Connect Bank Account'}</Text>
-      </TouchableOpacity>
-    );
-  }
-
-  return <PlaidLinkButtonInner linkToken={linkToken} onLinkSuccess={onLinkSuccess} label={label} compact={compact} />;
-}
-
 export function CashPositionContent() {
+  const { authenticatedFetch } = useAuthFetch();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
@@ -93,13 +95,13 @@ export function CashPositionContent() {
 
   const fetchPlaidData = useCallback(async () => {
     try {
-      const statusRes = await fetch('/api/plaid/status');
+      const statusRes = await authenticatedFetch('/api/plaid/status');
       const status = await statusRes.json();
       setPlaidConnected(status.connected);
       if (status.connected) {
         const [balRes, txRes] = await Promise.all([
-          fetch('/api/plaid/balances'),
-          fetch('/api/plaid/transactions'),
+          authenticatedFetch('/api/plaid/balances'),
+          authenticatedFetch('/api/plaid/transactions'),
         ]);
         const balData = await balRes.json();
         const txData = await txRes.json();
@@ -112,7 +114,7 @@ export function CashPositionContent() {
     } finally {
       setPlaidLoading(false);
     }
-  }, []);
+  }, [authenticatedFetch]);
 
   useEffect(() => {
     fetchPlaidData();
@@ -159,7 +161,7 @@ export function CashPositionContent() {
           </View>
           {plaidConnected && (
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <PlaidLinkButton onSuccess={handlePlaidLinkSuccess} label="Add Bank" compact />
+              <PlaidLinkButton onSuccess={handlePlaidLinkSuccess} label="Add Bank" compact authenticatedFetch={authenticatedFetch} />
               <TouchableOpacity style={styles.syncButton} onPress={() => { setPlaidLoading(true); fetchPlaidData(); }}>
                 <Ionicons name="sync-outline" size={16} color={Colors.accent.cyan} />
                 <Text style={styles.syncText}>Sync</Text>
@@ -187,7 +189,7 @@ export function CashPositionContent() {
             <Text style={styles.emptyMessage}>
               Connect your bank account to see real-time balances and transactions
             </Text>
-            <PlaidLinkButton onSuccess={handlePlaidLinkSuccess} />
+            <PlaidLinkButton onSuccess={handlePlaidLinkSuccess} authenticatedFetch={authenticatedFetch} />
           </View>
         )}
       </View>
