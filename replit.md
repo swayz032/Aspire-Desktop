@@ -45,6 +45,9 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
     - Snapshot engine aggregating finance events into five chaptered story sections: NOW, NEXT, MONTH, RECONCILE, ACTIONS.
     - API endpoints for snapshot, timeline, explanation, lifecycle, connections status, and governed actions.
     - UI components: `SourceBadge`, `ExplainDrawer`, `TimelineRow`, `ReconcileCard`, `LifecycleChain`.
+    - Finance Hub v2 redesign: top pill nav (`FinanceTopNav`), `StoryModeCarousel` (7 Story Modes with 3D CSS stagger), chart card primitives (`GlowTrendCard`, `SegmentRingCard`, `QueueInstrumentCard`, `InsightOverlayCard`) with premium thin aesthetic.
+    - Story Mode identities: Cash Truth (cyan), What Changed (violet), Invoice Pressure (amber), Tax Review (emerald), Cleanup Sprint (coral), Books vs Bank (indigo), Money Memory (magenta).
+    - Card animation keyframes injected via `components/finance/cardAnimations.ts`.
     - Compliance features: Explicit consent screens (e.g., Plaid consent), MFA, and dedicated legal/security pages.
     - Finance Hub Books page with "Money Shelves" (department tiles), "Money Moves" (guided journal entry wizard), and "Money Trail" (timeline-grouped GL data).
 - **Office Store**: Manages AI staff members.
