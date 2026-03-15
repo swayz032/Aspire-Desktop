@@ -3,14 +3,9 @@ import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndica
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
+import { PayrollSubTabProps, GustoPayroll, GustoPayPeriod } from './types';
 
-interface PayrollSubTabProps {
-  gustoCompany: any;
-  gustoEmployees: any[];
-  gustoConnected: boolean;
-}
-
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | undefined): string {
   if (!dateStr) return '—';
   try {
     return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -26,7 +21,7 @@ function formatCurrency(amount: string | number): string {
 }
 
 export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
-  const [payrolls, setPayrolls] = useState<any[]>([]);
+  const [payrolls, setPayrolls] = useState<GustoPayroll[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -42,8 +37,8 @@ export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected
         if (!res.ok) throw new Error('Failed to fetch payrolls');
         const data = await res.json();
         setPayrolls(Array.isArray(data) ? data : []);
-      } catch (e: any) {
-        setError(e.message || 'Failed to load payrolls');
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load payrolls');
       } finally {
         setLoading(false);
       }
@@ -65,8 +60,8 @@ export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected
       setPayrolls(Array.isArray(data) ? data : []);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 2000);
-    } catch (e: any) {
-      setError(e.message || 'Failed to refresh payrolls');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to refresh payrolls');
     } finally {
       setRefreshing(false);
     }
@@ -171,12 +166,12 @@ export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected
         </View>
       </View>
 
-      {payrolls.map((payroll: any, idx: number) => {
+      {payrolls.map((payroll: GustoPayroll, idx: number) => {
         const id = payroll.payroll_uuid || payroll.uuid || payroll.id || Math.random().toString();
         const isExpanded = expandedId === id;
         const isHovered = hoveredId === id;
         const isProcessed = payroll.processed === true;
-        const period = payroll.pay_period || {};
+        const period: GustoPayPeriod = payroll.pay_period || {};
 
         return (
           <Pressable

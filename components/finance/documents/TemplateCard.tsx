@@ -4,6 +4,7 @@
  * "Coming Soon" overlay for templates without a PandaDoc UUID.
  */
 import React, { useCallback, useState } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, Image, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
@@ -117,7 +118,7 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
           : `${displayName} template, coming soon.`
       }
       accessibilityState={{ disabled: !isAvailable }}
-      style={({ hovered, pressed }: any) => [
+      style={({ hovered, pressed }: PressableState) => [
         styles.card,
         webAnimationStyle,
         !isAvailable && styles.cardDisabled,
@@ -224,10 +225,10 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
         <View style={styles.actionButtons}>
           {/* Preview button — glass surface */}
           <Pressable
-            onPress={(e: any) => { if (e?.stopPropagation) e.stopPropagation(); handlePreview(); }}
+            onPress={(e: React.MouseEvent<HTMLElement>) => { if (e?.stopPropagation) e.stopPropagation(); handlePreview(); }}
             accessibilityRole="button"
             accessibilityLabel={`Preview ${displayName} template`}
-            style={({ hovered, pressed }: any) => [
+            style={({ hovered, pressed }: PressableState) => [
               styles.previewBtn,
               Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', outlineOffset: 2 } as any : {},
               hovered && styles.previewBtnHovered,
@@ -240,10 +241,10 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
 
           {/* Draft with Finn button — cyan accent */}
           <Pressable
-            onPress={(e: any) => { if (e?.stopPropagation) e.stopPropagation(); handleDraft(); }}
+            onPress={(e: React.MouseEvent<HTMLElement>) => { if (e?.stopPropagation) e.stopPropagation(); handleDraft(); }}
             accessibilityRole="button"
             accessibilityLabel={`Draft ${displayName} with Finn`}
-            style={({ hovered, pressed }: any) => [
+            style={({ hovered, pressed }: PressableState) => [
               styles.draftBtn,
               Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', outlineOffset: 2 } as any : {},
               hovered && styles.draftBtnHovered,

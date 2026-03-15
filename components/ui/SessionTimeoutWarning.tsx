@@ -1,4 +1,5 @@
 import React from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -22,13 +23,13 @@ export function SessionTimeoutWarning({ secondsLeft, onExtend, onSignOut }: Sess
         <View style={styles.buttonRow}>
           <Pressable
             onPress={onSignOut}
-            style={({ hovered }: any) => [styles.button, styles.secondaryButton, hovered && styles.secondaryButtonHover]}
+            style={({ hovered }: PressableState) => [styles.button, styles.secondaryButton, hovered && styles.secondaryButtonHover]}
           >
             <Text style={styles.secondaryButtonText}>Sign Out</Text>
           </Pressable>
           <Pressable
             onPress={onExtend}
-            style={({ hovered }: any) => [styles.button, styles.primaryButton, hovered && styles.primaryButtonHover]}
+            style={({ hovered }: PressableState) => [styles.button, styles.primaryButton, hovered && styles.primaryButtonHover]}
           >
             <Text style={styles.primaryButtonText}>Continue Session</Text>
           </Pressable>

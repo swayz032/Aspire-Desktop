@@ -3,6 +3,7 @@
  * Shows lifecycle timeline, signers, and action buttons.
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import type { PressableState } from '@/types/common';
 import {
   View,
   Text,
@@ -362,7 +363,7 @@ interface ActionButtonProps {
 const ActionButton = React.memo(function ActionButtonInner({ icon, label, color, loading: isLoading, onPress }: ActionButtonProps) {
   return (
     <Pressable
-      style={({ hovered }: any) => [
+      style={({ hovered }: PressableState) => [
         styles.actionBtn,
         hovered && styles.actionBtnHovered,
         webOnly({ cursor: 'pointer', transition: 'all 0.15s ease' }),

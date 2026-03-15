@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import type { AuthenticatedRequest } from './types';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { storage } from './storage';
@@ -127,7 +128,7 @@ function emitTraceEvent(event: {
   message?: string;
   errorCode?: string;
   latencyMs?: number;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any>;
 }): void {
   void (async () => {
     try {
@@ -167,7 +168,7 @@ async function reportPipelineIncident(details: {
   errorCode?: string | null;
   statusCode?: number | null;
   message?: string | null;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any>;
 }): Promise<void> {
   const orchestratorUrl = resolveOrchestratorUrl();
   await reportAdminIncident(orchestratorUrl, {
@@ -293,13 +294,13 @@ function sanitizeText(text: string | undefined | null): string | null {
   return text.replace(/<[^>]*>/g, '').replace(/javascript:/gi, '').trim() || null;
 }
 
-function sanitizeArray(arr: any): string[] {
+function sanitizeArray(arr: unknown): string[] {
   if (!Array.isArray(arr)) return [];
-  return arr.filter((s: any) => typeof s === 'string').map((s: string) => sanitizeText(s) || '').filter(Boolean);
+  return arr.filter((s: unknown) => typeof s === 'string').map((s) => sanitizeText(s as string) || '').filter(Boolean);
 }
 
 // Validate enum field — returns value if valid, null otherwise
-function validateEnum(value: any, allowed: string[]): string | null {
+function validateEnum(value: unknown, allowed: string[]): string | null {
   if (typeof value !== 'string') return null;
   return allowed.includes(value) ? value : null;
 }
@@ -332,7 +333,7 @@ function isAdultDate(value: string | null): boolean {
  */
 async function allocateSuiteDisplayId(): Promise<string> {
   const result = await db.execute(sql`SELECT nextval('suite_display_id_seq')::text AS id`);
-  const row = ((result.rows || result) as any[])[0];
+  const row = ((result.rows || result) as Record<string, any>[])[0];
   return row?.id || '999'; // fallback should never hit
 }
 
@@ -343,7 +344,7 @@ async function allocateSuiteDisplayId(): Promise<string> {
  */
 async function allocateOfficeDisplayId(suiteId: string): Promise<string> {
   const result = await db.execute(sql`SELECT allocate_office_display_id(${suiteId}::uuid) AS id`);
-  const row = ((result.rows || result) as any[])[0];
+  const row = ((result.rows || result) as Record<string, any>[])[0];
   return row?.id || 'A01'; // owner default
 }
 
@@ -384,7 +385,7 @@ async function resolveSuiteOfficeIdentity(suiteId: string): Promise<{
       ORDER BY o.created_at ASC NULLS LAST
       LIMIT 1
     `);
-    const identityRow = ((identityResult.rows || identityResult) as any[])[0];
+    const identityRow = ((identityResult.rows || identityResult) as Record<string, any>[])[0];
     if (!suiteDisplayId) suiteDisplayId = identityRow?.suite_display_id || null;
     if (!officeDisplayId) officeDisplayId = identityRow?.office_display_id || null;
   } catch {
@@ -408,11 +409,11 @@ async function resolveSuiteOfficeIdentity(suiteId: string): Promise<{
 
 // Canonical JSON: sort object keys recursively for deterministic HMAC signatures
 // Must match n8n receiver sortKeys() — both sides produce identical canonical JSON
-function sortKeys(obj: any): any {
+function sortKeys(obj: unknown): unknown {
   if (Array.isArray(obj)) return obj.map(sortKeys);
   if (obj !== null && typeof obj === 'object') {
-    return Object.keys(obj).sort().reduce((acc: any, key: string) => {
-      acc[key] = sortKeys(obj[key]);
+    return Object.keys(obj as Record<string, any>).sort().reduce((acc: Record<string, any>, key: string) => {
+      acc[key] = sortKeys((obj as Record<string, any>)[key]);
       return acc;
     }, {});
   }
@@ -589,7 +590,7 @@ async function emitReceipt(params: {
 const bootstrapRateLimit = new Map<string, { count: number; resetAt: number }>();
 router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-bootstrap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const userId = (req as any).authenticatedUserId;
+  const userId = req.authenticatedUserId;
   if (!userId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Must be authenticated' });
   }
@@ -609,7 +610,7 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
   // Check if user already has a suite — but only skip if profile is ALSO complete.
   // Previous attempts may have created the suite but failed on the profile upsert,
   // leaving onboarding_completed_at unset and causing the auth gate to loop.
-  const existingSuiteId = (req as any).authenticatedSuiteId;
+  const existingSuiteId = req.authenticatedSuiteId;
   if (existingSuiteId && existingSuiteId !== getDefaultSuiteId()) {
     // Verify profile actually exists with all required onboarding fields complete
     const { data: existingProfile } = await supabaseAdmin!.from('suite_profiles')
@@ -719,7 +720,7 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       const result = await db.execute(sql`
         SELECT app.ensure_suite(${tenantId}, ${suiteName}) AS suite_id
       `);
-      const rows = (result.rows || result) as any[];
+      const rows = (result.rows || result) as Record<string, any>[];
       suiteId = rows[0]?.suite_id;
     } catch {
       // If app.ensure_suite doesn't exist, insert directly
@@ -728,7 +729,7 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
         VALUES (${tenantId}, ${suiteName})
         RETURNING suite_id
       `);
-      const rows = (result.rows || result) as any[];
+      const rows = (result.rows || result) as Record<string, any>[];
       suiteId = rows[0]?.suite_id;
     }
 
@@ -967,7 +968,7 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
  * on suite_profiles. This endpoint guarantees a reliable answer.
  */
 router.get('/api/onboarding/status', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId || suiteId === getDefaultSuiteId()) {
     return res.json({ complete: false, reason: 'no_suite' });
   }
@@ -993,7 +994,7 @@ router.get('/api/onboarding/status', async (req: Request, res: Response) => {
  * Used by desktop UI surfaces to avoid pending/mock identity labels.
  */
 router.get('/api/tenant/identity', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId || suiteId === getDefaultSuiteId()) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Suite context not available' });
   }
@@ -1023,8 +1024,8 @@ router.get('/api/tenant/identity', async (req: Request, res: Response) => {
  */
 router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-profile-${crypto.randomUUID()}`;
-  const userId = (req as any).authenticatedUserId;
-  const suiteId = (req as any).authenticatedSuiteId;
+  const userId = req.authenticatedUserId;
+  const suiteId = req.authenticatedSuiteId;
 
   if (!userId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Must be authenticated' });
@@ -1205,7 +1206,7 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
 });
 
 router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
-  const authSuiteId = (req as any).authenticatedSuiteId;
+  const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const profile = await storage.getSuiteProfile(getParam(req.params.suiteId));
@@ -1218,7 +1219,7 @@ router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
 
 // Backward-compatible alias: /api/users/:userId -> suite profile lookup
 router.get('/api/users/:userId', async (req: Request, res: Response) => {
-  const authSuiteId = (req as any).authenticatedSuiteId;
+  const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const profile = await storage.getSuiteProfile(getParam(req.params.userId));
@@ -1241,8 +1242,8 @@ router.get('/api/users/slug/:slug', async (req: Request, res: Response) => {
 
 router.post('/api/users', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-create-profile-${crypto.randomUUID()}`;
-  const suiteId = (req as any).authenticatedSuiteId || req.body?.suiteId || 'unknown';
-  const actorId = (req as any).authenticatedUserId || 'unknown';
+  const suiteId = req.authenticatedSuiteId || req.body?.suiteId || 'unknown';
+  const actorId = req.authenticatedUserId || 'unknown';
   try {
     const profile = await storage.createSuiteProfile(req.body);
 
@@ -1282,8 +1283,8 @@ router.post('/api/users', async (req: Request, res: Response) => {
 // This legacy endpoint is auth-gated to prevent unauthenticated profile writes.
 router.patch('/api/users/:userId', async (req: Request, res: Response) => {
   // Auth enforcement — Law #3: fail closed
-  const authedUserId = (req as any).authenticatedUserId;
-  const authedSuiteId = (req as any).authenticatedSuiteId;
+  const authedUserId = req.authenticatedUserId;
+  const authedSuiteId = req.authenticatedSuiteId;
   if (!authedUserId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required. Use PATCH /api/onboarding/profile for profile updates.' });
   }
@@ -1334,7 +1335,7 @@ router.patch('/api/users/:userId', async (req: Request, res: Response) => {
 });
 
 router.get('/api/users/:userId/services', async (req: Request, res: Response) => {
-  const authSuiteId = (req as any).authenticatedSuiteId;
+  const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const services = await storage.getServices(getParam(req.params.userId));
@@ -1345,7 +1346,7 @@ router.get('/api/users/:userId/services', async (req: Request, res: Response) =>
 });
 
 router.get('/api/users/:userId/services/active', async (req: Request, res: Response) => {
-  const authSuiteId = (req as any).authenticatedSuiteId;
+  const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const services = await storage.getActiveServices(getParam(req.params.userId));
@@ -1358,7 +1359,7 @@ router.get('/api/users/:userId/services/active', async (req: Request, res: Respo
 router.post('/api/users/:userId/services', async (req: Request, res: Response) => {
   const suiteId = getParam(req.params.userId);
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-create-service-${crypto.randomUUID()}`;
-  const actorId = (req as any).authenticatedUserId || 'unknown';
+  const actorId = req.authenticatedUserId || 'unknown';
   try {
     const stripe = await getUncachableStripeClient();
 
@@ -1414,9 +1415,9 @@ router.post('/api/users/:userId/services', async (req: Request, res: Response) =
 
 router.patch('/api/services/:serviceId', async (req: Request, res: Response) => {
   const serviceId = getParam(req.params.serviceId);
-  const suiteId = (req as any).authenticatedSuiteId || 'unknown';
+  const suiteId = req.authenticatedSuiteId || 'unknown';
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-update-service-${crypto.randomUUID()}`;
-  const actorId = (req as any).authenticatedUserId || 'unknown';
+  const actorId = req.authenticatedUserId || 'unknown';
   try {
     const service = await storage.updateService(serviceId, req.body);
     if (!service) return res.status(404).json({ error: 'Service not found' });
@@ -1453,9 +1454,9 @@ router.patch('/api/services/:serviceId', async (req: Request, res: Response) => 
 
 router.delete('/api/services/:serviceId', async (req: Request, res: Response) => {
   const serviceId = getParam(req.params.serviceId);
-  const suiteId = (req as any).authenticatedSuiteId || 'unknown';
+  const suiteId = req.authenticatedSuiteId || 'unknown';
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-delete-service-${crypto.randomUUID()}`;
-  const actorId = (req as any).authenticatedUserId || 'unknown';
+  const actorId = req.authenticatedUserId || 'unknown';
   try {
     await storage.deleteService(serviceId);
 
@@ -1490,7 +1491,7 @@ router.delete('/api/services/:serviceId', async (req: Request, res: Response) =>
 });
 
 router.get('/api/users/:userId/availability', async (req: Request, res: Response) => {
-  const authSuiteId = (req as any).authenticatedSuiteId;
+  const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const availability = await storage.getAvailability(getParam(req.params.userId));
@@ -1503,9 +1504,9 @@ router.get('/api/users/:userId/availability', async (req: Request, res: Response
 router.put('/api/users/:userId/availability', async (req: Request, res: Response) => {
   const suiteId = getParam(req.params.userId);
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-set-availability-${crypto.randomUUID()}`;
-  const actorId = (req as any).authenticatedUserId || 'unknown';
+  const actorId = req.authenticatedUserId || 'unknown';
   try {
-    const slots = req.body.slots.map((slot: any) => ({
+    const slots = req.body.slots.map((slot: Record<string, any>) => ({
       ...slot,
       suiteId,
     }));
@@ -1542,7 +1543,7 @@ router.put('/api/users/:userId/availability', async (req: Request, res: Response
 });
 
 router.get('/api/users/:userId/buffer-settings', async (req: Request, res: Response) => {
-  const authSuiteId = (req as any).authenticatedSuiteId;
+  const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const settings = await storage.getBufferSettings(getParam(req.params.userId));
@@ -1555,7 +1556,7 @@ router.get('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
 router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Response) => {
   const suiteId = getParam(req.params.userId);
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-buffer-settings-${crypto.randomUUID()}`;
-  const actorId = (req as any).authenticatedUserId || 'unknown';
+  const actorId = req.authenticatedUserId || 'unknown';
   try {
     const settings = await storage.upsertBufferSettings(suiteId, req.body);
 
@@ -1590,7 +1591,7 @@ router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
 });
 
 router.get('/api/users/:userId/bookings', async (req: Request, res: Response) => {
-  const authSuiteId = (req as any).authenticatedSuiteId;
+  const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const bookings = await storage.getBookings(getParam(req.params.userId));
@@ -1601,7 +1602,7 @@ router.get('/api/users/:userId/bookings', async (req: Request, res: Response) =>
 });
 
 router.get('/api/users/:userId/bookings/upcoming', async (req: Request, res: Response) => {
-  const authSuiteId = (req as any).authenticatedSuiteId;
+  const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const bookings = await storage.getUpcomingBookings(getParam(req.params.userId));
@@ -1612,7 +1613,7 @@ router.get('/api/users/:userId/bookings/upcoming', async (req: Request, res: Res
 });
 
 router.get('/api/users/:userId/bookings/stats', async (req: Request, res: Response) => {
-  const authSuiteId = (req as any).authenticatedSuiteId;
+  const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const stats = await storage.getBookingStats(getParam(req.params.userId));
@@ -1634,9 +1635,9 @@ router.get('/api/bookings/:bookingId', async (req: Request, res: Response) => {
 
 router.post('/api/bookings/:bookingId/cancel', async (req: Request, res: Response) => {
   const bookingId = getParam(req.params.bookingId);
-  const suiteId = (req as any).authenticatedSuiteId || 'unknown';
+  const suiteId = req.authenticatedSuiteId || 'unknown';
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-cancel-booking-${crypto.randomUUID()}`;
-  const actorId = (req as any).authenticatedUserId || 'unknown';
+  const actorId = req.authenticatedUserId || 'unknown';
   try {
     const booking = await storage.cancelBooking(bookingId, req.body.reason);
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
@@ -1839,7 +1840,7 @@ router.post('/api/book/:slug/confirm/:bookingId', async (req: Request, res: Resp
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
     // Law #2: Receipt for booking confirmation (YELLOW — state change, payment confirmed)
-    const suiteId = (booking as any).suiteId || 'unknown';
+    const suiteId = (booking as Record<string, any>).suiteId as string || 'unknown';
     await createTrustSpineReceipt({
       suiteId,
       receiptType: 'booking.confirm',
@@ -2532,8 +2533,8 @@ router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
 router.post('/api/telemetry/canvas', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-canvas-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const traceId = resolveTraceId(req, correlationId);
-  const suiteId = (req as any).authenticatedSuiteId || null;
-  const actorId = (req as any).authenticatedUserId || 'unknown';
+  const suiteId = req.authenticatedSuiteId || null;
+  const actorId = req.authenticatedUserId || 'unknown';
   const events = Array.isArray(req.body?.events) ? req.body.events : [];
 
   if (!suiteId) {
@@ -2645,7 +2646,7 @@ function writeSseHeaders(res: Response, correlationId: string, traceId: string):
   res.setHeader('X-Trace-Id', traceId);
 }
 
-function writeSseEvent(res: Response, payload: Record<string, unknown>): void {
+function writeSseEvent(res: Response, payload: Record<string, any>): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
@@ -2670,7 +2671,7 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
     });
   }
 
-  const suiteId = (req as any).authenticatedSuiteId || '';
+  const suiteId = req.authenticatedSuiteId || '';
   if (!suiteId) {
     return res.status(401).json({
       error: 'AUTH_REQUIRED',
@@ -2759,7 +2760,7 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
         'Content-Type': 'application/json',
         'X-Suite-Id': suiteId,
         'X-Office-Id': getDefaultOfficeId() || suiteId,
-        'X-Actor-Id': (req as any).authenticatedUserId || 'web-stream-client',
+        'X-Actor-Id': req.authenticatedUserId || 'web-stream-client',
         'X-Correlation-Id': correlationId,
         'X-Trace-Id': traceId,
       },
@@ -2919,8 +2920,8 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const traceId = resolveTraceId(req, correlationId);
   const startedAt = Date.now();
-  const authenticatedSuiteId = (req as any).authenticatedSuiteId || null;
-  const authenticatedUserId = (req as any).authenticatedUserId || '';
+  const authenticatedSuiteId = req.authenticatedSuiteId || null;
+  const authenticatedUserId = req.authenticatedUserId || '';
   const headerSuiteId = typeof req.headers['x-suite-id'] === 'string' ? req.headers['x-suite-id'].trim() : '';
   const headerOfficeId = typeof req.headers['x-office-id'] === 'string' ? req.headers['x-office-id'].trim() : '';
   const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization.trim() : '';
@@ -3154,7 +3155,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       });
 
       // Extract human-readable text from orchestrator error response
-      let errorData: any = null;
+      let errorData: Record<string, any> | null = null;
       try { errorData = JSON.parse(errorText); } catch { /* non-JSON error */ }
       const responseText = humanizeUserError(
         errorData?.text || errorData?.message,
@@ -3191,7 +3192,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
           VALUES (${profileReceiptId}, 'ava.profile_context_loaded', 'success', ${suiteId}, ${suiteId},
                   ${correlationId}, 'system', 'ava-profile-loader', 'green', NOW(),
                   ${JSON.stringify({
-                    fields_sent: Object.keys(profileContext).filter(k => (profileContext as any)[k] != null),
+                    fields_sent: Object.keys(profileContext).filter(k => (profileContext as Record<string, any>)[k] != null),
                     pii_filtered: ['dateOfBirth', 'gender', 'homeAddress', 'businessAddress'],
                   })}::jsonb)
         `);
@@ -3318,7 +3319,7 @@ router.get('/api/inbox/items', async (_req: Request, res: Response) => {
       ORDER BY created_at DESC
       LIMIT 50
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     res.json({ items: rows });
   } catch (error: unknown) {
     // Graceful degradation: table may not exist yet
@@ -3329,7 +3330,7 @@ router.get('/api/inbox/items', async (_req: Request, res: Response) => {
 
 router.get('/api/authority-queue', async (req: Request, res: Response) => {
   // Law #6: Tenant isolation — require authenticated suite context
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -3359,7 +3360,7 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
       ORDER BY created_at DESC
       LIMIT 20
     `);
-    const pendingApprovals = (approvalResult.rows || approvalResult) as any[];
+    const pendingApprovals = (approvalResult.rows || approvalResult) as Record<string, any>[];
 
     // Query recent completed receipts — aligned with trust_spine_bundle schema
     const receiptResult = await db.execute(sql`
@@ -3373,7 +3374,7 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
       ORDER BY created_at DESC
       LIMIT 10
     `);
-    const recentReceipts = (receiptResult.rows || receiptResult) as any[];
+    const recentReceipts = (receiptResult.rows || receiptResult) as Record<string, any>[];
 
     res.json({ pendingApprovals, recentReceipts });
   } catch (error: unknown) {
@@ -3385,12 +3386,12 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
 
 router.post('/api/authority-queue/:id/approve', async (req: Request, res: Response) => {
   // Law #3: Fail Closed — require authenticated suite context for state-changing operations
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
 
-  const userId = (req as any).authenticatedUserId;
+  const userId = req.authenticatedUserId;
   const { id } = req.params;
   try {
     // Update approval request status — scoped by tenant_id (Law #6)
@@ -3402,7 +3403,7 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
     `);
 
     // Law #3: Fail Closed — verify the update actually matched a row
-    const rowCount = (updateResult as any).rowCount ?? (updateResult as any).changes ?? 0;
+    const rowCount = (updateResult as Record<string, any>).rowCount ?? (updateResult as Record<string, any>).changes ?? 0;
     if (rowCount === 0) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Approval request not found or not in your tenant.' });
     }
@@ -3460,12 +3461,12 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
 
 router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response) => {
   // Law #3: Fail Closed — require authenticated suite context for state-changing operations
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
 
-  const userId = (req as any).authenticatedUserId;
+  const userId = req.authenticatedUserId;
   const { id } = req.params;
   const { reason } = req.body;
   try {
@@ -3479,7 +3480,7 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
     `);
 
     // Law #3: Fail Closed — verify the update actually matched a row
-    const denyRowCount = (denyResult as any).rowCount ?? (denyResult as any).changes ?? 0;
+    const denyRowCount = (denyResult as Record<string, any>).rowCount ?? (denyResult as Record<string, any>).changes ?? 0;
     if (denyRowCount === 0) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Approval request not found or not in your tenant.' });
     }
@@ -3511,8 +3512,8 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
  */
 router.post('/api/authority-queue/:id/execute', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const suiteId = (req as any).authenticatedSuiteId;
-  const userId = (req as any).authenticatedUserId;
+  const suiteId = req.authenticatedSuiteId;
+  const userId = req.authenticatedUserId;
   const officeId = getDefaultOfficeId();
 
   if (!suiteId) {
@@ -3556,7 +3557,7 @@ router.post('/api/authority-queue/:id/execute', async (req: Request, res: Respon
 router.post('/api/anam/session', async (req: Request, res: Response) => {
   try {
     // Law #3: Fail Closed — require authenticated user for avatar sessions
-    const userId = (req as any).authenticatedUserId;
+    const userId = req.authenticatedUserId;
     if (!userId) {
       return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required for avatar sessions' });
     }
@@ -3577,7 +3578,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     // llmId: Custom LLM registered with Anam → routes to /v1/chat/completions (Law #1: Single Brain)
     // Fallback to CUSTOMER_CLIENT_V1 if custom LLM not configured.
     const ANAM_CUSTOM_LLM_ID = process.env.ANAM_CUSTOM_LLM_ID || 'CUSTOMER_CLIENT_V1';
-    const suiteId = (req as any).authenticatedSuiteId || '';
+    const suiteId = req.authenticatedSuiteId || '';
     const officeId = getDefaultOfficeId() || suiteId;
 
     // Embed tenant context in system prompt so /v1/chat/completions can identify the user.
@@ -3744,7 +3745,7 @@ When giving tax guidance, always include confidence level: "This is well-establi
 
 router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const sendSse = (text: string, extra: Record<string, unknown> = {}) => {
+  const sendSse = (text: string, extra: Record<string, any> = {}) => {
     if (!res.headersSent) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -3771,8 +3772,8 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     }
 
     // Auth bridge: prefer JWT-derived suiteId/userId, fall back to session store for Anam brain routing
-    let suiteId = (req as any).authenticatedSuiteId;
-    let userId = (req as any).authenticatedUserId;
+    let suiteId = req.authenticatedSuiteId;
+    let userId = req.authenticatedUserId;
     let sessionCtx: AnamSessionContext | undefined;
     if ((!suiteId || !userId) && session_id) {
       // CUSTOMER_CLIENT_V1 callback — Anam sends session_id, look up stored context
@@ -3914,8 +3915,8 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
 // Used after SDK SESSION_READY so CUSTOMER_CLIENT_V1 callbacks can resolve auth.
 router.post('/api/anam/session/bind', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).authenticatedUserId;
-    const suiteId = (req as any).authenticatedSuiteId;
+    const userId = req.authenticatedUserId;
+    const suiteId = req.authenticatedSuiteId;
     if (!userId || !suiteId) {
       return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required for avatar session binding' });
     }
@@ -3998,7 +3999,7 @@ router.post('/v1/chat/completions', async (req: Request, res: Response) => {
     }
 
     // Extract system message (contains ASPIRE_CTX + persona instructions)
-    const systemMsg = messages.find((m: any) => m.role === 'system');
+    const systemMsg = messages.find((m: { role: string; content: string }) => m.role === 'system');
     const systemContent = typeof systemMsg?.content === 'string' ? systemMsg.content : '';
 
     // Parse [ASPIRE_CTX:suite_id=xxx,user_id=yyy,office_id=zzz,agent=aaa]
@@ -4025,7 +4026,7 @@ router.post('/v1/chat/completions', async (req: Request, res: Response) => {
     }
 
     // Extract the last user message (what the user just said)
-    const userMessages = messages.filter((m: any) => m.role === 'user');
+    const userMessages = messages.filter((m: { role: string; content: string }) => m.role === 'user');
     const lastUserMsg = userMessages[userMessages.length - 1];
     const utterance = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content.trim() : '';
 
@@ -4035,9 +4036,9 @@ router.post('/v1/chat/completions', async (req: Request, res: Response) => {
 
     // Build conversation history from messages (skip system, take last 10 exchanges)
     const history = messages
-      .filter((m: any) => m.role !== 'system')
+      .filter((m: { role: string; content: string }) => m.role !== 'system')
       .slice(-20)
-      .map((m: any) => ({ role: m.role, content: m.content }));
+      .map((m: { role: string; content: string }) => ({ role: m.role, content: m.content }));
 
     // Step 3: Fetch user profile for personalization (server-side lookup)
     let profileContext: Record<string, any> | undefined;
@@ -4200,7 +4201,7 @@ function isValidLocalPart(s: string): boolean { return EMAIL_LOCAL_RE.test(s) &&
 
 /** Extract and validate suite_id from authenticated request. Returns null + sends 401 if missing. */
 function requireAuth(req: Request, res: Response): string | null {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required' });
     return null;
@@ -4265,7 +4266,7 @@ function getDomainRailS2SHeaders(
   };
 }
 
-async function domainRailProxy(method: string, path: string, body?: any, suiteId?: string, extraHeaders?: Record<string, string>): Promise<{ status: number; data: any }> {
+async function domainRailProxy(method: string, path: string, body?: unknown, suiteId?: string, extraHeaders?: Record<string, string>): Promise<{ status: number; data: any }> {
   const secret = process.env.DOMAIN_RAIL_HMAC_SECRET;
   if (!secret) return { status: 503, data: { error: 'DOMAIN_RAIL_HMAC_SECRET not configured' } };
   if (!supabaseAdmin) return { status: 503, data: { error: 'Supabase not configured' } };
@@ -4381,7 +4382,7 @@ router.post('/api/calendar/events', async (req: Request, res: Response) => {
                               correlation_id, actor_type, actor_id, status, created_at)
         VALUES (${receiptId}, 'calendar.event.create', ${receiptAction}::jsonb, ${receiptResult}::jsonb,
                 ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
-                ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
+                ${req.authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
     } catch (receiptErr: unknown) {
       logger.warn('Calendar receipt write failed (event created)', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
     }
@@ -4449,7 +4450,7 @@ router.put('/api/calendar/events/:id', async (req: Request, res: Response) => {
                               correlation_id, actor_type, actor_id, status, created_at)
         VALUES (${receiptId}, 'calendar.event.update', ${updReceiptAction}::jsonb, ${updReceiptResult}::jsonb,
                 ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
-                ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
+                ${req.authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
     } catch (receiptErr: unknown) {
       logger.warn('Calendar update receipt write failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
     }
@@ -4491,7 +4492,7 @@ router.delete('/api/calendar/events/:id', async (req: Request, res: Response) =>
                               correlation_id, actor_type, actor_id, status, created_at)
         VALUES (${receiptId}, 'calendar.event.delete', ${delReceiptAction}::jsonb, ${delReceiptResult}::jsonb,
                 ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
-                ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
+                ${req.authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
     } catch (receiptErr: unknown) {
       logger.warn('Calendar delete receipt write failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
     }
@@ -4540,7 +4541,7 @@ router.patch('/api/calendar/events/:id/complete', async (req: Request, res: Resp
                               correlation_id, actor_type, actor_id, status, created_at)
         VALUES (${receiptId}, 'calendar.event.complete', ${completeAction}::jsonb, ${completeResult}::jsonb,
                 ${suiteId}, ${suiteId.toString()}, ${correlationId}, 'USER',
-                ${(req as any).authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
+                ${req.authenticatedUserId || 'unknown'}, 'SUCCEEDED', NOW())`);
     } catch (receiptErr: unknown) {
       logger.warn('Calendar complete receipt write failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
     }
@@ -4570,12 +4571,12 @@ router.get('/api/calendar/today', async (req: Request, res: Response) => {
         ORDER BY scheduled_at ASC`),
     ]);
 
-    const calEvents = (calResult.rows as any[]).map(e => ({
+    const calEvents = (calResult.rows as Record<string, any>[]).map(e => ({
       ...e,
-      _source: 'calendar',
-    }));
+      _source: 'calendar' as const,
+    })) as Record<string, any>[];
 
-    const bookEvents = (bookResult.rows as any[]).map(b => ({
+    const bookEvents = (bookResult.rows as Record<string, any>[]).map(b => ({
       id: b.id,
       suite_id: b.suite_id,
       title: `Booking: ${b.client_name || 'Client'}`,
@@ -4594,7 +4595,7 @@ router.get('/api/calendar/today', async (req: Request, res: Response) => {
       _source: 'booking',
       _booking_status: b.status,
       _booking_amount: b.amount,
-    }));
+    })) as Record<string, any>[];
 
     const merged = [...calEvents, ...bookEvents].sort((a, b) =>
       new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
@@ -4633,7 +4634,7 @@ router.delete('/api/mail/accounts/:accountId', async (req: Request, res: Respons
       receiptType: 'mail.account.removed',
       status: 'SUCCEEDED',
       actorType: 'USER',
-      actorId: (req as any).authenticatedUserId || undefined,
+      actorId: req.authenticatedUserId || undefined,
       action: { operation: 'remove_mail_account', account_id: accountId, risk_tier: 'YELLOW' },
       result: { removed: true },
     }).catch(() => {});
@@ -4668,7 +4669,7 @@ router.get('/v1/inbox/accounts', async (req: Request, res: Response) => {
 router.post('/v1/mail/onboarding/start', async (req: Request, res: Response) => {
   try {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
-    const officeId = (req as any).authenticatedOfficeId || getDefaultOfficeId();
+    const officeId = req.authenticatedOfficeId || getDefaultOfficeId();
     if (!checkOnboardingRate(suiteId)) {
       return res.status(429).json({ error: 'RATE_LIMITED', message: 'Too many onboarding requests. Try again in 1 minute.' });
     }
@@ -4685,9 +4686,9 @@ router.post('/v1/mail/onboarding/start', async (req: Request, res: Response) => 
       receiptType: 'mail.onboarding.start',
       status: 'SUCCEEDED',
       actorType: 'USER',
-      actorId: (req as any).authenticatedUserId || undefined,
+      actorId: req.authenticatedUserId || undefined,
       action: { operation: 'start_mail_onboarding', provider, risk_tier: 'YELLOW' },
-      result: { job_id: (result as any)?.jobId || (result as any)?.id },
+      result: { job_id: (result as Record<string, any>)?.jobId || (result as Record<string, any>)?.id },
     }).catch(() => {});
 
     res.json(result);
@@ -4750,7 +4751,7 @@ router.get('/v1/domains/search', async (req: Request, res: Response) => {
     // Transform RC response into DomainSearchResult[] format
     const results: Array<{ domain: string; available: boolean; price: string; currency: string; tld: string; term: number }> = [];
     for (const [rcKey, info] of Object.entries(rawData)) {
-      const domainInfo = info as any;
+      const domainInfo = info as Record<string, any>;
       const rcStatus = typeof domainInfo === 'string' ? domainInfo : domainInfo?.status;
       if (!rcStatus) continue;
       const priceVal = typeof domainInfo === 'object' ? (domainInfo.price || domainInfo.sellingprice) : undefined;
@@ -4810,7 +4811,7 @@ router.post('/v1/domains/checkout/start', async (req: Request, res: Response) =>
     // 1. Verify domain is still available via Domain Rail
     const { data: checkData } = await domainRailProxy('GET', `/v1/domains/check?domain=${encodeURIComponent(domain)}`, undefined, suiteId);
     const rawAvail: Record<string, any> = checkData?.data || {};
-    const availEntry = Object.values(rawAvail).find((v: any) => typeof v === 'object' && v?.status) as any;
+    const availEntry = Object.values(rawAvail).find((v) => typeof v === 'object' && v && (v as any).status) as Record<string, any>;
     if (!availEntry || availEntry?.status !== 'available') {
       return res.status(400).json({ error: 'DOMAIN_NOT_AVAILABLE', message: 'Domain is not available for purchase' });
     }
@@ -4989,7 +4990,7 @@ router.post('/v1/mail/eli/policy/apply', async (req: Request, res: Response) => 
       receiptType: 'mail.eli.policy_applied',
       status: 'SUCCEEDED',
       actorType: 'USER',
-      actorId: (req as any).authenticatedUserId || undefined,
+      actorId: req.authenticatedUserId || undefined,
       action: { operation: 'apply_eli_policy', job_id: jobId, policy_keys: policyKeys, risk_tier: 'YELLOW' },
       result: { applied: true },
     }).catch(() => {});
@@ -5011,7 +5012,7 @@ router.post('/v1/mail/onboarding/:jobId/activate', async (req: Request, res: Res
       receiptType: 'mail.onboarding.activated',
       status: 'SUCCEEDED',
       actorType: 'USER',
-      actorId: (req as any).authenticatedUserId || undefined,
+      actorId: req.authenticatedUserId || undefined,
       action: { operation: 'activate_mail_onboarding', job_id: jobId, risk_tier: 'YELLOW' },
       result: { activated: true },
     }).catch(() => {});
@@ -5052,7 +5053,7 @@ async function loadImapCredentials(suiteId: string, accountEmail?: string): Prom
     `;
   }
   const result = await db.execute(query);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length) return null;
 
   const row = rows[0];
@@ -5081,14 +5082,14 @@ async function detectMailProvider(suiteId: string, preferredAccount?: string): P
       SELECT email FROM oauth_tokens
       WHERE suite_id = ${suiteId}::uuid AND provider = 'google' AND email = ${preferredAccount}
     `);
-    if (((googleResult.rows || googleResult) as any[]).length > 0) return 'google';
+    if (((googleResult.rows || googleResult) as Record<string, any>[]).length > 0) return 'google';
 
     // Check PolarisM
     const polarisResult = await db.execute(sql`
       SELECT email_address FROM app.mail_accounts
       WHERE suite_id = ${suiteId}::uuid AND email_address = ${preferredAccount} AND status = 'active'
     `);
-    if (((polarisResult.rows || polarisResult) as any[]).length > 0) return 'polaris';
+    if (((polarisResult.rows || polarisResult) as Record<string, any>[]).length > 0) return 'polaris';
     return null;
   }
 
@@ -5098,12 +5099,12 @@ async function detectMailProvider(suiteId: string, preferredAccount?: string): P
     WHERE suite_id = ${suiteId}::uuid AND mailbox_provider = 'polaris' AND status = 'active'
     LIMIT 1
   `);
-  if (((polarisResult.rows || polarisResult) as any[]).length > 0) return 'polaris';
+  if (((polarisResult.rows || polarisResult) as Record<string, any>[]).length > 0) return 'polaris';
 
   const googleResult = await db.execute(sql`
     SELECT email FROM oauth_tokens WHERE suite_id = ${suiteId}::uuid AND provider = 'google'
   `);
-  if (((googleResult.rows || googleResult) as any[]).length > 0) return 'google';
+  if (((googleResult.rows || googleResult) as Record<string, any>[]).length > 0) return 'google';
 
   return null;
 }
@@ -5112,7 +5113,7 @@ async function detectMailProvider(suiteId: string, preferredAccount?: string): P
 router.get('/api/mail/threads', async (req: Request, res: Response) => {
   try {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
-    const officeId = (req as any).authenticatedOfficeId || getDefaultOfficeId();
+    const officeId = req.authenticatedOfficeId || getDefaultOfficeId();
     const account = req.query.account as string | undefined;
     const maxResults = Math.min(parseInt(req.query.limit as string || '30', 10), 100);
     const pageToken = req.query.pageToken as string | undefined;
@@ -5176,7 +5177,7 @@ router.get('/api/mail/threads', async (req: Request, res: Response) => {
 router.get('/api/mail/threads/:threadId', async (req: Request, res: Response) => {
   try {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
-    const officeId = (req as any).authenticatedOfficeId || getDefaultOfficeId();
+    const officeId = req.authenticatedOfficeId || getDefaultOfficeId();
     const threadId = req.params.threadId as string;
     if (!threadId) return res.status(400).json({ error: 'Thread ID required' });
 
@@ -5522,7 +5523,7 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
 
     // Fetch details in batches of 5 to avoid PandaDoc rate limits
     const BATCH_SIZE = 5;
-    const enriched: any[] = [];
+    const enriched: Record<string, any>[] = [];
     for (let i = 0; i < templates.length; i += BATCH_SIZE) {
       const batch = templates.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.all(
@@ -5561,7 +5562,7 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
             };
           }
 
-          const detail = await detailResp.json() as any;
+          const detail = await detailResp.json() as Record<string, any>;
           // Resolve thumbnail: local custom > name-based fallback > API image
           const templateName = (detail.name || t.name || '').toLowerCase();
           let thumbnailFile = TEMPLATE_THUMBNAIL_MAP[t.id];
@@ -5579,14 +5580,14 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
             name: detail.name || t.name,
             date_created: t.date_created,
             date_modified: t.date_modified,
-            tokens: (detail.tokens || []).map((tk: any) => ({ name: tk.name, value: tk.value })),
-            fields: (detail.fields || []).map((f: any) => ({
+            tokens: (detail.tokens || []).map((tk: { name: string; value: string }) => ({ name: tk.name, value: tk.value })),
+            fields: (detail.fields || []).map((f: { name: string; type: string; field_id: string; assigned_to?: { name: string } }) => ({
               name: f.name,
               type: f.type,
               field_id: f.field_id,
               assigned_to: f.assigned_to?.name || null,
             })),
-            roles: (detail.roles || []).map((r: any) => ({ id: r.id, name: r.name })),
+            roles: (detail.roles || []).map((r: { id: string; name: string }) => ({ id: r.id, name: r.name })),
             images: (detail.images || []).length,
             preview_image_url: resolvedPreviewUrl,
             content_placeholders: (detail.content_placeholders || []).length,
@@ -5758,7 +5759,7 @@ router.get('/api/contracts/:id', async (req: Request, res: Response) => {
     const contract = result.rows[0];
 
     // Fetch signing sessions for this contract
-    let sessions: any[] = [];
+    let sessions: Record<string, any>[] = [];
     try {
       const sessResult = await db.execute(
         sql`SELECT id, token, signer_email, signer_name, expires_at, completed_at, created_at
@@ -5796,7 +5797,7 @@ router.post('/api/contracts/:id/send', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    const { document_id, contract_state } = result.rows[0] as any;
+    const { document_id, contract_state } = result.rows[0] as Record<string, any>;
 
     // Only draft or reviewed contracts can be sent
     if (!['draft', 'reviewed'].includes(contract_state)) {
@@ -5880,7 +5881,7 @@ router.post('/api/contracts/:id/session', async (req: Request, res: Response) =>
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    const { document_id, contract_state, title } = result.rows[0] as any;
+    const { document_id, contract_state, title } = result.rows[0] as Record<string, any>;
 
     if (contract_state !== 'sent') {
       return res.status(400).json({
@@ -5897,7 +5898,7 @@ router.post('/api/contracts/:id/session', async (req: Request, res: Response) =>
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    const sessionBody: any = {};
+    const sessionBody: Record<string, any> = {};
     if (signerEmail) sessionBody.recipient = signerEmail;
 
     const resp = await fetch(`https://api.pandadoc.com/public/v1/documents/${document_id}/session`, {
@@ -6047,7 +6048,7 @@ router.post('/api/contracts/:id/void', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    const { document_id, contract_state } = result.rows[0] as any;
+    const { document_id, contract_state } = result.rows[0] as Record<string, any>;
 
     // Only sent contracts can be voided
     if (!['sent', 'draft', 'reviewed'].includes(contract_state)) {
@@ -6106,7 +6107,7 @@ router.get('/api/contracts/:id/download', async (req: Request, res: Response) =>
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    const { document_id } = result.rows[0] as any;
+    const { document_id } = result.rows[0] as Record<string, any>;
     const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
 
@@ -6180,7 +6181,7 @@ router.get('/api/signing/:token', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Signing session not found' });
     }
 
-    const session = result.rows[0] as any;
+    const session = result.rows[0] as Record<string, any>;
 
     // Check expiration
     if (session.expires_at && new Date(session.expires_at) < new Date()) {

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import type { AuthenticatedRequest } from './types';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
@@ -61,7 +62,7 @@ const emptyChapters = () => ({
 });
 
 router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -77,7 +78,7 @@ router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
       LIMIT 1
     `);
 
-    const rows = (snapshotResult.rows || snapshotResult) as any[];
+    const rows = (snapshotResult.rows || snapshotResult) as Record<string, any>[];
     const connections = await getConnectionsByTenant(suiteId, officeId);
     const connected = connections.length > 0 && connections.some(c => c.status === 'connected');
 
@@ -126,7 +127,7 @@ router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
 });
 
 router.get('/api/finance/timeline', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -147,8 +148,8 @@ router.get('/api/finance/timeline', async (req: Request, res: Response) => {
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    const rows = (result.rows || result) as any[];
-    const events = rows.map((row: any) => ({
+    const rows = (result.rows || result) as Record<string, any>[];
+    const events = rows.map((row: Record<string, any>) => ({
       eventId: row.event_id,
       provider: row.provider,
       eventType: row.event_type,
@@ -166,7 +167,7 @@ router.get('/api/finance/timeline', async (req: Request, res: Response) => {
       WHERE suite_id = ${suiteId} AND office_id = ${officeId}
         AND occurred_at >= NOW() - (${days} || ' days')::interval
     `);
-    const countRows = (countResult.rows || countResult) as any[];
+    const countRows = (countResult.rows || countResult) as Record<string, any>[];
     const total = countRows[0]?.total || 0;
 
     res.json({ events, total, limit, offset });
@@ -178,7 +179,7 @@ router.get('/api/finance/timeline', async (req: Request, res: Response) => {
 });
 
 router.get('/api/finance/explain', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -213,8 +214,8 @@ router.get('/api/finance/explain', async (req: Request, res: Response) => {
       ORDER BY occurred_at DESC
       LIMIT 5
     `);
-    const relatedRows = (relatedResult.rows || relatedResult) as any[];
-    const relatedEvents = relatedRows.map((row: any) => ({
+    const relatedRows = (relatedResult.rows || relatedResult) as Record<string, any>[];
+    const relatedEvents = relatedRows.map((row: Record<string, any>) => ({
       eventId: row.event_id,
       provider: row.provider,
       eventType: row.event_type,
@@ -239,7 +240,7 @@ router.get('/api/finance/explain', async (req: Request, res: Response) => {
 });
 
 router.get('/api/connections/status', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -283,7 +284,7 @@ router.get('/api/connections/status', async (req: Request, res: Response) => {
 });
 
 router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -315,7 +316,7 @@ router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
       `);
     }
 
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
 
     const LIFECYCLE_STAGES = ['booked', 'invoiced', 'paid', 'deposited', 'posted'];
     const EVENT_TO_STAGE: Record<string, string> = {
@@ -371,7 +372,7 @@ router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
 });
 
 router.post('/api/finance/compute-snapshot', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -389,7 +390,7 @@ router.post('/api/finance/compute-snapshot', async (req: Request, res: Response)
 });
 
 router.post('/api/finance/proposals', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -424,7 +425,7 @@ router.post('/api/finance/proposals', async (req: Request, res: Response) => {
       RETURNING event_id, occurred_at
     `);
 
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     const eventId = rows[0].event_id;
     const occurredAt = rows[0].occurred_at;
 
@@ -464,7 +465,7 @@ router.post('/api/finance/proposals', async (req: Request, res: Response) => {
 });
 
 router.post('/api/finance/actions/execute', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -482,7 +483,7 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
       LIMIT 1
     `);
 
-    const proposalRows = (proposalResult.rows || proposalResult) as any[];
+    const proposalRows = (proposalResult.rows || proposalResult) as Record<string, any>[];
     if (proposalRows.length === 0) {
       return res.status(404).json({ error: 'Proposal not found' });
     }
@@ -510,7 +511,7 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
       RETURNING event_id, occurred_at
     `);
 
-    const execRows = (execResult.rows || execResult) as any[];
+    const execRows = (execResult.rows || execResult) as Record<string, any>[];
     const execEventId = execRows[0].event_id;
     const executedAt = execRows[0].occurred_at;
 
@@ -546,7 +547,7 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
 
 // ── Finn v2: Exceptions endpoint ──────────────────────────────────────────────
 router.get('/api/finance/exceptions', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -563,7 +564,7 @@ router.get('/api/finance/exceptions', async (req: Request, res: Response) => {
       LIMIT 1
     `);
 
-    const rows = (snapshotResult.rows || snapshotResult) as any[];
+    const rows = (snapshotResult.rows || snapshotResult) as Record<string, any>[];
     const snap = rows.length > 0 ? rows[0] : null;
     const exceptions: Array<{
       exception_id: string; lane: string; severity: string;
@@ -668,7 +669,7 @@ router.get('/api/finance/exceptions', async (req: Request, res: Response) => {
 // ── Finn v2: Authority Queue endpoints ────────────────────────────────────────
 router.get('/api/authority-queue', async (req: Request, res: Response) => {
   // Law #6: Tenant isolation — use authenticated context, never trust client-supplied IDs
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -687,8 +688,8 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
       LIMIT 50
     `);
 
-    const rows = (result.rows || result) as any[];
-    const items = rows.map((row: any) => {
+    const rows = (result.rows || result) as Record<string, any>[];
+    const items = rows.map((row: Record<string, any>) => {
       const meta = row.metadata || {};
       return {
         id: row.event_id,
@@ -716,7 +717,7 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
 
 router.post('/api/authority-queue/:id/approve', async (req: Request, res: Response) => {
   // Law #6: Tenant isolation — use authenticated context, never trust client-supplied IDs
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -734,7 +735,7 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
       LIMIT 1
     `);
 
-    const checkRows = (check.rows || check) as any[];
+    const checkRows = (check.rows || check) as Record<string, any>[];
     if (checkRows.length === 0) {
       return res.status(404).json({ error: 'Proposal not found' });
     }
@@ -773,7 +774,7 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
 
 router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response) => {
   // Law #6: Tenant isolation — use authenticated context, never trust client-supplied IDs
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
   }
@@ -791,7 +792,7 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
       LIMIT 1
     `);
 
-    const checkRows = (check.rows || check) as any[];
+    const checkRows = (check.rows || check) as Record<string, any>[];
     if (checkRows.length === 0) {
       return res.status(404).json({ error: 'Proposal not found' });
     }

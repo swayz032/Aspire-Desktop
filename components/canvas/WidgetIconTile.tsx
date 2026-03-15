@@ -8,6 +8,7 @@
  */
 
 import React, { useEffect } from 'react';
+import type { PressableState } from '@/types/common';
 import {
   View,
   Text,
@@ -144,7 +145,7 @@ export function WidgetIconTile({
         <Pressable
           onPress={onRemove}
           hitSlop={8}
-          style={({ pressed }: any) => [
+          style={({ pressed }: PressableState) => [
             s.removeBtn,
             {
               backgroundColor: pressed ? 'rgba(239,68,68,0.3)' : 'rgba(13,17,23,0.85)',

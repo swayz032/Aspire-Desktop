@@ -3,12 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndica
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
-
-interface PayrollSubTabProps {
-  gustoCompany: any;
-  gustoEmployees: any[];
-  gustoConnected: boolean;
-}
+import { PayrollSubTabProps, GustoEmployee, GustoTimeOffPolicy, GustoTimeOffRequest, GustoPTO } from './types';
 
 function formatStatusLabel(status: string): string {
   if (!status) return '—';
@@ -16,10 +11,10 @@ function formatStatusLabel(status: string): string {
 }
 
 export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
-  const [policies, setPolicies] = useState<any[]>([]);
+  const [policies, setPolicies] = useState<GustoTimeOffPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [requests, setRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<GustoTimeOffRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
 
   // Policy form state
@@ -55,8 +50,8 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
         if (!res.ok) throw new Error('Failed to fetch time-off policies');
         const data = await res.json();
         setPolicies(Array.isArray(data) ? data : []);
-      } catch (e: any) {
-        setError(e.message || 'Failed to load time-off policies');
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load time-off policies');
       } finally {
         setLoading(false);
       }
@@ -77,7 +72,7 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
         if (!res.ok) throw new Error('Failed to fetch time-off requests');
         const data = await res.json();
         setRequests(Array.isArray(data) ? data : []);
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error('Failed to load time-off requests:', e);
       } finally {
         setRequestsLoading(false);
@@ -132,8 +127,8 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
         const data = await policiesRes.json();
         setPolicies(Array.isArray(data) ? data : []);
       }
-    } catch (e: any) {
-      setPolicyError(e.message || 'Failed to create policy');
+    } catch (e: unknown) {
+      setPolicyError(e instanceof Error ? e.message : 'Failed to create policy');
     } finally {
       setPolicySubmitting(false);
     }
@@ -181,15 +176,15 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
         const data = await requestsRes.json();
         setRequests(Array.isArray(data) ? data : []);
       }
-    } catch (e: any) {
-      setRequestError(e.message || 'Failed to submit request');
+    } catch (e: unknown) {
+      setRequestError(e instanceof Error ? e.message : 'Failed to submit request');
     } finally {
       setRequestSubmitting(false);
     }
   }
 
   const employeePTO = (gustoEmployees || []).filter(
-    (e: any) => e.eligible_paid_time_off && e.eligible_paid_time_off.length > 0
+    (e: GustoEmployee) => e.eligible_paid_time_off && e.eligible_paid_time_off.length > 0
   );
 
   if (!gustoConnected) {
@@ -386,7 +381,7 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
       ) : (
         <>
           <View style={styles.policiesGrid}>
-            {policies.map((policy: any, idx: number) => (
+            {policies.map((policy: GustoTimeOffPolicy, idx: number) => (
               <View key={policy.uuid || policy.id || idx} style={styles.policyCard}>
                 <View style={styles.policyHeader}>
                   <View style={styles.policyIcon}>
@@ -451,10 +446,10 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
                 />
                 {gustoEmployees.length > 0 && (
                   <View style={styles.dropdownHint}>
-                    {gustoEmployees.slice(0, 3).map((emp: any) => (
+                    {gustoEmployees.slice(0, 3).map((emp: GustoEmployee) => (
                       <Pressable
                         key={emp.uuid || emp.id}
-                        onPress={() => setRequestForm({ ...requestForm, employee_uuid: emp.uuid || emp.id })}
+                        onPress={() => setRequestForm({ ...requestForm, employee_uuid: emp.uuid || emp.id || '' })}
                         style={styles.dropdownItem}
                       >
                         <Text style={styles.dropdownItemText}>
@@ -477,10 +472,10 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
                 />
                 {policies.length > 0 && (
                   <View style={styles.dropdownHint}>
-                    {policies.map((policy: any) => (
+                    {policies.map((policy: GustoTimeOffPolicy) => (
                       <Pressable
                         key={policy.uuid || policy.id}
-                        onPress={() => setRequestForm({ ...requestForm, policy_uuid: policy.uuid || policy.id })}
+                        onPress={() => setRequestForm({ ...requestForm, policy_uuid: policy.uuid || policy.id || '' })}
                         style={styles.dropdownItem}
                       >
                         <Text style={styles.dropdownItemText}>{policy.name}</Text>
@@ -556,7 +551,7 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
       {employeePTO.length > 0 && (
         <>
           <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Employee PTO Balances</Text>
-          {employeePTO.map((emp: any) => {
+          {employeePTO.map((emp: GustoEmployee) => {
             const id = emp.uuid || emp.id;
             return (
               <View key={id} style={styles.ptoCard}>
@@ -572,7 +567,7 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
                   </View>
                 </View>
                 <View style={styles.ptoBalances}>
-                  {emp.eligible_paid_time_off.map((pto: any, i: number) => (
+                  {emp.eligible_paid_time_off!.map((pto: GustoPTO, i: number) => (
                     <View key={i} style={styles.ptoBalanceItem}>
                       <Text style={styles.ptoBalanceLabel}>{pto.name}</Text>
                       <View style={styles.ptoBalanceRow}>
@@ -609,7 +604,7 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
             </View>
           ) : (
             <View style={styles.requestsGrid}>
-              {requests.map((request: any, idx: number) => (
+              {requests.map((request: GustoTimeOffRequest, idx: number) => (
                 <View key={request.uuid || request.id || idx} style={styles.requestCard}>
                   <View style={styles.requestHeader}>
                     <View style={{ flex: 1 }}>

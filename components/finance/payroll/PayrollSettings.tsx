@@ -3,12 +3,7 @@ import { View, Text, StyleSheet, Platform, ScrollView, ActivityIndicator, Pressa
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
-
-interface PayrollSubTabProps {
-  gustoCompany: any;
-  gustoEmployees: any[];
-  gustoConnected: boolean;
-}
+import { PayrollSubTabProps, GustoPaySchedule, GustoDepartment, GustoLocation, GustoBankAccount, EditScheduleData, EditLocationData } from './types';
 
 function formatStatusLabel(status: string): string {
   if (!status) return '—';
@@ -32,21 +27,21 @@ function maskEin(ein: string | undefined): string {
 }
 
 export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
-  const [paySchedules, setPaySchedules] = useState<any[]>([]);
-  const [departments, setDepartments] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
-  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [paySchedules, setPaySchedules] = useState<GustoPaySchedule[]>([]);
+  const [departments, setDepartments] = useState<GustoDepartment[]>([]);
+  const [locations, setLocations] = useState<GustoLocation[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<GustoBankAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [editingSchedule, setEditingSchedule] = useState<string | null>(null);
-  const [editScheduleData, setEditScheduleData] = useState<any>({});
+  const [editScheduleData, setEditScheduleData] = useState<EditScheduleData>({ frequency: '', day_1: '', day_2: '' });
 
   const [editingDept, setEditingDept] = useState<string | null>(null);
   const [editDeptTitle, setEditDeptTitle] = useState('');
 
   const [editingLocation, setEditingLocation] = useState<string | null>(null);
-  const [editLocationData, setEditLocationData] = useState<any>({});
+  const [editLocationData, setEditLocationData] = useState<EditLocationData>({ street_1: '', street_2: '', city: '', state: '', zip: '' });
 
   const [showAddDept, setShowAddDept] = useState(false);
   const [newDeptTitle, setNewDeptTitle] = useState('');
@@ -85,8 +80,8 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
           const data = await bankRes.json();
           setBankAccounts(Array.isArray(data) ? data : []);
         }
-      } catch (e: any) {
-        setError(e.message || 'Failed to load settings');
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load settings');
       } finally {
         setLoading(false);
       }
@@ -140,7 +135,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
     }
   };
 
-  const startEditSchedule = (schedule: any) => {
+  const startEditSchedule = (schedule: GustoPaySchedule) => {
     const key = schedule.uuid || schedule.name || 'schedule';
     setEditingSchedule(key);
     setEditScheduleData({
@@ -152,10 +147,10 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
 
   const cancelEditSchedule = () => {
     setEditingSchedule(null);
-    setEditScheduleData({});
+    setEditScheduleData({ frequency: '', day_1: '', day_2: '' });
   };
 
-  const startEditDept = (dept: any) => {
+  const startEditDept = (dept: GustoDepartment) => {
     const key = dept.uuid || dept.title || 'dept';
     setEditingDept(key);
     setEditDeptTitle(dept.title || dept.name || '');
@@ -166,7 +161,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
     setEditDeptTitle('');
   };
 
-  const startEditLocation = (loc: any) => {
+  const startEditLocation = (loc: GustoLocation) => {
     const key = loc.uuid || 'loc';
     setEditingLocation(key);
     setEditLocationData({
@@ -180,7 +175,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
 
   const cancelEditLocation = () => {
     setEditingLocation(null);
-    setEditLocationData({});
+    setEditLocationData({ street_1: '', street_2: '', city: '', state: '', zip: '' });
   };
 
   if (!gustoConnected) {
@@ -257,7 +252,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
           <Text style={styles.emptyCardText}>No pay schedules configured</Text>
         </View>
       ) : (
-        paySchedules.map((schedule: any, idx: number) => {
+        paySchedules.map((schedule: GustoPaySchedule, idx: number) => {
           const isActive = schedule.active !== undefined ? schedule.active : schedule.auto_pilot !== false;
           const schedKey = schedule.uuid || schedule.name || `sched-${idx}`;
           const isEditing = editingSchedule === schedKey;
@@ -292,7 +287,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                       <TextInput
                         style={styles.formInput}
                         value={editScheduleData.frequency}
-                        onChangeText={(t) => setEditScheduleData((p: any) => ({ ...p, frequency: t }))}
+                        onChangeText={(t) => setEditScheduleData((p: EditScheduleData) => ({ ...p, frequency: t }))}
                         placeholderTextColor="#6e6e73"
                         placeholder="e.g. Every other week"
                       />
@@ -302,7 +297,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                       <TextInput
                         style={styles.formInput}
                         value={editScheduleData.day_1}
-                        onChangeText={(t) => setEditScheduleData((p: any) => ({ ...p, day_1: t }))}
+                        onChangeText={(t) => setEditScheduleData((p: EditScheduleData) => ({ ...p, day_1: t }))}
                         placeholderTextColor="#6e6e73"
                         placeholder="Day 1"
                       />
@@ -312,7 +307,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                       <TextInput
                         style={styles.formInput}
                         value={editScheduleData.day_2}
-                        onChangeText={(t) => setEditScheduleData((p: any) => ({ ...p, day_2: t }))}
+                        onChangeText={(t) => setEditScheduleData((p: EditScheduleData) => ({ ...p, day_2: t }))}
                         placeholderTextColor="#6e6e73"
                         placeholder="Day 2"
                       />
@@ -410,7 +405,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
           <Text style={styles.emptyCardText}>No departments configured</Text>
         </View>
       ) : (
-        departments.map((dept: any, idx: number) => {
+        departments.map((dept: GustoDepartment, idx: number) => {
           const deptKey = dept.uuid || dept.title || `dept-${idx}`;
           const isEditing = editingDept === deptKey;
           return (
@@ -542,7 +537,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
           <Text style={styles.emptyCardText}>No locations configured</Text>
         </View>
       ) : (
-        locations.map((loc: any, idx: number) => {
+        locations.map((loc: GustoLocation, idx: number) => {
           const isActive = loc.active !== false;
           const locKey = loc.uuid || `loc-${idx}`;
           const isEditing = editingLocation === locKey;
@@ -579,7 +574,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                       <TextInput
                         style={styles.formInput}
                         value={editLocationData.street_1}
-                        onChangeText={(t) => setEditLocationData((p: any) => ({ ...p, street_1: t }))}
+                        onChangeText={(t) => setEditLocationData((p: EditLocationData) => ({ ...p, street_1: t }))}
                         placeholderTextColor="#6e6e73"
                         placeholder="Street address"
                       />
@@ -591,7 +586,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                       <TextInput
                         style={styles.formInput}
                         value={editLocationData.street_2}
-                        onChangeText={(t) => setEditLocationData((p: any) => ({ ...p, street_2: t }))}
+                        onChangeText={(t) => setEditLocationData((p: EditLocationData) => ({ ...p, street_2: t }))}
                         placeholderTextColor="#6e6e73"
                         placeholder="Suite, unit, etc."
                       />
@@ -601,7 +596,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                       <TextInput
                         style={styles.formInput}
                         value={editLocationData.city}
-                        onChangeText={(t) => setEditLocationData((p: any) => ({ ...p, city: t }))}
+                        onChangeText={(t) => setEditLocationData((p: EditLocationData) => ({ ...p, city: t }))}
                         placeholderTextColor="#6e6e73"
                         placeholder="City"
                       />
@@ -613,7 +608,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                       <TextInput
                         style={styles.formInput}
                         value={editLocationData.state}
-                        onChangeText={(t) => setEditLocationData((p: any) => ({ ...p, state: t }))}
+                        onChangeText={(t) => setEditLocationData((p: EditLocationData) => ({ ...p, state: t }))}
                         placeholderTextColor="#6e6e73"
                         placeholder="State"
                       />
@@ -623,7 +618,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                       <TextInput
                         style={styles.formInput}
                         value={editLocationData.zip}
-                        onChangeText={(t) => setEditLocationData((p: any) => ({ ...p, zip: t }))}
+                        onChangeText={(t) => setEditLocationData((p: EditLocationData) => ({ ...p, zip: t }))}
                         placeholderTextColor="#6e6e73"
                         placeholder="ZIP code"
                       />
@@ -670,7 +665,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
       {bankAccounts.length > 0 && (
         <>
           <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Bank Accounts</Text>
-          {bankAccounts.map((bank: any, idx: number) => (
+          {bankAccounts.map((bank: GustoBankAccount, idx: number) => (
             <View key={bank.uuid || idx} style={styles.card}>
               <View style={styles.cardHeader}>
                 <View style={styles.cardIcon}>

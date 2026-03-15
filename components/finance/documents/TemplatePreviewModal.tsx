@@ -6,6 +6,7 @@
  * Zero third-party branding — everything is Aspire-native.
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import type { PressableState } from '@/types/common';
 import {
   View,
   Text,
@@ -173,7 +174,7 @@ export function TemplatePreviewModal({
                 onPress={onClose}
                 accessibilityRole="button"
                 accessibilityLabel="Close preview"
-                style={({ hovered, pressed }: any) => [
+                style={({ hovered, pressed }: PressableState) => [
                   styles.closeBtn,
                   Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease' } as any : {},
                   hovered && styles.closeBtnHovered,
@@ -340,7 +341,7 @@ export function TemplatePreviewModal({
               onPress={handleDraft}
               accessibilityRole="button"
               accessibilityLabel={`Draft ${displayName} with Finn`}
-              style={({ hovered, pressed }: any) => [
+              style={({ hovered, pressed }: PressableState) => [
                 styles.draftCta,
                 Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease' } as any : {},
                 hovered && styles.draftCtaHovered,

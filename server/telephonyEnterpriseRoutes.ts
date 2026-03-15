@@ -38,24 +38,26 @@ import { sql } from 'drizzle-orm';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
+import type { AuthenticatedRequest } from './types';
 import { applyTenantContext } from './tenantContext';
 
 const router = Router();
 
 type CallsCacheEntry = {
   expiresAt: number;
-  payload: { calls: any[]; total: number };
+  payload: { calls: Record<string, any>[]; total: number };
 };
 const CALLS_CACHE_TTL_MS = 8000;
 const callsCache = new Map<string, CallsCacheEntry>();
-const callsInFlight = new Map<string, Promise<{ calls: any[]; total: number }>>();
+const callsInFlight = new Map<string, Promise<{ calls: Record<string, any>[]; total: number }>>();
 
 // =====================================================================
 // TWILIO CLIENT (lazy-load)
 // =====================================================================
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamically loaded Twilio SDK
 let twilioClient: any = null;
-let twilioValidateRequestFn: any = null;
+let twilioValidateRequestFn: ((...args: unknown[]) => boolean) | null = null;
 
 function getTwilioClient() {
   if (twilioClient) return twilioClient;
@@ -81,11 +83,11 @@ function getTwilioAuthToken(): string | null {
 // =====================================================================
 
 function getSuiteId(req: Request): string {
-  return (req as any).authenticatedSuiteId || getDefaultSuiteId();
+  return req.authenticatedSuiteId || getDefaultSuiteId();
 }
 
 function getOfficeId(req: Request): string {
-  return (req as any).authenticatedOfficeId || getDefaultOfficeId();
+  return req.authenticatedOfficeId || getDefaultOfficeId();
 }
 
 /** Set RLS context for a specific suite (used by webhook paths that resolve suite from DID) */
@@ -102,13 +104,13 @@ function correlationId(): string {
 }
 
 /** Write an action receipt */
-async function writeReceipt(suiteId: string, actionType: string, payload: Record<string, unknown>, corrId?: string) {
+async function writeReceipt(suiteId: string, actionType: string, payload: Record<string, any>, corrId?: string) {
   const result = await db.execute(sql`
     INSERT INTO public.frontdesk_action_receipts (suite_id, action_type, correlation_id, payload)
     VALUES (${suiteId}::uuid, ${actionType}, ${corrId || correlationId()}, ${JSON.stringify(payload)}::jsonb)
     RETURNING receipt_id
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   return rows[0]?.receipt_id;
 }
 
@@ -144,7 +146,7 @@ async function enqueueOutbox(
   suiteId: string,
   jobType: string,
   idempotencyKey: string,
-  payload: Record<string, unknown>,
+  payload: Record<string, any>,
 ): Promise<string | null> {
   const result = await db.execute(sql`
     INSERT INTO public.frontdesk_outbox_jobs (suite_id, job_type, idempotency_key, payload)
@@ -152,7 +154,7 @@ async function enqueueOutbox(
     ON CONFLICT (suite_id, job_type, idempotency_key) DO NOTHING
     RETURNING job_id
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   return rows[0]?.job_id || null;
 }
 
@@ -171,7 +173,7 @@ async function dedupeEvent(
     ON CONFLICT (provider, provider_event_id) DO NOTHING
     RETURNING webhook_event_id
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   return rows.length > 0;
 }
 
@@ -209,7 +211,7 @@ router.get('/api/frontdesk/setup', async (req: Request, res: Response) => {
       ORDER BY bl.created_at DESC
       LIMIT 1
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     if (rows.length === 0) return res.json(null);
 
     const row = rows[0];
@@ -260,7 +262,7 @@ router.patch('/api/frontdesk/setup', async (req: Request, res: Response) => {
       WHERE suite_id = ${suiteId}::uuid
       ORDER BY created_at DESC LIMIT 1
     `);
-    const existingRows = (existingResult.rows || existingResult) as any[];
+    const existingRows = (existingResult.rows || existingResult) as Record<string, any>[];
 
     let result;
     if (existingRows.length > 0) {
@@ -312,7 +314,7 @@ router.patch('/api/frontdesk/setup', async (req: Request, res: Response) => {
         RETURNING *
       `);
     }
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     const row = rows[0];
 
     const corrId = correlationId();
@@ -397,10 +399,10 @@ router.post('/api/frontdesk/numbers/search', async (req: Request, res: Response)
     const { country = 'US', areaCode, contains, numberType = 'local', limit = 10 } = req.body;
     if (!areaCode) return res.status(400).json({ code: 'MISSING_AREA_CODE', message: 'areaCode required' });
 
-    const params: any = { areaCode, limit };
+    const params: Record<string, any> = { areaCode, limit };
     if (contains) params.contains = contains;
 
-    let numbers: any[];
+    let numbers: Array<{ phoneNumber: string; friendlyName?: string; locality?: string; region?: string; capabilities?: Record<string, any> }>;
     if (numberType === 'tollfree') {
       numbers = await client.availablePhoneNumbers(country).tollFree.list(params);
     } else {
@@ -408,7 +410,7 @@ router.post('/api/frontdesk/numbers/search', async (req: Request, res: Response)
     }
 
     res.json({
-      numbers: numbers.map((n: any) => ({
+      numbers: numbers.map((n) => ({
         e164: n.phoneNumber,
         locality: n.locality || '',
         region: n.region || '',
@@ -438,7 +440,7 @@ router.post('/api/frontdesk/numbers/purchase', async (req: Request, res: Respons
       WHERE suite_id = ${suiteId}::uuid
       ORDER BY created_at DESC LIMIT 1
     `);
-    let blRows = (blResult.rows || blResult) as any[];
+    let blRows = (blResult.rows || blResult) as Record<string, any>[];
 
     if (blRows.length === 0) {
       blResult = await db.execute(sql`
@@ -446,7 +448,7 @@ router.post('/api/frontdesk/numbers/purchase', async (req: Request, res: Respons
         VALUES (${suiteId}::uuid, ${officeId}::uuid, 'ASPIRE_FULL_DUPLEX', ${e164})
         RETURNING business_line_id, line_mode
       `);
-      blRows = (blResult.rows || blResult) as any[];
+      blRows = (blResult.rows || blResult) as Record<string, any>[];
     }
 
     const bl = blRows[0];
@@ -538,7 +540,7 @@ router.get('/api/frontdesk/calls', async (req: Request, res: Response) => {
         ORDER BY started_at DESC
         LIMIT ${limit}
       `);
-      const rows = (result.rows || result) as any[];
+      const rows = (result.rows || result) as Record<string, any>[];
       const payload = { calls: rows, total: rows.length };
       callsCache.set(cacheKey, { payload, expiresAt: Date.now() + CALLS_CACHE_TTL_MS });
       return payload;
@@ -584,7 +586,7 @@ router.post('/api/frontdesk/return-call', async (req: Request, res: Response) =>
       WHERE cs.call_session_id = ${callSessionId}::uuid
         AND cs.suite_id = ${suiteId}::uuid
     `);
-    const blRows = (blResult.rows || blResult) as any[];
+    const blRows = (blResult.rows || blResult) as Record<string, any>[];
     if (blRows.length === 0) return res.status(404).json({ code: 'NOT_FOUND', message: 'Call session not found' });
 
     const { line_mode, business_number, from_number } = blRows[0];
@@ -634,7 +636,7 @@ router.post('/api/frontdesk/outbound-call', async (req: Request, res: Response) 
       WHERE suite_id = ${suiteId}::uuid
       ORDER BY created_at DESC LIMIT 1
     `);
-    const blRows = (blResult.rows || blResult) as any[];
+    const blRows = (blResult.rows || blResult) as Record<string, any>[];
     if (blRows.length === 0) return res.status(404).json({ code: 'NO_LINE', message: 'No business line configured' });
 
     const { business_line_id, line_mode, business_number } = blRows[0];
@@ -685,7 +687,7 @@ router.get('/api/messages/threads', async (req: Request, res: Response) => {
       ORDER BY last_message_at DESC NULLS LAST
       LIMIT ${limit}
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     res.json({ threads: rows, total: rows.length });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
@@ -712,7 +714,7 @@ router.get('/api/messages/threads/:threadId/messages', async (req: Request, res:
       ORDER BY created_at ASC
       LIMIT ${limit}
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     res.json({ messages: rows, total: rows.length });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
@@ -735,7 +737,7 @@ router.post('/api/messages/send', async (req: Request, res: Response) => {
       SELECT sms_enabled FROM public.frontdesk_messaging_compliance
       WHERE suite_id = ${suiteId}::uuid
     `);
-    const compRows = (compResult.rows || compResult) as any[];
+    const compRows = (compResult.rows || compResult) as Record<string, any>[];
     const smsEnabled = compRows[0]?.sms_enabled ?? false;
     if (!smsEnabled) {
       return res.status(403).json({
@@ -749,7 +751,7 @@ router.post('/api/messages/send', async (req: Request, res: Response) => {
       SELECT business_number FROM public.business_lines
       WHERE suite_id = ${suiteId}::uuid ORDER BY created_at DESC LIMIT 1
     `);
-    const blRows = (blResult.rows || blResult) as any[];
+    const blRows = (blResult.rows || blResult) as Record<string, any>[];
     const businessNumber = blRows[0]?.business_number;
 
     if (businessNumber) {
@@ -759,7 +761,7 @@ router.post('/api/messages/send', async (req: Request, res: Response) => {
           AND business_number_e164 = ${businessNumber}
           AND counterparty_e164 = ${toE164}
       `);
-      const optOutRows = (optOutResult.rows || optOutResult) as any[];
+      const optOutRows = (optOutResult.rows || optOutResult) as Record<string, any>[];
       if (optOutRows.length > 0) {
         return res.status(403).json({
           code: 'OPTED_OUT',
@@ -810,7 +812,7 @@ router.get('/api/voicemail', async (req: Request, res: Response) => {
       ORDER BY created_at DESC
       LIMIT ${limit}
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     res.json({ voicemails: rows, total: rows.length });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
@@ -831,7 +833,7 @@ router.get('/api/voicemail/:id', async (req: Request, res: Response) => {
       SELECT * FROM public.frontdesk_voicemails
       WHERE voicemail_id = ${id}::uuid AND suite_id = ${suiteId}::uuid
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     if (rows.length === 0) return res.status(404).json({ code: 'NOT_FOUND', message: 'Voicemail not found' });
     res.json(rows[0]);
   } catch (error: unknown) {
@@ -853,7 +855,7 @@ router.get('/api/voicemail/:id/audio', async (req: Request, res: Response) => {
       SELECT recording_uri FROM public.frontdesk_voicemails
       WHERE voicemail_id = ${id}::uuid AND suite_id = ${suiteId}::uuid
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     if (rows.length === 0 || !rows[0].recording_uri) {
       return res.status(404).json({ code: 'NOT_FOUND', message: 'Recording not found' });
     }
@@ -1140,7 +1142,7 @@ async function processOutboxJob(job: any): Promise<void> {
         WHERE provider = 'twilio' AND provider_call_id = ${p.call_sid}
           AND suite_id = ${suite_id}::uuid
       `);
-      const csRows = (csResult.rows || csResult) as any[];
+      const csRows = (csResult.rows || csResult) as Record<string, any>[];
       if (csRows.length > 0) {
         const cs = csRows[0];
         await db.execute(sql`
@@ -1176,7 +1178,7 @@ async function processOutboxJob(job: any): Promise<void> {
           updated_at = now()
         RETURNING thread_id
       `);
-      const threadRows = (threadResult.rows || threadResult) as any[];
+      const threadRows = (threadResult.rows || threadResult) as Record<string, any>[];
       const threadId = threadRows[0]?.thread_id;
 
       if (threadId) {
@@ -1234,7 +1236,7 @@ async function processOutboxJob(job: any): Promise<void> {
         SELECT sms_enabled FROM public.frontdesk_messaging_compliance
         WHERE suite_id = ${suite_id}::uuid LIMIT 1
       `);
-      const compRows = (complianceCheck.rows || complianceCheck) as any[];
+      const compRows = (complianceCheck.rows || complianceCheck) as Record<string, any>[];
       if (!compRows[0]?.sms_enabled) {
         await writeReceipt(suite_id, 'frontdesk.sms.blocked_at_execution', {
           reason: 'sms_disabled_after_enqueue', to: p.to_e164,
@@ -1247,7 +1249,7 @@ async function processOutboxJob(job: any): Promise<void> {
         SELECT 1 FROM public.frontdesk_sms_opt_outs
         WHERE suite_id = ${suite_id}::uuid AND e164 = ${p.to_e164} LIMIT 1
       `);
-      const optOutRows = (optOutCheck.rows || optOutCheck) as any[];
+      const optOutRows = (optOutCheck.rows || optOutCheck) as Record<string, any>[];
       if (optOutRows.length > 0) {
         await writeReceipt(suite_id, 'frontdesk.sms.blocked_at_execution', {
           reason: 'recipient_opted_out_after_enqueue', to: p.to_e164,
@@ -1278,7 +1280,7 @@ async function processOutboxJob(job: any): Promise<void> {
           updated_at = now()
         RETURNING thread_id
       `);
-      const threadRows = (threadResult.rows || threadResult) as any[];
+      const threadRows = (threadResult.rows || threadResult) as Record<string, any>[];
       const threadId = threadRows[0]?.thread_id;
 
       if (threadId) {
@@ -1312,7 +1314,7 @@ async function processOutboxJob(job: any): Promise<void> {
         WHERE business_line_id = ${p.business_line_id}::uuid AND suite_id = ${suite_id}::uuid
         LIMIT 1
       `);
-      const lineRows = (lineModeCheck.rows || lineModeCheck) as any[];
+      const lineRows = (lineModeCheck.rows || lineModeCheck) as Record<string, any>[];
       if (lineRows[0]?.line_mode === 'EXISTING_INBOUND_ONLY') {
         await writeReceipt(suite_id, 'frontdesk.call.blocked_at_execution', {
           reason: 'line_mode_changed_to_inbound_only', to: p.to_e164,
@@ -1404,7 +1406,7 @@ async function processOutboxJob(job: any): Promise<void> {
         SELECT twilio_incoming_phone_number_sid FROM public.frontdesk_provider_resources
         WHERE suite_id = ${suite_id}::uuid AND business_number_e164 = ${p.businessNumber}
       `);
-      const prRows = (prResult.rows || prResult) as any[];
+      const prRows = (prResult.rows || prResult) as Record<string, any>[];
       const twilioSid = prRows[0]?.twilio_incoming_phone_number_sid;
 
       if (twilioSid) {
@@ -1462,7 +1464,7 @@ async function outboxClaimFunctionExists(): Promise<boolean> {
           AND p.proname = 'frontdesk_outbox_claim'
       ) AS exists
     `);
-    const rows = (check.rows || check) as any[];
+    const rows = (check.rows || check) as Record<string, any>[];
     return !!rows[0]?.exists;
   } catch {
     return false;
@@ -1485,7 +1487,7 @@ async function pollOutbox() {
     const result = await db.execute(sql`
       SELECT * FROM public.frontdesk_outbox_claim(${WORKER_ID}, ${OUTBOX_BATCH_SIZE})
     `);
-    const jobs = (result.rows || result) as any[];
+    const jobs = (result.rows || result) as Record<string, any>[];
 
     for (const job of jobs) {
       try {

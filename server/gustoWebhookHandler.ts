@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
+import type { AuthenticatedRequest } from './types';
 import { updateConnectionSyncTime, getConnectionByProvider } from './financeTokenStore';
 import { loadToken, saveToken } from './tokenStore';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
@@ -291,7 +292,7 @@ let capturedVerificationToken: string | null = null;
 
 router.get('/api/gusto/webhook-verification-token', (req: Request, res: Response) => {
   // Law #3 (Fail Closed): Admin-only endpoint — exposes sensitive webhook config
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED' });
   }

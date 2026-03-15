@@ -3,6 +3,7 @@
  * Quick actions: Reminder, Copy Link, Void.
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import type { PressableState } from '@/types/common';
 import {
   View,
   Text,
@@ -117,7 +118,7 @@ export default function PendingSignaturesPage() {
 
     return (
       <Pressable
-        style={({ hovered }: any) => [
+        style={({ hovered }: PressableState) => [
           styles.row,
           hovered && styles.rowHovered,
           webOnly({ cursor: 'pointer', transition: 'background-color 0.15s ease' }),

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { logger } from './logger';
+import type { AuthenticatedRequest } from './types';
 import { createTrustSpineReceipt } from './receiptService';
 import { getValidToken, getConnectedEmail } from './mail/googleOAuth';
 import {
@@ -21,9 +22,9 @@ const router = Router();
 // Law #3: Fail Closed — require authenticated suite_id, no fallback to defaults
 
 async function getGmailToken(req: Request): Promise<{ token: string; suiteId: string; officeId: string }> {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) throw new Error('AUTH_REQUIRED');
-  const officeId = (req as any).authenticatedOfficeId || '';
+  const officeId = req.authenticatedOfficeId || '';
 
   const token = await getValidToken(suiteId);
   return { token, suiteId, officeId };
@@ -164,7 +165,7 @@ router.post('/api/mail/send', async (req: Request, res: Response) => {
     res.json({ messageId: result.id, threadId: result.threadId });
   } catch (error: unknown) {
     logger.error('Mail send error', { error: error instanceof Error ? error.message : 'unknown' });
-    const suiteId = (req as any).authenticatedSuiteId || '';
+    const suiteId = req.authenticatedSuiteId || '';
     if (suiteId) {
       await createTrustSpineReceipt({
         suiteId,
@@ -231,7 +232,7 @@ router.get('/api/mail/attachments/:messageId/:attachmentId', async (req: Request
     const { token } = await getGmailToken(req);
     const { messageId, attachmentId } = req.params;
 
-    const attachment = await getAttachment(token, messageId, attachmentId);
+    const attachment = await getAttachment(token, messageId as string, attachmentId as string);
     const data = Buffer.from(attachment.data, 'base64url');
 
     const filename = (req.query.name as string) || 'attachment';

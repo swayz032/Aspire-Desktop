@@ -3,6 +3,7 @@ import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { getDefaultOfficeId } from './suiteContext';
 import { logger } from './logger';
+import type { AuthenticatedRequest } from './types';
 
 const router = Router();
 
@@ -47,7 +48,7 @@ router.post('/api/calls/initiate', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing required field: to (phone number)' });
     }
 
-    const effectiveSuiteId = (req as any).authenticatedSuiteId;
+    const effectiveSuiteId = req.authenticatedSuiteId;
     if (!effectiveSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
     const effectiveOfficeId = getDefaultOfficeId();
 
@@ -129,7 +130,7 @@ router.post('/api/calls/webhook', async (req: Request, res: Response) => {
 // GET /api/calls/history — Query provider_call_log from Supabase
 router.get('/api/calls/history', async (req: Request, res: Response) => {
   try {
-    const suiteId = (req as any).authenticatedSuiteId;
+    const suiteId = req.authenticatedSuiteId;
     if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
     const limit = parseInt((req.query.limit as string) || '50', 10);
     const offset = parseInt((req.query.offset as string) || '0', 10);

@@ -28,11 +28,27 @@ const inboxHero = require('@/assets/images/inbox-hero.jpg');
 type TabType = 'office' | 'calls' | 'mail' | 'contacts';
 type EliMessage = { id: string; from: 'user' | 'eli'; text: string; ts: number };
 
+interface MailAccount {
+  id: string;
+  email: string;
+  status: string;
+  provider?: string;
+  displayName?: string;
+}
+
+interface RawCallRecord extends CallItem {
+  caller_name?: string;
+  from_number?: string;
+  caller_number?: string;
+  call_type?: string;
+  created_at?: string;
+}
+
 function getMailBody(item: MailThread, detail?: MailDetail | null): string {
   if (detail?.messages?.length) {
     return detail.messages.map(m => m.content).join('\n\n---\n\n');
   }
-  return (item as any).body || item.preview;
+  return (item as unknown as { body?: string }).body || item.preview;
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -209,7 +225,7 @@ interface AttachedFile {
 }
 
 function getCallSummary(item: CallItem): string {
-  if ((item as any).summary) return (item as any).summary;
+  if ((item as unknown as { summary?: string }).summary) return (item as unknown as { summary?: string }).summary!;
   return `Call with ${item.callerName} regarding ${item.tags.join(' & ').toLowerCase()} matters. Duration: ${item.duration}. Outcome: ${item.outcome}. Follow-up actions may be required based on discussion points.`;
 }
 
@@ -266,7 +282,7 @@ function buildDerivedContacts(mailThreads: MailThread[], calls: CallItem[]): Con
   }
 
   for (const call of calls || []) {
-    const raw = call as any;
+    const raw = call as RawCallRecord;
     const name = raw.callerName || raw.caller_name || raw.from_number || 'Phone Contact';
     const phone = raw.callerNumber || raw.caller_number || raw.from_number || '';
     upsert({
@@ -471,7 +487,7 @@ function CallItemCard({ item, selected, onPress }: { item: CallItem; selected: b
 
 function MailItemCard({ item, selected, onPress }: { item: MailThread; selected: boolean; onPress: () => void }) {
   const [hovered, setHovered] = useState(false);
-  const isSent = (item as any).labelIds?.includes('SENT') && !(item as any).labelIds?.includes('INBOX');
+  const isSent = item.labelIds?.includes('SENT') && !item.labelIds?.includes('INBOX');
   const recipientDisplay = item.recipients?.length > 0 ? item.recipients[0].replace(/<.*>/, '').trim() : '';
   const initial = isSent ? '→' : item.senderName.charAt(0).toUpperCase();
 
@@ -1025,7 +1041,7 @@ export default function InboxScreen() {
   const [showMailSetupModal, setShowMailSetupModal] = useState(false);
   const [mailSetupChecked, setMailSetupChecked] = useState(false);
   const [hasActiveMailbox, setHasActiveMailbox] = useState(false);
-  const [mailAccounts, setMailAccounts] = useState<any[]>([]);
+  const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
   const [selectedMailbox, setSelectedMailbox] = useState<string | null>(null);
   const [showMailboxDropdown, setShowMailboxDropdown] = useState(false);
   const [removingMailboxId, setRemovingMailboxId] = useState<string | null>(null);
@@ -1049,7 +1065,7 @@ export default function InboxScreen() {
   const [searching, setSearching] = useState(false);
   const [labelResults, setLabelResults] = useState<MailThread[] | null>(null);
   const [labelLoading, setLabelLoading] = useState(false);
-  const searchTimerRef = useRef<any>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [contactsLoadError, setContactsLoadError] = useState<string | null>(null);
   const [loadErrors, setLoadErrors] = useState<Record<'office' | 'calls' | 'mail', string | null>>({
@@ -1076,7 +1092,7 @@ export default function InboxScreen() {
         label: partial.label,
         status: partial.status || 'completed',
         timestamp: partial.timestamp || Date.now(),
-        icon: partial.icon as any,
+        icon: partial.icon as AgentActivityEvent['icon'],
       };
       setEliRun(prev => {
         if (!prev) return { events: [mapped], status: 'running' };
@@ -1117,7 +1133,7 @@ export default function InboxScreen() {
               status: 'completed',
               timestamp: Date.now(),
               icon: 'checkmark-circle',
-            } as any],
+            } as AgentActivityEvent],
             status: 'completed',
           };
         }
@@ -1139,7 +1155,7 @@ export default function InboxScreen() {
             ? 'active'
             : 'completed',
         timestamp: event.timestamp || Date.now(),
-        icon: event.icon as any,
+        icon: event.icon as AgentActivityEvent['icon'],
       });
     },
     onError: (error) => {
@@ -1184,7 +1200,7 @@ export default function InboxScreen() {
   const eliMicPulse = useRef(new Animated.Value(1)).current;
   const breathAnim = useRef(new Animated.Value(1)).current;
 
-  const selectedMailboxAccount = mailAccounts.find((a: any) => a.id === selectedMailbox) || mailAccounts[0];
+  const selectedMailboxAccount = mailAccounts.find((a) => a.id === selectedMailbox) || mailAccounts[0];
   const selectedMailboxEmail = selectedMailboxAccount?.email as string | undefined;
 
   const handleEliMicPress = useCallback(async () => {
@@ -1233,7 +1249,7 @@ export default function InboxScreen() {
         status: 'active',
         timestamp: Date.now(),
         icon: 'sparkles',
-      } as any],
+      } as AgentActivityEvent],
       status: 'running',
     });
     if (!session?.access_token) {
@@ -1438,7 +1454,7 @@ export default function InboxScreen() {
     }
   }, []);
 
-  const handleFileSelected = useCallback((e: any) => {
+  const handleFileSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target?.files;
     if (!files) return;
     const newFiles: AttachedFile[] = [];
@@ -1551,7 +1567,7 @@ export default function InboxScreen() {
           const data = await accountsRes.json();
           const accounts = data.accounts || [];
           setMailAccounts(accounts);
-          const active = accounts.find((a: any) => a.status === 'ACTIVE') || accounts[0];
+          const active = accounts.find((a: MailAccount) => a.status === 'ACTIVE') || accounts[0];
           if (active) {
             setHasActiveMailbox(true);
             setSelectedMailbox(active.id);
@@ -1622,7 +1638,7 @@ export default function InboxScreen() {
     if (labelResults !== null && (currentFilter === 'Sent' || currentFilter === 'Drafts' || currentFilter === 'Junk')) return labelResults;
     switch (currentFilter) {
       case 'Unread': return mailThreads.filter(i => i.unread);
-      case 'Starred': return mailThreads.filter(i => (i as any).starred);
+      case 'Starred': return mailThreads.filter(i => (i as unknown as { starred?: boolean }).starred);
       case 'Sent': return labelResults ?? [];
       case 'Drafts': return labelResults ?? [];
       case 'Junk': return labelResults ?? [];
@@ -1641,7 +1657,7 @@ export default function InboxScreen() {
     }
   };
 
-  const getFilteredItems = (): any[] => {
+  const getFilteredItems = (): (OfficeItem | CallItem | MailThread | Contact)[] => {
     switch (activeTab) {
       case 'office': return getFilteredOffice();
       case 'calls': return getFilteredCalls();
@@ -1775,7 +1791,7 @@ export default function InboxScreen() {
                 Alert.alert('Error', 'Failed to remove mailbox.');
                 return;
               }
-              const nextAccounts = mailAccounts.filter((a: any) => a.id !== accountId);
+              const nextAccounts = mailAccounts.filter((a) => a.id !== accountId);
               setMailAccounts(nextAccounts);
               const nextSelected = nextAccounts[0]?.id || null;
               setSelectedMailbox(nextSelected);
@@ -2134,7 +2150,7 @@ export default function InboxScreen() {
                   </Text>
                   {dateFilter && (
                     <TouchableOpacity
-                      onPress={(e) => { (e as any).stopPropagation?.(); setDateFilter(null); }}
+                      onPress={(e) => { (e as unknown as { stopPropagation?: () => void }).stopPropagation?.(); setDateFilter(null); }}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     >
                       <Ionicons name="close-circle" size={13} color="rgba(255,255,255,0.7)" />
@@ -2146,7 +2162,7 @@ export default function InboxScreen() {
                     ref={dateInputRef as any}
                     type="date"
                     style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, top: -100, left: -100 } as any}
-                    onChange={(e: any) => setDateFilter(e.target.value || null)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDateFilter(e.target.value || null)}
                   />
                 )}
               </>
@@ -2466,7 +2482,7 @@ export default function InboxScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {mailAccounts.map((acct: any) => (
+              {mailAccounts.map((acct) => (
                 <TouchableOpacity
                   key={acct.id}
                   style={[styles.mailboxModalItem, selectedMailbox === acct.id && styles.mailboxModalItemActive]}

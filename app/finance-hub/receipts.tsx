@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
@@ -160,7 +161,7 @@ export default function ReceiptsScreen() {
         </View>
         <Pressable
           onPress={loadTimeline}
-          style={({ hovered }: any) => [
+          style={({ hovered }: PressableState) => [
             styles.filterDropdown,
             { backgroundColor: CARD_BG, borderColor: CARD_BORDER },
             hovered && { borderColor: Colors.border.strong },
@@ -176,7 +177,7 @@ export default function ReceiptsScreen() {
           <Pressable
             key={f}
             onPress={() => setActiveFilter(f)}
-            style={({ hovered }: any) => [
+            style={({ hovered }: PressableState) => [
               styles.filterPill,
               activeFilter === f && styles.filterPillActive,
               hovered && activeFilter !== f && styles.filterPillHover,
@@ -209,7 +210,7 @@ export default function ReceiptsScreen() {
           {filtered.map((r) => (
             <Pressable
               key={r.id}
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 styles.receiptCard,
                 premiumCardStyle as any,
                 hovered && styles.receiptCardHover,

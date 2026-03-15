@@ -223,7 +223,7 @@ export function gmailThreadToMailThread(
     (m.labelIds || []).includes('UNREAD'),
   );
 
-  const allLabelIds = [...new Set(messages.flatMap((m: any) => m.labelIds || []))];
+  const allLabelIds = [...new Set(messages.flatMap((m: any) => (m.labelIds || []) as string[]))] as string[];
 
   const now = new Date().toISOString();
   const ts = date ? new Date(date).toISOString() : now;

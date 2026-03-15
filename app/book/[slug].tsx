@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Platform, TextInput, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
@@ -264,7 +265,7 @@ export default function PublicBookingPage() {
                     <Pressable
                       key={svc.id}
                       onPress={() => setSelectedService(svc)}
-                      style={({ hovered }: any) => [
+                      style={({ hovered }: PressableState) => [
                         s.serviceCard,
                         isSelected && { borderColor: accent, backgroundColor: accent + '08' },
                         hovered && !isSelected && s.serviceCardHover,
@@ -380,7 +381,7 @@ export default function PublicBookingPage() {
                           <Pressable
                             key={slot}
                             onPress={() => setSelectedSlot(slot)}
-                            style={({ hovered }: any) => [
+                            style={({ hovered }: PressableState) => [
                               s.slotBtn,
                               isActive && { backgroundColor: accent, borderColor: accent },
                               hovered && !isActive && { borderColor: '#4a4a4e', backgroundColor: '#1a1a1c' },

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, ScrollView, Pressable, Platform, TextInput, Switch, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -361,14 +362,14 @@ export default function MailboxSetupScreen() {
             </View>
             <View style={s.completionActions}>
               <Pressable
-                style={({ hovered }: any) => [s.primaryBtn, hovered && s.primaryBtnHover]}
+                style={({ hovered }: PressableState) => [s.primaryBtn, hovered && s.primaryBtnHover]}
                 onPress={() => router.push('/(tabs)/inbox' as any)}
               >
                 <Ionicons name="mail" size={18} color="#fff" />
                 <Text style={s.primaryBtnText}>Go to Inbox → Mail</Text>
               </Pressable>
               <Pressable
-                style={({ hovered }: any) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
+                style={({ hovered }: PressableState) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
                 onPress={() => {
                   setCompleted(false);
                   setCurrentStep(0);
@@ -401,7 +402,7 @@ export default function MailboxSetupScreen() {
           {/* Header */}
           <View style={s.header}>
             <View style={s.headerLeft}>
-              <Pressable onPress={() => router.back()} style={({ hovered }: any) => [s.backBtn, hovered && s.backBtnHover]}>
+              <Pressable onPress={() => router.back()} style={({ hovered }: PressableState) => [s.backBtn, hovered && s.backBtnHover]}>
                 <Ionicons name="arrow-back" size={18} color={Colors.text.secondary} />
               </Pressable>
               <View>
@@ -411,13 +412,13 @@ export default function MailboxSetupScreen() {
             </View>
             <View style={s.headerRight}>
               <Pressable
-                style={({ hovered }: any) => [s.headerAction, hovered && s.headerActionHover]}
+                style={({ hovered }: PressableState) => [s.headerAction, hovered && s.headerActionHover]}
                 onPress={() => router.push('/(tabs)/receipts' as any)}
               >
                 <Ionicons name="receipt-outline" size={16} color={Colors.text.secondary} />
                 <Text style={s.headerActionText}>View Receipts</Text>
               </Pressable>
-              <Pressable style={({ hovered }: any) => [s.headerAction, hovered && s.headerActionHover]}>
+              <Pressable style={({ hovered }: PressableState) => [s.headerAction, hovered && s.headerActionHover]}>
                 <Ionicons name="help-circle-outline" size={16} color={Colors.text.secondary} />
                 <Text style={s.headerActionText}>Help</Text>
               </Pressable>
@@ -537,7 +538,7 @@ function Step0ChooseProvider({ onSelect, loading }: { onSelect: (p: MailProvider
 
       <View style={s.providerCards}>
         <Pressable
-          style={({ hovered }: any) => [s.providerCard, selected === 'POLARIS' && s.providerCardSelected, hovered && s.providerCardHover]}
+          style={({ hovered }: PressableState) => [s.providerCard, selected === 'POLARIS' && s.providerCardSelected, hovered && s.providerCardHover]}
           onPress={() => setSelected('POLARIS')}
         >
           <View style={[s.providerIconWrap, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
@@ -558,7 +559,7 @@ function Step0ChooseProvider({ onSelect, loading }: { onSelect: (p: MailProvider
         </Pressable>
 
         <Pressable
-          style={({ hovered }: any) => [s.providerCard, selected === 'GOOGLE' && s.providerCardSelected, hovered && s.providerCardHover]}
+          style={({ hovered }: PressableState) => [s.providerCard, selected === 'GOOGLE' && s.providerCardSelected, hovered && s.providerCardHover]}
           onPress={() => setSelected('GOOGLE')}
         >
           <View style={[s.providerIconWrap, { backgroundColor: 'rgba(234, 67, 53, 0.12)' }]}>
@@ -580,7 +581,7 @@ function Step0ChooseProvider({ onSelect, loading }: { onSelect: (p: MailProvider
       </View>
 
       <Pressable
-        style={({ hovered }: any) => [s.primaryBtn, !selected && s.primaryBtnDisabled, hovered && selected && s.primaryBtnHover]}
+        style={({ hovered }: PressableState) => [s.primaryBtn, !selected && s.primaryBtnDisabled, hovered && selected && s.primaryBtnHover]}
         onPress={() => selected && onSelect(selected)}
         disabled={!selected || loading}
       >
@@ -697,7 +698,7 @@ function Step1APolaris({
           )}
 
           <Pressable
-            style={({ hovered }: any) => [s.primaryBtn, !domainInput.trim() && s.primaryBtnDisabled, hovered && domainInput.trim() && s.primaryBtnHover]}
+            style={({ hovered }: PressableState) => [s.primaryBtn, !domainInput.trim() && s.primaryBtnDisabled, hovered && domainInput.trim() && s.primaryBtnHover]}
             onPress={onSave}
             disabled={!domainInput.trim() || loading}
           >
@@ -750,7 +751,7 @@ function BuyDomainSection({
             onSubmitEditing={onSearch}
           />
           <Pressable
-            style={({ hovered }: any) => [s.searchBtn, hovered && s.searchBtnHover]}
+            style={({ hovered }: PressableState) => [s.searchBtn, hovered && s.searchBtnHover]}
             onPress={onSearch}
             disabled={searching || !searchQuery.trim()}
           >
@@ -771,7 +772,7 @@ function BuyDomainSection({
           {results.map((r: DomainSearchResult, i: number) => (
             <Pressable
               key={r.domain}
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 s.domainResultRow,
                 selected?.domain === r.domain && s.domainResultSelected,
                 hovered && s.domainResultHover,
@@ -836,7 +837,7 @@ function BuyDomainSection({
             </View>
           ) : (
             <Pressable
-              style={({ hovered }: any) => [s.primaryBtn, loading && s.primaryBtnDisabled, hovered && !loading && s.primaryBtnHover]}
+              style={({ hovered }: PressableState) => [s.primaryBtn, loading && s.primaryBtnDisabled, hovered && !loading && s.primaryBtnHover]}
               onPress={() => handlePurchaseClick(selected.domain)}
               disabled={loading}
             >
@@ -892,14 +893,14 @@ function BuyDomainSection({
 
             <View style={s.termPopupActions}>
               <Pressable
-                style={({ hovered }: any) => [s.primaryBtn, hovered && s.primaryBtnHover]}
+                style={({ hovered }: PressableState) => [s.primaryBtn, hovered && s.primaryBtnHover]}
                 onPress={confirmMultiYearPurchase}
               >
                 <Ionicons name="cart-outline" size={16} color="#fff" />
                 <Text style={s.primaryBtnText}>Confirm Purchase</Text>
               </Pressable>
               <Pressable
-                style={({ hovered }: any) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
+                style={({ hovered }: PressableState) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
                 onPress={() => { setShowTermPopup(false); setPendingPurchaseDomain(null); }}
               >
                 <Text style={s.secondaryBtnText}>Cancel</Text>
@@ -928,7 +929,7 @@ function DnsPreview({ records, domain, dnsStatus, onCheckDns, checking }: {
           <Text style={s.dnsNote}>Add these records to your DNS provider. Propagation may take up to 48 hours.</Text>
         </View>
         <Pressable
-          style={({ hovered }: any) => [s.dnsCheckBtn, hovered && s.dnsCheckBtnHover]}
+          style={({ hovered }: PressableState) => [s.dnsCheckBtn, hovered && s.dnsCheckBtnHover]}
           onPress={onCheckDns}
           disabled={checking}
         >
@@ -1048,7 +1049,7 @@ function Step1BGoogle({ onConnect, loading, oauthStatus }: any) {
       </View>
 
       <Pressable
-        style={({ hovered }: any) => [s.primaryBtn, hovered && s.primaryBtnHover]}
+        style={({ hovered }: PressableState) => [s.primaryBtn, hovered && s.primaryBtnHover]}
         onPress={onConnect}
         disabled={loading}
       >
@@ -1105,7 +1106,7 @@ function Step2Verify({ checks, onRunChecks, running, onContinue }: { checks: Onb
 
       <View style={s.checkActions}>
         <Pressable
-          style={({ hovered }: any) => [s.primaryBtn, running && s.primaryBtnDisabled, hovered && !running && s.primaryBtnHover]}
+          style={({ hovered }: PressableState) => [s.primaryBtn, running && s.primaryBtnDisabled, hovered && !running && s.primaryBtnHover]}
           onPress={onRunChecks}
           disabled={running}
         >
@@ -1114,7 +1115,7 @@ function Step2Verify({ checks, onRunChecks, running, onContinue }: { checks: Onb
         </Pressable>
         {checks.length > 0 && (
           <Pressable
-            style={({ hovered }: any) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
+            style={({ hovered }: PressableState) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
             onPress={onContinue}
           >
             <Text style={s.secondaryBtnText}>{allPassed ? 'Continue' : 'Skip for Now'}</Text>
@@ -1224,7 +1225,7 @@ function Step3Eli({ eli, onUpdate, onSave, onActivate, loading }: any) {
 
       <View style={s.checkActions}>
         <Pressable
-          style={({ hovered }: any) => [s.primaryBtn, loading && s.primaryBtnDisabled, hovered && !loading && s.primaryBtnHover]}
+          style={({ hovered }: PressableState) => [s.primaryBtn, loading && s.primaryBtnDisabled, hovered && !loading && s.primaryBtnHover]}
           onPress={async () => { await onSave(); await onActivate(); }}
           disabled={loading}
         >
@@ -1232,7 +1233,7 @@ function Step3Eli({ eli, onUpdate, onSave, onActivate, loading }: any) {
           <Text style={s.primaryBtnText}>{loading ? 'Activating...' : 'Activate Mailbox'}</Text>
         </Pressable>
         <Pressable
-          style={({ hovered }: any) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
+          style={({ hovered }: PressableState) => [s.secondaryBtn, hovered && s.secondaryBtnHover]}
           onPress={onActivate}
           disabled={loading}
         >

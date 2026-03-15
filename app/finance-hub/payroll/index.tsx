@@ -6,6 +6,66 @@ import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { addAuthorityItem } from '@/lib/authorityQueueStore';
 
+interface GustoCompany {
+  name?: string;
+  trade_name?: string;
+  company_status?: string;
+  entity_type?: string;
+  ein?: string;
+}
+
+interface GustoCompensation {
+  uuid?: string;
+  version?: string;
+  rate?: string;
+  payment_unit?: string;
+  flsa_status?: string;
+}
+
+interface GustoJob {
+  uuid?: string;
+  title?: string;
+  compensations?: GustoCompensation[];
+}
+
+interface GustoEmployee {
+  uuid: string;
+  first_name?: string;
+  last_name?: string;
+  jobs?: GustoJob[];
+  compensations?: GustoCompensation[];
+}
+
+interface GustoPayroll {
+  uuid?: string;
+  version?: string;
+  processed?: boolean;
+  payroll_deadline?: string;
+  calculated_at?: string;
+  check_date?: string;
+  pay_period?: { start_date?: string; end_date?: string };
+  totals?: { gross_pay?: number; net_pay?: number };
+  employee_compensations?: unknown[];
+}
+
+interface GustoPaySchedule {
+  frequency?: string;
+}
+
+interface GustoPayStub {
+  uuid?: string;
+  payroll_uuid?: string;
+  check_date?: string;
+  gross_pay?: string;
+  net_pay?: string;
+  check_amount?: string;
+  payment_method?: string;
+}
+
+interface PayrollReceiptData {
+  totals?: { gross_pay?: number; net_pay?: number };
+}
+
 const STEPS = [
   { key: 'create', label: 'Create Payroll', icon: 'add-circle-outline' as const },
   { key: 'prepare', label: 'Prepare Payroll', icon: 'create-outline' as const },
@@ -52,21 +112,21 @@ export default function RunPayrollScreen() {
   const [proposalCreated, setProposalCreated] = useState(false);
   const [receiptStored, setReceiptStored] = useState(false);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
-  const [gustoCompany, setGustoCompany] = useState<any>(null);
-  const [gustoEmployees, setGustoEmployees] = useState<any[]>([]);
+  const [gustoCompany, setGustoCompany] = useState<GustoCompany | null>(null);
+  const [gustoEmployees, setGustoEmployees] = useState<GustoEmployee[]>([]);
   const [gustoLoading, setGustoLoading] = useState(true);
   const [gustoError, setGustoError] = useState<string | null>(null);
-  const [gustoPayrolls, setGustoPayrolls] = useState<any[]>([]);
-  const [gustoPaySchedules, setGustoPaySchedules] = useState<any[]>([]);
-  const [activePayroll, setActivePayroll] = useState<any>(null);
+  const [gustoPayrolls, setGustoPayrolls] = useState<GustoPayroll[]>([]);
+  const [gustoPaySchedules, setGustoPaySchedules] = useState<GustoPaySchedule[]>([]);
+  const [activePayroll, setActivePayroll] = useState<GustoPayroll | null>(null);
   const [retrieving, setRetrieving] = useState(false);
   const [retrieved, setRetrieved] = useState(false);
-  const [calcResult, setCalcResult] = useState<any>(null);
+  const [calcResult, setCalcResult] = useState<GustoPayroll | null>(null);
   const [calcError, setCalcError] = useState<string | null>(null);
-  const [receiptData, setReceiptData] = useState<any>(null);
+  const [receiptData, setReceiptData] = useState<PayrollReceiptData | null>(null);
   const [demoMode, setDemoMode] = useState(false);
   const [selectedPaystub, setSelectedPaystub] = useState<Employee | null>(null);
-  const [gustoPaystubs, setGustoPaystubs] = useState<Record<string, any[]>>({});
+  const [gustoPaystubs, setGustoPaystubs] = useState<Record<string, GustoPayStub[]>>({});
   const [paystubLoading, setPaystubLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -91,7 +151,7 @@ export default function RunPayrollScreen() {
           const empList = Array.isArray(emps) ? emps : [];
           setGustoEmployees(empList);
           if (empList.length > 0) {
-            const mapped: Employee[] = empList.map((emp: any) => {
+            const mapped: Employee[] = empList.map((emp: GustoEmployee) => {
               const jobs = emp.jobs || [];
               const currentJob = jobs[0] || {};
               const comps = currentJob.compensations || emp.compensations || [];
@@ -120,7 +180,7 @@ export default function RunPayrollScreen() {
           const payrolls = await payrollsRes.json();
           setGustoPayrolls(Array.isArray(payrolls) ? payrolls : []);
           const unprocessed = (Array.isArray(payrolls) ? payrolls : []).find(
-            (p: any) => p.processed === false || p.payroll_deadline
+            (p: GustoPayroll) => p.processed === false || p.payroll_deadline
           );
           if (unprocessed) setActivePayroll(unprocessed);
         }
@@ -176,7 +236,7 @@ export default function RunPayrollScreen() {
         if (payrollsRes.ok) {
           const payrolls = await payrollsRes.json();
           const unprocessedList = Array.isArray(payrolls) ? payrolls : [];
-          const unprocessed = unprocessedList.find((p: any) => !p.processed);
+          const unprocessed = unprocessedList.find((p: GustoPayroll) => !p.processed);
           if (unprocessed) {
             setActivePayroll(unprocessed);
             setRetrieved(true);
@@ -250,12 +310,12 @@ export default function RunPayrollScreen() {
             fixed_compensations: parseFloat(emp.bonus || '0') > 0 ? [{
               name: 'Bonus',
               amount: emp.bonus,
-              job_uuid: gustoEmployees.find((g: any) => g.uuid === emp.id)?.jobs?.[0]?.uuid,
+              job_uuid: gustoEmployees.find((g: GustoEmployee) => g.uuid === emp.id)?.jobs?.[0]?.uuid,
             }] : [],
             hourly_compensations: [{
               name: 'Regular Hours',
               hours: emp.hours,
-              job_uuid: gustoEmployees.find((g: any) => g.uuid === emp.id)?.jobs?.[0]?.uuid,
+              job_uuid: gustoEmployees.find((g: GustoEmployee) => g.uuid === emp.id)?.jobs?.[0]?.uuid,
             }],
           })),
         }),
@@ -282,7 +342,7 @@ export default function RunPayrollScreen() {
 
       let pollAttempts = 0;
       const maxAttempts = 15;
-      const pollPayroll = async (): Promise<any> => {
+      const pollPayroll = async (): Promise<GustoPayroll | null> => {
         const pollRes = await fetch(`/api/gusto/payrolls/${activePayroll.uuid}`);
         if (!pollRes.ok) return null;
         const data = await pollRes.json();
@@ -297,7 +357,7 @@ export default function RunPayrollScreen() {
       const result = await pollPayroll();
       if (result) {
         setCalcResult(result);
-        setActivePayroll((prev: any) => ({ ...prev, ...result }));
+        setActivePayroll((prev: GustoPayroll | null) => ({ ...prev, ...result }));
         setCalculated(true);
       } else {
         setCalcError('Payroll calculation timed out. Please try again in a moment.');
@@ -363,7 +423,7 @@ export default function RunPayrollScreen() {
   };
 
   const handleUpdateCompensation = async (empId: string, newRate: string) => {
-    const gustoEmp = gustoEmployees.find((g: any) => g.uuid === empId);
+    const gustoEmp = gustoEmployees.find((g: GustoEmployee) => g.uuid === empId);
     const job = gustoEmp?.jobs?.[0];
     const comp = job?.compensations?.[0];
     if (!comp?.uuid) return;
@@ -380,7 +440,7 @@ export default function RunPayrollScreen() {
       });
       if (res.ok) {
         const updated = await res.json();
-        setGustoEmployees(prev => prev.map((e: any) => {
+        setGustoEmployees(prev => prev.map((e: GustoEmployee) => {
           if (e.uuid !== empId) return e;
           const jobs = [...(e.jobs || [])];
           if (jobs[0]) {
@@ -409,7 +469,7 @@ export default function RunPayrollScreen() {
           const stubs = await res.json();
           const stubList = Array.isArray(stubs) ? stubs : [];
           if (activePayroll?.uuid) {
-            stubList.forEach((s: any) => {
+            stubList.forEach((s: GustoPayStub) => {
               if (!s.payroll_uuid) s.payroll_uuid = activePayroll.uuid;
             });
           }
@@ -1181,11 +1241,11 @@ export default function RunPayrollScreen() {
               const hasGustoData = empGustoStubs.length > 0;
               const latestStub = hasGustoData ? empGustoStubs[0] : null;
 
-              const gross = hasGustoData ? parseFloat(latestStub.gross_pay || '0') : null;
-              const net = hasGustoData ? parseFloat(latestStub.net_pay || '0') : null;
-              const stubCheckDate = hasGustoData ? latestStub.check_date : checkDate;
-              const payMethod = hasGustoData ? (latestStub.payment_method || 'Direct Deposit') : 'Direct Deposit';
-              const checkAmt = hasGustoData ? parseFloat(latestStub.check_amount || '0') : null;
+              const gross = latestStub ? parseFloat(latestStub.gross_pay || '0') : null;
+              const net = latestStub ? parseFloat(latestStub.net_pay || '0') : null;
+              const stubCheckDate = latestStub ? latestStub.check_date : checkDate;
+              const payMethod = latestStub ? (latestStub.payment_method || 'Direct Deposit') : 'Direct Deposit';
+              const checkAmt = latestStub ? parseFloat(latestStub.check_amount || '0') : null;
 
               const regular = calcRegularPay(emp);
               const overtime = calcOvertimePay(emp);
@@ -1398,7 +1458,7 @@ ${bonus > 0 ? `<tr><td>Bonus</td><td class="amount">â€”</td><td class="amount">â
                   {hasGustoData && empGustoStubs.length > 1 && (
                     <View style={stubStyles.historySection}>
                       <Text style={stubStyles.sectionTitle}>Pay History ({empGustoStubs.length} stubs)</Text>
-                      {empGustoStubs.slice(0, 5).map((stub: any, idx: number) => (
+                      {empGustoStubs.slice(0, 5).map((stub: GustoPayStub, idx: number) => (
                         <View key={stub.uuid || idx} style={stubStyles.historyRow}>
                           <Text style={stubStyles.historyDate}>{stub.check_date}</Text>
                           <Text style={stubStyles.historyGross}>Gross: {fmt(parseFloat(stub.gross_pay || '0'))}</Text>

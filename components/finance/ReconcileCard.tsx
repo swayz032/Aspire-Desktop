@@ -1,4 +1,5 @@
 import React from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
@@ -51,7 +52,7 @@ export default function ReconcileCard({ mismatch, onAction, onDismiss }: Reconci
 
   return (
     <Pressable
-      style={({ hovered }: any) => [
+      style={({ hovered }: PressableState) => [
         styles.card,
         Platform.OS === 'web' && hovered && styles.cardHovered,
         Platform.OS === 'web' && ({ cursor: 'default' } as any),
@@ -118,7 +119,7 @@ export default function ReconcileCard({ mismatch, onAction, onDismiss }: Reconci
           {onAction && (
             <Pressable
               onPress={onAction}
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 styles.actionButton,
                 Platform.OS === 'web' && hovered && styles.actionButtonHovered,
               ]}

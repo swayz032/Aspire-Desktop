@@ -1,4 +1,5 @@
 import React from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
@@ -117,7 +118,7 @@ export default function TimelineRow({ event, onPress, expanded = false }: Timeli
     <View style={styles.wrapper}>
       <Pressable
         onPress={onPress}
-        style={({ hovered }: any) => [
+        style={({ hovered }: PressableState) => [
           styles.row,
           Platform.OS === 'web' && hovered && styles.rowHovered,
           webHoverStyle,

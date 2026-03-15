@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius } from '@/constants/tokens';
@@ -267,7 +268,7 @@ export function DocumentThumbnail({
         onPress={() => setPreviewOpen(true)}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
-        style={({ pressed }: any) => [
+        style={({ pressed }: PressableState) => [
           pressed && styles.pressed,
           Platform.OS === 'web' ? { cursor: 'pointer' } as any : {},
         ]}

@@ -4,6 +4,41 @@ import { createReceipt } from './receiptService';
 import { getConnectionsByTenant, ConnectionRecord } from './financeTokenStore';
 import { logger } from './logger';
 
+interface CashFlowItem {
+  source?: string;
+  type: 'inflow' | 'outflow';
+  amount: number;
+  dueDate?: string;
+  expectedDate?: string;
+  description?: string;
+  provider?: string;
+  [key: string]: any;
+}
+
+interface ReconcileMismatch {
+  id?: string;
+  source?: string;
+  target?: string;
+  sourceAmount?: number;
+  targetAmount?: number;
+  difference?: number;
+  date?: string;
+  description?: string;
+  severity?: string;
+  [key: string]: any;
+}
+
+interface ActionProposal {
+  id?: string;
+  title?: string;
+  type: string;
+  description: string;
+  priority?: 'low' | 'medium' | 'high';
+  amount?: number;
+  dueDate?: string;
+  [key: string]: any;
+}
+
 export interface ChapterNow {
   cashAvailable: number;
   bankBalance: number;
@@ -16,7 +51,7 @@ export interface ChapterNext {
   expectedInflows7d: number;
   expectedOutflows7d: number;
   netCashFlow7d: number;
-  items: any[];
+  items: CashFlowItem[];
 }
 
 export interface ChapterMonth {
@@ -27,12 +62,12 @@ export interface ChapterMonth {
 }
 
 export interface ChapterReconcile {
-  mismatches: any[];
+  mismatches: ReconcileMismatch[];
   mismatchCount: number;
 }
 
 export interface ChapterActions {
-  proposals: any[];
+  proposals: ActionProposal[];
   proposalCount: number;
 }
 
@@ -60,7 +95,7 @@ export async function computeChapterNow(suiteId: string, officeId: string): Prom
       ORDER BY occurred_at DESC
       LIMIT 1
     `);
-    const bankRows = (bankResult.rows || bankResult) as any[];
+    const bankRows = (bankResult.rows || bankResult) as Record<string, any>[];
     const bankBalance = bankRows.length > 0 ? (bankRows[0].amount || 0) : 0;
     const bankLastUpdated = bankRows.length > 0 ? bankRows[0].occurred_at : null;
 
@@ -72,7 +107,7 @@ export async function computeChapterNow(suiteId: string, officeId: string): Prom
       ORDER BY occurred_at DESC
       LIMIT 1
     `);
-    const stripeRows = (stripeResult.rows || stripeResult) as any[];
+    const stripeRows = (stripeResult.rows || stripeResult) as Record<string, any>[];
     const stripeAvailable = stripeRows.length > 0 ? (stripeRows[0].metadata?.available || stripeRows[0].amount || 0) : 0;
     const stripePending = stripeRows.length > 0 ? (stripeRows[0].metadata?.pending || 0) : 0;
     const stripeLastUpdated = stripeRows.length > 0 ? stripeRows[0].occurred_at : null;
@@ -95,7 +130,7 @@ export async function computeChapterNow(suiteId: string, officeId: string): Prom
 
 export async function computeChapterNext(suiteId: string, officeId: string): Promise<ChapterNext> {
   try {
-    const items: any[] = [];
+    const items: CashFlowItem[] = [];
 
     const invoiceResult = await db.execute(sql`
       SELECT event_id, amount, metadata, occurred_at, provider
@@ -106,7 +141,7 @@ export async function computeChapterNext(suiteId: string, officeId: string): Pro
         AND occurred_at >= NOW() - INTERVAL '14 days'
       ORDER BY occurred_at ASC
     `);
-    const invoiceRows = (invoiceResult.rows || invoiceResult) as any[];
+    const invoiceRows = (invoiceResult.rows || invoiceResult) as Record<string, any>[];
     for (const row of invoiceRows) {
       items.push({
         type: 'inflow',
@@ -131,7 +166,7 @@ export async function computeChapterNext(suiteId: string, officeId: string): Pro
         )
       ORDER BY pc.occurred_at ASC
     `);
-    const payoutRows = (payoutResult.rows || payoutResult) as any[];
+    const payoutRows = (payoutResult.rows || payoutResult) as Record<string, any>[];
     for (const row of payoutRows) {
       items.push({
         type: 'inflow',
@@ -156,7 +191,7 @@ export async function computeChapterNext(suiteId: string, officeId: string): Pro
         )
       ORDER BY pc.occurred_at ASC
     `);
-    const payrollRows = (payrollResult.rows || payrollResult) as any[];
+    const payrollRows = (payrollResult.rows || payrollResult) as Record<string, any>[];
     for (const row of payrollRows) {
       items.push({
         type: 'outflow',
@@ -196,7 +231,7 @@ export async function computeChapterMonth(suiteId: string, officeId: string): Pr
       ORDER BY occurred_at DESC
       LIMIT 1
     `);
-    const qboRows = (qboResult.rows || qboResult) as any[];
+    const qboRows = (qboResult.rows || qboResult) as Record<string, any>[];
 
     if (qboRows.length > 0 && qboRows[0].metadata?.revenue !== undefined) {
       const meta = qboRows[0].metadata;
@@ -212,7 +247,7 @@ export async function computeChapterMonth(suiteId: string, officeId: string): Pr
         AND event_type = 'payment_succeeded'
         AND occurred_at >= DATE_TRUNC('month', NOW())
     `);
-    const revenueRows = (revenueResult.rows || revenueResult) as any[];
+    const revenueRows = (revenueResult.rows || revenueResult) as Record<string, any>[];
     const revenue = Number(revenueRows[0]?.total || 0);
 
     const expenseResult = await db.execute(sql`
@@ -222,7 +257,7 @@ export async function computeChapterMonth(suiteId: string, officeId: string): Pr
         AND event_type IN ('payroll_paid', 'fee_assessed')
         AND occurred_at >= DATE_TRUNC('month', NOW())
     `);
-    const expenseRows = (expenseResult.rows || expenseResult) as any[];
+    const expenseRows = (expenseResult.rows || expenseResult) as Record<string, any>[];
     const expenses = Number(expenseRows[0]?.total || 0);
 
     return { revenue, expenses, netIncome: revenue - expenses, period };
@@ -236,7 +271,7 @@ export async function computeChapterMonth(suiteId: string, officeId: string): Pr
 
 export async function computeChapterReconcile(suiteId: string, officeId: string): Promise<ChapterReconcile> {
   try {
-    const mismatches: any[] = [];
+    const mismatches: ReconcileMismatch[] = [];
     let mismatchSeq = 0;
 
     const settlementResult = await db.execute(sql`
@@ -253,7 +288,7 @@ export async function computeChapterReconcile(suiteId: string, officeId: string)
             AND bt.amount = pp.amount
         )
     `);
-    const settlementRows = (settlementResult.rows || settlementResult) as any[];
+    const settlementRows = (settlementResult.rows || settlementResult) as Record<string, any>[];
     for (const row of settlementRows) {
       mismatchSeq++;
       mismatches.push({
@@ -283,7 +318,7 @@ export async function computeChapterReconcile(suiteId: string, officeId: string)
         AND pp.occurred_at >= NOW() - INTERVAL '30 days'
         AND bt.amount != pp.amount
     `);
-    const payoutMatchRows = (payoutMatchResult.rows || payoutMatchResult) as any[];
+    const payoutMatchRows = (payoutMatchResult.rows || payoutMatchResult) as Record<string, any>[];
     for (const row of payoutMatchRows) {
       mismatchSeq++;
       mismatches.push({
@@ -307,7 +342,7 @@ export async function computeChapterReconcile(suiteId: string, officeId: string)
         AND event_type = 'bank_tx_posted'
         AND occurred_at >= DATE_TRUNC('month', NOW())
     `);
-    const bankTotalRows = (bankTotalResult.rows || bankTotalResult) as any[];
+    const bankTotalRows = (bankTotalResult.rows || bankTotalResult) as Record<string, any>[];
     const bankTotal = Number(bankTotalRows[0]?.total || 0);
 
     const qboTotalResult = await db.execute(sql`
@@ -319,7 +354,7 @@ export async function computeChapterReconcile(suiteId: string, officeId: string)
       ORDER BY occurred_at DESC
       LIMIT 1
     `);
-    const qboTotalRows = (qboTotalResult.rows || qboTotalResult) as any[];
+    const qboTotalRows = (qboTotalResult.rows || qboTotalResult) as Record<string, any>[];
     if (qboTotalRows.length > 0 && qboTotalRows[0].metadata?.bankTotal !== undefined) {
       const qboTotal = Number(qboTotalRows[0].metadata.bankTotal);
       if (qboTotal > 0 && bankTotal > 0) {
@@ -356,7 +391,7 @@ export async function computeChapterReconcile(suiteId: string, officeId: string)
             AND qp.provider_event_id = ps.provider_event_id
         )
     `);
-    const missingEntryRows = (missingEntryResult.rows || missingEntryResult) as any[];
+    const missingEntryRows = (missingEntryResult.rows || missingEntryResult) as Record<string, any>[];
     for (const row of missingEntryRows) {
       mismatchSeq++;
       mismatches.push({
@@ -389,7 +424,7 @@ export async function computeChapterActions(
   chapterReconcile?: ChapterReconcile,
 ): Promise<ChapterActions> {
   try {
-    const proposals: any[] = [];
+    const proposals: ActionProposal[] = [];
 
     const now = chapterNow || await computeChapterNow(suiteId, officeId);
     const next = chapterNext || await computeChapterNext(suiteId, officeId);
@@ -421,9 +456,9 @@ export async function computeChapterActions(
             AND ip.provider_event_id = inv.provider_event_id
         )
     `);
-    const overdueRows = (overdueResult.rows || overdueResult) as any[];
+    const overdueRows = (overdueResult.rows || overdueResult) as Record<string, any>[];
     if (overdueRows.length > 0) {
-      const totalOverdue = overdueRows.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
+      const totalOverdue = overdueRows.reduce((sum: number, r: Record<string, any>) => sum + (Number(r.amount) || 0), 0);
       proposals.push({
         title: 'Collect overdue AR',
         type: 'collections',
@@ -455,7 +490,7 @@ export async function computeChapterActions(
         AND occurred_at >= DATE_TRUNC('month', NOW()) - INTERVAL '1 month'
         AND occurred_at < DATE_TRUNC('month', NOW())
     `);
-    const prevMonthRows = (prevMonthResult.rows || prevMonthResult) as any[];
+    const prevMonthRows = (prevMonthResult.rows || prevMonthResult) as Record<string, any>[];
     const prevExpenses = Number(prevMonthRows[0]?.total || 0);
     if (prevExpenses > 0 && month.expenses > prevExpenses * 1.10) {
       const growthPct = ((month.expenses - prevExpenses) / prevExpenses * 100).toFixed(1);
@@ -477,7 +512,7 @@ export async function computeChapterActions(
   }
 }
 
-export function computeProvenance(connections: ConnectionRecord[], events: any[]): Record<string, any> {
+export function computeProvenance(connections: ConnectionRecord[], events: Record<string, any>[]): Record<string, any> {
   const now = Date.now();
 
   function getConfidence(lastSync: Date | null): string {
@@ -600,7 +635,7 @@ export async function computeSnapshot(suiteId: string, officeId: string): Promis
     WHERE suite_id = ${suiteId} AND office_id = ${officeId}
       AND occurred_at >= NOW() - INTERVAL '30 days'
   `);
-  const events = (eventsResult.rows || eventsResult) as any[];
+  const events = (eventsResult.rows || eventsResult) as Record<string, any>[];
 
   const provenance = computeProvenance(connections, events);
   const staleness = computeStaleness(connections);

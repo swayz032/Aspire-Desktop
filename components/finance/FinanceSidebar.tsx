@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, Animated, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
@@ -219,7 +220,7 @@ export function FinanceSidebar() {
                 <Text style={styles.sectionLabel}>Finance Hub</Text>
               )}
               <Pressable
-                style={({ hovered, pressed }: any) => [
+                style={({ hovered, pressed }: PressableState) => [
                   styles.navItem,
                   expanded && active && styles.navItemActive,
                   !expanded && styles.navItemCollapsed,
@@ -310,7 +311,7 @@ export function FinanceSidebar() {
                     return (
                       <Pressable
                         key={sub.id}
-                        style={({ hovered, pressed }: any) => [
+                        style={({ hovered, pressed }: PressableState) => [
                           styles.subItem,
                           subActive && styles.subItemActive,
                           !subActive && hovered && styles.subItemHover,

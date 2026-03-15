@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -246,7 +247,7 @@ export function DesktopHeader({
       <View style={s.panelHeader}>
         <Text style={s.panelTitle}>Notifications</Text>
         {unreadCount > 0 && (
-          <Pressable onPress={markAllRead} style={({ hovered }: any) => [s.markAllBtn, hovered && s.markAllBtnHover]}>
+          <Pressable onPress={markAllRead} style={({ hovered }: PressableState) => [s.markAllBtn, hovered && s.markAllBtnHover]}>
             <Text style={s.markAllText}>Mark all read</Text>
           </Pressable>
         )}
@@ -289,7 +290,7 @@ export function DesktopHeader({
                 }
                 setActivePanel('none');
               }}
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 s.notifItem,
                 !notif.read && s.notifItemUnread,
                 hovered && s.notifItemHover,
@@ -314,7 +315,7 @@ export function DesktopHeader({
       </ScrollView>
 
       <View style={s.panelDivider} />
-      <Pressable style={({ hovered }: any) => [s.panelFooterBtn, hovered && s.panelFooterBtnHover]}>
+      <Pressable style={({ hovered }: PressableState) => [s.panelFooterBtn, hovered && s.panelFooterBtnHover]}>
         <Text style={s.panelFooterText}>View All Notifications</Text>
         <Ionicons name="arrow-forward" size={14} color="#3B82F6" />
       </Pressable>
@@ -381,7 +382,7 @@ export function DesktopHeader({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={item.label}
-                  style={({ hovered, pressed }: any) => [
+                  style={({ hovered, pressed }: PressableState) => [
                     s.profileMenuItem,
                     hovered && !item.destructive && s.profileMenuItemHover,
                     hovered && item.destructive && s.profileMenuItemDestructiveHover,
@@ -453,7 +454,7 @@ export function DesktopHeader({
 
       <View style={s.centerSection}>
         <Pressable
-          style={({ hovered }: any) => [s.searchBar, hovered && s.searchBarHover]}
+          style={({ hovered }: PressableState) => [s.searchBar, hovered && s.searchBarHover]}
         >
           <Ionicons name="search" size={16} color={Colors.text.tertiary} />
           <Text style={s.searchPlaceholder}>Search or press ⌘K</Text>
@@ -464,7 +465,7 @@ export function DesktopHeader({
         <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
           <Pressable
             onPress={() => togglePanel('suite')}
-            style={({ hovered }: any) => [
+            style={({ hovered }: PressableState) => [
               s.suiteToggle,
               hovered && s.suiteToggleHover,
               activePanel === 'suite' && s.suiteToggleActive,
@@ -492,7 +493,7 @@ export function DesktopHeader({
                 <Text style={s.sdHeaderText}>Your Suites</Text>
               </View>
               <Pressable
-                style={({ hovered }: any) => [s.sdItem, s.sdItemActive, hovered && s.sdItemHover]}
+                style={({ hovered }: PressableState) => [s.sdItem, s.sdItemActive, hovered && s.sdItemHover]}
                 onPress={() => setActivePanel('none')}
               >
                 <View style={s.sdItemLeft}>
@@ -508,7 +509,7 @@ export function DesktopHeader({
               </Pressable>
               <View style={s.panelDivider} />
               <Pressable
-                style={({ hovered }: any) => [s.sdItem, hovered && s.sdItemHover]}
+                style={({ hovered }: PressableState) => [s.sdItem, hovered && s.sdItemHover]}
                 onPress={() => setActivePanel('none')}
               >
                 <View style={s.sdItemLeft}>
@@ -530,7 +531,7 @@ export function DesktopHeader({
         <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
           <Pressable
             onPress={() => togglePanel('notifications')}
-            style={({ pressed, hovered }: any) => [
+            style={({ pressed, hovered }: PressableState) => [
               s.iconButton,
               hovered && s.iconButtonHover,
               pressed && s.iconButtonPressed,
@@ -550,7 +551,7 @@ export function DesktopHeader({
         <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
           <Pressable
             onPress={() => togglePanel('profile')}
-            style={({ pressed, hovered }: any) => [
+            style={({ pressed, hovered }: PressableState) => [
               s.profileButton,
               hovered && s.profileButtonHover,
               pressed && s.profileButtonPressed,

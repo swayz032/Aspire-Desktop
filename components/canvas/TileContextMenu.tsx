@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import type { PressableState } from '@/types/common';
 import {
   Animated,
   View,
@@ -210,7 +211,7 @@ export function TileContextMenu({
         return (
           <Pressable
             key={verb.id}
-            style={({ hovered }: any) => [
+            style={({ hovered }: PressableState) => [
               styles.menuItem,
               isFocused && styles.menuItemFocused,
               hovered && !isFocused && styles.menuItemHover,

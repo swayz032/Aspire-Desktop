@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import type { PressableState } from '@/types/common';
 import { 
   View, 
   Text, 
@@ -262,7 +263,7 @@ function PeopleTab({
         <View style={styles.toolbarRight}>
           {isOwnerOrAdmin(currentUser) && (
             <>
-              <Pressable style={({ hovered }: any) => [styles.secondaryBtn, hovered && styles.secondaryBtnHover]}>
+              <Pressable style={({ hovered }: PressableState) => [styles.secondaryBtn, hovered && styles.secondaryBtnHover]}>
                 <View style={styles.btnIconWrap}>
                   <Ionicons name="add-circle" size={16} color={Colors.accent.cyan} />
                 </View>
@@ -271,7 +272,7 @@ function PeopleTab({
                   <Text style={styles.pricePillText}>${pricing.teamMemberSeat}/mo</Text>
                 </View>
               </Pressable>
-              <Pressable style={({ hovered }: any) => [styles.secondaryBtn, hovered && styles.secondaryBtnHover]}>
+              <Pressable style={({ hovered }: PressableState) => [styles.secondaryBtn, hovered && styles.secondaryBtnHover]}>
                 <View style={styles.btnIconWrap}>
                   <Ionicons name="business" size={16} color={Colors.accent.cyan} />
                 </View>
@@ -283,7 +284,7 @@ function PeopleTab({
             </>
           )}
           {canInvite && (
-            <Pressable onPress={onInvite} style={({ hovered }: any) => [styles.secondaryBtn, hovered && styles.secondaryBtnHover]}>
+            <Pressable onPress={onInvite} style={({ hovered }: PressableState) => [styles.secondaryBtn, hovered && styles.secondaryBtnHover]}>
               <View style={styles.btnIconWrap}>
                 <Ionicons name="person-add" size={16} color={Colors.accent.cyan} />
               </View>
@@ -307,7 +308,7 @@ function PeopleTab({
           {members.map(member => (
             <Pressable 
               key={member.id} 
-              style={({ hovered }: any) => [styles.tableRow, hovered && styles.tableRowHover]}
+              style={({ hovered }: PressableState) => [styles.tableRow, hovered && styles.tableRowHover]}
             >
               <View style={[styles.tableCell, { flex: 2 }]}>
                 <View style={styles.memberInfo}>
@@ -354,7 +355,7 @@ function PeopleTab({
                 <Text style={styles.cellTextMuted}>{formatTimeAgo(member.lastActiveAt)}</Text>
               </View>
               <View style={[styles.tableCell, { flex: 0.5 }]}>
-                <Pressable style={({ hovered }: any) => [styles.actionBtn, hovered && styles.actionBtnHover]}>
+                <Pressable style={({ hovered }: PressableState) => [styles.actionBtn, hovered && styles.actionBtnHover]}>
                   <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
                 </Pressable>
               </View>
@@ -393,10 +394,10 @@ function PeopleTab({
                 <Text style={styles.cellTextMuted}>Sent {formatTimeAgo(invite.createdAt)}</Text>
               </View>
               <View style={[styles.tableCell, { flex: 0.5, flexDirection: 'row', gap: 4 }]}>
-                <Pressable style={({ hovered }: any) => [styles.actionBtn, hovered && styles.actionBtnHover]}>
+                <Pressable style={({ hovered }: PressableState) => [styles.actionBtn, hovered && styles.actionBtnHover]}>
                   <Ionicons name="refresh" size={14} color="rgba(255,255,255,0.7)" />
                 </Pressable>
-                <Pressable style={({ hovered }: any) => [styles.actionBtn, hovered && styles.actionBtnHover]}>
+                <Pressable style={({ hovered }: PressableState) => [styles.actionBtn, hovered && styles.actionBtnHover]}>
                   <Ionicons name="close" size={14} color={Colors.semantic.error} />
                 </Pressable>
               </View>
@@ -446,7 +447,7 @@ function ApprovalsTab({
           )}
         </View>
         <Pressable 
-          style={({ hovered }: any) => [styles.secondaryBtn, hovered && styles.secondaryBtnHover]}
+          style={({ hovered }: PressableState) => [styles.secondaryBtn, hovered && styles.secondaryBtnHover]}
           onPress={() => setShowRules(!showRules)}
         >
           <Ionicons name="settings-outline" size={16} color="#A1A1AA" />
@@ -525,7 +526,7 @@ function ApprovalsTab({
                         </View>
                         <View style={styles.approvalActions}>
                           <Pressable 
-                            style={({ hovered }: any) => [styles.rejectBtn, hovered && styles.rejectBtnHover]}
+                            style={({ hovered }: PressableState) => [styles.rejectBtn, hovered && styles.rejectBtnHover]}
                             onPress={() => onReject(request.id)}
                           >
                             <Ionicons name="close-circle" size={16} color="#A1A1AA" />
@@ -534,7 +535,7 @@ function ApprovalsTab({
                           <Pressable 
                             onPress={() => onApprove(request.id)}
                           >
-                            {({ hovered }: any) => (
+                            {({ hovered }: PressableState) => (
                               <LinearGradient
                                 colors={['#3B82F6', '#2563EB']}
                                 start={{ x: 0, y: 0 }}
@@ -654,7 +655,7 @@ function QueuesTab({
       <View style={styles.deskCarouselContainer}>
         <Pressable
           onPress={goPrev}
-          style={({ hovered }: any) => [
+          style={({ hovered }: PressableState) => [
             styles.deskArrowBtn,
             currentIndex === 0 && styles.deskArrowDisabled,
             hovered && currentIndex > 0 && styles.deskArrowHover,
@@ -709,7 +710,7 @@ function QueuesTab({
                   {visibleItems.map((item, idx) => (
                     <Pressable
                       key={item.id}
-                      style={({ hovered }: any) => [
+                      style={({ hovered }: PressableState) => [
                         styles.deskQueueItem,
                         hovered && styles.deskQueueItemHover,
                         idx === visibleItems.length - 1 && !hasOverflow && { borderBottomWidth: 0 },
@@ -727,7 +728,7 @@ function QueuesTab({
                                 <Text style={styles.deskQueueAssigneeName}>{item.assigneeName}</Text>
                               </View>
                             ) : (
-                              <Pressable style={({ hovered }: any) => [styles.deskAssignLink, hovered && styles.deskAssignLinkHover]}>
+                              <Pressable style={({ hovered }: PressableState) => [styles.deskAssignLink, hovered && styles.deskAssignLinkHover]}>
                                 <Ionicons name="person-add-outline" size={11} color="#3B82F6" />
                                 <Text style={styles.deskAssignLinkText}>Assign</Text>
                               </Pressable>
@@ -744,7 +745,7 @@ function QueuesTab({
             {hasOverflow && deskItems.length > 0 && (
               <Pressable
                 onPress={() => setExpanded(!expanded)}
-                style={({ hovered }: any) => [styles.viewAllBar, hovered && styles.viewAllBarHover]}
+                style={({ hovered }: PressableState) => [styles.viewAllBar, hovered && styles.viewAllBarHover]}
               >
                 <View style={styles.viewAllBarContent}>
                   <Ionicons
@@ -768,7 +769,7 @@ function QueuesTab({
 
         <Pressable
           onPress={goNext}
-          style={({ hovered }: any) => [
+          style={({ hovered }: PressableState) => [
             styles.deskArrowBtn,
             currentIndex === desks.length - 1 && styles.deskArrowDisabled,
             hovered && currentIndex < desks.length - 1 && styles.deskArrowHover,
@@ -830,7 +831,7 @@ function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
           {(['all', 'human', 'aiDesk', 'system'] as const).map(filter => (
             <Pressable
               key={filter}
-              style={({ hovered }: any) => [styles.filterChip, actorFilter === filter && styles.filterChipActive, hovered && actorFilter !== filter && styles.filterChipHover]}
+              style={({ hovered }: PressableState) => [styles.filterChip, actorFilter === filter && styles.filterChipActive, hovered && actorFilter !== filter && styles.filterChipHover]}
               onPress={() => setActorFilter(filter)}
             >
               <Text style={[styles.filterChipText, actorFilter === filter && styles.filterChipTextActive]}>
@@ -838,7 +839,7 @@ function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
               </Text>
             </Pressable>
           ))}
-          <Pressable style={({ hovered }: any) => [styles.exportBtn, hovered && styles.exportBtnHover]}>
+          <Pressable style={({ hovered }: PressableState) => [styles.exportBtn, hovered && styles.exportBtnHover]}>
             <Ionicons name="download-outline" size={16} color="rgba(255,255,255,0.7)" />
             <Text style={styles.exportBtnText}>Export</Text>
           </Pressable>
@@ -1049,7 +1050,7 @@ function UsageTab({ suiteUsage, memberUsage }: { suiteUsage: UsageLedger; member
                 <Text style={styles.addOnDescription}>Add another team member to your suite</Text>
                 <Text style={styles.addOnPriceInline}>${pricing.teamMemberSeat}/mo</Text>
               </View>
-              <Pressable style={({ hovered }: any) => [styles.addOnBtn, hovered && styles.addOnBtnHover]}>
+              <Pressable style={({ hovered }: PressableState) => [styles.addOnBtn, hovered && styles.addOnBtnHover]}>
                 <LinearGradient
                   colors={['#3B82F6', '#2563EB']}
                   start={{ x: 0, y: 0 }}
@@ -1070,7 +1071,7 @@ function UsageTab({ suiteUsage, memberUsage }: { suiteUsage: UsageLedger; member
                 <Text style={styles.addOnDescription}>Create another business identity</Text>
                 <Text style={styles.addOnPriceInline}>${pricing.secondSuite}/mo</Text>
               </View>
-              <Pressable style={({ hovered }: any) => [styles.addOnBtn, hovered && styles.addOnBtnHover]}>
+              <Pressable style={({ hovered }: PressableState) => [styles.addOnBtn, hovered && styles.addOnBtnHover]}>
                 <LinearGradient
                   colors={['#3B82F6', '#2563EB']}
                   start={{ x: 0, y: 0 }}
@@ -1125,7 +1126,7 @@ function InviteModal({
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Invite Team Member</Text>
             <Pressable 
-              style={({ hovered }: any) => [styles.modalClose, hovered && styles.modalCloseHover]}
+              style={({ hovered }: PressableState) => [styles.modalClose, hovered && styles.modalCloseHover]}
               onPress={onClose}
             >
               <Ionicons name="close" size={20} color="rgba(255,255,255,0.7)" />
@@ -1204,12 +1205,12 @@ function InviteModal({
           
           <View style={styles.modalFooter}>
             <Pressable 
-              style={({ hovered }: any) => [styles.cancelBtn, hovered && styles.cancelBtnHover]}
+              style={({ hovered }: PressableState) => [styles.cancelBtn, hovered && styles.cancelBtnHover]}
               onPress={onClose}
             >
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </Pressable>
-            <Pressable style={({ hovered }: any) => [styles.submitBtn, hovered && styles.submitBtnHover]}>
+            <Pressable style={({ hovered }: PressableState) => [styles.submitBtn, hovered && styles.submitBtnHover]}>
               <Ionicons name="send" size={16} color="#FFFFFF" />
               <Text style={styles.submitBtnText}>Send Invite</Text>
             </Pressable>

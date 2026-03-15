@@ -4,6 +4,7 @@
  * Hover lift effect on web, press navigation to detail page.
  */
 import React, { useCallback } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -53,7 +54,7 @@ function ContractCardInner({ contract, index = 0 }: ContractCardProps) {
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={`Contract: ${contract.title}, Status: ${contract.status}`}
-      style={({ hovered, pressed }: any) => [
+      style={({ hovered, pressed }: PressableState) => [
         styles.card,
         webAnimationStyle,
         hovered && styles.cardHovered,

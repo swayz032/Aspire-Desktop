@@ -3,12 +3,7 @@ import { View, Text, StyleSheet, Platform, ScrollView, ActivityIndicator, Pressa
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
-
-interface PayrollSubTabProps {
-  gustoCompany: any;
-  gustoEmployees: any[];
-  gustoConnected: boolean;
-}
+import { PayrollSubTabProps, GustoEmployee, GustoFederalTaxDetails } from './types';
 
 function formatStatusLabel(status: string): string {
   if (!status) return '—';
@@ -16,13 +11,13 @@ function formatStatusLabel(status: string): string {
 }
 
 export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
-  const [taxDetails, setTaxDetails] = useState<any>(null);
+  const [taxDetails, setTaxDetails] = useState<GustoFederalTaxDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [savingChanges, setSavingChanges] = useState(false);
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
-  const [employeeTaxData, setEmployeeTaxData] = useState<{ [key: string]: any }>({});
+  const [employeeTaxData, setEmployeeTaxData] = useState<Record<string, Record<string, unknown>>>({});
   const [editedValues, setEditedValues] = useState({
     filing_form: '',
     deposit_schedule: '',
@@ -42,8 +37,8 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
           deposit_schedule: data?.deposit_schedule || '',
           tax_payer_type: data?.tax_payer_type || '',
         });
-      } catch (e: any) {
-        setError(e.message || 'Failed to load tax details');
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load tax details');
       } finally {
         setLoading(false);
       }
@@ -71,7 +66,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
       const updated = await res.json();
       setTaxDetails(updated);
       setIsEditing(false);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Error saving changes:', e);
     } finally {
       setSavingChanges(false);
@@ -93,7 +88,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
       if (!res.ok) throw new Error('Failed to fetch employee tax data');
       const data = await res.json();
       setEmployeeTaxData(prev => ({ ...prev, [employeeUuid]: data }));
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Error fetching employee tax data:', e);
     }
   };
@@ -395,7 +390,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
       <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Employee Tax Overview</Text>
 
       {gustoEmployees && gustoEmployees.length > 0 ? (
-        gustoEmployees.map((employee: any) => (
+        gustoEmployees.map((employee: GustoEmployee) => (
           <View key={employee.uuid} style={styles.checkCard}>
             <View style={styles.employeeInfo}>
               <View style={styles.employeeAvatar}>
@@ -416,8 +411,8 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
                 if (expandedEmployee === employee.uuid) {
                   setExpandedEmployee(null);
                 } else {
-                  setExpandedEmployee(employee.uuid);
-                  fetchEmployeeTaxData(employee.uuid);
+                  setExpandedEmployee(employee.uuid ?? null);
+                  fetchEmployeeTaxData(employee.uuid ?? '');
                 }
               }}
             >
@@ -441,11 +436,11 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
       {expandedEmployee && employeeTaxData[expandedEmployee] && (
         <View style={styles.employeeTaxDetails}>
           <Text style={styles.taxDetailsTitle}>Federal Tax Details</Text>
-          {Object.entries(employeeTaxData[expandedEmployee] || {}).map(([key, value]: [string, any]) => (
+          {Object.entries(employeeTaxData[expandedEmployee] || {}).map(([key, value]: [string, unknown]) => (
             <View key={key} style={styles.taxDetailItem}>
               <Text style={styles.taxDetailLabel}>{formatStatusLabel(key)}</Text>
               <Text style={styles.taxDetailValue}>
-                {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value || '—'}
+                {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value || '—')}
               </Text>
             </View>
           ))}

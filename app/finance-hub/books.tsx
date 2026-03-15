@@ -10,6 +10,67 @@ import { StoryCard, StoryExplainDrawer, StoryTimeline, StoryWizard, categorizeTo
 import type { FinanceEvent, ExplainItem, DepartmentShelf } from '@/components/finance/story';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
+interface QBColData {
+  value?: string;
+}
+
+interface QBRow {
+  Header?: { ColData?: QBColData[] };
+  Rows?: QBRowContainer;
+  ColData?: QBColData[];
+  Summary?: { ColData?: QBColData[] };
+}
+
+interface QBRowContainer {
+  Row?: QBRow[];
+}
+
+interface QBReport {
+  Header?: { StartPeriod?: string; EndPeriod?: string };
+  Rows?: QBRowContainer;
+  Columns?: { Column?: { ColTitle?: string; ColType?: string }[] };
+}
+
+interface QBAccount {
+  Id: string;
+  Name: string;
+  AccountType: string;
+  AccountSubType?: string;
+  CurrentBalance?: number;
+}
+
+interface QBJournalEntry {
+  Id?: string;
+  DocNumber?: string;
+  TxnDate?: string;
+  PrivateNote?: string;
+  Line?: QBJournalLine[];
+}
+
+interface QBJournalLine {
+  Amount?: number;
+  Description?: string;
+  JournalEntryLineDetail?: {
+    PostingType?: 'Debit' | 'Credit';
+    AccountRef?: { name?: string; value?: string };
+  };
+}
+
+interface BooksReportData {
+  pnl: QBReport;
+  balanceSheet: QBReport;
+  cashFlow: QBReport;
+  trialBalance: QBReport;
+}
+
+interface ChartTooltipPayloadItem {
+  color?: string;
+  name?: string;
+  value?: number | string;
+}
+
+type WebStyleObject = Record<string, string | number>;
+
 type TabKey = 'overview' | 'reports' | 'accounts' | 'journal' | 'ledger';
 
 const TABS: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -21,7 +82,7 @@ const TABS: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }
 ];
 
 const isWeb = Platform.OS === 'web';
-const webOnly = (s: any) => isWeb ? s : {};
+const webOnly = (s: WebStyleObject) => isWeb ? s : {};
 
 const fmt = (n: number) => {
   const abs = Math.abs(n);
@@ -48,7 +109,7 @@ const ACCOUNT_TYPE_COLORS: Record<string, { bg: string; text: string }> = {
 
 const PIE_COLORS = ['#2563EB', '#059669', '#D97706', '#DC2626', '#6366F1', '#0891B2', '#BE185D', '#7C3AED'];
 
-function parseQBRows(rows: any, indent = 0): { label: string; amount: string; indent: number; bold: boolean }[] {
+function parseQBRows(rows: QBRowContainer | undefined, indent = 0): { label: string; amount: string; indent: number; bold: boolean }[] {
   if (!rows?.Row) return [];
   const result: { label: string; amount: string; indent: number; bold: boolean }[] = [];
   for (const row of rows.Row) {
@@ -88,7 +149,7 @@ function parseQBRows(rows: any, indent = 0): { label: string; amount: string; in
   return result;
 }
 
-function extractSectionTotal(report: any, sectionName: string): number {
+function extractSectionTotal(report: QBReport | undefined, sectionName: string): number {
   if (!report?.Rows?.Row) return 0;
   for (const row of report.Rows.Row) {
     const headerLabel = row.Header?.ColData?.[0]?.value || '';
@@ -104,7 +165,7 @@ function extractSectionTotal(report: any, sectionName: string): number {
   return 0;
 }
 
-function extractExpenseBreakdown(report: any): { name: string; value: number; color: string }[] {
+function extractExpenseBreakdown(report: QBReport | undefined): { name: string; value: number; color: string }[] {
   if (!report?.Rows?.Row) return [];
   const results: { name: string; value: number; color: string }[] = [];
   for (const row of report.Rows.Row) {
@@ -136,7 +197,7 @@ function extractExpenseBreakdown(report: any): { name: string; value: number; co
     .map((r, i) => ({ ...r, color: PIE_COLORS[i % PIE_COLORS.length] }));
 }
 
-function extractCashFlowSections(report: any): { name: string; value: number }[] {
+function extractCashFlowSections(report: QBReport | undefined): { name: string; value: number }[] {
   if (!report?.Rows?.Row) return [];
   const sections: { name: string; value: number }[] = [];
   for (const row of report.Rows.Row) {
@@ -153,7 +214,7 @@ function extractCashFlowSections(report: any): { name: string; value: number }[]
   return sections;
 }
 
-const ChartTooltip = ({ active, payload, label }: any) => {
+const ChartTooltip = ({ active, payload, label }: { active?: boolean; payload?: ChartTooltipPayloadItem[]; label?: string }) => {
   if (!active || !payload?.length) return null;
   const accentColor = payload[0]?.color || '#3B82F6';
   return (
@@ -169,7 +230,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
       minWidth: 140,
     }}>
       <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' as const, margin: '0 0 8px 0' }}>{label}</p>
-      {payload.map((p: any, i: number) => (
+      {payload.map((p: ChartTooltipPayloadItem, i: number) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: i > 0 ? 6 : 0 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color || '#fff', boxShadow: 'none', border: '2px solid #0a0a0a' }} />
           <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: 500 }}>{p.name}</span>
@@ -204,7 +265,7 @@ function KpiMiniChart({ data, color }: { data: number[]; color: string }) {
   );
 }
 
-function OverviewTab({ data }: { data: any }) {
+function OverviewTab({ data }: { data: BooksReportData }) {
   const totalRevenue = extractSectionTotal(data.pnl, 'income') || extractSectionTotal(data.pnl, 'revenue');
   const totalExpenses = Math.abs(extractSectionTotal(data.pnl, 'expense') + extractSectionTotal(data.pnl, 'cost of goods'));
   const netIncome = extractSectionTotal(data.pnl, 'net income') || (totalRevenue - totalExpenses);
@@ -404,7 +465,7 @@ function OverviewTab({ data }: { data: any }) {
   );
 }
 
-function ReportsTab({ data }: { data: any }) {
+function ReportsTab({ data }: { data: BooksReportData }) {
   const [expandedReport, setExpandedReport] = useState<string | null>(null);
 
   const reports = [
@@ -528,7 +589,7 @@ function ReportsTab({ data }: { data: any }) {
   );
 }
 
-function AccountsTab({ accounts }: { accounts: any[] }) {
+function AccountsTab({ accounts }: { accounts: QBAccount[] }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<'Name' | 'AccountType' | 'CurrentBalance'>('AccountType');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -549,7 +610,7 @@ function AccountsTab({ accounts }: { accounts: any[] }) {
     return sortDir === 'asc' ? cmp : -cmp;
   });
 
-  const grouped: Record<string, any[]> = {};
+  const grouped: Record<string, QBAccount[]> = {};
   sorted.forEach(acct => {
     const type = acct.AccountType || 'Other';
     if (!grouped[type]) grouped[type] = [];
@@ -617,7 +678,7 @@ function AccountsTab({ accounts }: { accounts: any[] }) {
                 </View>
                 <Text style={[Typography.small, { color: Colors.text.muted }]}>{accts.length} accounts</Text>
               </View>
-              {accts.map((acct: any, i: number) => (
+              {accts.map((acct: QBAccount, i: number) => (
                 <View key={acct.Id || i} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
                   <Text style={[styles.tableCell, { flex: 2.5, color: Colors.text.primary, fontWeight: '500' }]} numberOfLines={1}>
                     {acct.Name}
@@ -650,7 +711,7 @@ function AccountsTab({ accounts }: { accounts: any[] }) {
   );
 }
 
-function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries: any[]; accounts: any[]; authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response> }) {
+function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries: QBJournalEntry[]; accounts: QBAccount[]; authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response> }) {
   const [showForm, setShowForm] = useState(false);
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
   const [formMemo, setFormMemo] = useState('');
@@ -681,7 +742,7 @@ function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries:
     setFormLines(formLines.map((l, i) => i === idx ? { ...l, ...updates } : l));
   };
 
-  const selectAccount = (idx: number, acct: any) => {
+  const selectAccount = (idx: number, acct: QBAccount) => {
     updateLine(idx, { accountId: acct.Id, accountName: acct.Name });
     setShowAccountPicker(null);
     setAccountSearch('');
@@ -722,8 +783,8 @@ function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries:
         { accountId: '', accountName: '', type: 'Credit', amount: '', description: '' },
       ]);
       setFormMemo('');
-    } catch (e: any) {
-      setSubmitError(e.message || 'An error occurred');
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : 'An error occurred');
     } finally {
       setSubmitting(false);
     }
@@ -818,7 +879,7 @@ function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries:
                         }}
                       />
                     </div>
-                    {filteredAccounts.slice(0, 20).map((acct: any) => (
+                    {filteredAccounts.slice(0, 20).map((acct: QBAccount) => (
                       <div
                         key={acct.Id}
                         onClick={() => selectAccount(idx, acct)}
@@ -921,7 +982,7 @@ function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries:
           <Text style={[Typography.caption, { color: Colors.text.muted, marginTop: 8 }]}>No journal entries found</Text>
         </View>
       ) : (
-        entries.map((entry: any, idx: number) => {
+        entries.map((entry: QBJournalEntry, idx: number) => {
           const isExpanded = expandedEntry === (entry.Id || `${idx}`);
           const lines = entry.Line || [];
           return (
@@ -969,7 +1030,7 @@ function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries:
                     <Text style={[Typography.micro, { flex: 1, color: Colors.text.muted, textAlign: 'right', textTransform: 'uppercase' }]}>Debit</Text>
                     <Text style={[Typography.micro, { flex: 1, color: Colors.text.muted, textAlign: 'right', textTransform: 'uppercase' }]}>Credit</Text>
                   </View>
-                  {lines.map((line: any, li: number) => {
+                  {lines.map((line: QBJournalLine, li: number) => {
                     const detail = line.JournalEntryLineDetail;
                     const isDebit = detail?.PostingType === 'Debit';
                     return (
@@ -979,10 +1040,10 @@ function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries:
                           {line.Description ? <Text style={[Typography.micro, { color: Colors.text.muted, marginTop: 2 }]}>{line.Description}</Text> : null}
                         </View>
                         <Text style={[Typography.small, { flex: 1, textAlign: 'right', color: isDebit ? '#60A5FA' : Colors.text.muted, fontWeight: isDebit ? '600' : '400' }]}>
-                          {isDebit ? fmt(line.Amount) : '—'}
+                          {isDebit ? fmt(line.Amount ?? 0) : '—'}
                         </Text>
                         <Text style={[Typography.small, { flex: 1, textAlign: 'right', color: !isDebit ? '#ef4444' : Colors.text.muted, fontWeight: !isDebit ? '600' : '400' }]}>
-                          {!isDebit ? fmt(line.Amount) : '—'}
+                          {!isDebit ? fmt(line.Amount ?? 0) : '—'}
                         </Text>
                       </View>
                     );
@@ -997,10 +1058,10 @@ function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries:
   );
 }
 
-function GeneralLedgerTab({ initialData }: { initialData: any }) {
+function GeneralLedgerTab({ initialData }: { initialData: QBReport | null }) {
   const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [ledgerData, setLedgerData] = useState<any>(initialData);
+  const [ledgerData, setLedgerData] = useState<QBReport | null>(initialData);
   const [loading, setLoading] = useState(false);
 
   const fetchLedger = useCallback(async () => {
@@ -1106,7 +1167,7 @@ function GeneralLedgerTab({ initialData }: { initialData: any }) {
   );
 }
 
-function MoneyShelvesOwner({ accounts }: { accounts: any[] }) {
+function MoneyShelvesOwner({ accounts }: { accounts: QBAccount[] }) {
   const [expandedDept, setExpandedDept] = useState<string | null>(null);
   const [explainDept, setExplainDept] = useState<DepartmentShelf | null>(null);
   const departments = categorizeToDepartments(accounts);
@@ -1193,7 +1254,7 @@ function MoneyShelvesOwner({ accounts }: { accounts: any[] }) {
   );
 }
 
-function MoneyMovesOwner({ accounts }: { accounts: any[] }) {
+function MoneyMovesOwner({ accounts }: { accounts: QBAccount[] }) {
   const handleWizardSubmit = async (journalEntry: { date: string; memo: string; lines: { accountId: string; accountName: string; type: 'Debit' | 'Credit'; amount: string; description: string }[] }) => {
     const res = await authenticatedFetch('/api/quickbooks/journal-entries', {
       method: 'POST',
@@ -1219,12 +1280,12 @@ function MoneyMovesOwner({ accounts }: { accounts: any[] }) {
   return <StoryWizard accounts={accounts} onSubmit={handleWizardSubmit} />;
 }
 
-function convertGLToEvents(glData: any): FinanceEvent[] {
+function convertGLToEvents(glData: QBReport | null): FinanceEvent[] {
   if (!glData?.Rows?.Row) return [];
   const events: FinanceEvent[] = [];
   let eventIdx = 0;
 
-  const colNames: string[] = (glData.Columns?.Column || []).map((c: any) => (c.ColTitle || c.ColType || '').toLowerCase());
+  const colNames: string[] = (glData.Columns?.Column || []).map((c: { ColTitle?: string; ColType?: string }) => (c.ColTitle || c.ColType || '').toLowerCase());
 
   const findColIndex = (keyword: string) => colNames.findIndex(c => c.includes(keyword));
   const dateIdx = findColIndex('date');
@@ -1237,7 +1298,7 @@ function convertGLToEvents(glData: any): FinanceEvent[] {
   const startPeriod = glData.Header?.StartPeriod;
   const endPeriod = glData.Header?.EndPeriod;
 
-  const processRows = (rows: any, parentAccount?: string) => {
+  const processRows = (rows: QBRowContainer | undefined, parentAccount?: string) => {
     if (!rows?.Row) return;
     for (const row of rows.Row) {
       const headerLabel = row.Header?.ColData?.[0]?.value || parentAccount || '';
@@ -1258,14 +1319,14 @@ function convertGLToEvents(glData: any): FinanceEvent[] {
           ? parsedDate.toISOString()
           : (startPeriod ? new Date(startPeriod).toISOString() : new Date().toISOString());
 
-        const debitAmt = debitIdx >= 0 ? parseFloat(cols[debitIdx]?.value) || 0 : 0;
-        const creditAmt = creditIdx >= 0 ? parseFloat(cols[creditIdx]?.value) || 0 : 0;
+        const debitAmt = debitIdx >= 0 ? parseFloat(cols[debitIdx]?.value ?? '0') || 0 : 0;
+        const creditAmt = creditIdx >= 0 ? parseFloat(cols[creditIdx]?.value ?? '0') || 0 : 0;
         let amt = debitAmt - creditAmt;
         if (amt === 0 && amountIdx >= 0) {
-          amt = parseFloat(cols[amountIdx]?.value) || 0;
+          amt = parseFloat(cols[amountIdx]?.value ?? '0') || 0;
         }
         if (amt === 0) {
-          const fallbackAmt = parseFloat(cols[1]?.value) || 0;
+          const fallbackAmt = parseFloat(cols[1]?.value ?? '0') || 0;
           amt = fallbackAmt;
         }
 
@@ -1296,7 +1357,7 @@ function convertGLToEvents(glData: any): FinanceEvent[] {
   return events;
 }
 
-function MoneyTrailOwner({ ledgerData }: { ledgerData: any }) {
+function MoneyTrailOwner({ ledgerData }: { ledgerData: QBReport | null }) {
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('month');
   const [explainEvent, setExplainEvent] = useState<FinanceEvent | null>(null);
 
@@ -1382,10 +1443,10 @@ export default function BooksScreen() {
 
   const showViewToggle = activeTab === 'accounts' || activeTab === 'journal' || activeTab === 'ledger';
 
-  const [reports, setReports] = useState<any>(null);
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [journalEntries, setJournalEntries] = useState<any[]>([]);
-  const [generalLedger, setGeneralLedger] = useState<any>(null);
+  const [reports, setReports] = useState<BooksReportData | null>(null);
+  const [accounts, setAccounts] = useState<QBAccount[]>([]);
+  const [journalEntries, setJournalEntries] = useState<QBJournalEntry[]>([]);
+  const [generalLedger, setGeneralLedger] = useState<QBReport | null>(null);
 
   useEffect(() => {
     if (!isWeb) return;

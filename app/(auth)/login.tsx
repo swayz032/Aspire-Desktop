@@ -447,7 +447,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
             <label style={lbl}>Email Address</label>
             <input
               type="email" placeholder="your@email.com" value={email}
-              onChange={(e: any) => setEmail(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
               onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
               style={inp('email')}
             />
@@ -459,8 +459,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
                 cursor: 'pointer', border: 'none', marginTop: 2, fontFamily: 'inherit',
                 letterSpacing: '0.01em', transition: 'opacity 0.2s',
               }}
-              onMouseEnter={(e: any) => { e.currentTarget.style.opacity = '0.84'; }}
-              onMouseLeave={(e: any) => { e.currentTarget.style.opacity = '1'; }}
+              onMouseEnter={(e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.opacity = '0.84'; }}
+              onMouseLeave={(e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.opacity = '1'; }}
             >
               Join the Waitlist
             </button>
@@ -492,7 +492,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
               <>
                 <label style={lbl}>Invite Code</label>
                 <input type="text" placeholder="Private beta invite code" value={inviteCode}
-                  onChange={(e: any) => setInviteCode(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInviteCode(e.target.value)}
                   onFocus={() => setFocused('invite')} onBlur={() => setFocused(null)}
                   disabled={loading} style={inp('invite')} />
               </>
@@ -500,24 +500,24 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
 
             <label style={lbl}>Email</label>
             <input type="email" placeholder="you@company.com" value={email}
-              onChange={(e: any) => setEmail(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
               onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
               disabled={loading} style={inp('email')} />
 
             <label style={lbl}>Password</label>
             <input type="password" placeholder={mode === 'signup' ? 'Min. 8 characters' : 'Enter your password'}
-              value={password} onChange={(e: any) => setPassword(e.target.value)}
+              value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
               onFocus={() => setFocused('password')} onBlur={() => setFocused(null)}
-              onKeyDown={(e: any) => e.key === 'Enter' && mode === 'signin' && handleSignIn()}
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && mode === 'signin' && handleSignIn()}
               disabled={loading} style={inp('password')} />
 
             {mode === 'signup' && (
               <>
                 <label style={lbl}>Confirm Password</label>
                 <input type="password" placeholder="Re-enter your password"
-                  value={confirmPassword} onChange={(e: any) => setConfirmPassword(e.target.value)}
+                  value={confirmPassword} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmPassword(e.target.value)}
                   onFocus={() => setFocused('confirm')} onBlur={() => setFocused(null)}
-                  onKeyDown={(e: any) => e.key === 'Enter' && handleSignUp()}
+                  onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && handleSignUp()}
                   disabled={loading} style={inp('confirm')} />
               </>
             )}
@@ -536,8 +536,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
                 gap: 8, transition: 'opacity 0.2s, background 0.2s', fontFamily: 'inherit',
                 letterSpacing: '0.01em',
               }}
-              onMouseEnter={(e: any) => { if (!loading) e.currentTarget.style.opacity = '0.84'; }}
-              onMouseLeave={(e: any) => { if (!loading) e.currentTarget.style.opacity = '1'; }}
+              onMouseEnter={(e: React.MouseEvent<HTMLElement>) => { if (!loading) e.currentTarget.style.opacity = '0.84'; }}
+              onMouseLeave={(e: React.MouseEvent<HTMLElement>) => { if (!loading) e.currentTarget.style.opacity = '1'; }}
             >
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
             </button>
@@ -662,8 +662,8 @@ function WebLoginScreen() {
                 fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', transition: 'background 0.2s', lineHeight: 1,
               }}
-              onMouseEnter={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
-              onMouseLeave={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+              onMouseEnter={(e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
+              onMouseLeave={(e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
             >
               ‹
             </button>
@@ -680,8 +680,8 @@ function WebLoginScreen() {
                 fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', transition: 'background 0.2s', lineHeight: 1,
               }}
-              onMouseEnter={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
-              onMouseLeave={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+              onMouseEnter={(e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
+              onMouseLeave={(e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
             >
               ›
             </button>

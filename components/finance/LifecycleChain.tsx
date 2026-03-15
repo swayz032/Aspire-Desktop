@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
@@ -185,7 +186,7 @@ export default function LifecycleChain({ steps, title, onExplainStep }: Lifecycl
           <React.Fragment key={step.eventId || step.label}>
             <Pressable
               onPress={() => onExplainStep?.(step)}
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 styles.stepColumn,
                 Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                 Platform.OS === 'web' && hovered && styles.stepHovered,

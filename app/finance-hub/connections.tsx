@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -13,6 +14,38 @@ const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
 
 type ProviderStatus = 'connected' | 'disconnected' | 'connecting' | 'error' | 'unavailable';
 
+interface PlaidLinkedAccount {
+  account_id: string;
+  name: string;
+  type: string;
+  subtype?: string;
+  mask?: string;
+  balances?: { available?: number; current?: number; limit?: number };
+}
+
+interface ProviderStatusResponse {
+  connected: boolean;
+  healthy?: boolean;
+  _unavailable?: boolean;
+  _error?: string;
+  lastSync?: string | null;
+  realmId?: string;
+  accountId?: string;
+  accounts?: PlaidLinkedAccount[];
+}
+
+interface PlaidLinkHandler {
+  open: () => void;
+}
+
+interface PlaidSDK {
+  create: (config: Record<string, unknown>) => PlaidLinkHandler;
+}
+
+interface WindowWithPlaid {
+  Plaid?: PlaidSDK;
+}
+
 interface ProviderState {
   plaid: { status: ProviderStatus; detail: string; lastSync: string | null };
   quickbooks: { status: ProviderStatus; detail: string; lastSync: string | null; realmId: string | null };
@@ -26,7 +59,7 @@ const premiumCardBase = Platform.OS === 'web' ? {
   border: `1px solid ${CARD_BORDER}`,
 } : {};
 
-const providerPatternMap: Record<string, any> = Platform.OS === 'web' ? {
+const providerPatternMap: Record<string, Record<string, string>> = Platform.OS === 'web' ? {
   plaid: cardWithPattern(svgPatterns.networkNodes(), 'right', '40% auto'),
   quickbooks: cardWithPattern(svgPatterns.barChart(), 'right', '35% auto'),
   gusto: cardWithPattern(svgPatterns.people(), 'right', '35% auto'),
@@ -48,7 +81,7 @@ export default function ConnectionsScreen() {
   const [setupForm, setSetupForm] = useState({ firstName: '', lastName: '', email: '', companyName: '' });
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
-  const [linkedAccounts, setLinkedAccounts] = useState<any[]>([]);
+  const [linkedAccounts, setLinkedAccounts] = useState<PlaidLinkedAccount[]>([]);
   const [crossLinking, setCrossLinking] = useState<string | null>(null);
   const [crossLinkSuccess, setCrossLinkSuccess] = useState<Record<string, boolean>>({});
   const plaidRouter = useRouter();
@@ -75,9 +108,10 @@ export default function ConnectionsScreen() {
             return { connected: false, _unavailable: true, _error: `Server returned ${r.status}` };
           }
           return await r.json();
-        } catch (e: any) {
-          console.warn(`[Connections] ${label} status check failed:`, e?.message || e);
-          return { connected: false, _unavailable: true, _error: e?.message || 'Service unreachable' };
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.warn(`[Connections] ${label} status check failed:`, msg);
+          return { connected: false, _unavailable: true, _error: msg || 'Service unreachable' };
         }
       };
 
@@ -88,7 +122,7 @@ export default function ConnectionsScreen() {
         safeFetchStatus('/api/stripe-connect/status', 'Stripe'),
       ]);
 
-      const resolveStatus = (r: any): ProviderStatus => {
+      const resolveStatus = (r: ProviderStatusResponse): ProviderStatus => {
         if (r?._unavailable) return 'unavailable';
         if (r?.connected && (r?.healthy === undefined || r?.healthy === true)) return 'connected';
         if (r?.connected && r?.healthy === false) return 'error';
@@ -216,11 +250,11 @@ export default function ConnectionsScreen() {
     if (plaidSdkPromiseRef.current) return plaidSdkPromiseRef.current;
     const p = new Promise<void>((resolve, reject) => {
       if (typeof window === 'undefined') return reject(new Error('No window'));
-      if ((window as any).Plaid) return resolve();
+      if ((window as unknown as WindowWithPlaid).Plaid) return resolve();
       const waitForPlaid = () => {
         let resolved = false;
         const check = setInterval(() => {
-          if ((window as any).Plaid && !resolved) { resolved = true; clearInterval(check); clearTimeout(timeout); resolve(); }
+          if ((window as unknown as WindowWithPlaid).Plaid && !resolved) { resolved = true; clearInterval(check); clearTimeout(timeout); resolve(); }
         }, 100);
         const timeout = setTimeout(() => { if (!resolved) { resolved = true; clearInterval(check); plaidSdkPromiseRef.current = null; reject(new Error('Plaid SDK load timeout')); } }, 10000);
       };
@@ -251,9 +285,9 @@ export default function ConnectionsScreen() {
         setActionLoading(null);
         return;
       }
-      if (data.link_token && typeof window !== 'undefined' && (window as any).Plaid) {
+      if (data.link_token && typeof window !== 'undefined' && (window as unknown as WindowWithPlaid).Plaid) {
         console.log('[Plaid] Creating Link handler...');
-        const handler = (window as any).Plaid.create({
+        const handler = (window as unknown as WindowWithPlaid).Plaid!.create({
           token: data.link_token,
           onLoad: () => {
             console.log('[Plaid] Link loaded, opening...');
@@ -273,17 +307,17 @@ export default function ConnectionsScreen() {
             setActionLoading(null);
             checkAllStatuses();
           },
-          onExit: (err: any) => {
+          onExit: (err: unknown) => {
             console.log('[Plaid] Link exited', err ? { error: err } : 'no error');
             setActionLoading(null);
           },
-          onEvent: (eventName: string, metadata: any) => {
+          onEvent: (eventName: string, metadata: Record<string, unknown>) => {
             console.log('[Plaid] Event:', eventName, metadata);
           },
         });
         console.log('[Plaid] Handler created, waiting for onLoad...');
       } else {
-        console.error('[Plaid] SDK not available after load. Plaid on window:', !!(window as any)?.Plaid, 'link_token:', !!data.link_token);
+        console.error('[Plaid] SDK not available after load. Plaid on window:', !!(window as unknown as Record<string, unknown>)?.Plaid, 'link_token:', !!data.link_token);
         setActionLoading(null);
       }
     } catch (err) {
@@ -355,8 +389,8 @@ export default function ConnectionsScreen() {
       setMfaModalVisible(false);
       setMfaCode('');
       setPendingPlaidConnect(true);
-    } catch (err: any) {
-      setMfaError(err.message || 'Verification failed.');
+    } catch (err: unknown) {
+      setMfaError(err instanceof Error ? err.message : 'Verification failed.');
     } finally {
       setMfaLoading(false);
     }
@@ -420,8 +454,8 @@ export default function ConnectionsScreen() {
       } else {
         setSetupError(data.error || 'Failed to create company.');
       }
-    } catch (err: any) {
-      setSetupError(err.message || 'Network error.');
+    } catch (err: unknown) {
+      setSetupError(err instanceof Error ? err.message : 'Network error.');
     } finally {
       setSetupLoading(false);
     }
@@ -554,7 +588,7 @@ export default function ConnectionsScreen() {
           </View>
           <Pressable
             onPress={() => disconnectProvider(config.key)}
-            style={({ hovered }: any) => [s.disconnectBtn, hovered && { backgroundColor: 'rgba(239,68,68,0.15)' }]}
+            style={({ hovered }: PressableState) => [s.disconnectBtn, hovered && { backgroundColor: 'rgba(239,68,68,0.15)' }]}
             disabled={isLoading}
           >
             {isLoading ? (
@@ -572,7 +606,7 @@ export default function ConnectionsScreen() {
         <Pressable
           onPress={openSetupPayroll}
           disabled={isLoading}
-          style={({ hovered }: any) => [
+          style={({ hovered }: PressableState) => [
             s.connectBtn,
             { backgroundColor: config.brandColor },
             Platform.OS === 'web' && { boxShadow: `0 4px 16px ${config.brandColor}40` } as any,
@@ -591,7 +625,7 @@ export default function ConnectionsScreen() {
         <Pressable
           onPress={importExistingGusto}
           disabled={isLoading}
-          style={({ hovered }: any) => [
+          style={({ hovered }: PressableState) => [
             s.importLink,
             hovered && { opacity: 0.8 },
           ]}
@@ -717,7 +751,7 @@ export default function ConnectionsScreen() {
                     <Pressable
                       onPress={() => svc.key === 'stripe' ? crossLinkToStripe(linkedAccounts[0].account_id) : crossLinkToGusto(linkedAccounts[0].account_id)}
                       disabled={crossLinking === svc.key}
-                      style={({ hovered }: any) => [{
+                      style={({ hovered }: PressableState) => [{
                         paddingHorizontal: 12, paddingVertical: 5, borderRadius: 6,
                         backgroundColor: svc.color,
                         ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease' } as any : {}),
@@ -811,7 +845,7 @@ export default function ConnectionsScreen() {
                 <Pressable
                   onPress={() => config.key === 'stripe' ? crossLinkToStripe(linkedAccounts[0].account_id) : crossLinkToGusto(linkedAccounts[0].account_id)}
                   disabled={crossLinking === config.key}
-                  style={({ hovered }: any) => [{
+                  style={({ hovered }: PressableState) => [{
                     paddingHorizontal: 14,
                     paddingVertical: 7,
                     borderRadius: 8,
@@ -872,7 +906,7 @@ export default function ConnectionsScreen() {
                     <Pressable
                       onPress={connectPlaid}
                       disabled={isCardLoading}
-                      style={({ hovered }: any) => [
+                      style={({ hovered }: PressableState) => [
                         {
                           paddingHorizontal: 14,
                           paddingVertical: 7,
@@ -893,7 +927,7 @@ export default function ConnectionsScreen() {
                   )}
                   <Pressable
                     onPress={() => disconnectProvider(config.key)}
-                    style={({ hovered }: any) => [s.disconnectBtn, hovered && { backgroundColor: 'rgba(239,68,68,0.15)' }]}
+                    style={({ hovered }: PressableState) => [s.disconnectBtn, hovered && { backgroundColor: 'rgba(239,68,68,0.15)' }]}
                     disabled={isCardLoading}
                   >
                     {isCardLoading ? (
@@ -907,7 +941,7 @@ export default function ConnectionsScreen() {
                 <Pressable
                   onPress={config.connectAction}
                   disabled={isCardLoading}
-                  style={({ hovered }: any) => [
+                  style={({ hovered }: PressableState) => [
                     s.connectBtn,
                     { backgroundColor: config.brandColor },
                     Platform.OS === 'web' && { boxShadow: `0 4px 16px ${config.brandColor}40` } as any,
@@ -1042,7 +1076,7 @@ export default function ConnectionsScreen() {
             <Pressable
               onPress={submitSetupPayroll}
               disabled={setupLoading}
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 s.modalSubmitBtn,
                 hovered && { opacity: 0.9 },
               ]}
@@ -1113,13 +1147,13 @@ export default function ConnectionsScreen() {
             <View style={s.consentBtnRow}>
               <Pressable
                 onPress={() => setConsentModalVisible(false)}
-                style={({ hovered }: any) => [s.consentCancelBtn, hovered && { backgroundColor: 'rgba(255,255,255,0.08)' }]}
+                style={({ hovered }: PressableState) => [s.consentCancelBtn, hovered && { backgroundColor: 'rgba(255,255,255,0.08)' }]}
               >
                 <Text style={s.consentCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={handleConsentAccept}
-                style={({ hovered }: any) => [s.consentAcceptBtn, hovered && { opacity: 0.9 }]}
+                style={({ hovered }: PressableState) => [s.consentAcceptBtn, hovered && { opacity: 0.9 }]}
               >
                 <Ionicons name="checkmark-circle" size={16} color="#fff" />
                 <Text style={s.consentAcceptText}>Accept & Continue</Text>
@@ -1199,7 +1233,7 @@ export default function ConnectionsScreen() {
             <Pressable
               onPress={handleMfaSubmit}
               disabled={mfaLoading || mfaCode.length < 6}
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 s.modalSubmitBtn,
                 { backgroundColor: '#3B82F6' },
                 Platform.OS === 'web' && { boxShadow: '0 4px 16px rgba(59, 130, 246, 0.3)' } as any,

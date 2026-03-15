@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import type { AuthenticatedRequest } from './types';
 import crypto from 'crypto';
 import { saveToken, loadToken, deleteToken } from './tokenStore';
 import { createTrustSpineReceipt } from './receiptService';
@@ -35,7 +36,7 @@ const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
 let realmId: string | null = null;
-let qbo: any = null;
+let qbo: InstanceType<typeof QuickBooks> | null = null;
 let tokenExpiresAt: Date | null = null;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const OAUTH_STATE_SECRET = process.env.QUICKBOOKS_OAUTH_STATE_SECRET || process.env.TOKEN_ENCRYPTION_KEY || process.env.QUICKBOOKS_CLIENT_SECRET || 'quickbooks-oauth-state';
@@ -69,9 +70,9 @@ function validateOAuthState(encodedState: string | undefined): boolean {
 // --- Helper: extract suite context from headers ---
 function getSuiteContext(req: Request) {
   return {
-    suiteId: (req as any).authenticatedSuiteId || '',
+    suiteId: req.authenticatedSuiteId || '',
     officeId: (req.headers['x-office-id'] as string) || undefined,
-    actorId: (req as any).authenticatedUserId || 'unknown',
+    actorId: req.authenticatedUserId || 'unknown',
     correlationId: (req.headers['x-correlation-id'] as string) || undefined,
   };
 }

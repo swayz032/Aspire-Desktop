@@ -17,8 +17,8 @@
 import { Request, Response, RequestHandler } from 'express';
 import { createTrustSpineReceipt, ReceiptStatus } from './receiptService';
 import { logger } from './logger';
-
-type RiskTier = 'GREEN' | 'YELLOW' | 'RED';
+import type { AuthenticatedRequest, RiskTier } from './types';
+import { getActionOrigin } from './orchestratorGateway';
 
 interface ReceiptResult {
   success: boolean;
@@ -42,10 +42,11 @@ export function withReceipt(
   handler: WrappedHandler,
 ): RequestHandler {
   return async (req: Request, res: Response) => {
-    const suiteId = (req.headers['x-suite-id'] as string) || '';
-    const officeId = (req.headers['x-office-id'] as string) || undefined;
-    const actorId = (req.headers['x-actor-id'] as string) || req.headers['x-user-id'] as string || 'unknown';
-    const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${Date.now()}`;
+    const authReq = req as AuthenticatedRequest;
+    const suiteId = authReq.authenticatedSuiteId || (req.headers['x-suite-id'] as string) || '';
+    const officeId = authReq.authenticatedOfficeId || (req.headers['x-office-id'] as string) || undefined;
+    const actorId = authReq.authenticatedUserId || (req.headers['x-actor-id'] as string) || 'unknown';
+    const correlationId = authReq.correlationId || (req.headers['x-correlation-id'] as string) || `corr_${Date.now()}`;
 
     if (!suiteId) {
       logger.warn('Missing x-suite-id for receipted route', { receiptType, path: req.path });
@@ -112,6 +113,7 @@ export function withReceipt(
           method: req.method,
           path: req.path,
           params: req.params,
+          action_origin: getActionOrigin(authReq),
         },
         result: resultData,
         riskTier: riskTier as 'GREEN' | 'YELLOW' | 'RED',

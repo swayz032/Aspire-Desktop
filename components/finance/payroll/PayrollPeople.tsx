@@ -3,18 +3,14 @@ import { View, Text, StyleSheet, Pressable, Platform, TextInput, ScrollView, Act
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
-
-interface PayrollSubTabProps {
-  gustoCompany: any;
-  gustoEmployees: any[];
-  gustoConnected: boolean;
-}
+import { PayrollSubTabProps, GustoEmployee, GustoJob, GustoCompensation, GustoPTO } from './types';
 
 function getInitials(first: string, last: string): string {
   return `${(first || '')[0] || ''}${(last || '')[0] || ''}`.toUpperCase();
 }
 
-function formatRate(rate: string | number, unit: string): string {
+function formatRate(rate: string | number | undefined, unit: string | undefined): string {
+  if (rate === undefined) return '—';
   const num = typeof rate === 'string' ? parseFloat(rate) : rate;
   if (isNaN(num)) return '—';
   const formatted = '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -24,7 +20,7 @@ function formatRate(rate: string | number, unit: string): string {
   return formatted;
 }
 
-function getStatusColor(status: string): { bg: string; text: string } {
+function getStatusColor(status: string | undefined): { bg: string; text: string } {
   const s = (status || '').toLowerCase();
   if (s === 'active' || s === 'full_time' || s === 'completed' || s === 'onboarding_completed') {
     return { bg: 'rgba(16, 185, 129, 0.12)', text: '#10B981' };
@@ -38,7 +34,7 @@ function getStatusColor(status: string): { bg: string; text: string } {
   return { bg: 'rgba(110, 110, 115, 0.12)', text: '#6e6e73' };
 }
 
-function formatStatusLabel(status: string): string {
+function formatStatusLabel(status: string | undefined): string {
   if (!status) return '—';
   return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
@@ -51,7 +47,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
   const [formData, setFormData] = useState({ first_name: '', last_name: '', email: '', job_title: '', pay_type: 'Hour' as 'Hour' | 'Year', rate: '', department: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [localEmployees, setLocalEmployees] = useState<any[]>([]);
+  const [localEmployees, setLocalEmployees] = useState<GustoEmployee[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({ rate: '', pay_type: 'Hour' as 'Hour' | 'Year', job_title: '' });
   const [editSaving, setEditSaving] = useState(false);
@@ -66,7 +62,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
   const allEmployees = useMemo(() => {
     const combined = [...(gustoEmployees || [])];
     for (const le of localEmployees) {
-      if (!combined.find((e: any) => (e.uuid || e.id) === (le.uuid || le.id))) {
+      if (!combined.find((e: GustoEmployee) => (e.uuid || e.id) === (le.uuid || le.id))) {
         combined.push(le);
       }
     }
@@ -76,7 +72,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
   const filtered = useMemo(() => {
     if (!allEmployees.length) return [];
     const q = search.toLowerCase();
-    return allEmployees.filter((e: any) => {
+    return allEmployees.filter((e: GustoEmployee) => {
       const name = `${e.first_name || ''} ${e.last_name || ''}`.toLowerCase();
       return name.includes(q);
     });
@@ -84,7 +80,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
 
   const selected = useMemo(() => {
     if (!selectedId) return null;
-    return allEmployees?.find((e: any) => (e.uuid || e.id) === selectedId) || null;
+    return allEmployees?.find((e: GustoEmployee) => (e.uuid || e.id) === selectedId) || null;
   }, [selectedId, allEmployees]);
 
   const handleAddEmployee = async () => {
@@ -249,14 +245,14 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
       setShowTerminateConfirm(false);
       setEditMode(false);
       setMessage({ type: 'success', text: isOnboarding ? 'Employee removed successfully.' : 'Employee terminated successfully.' });
-    } catch (e: any) {
-      setTerminateError(e.message || 'Failed to process request');
+    } catch (e: unknown) {
+      setTerminateError(e instanceof Error ? e.message : 'Failed to process request');
     } finally {
       setTerminating(false);
     }
   };
 
-  const startEditMode = (emp: any) => {
+  const startEditMode = (emp: GustoEmployee) => {
     const job = emp.jobs?.[0];
     const comp = job?.compensations?.[0];
     setEditData({
@@ -305,9 +301,9 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
 
       const updated = await res.json();
       setLocalEmployees(prev => {
-        const existing = prev.find((e: any) => (e.uuid || e.id) === (selected.uuid || selected.id));
+        const existing = prev.find((e: GustoEmployee) => (e.uuid || e.id) === (selected.uuid || selected.id));
         if (existing) {
-          return prev.map((e: any) => {
+          return prev.map((e: GustoEmployee) => {
             if ((e.uuid || e.id) !== (selected.uuid || selected.id)) return e;
             const jobs = [...(e.jobs || [])];
             if (jobs[0]) {
@@ -367,7 +363,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
         <Pressable 
           style={styles.emptyAddButton}
           onPress={() => setShowAddForm(true)}
-          {...(Platform.OS === 'web' ? { onMouseEnter: (e: any) => {}, onMouseLeave: (e: any) => {} } as any : {})}
+          {...(Platform.OS === 'web' ? { onMouseEnter: () => {}, onMouseLeave: () => {} } as any : {})}
         >
           <Ionicons name="add-circle-outline" size={18} color="#ffffff" />
           <Text style={styles.emptyAddButtonText}>Add Employee</Text>
@@ -400,10 +396,10 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
         <Pressable 
           style={styles.addButton}
           onPress={() => setShowAddForm(true)}
-          {...(Platform.OS === 'web' ? { 
-            onMouseEnter: (e: any) => {}, 
-            onMouseLeave: (e: any) => {} 
-          } as any : {})}
+          {...(Platform.OS === 'web' ? {
+            onMouseEnter: () => {},
+            onMouseLeave: () => {}
+          } as Record<string, unknown> : {})}
         >
           <Ionicons name="add-outline" size={18} color="#ffffff" />
           <Text style={styles.addButtonText}>Add Employee</Text>
@@ -532,10 +528,10 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
               style={[styles.saveButton, isSubmitting && styles.buttonDisabled]}
               onPress={handleAddEmployee}
               disabled={isSubmitting}
-              {...(Platform.OS === 'web' ? { 
-                onMouseEnter: (e: any) => {}, 
-                onMouseLeave: (e: any) => {} 
-              } as any : {})}
+              {...(Platform.OS === 'web' ? {
+                onMouseEnter: () => {},
+                onMouseLeave: () => {}
+              } as Record<string, unknown> : {})}
             >
               {isSubmitting ? (
                 <ActivityIndicator size="small" color="#ffffff" />
@@ -554,10 +550,10 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
                 setMessage(null);
               }}
               disabled={isSubmitting}
-              {...(Platform.OS === 'web' ? { 
-                onMouseEnter: (e: any) => {}, 
-                onMouseLeave: (e: any) => {} 
-              } as any : {})}
+              {...(Platform.OS === 'web' ? {
+                onMouseEnter: () => {},
+                onMouseLeave: () => {}
+              } as Record<string, unknown> : {})}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
@@ -567,8 +563,8 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
 
       <View style={styles.contentRow}>
         <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-          {filtered.map((emp: any, idx: number) => {
-            const id = emp.uuid || emp.id;
+          {filtered.map((emp: GustoEmployee, idx: number) => {
+            const id = emp.uuid || emp.id || '';
             const job = emp.jobs?.[0];
             const comp = job?.compensations?.[0];
             const isSelected = selectedId === id;
@@ -766,10 +762,10 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
                 )}
               </View>
 
-              {selected.eligible_paid_time_off?.length > 0 && (
+              {(selected.eligible_paid_time_off?.length ?? 0) > 0 && (
                 <View style={styles.detailSection}>
                   <Text style={styles.detailSectionTitle}>Paid Time Off</Text>
-                  {selected.eligible_paid_time_off.map((pto: any, i: number) => (
+                  {selected.eligible_paid_time_off!.map((pto: GustoPTO, i: number) => (
                     <View key={i} style={styles.ptoRow}>
                       <Text style={styles.ptoName}>{pto.name}</Text>
                       <Text style={styles.ptoBalance}>{pto.accrued_hours || 0}h accrued</Text>
@@ -880,7 +876,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value }: { label: string; value: string | undefined }) {
   return (
     <View style={styles.detailRow}>
       <Text style={styles.detailLabel}>{label}</Text>

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, Animated, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
@@ -170,7 +171,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
           return (
             <View key={item.id}>
               <Pressable
-                style={({ hovered, pressed }: any) => [
+                style={({ hovered, pressed }: PressableState) => [
                   styles.navItem,
                   expanded && showActive && styles.navItemActive,
                   !expanded && styles.navItemCollapsed,
@@ -238,7 +239,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
                     return (
                       <Pressable
                         key={subItem.id}
-                        style={({ hovered }: any) => [
+                        style={({ hovered }: PressableState) => [
                           styles.subNavItem,
                           subActive && styles.subNavItemActive,
                           !subActive && hovered && styles.subNavItemHover,
@@ -262,7 +263,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
       <View style={[styles.footer, !expanded && styles.footerCollapsed]}>
         <View style={[styles.footerDivider, !expanded && styles.footerDividerCollapsed]} />
         <Pressable 
-          style={({ hovered }: any) => [
+          style={({ hovered }: PressableState) => [
             styles.footerItem, 
             !expanded && styles.footerItemCollapsed,
             hovered && styles.footerItemHover,
@@ -298,7 +299,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
           )}
         </Pressable>
         <Pressable 
-          style={({ hovered }: any) => [
+          style={({ hovered }: PressableState) => [
             styles.footerItem, 
             !expanded && styles.footerItemCollapsed,
             hovered && styles.footerItemHover,

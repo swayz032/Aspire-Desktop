@@ -23,16 +23,81 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern, heroCardBg } from '@/constants/cardPatterns';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 
+interface SnapshotCashFlowItem {
+  id: string;
+  description: string;
+  amount: number;
+  direction: 'inflow' | 'outflow';
+  dueDate?: string;
+}
+
+interface ReconcileMismatch {
+  id: string;
+  type: 'settlement_timing' | 'payout_matching' | 'cash_vs_books' | 'missing_entry';
+  title: string;
+  description: string;
+  reasonCode: string;
+  severity: 'info' | 'warning' | 'critical';
+  amounts: { expected: number; actual: number; difference: number };
+  providers: string[];
+  nextStep: string;
+  relatedEventIds: string[];
+}
+
+interface ActionProposal {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+}
+
+interface ProvenanceEntry {
+  source: string;
+  lastUpdated: string | null;
+  confidence: string;
+}
+
+interface StalenessEntry {
+  stale: boolean;
+  age: number;
+  threshold: number;
+}
+
+interface LifecycleStep {
+  label: string;
+  status: 'completed' | 'current' | 'pending' | 'error';
+  provider?: string;
+  timestamp?: string | null;
+  eventId?: string;
+  amount?: number;
+}
+
+interface TimelineEvent {
+  id: string;
+  type: string;
+  time: string;
+  description: string;
+  amount?: number;
+}
+
+interface ChartTooltipPayloadItem {
+  color?: string;
+  name?: string;
+  value?: number;
+}
+
+type WebStyleObject = Record<string, string | number>;
+
 interface SnapshotData {
   chapters: {
     now: { cashAvailable: number; bankBalance: number; stripeAvailable: number; stripePending: number; lastUpdated: string | null };
-    next: { expectedInflows7d: number; expectedOutflows7d: number; netCashFlow7d: number; items: any[] };
+    next: { expectedInflows7d: number; expectedOutflows7d: number; netCashFlow7d: number; items: SnapshotCashFlowItem[] };
     month: { revenue: number; expenses: number; netIncome: number; period: string };
-    reconcile: { mismatches: any[]; mismatchCount: number };
-    actions: { proposals: any[]; proposalCount: number };
+    reconcile: { mismatches: ReconcileMismatch[]; mismatchCount: number };
+    actions: { proposals: ActionProposal[]; proposalCount: number };
   };
-  provenance: Record<string, any>;
-  staleness: Record<string, any>;
+  provenance: Record<string, ProvenanceEntry>;
+  staleness: Record<string, StalenessEntry>;
   generatedAt: string | null;
   connected: boolean;
 }
@@ -56,7 +121,7 @@ function formatShortCurrency(cents: number | null | undefined): string {
   return `$${val.toFixed(0)}`;
 }
 
-const webOnly = (webStyles: any) => Platform.OS === 'web' ? webStyles : {};
+const webOnly = (webStyles: WebStyleObject) => Platform.OS === 'web' ? webStyles : {};
 
 const tintPositionMap: Record<string, string> = {
   'top-right': 'top right',
@@ -243,7 +308,7 @@ function FinnOrbVideo() {
   );
 }
 
-function GlassCard({ children, style, onPress, hovered, tint, ...rest }: any) {
+function GlassCard({ children, style, onPress, hovered, tint, ...rest }: { children?: React.ReactNode; style?: unknown; onPress?: () => void; hovered?: boolean; tint?: { color: string; position?: string }; [key: string]: unknown }) {
   if (Platform.OS !== 'web') {
     const Comp = onPress ? Pressable : View;
     return <Comp style={[s.card, style]} onPress={onPress} {...rest}>{children}</Comp>;
@@ -264,7 +329,7 @@ function GlassCard({ children, style, onPress, hovered, tint, ...rest }: any) {
   );
 }
 
-function GlowBlob({ color, size, top, left, right, bottom, opacity = 0.15 }: { color: string; size: number; top?: any; left?: any; right?: any; bottom?: any; opacity?: number }) {
+function GlowBlob({ color, size, top, left, right, bottom, opacity = 0.15 }: { color: string; size: number; top?: number | string; left?: number | string; right?: number | string; bottom?: number | string; opacity?: number }) {
   return null;
 }
 
@@ -453,7 +518,7 @@ function SectionLabel({ icon, label, color = '#555', ledDelay }: { icon: string;
   );
 }
 
-const ChartTooltip = ({ active, payload, label }: any) => {
+const ChartTooltip = ({ active, payload, label }: { active?: boolean; payload?: ChartTooltipPayloadItem[]; label?: string }) => {
   if (!active || !payload || !payload.length) return null;
   const accentColor = payload[0]?.color || '#3B82F6';
   return (
@@ -476,7 +541,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
         textTransform: 'uppercase' as const,
         margin: '0 0 8px 0',
       }}>{label}</p>
-      {payload.map((p: any, i: number) => (
+      {payload.map((p: ChartTooltipPayloadItem, i: number) => (
         <div key={i} style={{
           display: 'flex',
           alignItems: 'center',
@@ -501,7 +566,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
             fontWeight: 700,
             marginLeft: 'auto',
             fontFeatureSettings: '"tnum"',
-          }}>${(p.value / 1000).toFixed(1)}K</span>
+          }}>${((p.value ?? 0) / 1000).toFixed(1)}K</span>
         </div>
       ))}
     </div>
@@ -530,10 +595,10 @@ function RocketDecoration() {
   );
 }
 
-class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean; error: any}> {
-  constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
-  componentDidCatch(error: any, info: any) { console.error('FinanceHub crash:', error, info); }
+class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean; error: unknown}> {
+  constructor(props: {children: React.ReactNode}) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error: unknown) { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) { console.error('FinanceHub crash:', error, info); }
   render() {
     if (this.state.hasError) {
       return (
@@ -561,8 +626,8 @@ function FinanceHubContent() {
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
-  const [timeline, setTimeline] = useState<any[]>([]);
-  const [lifecycleSteps, setLifecycleSteps] = useState<any[]>([]);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [lifecycleSteps, setLifecycleSteps] = useState<LifecycleStep[]>([]);
   const [loading, setLoading] = useState(true);
   const [explainMetric, setExplainMetric] = useState<string | null>(null);
   const [showFinnOverlay, setShowFinnOverlay] = useState(false);
@@ -1275,7 +1340,7 @@ function FinanceHubContent() {
                 <Text style={[s.proposalCountText, { color: '#F59E0B' }]}>{snapshot.chapters.reconcile.mismatchCount}</Text>
               </View>
             </View>
-            {snapshot.chapters.reconcile.mismatches.map((m: any) => (
+            {snapshot.chapters.reconcile.mismatches.map((m: ReconcileMismatch) => (
               <ReconcileCard
                 key={m.id}
                 mismatch={m}
@@ -1287,7 +1352,7 @@ function FinanceHubContent() {
         </>
       )}
 
-      {isConnected && lifecycleSteps.length > 0 && lifecycleSteps.some((st: any) => st.status !== 'pending') && (
+      {isConnected && lifecycleSteps.length > 0 && lifecycleSteps.some((st: LifecycleStep) => st.status !== 'pending') && (
         <>
           <SectionLabel icon="git-branch" label="MONEY LIFECYCLE" color="#999" ledDelay={2} />
           <LifecycleChain

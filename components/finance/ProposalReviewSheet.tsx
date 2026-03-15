@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, Modal, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
@@ -96,7 +97,7 @@ export function ProposalReviewSheet({ visible, proposal, onClose, onSendToQueue 
           <Text style={styles.headerTitle}>Proposal Review</Text>
           <Pressable
             onPress={onClose}
-            style={({ hovered }: any) => [
+            style={({ hovered }: PressableState) => [
               styles.closeButton,
               hovered && styles.closeButtonHover,
             ]}
@@ -170,7 +171,7 @@ export function ProposalReviewSheet({ visible, proposal, onClose, onSendToQueue 
         <View style={styles.actions}>
           <Pressable
             onPress={handleSend}
-            style={({ hovered }: any) => [
+            style={({ hovered }: PressableState) => [
               styles.sendButton,
               hovered && styles.sendButtonHover,
             ]}
@@ -179,7 +180,7 @@ export function ProposalReviewSheet({ visible, proposal, onClose, onSendToQueue 
           </Pressable>
           <Pressable
             onPress={onClose}
-            style={({ hovered }: any) => [
+            style={({ hovered }: PressableState) => [
               styles.cancelButton,
               hovered && styles.cancelButtonHover,
             ]}

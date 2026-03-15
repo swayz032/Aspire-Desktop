@@ -1,3 +1,12 @@
+/**
+ * Extended Pressable state for Expo Web — adds hovered to the standard pressed/focused.
+ */
+export interface PressableState {
+  pressed: boolean;
+  hovered?: boolean;
+  focused?: boolean;
+}
+
 export type Tag = 'Legal' | 'Finance' | 'Ops' | 'Security' | 'Sales';
 export type Priority = 'Low' | 'Medium' | 'High';
 export type ItemStatus = 'Open' | 'Waiting' | 'Resolved' | 'resolved' | 'in_progress';

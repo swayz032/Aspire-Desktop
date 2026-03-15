@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import type { AuthenticatedRequest } from './types';
 import crypto from 'crypto';
 import { saveToken, loadToken, deleteToken } from './tokenStore';
 import { createTrustSpineReceipt } from './receiptService';
@@ -24,9 +25,9 @@ let tokenExpiresAt: Date | null = null;
 // --- Helper: extract suite context from headers ---
 function getSuiteContext(req: Request) {
   return {
-    suiteId: (req as any).authenticatedSuiteId || '',
+    suiteId: req.authenticatedSuiteId || '',
     officeId: (req.headers['x-office-id'] as string) || undefined,
-    actorId: (req as any).authenticatedUserId || 'unknown',
+    actorId: req.authenticatedUserId || 'unknown',
     correlationId: (req.headers['x-correlation-id'] as string) || undefined,
   };
 }

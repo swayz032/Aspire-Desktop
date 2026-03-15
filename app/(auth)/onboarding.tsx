@@ -823,7 +823,7 @@ export default function OnboardingScreen() {
         <input
           type="date"
           value={form.dateOfBirth}
-          onChange={(e: any) => updateForm({ dateOfBirth: e.target.value })}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ dateOfBirth: e.target.value })}
           max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
           style={webDateStyle}
         />
@@ -848,7 +848,7 @@ export default function OnboardingScreen() {
           {Platform.OS === 'web' ? (
             <select
               value={form.gender}
-              onChange={(e: any) => updateForm({ gender: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ gender: e.target.value })}
               style={webSelectStyle}
             >
               <option value="">Select gender</option>
@@ -910,7 +910,7 @@ export default function OnboardingScreen() {
           {Platform.OS === 'web' ? (
             <select
               value={form.industry}
-              onChange={(e: any) => updateForm({ industry: e.target.value, industrySpecialty: '' })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ industry: e.target.value, industrySpecialty: '' })}
               style={webSelectStyle}
             >
               <option value="">Select industry</option>
@@ -944,7 +944,7 @@ export default function OnboardingScreen() {
             {Platform.OS === 'web' ? (
               <select
                 value={form.industrySpecialty}
-                onChange={(e: any) => updateForm({ industrySpecialty: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ industrySpecialty: e.target.value })}
                 style={webSelectStyle}
               >
                 <option value="">Select specialty</option>
@@ -981,7 +981,7 @@ export default function OnboardingScreen() {
           {Platform.OS === 'web' ? (
             <select
               value={form.teamSize}
-              onChange={(e: any) => updateForm({ teamSize: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ teamSize: e.target.value })}
               style={webSelectStyle}
             >
               <option value="">Select team size</option>
@@ -1008,7 +1008,7 @@ export default function OnboardingScreen() {
           {Platform.OS === 'web' ? (
             <select
               value={form.yearsInBusiness}
-              onChange={(e: any) => updateForm({ yearsInBusiness: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ yearsInBusiness: e.target.value })}
               style={webSelectStyle}
             >
               <option value="">Select years</option>
@@ -1037,7 +1037,7 @@ export default function OnboardingScreen() {
       {Platform.OS === 'web' ? (
         <select
           value={form.entityType}
-          onChange={(e: any) => updateForm({ entityType: e.target.value })}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ entityType: e.target.value })}
           style={webSelectStyle}
         >
           <option value="">Select entity type</option>
@@ -1113,7 +1113,7 @@ export default function OnboardingScreen() {
                 type="text"
                 placeholder={placeholder}
                 value={searchText}
-                onChange={(e: any) => onChangeText(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChangeText(e.target.value)}
                 style={webInputStyle}
                 autoComplete="off"
               />
@@ -1233,7 +1233,7 @@ export default function OnboardingScreen() {
       {Platform.OS === 'web' ? (
         <select
           value={form.incomeRange}
-          onChange={(e: any) => updateForm({ incomeRange: e.target.value })}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ incomeRange: e.target.value })}
           style={webSelectStyle}
         >
           <option value="">Select income range</option>

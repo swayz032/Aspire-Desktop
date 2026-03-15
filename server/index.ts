@@ -18,6 +18,8 @@ import { applyTenantContext } from './tenantContext';
 import { getBreakerStates } from './circuitBreaker';
 import { getIdempotencyStats } from './webhookIdempotency';
 import { initSentry, sentryRequestHandler, sentryErrorHandler } from './sentry';
+import { tagActionOrigin } from './orchestratorGateway';
+import type { AuthenticatedRequest, MaybeAuthenticatedRequest } from './types';
 
 // Initialize Sentry early — before app setup so it captures startup errors.
 // No-op if SENTRY_DSN is not set (Law #9: PII stripped in beforeSend hook).
@@ -121,8 +123,8 @@ app.use((req, res, next) => {
 
   req.headers['x-correlation-id'] = correlationId;
   req.headers['x-trace-id'] = traceId;
-  (req as any).correlationId = correlationId;
-  (req as any).traceId = traceId;
+  req.correlationId = correlationId;
+  req.traceId = traceId;
   res.setHeader('X-Correlation-Id', correlationId);
   res.setHeader('X-Trace-Id', traceId);
   next();
@@ -135,8 +137,8 @@ app.use((req, res, next) => {
 app.use(async (req, res, next) => {
   try {
     if (DEV_BYPASS_AUTH) {
-      (req as any).authenticatedUserId = DEV_USER_ID;
-      (req as any).authenticatedSuiteId = DEV_SUITE_ID;
+      req.authenticatedUserId = DEV_USER_ID;
+      req.authenticatedSuiteId = DEV_SUITE_ID;
       await applyTenantContext(DEV_SUITE_ID);
       return next();
     }
@@ -175,9 +177,9 @@ app.use(async (req, res, next) => {
       if (!applied) {
         logger.warn('S2S request continuing without DB tenant context', { path: req.path, suite_id: headerSuiteId });
       }
-      (req as any).authenticatedUserId = 'n8n-service';
-      (req as any).authenticatedSuiteId = headerSuiteId;
-      (req as any).authenticatedOfficeId = headerOfficeId || headerSuiteId;
+      req.authenticatedUserId = 'n8n-service';
+      req.authenticatedSuiteId = headerSuiteId;
+      req.authenticatedOfficeId = headerOfficeId || headerSuiteId;
       return next();
     }
 
@@ -232,9 +234,9 @@ app.use(async (req, res, next) => {
     }
 
     // Attach user info for receipt actor binding
-    (req as any).authenticatedUserId = user.id;
-    (req as any).authenticatedSuiteId = suiteId;
-    (req as any).authenticatedUserName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+    req.authenticatedUserId = user.id;
+    req.authenticatedSuiteId = suiteId;
+    req.authenticatedUserName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
 
     next();
   } catch (error) {
@@ -243,6 +245,9 @@ app.use(async (req, res, next) => {
     res.status(500).json({ error: 'AUTH_ERROR', message: 'Authentication check failed' });
   }
 });
+
+// Orchestrator Gateway — Law #1: Tag action origin for receipt audit trail
+app.use(tagActionOrigin as express.RequestHandler);
 
 async function initStripe() {
   if (!runMigrations || !getStripeSync) {

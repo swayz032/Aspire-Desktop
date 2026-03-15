@@ -1,4 +1,5 @@
 import React from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -80,7 +81,7 @@ export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }
               </View>
             ))}
             <Pressable
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 styles.linkButton,
                 hovered && styles.linkButtonHover,
               ]}
@@ -168,7 +169,7 @@ export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }
             {providers.map((provider) => (
               <Pressable
                 key={provider.name}
-                style={({ hovered }: any) => [
+                style={({ hovered }: PressableState) => [
                   styles.providerRow,
                   hovered && styles.providerRowHover,
                 ]}
@@ -186,7 +187,7 @@ export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }
               </Pressable>
             ))}
             <Pressable
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 styles.linkButton,
                 hovered && styles.linkButtonHover,
               ]}
@@ -211,7 +212,7 @@ export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }
               Link your bank, payments, and accounting to see real-time data health.
             </Text>
             <Pressable
-              style={({ hovered }: any) => [
+              style={({ hovered }: PressableState) => [
                 styles.linkButton,
                 hovered && styles.linkButtonHover,
               ]}

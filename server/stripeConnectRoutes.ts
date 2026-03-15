@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import type { AuthenticatedRequest } from './types';
 import Stripe from 'stripe';
 import { createTrustSpineReceipt } from './receiptService';
 import { logger } from './logger';
@@ -52,9 +53,9 @@ export async function loadStripeConnectState(): Promise<void> {
 // --- Helper: extract suite context from headers ---
 function getSuiteContext(req: Request) {
   return {
-    suiteId: (req as any).authenticatedSuiteId || '',
+    suiteId: req.authenticatedSuiteId || '',
     officeId: (req.headers['x-office-id'] as string) || undefined,
-    actorId: (req as any).authenticatedUserId || 'unknown',
+    actorId: req.authenticatedUserId || 'unknown',
     correlationId: (req.headers['x-correlation-id'] as string) || undefined,
   };
 }

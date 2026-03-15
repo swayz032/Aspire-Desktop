@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
@@ -509,15 +510,15 @@ export function DocumentPreviewModal({ visible, onClose, type, documentName, pan
             <View style={p.modalHeaderRight}>
               {!hasPandaDoc && (
                 <>
-                  <Pressable style={({ hovered }: any) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}>
+                  <Pressable style={({ hovered }: PressableState) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}>
                     <Ionicons name="download-outline" size={16} color="#a1a1a6" />
                   </Pressable>
-                  <Pressable style={({ hovered }: any) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}>
+                  <Pressable style={({ hovered }: PressableState) => [p.modalActionBtn, hovered && p.modalActionBtnHover]}>
                     <Ionicons name="share-outline" size={16} color="#a1a1a6" />
                   </Pressable>
                 </>
               )}
-              <Pressable onPress={onClose} style={({ hovered }: any) => [p.modalCloseBtn, hovered && p.modalCloseBtnHover]}>
+              <Pressable onPress={onClose} style={({ hovered }: PressableState) => [p.modalCloseBtn, hovered && p.modalCloseBtnHover]}>
                 <Ionicons name="close" size={18} color="#a1a1a6" />
               </Pressable>
             </View>
