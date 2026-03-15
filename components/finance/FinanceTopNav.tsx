@@ -1,20 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, usePathname } from 'expo-router';
-import { Colors, Typography } from '@/constants/tokens';
+import { useRouter, usePathname, type Href } from 'expo-router';
+import { Colors } from '@/constants/tokens';
+
+type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
 type SubItem = {
   id: string;
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  route: string;
+  icon: IoniconsName;
+  route: Href;
 };
 
 type NavPill = {
   id: string;
   label: string;
-  route: string;
+  route: Href;
   isExternal?: boolean;
   subItems?: SubItem[];
 };
@@ -66,7 +68,6 @@ export function FinanceTopNav() {
   const router = useRouter();
   const pathname = usePathname();
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const dropdownRef = useRef<any>(null);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !openDropdown) return;
@@ -105,13 +106,13 @@ export function FinanceTopNav() {
       setOpenDropdown(prev => prev === pill.id ? null : pill.id);
     } else {
       setOpenDropdown(null);
-      router.push(pill.route as any);
+      router.push(pill.route);
     }
   };
 
   const handleSubPress = (sub: SubItem) => {
     setOpenDropdown(null);
-    router.push(sub.route as any);
+    router.push(sub.route);
   };
 
   if (Platform.OS !== 'web') {
@@ -262,7 +263,7 @@ export function FinanceTopNav() {
                           if (!subActive) (e.currentTarget as HTMLElement).style.background = 'transparent';
                         }}
                       >
-                        <Ionicons name={sub.icon as any} size={15} color={subActive ? '#3B82F6' : 'rgba(255,255,255,0.4)'} />
+                        <Ionicons name={sub.icon} size={15} color={subActive ? '#3B82F6' : 'rgba(255,255,255,0.4)'} />
                         <span style={{
                           fontSize: 13,
                           fontWeight: subActive ? 600 : 400,
