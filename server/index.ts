@@ -91,7 +91,7 @@ function secureTokenEquals(left: string, right: string): boolean {
   return crypto.timingSafeEqual(leftBuf, rightBuf);
 }
 
-const DEV_BYPASS_AUTH = process.env.NODE_ENV !== 'production' && !process.env.SUPABASE_URL;
+const DEV_BYPASS_AUTH = process.env.DEV_BYPASS_AUTH === 'true' && !process.env.SUPABASE_URL && process.env.NODE_ENV !== 'production';
 const DEV_SUITE_ID = 'dev-suite-00000000-0000-0000-0000-000000000000';
 const DEV_USER_ID = 'dev-user-00000000-0000-0000-0000-000000000000';
 
@@ -417,7 +417,15 @@ app.use((req, res, next) => {
   res.setHeader('Expires', '0');
   next();
 });
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({
+  limit: '1mb',
+  verify: (req: any, _res, buf) => {
+    // Preserve raw body for webhook signature verification (Plaid, Stripe, etc.)
+    if (req.url?.includes('/webhook')) {
+      req.rawBody = buf;
+    }
+  },
+}));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
 // Request timeout — 30s (Law #10: timeout enforcement)

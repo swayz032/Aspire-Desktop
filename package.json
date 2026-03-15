@@ -53,6 +53,7 @@
     "@uppy/dashboard": "^5.1.0",
     "@uppy/react": "^5.1.1",
     "ai": "^6.0.105",
+    "cockatiel": "^3.2.1",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.1",

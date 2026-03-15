@@ -94,7 +94,7 @@ async function verifyPlaidWebhook(req: Request): Promise<boolean> {
     const payloadJson = Buffer.from(tokenParts[1], 'base64url').toString('utf-8');
     const payload = JSON.parse(payloadJson);
 
-    const bodyString = JSON.stringify(req.body);
+    const bodyString = (req as any).rawBody ? (req as any).rawBody.toString('utf-8') : JSON.stringify(req.body);
     const bodyHash = computeBodyHash(bodyString);
 
     if (payload.request_body_sha256 !== bodyHash) {
