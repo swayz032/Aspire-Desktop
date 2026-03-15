@@ -86,7 +86,9 @@ if (!supabaseAdmin) {
 
 router.post('/api/livekit/token', async (req: Request, res: Response) => {
   try {
-    const { roomName, participantName, suiteId } = req.body;
+    const { roomName, participantName } = req.body;
+    // Law #6: Prefer authenticated suiteId over client-supplied value
+    const suiteId = req.authenticatedSuiteId || req.body.suiteId;
 
     if (!roomName || !participantName) {
       return res
@@ -128,7 +130,7 @@ router.post('/api/livekit/token', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('LiveKit token error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -144,7 +146,7 @@ router.get('/api/livekit/status', async (_req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('LiveKit status error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -163,7 +165,7 @@ router.get('/api/conference/members', async (req: Request, res: Response) => {
     }
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
+      return res.status(503).json({ error: 'SERVICE_UNAVAILABLE', code: 'SERVICE_UNAVAILABLE' });
     }
 
     // Sanitize search input: strip PostgREST special chars to prevent filter injection
@@ -186,7 +188,7 @@ router.get('/api/conference/members', async (req: Request, res: Response) => {
 
     if (error) {
       logger.error('Conference members query error', { error: error.message, suiteId });
-      return res.status(500).json({ error: 'Failed to search members' });
+      return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
     }
 
     // Resolve user_ids from profiles table via email match
@@ -224,7 +226,7 @@ router.get('/api/conference/members', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Conference members error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -314,7 +316,7 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
     }
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
+      return res.status(503).json({ error: 'SERVICE_UNAVAILABLE', code: 'SERVICE_UNAVAILABLE' });
     }
 
     const { data: entry, error: dbError } = await supabaseAdmin
@@ -325,7 +327,7 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
 
     if (dbError) {
       logger.error('Join code DB error', { error: dbError.message });
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
     }
 
     if (!entry) {
@@ -369,7 +371,7 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Join code resolution error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -408,7 +410,7 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
     const officeDisplayId = rawOfficeId.replace(/^OFF-?/i, '').toUpperCase();
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
+      return res.status(503).json({ error: 'SERVICE_UNAVAILABLE', code: 'SERVICE_UNAVAILABLE' });
     }
 
     // Query suite_profiles — display_id is bare number, office_display_id is like "A01"
@@ -422,7 +424,7 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
 
     if (memberError) {
       logger.error('Conference lookup query error', { error: memberError.message });
-      return res.status(500).json({ error: 'Lookup failed' });
+      return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
     }
 
     if (!members || members.length === 0) {
@@ -478,7 +480,7 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Conference lookup error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -659,7 +661,7 @@ router.post('/api/conference/invite-external', async (req: Request, res: Respons
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Conference invite-external error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -728,7 +730,7 @@ router.post('/api/conference/room-link', async (req: Request, res: Response) => 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Conference room-link error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -786,7 +788,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
     }
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
+      return res.status(503).json({ error: 'SERVICE_UNAVAILABLE', code: 'SERVICE_UNAVAILABLE' });
     }
 
     // Look up inviter's profile for display in the notification
@@ -889,7 +891,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
         suiteId,
         invitee_user_id,
       });
-      return res.status(500).json({ error: 'Failed to create invitation' });
+      return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
     }
 
     logger.info('Conference invitation created', {
@@ -932,7 +934,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Conference invite-internal error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -962,7 +964,7 @@ router.patch('/api/conference/invite-internal/:id', async (req: Request, res: Re
     }
 
     if (!supabaseAdmin) {
-      return res.status(503).json({ error: 'Database not configured', detail: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
+      return res.status(503).json({ error: 'SERVICE_UNAVAILABLE', code: 'SERVICE_UNAVAILABLE' });
     }
 
     // Fetch the invitation and verify ownership + status
@@ -1026,7 +1028,7 @@ router.patch('/api/conference/invite-internal/:id', async (req: Request, res: Re
 
     if (updateError) {
       logger.error('Failed to update invitation', { error: updateError.message, id });
-      return res.status(500).json({ error: 'Failed to update invitation' });
+      return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
     }
 
     // Law #2: YELLOW tier receipt
@@ -1097,7 +1099,7 @@ router.patch('/api/conference/invite-internal/:id', async (req: Request, res: Re
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Conference invite-internal PATCH error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 

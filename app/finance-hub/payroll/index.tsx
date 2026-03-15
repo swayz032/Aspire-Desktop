@@ -5,6 +5,8 @@ import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { addAuthorityItem } from '@/lib/authorityQueueStore';
+import { devWarn, devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface GustoCompany {
   name?: string;
@@ -378,7 +380,7 @@ export default function RunPayrollScreen() {
           setReceiptData(data);
         }
       } catch (e) {
-        console.warn('Failed to fetch payroll receipt:', e);
+        devWarn('Failed to fetch payroll receipt:', e);
       }
     }
   };
@@ -452,10 +454,10 @@ export default function RunPayrollScreen() {
         }));
       } else {
         const err = await res.json().catch(() => ({}));
-        console.error('Failed to update compensation:', err.error || err.message);
+        devError('Failed to update compensation:', err.error || err.message);
       }
     } catch (e) {
-      console.error('Compensation update failed:', e);
+      devError('Compensation update failed:', e);
     }
   };
 
@@ -1079,6 +1081,7 @@ export default function RunPayrollScreen() {
   );
 
   return (
+    <ErrorBoundary routeName="RunPayrollScreen">
     <FinanceHubShell>
       <View style={styles.aspireHeader}>
         <View style={styles.aspireHeaderTop}>
@@ -1478,6 +1481,7 @@ ${bonus > 0 ? `<tr><td>Bonus</td><td class="amount">â€”</td><td class="amount">â
         </Pressable>
       </Modal>
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

@@ -2,6 +2,7 @@
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Linking, Alert, Image, ImageBackground } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { devLog, devWarn, devError } from '@/lib/devLog';
 import { Colors } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
@@ -230,7 +231,7 @@ export function AvaDeskPanel() {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     },
     onError: (error) => {
-      console.error('Ava voice error:', error);
+      devError('Ava voice error:', error);
       setIsSessionActive(false);
       // Classify and surface the error to the user
       const msg = error.message || String(error);
@@ -271,7 +272,7 @@ export function AvaDeskPanel() {
         await avaVoice.sendText('Confirm voice is live in one short sentence and ask how you can help.');
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.error('Failed to start Ava voice session:', msg);
+        devError('Failed to start Ava voice session:', msg);
         if (/auth_required/i.test(msg)) {
           showVoiceError('Session expired. Please sign in again.');
         } else if (/circuit_open/i.test(msg)) {
@@ -389,14 +390,14 @@ export function AvaDeskPanel() {
       // Anam SDK: fetch session token â†’ create client (CUSTOMER_CLIENT_V1) â†’ stream to <video>
       const connectOptions: AnamConnectOptions = {
         onConnectionEstablished: () => {
-          console.log('[Anam] WebRTC connection established');
+          devLog('[Anam] WebRTC connection established');
         },
         onVideoStarted: () => {
-          console.log('[Anam] Video stream playing');
+          devLog('[Anam] Video stream playing');
           setVideoState('connected');
         },
         onConnectionClosed: (reason, details) => {
-          console.log('[Anam] Connection closed', reason ? { reason, details } : undefined);
+          devLog('[Anam] Connection closed', reason ? { reason, details } : undefined);
           setVideoState('idle');
           setConnectionStatus('');
           anamClientRef.current = null;
@@ -466,7 +467,7 @@ export function AvaDeskPanel() {
       setVideoState('idle');
       setConnectionStatus('');
       const msg = error?.message || String(error);
-      console.error('Video connection failed:', msg);
+      devError('Video connection failed:', msg);
 
       // Classify error with actionable message
       if (/not configured|503|AVATAR_NOT_CONFIGURED/i.test(msg)) {
@@ -690,7 +691,7 @@ export function AvaDeskPanel() {
         try {
           anamClientRef.current.talk(responseText);
         } catch (talkErr) {
-          console.warn('Anam talk failed:', talkErr);
+          devWarn('Anam talk failed:', talkErr);
         }
       }
 

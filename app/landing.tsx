@@ -10,6 +10,7 @@ import MeetTheTeam from '@/components/landing/MeetTheTeam';
 import PricingCTA from '@/components/landing/PricingCTA';
 import LandingFooter from '@/components/landing/LandingFooter';
 import { features } from '@/components/landing/FeaturesData';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function LandingPage() {
   useEffect(() => {
@@ -40,7 +41,8 @@ export default function LandingPage() {
     scrollStyle.id = 'hide-scrollbar';
     scrollStyle.textContent = `::-webkit-scrollbar{display:none}html,body{-ms-overflow-style:none;scrollbar-width:none}`;
     document.head.appendChild(scrollStyle);
-    return () => {
+    return (
+    ) => {
       document.getElementById('hide-scrollbar')?.remove();
       body.style.overflow = prev.bodyOverflow;
       body.style.height = prev.bodyHeight;
@@ -59,6 +61,7 @@ export default function LandingPage() {
   }
 
   return (
+    <ErrorBoundary routeName="LandingPage">
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <div style={{
@@ -79,5 +82,6 @@ export default function LandingPage() {
         <LandingFooter />
       </div>
     </>
+      </ErrorBoundary>
   );
 }

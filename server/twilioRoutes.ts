@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { getDefaultOfficeId } from './suiteContext';
@@ -9,6 +10,7 @@ const router = Router();
 
 // Lazy-load Twilio client to avoid crash if credentials are missing
 let twilioClient: Record<string, any> | null = null;
+let twilioValidateRequestFn: ((authToken: string, signature: string, url: string, params: Record<string, any>) => boolean) | null = null;
 
 function getTwilioClient() {
   if (twilioClient) return twilioClient;
@@ -23,11 +25,44 @@ function getTwilioClient() {
   try {
     const twilio = require('twilio');
     twilioClient = twilio(accountSid, authToken);
+    twilioValidateRequestFn = twilio.validateRequest;
     return twilioClient;
   } catch (e) {
     logger.warn('Twilio SDK not available');
     return null;
   }
+}
+
+/** Validate Twilio request signature — Law #3: Fail Closed */
+function validateTwilioWebhook(req: Request): boolean {
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!authToken) {
+    logger.error('TWILIO_AUTH_TOKEN not configured — rejecting webhook');
+    return false;
+  }
+
+  const signature = req.headers['x-twilio-signature'] as string;
+  if (!signature) {
+    logger.warn('Missing X-Twilio-Signature header on Twilio webhook');
+    return false;
+  }
+
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+  if (!publicBaseUrl) {
+    logger.error('PUBLIC_BASE_URL not configured — cannot validate Twilio signature');
+    return false;
+  }
+
+  // Ensure client is loaded so validateRequest is available
+  if (!twilioValidateRequestFn) getTwilioClient();
+
+  if (twilioValidateRequestFn) {
+    const url = `${publicBaseUrl}${req.originalUrl}`;
+    return twilioValidateRequestFn(authToken, signature, url, req.body || {});
+  }
+
+  logger.error('Twilio SDK not available for signature validation — rejecting webhook');
+  return false;
 }
 
 // POST /api/calls/initiate — Outbound call via Twilio, scoped by suite_id
@@ -85,14 +120,21 @@ router.post('/api/calls/initiate', async (req: Request, res: Response) => {
       status: call.status,
     });
   } catch (error: unknown) {
-    logger.error('Call initiation error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Internal server error' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Call initiation error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 // POST /api/calls/webhook — Twilio status callback
 router.post('/api/calls/webhook', async (req: Request, res: Response) => {
   try {
+    // Law #3: Fail Closed — validate Twilio signature before processing
+    if (!validateTwilioWebhook(req)) {
+      logger.warn('Twilio webhook signature validation failed', { path: req.path });
+      return res.status(403).send('<Response></Response>');
+    }
+
     const {
       CallSid,
       CallStatus,
@@ -151,8 +193,9 @@ router.get('/api/calls/history', async (req: Request, res: Response) => {
     const rows = (result.rows || result) as Record<string, any>[];
     res.json({ calls: rows, total: rows.length });
   } catch (error: unknown) {
-    logger.error('Call history error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Internal server error' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Call history error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 

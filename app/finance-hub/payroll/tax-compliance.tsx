@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { PayrollTaxCompliance } from '@/components/finance/payroll/PayrollTaxCompliance';
 import { Colors } from '@/constants/tokens';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function TaxCompliancePage() {
   const [gustoCompany, setGustoCompany] = useState<any>(null);
@@ -42,6 +43,7 @@ export default function TaxCompliancePage() {
   const gustoConnected = !gustoLoading && !gustoError && gustoCompany;
 
   return (
+    <ErrorBoundary routeName="TaxCompliancePage">
     <FinanceHubShell>
       <View style={styles.pageHeader}>
         <Ionicons name="shield-checkmark-outline" size={22} color="#3B82F6" />
@@ -60,6 +62,7 @@ export default function TaxCompliancePage() {
         />
       )}
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

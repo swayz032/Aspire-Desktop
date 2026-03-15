@@ -87,6 +87,7 @@ const officeStoreStaff: OfficeStoreStaff[] = [
   },
 ];
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 type TabType = 'staff' | 'addons';
 
@@ -484,13 +485,15 @@ export default function OfficeStoreScreen() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="OfficeStoreScreen">
       <DesktopPageWrapper scrollable={false}>
         {content}
       </DesktopPageWrapper>
+      </ErrorBoundary>
     );
   }
 
-  return content;
+  return (<ErrorBoundary routeName="OfficeStoreScreen">{content}</ErrorBoundary>);
 }
 
 const styles = StyleSheet.create({

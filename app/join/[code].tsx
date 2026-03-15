@@ -40,6 +40,8 @@ import { DisconnectReason, MediaDeviceFailure, Track } from 'livekit-client';
 import { Image } from 'expo-image';
 import { injectLiveKitStyles } from '@/lib/livekit-styles';
 import { buildRoomOptionsWithDevices } from '@/lib/livekit-config';
+import { devWarn } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -961,7 +963,8 @@ export default function GuestJoinPage() {
         setErrorMessage(err.message || 'Failed to join conference');
       });
 
-    return () => {
+    return (
+    ) => {
       clearTimeout(timeoutId);
       controller.abort();
     };
@@ -1012,7 +1015,7 @@ export default function GuestJoinPage() {
   const handleDeviceError = useCallback((error: Error) => {
     // Don't crash — PreJoin will still render with camera-off placeholder.
     // Only transition to error if the error message indicates a hard failure.
-    console.warn('[GuestJoin] Device error:', error.message);
+    devWarn('[GuestJoin] Device error:', error.message);
   }, []);
 
   // LiveKit room event handlers
@@ -1045,7 +1048,7 @@ export default function GuestJoinPage() {
     // reduced capabilities (e.g. audio-only if camera fails).
     // Only log a warning; do not kick them out of the conference.
     const msg = failure ? `Device failure: ${failure}` : 'Unknown device failure';
-    console.warn('[GuestJoin] Media device failure:', msg);
+    devWarn('[GuestJoin] Media device failure:', msg);
   }, []);
 
   // Retry handler — reload the page to re-validate join code and start fresh
@@ -1064,6 +1067,7 @@ export default function GuestJoinPage() {
   }, [joinData]);
 
   return (
+    <ErrorBoundary routeName="GuestJoinPage">
     <View style={styles.page}>
       {pageState === 'loading' && <LoadingView />}
 
@@ -1100,6 +1104,7 @@ export default function GuestJoinPage() {
         <ErrorView state={pageState} message={errorMessage} onRetry={handleRetry} />
       )}
     </View>
+      </ErrorBoundary>
   );
 }
 

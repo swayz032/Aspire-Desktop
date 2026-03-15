@@ -24,6 +24,8 @@ import { TemplateCard, TemplatePreviewModal, type TemplateData, LANE_META, type 
 import { getPandaDocTemplates, type PandaDocTemplate } from '@/lib/api';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { FinnDeskOverlay } from '@/components/finance/FinnDeskOverlay';
+import { devWarn } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const webOnly = (s: Record<string, unknown>) => Platform.OS === 'web' ? s : {};
 
@@ -89,7 +91,7 @@ export default function TemplatesPage() {
       } catch (err: any) {
         if (!cancelled) {
           setError(err.message || 'Failed to load templates');
-          console.warn('[templates] Failed to fetch PandaDoc templates:', err.message);
+          devWarn('[templates] Failed to fetch PandaDoc templates:', err.message);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -97,7 +99,8 @@ export default function TemplatesPage() {
     }
 
     fetchTemplates();
-    return () => { cancelled = true; };
+    return (
+    ) => { cancelled = true; };
   }, [authenticatedFetch]);
 
   const filteredTemplates = useMemo(() => {
@@ -166,6 +169,7 @@ export default function TemplatesPage() {
   const keyExtractor = useCallback((item: TemplateData) => item.key, []);
 
   return (
+    <ErrorBoundary routeName="TemplatesPage">
     <FinanceHubShell>
       <View style={styles.page}>
         {/* Header */}
@@ -288,6 +292,7 @@ export default function TemplatesPage() {
         />
       )}
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

@@ -13,6 +13,8 @@ import {
 import { useRouter } from 'expo-router';
 import { replaceTo } from '@/lib/navigation';
 import { supabase } from '@/lib/supabase';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { validateForm, signInSchema, signUpSchema } from '@/lib/validation';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -286,7 +288,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
   const switchMode = (m: AuthMode) => { setMode(m); setError(null); setSuccessMsg(null); };
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password.trim()) { setError('Please enter both email and password.'); return; }
+    const v = validateForm(signInSchema, { email: email.trim(), password });
+    if (!v.success) { setError(Object.values(v.errors)[0]); return; }
     setLoading(true); setError(null);
     try {
       const { data, error: ae } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
@@ -309,10 +312,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
   };
 
   const handleSignUp = async () => {
-    if (!inviteCode.trim()) { setError('Invite code is required for private beta access.'); return; }
-    if (!email.trim() || !password.trim()) { setError('Please enter email and password.'); return; }
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
-    if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
+    const v = validateForm(signUpSchema, { inviteCode: inviteCode.trim(), email: email.trim(), password, confirmPassword });
+    if (!v.success) { setError(Object.values(v.errors)[0]); return; }
     setLoading(true); setError(null);
     try {
       const res = await fetch('/api/auth/signup', {
@@ -752,7 +753,8 @@ function NativeLoginScreen() {
   };
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password.trim()) { setError('Please enter both email and password.'); return; }
+    const v = validateForm(signInSchema, { email: email.trim(), password });
+    if (!v.success) { setError(Object.values(v.errors)[0]); return; }
     setLoading(true); setError(null);
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
@@ -774,10 +776,8 @@ function NativeLoginScreen() {
   };
 
   const handleSignUp = async () => {
-    if (!inviteCode.trim()) { setError('Invite code is required for private beta access.'); return; }
-    if (!email.trim() || !password.trim()) { setError('Please enter email and password.'); return; }
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
-    if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
+    const v = validateForm(signUpSchema, { inviteCode: inviteCode.trim(), email: email.trim(), password, confirmPassword });
+    if (!v.success) { setError(Object.values(v.errors)[0]); return; }
     setLoading(true); setError(null);
     try {
       const signupRes = await fetch('/api/auth/signup', {
@@ -843,8 +843,8 @@ function NativeLoginScreen() {
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 export default function LoginScreen() {
-  if (Platform.OS === 'web') return <WebLoginScreen />;
-  return <NativeLoginScreen />;
+  if (Platform.OS === 'web') return (<ErrorBoundary routeName="LoginScreen"><WebLoginScreen /></ErrorBoundary>);
+  return (<ErrorBoundary routeName="LoginScreen"><NativeLoginScreen /></ErrorBoundary>);
 }
 
 // ─── Native Styles ────────────────────────────────────────────────────────────

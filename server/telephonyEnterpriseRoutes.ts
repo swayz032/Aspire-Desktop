@@ -237,7 +237,7 @@ router.get('/api/frontdesk/setup', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('GET /api/frontdesk/setup error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -334,7 +334,7 @@ router.patch('/api/frontdesk/setup', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('PATCH /api/frontdesk/setup error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -384,7 +384,7 @@ router.post('/api/frontdesk/preview-audio', async (req: Request, res: Response) 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('preview-audio error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -420,7 +420,7 @@ router.post('/api/frontdesk/numbers/search', async (req: Request, res: Response)
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('numbers/search error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -476,7 +476,7 @@ router.post('/api/frontdesk/numbers/purchase', async (req: Request, res: Respons
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('numbers/purchase error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -502,7 +502,7 @@ router.post('/api/frontdesk/numbers/release', async (req: Request, res: Response
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('numbers/release error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -565,7 +565,7 @@ router.get('/api/frontdesk/calls', async (req: Request, res: Response) => {
     if (stale?.payload) {
       return res.json(stale.payload);
     }
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -615,7 +615,7 @@ router.post('/api/frontdesk/return-call', async (req: Request, res: Response) =>
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('return-call error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -666,7 +666,7 @@ router.post('/api/frontdesk/outbound-call', async (req: Request, res: Response) 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('outbound-call error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -692,7 +692,7 @@ router.get('/api/messages/threads', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('GET /api/messages/threads error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -719,7 +719,7 @@ router.get('/api/messages/threads/:threadId/messages', async (req: Request, res:
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('GET /api/messages/threads/:id/messages error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -788,7 +788,7 @@ router.post('/api/messages/send', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('messages/send error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -817,7 +817,7 @@ router.get('/api/voicemail', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('GET /api/voicemail error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -839,7 +839,7 @@ router.get('/api/voicemail/:id', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('GET /api/voicemail/:id error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -863,7 +863,7 @@ router.get('/api/voicemail/:id/audio', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('GET /api/voicemail/:id/audio error', { error: msg });
-    res.status(500).json({ code: 'INTERNAL', message: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 

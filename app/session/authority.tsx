@@ -10,6 +10,7 @@ import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import type { AuthorityItem } from '@/types';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const PANDADOC_SESSION_BASE = 'https://app.pandadoc.com/s/';
 
@@ -117,7 +118,8 @@ export default function AuthorityScreen() {
       const resp = await authenticatedFetch(`/api/authority-queue?domain=finance&status=${status}`);
       if (!resp.ok) return [];
       const data = await resp.json();
-      return (data.items || []).map(mapAuthorityItem);
+      return (data.items || []
+      ).map(mapAuthorityItem);
     } catch {
       return [];
     }
@@ -196,6 +198,7 @@ export default function AuthorityScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="AuthorityScreen">
     <SafeAreaView style={styles.container}>
       <Toast 
         visible={toastVisible} 
@@ -307,6 +310,7 @@ export default function AuthorityScreen() {
         )}
       </ScrollView>
     </SafeAreaView>
+      </ErrorBoundary>
   );
 }
 

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { PayrollTimeOff } from '@/components/finance/payroll/PayrollTimeOff';
 import { Colors } from '@/constants/tokens';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function TimeOffPage() {
   const [gustoCompany, setGustoCompany] = useState<any>(null);
@@ -42,6 +43,7 @@ export default function TimeOffPage() {
   const gustoConnected = !gustoLoading && !gustoError && gustoCompany;
 
   return (
+    <ErrorBoundary routeName="TimeOffPage">
     <FinanceHubShell>
       <View style={styles.pageHeader}>
         <Ionicons name="calendar-outline" size={22} color="#3B82F6" />
@@ -60,6 +62,7 @@ export default function TimeOffPage() {
         />
       )}
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

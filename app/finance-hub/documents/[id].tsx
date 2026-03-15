@@ -36,6 +36,7 @@ import {
   type TemplateLane,
   type SignerData,
 } from '@/components/finance/documents';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const webOnly = (s: Record<string, unknown>) => Platform.OS === 'web' ? s : {};
 
@@ -217,6 +218,7 @@ export default function ContractDetailPage() {
   const signers = contract.signers ?? [];
 
   return (
+    <ErrorBoundary routeName="ContractDetailPage">
     <FinanceHubShell>
       <View style={styles.page}>
         {/* Back button */}
@@ -348,6 +350,7 @@ export default function ContractDetailPage() {
         </View>
       </View>
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

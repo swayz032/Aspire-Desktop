@@ -10,6 +10,7 @@ import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers/TenantProvider';
 import { DraftArtifact, RecommendedTool } from '@/types/advisory';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Advisory data comes from Adam (research agent) + n8n workflows → Supabase receipts
 type BusinessProfile = { industry: string; stage: string; connectedTools: string[]; companyName: string; employeeCount: number };
@@ -546,13 +547,15 @@ export default function AdvisorScreen() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="AdvisorScreen">
       <DesktopPageWrapper scrollable={false}>
         {content}
       </DesktopPageWrapper>
+      </ErrorBoundary>
     );
   }
 
-  return content;
+  return (<ErrorBoundary routeName="AdvisorScreen">{content}</ErrorBoundary>);
 }
 
 const styles = StyleSheet.create({

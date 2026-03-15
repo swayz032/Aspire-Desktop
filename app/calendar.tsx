@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { getCalendarEvents } from '@/lib/api';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -451,13 +452,15 @@ export default function CalendarScreen() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="CalendarScreen">
       <DesktopPageWrapper scrollable={false}>
         {content}
       </DesktopPageWrapper>
+      </ErrorBoundary>
     );
   }
 
-  return content;
+  return (<ErrorBoundary routeName="CalendarScreen">{content}</ErrorBoundary>);
 }
 
 const styles = StyleSheet.create({

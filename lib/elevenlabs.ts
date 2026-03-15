@@ -9,6 +9,8 @@
  * Exception: Nora uses Deepgram STT (conference transcription via LiveKit)
  */
 
+import { devError } from '@/lib/devLog';
+
 export interface VoiceConfig {
   /** Agent display name */
   name: string;
@@ -147,17 +149,17 @@ export async function speakText(
       }),
     });
     if (!resp.ok) {
-      console.error(`[TTS] ElevenLabs returned ${resp.status} for agent "${agent}"`);
+      devError(`[TTS] ElevenLabs returned ${resp.status} for agent "${agent}"`);
       return null;
     }
     const contentType = resp.headers.get('content-type') || '';
     if (!contentType.includes('audio/')) {
-      console.error('[TTS] Server returned non-audio content-type:', contentType);
+      devError('[TTS] Server returned non-audio content-type:', contentType);
       return null;
     }
     return await resp.blob();
   } catch (err) {
-    console.error('[TTS] ElevenLabs request failed:', err instanceof Error ? err.message : err);
+    devError('[TTS] ElevenLabs request failed:', err instanceof Error ? err.message : err);
     return null;
   }
 }

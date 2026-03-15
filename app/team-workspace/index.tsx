@@ -18,6 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '@/constants/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
+import { devWarn } from '@/lib/devLog';
 
 const teamWorkspaceHero = require('@/assets/images/team-workspace-hero.jpg');
 const avatarImages: Record<string, any> = {
@@ -37,6 +38,8 @@ import { useDesktop } from '@/lib/useDesktop';
 import { hasPermission, isOwnerOrAdmin, getRoleName, type RoleType, type PermissionKey, type Member } from '@/lib/permissions';
 import { useTenant } from '@/providers/TenantProvider';
 import { supabase } from '@/lib/supabase';
+import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 type ActionType = 'email_send' | 'contract_send' | 'money_move' | 'invite_member' | 'suite_change';
 
@@ -306,9 +309,15 @@ function PeopleTab({
             <Text style={[styles.tableHeaderCell, { flex: 0.5 }]}>Actions</Text>
           </View>
           
-          {members.map(member => (
-            <Pressable 
-              key={member.id} 
+          {members.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="people-outline" size={48} color={Colors.text.muted} />
+              <Text style={styles.emptyTitle}>No team members yet</Text>
+              <Text style={styles.emptyText}>Invite teammates to start collaborating</Text>
+            </View>
+          ) : members.map(member => (
+            <Pressable
+              key={member.id}
               style={({ hovered }: PressableState) => [styles.tableRow, hovered && styles.tableRowHover]}
             >
               <View style={[styles.tableCell, { flex: 2 }]}>
@@ -849,7 +858,13 @@ function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
       
       <View style={styles.glassmorphismCard}>
         <View style={styles.receiptsList}>
-          {filteredReceipts.map(receipt => {
+          {filteredReceipts.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="receipt-outline" size={48} color={Colors.text.muted} />
+              <Text style={styles.emptyTitle}>No receipts yet</Text>
+              <Text style={styles.emptyText}>Action receipts will appear here as your team works</Text>
+            </View>
+          ) : filteredReceipts.map(receipt => {
             const actionIcon = getActionTypeIcon(receipt.actionType);
             return (
               <View key={receipt.id} style={styles.receiptCard}>
@@ -1267,6 +1282,7 @@ export default function TeamWorkspacePage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [suiteUsage, setSuiteUsage] = useState<UsageLedger>(EMPTY_USAGE);
   const [memberUsage, setMemberUsage] = useState<UsageLedger[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
   // Build currentUser from tenant profile
   const currentUser: Member | null = profile ? {
@@ -1351,7 +1367,9 @@ export default function TeamWorkspacePage() {
           }]);
         }
       } catch (e) {
-        console.warn('Failed to load team workspace data:', e);
+        devWarn('Failed to load team workspace data:', e);
+      } finally {
+        setDataLoading(false);
       }
     };
     fetchData();
@@ -1452,38 +1470,44 @@ export default function TeamWorkspacePage() {
       </View>
       
       <View style={styles.contentArea}>
-        {activeTab === 'people' && (
-          <PeopleTab
-            members={members}
-            invites={invites}
-            onInvite={() => setShowInviteModal(true)}
-            seatCount={{ used: members.length, available: 5 }}
-            currentUser={currentUser}
-          />
-        )}
-        {activeTab === 'approvals' && (
-          <ApprovalsTab
-            requests={approvalRequests}
-            rules={approvalRules}
-            onApprove={handleApprove}
-            onReject={handleReject}
-          />
-        )}
-        {activeTab === 'queues' && (
-          <QueuesTab
-            items={queueItems.filter(i => i.suiteId === selectedSuiteId)}
-            members={members}
-            onAssign={handleAssign}
-          />
-        )}
-        {activeTab === 'receipts' && (
-          <ReceiptsTab receipts={receipts.filter(r => r.suiteId === selectedSuiteId)} />
-        )}
-        {activeTab === 'usage' && (
-          <UsageTab
-            suiteUsage={suiteUsage}
-            memberUsage={memberUsage}
-          />
+        {dataLoading ? (
+          <LoadingSkeleton lines={6} style={{ padding: 24 }} />
+        ) : (
+          <>
+            {activeTab === 'people' && (
+              <PeopleTab
+                members={members}
+                invites={invites}
+                onInvite={() => setShowInviteModal(true)}
+                seatCount={{ used: members.length, available: 5 }}
+                currentUser={currentUser}
+              />
+            )}
+            {activeTab === 'approvals' && (
+              <ApprovalsTab
+                requests={approvalRequests}
+                rules={approvalRules}
+                onApprove={handleApprove}
+                onReject={handleReject}
+              />
+            )}
+            {activeTab === 'queues' && (
+              <QueuesTab
+                items={queueItems.filter(i => i.suiteId === selectedSuiteId)}
+                members={members}
+                onAssign={handleAssign}
+              />
+            )}
+            {activeTab === 'receipts' && (
+              <ReceiptsTab receipts={receipts.filter(r => r.suiteId === selectedSuiteId)} />
+            )}
+            {activeTab === 'usage' && (
+              <UsageTab
+                suiteUsage={suiteUsage}
+                memberUsage={memberUsage}
+              />
+            )}
+          </>
         )}
       </View>
       </ScrollView>
@@ -1498,13 +1522,15 @@ export default function TeamWorkspacePage() {
   
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="TeamWorkspacePage">
       <DesktopPageWrapper scrollable={false}>
         {content}
       </DesktopPageWrapper>
+      </ErrorBoundary>
     );
   }
-  
-  return content;
+
+  return (<ErrorBoundary routeName="TeamWorkspacePage">{content}</ErrorBoundary>);
 }
 
 const styles = StyleSheet.create({

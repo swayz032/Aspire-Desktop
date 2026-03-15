@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
+import { devError } from '@/lib/devLog';
 import type { Session } from '@supabase/supabase-js';
 
 const DEV_BYPASS_AUTH = allowDevSupabaseBypass();
@@ -84,7 +85,7 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
     try {
       await supabase.auth.signOut();
     } catch (e) {
-      console.error('[Auth] Sign out API error:', e);
+      devError('[Auth] Sign out API error:', e);
     }
     setSession(null);
     // Clear all Aspire-related storage

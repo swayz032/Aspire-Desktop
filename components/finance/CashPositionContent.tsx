@@ -5,6 +5,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { devError } from '@/lib/devLog';
 
 const formatCurrency = (amount: number) => {
   const absAmount = Math.abs(amount);
@@ -42,7 +43,7 @@ function PlaidLinkButton({ onSuccess: onLinkSuccess, label, compact, authenticat
       const res = await authenticatedFetch('/api/plaid/create-link-token', { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.link_token) {
-        console.error('[Plaid Cash] create-link-token failed:', data);
+        devError('[Plaid Cash] create-link-token failed:', data);
         setLoading(false);
         return;
       }
@@ -58,14 +59,14 @@ function PlaidLinkButton({ onSuccess: onLinkSuccess, label, compact, authenticat
             });
             onLinkSuccess();
           } catch (e) {
-            console.error('[Plaid Cash] Token exchange error:', e);
+            devError('[Plaid Cash] Token exchange error:', e);
           }
           setLoading(false);
         },
         onExit: () => setLoading(false),
       });
     } catch (err) {
-      console.error('[Plaid Cash] Connect error:', err);
+      devError('[Plaid Cash] Connect error:', err);
       setLoading(false);
     }
   };
@@ -110,7 +111,7 @@ export function CashPositionContent() {
         setLastSynced(new Date());
       }
     } catch (e) {
-      console.error('Plaid fetch error:', e);
+      devError('Plaid fetch error:', e);
     } finally {
       setPlaidLoading(false);
     }

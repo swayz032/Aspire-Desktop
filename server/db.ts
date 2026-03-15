@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
+import { logger } from './logger';
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -26,7 +27,7 @@ const pool = new Pool({
 
 // Surface pool errors instead of crashing silently
 pool.on('error', (err) => {
-  console.error('[DB_POOL] Unexpected error on idle client', err.message);
+  logger.error('[DB_POOL] Unexpected error on idle client', { error: err.message });
 });
 
 export { pool };

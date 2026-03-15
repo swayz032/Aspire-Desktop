@@ -13,6 +13,7 @@ import { Toast } from '@/components/session/Toast';
 import { BottomSheet } from '@/components/session/BottomSheet';
 import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 /** Map staff participant IDs from the session wizard to AgentName for useAgentVoice. */
 const STAFF_TO_AGENT: Record<string, AgentName> = {
@@ -200,6 +201,7 @@ export default function VoiceSession() {
   };
 
   const voiceContent = (
+    <ErrorBoundary routeName="VoiceSession">
     <View style={styles.container}>
       <Toast 
         visible={toastVisible} 
@@ -290,6 +292,7 @@ export default function VoiceSession() {
         icon="mic-off"
       />
     </View>
+    </ErrorBoundary>
   );
 
   if (isDesktop) {

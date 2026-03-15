@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 import { PayrollSubTabProps, GustoEmployee, GustoFederalTaxDetails } from './types';
+import { devError } from '@/lib/devLog';
 
 function formatStatusLabel(status: string): string {
   if (!status) return '—';
@@ -67,7 +68,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
       setTaxDetails(updated);
       setIsEditing(false);
     } catch (e: unknown) {
-      console.error('Error saving changes:', e);
+      devError('Error saving changes:', e);
     } finally {
       setSavingChanges(false);
     }
@@ -89,7 +90,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
       const data = await res.json();
       setEmployeeTaxData(prev => ({ ...prev, [employeeUuid]: data }));
     } catch (e: unknown) {
-      console.error('Error fetching employee tax data:', e);
+      devError('Error fetching employee tax data:', e);
     }
   };
 

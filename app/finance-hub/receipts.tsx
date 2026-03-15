@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const filters = ['All', 'Payments', 'Proposals', 'Approvals', 'Transfers'];
 
@@ -153,6 +154,7 @@ export default function ReceiptsScreen() {
   }, [items]);
 
   return (
+    <ErrorBoundary routeName="ReceiptsScreen">
     <FinanceHubShell>
       <View style={styles.headerRow}>
         <View>
@@ -250,6 +252,7 @@ export default function ReceiptsScreen() {
         ))}
       </View>
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

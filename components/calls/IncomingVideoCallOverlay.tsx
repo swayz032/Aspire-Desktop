@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { navigateTo } from '@/lib/navigation';
+import { devError } from '@/lib/devLog';
 import { useSupabase } from '@/providers';
 import {
   acceptVideoCall,
@@ -312,7 +313,7 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
         serverUrl: result.serverUrl,
       });
     } catch (err) {
-      console.error('Failed to accept video call:', err);
+      devError('Failed to accept video call:', err);
     }
   };
 

@@ -5,6 +5,8 @@ import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -117,12 +119,13 @@ export default function LibraryScreen() {
           }));
         }
       } catch (err) {
-        console.error('Failed to load library items:', err);
+        devError('Failed to load library items:', err);
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return (
+    ) => { mounted = false; };
   }, []);
 
   const getTypeIcon = (type: string) => {
@@ -247,6 +250,7 @@ export default function LibraryScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="LibraryScreen">
     <HubPageShell rightRail={rightRail}>
       <View style={styles.header}>
         <View>
@@ -346,6 +350,7 @@ export default function LibraryScreen() {
         ))}
       </View>
     </HubPageShell>
+      </ErrorBoundary>
   );
 }
 

@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { devLog } from '@/lib/devLog';
 import { WebPreview, AgentActivityEvent, TrustLevel } from './WebPreview';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 
@@ -163,7 +164,7 @@ export function WebPreviewDemo() {
           activityEvents={events}
           trustLevel={trustLevel}
           onUrlClick={(url) => {
-            console.log('[WebPreview Demo] URL clicked:', url);
+            devLog('[WebPreview Demo] URL clicked:', url);
             // In production, this would route through orchestrator for validation
           }}
         />

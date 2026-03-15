@@ -6,6 +6,7 @@ import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -257,6 +258,7 @@ export default function DailyBriefScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="DailyBriefScreen">
     <HubPageShell rightRail={rightRail}>
       <View style={styles.header} testID="founder-hub-daily-brief-page">
         <Text style={styles.pageTitle}>
@@ -391,6 +393,7 @@ export default function DailyBriefScreen() {
       </>
       ) : null}
     </HubPageShell>
+      </ErrorBoundary>
   );
 }
 

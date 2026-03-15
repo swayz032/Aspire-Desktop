@@ -5,6 +5,10 @@ import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { devError } from '@/lib/devLog';
+import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -99,7 +103,7 @@ export default function SavedScreen() {
           }));
         }
       } catch (err) {
-        console.error('Failed to load saved items:', err);
+        devError('Failed to load saved items:', err);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -192,8 +196,25 @@ export default function SavedScreen() {
     </View>
   );
 
+  if (loading) {
+    return (
+        <HubPageShell rightRail={<View />}>
+          <View style={styles.header}>
+            <Text style={styles.pageTitle}>Saved</Text>
+            <Text style={styles.pageSubtitle}>Your bookmarked insights and resources</Text>
+          </View>
+          <LoadingSkeleton lines={5} style={{ marginTop: 16 }} />
+        </HubPageShell>
+    );
+  }
+
+  const filteredItems = savedItems.filter(
+    item => activeFilter === 'all' || (activeFilter === 'starred' && item.starred)
+  );
+
   return (
-    <HubPageShell rightRail={rightRail}>
+    <ErrorBoundary routeName="SavedScreen">
+      <HubPageShell rightRail={rightRail}>
       <View style={styles.header}>
         <Text style={styles.pageTitle}>Saved</Text>
         <Text style={styles.pageSubtitle}>Your bookmarked insights and resources</Text>
@@ -238,9 +259,12 @@ export default function SavedScreen() {
       </View>
 
       <View style={styles.savedList}>
-        {savedItems
-          .filter(item => activeFilter === 'all' || (activeFilter === 'starred' && item.starred))
-          .map((item) => (
+        {filteredItems.length === 0 ? (
+          <EmptyState
+            title={activeFilter === 'starred' ? 'No starred items' : 'No saved items yet'}
+            subtitle={activeFilter === 'starred' ? 'Star important items to find them quickly.' : 'Bookmark insights and resources to access them later.'}
+          />
+        ) : filteredItems.map((item) => (
           <Pressable
             key={item.id}
             style={[
@@ -281,7 +305,8 @@ export default function SavedScreen() {
           </Pressable>
         ))}
       </View>
-    </HubPageShell>
+      </HubPageShell>
+      </ErrorBoundary>
   );
 }
 

@@ -18,6 +18,8 @@ import { useSupabase } from '@/providers';
 import { supabase } from '@/lib/supabase';
 import { CelebrationModal } from '@/components/CelebrationModal';
 import { PremiumLoadingScreen } from '@/components/PremiumLoadingScreen';
+import { devWarn, devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -464,18 +466,18 @@ export default function OnboardingScreen() {
         body: JSON.stringify({ input: query }),
       });
       const data = await res.json();
-      if (data.error) { console.error('[Places] API error:', data.error); onResults([]); return; }
+      if (data.error) { devError('[Places] API error:', data.error); onResults([]); return; }
       onResults(data.suggestions || []);
-    } catch (e: any) { console.error('[Places] fetch failed:', e?.message); onResults([]); }
+    } catch (e: any) { devError('[Places] fetch failed:', e?.message); onResults([]); }
   };
 
   const getPlaceDetails = async (placeId: string): Promise<AddressFields | null> => {
     try {
       const res = await fetch(`/api/places/details/${encodeURIComponent(placeId)}`);
       const data = await res.json();
-      if (data.error) { console.error('[Places] Details error:', data.error); return null; }
+      if (data.error) { devError('[Places] Details error:', data.error); return null; }
       return parsePlaceDetails(data);
-    } catch (e: any) { console.error('[Places] details failed:', e?.message); return null; }
+    } catch (e: any) { devError('[Places] details failed:', e?.message); return null; }
   };
 
   const doValidateAddress = async (address: AddressFields, onValidated: (ok: boolean) => void) => {
@@ -757,12 +759,13 @@ export default function OnboardingScreen() {
   useEffect(() => {
     if (loadingComplete && showLoading) {
       const timer = setTimeout(() => {
-        console.warn('[Onboarding] Safety net: auto-transitioning to celebration');
+        devWarn('[Onboarding] Safety net: auto-transitioning to celebration');
         setShowLoading(false);
         setLoadingComplete(false);
         setShowCelebration(true);
       }, 3000);
-      return () => clearTimeout(timer);
+      return (
+      ) => clearTimeout(timer);
     }
   }, [loadingComplete, showLoading]);
 
@@ -1381,6 +1384,7 @@ export default function OnboardingScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="OnboardingScreen">
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {/* Logo — top-left, no border, transparent bg, matches login/landing height */}
       {Platform.OS === 'web' ? (
@@ -1475,6 +1479,7 @@ export default function OnboardingScreen() {
         </View>
       </View>
     </ScrollView>
+      </ErrorBoundary>
   );
 }
 

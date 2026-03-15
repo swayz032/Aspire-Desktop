@@ -6,9 +6,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern } from '@/constants/cardPatterns';
+import { devError } from '@/lib/devLog';
 import { StoryCard, StoryExplainDrawer, StoryTimeline, StoryWizard, categorizeToDepartments, groupEventsByTimeline } from '@/components/finance/story';
 import type { FinanceEvent, ExplainItem, DepartmentShelf } from '@/components/finance/story';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { validateForm, journalEntrySchema } from '@/lib/validation';
 
 interface QBColData {
   value?: string;
@@ -755,6 +758,13 @@ function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries:
 
   const handleSubmit = async () => {
     if (!isBalanced) return;
+    const validation = validateForm(journalEntrySchema, {
+      lines: formLines.map(l => ({ accountId: l.accountId, amount: l.amount })),
+    });
+    if (!validation.success) {
+      setSubmitError(Object.values(validation.errors)[0]);
+      return;
+    }
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -1072,7 +1082,7 @@ function GeneralLedgerTab({ initialData }: { initialData: QBReport | null }) {
       const data = await res.json();
       setLedgerData(data);
     } catch (e) {
-      console.error('Failed to fetch general ledger:', e);
+      devError('Failed to fetch general ledger:', e);
     } finally {
       setLoading(false);
     }
@@ -1433,7 +1443,8 @@ export default function BooksScreen() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'owner' | 'accountant'>(() => {
     if (isWeb) {
-      try { return (localStorage.getItem('books_view_mode') as 'owner' | 'accountant') || 'owner'; } catch { return 'owner'; }
+      try { return (localStorage.getItem('books_view_mode') as 'owner' | 'accountant'
+      ) || 'owner'; } catch { return 'owner'; }
     }
     return 'owner';
   });
@@ -1502,7 +1513,8 @@ export default function BooksScreen() {
       `;
       document.head.appendChild(styleEl);
     }
-    return () => {
+    return (
+    ) => {
       const el = document.getElementById(styleId);
       if (el) el.remove();
     };
@@ -1527,14 +1539,14 @@ export default function BooksScreen() {
             setAccounts(acct.accounts || []);
             setJournalEntries(je.journalEntries || []);
             setGeneralLedger(gl);
-          }).catch(e => console.error('QB data fetch error:', e))
+          }).catch(e => devError('QB data fetch error:', e))
             .finally(() => setLoading(false));
         } else {
           setLoading(false);
         }
       })
       .catch(e => {
-        console.error('QB status check error:', e);
+        devError('QB status check error:', e);
         setLoading(false);
       });
   }, []);
@@ -1545,6 +1557,7 @@ export default function BooksScreen() {
   } : {};
 
   return (
+    <ErrorBoundary routeName="BooksScreen">
     <FinanceHubShell>
       {isWeb ? (
         <div style={{
@@ -1729,6 +1742,7 @@ export default function BooksScreen() {
         </>
       )}
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

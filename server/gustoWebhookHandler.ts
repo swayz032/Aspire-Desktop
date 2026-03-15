@@ -290,14 +290,34 @@ export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): P
 
 let capturedVerificationToken: string | null = null;
 
-router.get('/api/gusto/webhook-verification-token', (req: Request, res: Response) => {
+router.get('/api/gusto/webhook-verification-token', async (req: Request, res: Response) => {
   // Law #3 (Fail Closed): Admin-only endpoint — exposes sensitive webhook config
   const suiteId = req.authenticatedSuiteId;
-  if (!suiteId) {
+  const userId = req.authenticatedUserId;
+  if (!suiteId || !userId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED' });
   }
-  // TODO: Add admin role check when role system is available
+
+  // Admin role gate — only admin users may retrieve webhook secrets
+  try {
+    const roleResult = await db.execute(sql`
+      SELECT role FROM app.suite_members
+      WHERE suite_id = ${suiteId}::uuid AND user_id = ${userId}::uuid
+      LIMIT 1
+    `);
+    const rows = (roleResult.rows || roleResult) as Record<string, any>[];
+    const role = rows[0]?.role;
+    if (role !== 'admin' && role !== 'owner') {
+      logger.warn('Non-admin user attempted to access webhook verification token', { userId, suiteId, role });
+      return res.status(403).json({ error: 'ADMIN_REQUIRED', message: 'Only admin or owner roles may access webhook secrets' });
+    }
+  } catch (err: unknown) {
+    logger.error('Failed to verify admin role for webhook token access', { error: err instanceof Error ? err.message : 'unknown' });
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+
   if (capturedVerificationToken) {
+    logger.warn('Webhook verification token accessed by admin', { userId, suiteId });
     res.json({ verification_token: capturedVerificationToken, message: 'Token captured from Gusto verification POST. Use this as GUSTO_WEBHOOK_SECRET.' });
   } else {
     res.json({ verification_token: null, message: 'No verification token captured yet. Trigger a re-request from Gusto.' });
@@ -345,8 +365,19 @@ router.post('/api/gusto/request-verification', async (_req: Request, res: Respon
 
     res.json({ message: 'Verification token re-requested for all subscriptions', results });
   } catch (error: unknown) {
-    logger.error('Gusto verification re-request error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Gusto verification re-request error', { error: errMsg, correlationId });
+    // Law #2: Failure receipt
+    await createReceipt({
+      suiteId: getDefaultSuiteId(),
+      officeId: getDefaultOfficeId(),
+      actionType: 'execute_action',
+      inputs: { provider: 'gusto', action: 'request_verification', correlation_id: correlationId },
+      outputs: { error: errMsg },
+      metadata: { status: 'FAILED', provider: 'gusto' },
+    }).catch(receiptErr => logger.error('Failure receipt emission failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' }));
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -395,8 +426,19 @@ router.post('/api/gusto/verify-subscription', async (req: Request, res: Response
 
     res.json({ message: 'Verification attempted', results });
   } catch (error: unknown) {
-    logger.error('Gusto verify subscription error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Gusto verify subscription error', { error: errMsg, correlationId });
+    // Law #2: Failure receipt
+    await createReceipt({
+      suiteId: getDefaultSuiteId(),
+      officeId: getDefaultOfficeId(),
+      actionType: 'execute_action',
+      inputs: { provider: 'gusto', action: 'verify_subscription', correlation_id: correlationId },
+      outputs: { error: errMsg },
+      metadata: { status: 'FAILED', provider: 'gusto' },
+    }).catch(receiptErr => logger.error('Failure receipt emission failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' }));
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -490,7 +532,18 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
     logger.info('Gusto webhook processed', { eventType, normalizedType, written });
     res.status(200).json({ received: true, handled: true, eventType: normalizedType, written });
   } catch (error: unknown) {
-    logger.error('Gusto webhook processing error', { error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Gusto webhook processing error', { error: errMsg, correlationId });
+    // Law #2: Failure receipt for webhook processing error
+    await createReceipt({
+      suiteId: getDefaultSuiteId(),
+      officeId: getDefaultOfficeId(),
+      actionType: 'ingest_webhook',
+      inputs: { provider: 'gusto', event: 'processing_error', correlation_id: correlationId },
+      outputs: { error: errMsg },
+      metadata: { status: 'FAILED', provider: 'gusto' },
+    }).catch(receiptErr => logger.error('Failure receipt emission failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' }));
     res.status(200).json({ received: true, error: 'Processing error' });
   }
 });

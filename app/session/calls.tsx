@@ -23,6 +23,7 @@ import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
 import type { CallSession } from '@/types/frontdesk';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Hero image
@@ -622,6 +623,7 @@ export default function CallsScreen() {
   if (isDesktop) {
     if (isCalling) {
       return (
+        <ErrorBoundary routeName="CallsScreen">
         <FullscreenSessionShell showBackButton={false}>
           <View style={callingStyles.container}>
             {/* Premium gradient mesh background */}
@@ -741,6 +743,7 @@ export default function CallsScreen() {
             </View>
           </View>
         </FullscreenSessionShell>
+        </ErrorBoundary>
       );
     }
 
@@ -749,6 +752,7 @@ export default function CallsScreen() {
     // =========================================================================
 
     return (
+      <ErrorBoundary routeName="CallsScreen">
       <DesktopShell>
         <View style={desktopStyles.container}>
           {/* Setup modal overlay */}
@@ -1105,6 +1109,7 @@ export default function CallsScreen() {
           </ScrollView>
         </View>
       </DesktopShell>
+      </ErrorBoundary>
     );
   }
 
@@ -1113,6 +1118,7 @@ export default function CallsScreen() {
   // =========================================================================
 
   return (
+    <ErrorBoundary routeName="CallsScreen">
     <View style={styles.container}>
       {/* Setup modal */}
       {showSetupModal && (
@@ -1425,6 +1431,7 @@ export default function CallsScreen() {
         </ScrollView>
       )}
     </View>
+    </ErrorBoundary>
   );
 }
 

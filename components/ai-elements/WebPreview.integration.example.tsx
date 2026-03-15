@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { devLog } from '@/lib/devLog';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { WebPreview, AgentActivityEvent } from './WebPreview';
@@ -124,7 +125,7 @@ export function CanvasChatModeExample() {
             activityEvents={activityEvents}
             trustLevel="internal"
             onUrlClick={(url) => {
-              console.log('[Canvas Chat] URL clicked:', url);
+              devLog('[Canvas Chat] URL clicked:', url);
               // In production: orchestrator validates URL before opening
             }}
           />

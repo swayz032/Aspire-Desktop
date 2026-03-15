@@ -6,6 +6,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { formatRelativeTime } from '@/lib/formatters';
 import { SecuritySettings, TrustedDevice } from '@/types/tenant';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const AUTO_LOCK_OPTIONS = [
   { value: 1, label: '1 minute' },
@@ -70,6 +71,7 @@ export default function SecurityScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="SecurityScreen">
     <View style={styles.container}>
       <PageHeader title="Security & Privacy" showBackButton />
       
@@ -141,6 +143,7 @@ export default function SecurityScreen() {
         </View>
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

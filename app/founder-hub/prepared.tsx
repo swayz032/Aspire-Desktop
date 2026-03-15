@@ -6,6 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { navigateTo } from '@/lib/navigation';
 import { supabase } from '@/lib/supabase';
+import { devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const BRIGHT_BG = '#0a0a0c';
 
@@ -102,13 +104,13 @@ export default function PreparedScreen() {
           .limit(50);
 
         if (error) {
-          console.error('Failed to fetch receipts:', error.message);
+          devError('Failed to fetch receipts:', error.message);
           return;
         }
 
         setArtifacts((data || []).map(mapReceiptToArtifact));
       } catch (err) {
-        console.error('Unexpected error fetching receipts:', err);
+        devError('Unexpected error fetching receipts:', err);
       } finally {
         setLoading(false);
       }
@@ -131,6 +133,7 @@ export default function PreparedScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="PreparedScreen">
     <View style={styles.container}>
       <LinearGradient
         colors={['#0a1628', '#0d2847', '#1a4a6e', '#0d3a5c', BRIGHT_BG]}
@@ -213,6 +216,7 @@ export default function PreparedScreen() {
         )}
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

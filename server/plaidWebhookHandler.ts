@@ -45,7 +45,11 @@ async function verifyPlaidWebhook(req: Request): Promise<boolean> {
   const plaidEnv = process.env.PLAID_ENV || 'sandbox';
 
   if (plaidEnv === 'sandbox' || plaidEnv === 'development') {
-    logger.warn('Plaid webhook verification skipped in sandbox/development mode');
+    if (process.env.NODE_ENV === 'production') {
+      logger.error('Plaid env set to sandbox/development in production — rejecting webhook (Law #3: Fail Closed)');
+      return false;
+    }
+    logger.warn('Plaid webhook verification skipped in sandbox/development mode (non-production)');
     return true;
   }
 
@@ -99,7 +103,10 @@ async function verifyPlaidWebhook(req: Request): Promise<boolean> {
     const bodyString = (req as WebhookRequest).rawBody ? (req as WebhookRequest).rawBody!.toString('utf-8') : JSON.stringify(req.body);
     const bodyHash = computeBodyHash(bodyString);
 
-    if (payload.request_body_sha256 !== bodyHash) {
+    const expectedHash = payload.request_body_sha256 || '';
+    const expectedBuf = Buffer.from(expectedHash, 'utf8');
+    const actualBuf = Buffer.from(bodyHash, 'utf8');
+    if (expectedBuf.length !== actualBuf.length || !crypto.timingSafeEqual(expectedBuf, actualBuf)) {
       logger.error('Plaid webhook body hash mismatch');
       return false;
     }
@@ -493,7 +500,18 @@ router.post('/api/plaid/finance-webhook', async (req: Request, res: Response) =>
     logger.info('Plaid webhook processed', { compositeType, eventType, written });
     res.status(200).json({ received: true, handled: true, eventType, written });
   } catch (error: unknown) {
-    logger.error('Plaid webhook processing error', { error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('Plaid webhook processing error', { error: errMsg, correlationId });
+    // Law #2: Failure receipt for webhook processing error
+    await createReceipt({
+      suiteId: getDefaultSuiteId(),
+      officeId: getDefaultOfficeId(),
+      actionType: 'ingest_webhook',
+      inputs: { provider: 'plaid', event: 'processing_error', correlation_id: correlationId },
+      outputs: { error: errMsg },
+      metadata: { status: 'FAILED', provider: 'plaid' },
+    }).catch(receiptErr => logger.error('Failure receipt emission failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' }));
     res.status(200).json({ received: true, error: 'Processing error' });
   }
 });

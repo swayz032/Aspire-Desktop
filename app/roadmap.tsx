@@ -8,6 +8,7 @@ import { getSuiteProfile } from '@/lib/api';
 import { useRouter } from 'expo-router';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // AI workforce — static config, not DB rows (these are governed skill pack workers)
 const STAFF_ROSTER = [
@@ -77,7 +78,8 @@ export default function RoadmapScreen() {
 
   const getStaffColor = (staffName?: string) => {
     const staff = STAFF_ROSTER.find(s => s.name === staffName);
-    return (staff as { avatarColor?: string } | undefined)?.avatarColor || '#3B82F6';
+    return (staff as { avatarColor?: string } | undefined
+    )?.avatarColor || '#3B82F6';
   };
 
   const totalOpportunityValue = (score.hiddenOpportunities ?? []).reduce((sum: number, opp: any) => sum + opp.dollarValue, 0);
@@ -477,13 +479,15 @@ export default function RoadmapScreen() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="RoadmapScreen">
       <DesktopPageWrapper scrollable={false}>
         {content}
       </DesktopPageWrapper>
+      </ErrorBoundary>
     );
   }
 
-  return content;
+  return (<ErrorBoundary routeName="RoadmapScreen">{content}</ErrorBoundary>);
 }
 
 const styles = StyleSheet.create({

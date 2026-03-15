@@ -13,6 +13,7 @@ import { Receipt, ReceiptType, ReceiptStatus } from '@/types/receipts';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { PageHeader } from '@/components/PageHeader';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 /** Map a Supabase receipt row (snake_case) to the UI Receipt type. */
 function mapSupabaseReceipt(row: any): Receipt {
@@ -484,13 +485,15 @@ export default function ReceiptsScreen() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="ReceiptsScreen">
       <DesktopPageWrapper scrollable={false} fullWidth>
         {content}
       </DesktopPageWrapper>
+      </ErrorBoundary>
     );
   }
 
-  return content;
+  return (<ErrorBoundary routeName="ReceiptsScreen">{content}</ErrorBoundary>);
 }
 
 const styles = StyleSheet.create({

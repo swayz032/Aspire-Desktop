@@ -7,6 +7,8 @@ import { Card } from '@/components/ui/Card';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const BRIGHT_BG = '#0a0a0c';
 
@@ -110,12 +112,13 @@ export default function FocusScreen() {
           }));
         }
       } catch (err) {
-        console.error('Failed to load focus insights:', err);
+        devError('Failed to load focus insights:', err);
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return (
+    ) => { mounted = false; };
   }, [area]);
 
   if (loading || tenantLoading) {
@@ -197,6 +200,7 @@ export default function FocusScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="FocusScreen">
     <View style={styles.container}>
       <View style={styles.heroWrapper}>
         <LinearGradient
@@ -332,6 +336,7 @@ export default function FocusScreen() {
         )}
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

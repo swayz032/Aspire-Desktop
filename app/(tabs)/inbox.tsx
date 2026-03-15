@@ -19,8 +19,10 @@ import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice'
 import { useSupabase } from '@/providers';
 import { useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { devError } from '@/lib/devLog';
 import { AgentWidget } from '@/components/canvas/widgets/AgentWidget';
 import type { AgentActivityEvent } from '@/components/chat';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
 const finnAvatar = require('@/assets/avatars/finn.png');
@@ -1160,7 +1162,7 @@ export default function InboxScreen() {
       });
     },
     onError: (error) => {
-      console.error('Eli voice error:', error);
+      devError('Eli voice error:', error);
       setEliVoiceActive(false);
       const msg = error.message || String(error);
       const userLabel =
@@ -1224,7 +1226,7 @@ export default function InboxScreen() {
         await eliVoice.startSession();
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.error('Failed to start Eli voice session:', msg);
+        devError('Failed to start Eli voice session:', msg);
         const title =
           /auth_required/i.test(msg) ? 'Authentication Required'
           : /circuit_open/i.test(msg) ? 'Service Warming Up'
@@ -1292,7 +1294,7 @@ export default function InboxScreen() {
         setMailDetail(data);
       }
     } catch (e) {
-      console.error('Failed to load thread detail', e);
+      devError('Failed to load thread detail', e);
     }
     setMailDetailLoading(false);
   }, [authenticatedFetch, selectedMailboxEmail]);
@@ -1526,7 +1528,8 @@ export default function InboxScreen() {
       if (!cancelled) setLoading(false);
     }
     loadData();
-    return () => { cancelled = true; };
+    return (
+    ) => { cancelled = true; };
   }, [loadMailThreads]);
 
   useEffect(() => {
@@ -1577,7 +1580,7 @@ export default function InboxScreen() {
             setShowMailSetupModal(true);
           }
         } catch (e) {
-          console.error('Mail accounts check failed', e);
+          devError('Mail accounts check failed', e);
         }
         setMailSetupChecked(true);
       })();
@@ -1593,7 +1596,8 @@ export default function InboxScreen() {
         ])
       );
       loop.start();
-      return () => loop.stop();
+      return (
+      ) => loop.stop();
     } else {
       eliMicPulse.setValue(1);
     }
@@ -1877,24 +1881,28 @@ export default function InboxScreen() {
           </View>
         );
       }
-      return <EmptyState filter={currentFilter} searchQuery={searchResults !== null ? searchQuery : undefined} />;
+      return<EmptyState filter={currentFilter} searchQuery={searchResults !== null ? searchQuery : undefined} />;
     }
 
     switch (activeTab) {
       case 'office':
-        return (filteredItems as OfficeItem[]).map(item => (
+        return (filteredItems as OfficeItem[]
+        ).map(item => (
           <OfficeItemCard key={item.id} item={item} selected={selectedId === item.id} onPress={() => handleItemPress(item.id)} />
         ));
       case 'calls':
-        return (filteredItems as CallItem[]).map(item => (
+        return (filteredItems as CallItem[]
+        ).map(item => (
           <CallItemCard key={item.id} item={item} selected={selectedId === item.id} onPress={() => handleItemPress(item.id)} />
         ));
       case 'mail':
-        return (filteredItems as MailThread[]).map(item => (
+        return (filteredItems as MailThread[]
+        ).map(item => (
           <MailItemCard key={item.id} item={item} selected={selectedId === item.id} onPress={() => handleItemPress(item.id)} />
         ));
       case 'contacts':
-        return (filteredItems as Contact[]).map(item => (
+        return (filteredItems as Contact[]
+        ).map(item => (
           <ContactItemCard key={item.id} item={item} selected={selectedId === item.id} onPress={() => handleItemPress(item.id)} />
         ));
     }
@@ -2548,13 +2556,15 @@ export default function InboxScreen() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="InboxScreen">
       <DesktopPageWrapper scrollable={false} fullWidth>
         {content}
       </DesktopPageWrapper>
+      </ErrorBoundary>
     );
   }
 
-  return content;
+  return (<ErrorBoundary routeName="InboxScreen">{content}</ErrorBoundary>);
 }
 
 const fp = StyleSheet.create({

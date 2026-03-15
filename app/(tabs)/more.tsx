@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { useTenant } from '@/providers';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -162,13 +163,15 @@ export default function MoreScreen() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="MoreScreen">
       <DesktopPageWrapper scrollable={false}>
         {content}
       </DesktopPageWrapper>
+      </ErrorBoundary>
     );
   }
 
-  return content;
+  return (<ErrorBoundary routeName="MoreScreen">{content}</ErrorBoundary>);
 }
 
 const styles = StyleSheet.create({

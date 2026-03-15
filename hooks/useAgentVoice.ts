@@ -19,6 +19,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { devLog, devWarn, devError } from '@/lib/devLog';
 import { type AgentName, streamSpeak, getVoiceId, getVoiceConfig } from '../lib/elevenlabs';
 import { TtsWebSocket } from '../lib/tts-websocket';
 import { useDeepgramSTT } from './useDeepgramSTT';
@@ -219,7 +220,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     audioRef.current = audio;
 
     audio.onerror = () => {
-      console.error('[useAgentVoice] Audio playback error for context', contextId);
+      devError('[useAgentVoice] Audio playback error for context', contextId);
       onError?.(new Error('Audio playback failed — response shown in chat.'));
       emitDiagnostic({
         traceId: currentTraceIdRef.current || nextTraceId(),
@@ -241,7 +242,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
     audio.play().catch((playError: unknown) => {
       const errorMsg = playError instanceof Error ? playError.message : String(playError);
-      console.error('[useAgentVoice] Autoplay blocked:', errorMsg);
+      devError('[useAgentVoice] Autoplay blocked:', errorMsg);
       lastAudioUrlRef.current = url;
       onError?.(new Error('Audio blocked by browser — tap to retry.'));
       emitDiagnostic({
@@ -373,7 +374,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       }
     } else {
       if (!stream) {
-        console.error('[useAgentVoice] HTTP TTS stream returned null. Check ELEVENLABS_API_KEY.');
+        devError('[useAgentVoice] HTTP TTS stream returned null. Check ELEVENLABS_API_KEY.');
         onError?.(new Error('Voice synthesis unavailable — response shown in chat.'));
         emitDiagnostic({
           traceId: currentTraceIdRef.current || nextTraceId(),
@@ -518,7 +519,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
                 }
                 options.onActivityEvent?.(event);
               } catch (e) {
-                console.error('[useAgentVoice] Failed to parse SSE event:', e);
+                devError('[useAgentVoice] Failed to parse SSE event:', e);
               }
             };
 
@@ -570,7 +571,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         // Playback triggered by onContextDone callback â†’ playContextAudio()
       } else {
         // Fallback: HTTP streaming TTS
-        console.warn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
+        devWarn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
         await speakViaHttpStream(responseText, traceId);
       }
     } catch (error) {
@@ -766,14 +767,14 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         playContextAudio(contextId);
       },
       onConnected: () => {
-        console.log(`[useAgentVoice] WebSocket TTS connected for ${agent}`);
+        devLog(`[useAgentVoice] WebSocket TTS connected for ${agent}`);
       },
       onError: (err) => {
-        console.error('[useAgentVoice] WebSocket TTS error:', err.message);
+        devError('[useAgentVoice] WebSocket TTS error:', err.message);
         // Don't surface WS errors as user-facing â€” HTTP fallback handles it
       },
       onClose: () => {
-        console.warn('[useAgentVoice] WebSocket TTS disconnected â€” HTTP fallback active');
+        devWarn('[useAgentVoice] WebSocket TTS disconnected â€” HTTP fallback active');
         ttsWsRef.current = null;
       },
     });
@@ -792,7 +793,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       }, 30_000);
     } catch (wsErr) {
       // WebSocket TTS unavailable â€” HTTP streaming fallback will be used
-      console.warn(`[useAgentVoice] WebSocket TTS unavailable for ${agent} â€” using HTTP fallback:`, wsErr);
+      devWarn(`[useAgentVoice] WebSocket TTS unavailable for ${agent} â€” using HTTP fallback:`, wsErr);
       const msg = wsErr instanceof Error ? wsErr.message : String(wsErr);
       emitDiagnostic({
         traceId: currentTraceIdRef.current || nextTraceId(),
@@ -824,7 +825,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       setTimeout(() => {
         if (activeRef.current) updateStatus('listening');
       }, 2000);
-      console.warn(`STT unavailable for ${agent} â€” text input + TTS mode`);
+      devWarn(`STT unavailable for ${agent} â€” text input + TTS mode`);
     }
   }, [agent, updateStatus, stt, playContextAudio, emitDiagnostic, nextTraceId, unlockAudioPlayback, buildTraceHeaders, suiteId]);
 

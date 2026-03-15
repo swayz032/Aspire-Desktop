@@ -11,12 +11,14 @@
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
+import { devLog } from '@/lib/devLog';
 import { WidgetContainer } from '@/components/canvas/WidgetContainer';
 import { QuoteWidget } from '@/components/canvas/widgets/QuoteWidget';
 import { ContractWidget } from '@/components/canvas/widgets/ContractWidget';
 import { CalendarWidget } from '@/components/canvas/widgets/CalendarWidget';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { Colors } from '@/constants/tokens';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function CanvasWidgetsDemo() {
   // Widget positions and sizes (stored in state for drag/resize)
@@ -41,31 +43,32 @@ export default function CanvasWidgetsDemo() {
 
   // Handlers
   const handleSendQuote = (quoteId: string) => {
-    console.log('[Canvas Demo] Send quote:', quoteId);
+    devLog('[Canvas Demo] Send quote:', quoteId);
     // TODO: Integrate with orchestrator for quote sending
   };
 
   const handleViewContract = (contractId: string) => {
-    console.log('[Canvas Demo] View contract:', contractId);
+    devLog('[Canvas Demo] View contract:', contractId);
     // TODO: Navigate to contract detail page
   };
 
   const handleSendReminder = (contractId: string) => {
-    console.log('[Canvas Demo] Send reminder for contract:', contractId);
+    devLog('[Canvas Demo] Send reminder for contract:', contractId);
     // TODO: Integrate with orchestrator for reminder sending
   };
 
   const handleEventClick = (eventId: string) => {
-    console.log('[Canvas Demo] Event clicked:', eventId);
+    devLog('[Canvas Demo] Event clicked:', eventId);
     // TODO: Open event detail modal
   };
 
   const handleAddEvent = () => {
-    console.log('[Canvas Demo] Add new event');
+    devLog('[Canvas Demo] Add new event');
     // TODO: Open event creation modal
   };
 
   return (
+    <ErrorBoundary routeName="CanvasWidgetsDemo">
     <View style={styles.container}>
       {/* Page Header */}
       <View style={styles.header}>
@@ -84,7 +87,7 @@ export default function CanvasWidgetsDemo() {
           size={quoteSize}
           onPositionChange={setQuotePosition}
           onSizeChange={setQuoteSize}
-          onClose={() => console.log('[Canvas Demo] Close Quote widget')}
+          onClose={() => devLog('[Canvas Demo] Close Quote widget')}
         >
           <QuoteWidget
             suiteId={suiteId}
@@ -101,7 +104,7 @@ export default function CanvasWidgetsDemo() {
           size={contractSize}
           onPositionChange={setContractPosition}
           onSizeChange={setContractSize}
-          onClose={() => console.log('[Canvas Demo] Close Contract widget')}
+          onClose={() => devLog('[Canvas Demo] Close Contract widget')}
         >
           <ContractWidget
             suiteId={suiteId}
@@ -119,7 +122,7 @@ export default function CanvasWidgetsDemo() {
           size={calendarSize}
           onPositionChange={setCalendarPosition}
           onSizeChange={setCalendarSize}
-          onClose={() => console.log('[Canvas Demo] Close Calendar widget')}
+          onClose={() => devLog('[Canvas Demo] Close Calendar widget')}
         >
           <CalendarWidget
             suiteId={suiteId}
@@ -148,6 +151,7 @@ export default function CanvasWidgetsDemo() {
         </Text>
       </View>
     </View>
+      </ErrorBoundary>
   );
 }
 

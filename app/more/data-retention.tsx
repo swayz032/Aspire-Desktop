@@ -3,6 +3,7 @@ import { StyleSheet, View, ScrollView, Text } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -49,6 +50,7 @@ export default function DataRetentionScreen() {
   const headerHeight = insets.top + 60;
 
   return (
+    <ErrorBoundary routeName="DataRetentionScreen">
     <View style={styles.container}>
       <PageHeader title="Data Retention & Deletion" showBackButton />
       <ScrollView style={[styles.scroll, { paddingTop: headerHeight }]} contentContainerStyle={styles.scrollContent}>
@@ -153,6 +155,7 @@ export default function DataRetentionScreen() {
 
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

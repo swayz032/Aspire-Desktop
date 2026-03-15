@@ -12,6 +12,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { devLog, devWarn, devError } from '@/lib/devLog';
 import { useSupabase } from '@/providers';
 import {
   showIncomingVideoCall,
@@ -55,7 +56,7 @@ export function useRealtimeConferenceInvitations(): void {
     let disposed = false;
     const channels: ReturnType<typeof supabase.channel>[] = [];
 
-    console.log(`${LOG_PREFIX} Initializing for user ${userId.slice(0, 8)}...`);
+    devLog(`${LOG_PREFIX} Initializing for user ${userId.slice(0, 8)}...`);
 
     // ── 1. Supabase Realtime subscription (primary — instant) ──────────
 
@@ -74,7 +75,7 @@ export function useRealtimeConferenceInvitations(): void {
             filter: `invitee_user_id=eq.${userId}`,
           },
           (payload) => {
-            console.log(`${LOG_PREFIX} Realtime INSERT received:`, payload.new);
+            devLog(`${LOG_PREFIX} Realtime INSERT received:`, payload.new);
             const row = payload.new as Record<string, unknown>;
             if (row.status === 'pending') {
               showIncomingVideoCall(rowToInvitation(row));
@@ -90,7 +91,7 @@ export function useRealtimeConferenceInvitations(): void {
             filter: `invitee_user_id=eq.${userId}`,
           },
           (payload) => {
-            console.log(`${LOG_PREFIX} Realtime UPDATE received:`, payload.new);
+            devLog(`${LOG_PREFIX} Realtime UPDATE received:`, payload.new);
             const row = payload.new as Record<string, unknown>;
             if (row.status !== 'pending') {
               dismissIncomingVideoCall();
@@ -98,7 +99,7 @@ export function useRealtimeConferenceInvitations(): void {
           },
         )
         .subscribe((status, err) => {
-          console.log(`${LOG_PREFIX} Subscription status: ${status}`, err || '');
+          devLog(`${LOG_PREFIX} Subscription status: ${status}`, err || '');
           if (status === 'SUBSCRIBED') {
             realtimeConnected.current = true;
             retryCountRef.current = 0;
@@ -108,13 +109,13 @@ export function useRealtimeConferenceInvitations(): void {
             if (retryCountRef.current < MAX_RETRIES) {
               const delay = RETRY_BASE_MS * Math.pow(2, retryCountRef.current);
               retryCountRef.current++;
-              console.warn(`${LOG_PREFIX} Retry ${retryCountRef.current}/${MAX_RETRIES} in ${delay}ms...`);
+              devWarn(`${LOG_PREFIX} Retry ${retryCountRef.current}/${MAX_RETRIES} in ${delay}ms...`);
               retryTimerRef.current = setTimeout(() => {
                 supabase.removeChannel(channel);
                 createSubscription();
               }, delay);
             } else {
-              console.error(`${LOG_PREFIX} Max retries (${MAX_RETRIES}) reached. Falling back to polling only.`);
+              devError(`${LOG_PREFIX} Max retries (${MAX_RETRIES}) reached. Falling back to polling only.`);
             }
           }
         });
@@ -140,7 +141,7 @@ export function useRealtimeConferenceInvitations(): void {
           .limit(1);
 
         if (error) {
-          console.warn(`${LOG_PREFIX} Poll error:`, error.message);
+          devWarn(`${LOG_PREFIX} Poll error:`, error.message);
           return;
         }
 
@@ -149,12 +150,12 @@ export function useRealtimeConferenceInvitations(): void {
           const currentState = getIncomingVideoCallState();
           // Only show if not already displaying this invitation
           if (!currentState.visible || currentState.invitation?.id !== row.id) {
-            console.log(`${LOG_PREFIX} Poll found pending invitation:`, row.id);
+            devLog(`${LOG_PREFIX} Poll found pending invitation:`, row.id);
             showIncomingVideoCall(rowToInvitation(row));
           }
         }
       } catch (err) {
-        console.warn(`${LOG_PREFIX} Poll exception:`, err);
+        devWarn(`${LOG_PREFIX} Poll exception:`, err);
       }
     };
 
@@ -165,7 +166,7 @@ export function useRealtimeConferenceInvitations(): void {
     // ── Cleanup ────────────────────────────────────────────────────────
 
     return () => {
-      console.log(`${LOG_PREFIX} Cleaning up subscriptions`);
+      devLog(`${LOG_PREFIX} Cleaning up subscriptions`);
       disposed = true;
       realtimeConnected.current = false;
       channels.forEach(ch => supabase.removeChannel(ch));

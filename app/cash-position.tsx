@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { CashPositionContent } from '@/components/finance/CashPositionContent';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function CashPositionScreen() {
   const insets = useSafeAreaInsets();
@@ -32,18 +33,22 @@ export default function CashPositionScreen() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="CashPositionScreen">
       <DesktopPageWrapper scrollable={false}>
         <View style={styles.container}>
           {content}
         </View>
       </DesktopPageWrapper>
+      </ErrorBoundary>
     );
   }
 
   return (
+    <ErrorBoundary routeName="CashPositionScreen">
     <View style={styles.container}>
       {content}
     </View>
+      </ErrorBoundary>
   );
 }
 

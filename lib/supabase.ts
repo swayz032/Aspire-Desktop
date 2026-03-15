@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { allowDevSupabaseBypass, hasSupabaseWebConfig, isProductionRuntime } from './supabaseRuntime';
+import { devWarn } from '@/lib/devLog';
 
 const SUPABASE_WEB_CONFIGURED = hasSupabaseWebConfig();
 const DEV_BYPASS = allowDevSupabaseBypass();
@@ -22,7 +23,7 @@ if (!SUPABASE_WEB_CONFIGURED && !DEV_BYPASS) {
 }
 
 if (DEV_BYPASS) {
-  console.warn(
+  devWarn(
     'Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY — Supabase client will use placeholder values (dev bypass mode).',
   );
 }

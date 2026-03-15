@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { AppearanceSettings } from '@/types/tenant';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 type Theme = 'dark' | 'light' | 'system';
 type FontSize = 'small' | 'medium' | 'large';
@@ -43,6 +44,7 @@ export default function AppearanceScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="AppearanceScreen">
     <View style={styles.container}>
       <PageHeader title="Appearance" showBackButton />
       
@@ -120,6 +122,7 @@ export default function AppearanceScreen() {
         </View>
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

@@ -16,6 +16,7 @@ import { ChatDrawer } from '@/components/session/ChatDrawer';
 import { BottomSheet } from '@/components/session/BottomSheet';
 import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const MENU_OPTIONS = [
   { id: 'flip', label: 'Flip Camera', icon: 'camera-reverse' as const },
@@ -52,14 +53,16 @@ export default function VideoSession() {
     const timer = setInterval(() => {
       setDuration(d => d + 1);
     }, 1000);
-    return () => clearInterval(timer);
+    return (
+    ) => clearInterval(timer);
   }, []);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setConnectionState('connected');
     }, 2500);
-    return () => clearTimeout(timer);
+    return (
+    ) => clearTimeout(timer);
   }, []);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -354,6 +357,7 @@ export default function VideoSession() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="VideoSession">
       <FullscreenSessionShell showBackButton={true} backLabel="Exit Video">
         <View style={desktopStyles.container}>
           <Toast 
@@ -693,10 +697,11 @@ export default function VideoSession() {
           />
         </View>
       </FullscreenSessionShell>
+      </ErrorBoundary>
     );
   }
 
-  return videoContent;
+  return (<ErrorBoundary routeName="VideoSession">{videoContent}</ErrorBoundary>);
 }
 
 const desktopStyles = StyleSheet.create({

@@ -11,8 +11,10 @@
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { devLog } from '@/lib/devLog';
 import { WidgetContainer } from '@/components/canvas/WidgetContainer';
 import { CanvasTokens } from '@/constants/canvas.tokens';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function CanvasDemoScreen() {
   const [widgets, setWidgets] = useState([
@@ -34,17 +36,17 @@ export default function CanvasDemoScreen() {
     setWidgets((prev) =>
       prev.map((w) => (w.id === id ? { ...w, position } : w))
     );
-    console.log(`Widget ${id} moved to:`, position);
+    devLog(`Widget ${id} moved to:`, position);
   };
 
   const handleSizeChange = (id: string, size: { width: number; height: number }) => {
     setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, size } : w)));
-    console.log(`Widget ${id} resized to:`, size);
+    devLog(`Widget ${id} resized to:`, size);
   };
 
   const handleClose = (id: string) => {
     setWidgets((prev) => prev.filter((w) => w.id !== id));
-    console.log(`Widget ${id} closed`);
+    devLog(`Widget ${id} closed`);
   };
 
   const addWidget = () => {
@@ -58,6 +60,7 @@ export default function CanvasDemoScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="CanvasDemoScreen">
     <View style={styles.container}>
       {/* Canvas Background */}
       <View style={styles.canvas}>
@@ -108,6 +111,7 @@ export default function CanvasDemoScreen() {
         </Text>
       </View>
     </View>
+      </ErrorBoundary>
   );
 }
 

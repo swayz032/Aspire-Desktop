@@ -514,7 +514,18 @@ router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
     logger.info('QBO webhook processed', { totalWritten });
     res.status(200).json({ received: true, handled: true, written: totalWritten });
   } catch (error: unknown) {
-    logger.error('QBO webhook processing error', { error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : 'unknown';
+    logger.error('QBO webhook processing error', { error: errMsg, correlationId });
+    // Law #2: Failure receipt for webhook processing error
+    await createReceipt({
+      suiteId: getDefaultSuiteId(),
+      officeId: getDefaultOfficeId(),
+      actionType: 'ingest_webhook',
+      inputs: { provider: 'qbo', event: 'processing_error', correlation_id: correlationId },
+      outputs: { error: errMsg },
+      metadata: { status: 'FAILED', provider: 'qbo' },
+    }).catch(receiptErr => logger.error('Failure receipt emission failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' }));
     res.status(200).json({ received: true, error: 'Processing error' });
   }
 });

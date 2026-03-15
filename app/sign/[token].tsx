@@ -24,6 +24,7 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -174,7 +175,8 @@ export default function SigningPage() {
       }
     }, COMPLETION_POLL_INTERVAL);
 
-    return () => {
+    return (
+    ) => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [pageState, token]);
@@ -197,7 +199,8 @@ export default function SigningPage() {
     };
 
     window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
+    return (
+    ) => window.removeEventListener('message', handler);
   }, [pageState]);
 
   // ── Completion Handler ─────────────────────────────────────────────────────
@@ -277,7 +280,7 @@ export default function SigningPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (pageState === 'loading') {
-    return <LoadingState />;
+    return<LoadingState />;
   }
 
   if (pageState === 'expired') {
@@ -356,6 +359,7 @@ export default function SigningPage() {
     : null;
 
   return (
+    <ErrorBoundary routeName="SigningPage">
     <Animated.View
       style={[
         styles.fullScreen,
@@ -386,6 +390,7 @@ export default function SigningPage() {
         />
       )}
     </Animated.View>
+      </ErrorBoundary>
   );
 }
 

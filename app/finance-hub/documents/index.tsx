@@ -27,6 +27,7 @@ import {
   CONTRACT_STATUS,
   type ContractStatus,
 } from '@/components/finance/documents';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const webOnly = (styles: Record<string, unknown>) => Platform.OS === 'web' ? styles : {};
 
@@ -430,6 +431,7 @@ export default function DocumentLibraryPage() {
   );
 
   return (
+    <ErrorBoundary routeName="DocumentLibraryPage">
     <FinanceHubShell>
       <View style={styles.page}>
         {/* Header */}
@@ -612,6 +614,7 @@ export default function DocumentLibraryPage() {
         )}
       </View>
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

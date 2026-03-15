@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 import { PayrollSubTabProps, GustoEmployee, GustoTimeOffPolicy, GustoTimeOffRequest, GustoPTO } from './types';
+import { devError } from '@/lib/devLog';
 
 function formatStatusLabel(status: string): string {
   if (!status) return '—';
@@ -73,7 +74,7 @@ export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }:
         const data = await res.json();
         setRequests(Array.isArray(data) ? data : []);
       } catch (e: unknown) {
-        console.error('Failed to load time-off requests:', e);
+        devError('Failed to load time-off requests:', e);
       } finally {
         setRequestsLoading(false);
       }

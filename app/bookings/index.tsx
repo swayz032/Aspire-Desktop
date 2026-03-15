@@ -7,6 +7,9 @@ import { Colors, Typography, BorderRadius, Spacing } from '@/constants/tokens';
 import { CARD_BG } from '@/constants/cardPatterns';
 import { useRouter } from 'expo-router';
 import { navigateTo } from '@/lib/navigation';
+import { devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { validateForm, serviceFormSchema } from '@/lib/validation';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
 const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -138,7 +141,7 @@ export default function BookingsPage() {
       }
       if (bufferRes.ok) setBufferSettings(await bufferRes.json());
     } catch (error) {
-      console.error('Error loading data:', error);
+      devError('Error loading data:', error);
     }
     setLoading(false);
   };
@@ -193,7 +196,7 @@ export default function BookingsPage() {
       });
       setUser(prev => prev ? { ...prev, accentColor: color } : null);
     } catch (error) {
-      console.error('Error updating accent color:', error);
+      devError('Error updating accent color:', error);
     }
   };
 
@@ -234,7 +237,7 @@ export default function BookingsPage() {
 
       setUser(prev => prev ? { ...prev, logoUrl: objectPath } : null);
     } catch (error) {
-      console.error('Error uploading logo:', error);
+      devError('Error uploading logo:', error);
     }
     setUploadingLogo(false);
   };
@@ -257,7 +260,19 @@ export default function BookingsPage() {
     setShowServiceModal(true);
   };
 
+  const [serviceFieldErrors, setServiceFieldErrors] = useState<Record<string, string>>({});
+
   const saveService = async () => {
+    const validation = validateForm(serviceFormSchema, {
+      name: serviceForm.name,
+      duration: serviceForm.duration,
+      price: serviceForm.price,
+    });
+    if (!validation.success) {
+      setServiceFieldErrors(validation.errors);
+      return;
+    }
+    setServiceFieldErrors({});
     setSaving(true);
     try {
       const payload = {
@@ -285,7 +300,7 @@ export default function BookingsPage() {
       await loadData();
       setShowServiceModal(false);
     } catch (error) {
-      console.error('Error saving service:', error);
+      devError('Error saving service:', error);
     }
     setSaving(false);
   };
@@ -295,7 +310,7 @@ export default function BookingsPage() {
       await fetch(`${API_BASE}/api/services/${serviceId}`, { method: 'DELETE' });
       await loadData();
     } catch (error) {
-      console.error('Error deleting service:', error);
+      devError('Error deleting service:', error);
     }
   };
 
@@ -309,7 +324,7 @@ export default function BookingsPage() {
       });
       setShowAvailabilityModal(false);
     } catch (error) {
-      console.error('Error saving availability:', error);
+      devError('Error saving availability:', error);
     }
     setSaving(false);
   };
@@ -324,7 +339,7 @@ export default function BookingsPage() {
       });
       setShowBufferModal(false);
     } catch (error) {
-      console.error('Error saving buffer settings:', error);
+      devError('Error saving buffer settings:', error);
     }
     setSaving(false);
   };
@@ -340,6 +355,7 @@ export default function BookingsPage() {
   );
 
   return (
+    <ErrorBoundary routeName="BookingsPage">
     <DesktopShell>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
@@ -618,14 +634,15 @@ export default function BookingsPage() {
             </View>
             <View style={styles.modalBody}>
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Service Name</Text>
+                <Text style={styles.formLabel}>Service Name *</Text>
                 <TextInput
-                  style={styles.formInput}
+                  style={[styles.formInput, serviceFieldErrors.name ? { borderColor: '#ef4444' } : undefined]}
                   value={serviceForm.name}
                   onChangeText={(text) => setServiceForm(prev => ({ ...prev, name: text }))}
                   placeholder="e.g., Strategy Consultation"
                   placeholderTextColor={Colors.text.muted}
                 />
+                {serviceFieldErrors.name && <Text style={styles.fieldError}>{serviceFieldErrors.name}</Text>}
               </View>
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Description</Text>
@@ -640,26 +657,28 @@ export default function BookingsPage() {
               </View>
               <View style={styles.formRow}>
                 <View style={[styles.formGroup, { flex: 1 }]}>
-                  <Text style={styles.formLabel}>Duration (min)</Text>
+                  <Text style={styles.formLabel}>Duration (min) *</Text>
                   <TextInput
-                    style={styles.formInput}
+                    style={[styles.formInput, serviceFieldErrors.duration ? { borderColor: '#ef4444' } : undefined]}
                     value={serviceForm.duration}
                     onChangeText={(text) => setServiceForm(prev => ({ ...prev, duration: text }))}
                     keyboardType="numeric"
                     placeholder="60"
                     placeholderTextColor={Colors.text.muted}
                   />
+                  {serviceFieldErrors.duration && <Text style={styles.fieldError}>{serviceFieldErrors.duration}</Text>}
                 </View>
                 <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
                   <Text style={styles.formLabel}>Price ($)</Text>
                   <TextInput
-                    style={styles.formInput}
+                    style={[styles.formInput, serviceFieldErrors.price ? { borderColor: '#ef4444' } : undefined]}
                     value={serviceForm.price}
                     onChangeText={(text) => setServiceForm(prev => ({ ...prev, price: text }))}
                     keyboardType="numeric"
                     placeholder="0"
                     placeholderTextColor={Colors.text.muted}
                   />
+                  {serviceFieldErrors.price && <Text style={styles.fieldError}>{serviceFieldErrors.price}</Text>}
                 </View>
               </View>
             </View>
@@ -790,6 +809,7 @@ export default function BookingsPage() {
         </View>
       </Modal>
     </DesktopShell>
+      </ErrorBoundary>
   );
 }
 
@@ -866,6 +886,7 @@ const styles = StyleSheet.create({
   formInput: { backgroundColor: Colors.surface.input, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: 14, paddingVertical: 12, color: Colors.text.primary, fontSize: 15 },
   formTextArea: { minHeight: 80, textAlignVertical: 'top' },
   formRow: { flexDirection: 'row' },
+  fieldError: { color: '#ef4444', fontSize: 12, marginTop: 4 },
   cancelButton: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.border.subtle },
   cancelButtonText: { ...Typography.captionMedium, color: Colors.text.secondary },
   saveButton: { backgroundColor: Colors.accent.cyan, paddingHorizontal: 24, paddingVertical: 12, borderRadius: BorderRadius.md, minWidth: 80, alignItems: 'center' },

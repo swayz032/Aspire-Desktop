@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Button } from 'react-native';
+import { devLog } from '@/lib/devLog';
 import { WebPreview, AgentActivityEvent } from './WebPreview';
 
 export function WebPreviewExample() {
@@ -75,7 +76,7 @@ export function WebPreviewExample() {
         activityEvents={events}
         trustLevel="internal"
         onUrlClick={(url) => {
-          console.log('URL clicked:', url);
+          devLog('URL clicked:', url);
         }}
       />
       <View style={styles.controls}>

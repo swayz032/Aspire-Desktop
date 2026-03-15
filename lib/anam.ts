@@ -27,6 +27,7 @@
  */
 
 import { createClient, AnamEvent } from '@anam-ai/js-sdk';
+import { devLog, devWarn } from '@/lib/devLog';
 
 export type AnamClientInstance = ReturnType<typeof createClient>;
 
@@ -229,10 +230,10 @@ async function bindAnamSession(
     });
     if (!resp.ok) {
       const detail = await resp.text().catch(() => '');
-      console.warn(`[Anam ${persona}] Session bind failed (${resp.status})`, detail.slice(0, 180));
+      devWarn(`[Anam ${persona}] Session bind failed (${resp.status})`, detail.slice(0, 180));
     }
   } catch (error) {
-    console.warn(`[Anam ${persona}] Failed to bind session context`, error);
+    devWarn(`[Anam ${persona}] Failed to bind session context`, error);
   }
 }
 
@@ -284,7 +285,7 @@ export async function streamResponseToAvatar(
     }
     talkStream.endMessage();
   } catch (err) {
-    console.warn('[Anam] Talk stream error, falling back:', err);
+    devWarn('[Anam] Talk stream error, falling back:', err);
     if (talkFn) talkFn.call(client, responseText);
   }
 }
@@ -326,26 +327,26 @@ export function setupAllEventListeners(
 
   // Connection events
   client.addListener(AnamEvent.CONNECTION_ESTABLISHED, () => {
-    console.log(`[Anam ${historyTarget}] Connection established`);
+    devLog(`[Anam ${historyTarget}] Connection established`);
     options?.onConnectionEstablished?.();
   });
 
   client.addListener(AnamEvent.VIDEO_PLAY_STARTED, () => {
-    console.log(`[Anam ${historyTarget}] Video play started`);
+    devLog(`[Anam ${historyTarget}] Video play started`);
     options?.onVideoStarted?.();
   });
 
   client.addListener(AnamEvent.CONNECTION_CLOSED, (reason: unknown, details: unknown) => {
     const reasonText = typeof reason === 'string' ? reason : undefined;
     const detailsText = typeof details === 'string' ? details : undefined;
-    console.log(`[Anam ${historyTarget}] Connection closed`, reasonText ? { reason: reasonText } : undefined);
+    devLog(`[Anam ${historyTarget}] Connection closed`, reasonText ? { reason: reasonText } : undefined);
     options?.onConnectionClosed?.(reasonText, detailsText);
   });
 
   // Session ready
   client.addListener(AnamEvent.SESSION_READY, (event: unknown) => {
     const sessionId = extractSessionId(event as AnamSessionReadyEvent);
-    console.log(`[Anam ${historyTarget}] Session ready`, sessionId ? { sessionId } : undefined);
+    devLog(`[Anam ${historyTarget}] Session ready`, sessionId ? { sessionId } : undefined);
     options?.onSessionReady?.(sessionId ?? undefined);
   });
 
@@ -359,24 +360,24 @@ export function setupAllEventListeners(
 
   // Interruption
   client.addListener(AnamEvent.TALK_STREAM_INTERRUPTED, () => {
-    console.log(`[Anam ${historyTarget}] Talk stream interrupted`);
+    devLog(`[Anam ${historyTarget}] Talk stream interrupted`);
     options?.onInterrupted?.();
   });
 
   // Audio events
   client.addListener(AnamEvent.INPUT_AUDIO_STREAM_STARTED, () => {
-    console.log(`[Anam ${historyTarget}] Input audio stream started`);
+    devLog(`[Anam ${historyTarget}] Input audio stream started`);
   });
 
   client.addListener(AnamEvent.AUDIO_STREAM_STARTED, () => {
-    console.log(`[Anam ${historyTarget}] Audio stream started`);
+    devLog(`[Anam ${historyTarget}] Audio stream started`);
   });
 
   // Warnings
   client.addListener(AnamEvent.SERVER_WARNING, (event: unknown) => {
     const warningEvent = event as AnamServerWarningEvent;
     const msg = warningEvent?.message || 'Unknown warning';
-    console.warn(`[Anam ${historyTarget}] Server warning: ${msg}`);
+    devWarn(`[Anam ${historyTarget}] Server warning: ${msg}`);
     options?.onWarning?.(msg);
   });
 }

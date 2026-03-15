@@ -8,7 +8,9 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { formatRelativeTime } from '@/lib/formatters';
 import { supabase } from '@/lib/supabase';
+import { devWarn } from '@/lib/devLog';
 import { Integration, IntegrationStatus } from '@/types/integrations';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const STATUS_COLORS: Record<IntegrationStatus, { bg: string; text: string }> = {
   'Connected': { bg: 'rgba(34, 197, 94, 0.2)', text: '#4ADE80' },
@@ -116,7 +118,7 @@ export default function IntegrationsScreen() {
         }));
         setIntegrations(mapped);
       } catch (e) {
-        console.warn('Failed to load integrations:', e);
+        devWarn('Failed to load integrations:', e);
       } finally {
         setLoading(false);
       }
@@ -133,6 +135,7 @@ export default function IntegrationsScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="IntegrationsScreen">
     <View style={styles.container}>
       <PageHeader title="Integrations" showBackButton />
       
@@ -144,6 +147,12 @@ export default function IntegrationsScreen() {
               <SkeletonCard key={i} />
             ))}
           </>
+        ) : integrations.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="cloud-outline" size={48} color={Colors.text.muted} />
+            <Text style={styles.emptyTitle}>No integrations configured</Text>
+            <Text style={styles.emptySubtitle}>Connect your tools and services to get started</Text>
+          </View>
         ) : (
         <>
         <Text style={styles.subtitle}>{integrations.length} integrations configured</Text>
@@ -178,6 +187,7 @@ export default function IntegrationsScreen() {
         )}
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 
@@ -320,5 +330,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background.tertiary,
     borderRadius: 4,
     marginBottom: Spacing.lg,
+  },
+  emptyState: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: 80,
+    gap: Spacing.sm,
+  },
+  emptyTitle: {
+    ...Typography.body,
+    color: Colors.text.secondary,
+    fontWeight: '600' as const,
+    marginTop: Spacing.md,
+  },
+  emptySubtitle: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    textAlign: 'center' as const,
+    maxWidth: 280,
   },
 });

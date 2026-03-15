@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 type PolicyLink = {
   id: string;
@@ -77,6 +78,7 @@ export default function PoliciesScreen() {
   const headerHeight = insets.top + 60;
 
   return (
+    <ErrorBoundary routeName="PoliciesScreen">
     <View style={styles.container}>
       <PageHeader title="Policies & Legal" showBackButton />
 
@@ -103,6 +105,7 @@ export default function PoliciesScreen() {
         </View>
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

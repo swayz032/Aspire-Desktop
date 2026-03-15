@@ -21,6 +21,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { playNoteSaveSound, playClickSound } from '@/lib/sounds';
+import { devWarn } from '@/lib/devLog';
 
 // ---------------------------------------------------------------------------
 // Premium color palette
@@ -142,7 +143,7 @@ export function StickyNoteWidget({
 
         if (error && error.code !== 'PGRST116') {
           // PGRST116 = no rows found — create a new one
-          console.warn('[StickyNote] load error:', error.message);
+          devWarn('[StickyNote] load error:', error.message);
         }
 
         if (data) {
@@ -187,7 +188,7 @@ export function StickyNoteWidget({
         }
         playNoteSaveSound();
       } catch (e) {
-        console.warn('[StickyNote] save error:', e);
+        devWarn('[StickyNote] save error:', e);
       }
     },
     [noteId, suiteId, officeId],

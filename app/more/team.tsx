@@ -8,6 +8,8 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { supabase } from '@/lib/supabase';
 import { TeamMember } from '@/types/team';
+import { devWarn } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function SkeletonCard() {
   return (
@@ -95,7 +97,7 @@ export default function TeamScreen() {
           })));
         }
       } catch (e) {
-        console.warn('Failed to fetch team members:', e);
+        devWarn('Failed to fetch team members:', e);
       } finally {
         setLoading(false);
       }
@@ -108,7 +110,7 @@ export default function TeamScreen() {
       await supabase.from('suite_members').update({ enabled }).eq('id', id);
       setMembers(prev => prev.map(m => m.id === id ? { ...m, enabled } : m));
     } catch (e) {
-      console.warn('Failed to toggle member:', e);
+      devWarn('Failed to toggle member:', e);
     }
   };
 
@@ -121,6 +123,7 @@ export default function TeamScreen() {
   const enabledAI = aiMembers.filter(m => m.enabled);
 
   return (
+    <ErrorBoundary routeName="TeamScreen">
     <View style={styles.container}>
       <PageHeader title="Team Members" showBackButton />
       
@@ -171,6 +174,7 @@ export default function TeamScreen() {
         )}
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

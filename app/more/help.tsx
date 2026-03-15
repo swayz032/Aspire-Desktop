@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { FAQArticle } from '@/types/support';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function FAQItem({ article, isExpanded, onToggle }: { article: FAQArticle; isExpanded: boolean; onToggle: () => void }) {
   return (
@@ -75,6 +76,7 @@ export default function HelpScreen() {
   const categories = [...new Set(articles.map(a => a.category))];
 
   return (
+    <ErrorBoundary routeName="HelpScreen">
     <View style={styles.container}>
       <PageHeader title="Help Center" showBackButton />
       
@@ -114,6 +116,7 @@ export default function HelpScreen() {
         ))}
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

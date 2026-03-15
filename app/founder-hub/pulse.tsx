@@ -6,6 +6,8 @@ import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface PulseItem {
   id: string;
@@ -94,12 +96,13 @@ export default function PulseScreen() {
           }));
         }
       } catch (err) {
-        console.error('Failed to load pulse items:', err);
+        devError('Failed to load pulse items:', err);
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return (
+    ) => { mounted = false; };
   }, []);
 
   const getCategoryColor = (category: string) => {
@@ -213,6 +216,7 @@ export default function PulseScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="PulseScreen">
     <HubPageShell rightRail={rightRail}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
@@ -322,6 +326,7 @@ export default function PulseScreen() {
         </Pressable>
       </View>
     </HubPageShell>
+      </ErrorBoundary>
   );
 }
 

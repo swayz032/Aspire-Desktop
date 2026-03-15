@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { validateForm, clientFormSchema } from '@/lib/validation';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -80,6 +82,7 @@ export default function ClientsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -105,7 +108,8 @@ export default function ClientsPage() {
   const filtered = customers.filter(c => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
-    return (c.name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q);
+    return (c.name || ''
+    ).toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q);
   });
 
   const totalClients = customers.length;
@@ -147,10 +151,18 @@ export default function ClientsPage() {
   };
 
   const handleAdd = async () => {
-    if (!form.email.trim()) {
-      setFormError('Email is required');
+    const validation = validateForm(clientFormSchema, {
+      email: form.email.trim(),
+      name: form.name.trim() || undefined,
+      phone: form.phone.trim() || undefined,
+      description: form.description.trim() || undefined,
+    });
+    if (!validation.success) {
+      setFieldErrors(validation.errors);
+      setFormError(Object.values(validation.errors)[0]);
       return;
     }
+    setFieldErrors({});
     setSaving(true);
     setFormError(null);
     try {
@@ -190,10 +202,18 @@ export default function ClientsPage() {
 
   const handleUpdate = async () => {
     if (!selectedClient) return;
-    if (!form.email.trim()) {
-      setFormError('Email is required');
+    const validation = validateForm(clientFormSchema, {
+      email: form.email.trim(),
+      name: form.name.trim() || undefined,
+      phone: form.phone.trim() || undefined,
+      description: form.description.trim() || undefined,
+    });
+    if (!validation.success) {
+      setFieldErrors(validation.errors);
+      setFormError(Object.values(validation.errors)[0]);
       return;
     }
+    setFieldErrors({});
     setSaving(true);
     setFormError(null);
     try {
@@ -272,7 +292,7 @@ export default function ClientsPage() {
     <>
       <Text style={s.fieldLabel}>Email *</Text>
       <TextInput
-        style={s.textInput}
+        style={[s.textInput, fieldErrors.email ? { borderColor: '#ef4444' } : undefined]}
         value={form.email}
         onChangeText={v => setForm(f => ({ ...f, email: v }))}
         placeholder="client@example.com"
@@ -280,6 +300,7 @@ export default function ClientsPage() {
         keyboardType="email-address"
         autoCapitalize="none"
       />
+      {fieldErrors.email && <Text style={s.fieldErrorText}>{fieldErrors.email}</Text>}
       <Text style={s.fieldLabel}>Name</Text>
       <TextInput
         style={s.textInput}
@@ -362,6 +383,7 @@ export default function ClientsPage() {
   );
 
   return (
+    <ErrorBoundary routeName="ClientsPage">
     <FinanceHubShell>
       <View style={s.page}>
         <View style={s.headerRow}>
@@ -732,6 +754,7 @@ export default function ClientsPage() {
         </Modal>
       </View>
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 
@@ -1005,6 +1028,12 @@ const s = StyleSheet.create({
     color: '#ef4444',
     fontSize: 13,
     flex: 1,
+  },
+  fieldErrorText: {
+    color: '#ef4444',
+    fontSize: 12,
+    marginTop: 4,
+    marginBottom: 8,
   },
   cancelBtn: {
     paddingHorizontal: 18,

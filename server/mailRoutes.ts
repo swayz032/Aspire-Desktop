@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { logger } from './logger';
 import type { AuthenticatedRequest } from './types';
 import { createTrustSpineReceipt } from './receiptService';
@@ -76,7 +77,7 @@ router.get('/api/mail/threads', async (req: Request, res: Response) => {
     if (msg.includes('setup required') || msg.includes('No Google OAuth')) {
       return res.status(401).json({ error: 'Gmail not connected', setupRequired: true });
     }
-    res.status(500).json({ error: 'Failed to list threads' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -100,8 +101,9 @@ router.get('/api/mail/threads/:id', async (req: Request, res: Response) => {
 
     res.json(detail);
   } catch (error: unknown) {
-    logger.error('Mail thread detail error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to load thread' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Mail thread detail error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -124,8 +126,9 @@ router.get('/api/mail/messages/:id', async (req: Request, res: Response) => {
 
     res.json(gmailMsg);
   } catch (error: unknown) {
-    logger.error('Mail message error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to load message' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Mail message error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -175,7 +178,7 @@ router.post('/api/mail/send', async (req: Request, res: Response) => {
         result: { error: 'send_failed' },
       }).catch(() => {});
     }
-    res.status(500).json({ error: 'Failed to send message' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -206,8 +209,9 @@ router.post('/api/mail/draft', async (req: Request, res: Response) => {
 
     res.json({ draftId: result.id });
   } catch (error: unknown) {
-    logger.error('Mail draft error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to save draft' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Mail draft error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -219,8 +223,9 @@ router.get('/api/mail/labels', async (req: Request, res: Response) => {
     const labels = await listLabels(token);
     res.json({ labels });
   } catch (error: unknown) {
-    logger.error('Mail labels error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to load labels' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Mail labels error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -243,8 +248,9 @@ router.get('/api/mail/attachments/:messageId/:attachmentId', async (req: Request
     res.setHeader('Content-Length', data.length);
     res.send(data);
   } catch (error: unknown) {
-    logger.error('Mail attachment download error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to download attachment' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Mail attachment download error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 

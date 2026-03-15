@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import type { AuthenticatedRequest } from './types';
 import Stripe from 'stripe';
+import crypto from 'crypto';
 import { createTrustSpineReceipt } from './receiptService';
 import { logger } from './logger';
 import { saveToken, loadToken, deleteToken } from './tokenStore';
@@ -117,7 +118,7 @@ router.post('/api/stripe-connect/create-account', async (req: Request, res: Resp
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -145,7 +146,7 @@ router.post('/api/stripe-connect/account-link', async (req: Request, res: Respon
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -179,7 +180,7 @@ router.get('/api/stripe-connect/authorize', async (req: Request, res: Response) 
       { method: 'GET', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -216,7 +217,7 @@ router.post('/api/stripe-connect/disconnect', async (req: Request, res: Response
   res.json({ success: true });
 });
 
-router.get('/api/stripe-connect/account', async (_req: Request, res: Response) => {
+router.get('/api/stripe-connect/account', async (req: Request, res: Response) => {
   try {
     if (!connectedAccountId) {
       return res.status(400).json({ error: 'No connected account' });
@@ -224,8 +225,14 @@ router.get('/api/stripe-connect/account', async (_req: Request, res: Response) =
     const account = await stripe.accounts.retrieve(connectedAccountId);
     res.json(account);
   } catch (error: unknown) {
-    logger.error('Stripe account retrieve error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Internal server error' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Stripe account retrieve error', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.account.retrieve', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -237,9 +244,14 @@ router.post('/api/stripe-connect/login-link', async (req: Request, res: Response
     const loginLink = await stripe.accounts.createLoginLink(connectedAccountId);
     res.json({ url: loginLink.url });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Stripe login link error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Stripe login link error', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.login_link.create', 'FAILED',
+      { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -256,13 +268,18 @@ router.get('/api/stripe/invoices', async (req: Request, res: Response) => {
     const invoices = await stripe.invoices.list(params);
     res.json({ invoices: invoices.data, has_more: invoices.has_more });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Stripe invoices error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch invoices' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Stripe invoices error', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.invoices.list', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
-router.get('/api/stripe/invoices/summary', async (_req: Request, res: Response) => {
+router.get('/api/stripe/invoices/summary', async (req: Request, res: Response) => {
   try {
     const [draft, open, paid, voidInv] = await Promise.all([
       stripe.invoices.list({ status: 'draft', limit: 100 }),
@@ -296,9 +313,14 @@ router.get('/api/stripe/invoices/summary', async (_req: Request, res: Response) 
       avg_payment_days: avgPaymentDays,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Invoice summary error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch invoice summary' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Invoice summary error', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.invoices.summary', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -308,8 +330,14 @@ router.get('/api/stripe/invoices/:id', async (req: Request, res: Response) => {
     const invoice = await stripe.invoices.retrieve(id);
     res.json(invoice);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: 'Failed to fetch invoice' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Stripe invoice retrieve error', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.invoice.retrieve', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN', invoice_id: req.params.id },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -363,7 +391,7 @@ router.post('/api/stripe/invoices', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -383,7 +411,7 @@ router.post('/api/stripe/invoices/:id/send', async (req: Request, res: Response)
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', invoice_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -403,7 +431,7 @@ router.post('/api/stripe/invoices/:id/finalize', async (req: Request, res: Respo
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', invoice_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -423,7 +451,7 @@ router.post('/api/stripe/invoices/:id/void', async (req: Request, res: Response)
       { method: 'POST', path: req.path, risk_tier: 'RED', invoice_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -443,7 +471,7 @@ router.delete('/api/stripe/invoices/:id', async (req: Request, res: Response) =>
       { method: 'DELETE', path: req.path, risk_tier: 'RED', invoice_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -458,9 +486,14 @@ router.get('/api/stripe/quotes', async (req: Request, res: Response) => {
     const quotes = await stripe.quotes.list(params);
     res.json({ quotes: quotes.data, has_more: quotes.has_more });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Stripe quotes error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch quotes' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Stripe quotes error', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.quotes.list', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -508,7 +541,7 @@ router.post('/api/stripe/quotes', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -528,7 +561,7 @@ router.post('/api/stripe/quotes/:id/finalize', async (req: Request, res: Respons
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', quote_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -548,7 +581,7 @@ router.post('/api/stripe/quotes/:id/accept', async (req: Request, res: Response)
       { method: 'POST', path: req.path, risk_tier: 'RED', quote_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -568,7 +601,7 @@ router.post('/api/stripe/quotes/:id/cancel', async (req: Request, res: Response)
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', quote_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -584,8 +617,14 @@ router.get('/api/stripe/quotes/:id/pdf', async (req: Request, res: Response) => 
     }
     res.send(Buffer.concat(chunks));
   } catch (error: unknown) {
-    logger.error('Stripe quote PDF error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Internal server error' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Stripe quote PDF error', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.quote.pdf', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN', quote_id: req.params.id },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -596,8 +635,15 @@ router.get('/api/stripe/customers', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 25;
     const customers = await stripe.customers.list({ limit });
     res.json({ customers: customers.data, has_more: customers.has_more });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch customers' });
+  } catch (error: unknown) {
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to fetch customers', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.customers.list', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -607,8 +653,14 @@ router.get('/api/stripe/customers/:id', async (req: Request, res: Response) => {
     const customer = await stripe.customers.retrieve(id);
     res.json(customer);
   } catch (error: unknown) {
-    logger.error('Stripe customer retrieve error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Internal server error' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Stripe customer retrieve error', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.customer.retrieve', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN', customer_id: req.params.id },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -632,7 +684,7 @@ router.post('/api/stripe/customers', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -656,7 +708,7 @@ router.put('/api/stripe/customers/:id', async (req: Request, res: Response) => {
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', customer_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -676,7 +728,7 @@ router.delete('/api/stripe/customers/:id', async (req: Request, res: Response) =
       { method: 'DELETE', path: req.path, risk_tier: 'RED', customer_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -687,8 +739,15 @@ router.get('/api/stripe/payment-intents', async (req: Request, res: Response) =>
     const limit = parseInt(req.query.limit as string) || 25;
     const paymentIntents = await stripe.paymentIntents.list({ limit });
     res.json({ payments: paymentIntents.data, has_more: paymentIntents.has_more });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch payments' });
+  } catch (error: unknown) {
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to fetch payments', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.payment_intents.list', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -697,17 +756,31 @@ router.get('/api/stripe/charges', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 25;
     const charges = await stripe.charges.list({ limit });
     res.json({ charges: charges.data, has_more: charges.has_more });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch charges' });
+  } catch (error: unknown) {
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to fetch charges', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.charges.list', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
-router.get('/api/stripe/balance', async (_req: Request, res: Response) => {
+router.get('/api/stripe/balance', async (req: Request, res: Response) => {
   try {
     const balance = await stripe.balance.retrieve();
     res.json(balance);
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch balance' });
+  } catch (error: unknown) {
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to fetch balance', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.balance.retrieve', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -716,8 +789,15 @@ router.get('/api/stripe/balance-transactions', async (req: Request, res: Respons
     const limit = parseInt(req.query.limit as string) || 25;
     const transactions = await stripe.balanceTransactions.list({ limit });
     res.json({ transactions: transactions.data, has_more: transactions.has_more });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch balance transactions' });
+  } catch (error: unknown) {
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to fetch balance transactions', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.balance_transactions.list', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -726,8 +806,15 @@ router.get('/api/stripe/products', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 25;
     const products = await stripe.products.list({ limit, active: true });
     res.json({ products: products.data, has_more: products.has_more });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch products' });
+  } catch (error: unknown) {
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to fetch products', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.products.list', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -736,8 +823,15 @@ router.get('/api/stripe/subscriptions', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 25;
     const subscriptions = await stripe.subscriptions.list({ limit });
     res.json({ subscriptions: subscriptions.data, has_more: subscriptions.has_more });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch subscriptions' });
+  } catch (error: unknown) {
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to fetch subscriptions', { error: errMsg, correlationId });
+    await emitReceipt(req, 'stripe.subscriptions.list', 'FAILED',
+      { method: 'GET', path: req.path, risk_tier: 'GREEN' },
+      { error: errMsg },
+    );
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -773,7 +867,7 @@ router.post('/api/stripe/payment-links', async (req: Request, res: Response) => 
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 

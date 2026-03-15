@@ -21,6 +21,7 @@ import { Track } from 'livekit-client';
 import { LiveKitConferenceProvider, useKrisp } from '@/components/session/LiveKitConferenceProvider';
 import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 /**
  * KrispToggle — renders inside LiveKitConferenceProvider to access Krisp context.
@@ -485,7 +486,8 @@ export default function ConferenceLive() {
         }
       });
 
-    return () => { controller.abort(); };
+    return (
+    ) => { controller.abort(); };
   }, [suiteId, params.roomName, params.participantName, authenticatedFetch]);
 
   // Connection/disconnection is handled automatically by <LiveKitConferenceProvider>
@@ -538,7 +540,8 @@ export default function ConferenceLive() {
     const timer = setInterval(() => {
       setElapsedTime(prev => prev + 1);
     }, 1000);
-    return () => clearInterval(timer);
+    return (
+    ) => clearInterval(timer);
   }, []);
 
   // Track active speaker from LiveKit
@@ -623,7 +626,8 @@ export default function ConferenceLive() {
     window.addEventListener('mousemove', handleInteraction);
     window.addEventListener('keydown', handleInteraction);
     window.addEventListener('click', handleInteraction);
-    return () => {
+    return (
+    ) => {
       window.removeEventListener('mousemove', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
       window.removeEventListener('click', handleInteraction);
@@ -658,7 +662,8 @@ export default function ConferenceLive() {
       setIsFullscreen(!!document.fullscreenElement);
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    return (
+    ) => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [isDesktop]);
 
   useEffect(() => {
@@ -686,7 +691,8 @@ export default function ConferenceLive() {
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return (
+    ) => window.removeEventListener('keydown', handleKeyDown);
   }, [isDesktop, isFullscreen, toggleFullscreen, alwaysShowControls]);
 
   useEffect(() => {
@@ -695,7 +701,8 @@ export default function ConferenceLive() {
     const videoSection = document.querySelector('[data-video-section]');
     if (videoSection) {
       videoSection.addEventListener('dblclick', handleDblClick);
-      return () => videoSection.removeEventListener('dblclick', handleDblClick);
+      return (
+      ) => videoSection.removeEventListener('dblclick', handleDblClick);
     }
   }, [isDesktop, toggleFullscreen]);
 
@@ -1336,6 +1343,7 @@ export default function ConferenceLive() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="ConferenceLive">
       <FullscreenSessionShell showBackButton={false} backLabel="Exit Conference">
         <LiveKitConferenceProvider
           token={liveKitToken}
@@ -1619,10 +1627,11 @@ export default function ConferenceLive() {
         )}
         </LiveKitConferenceProvider>
       </FullscreenSessionShell>
+      </ErrorBoundary>
     );
   }
 
-  return conferenceContent;
+  return (<ErrorBoundary routeName="ConferenceLive">{conferenceContent}</ErrorBoundary>);
 }
 
 const desktopStyles = StyleSheet.create({

@@ -34,6 +34,7 @@ import {
   useImmersion,
 } from '@/lib/immersionStore';
 import { useCanvasDragDrop } from '@/lib/canvasDragDrop';
+import { devError } from '@/lib/devLog';
 import { playSound } from '@/lib/soundManager';
 import { CanvasGrid } from './CanvasGrid';
 import { VignetteOverlay } from './VignetteOverlay';
@@ -192,7 +193,7 @@ export function CanvasWorkspace(): React.ReactElement {
         if (id !== agentId && h.status !== 'idle') h.endSession();
       });
       hook.startSession().catch((err) => {
-        console.error('[CanvasWorkspace] Failed to start voice session:', err);
+        devError('[CanvasWorkspace] Failed to start voice session:', err);
       });
       playSound('dock_agent_start');
     } else {
@@ -575,7 +576,7 @@ export function CanvasWorkspace(): React.ReactElement {
                               try {
                                 await avaVoice.startSession();
                               } catch (err) {
-                                console.error('[CanvasWorkspace] Ava voice start failed:', err);
+                                devError('[CanvasWorkspace] Ava voice start failed:', err);
                               }
                             } else {
                               avaVoice.endSession();

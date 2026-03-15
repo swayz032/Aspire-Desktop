@@ -376,8 +376,19 @@ router.post(
       logger.info('Stripe finance webhook processed', { stripeEventType, normalizedType, stripeEventId: event.id });
       return res.status(200).json({ received: true });
     } catch (error: unknown) {
-      logger.error('Stripe finance webhook error', { error: error instanceof Error ? error.message : 'unknown' });
-      return res.status(500).json({ error: 'Webhook processing error' });
+      const correlationId = crypto.randomUUID();
+      const errMsg = error instanceof Error ? error.message : 'unknown';
+      logger.error('Stripe finance webhook error', { error: errMsg, correlationId });
+      // Law #2: Failure receipt for webhook processing error
+      await createReceipt({
+        suiteId: getDefaultSuiteId(),
+        officeId: getDefaultOfficeId(),
+        actionType: 'ingest_webhook',
+        inputs: { provider: 'stripe', event: 'processing_error', correlation_id: correlationId },
+        outputs: { error: errMsg },
+        metadata: { status: 'FAILED', provider: 'stripe' },
+      }).catch(receiptErr => logger.error('Failure receipt emission failed', { error: receiptErr instanceof Error ? receiptErr.message : 'unknown' }));
+      return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
     }
   }
 );

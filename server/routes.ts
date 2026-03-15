@@ -151,7 +151,7 @@ function emitTraceEvent(event: {
       `);
     } catch (e) {
       // Telemetry must not fail user requests, but log for observability
-      console.error('[Trace] Event insert failed:', e);
+      logger.error('[Trace] Event insert failed', { error: (e as Error)?.message || String(e) });
     }
   })();
 }
@@ -283,8 +283,9 @@ router.get('/api/stripe/publishable-key', async (req: Request, res: Response) =>
     const key = await getStripePublishableKey();
     res.json({ publishableKey: key });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    res.status(500).json({ error: msg });
+    const correlationId = crypto.randomUUID();
+    logger.error('Failed to get Stripe publishable key', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -451,7 +452,7 @@ router.post('/api/auth/validate-invite-code', (req: Request, res: Response) => {
   const expectedCode = process.env.ASPIRE_INVITE_CODE;
   if (!expectedCode) {
     logger.error('ASPIRE_INVITE_CODE env var not set — invite validation will always fail');
-    return res.status(500).json({ valid: false, error: 'Invite system not configured.' });
+    return res.status(500).json({ valid: false, error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 
   const valid = code.trim().toLowerCase() === expectedCode.trim().toLowerCase();
@@ -512,7 +513,7 @@ router.post('/api/auth/signup', async (req: Request, res: Response) => {
   }
 
   if (!supabaseAdmin) {
-    return res.status(500).json({ error: 'Auth service unavailable.' });
+    return res.status(500).json({ error: 'SERVICE_UNAVAILABLE', code: 'SERVICE_UNAVAILABLE' });
   }
 
   try {
@@ -536,7 +537,7 @@ router.post('/api/auth/signup', async (req: Request, res: Response) => {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'unknown';
     logger.error('Signup error', { error: msg });
-    return res.status(500).json({ error: 'Account creation failed. Please try again.' });
+    return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -831,8 +832,7 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       // causing the auth gate to loop the user back to onboarding indefinitely.
       return res.status(500).json({
         error: 'PROFILE_CREATION_FAILED',
-        message: `Failed to create business profile: ${profileError.message || profileError.code || 'unknown error'}`,
-        details: profileError.details || profileError.hint || null,
+        code: 'PROFILE_CREATION_FAILED',
       });
     }
 
@@ -1009,7 +1009,7 @@ router.get('/api/tenant/identity', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     return res.status(500).json({
       error: 'IDENTITY_LOOKUP_FAILED',
-      message: error instanceof Error ? error.message : 'Failed to resolve tenant identity',
+      code: 'IDENTITY_LOOKUP_FAILED',
     });
   }
 });
@@ -1164,7 +1164,7 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
           resultData: { reason: 'supabase_update_error', error_code: updateError.code || 'UNKNOWN' },
         });
       } catch (_receiptErr) { /* best-effort — primary error takes precedence */ }
-      return res.status(500).json({ error: 'UPDATE_FAILED', message: 'Failed to update profile' });
+      return res.status(500).json({ error: 'UPDATE_FAILED', code: 'UPDATE_FAILED' });
     }
 
     // Emit YELLOW receipt — Law #2 (fail-closed per Law #3)
@@ -1201,7 +1201,7 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
         resultData: { reason: 'unexpected_error', error_message: errorMsg },
       });
     } catch (_receiptErr) { /* best-effort */ }
-    res.status(500).json({ error: 'UPDATE_FAILED', message: 'Profile update could not be completed. Please try again.' });
+    res.status(500).json({ error: 'UPDATE_FAILED', code: 'UPDATE_FAILED' });
   }
 });
 
@@ -1213,7 +1213,9 @@ router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
     res.json(profile);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -1221,12 +1223,19 @@ router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
 router.get('/api/users/:userId', async (req: Request, res: Response) => {
   const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== authSuiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'GET /api/users/:userId', requestedUserId, authenticatedSuiteId: authSuiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant\'s profile.' });
+  }
   try {
-    const profile = await storage.getSuiteProfile(getParam(req.params.userId));
+    const profile = await storage.getSuiteProfile(authSuiteId);
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
     res.json(profile);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -1236,13 +1245,18 @@ router.get('/api/users/slug/:slug', async (req: Request, res: Response) => {
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
     res.json(profile);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 router.post('/api/users', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-create-profile-${crypto.randomUUID()}`;
-  const suiteId = req.authenticatedSuiteId || req.body?.suiteId || 'unknown';
+  const suiteId = req.authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', code: 'MISSING_SUITE_ID' });
+  }
   const actorId = req.authenticatedUserId || 'unknown';
   try {
     const profile = await storage.createSuiteProfile(req.body);
@@ -1275,7 +1289,7 @@ router.post('/api/users', async (req: Request, res: Response) => {
         resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort failure receipt */ }
-    res.status(500).json({ error: errorMsg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1330,34 +1344,58 @@ router.patch('/api/users/:userId', async (req: Request, res: Response) => {
 
     res.json(profile);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 router.get('/api/users/:userId/services', async (req: Request, res: Response) => {
   const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== authSuiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'GET /api/users/:userId/services', requestedUserId, authenticatedSuiteId: authSuiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant\'s services.' });
+  }
   try {
-    const services = await storage.getServices(getParam(req.params.userId));
+    const services = await storage.getServices(authSuiteId);
     res.json(services);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 router.get('/api/users/:userId/services/active', async (req: Request, res: Response) => {
   const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== authSuiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'GET /api/users/:userId/services/active', requestedUserId, authenticatedSuiteId: authSuiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant\'s services.' });
+  }
   try {
-    const services = await storage.getActiveServices(getParam(req.params.userId));
+    const services = await storage.getActiveServices(authSuiteId);
     res.json(services);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 router.post('/api/users/:userId/services', async (req: Request, res: Response) => {
-  const suiteId = getParam(req.params.userId);
+  const suiteId = req.authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', code: 'MISSING_SUITE_ID' });
+  }
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== suiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'POST /api/users/:userId/services', requestedUserId, authenticatedSuiteId: suiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot create services for another tenant.' });
+  }
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-create-service-${crypto.randomUUID()}`;
   const actorId = req.authenticatedUserId || 'unknown';
   try {
@@ -1409,13 +1447,16 @@ router.post('/api/users/:userId/services', async (req: Request, res: Response) =
         resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort failure receipt */ }
-    res.status(500).json({ error: errorMsg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
 router.patch('/api/services/:serviceId', async (req: Request, res: Response) => {
+  const suiteId = req.authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', code: 'MISSING_SUITE_ID' });
+  }
   const serviceId = getParam(req.params.serviceId);
-  const suiteId = req.authenticatedSuiteId || 'unknown';
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-update-service-${crypto.randomUUID()}`;
   const actorId = req.authenticatedUserId || 'unknown';
   try {
@@ -1448,13 +1489,16 @@ router.patch('/api/services/:serviceId', async (req: Request, res: Response) => 
         resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: errorMsg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
 router.delete('/api/services/:serviceId', async (req: Request, res: Response) => {
+  const suiteId = req.authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', code: 'MISSING_SUITE_ID' });
+  }
   const serviceId = getParam(req.params.serviceId);
-  const suiteId = req.authenticatedSuiteId || 'unknown';
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-delete-service-${crypto.randomUUID()}`;
   const actorId = req.authenticatedUserId || 'unknown';
   try {
@@ -1486,23 +1530,38 @@ router.delete('/api/services/:serviceId', async (req: Request, res: Response) =>
         resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: errorMsg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
 router.get('/api/users/:userId/availability', async (req: Request, res: Response) => {
   const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== authSuiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'GET /api/users/:userId/availability', requestedUserId, authenticatedSuiteId: authSuiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant\'s availability.' });
+  }
   try {
-    const availability = await storage.getAvailability(getParam(req.params.userId));
+    const availability = await storage.getAvailability(authSuiteId);
     res.json(availability);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 router.put('/api/users/:userId/availability', async (req: Request, res: Response) => {
-  const suiteId = getParam(req.params.userId);
+  const suiteId = req.authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', code: 'MISSING_SUITE_ID' });
+  }
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== suiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'PUT /api/users/:userId/availability', requestedUserId, authenticatedSuiteId: suiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot modify another tenant\'s availability.' });
+  }
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-set-availability-${crypto.randomUUID()}`;
   const actorId = req.authenticatedUserId || 'unknown';
   try {
@@ -1538,23 +1597,38 @@ router.put('/api/users/:userId/availability', async (req: Request, res: Response
         resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: errorMsg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
 router.get('/api/users/:userId/buffer-settings', async (req: Request, res: Response) => {
   const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== authSuiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'GET /api/users/:userId/buffer-settings', requestedUserId, authenticatedSuiteId: authSuiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant\'s buffer settings.' });
+  }
   try {
-    const settings = await storage.getBufferSettings(getParam(req.params.userId));
+    const settings = await storage.getBufferSettings(authSuiteId);
     res.json(settings || { beforeBuffer: 0, afterBuffer: 15, minimumNotice: 60, maxAdvanceBooking: 30 });
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Response) => {
-  const suiteId = getParam(req.params.userId);
+  const suiteId = req.authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', code: 'MISSING_SUITE_ID' });
+  }
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== suiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'PUT /api/users/:userId/buffer-settings', requestedUserId, authenticatedSuiteId: suiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot modify another tenant\'s buffer settings.' });
+  }
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-buffer-settings-${crypto.randomUUID()}`;
   const actorId = req.authenticatedUserId || 'unknown';
   try {
@@ -1586,40 +1660,61 @@ router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
         resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: errorMsg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
 router.get('/api/users/:userId/bookings', async (req: Request, res: Response) => {
   const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== authSuiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'GET /api/users/:userId/bookings', requestedUserId, authenticatedSuiteId: authSuiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant\'s bookings.' });
+  }
   try {
-    const bookings = await storage.getBookings(getParam(req.params.userId));
+    const bookings = await storage.getBookings(authSuiteId);
     res.json(bookings);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 router.get('/api/users/:userId/bookings/upcoming', async (req: Request, res: Response) => {
   const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== authSuiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'GET /api/users/:userId/bookings/upcoming', requestedUserId, authenticatedSuiteId: authSuiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant\'s bookings.' });
+  }
   try {
-    const bookings = await storage.getUpcomingBookings(getParam(req.params.userId));
+    const bookings = await storage.getUpcomingBookings(authSuiteId);
     res.json(bookings);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 router.get('/api/users/:userId/bookings/stats', async (req: Request, res: Response) => {
   const authSuiteId = req.authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const requestedUserId = getParam(req.params.userId);
+  if (requestedUserId !== authSuiteId) {
+    logger.warn('Tenant violation attempt', { endpoint: 'GET /api/users/:userId/bookings/stats', requestedUserId, authenticatedSuiteId: authSuiteId });
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant\'s booking stats.' });
+  }
   try {
-    const stats = await storage.getBookingStats(getParam(req.params.userId));
+    const stats = await storage.getBookingStats(authSuiteId);
     res.json(stats);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -1629,13 +1724,18 @@ router.get('/api/bookings/:bookingId', async (req: Request, res: Response) => {
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
     res.json(booking);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
 router.post('/api/bookings/:bookingId/cancel', async (req: Request, res: Response) => {
+  const suiteId = req.authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', code: 'MISSING_SUITE_ID' });
+  }
   const bookingId = getParam(req.params.bookingId);
-  const suiteId = req.authenticatedSuiteId || 'unknown';
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-cancel-booking-${crypto.randomUUID()}`;
   const actorId = req.authenticatedUserId || 'unknown';
   try {
@@ -1668,7 +1768,7 @@ router.post('/api/bookings/:bookingId/cancel', async (req: Request, res: Respons
         resultData: { error: errorMsg.substring(0, 200) },
       });
     } catch (_) { /* best-effort */ }
-    res.status(500).json({ error: errorMsg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1688,7 +1788,9 @@ router.get('/api/book/:slug', async (req: Request, res: Response) => {
       bufferSettings: bufferSettings || { beforeBuffer: 0, afterBuffer: 15, minimumNotice: 60, maxAdvanceBooking: 30 },
     });
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -1749,7 +1851,9 @@ router.get('/api/book/:slug/slots', async (req: Request, res: Response) => {
 
     res.json({ slots });
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -1825,7 +1929,7 @@ router.post('/api/book/:slug/checkout', async (req: Request, res: Response) => {
     }
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : 'unknown';
-    res.status(500).json({ error: errorMsg });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1853,7 +1957,9 @@ router.post('/api/book/:slug/confirm/:bookingId', async (req: Request, res: Resp
 
     res.json(booking);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Request failed', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -4176,7 +4282,7 @@ router.post('/v1/chat/completions', async (req: Request, res: Response) => {
       return res.status(504).json({ error: { message: 'Request timeout', type: 'server_error' } });
     }
     logger.error('Anam LLM endpoint error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
-    return res.status(500).json({ error: { message: 'Internal server error', type: 'server_error' } });
+    return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -4331,7 +4437,7 @@ router.get('/api/calendar/events', async (req: Request, res: Response) => {
       LIMIT 100`);
     res.json({ events: result.rows });
   } catch (e: unknown) {
-    res.status(500).json({ error: 'Failed to fetch calendar events' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -4389,8 +4495,9 @@ router.post('/api/calendar/events', async (req: Request, res: Response) => {
 
     res.status(201).json({ event: result.rows[0], receipt_id: receiptId });
   } catch (e: unknown) {
-    logger.error('Calendar create error', { error: e instanceof Error ? e.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to create calendar event' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Calendar create error', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -4457,8 +4564,9 @@ router.put('/api/calendar/events/:id', async (req: Request, res: Response) => {
 
     res.json({ event: result.rows[0], receipt_id: receiptId });
   } catch (e: unknown) {
-    logger.error('Calendar update error', { error: e instanceof Error ? e.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to update calendar event' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Calendar update error', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -4499,8 +4607,9 @@ router.delete('/api/calendar/events/:id', async (req: Request, res: Response) =>
 
     res.json({ success: true, receipt_id: receiptId });
   } catch (e: unknown) {
-    logger.error('Calendar delete error', { error: e instanceof Error ? e.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to delete calendar event' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Calendar delete error', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -4548,8 +4657,9 @@ router.patch('/api/calendar/events/:id/complete', async (req: Request, res: Resp
 
     res.json({ event: result.rows[0], receipt_id: receiptId });
   } catch (e: unknown) {
-    logger.error('Calendar complete error', { error: e instanceof Error ? e.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to update event status' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Calendar complete error', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -4604,7 +4714,7 @@ router.get('/api/calendar/today', async (req: Request, res: Response) => {
     res.json({ events: merged });
   } catch (e: unknown) {
     logger.error('Calendar today error', { error: e instanceof Error ? e.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to fetch today\'s events' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -4614,7 +4724,11 @@ router.get('/api/mail/accounts', async (req: Request, res: Response) => {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const accounts = await onboarding.listAccounts(suiteId);
     res.json({ accounts });
-  } catch (e: unknown) { res.status(500).json({ error: 'Failed to fetch accounts' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Failed to fetch accounts', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // DELETE /api/mail/accounts/:accountId — disconnect/remove mailbox account
@@ -4641,7 +4755,7 @@ router.delete('/api/mail/accounts/:accountId', async (req: Request, res: Respons
 
     res.json({ removed: true });
   } catch (e: unknown) {
-    res.status(500).json({ error: 'Failed to remove account' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -4651,7 +4765,11 @@ router.get('/api/mail/receipts', async (req: Request, res: Response) => {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const receipts = await onboarding.listMailReceipts(suiteId);
     res.json({ receipts });
-  } catch (e: unknown) { res.status(500).json({ error: 'Failed to fetch receipts' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Failed to fetch receipts', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // ─── /v1/* Mail Onboarding API (Local Service) ───
@@ -4662,7 +4780,11 @@ router.get('/v1/inbox/accounts', async (req: Request, res: Response) => {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const accounts = await onboarding.listAccounts(suiteId);
     res.json({ accounts });
-  } catch (e: unknown) { res.status(500).json({ error: 'Failed to fetch accounts' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Failed to fetch accounts', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // POST /v1/mail/onboarding/start (YELLOW — external service setup)
@@ -4692,7 +4814,11 @@ router.post('/v1/mail/onboarding/start', async (req: Request, res: Response) => 
     }).catch(() => {});
 
     res.json(result);
-  } catch (e: unknown) { res.status(500).json({ error: 'Onboarding start failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Onboarding start failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // GET /v1/mail/onboarding/:jobId
@@ -4702,7 +4828,11 @@ router.get('/v1/mail/onboarding/:jobId', async (req: Request, res: Response) => 
     const jobId = requireJobId(req, res); if (!jobId) return;
     const data = await onboarding.getOnboarding(jobId, suiteId);
     res.json(data);
-  } catch (e: unknown) { res.status(500).json({ error: 'Failed to fetch onboarding status' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Failed to fetch onboarding status', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // POST /v1/mail/onboarding/:jobId/dns/plan
@@ -4719,7 +4849,11 @@ router.post('/v1/mail/onboarding/:jobId/dns/plan', async (req: Request, res: Res
     }
     const result = await onboarding.generateDnsPlan(jobId, suiteId, domain, mailbox, displayName, domainMode);
     res.json(result);
-  } catch (e: unknown) { res.status(500).json({ error: 'DNS plan generation failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('DNS plan generation failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // POST /v1/mail/onboarding/:jobId/dns/check
@@ -4729,7 +4863,11 @@ router.post('/v1/mail/onboarding/:jobId/dns/check', async (req: Request, res: Re
     const jobId = requireJobId(req, res); if (!jobId) return;
     const result = await onboarding.checkDns(jobId, suiteId);
     res.json(result);
-  } catch (e: unknown) { res.status(500).json({ error: 'DNS check failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('DNS check failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // GET /v1/domains/search — proxy to Domain Rail (needs static IP for ResellerClub)
@@ -4774,7 +4912,11 @@ router.get('/v1/domains/search', async (req: Request, res: Response) => {
     }).catch(() => {});
 
     res.json({ query: q, results });
-  } catch (e: unknown) { res.status(500).json({ error: 'Domain search failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Domain search failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // POST /v1/domains/purchase/request — proxy to Domain Rail (RED tier — explicit authority)
@@ -4795,7 +4937,11 @@ router.post('/v1/domains/purchase/request', async (req: Request, res: Response) 
     }).catch(() => {});
 
     res.status(status).json(data);
-  } catch (e: unknown) { res.status(500).json({ error: 'Domain purchase request failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Domain purchase request failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // POST /v1/domains/checkout/start — Purchase domain via Domain Rail → ResellerClub (RED tier)
@@ -4824,7 +4970,8 @@ router.post('/v1/domains/checkout/start', async (req: Request, res: Response) =>
       contactId = contactData?.contactId;
       if (!contactId) throw new Error('No contact ID returned');
     } catch (e: unknown) {
-      return res.status(503).json({ error: 'RC_CONTACT_MISSING', message: 'Could not discover ResellerClub contact. ' + (e instanceof Error ? e.message.slice(0, 100) : '') });
+      logger.error('RC contact discovery failed', { error: e instanceof Error ? e.message : String(e) });
+      return res.status(503).json({ error: 'RC_CONTACT_MISSING', code: 'RC_CONTACT_MISSING' });
     }
 
     // 3. Create approval receipt (RED tier — user clicking "Purchase Now" is the approval)
@@ -4905,7 +5052,7 @@ router.post('/v1/domains/checkout/start', async (req: Request, res: Response) =>
   } catch (e: unknown) {
     const errorMsg = e instanceof Error ? e.message : 'unknown';
     logger.error('Checkout start error', { error: errorMsg });
-    res.status(500).json({ error: 'CHECKOUT_FAILED', message: errorMsg.slice(0, 200) });
+    res.status(500).json({ error: 'CHECKOUT_FAILED', code: 'CHECKOUT_FAILED' });
   }
 });
 
@@ -4919,7 +5066,11 @@ router.get('/v1/mail/oauth/google/start', async (req: Request, res: Response) =>
     }
     const authUrl = buildAuthUrl(jobId, suiteId);
     res.json({ authUrl });
-  } catch (e: unknown) { res.status(500).json({ error: 'OAuth initialization failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('OAuth initialization failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // GET /api/mail/oauth/google/callback — handle Google OAuth callback
@@ -4963,7 +5114,11 @@ router.post('/v1/mail/onboarding/:jobId/checks/run', async (req: Request, res: R
     const { runChecks } = await import('./mail/verificationService');
     const checks = await runChecks(jobId, suiteId, requestedChecks);
     res.json({ checks });
-  } catch (e: unknown) { res.status(500).json({ error: 'Verification checks failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Verification checks failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // POST /v1/mail/eli/policy/apply
@@ -4996,7 +5151,11 @@ router.post('/v1/mail/eli/policy/apply', async (req: Request, res: Response) => 
     }).catch(() => {});
 
     res.json({ applied: true });
-  } catch (e: unknown) { res.status(500).json({ error: 'Policy application failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Policy application failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // POST /v1/mail/onboarding/:jobId/activate
@@ -5018,7 +5177,11 @@ router.post('/v1/mail/onboarding/:jobId/activate', async (req: Request, res: Res
     }).catch(() => {});
 
     res.json(result);
-  } catch (e: unknown) { res.status(500).json({ error: 'Activation failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Activation failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // GET /v1/receipts (by jobId) — mail receipts filtered by correlation
@@ -5027,7 +5190,11 @@ router.get('/v1/receipts', async (req: Request, res: Response) => {
     const suiteId = requireAuth(req, res); if (!suiteId) return;
     const receipts = await onboarding.listMailReceipts(suiteId);
     res.json({ receipts });
-  } catch (e: unknown) { res.status(500).json({ error: 'Receipt retrieval failed' }); }
+  } catch (e: unknown) {
+    const correlationId = crypto.randomUUID();
+    logger.error('Receipt retrieval failed', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
+  }
 });
 
 // ─── Mail Thread & Message Routes (Production) ───
@@ -5169,7 +5336,7 @@ router.get('/api/mail/threads', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const eMsg = e instanceof Error ? e.message : 'unknown';
     logger.error('Mail threads list error', { error: eMsg });
-    res.status(500).json({ error: 'Failed to fetch threads', message: eMsg.slice(0, 200) });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -5218,8 +5385,9 @@ router.get('/api/mail/threads/:threadId', async (req: Request, res: Response) =>
 
     return res.json(detail);
   } catch (e: unknown) {
-    logger.error('Mail thread detail error', { error: e instanceof Error ? e.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to fetch thread' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Mail thread detail error', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -5271,8 +5439,9 @@ router.post('/api/mail/messages/send', async (req: Request, res: Response) => {
 
     return res.json({ sent: true, messageId: result.messageId, provider: 'polaris' });
   } catch (e: unknown) {
-    logger.error('Mail send error', { error: e instanceof Error ? e.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to send message' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Mail send error', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -5320,8 +5489,9 @@ router.post('/api/mail/messages/draft', async (req: Request, res: Response) => {
 
     return res.json({ created: true, draftId: result.uid, provider: 'polaris' });
   } catch (e: unknown) {
-    logger.error('Mail draft error', { error: e instanceof Error ? e.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to create draft' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Mail draft error', { error: e instanceof Error ? e.message : String(e), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -5439,8 +5609,9 @@ router.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
 
     res.status(200).json({ status: 'received', event_id: eventId, target_state: targetState || null });
   } catch (error: unknown) {
-    logger.error('PandaDoc webhook error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Webhook processing failed' });
+    const correlationId = crypto.randomUUID();
+    logger.error('PandaDoc webhook error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -5466,7 +5637,8 @@ router.get('/api/health/pandadoc', async (_req: Request, res: Response) => {
     }
     return res.status(503).json({ status: 'unhealthy', http_status: resp.status });
   } catch (error: unknown) {
-    return res.status(503).json({ status: 'unhealthy', error: error instanceof Error ? error.message : 'unknown' });
+    logger.error('Health check failed', { error: error instanceof Error ? error.message : String(error) });
+    return res.status(503).json({ status: 'unhealthy' });
   }
 });
 
@@ -5623,8 +5795,9 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
 
     res.json({ templates: enriched, count: enriched.length });
   } catch (error: unknown) {
-    logger.error('Contracts templates error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to fetch templates' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Contracts templates error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -5678,8 +5851,9 @@ router.post('/api/contracts/templates/:id/preview-session', async (req: Request,
       expires_at: session.expires_at,
     });
   } catch (error: unknown) {
-    logger.error('Template preview session error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to create preview session' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Template preview session error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -5731,8 +5905,7 @@ router.get('/api/contracts', async (req: Request, res: Response) => {
     res.json({ contracts, total, page, limit });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
-    console.error('[Contracts] Database query failed:', (error as Error)?.message || error);
-    logger.error('Contracts list error', { error: msg });
+    logger.error('[Contracts] Database query failed', { error: msg });
     // Graceful degradation: contracts table doesn't exist yet (feature not launched).
     // Return empty state for ANY database error on this endpoint to prevent 500s
     // from breaking the entire Documents page.
@@ -5774,8 +5947,9 @@ router.get('/api/contracts/:id', async (req: Request, res: Response) => {
 
     res.json({ contract, sessions });
   } catch (error: unknown) {
-    logger.error('Contracts detail error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to get contract' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Contracts detail error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -5860,7 +6034,7 @@ router.post('/api/contracts/:id/send', async (req: Request, res: Response) => {
         result: { error: errorMsg },
       }).catch(() => {});
     }
-    res.status(500).json({ error: 'Failed to send contract' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -5963,7 +6137,7 @@ router.post('/api/contracts/:id/session', async (req: Request, res: Response) =>
         result: { error: errorMsg },
       }).catch(() => {});
     }
-    res.status(500).json({ error: 'Failed to create signing session' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -6026,8 +6200,9 @@ router.post('/api/pandadoc/:documentId/preview', async (req: Request, res: Respo
       preview_url: `https://app.pandadoc.com/s/${sessionData.id}`,
     });
   } catch (error: unknown) {
-    logger.error('PandaDoc preview error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to create preview session' });
+    const correlationId = crypto.randomUUID();
+    logger.error('PandaDoc preview error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -6086,7 +6261,7 @@ router.post('/api/contracts/:id/void', async (req: Request, res: Response) => {
         result: { error: errorMsg },
       }).catch(() => {});
     }
-    res.status(500).json({ error: 'Failed to void contract' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -6130,8 +6305,9 @@ router.get('/api/contracts/:id/download', async (req: Request, res: Response) =>
     const buffer = Buffer.from(await resp.arrayBuffer());
     res.send(buffer);
   } catch (error: unknown) {
-    logger.error('Contract download error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to download contract' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Contract download error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -6206,8 +6382,9 @@ router.get('/api/signing/:token', async (req: Request, res: Response) => {
       expires_at: session.expires_at,
     });
   } catch (error: unknown) {
-    logger.error('Signing token error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'Failed to load signing session' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Signing token error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 

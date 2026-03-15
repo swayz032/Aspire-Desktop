@@ -8,7 +8,9 @@ import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern } from '@/constants/cardPatterns';
 import { getPlaidConsent, setPlaidConsent } from '@/lib/security/plaidConsent';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { devLog, devWarn, devError } from '@/lib/devLog';
 import { getMfaStatus, isMfaVerifiedRecently, verifyMfaCode, generateMfaSecret, storeMfaSecret, updateMfaStatus, getQrCodeDataUrl } from '@/lib/security/mfa';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -104,13 +106,13 @@ export default function ConnectionsScreen() {
         try {
           const r = await authenticatedFetch(url);
           if (!r.ok) {
-            console.warn(`[Connections] ${label} status returned ${r.status}`);
+            devWarn(`[Connections] ${label} status returned ${r.status}`);
             return { connected: false, _unavailable: true, _error: `Server returned ${r.status}` };
           }
           return await r.json();
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
-          console.warn(`[Connections] ${label} status check failed:`, msg);
+          devWarn(`[Connections] ${label} status check failed:`, msg);
           return { connected: false, _unavailable: true, _error: msg || 'Service unreachable' };
         }
       };
@@ -154,7 +156,7 @@ export default function ConnectionsScreen() {
         },
       });
     } catch (err) {
-      console.error('Status check failed:', err);
+      devError('Status check failed:', err);
     } finally {
       setLoading(false);
     }
@@ -193,12 +195,12 @@ export default function ConnectionsScreen() {
             .then(r => r.json())
             .then(data => {
               if (data.success) {
-                console.log('Gusto migration completed successfully');
+                devLog('Gusto migration completed successfully');
               } else {
-                console.warn('Gusto migration response:', data);
+                devWarn('Gusto migration response:', data);
               }
             })
-            .catch(err => console.error('Gusto migration error:', err))
+            .catch(err => devError('Gusto migration error:', err))
             .finally(() => checkAllStatuses());
         } else {
           checkAllStatuses();
@@ -220,7 +222,7 @@ export default function ConnectionsScreen() {
         setCrossLinkSuccess(prev => ({ ...prev, stripe: true }));
       }
     } catch (e) {
-      console.error('Cross-link to Stripe failed:', e);
+      devError('Cross-link to Stripe failed:', e);
     } finally {
       setCrossLinking(null);
     }
@@ -239,7 +241,7 @@ export default function ConnectionsScreen() {
         setCrossLinkSuccess(prev => ({ ...prev, gusto: true }));
       }
     } catch (e) {
-      console.error('Cross-link to Gusto failed:', e);
+      devError('Cross-link to Gusto failed:', e);
     } finally {
       setCrossLinking(null);
     }
@@ -274,27 +276,27 @@ export default function ConnectionsScreen() {
   const openPlaidLink = async () => {
     setActionLoading('plaid');
     try {
-      console.log('[Plaid] Loading SDK...');
+      devLog('[Plaid] Loading SDK...');
       await loadPlaidSdk();
-      console.log('[Plaid] SDK loaded, creating link token...');
+      devLog('[Plaid] SDK loaded, creating link token...');
       const res = await authenticatedFetch('/api/plaid/create-link-token', { method: 'POST' });
       const data = await res.json();
-      console.log('[Plaid] Link token response:', { ok: res.ok, status: res.status, hasToken: !!data.link_token, error: data.error });
+      devLog('[Plaid] Link token response:', { ok: res.ok, status: res.status, hasToken: !!data.link_token, error: data.error });
       if (!res.ok) {
-        console.error('[Plaid] create-link-token failed:', data);
+        devError('[Plaid] create-link-token failed:', data);
         setActionLoading(null);
         return;
       }
       if (data.link_token && typeof window !== 'undefined' && (window as unknown as WindowWithPlaid).Plaid) {
-        console.log('[Plaid] Creating Link handler...');
+        devLog('[Plaid] Creating Link handler...');
         const handler = (window as unknown as WindowWithPlaid).Plaid!.create({
           token: data.link_token,
           onLoad: () => {
-            console.log('[Plaid] Link loaded, opening...');
+            devLog('[Plaid] Link loaded, opening...');
             handler.open();
           },
           onSuccess: async (publicToken: string) => {
-            console.log('[Plaid] Link success, exchanging token...');
+            devLog('[Plaid] Link success, exchanging token...');
             try {
               await authenticatedFetch('/api/plaid/exchange-token', {
                 method: 'POST',
@@ -302,26 +304,26 @@ export default function ConnectionsScreen() {
                 body: JSON.stringify({ public_token: publicToken }),
               });
             } catch (e) {
-              console.error('[Plaid] Token exchange error:', e);
+              devError('[Plaid] Token exchange error:', e);
             }
             setActionLoading(null);
             checkAllStatuses();
           },
           onExit: (err: unknown) => {
-            console.log('[Plaid] Link exited', err ? { error: err } : 'no error');
+            devLog('[Plaid] Link exited', err ? { error: err } : 'no error');
             setActionLoading(null);
           },
           onEvent: (eventName: string, metadata: Record<string, unknown>) => {
-            console.log('[Plaid] Event:', eventName, metadata);
+            devLog('[Plaid] Event:', eventName, metadata);
           },
         });
-        console.log('[Plaid] Handler created, waiting for onLoad...');
+        devLog('[Plaid] Handler created, waiting for onLoad...');
       } else {
-        console.error('[Plaid] SDK not available after load. Plaid on window:', !!(window as unknown as Record<string, unknown>)?.Plaid, 'link_token:', !!data.link_token);
+        devError('[Plaid] SDK not available after load. Plaid on window:', !!(window as unknown as Record<string, unknown>)?.Plaid, 'link_token:', !!data.link_token);
         setActionLoading(null);
       }
     } catch (err) {
-      console.error('[Plaid] Connect error:', err);
+      devError('[Plaid] Connect error:', err);
       setActionLoading(null);
     }
   };
@@ -367,7 +369,7 @@ export default function ConnectionsScreen() {
 
       await openPlaidLink();
     } catch (err) {
-      console.error('Plaid connect error:', err);
+      devError('Plaid connect error:', err);
       setActionLoading(null);
     }
   };
@@ -419,7 +421,7 @@ export default function ConnectionsScreen() {
         window.location.href = data.url;
       }
     } catch (err) {
-      console.error('QuickBooks connect error:', err);
+      devError('QuickBooks connect error:', err);
       setActionLoading(null);
     }
   };
@@ -488,7 +490,7 @@ export default function ConnectionsScreen() {
         setActionLoading(null);
       }
     } catch (err) {
-      console.error('Gusto connect error:', err);
+      devError('Gusto connect error:', err);
       setActionLoading(null);
     }
   };
@@ -502,7 +504,7 @@ export default function ConnectionsScreen() {
         window.location.href = data.url;
       }
     } catch (err) {
-      console.error('Stripe connect error:', err);
+      devError('Stripe connect error:', err);
       setActionLoading(null);
     }
   };
@@ -520,7 +522,7 @@ export default function ConnectionsScreen() {
         checkAllStatuses();
       }
     } catch (err) {
-      console.error('Disconnect error:', err);
+      devError('Disconnect error:', err);
     } finally {
       setActionLoading(null);
     }
@@ -637,6 +639,7 @@ export default function ConnectionsScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="ConnectionsScreen">
     <FinanceHubShell>
       <View style={[s.heroBanner, premiumCardBase as ViewStyle, Platform.OS === 'web' && { background: `radial-gradient(ellipse at top right, rgba(59,130,246,0.08) 0%, transparent 50%), ${CARD_BG}` }]}>
         <View style={s.heroContent}>
@@ -1254,6 +1257,7 @@ export default function ConnectionsScreen() {
         </View>
       </Modal>
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

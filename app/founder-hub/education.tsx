@@ -7,6 +7,8 @@ import { Card } from '@/components/ui/Card';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const BRIGHT_BG = '#0a0a0c';
 
@@ -119,7 +121,7 @@ export default function EducationScreen() {
           setSavedApplied(saved);
         }
       } catch (err) {
-        console.error('Failed to load education content:', err);
+        devError('Failed to load education content:', err);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -208,6 +210,7 @@ export default function EducationScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="EducationScreen">
     <View style={styles.container}>
       <LinearGradient
         colors={['#0a1628', '#0d2847', '#1a4a6e', '#0d3a5c', BRIGHT_BG]}
@@ -437,6 +440,7 @@ export default function EducationScreen() {
         )}
       </ScrollView>
     </View>
+    </ErrorBoundary>
   );
 }
 

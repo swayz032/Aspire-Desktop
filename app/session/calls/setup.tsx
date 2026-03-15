@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import type { LineMode, TeamMember } from '@/types/frontdesk';
 import { triggerTestIncomingCall } from '@/lib/incomingCallOverlayStore';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Hero image
@@ -418,6 +419,7 @@ export default function FrontDeskSetupScreen() {
   // Main render
   // -----------------------------------------------------------------------
   return (
+    <ErrorBoundary routeName="FrontDeskSetupScreen">
     <DesktopShell>
       <View style={styles.container}>
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -1101,6 +1103,7 @@ export default function FrontDeskSetupScreen() {
         </ScrollView>
       </View>
     </DesktopShell>
+    </ErrorBoundary>
   );
 }
 

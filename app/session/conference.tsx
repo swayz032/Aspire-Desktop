@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useTenant } from '@/providers/TenantProvider';
 import { useSupabase } from '@/providers';
+import { devError } from '@/lib/devLog';
 import { 
   getDefaultSession, 
   updateSessionPurpose, 
@@ -38,6 +39,7 @@ import { ParticipantPanel } from '@/components/session/ParticipantPanel';
 import { ConferenceParticipant } from '@/components/session/ParticipantTile';
 import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const PRESENCE_COLORS: Record<string, string> = {
   good: Colors.semantic.success,
@@ -195,7 +197,7 @@ export default function ConferenceSession() {
     if (inviteType === 'cross-suite' || inviteType === 'internal') {
       // Law #3: Fail closed — both suite and user IDs must be valid UUIDs
       if (!suiteId) {
-        console.error('[Conference] Missing suiteId for invite — cannot send');
+        devError('[Conference] Missing suiteId for invite — cannot send');
         showToast(`Cannot invite ${displayName}: missing suite identity`, 'error');
         return;
       }
@@ -220,11 +222,11 @@ export default function ConferenceSession() {
           showToast(`${displayName} invited to conference`, 'success');
         } else {
           const body = await resp.json().catch(() => ({ error: 'Unknown error' }));
-          console.error('[Conference] Invite failed:', resp.status, body);
+          devError('[Conference] Invite failed:', resp.status, body);
           showToast(body.detail || body.error || `Failed to invite ${displayName}`, 'error');
         }
       } catch (err) {
-        console.error('[Conference] Invite exception:', err);
+        devError('[Conference] Invite exception:', err);
         showToast(`Failed to send invite to ${displayName}`, 'error');
       }
     } else {
@@ -634,13 +636,15 @@ export default function ConferenceSession() {
 
   if (isDesktop) {
     return (
+      <ErrorBoundary routeName="ConferenceSession">
       <FullscreenSessionShell showBackButton={true} backLabel="Exit Conference">
         {conferenceContent}
       </FullscreenSessionShell>
+      </ErrorBoundary>
     );
   }
 
-  return conferenceContent;
+  return (<ErrorBoundary routeName="ConferenceSession">{conferenceContent}</ErrorBoundary>);
 }
 
 const styles = StyleSheet.create({

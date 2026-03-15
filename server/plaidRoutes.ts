@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import type { AuthenticatedRequest } from './types';
+import crypto from 'crypto';
 import { Configuration, PlaidApi, Products, CountryCode } from 'plaid';
 import { saveToken, deleteToken, loadAllTokens, deleteAllTokens } from './tokenStore';
 import { createTrustSpineReceipt } from './receiptService';
@@ -127,7 +128,7 @@ router.post('/api/plaid/create-link-token', async (req: Request, res: Response) 
       { method: 'POST', path: req.path, risk_tier: 'GREEN' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create link token' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -164,7 +165,7 @@ router.post('/api/plaid/exchange-token', async (req: Request, res: Response) => 
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to exchange token' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -230,7 +231,7 @@ router.post('/api/plaid/processor/stripe', async (req: Request, res: Response) =
       { method: 'POST', path: req.path, risk_tier: 'RED' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create Stripe bank token' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -319,7 +320,7 @@ router.post('/api/plaid/processor/gusto', async (req: Request, res: Response) =>
       { method: 'POST', path: req.path, risk_tier: 'RED' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create Gusto processor token' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -375,9 +376,9 @@ router.get('/api/plaid/accounts', async (_req: Request, res: Response) => {
     }
     res.json({ accounts: allAccounts });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Plaid accounts error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch accounts' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Plaid accounts error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -411,9 +412,9 @@ router.get('/api/plaid/transactions', async (_req: Request, res: Response) => {
     allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     res.json({ transactions: allTransactions });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Plaid transactions error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch transactions' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Plaid transactions error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -440,9 +441,9 @@ router.get('/api/plaid/balances', async (_req: Request, res: Response) => {
     }
     res.json({ accounts: allAccounts });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Plaid balances error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch balances' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Plaid balances error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -465,9 +466,9 @@ router.get('/api/plaid/identity', async (_req: Request, res: Response) => {
     }
     res.json({ accounts: allAccounts });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Plaid identity error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch identity' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Plaid identity error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -538,9 +539,9 @@ router.get('/api/plaid/linked-accounts', async (_req: Request, res: Response) =>
     }
     res.json({ accounts: allAccounts });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Plaid linked-accounts error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch linked accounts' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Plaid linked-accounts error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 

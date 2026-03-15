@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { getPlaidConsent, setPlaidConsent } from '@/lib/security/plaidConsent';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function InfoBlock({ title, body }: { title: string; body: string }) {
   return (
@@ -54,6 +55,7 @@ export default function PlaidConsentScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="PlaidConsentScreen">
     <View style={styles.container}>
       <PageHeader title="Plaid Consent" showBackButton />
       <ScrollView style={[styles.scroll, { paddingTop: headerHeight }]} contentContainerStyle={styles.scrollContent}>
@@ -101,6 +103,7 @@ export default function PlaidConsentScreen() {
         </View>
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

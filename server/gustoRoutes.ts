@@ -156,7 +156,7 @@ router.get('/api/gusto/callback', async (req: Request, res: Response) => {
         { method: 'GET', path: req.path, risk_tier: 'YELLOW' },
         { error: `Token exchange failed with status ${response.status}` },
       );
-      return res.status(500).json({ error: 'Token exchange failed' });
+      return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
     }
 
     const tokenData = await response.json();
@@ -202,7 +202,7 @@ router.get('/api/gusto/callback', async (req: Request, res: Response) => {
       { method: 'GET', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to exchange authorization code' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -422,7 +422,7 @@ router.post('/api/gusto/create-company', async (req: Request, res: Response) => 
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -476,7 +476,7 @@ router.post('/api/gusto/migrate', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -509,9 +509,9 @@ router.get('/api/gusto/company', async (_req: Request, res: Response) => {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto company fetch error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch company data' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto company fetch error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -523,9 +523,9 @@ router.get('/api/gusto/employees', async (_req: Request, res: Response) => {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/employees`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto employees fetch error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch employees' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto employees fetch error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -534,9 +534,9 @@ router.get('/api/gusto/employees/:uuid', async (req: Request, res: Response) => 
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/employees/${req.params.uuid}`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto employee detail error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch employee details' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto employee detail error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -548,9 +548,9 @@ router.get('/api/gusto/payrolls', async (_req: Request, res: Response) => {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/payrolls`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto payrolls fetch error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch payrolls' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto payrolls fetch error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -559,9 +559,9 @@ router.get('/api/gusto/payrolls/:uuid', async (req: Request, res: Response) => {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/payrolls/${req.params.uuid}`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto payroll detail error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch payroll details' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto payroll detail error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -573,9 +573,9 @@ router.get('/api/gusto/pay-schedules', async (_req: Request, res: Response) => {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/pay_schedules`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto pay schedules error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch pay schedules' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto pay schedules error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -587,9 +587,9 @@ router.get('/api/gusto/departments', async (_req: Request, res: Response) => {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/departments`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto departments error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch departments' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto departments error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -601,9 +601,9 @@ router.get('/api/gusto/contractors', async (_req: Request, res: Response) => {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/contractors`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto contractors error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch contractors' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto contractors error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -615,9 +615,9 @@ router.get('/api/gusto/locations', async (_req: Request, res: Response) => {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/locations`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto locations error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch locations' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto locations error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -629,9 +629,9 @@ router.get('/api/gusto/bank-accounts', async (_req: Request, res: Response) => {
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/bank_accounts`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto bank accounts error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch bank accounts' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto bank accounts error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -643,9 +643,9 @@ router.get('/api/gusto/time-off-policies', async (_req: Request, res: Response) 
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/time_off_policies`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto time-off policies error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch time-off policies' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto time-off policies error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -657,9 +657,9 @@ router.get('/api/gusto/federal-tax-details', async (_req: Request, res: Response
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/federal_tax_details`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto federal tax details error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch federal tax details' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto federal tax details error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -681,7 +681,7 @@ router.put('/api/gusto/federal-tax-details', async (req: Request, res: Response)
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update federal tax details' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -693,9 +693,9 @@ router.get('/api/gusto/contractor-payments', async (_req: Request, res: Response
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/contractor_payments`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto contractor payments error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch contractor payments' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto contractor payments error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -717,7 +717,7 @@ router.post('/api/gusto/employees', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create employee' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -736,7 +736,7 @@ router.put('/api/gusto/employees/:uuid', async (req: Request, res: Response) => 
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', employee_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update employee' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -745,9 +745,9 @@ router.get('/api/gusto/employees/:uuid/federal-taxes', async (req: Request, res:
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/employees/${req.params.uuid}/federal_taxes`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto employee federal taxes error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch employee federal taxes' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto employee federal taxes error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -766,7 +766,7 @@ router.put('/api/gusto/employees/:uuid/federal-taxes', async (req: Request, res:
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', employee_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update employee federal taxes' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -775,9 +775,9 @@ router.get('/api/gusto/employees/:uuid/state-taxes', async (req: Request, res: R
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/employees/${req.params.uuid}/state_taxes`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto employee state taxes error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch employee state taxes' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto employee state taxes error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -796,7 +796,7 @@ router.put('/api/gusto/employees/:uuid/state-taxes', async (req: Request, res: R
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', employee_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update employee state taxes' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -805,9 +805,9 @@ router.get('/api/gusto/employees/:uuid/jobs', async (req: Request, res: Response
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/employees/${req.params.uuid}/jobs`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto employee jobs error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch employee jobs' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto employee jobs error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -826,7 +826,7 @@ router.post('/api/gusto/employees/:uuid/jobs', async (req: Request, res: Respons
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', employee_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create employee job' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -835,9 +835,9 @@ router.get('/api/gusto/employees/:uuid/time-off-balances', async (req: Request, 
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/employees/${req.params.uuid}/time_off_activities`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto employee time-off balances error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch employee time-off balances' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto employee time-off balances error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -849,9 +849,9 @@ router.get('/api/gusto/time-off-requests', async (_req: Request, res: Response) 
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/time_off_requests`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto time-off requests error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch time-off requests' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto time-off requests error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -873,7 +873,7 @@ router.post('/api/gusto/time-off-requests', async (req: Request, res: Response) 
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create time-off request' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -892,7 +892,7 @@ router.put('/api/gusto/time-off-requests/:uuid', async (req: Request, res: Respo
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', request_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update time-off request' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -914,7 +914,7 @@ router.post('/api/gusto/payrolls', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create payroll' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -933,7 +933,7 @@ router.put('/api/gusto/payrolls/:uuid', async (req: Request, res: Response) => {
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', payroll_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update payroll' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -955,7 +955,7 @@ router.put('/api/gusto/payrolls/:uuid/calculate', async (req: Request, res: Resp
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', payroll_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to calculate payroll' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -967,9 +967,9 @@ router.get('/api/gusto/payrolls/:uuid/prepare', async (req: Request, res: Respon
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/companies/${companyUuid}/payrolls/${req.params.uuid}`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto prepare payroll error', { error: msg });
-    res.status(500).json({ error: 'Failed to prepare payroll' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto prepare payroll error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -991,7 +991,7 @@ router.put('/api/gusto/payrolls/:uuid/prepare', async (req: Request, res: Respon
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', payroll_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to prepare/calculate payroll' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1000,9 +1000,9 @@ router.get('/api/gusto/payrolls/:uuid/receipt', async (req: Request, res: Respon
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/payrolls/${req.params.uuid}/receipt`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto payroll receipt error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch payroll receipt' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto payroll receipt error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -1024,7 +1024,7 @@ router.post('/api/gusto/contractors', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create contractor' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1043,7 +1043,7 @@ router.put('/api/gusto/contractors/:uuid', async (req: Request, res: Response) =
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', contractor_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update contractor' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1062,7 +1062,7 @@ router.post('/api/gusto/contractor-payments/preview', async (req: Request, res: 
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to preview contractor payment' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1081,7 +1081,7 @@ router.post('/api/gusto/contractor-payment-groups', async (req: Request, res: Re
       { method: 'POST', path: req.path, risk_tier: 'RED' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create contractor payment group' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1103,7 +1103,7 @@ router.put('/api/gusto/company', async (req: Request, res: Response) => {
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', company_uuid: companyUuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update company' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1125,7 +1125,7 @@ router.post('/api/gusto/locations', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create location' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1147,7 +1147,7 @@ router.post('/api/gusto/departments', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create department' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1156,9 +1156,9 @@ router.get('/api/gusto/employees/:uuid/pay-stubs', async (req: Request, res: Res
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/employees/${req.params.uuid}/pay_stubs`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto get employee pay stubs error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch pay stubs' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto get employee pay stubs error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -1200,9 +1200,9 @@ router.get('/api/gusto/payrolls/:payrollUuid/employees/:employeeUuid/pay-stub', 
     const buffer = Buffer.from(await response.arrayBuffer());
     res.send(buffer);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto get pay stub PDF error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch pay stub PDF' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto get pay stub PDF error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -1224,7 +1224,7 @@ router.put('/api/gusto/payrolls/:uuid/submit', async (req: Request, res: Respons
       { method: 'PUT', path: req.path, risk_tier: 'RED', payroll_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to submit payroll' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1243,7 +1243,7 @@ router.put('/api/gusto/compensations/:compensationId', async (req: Request, res:
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', compensation_id: req.params.compensationId },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update compensation' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1252,9 +1252,9 @@ router.get('/api/gusto/jobs/:jobId/compensations', async (req: Request, res: Res
     const data = await gustoFetch(`${GUSTO_API_BASE}/v1/jobs/${req.params.jobId}/compensations`);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Gusto get job compensations error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch job compensations' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Gusto get job compensations error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -1273,7 +1273,7 @@ router.post('/api/gusto/jobs/:jobId/compensations', async (req: Request, res: Re
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', job_id: req.params.jobId },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to create job compensation' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1292,7 +1292,7 @@ router.put('/api/gusto/employees/:uuid/onboarding-status', async (req: Request, 
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', employee_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update employee onboarding status' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1314,7 +1314,7 @@ router.put('/api/gusto/departments/:uuid', async (req: Request, res: Response) =
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', department_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update department' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1336,7 +1336,7 @@ router.put('/api/gusto/locations/:uuid', async (req: Request, res: Response) => 
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', location_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to update location' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1359,7 +1359,7 @@ router.post('/api/gusto/employees/:uuid/terminations', async (req: Request, res:
       { method: 'POST', path: req.path, risk_tier: 'RED', employee_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to terminate employee' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -1385,7 +1385,7 @@ router.delete('/api/gusto/employees/:uuid', async (req: Request, res: Response) 
       { method: 'DELETE', path: req.path, risk_tier: 'RED', employee_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to delete employee' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 

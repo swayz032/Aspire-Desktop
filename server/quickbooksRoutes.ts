@@ -337,7 +337,7 @@ router.get('/api/quickbooks/callback', async (req: Request, res: Response) => {
         { method: 'GET', path: req.path, risk_tier: 'YELLOW', realm_id: queryRealmId as string },
         { error: 'Token exchange failed', status: response.status },
       );
-      return res.status(500).json({ error: 'Token exchange failed' });
+      return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
     }
 
     const tokenData = await response.json();
@@ -367,7 +367,7 @@ router.get('/api/quickbooks/callback', async (req: Request, res: Response) => {
       { method: 'GET', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to exchange authorization code' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -385,7 +385,7 @@ router.post('/api/quickbooks/refresh', async (req: Request, res: Response) => {
         { method: 'POST', path: req.path, risk_tier: 'GREEN' },
         { error: 'Token refresh failed' },
       );
-      res.status(500).json({ error: 'Token refresh failed' });
+      res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
     }
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -394,7 +394,7 @@ router.post('/api/quickbooks/refresh', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'GREEN' },
       { error: msg },
     );
-    res.status(500).json({ error: 'Failed to refresh token' });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR' });
   }
 });
 
@@ -449,9 +449,9 @@ router.get('/api/quickbooks/company', async (_req: Request, res: Response) => {
     const data = await qboQueryWithRefresh('getCompanyInfo', realmId);
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks company error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch company info' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks company error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -460,9 +460,9 @@ router.get('/api/quickbooks/accounts', async (_req: Request, res: Response) => {
     const data = await qboQueryWithRefresh('findAccounts', { fetchAll: true });
     res.json({ accounts: data?.QueryResponse?.Account || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks accounts error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch accounts' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks accounts error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -475,9 +475,9 @@ router.get('/api/quickbooks/profit-and-loss', async (req: Request, res: Response
     const data = await qboReportWithRefresh('reportProfitAndLoss', { start_date: startDate, end_date: endDate });
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks P&L error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch P&L report' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks P&L error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -490,9 +490,9 @@ router.get('/api/quickbooks/profit-and-loss-detail', async (req: Request, res: R
     const data = await qboReportWithRefresh('reportProfitAndLossDetail', { start_date: startDate, end_date: endDate });
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks P&L Detail error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch P&L detail report' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks P&L Detail error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -501,9 +501,9 @@ router.get('/api/quickbooks/balance-sheet', async (_req: Request, res: Response)
     const data = await qboReportWithRefresh('reportBalanceSheet', { date_macro: 'This Fiscal Year-to-date' });
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks Balance Sheet error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch balance sheet' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks Balance Sheet error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -512,9 +512,9 @@ router.get('/api/quickbooks/cash-flow', async (_req: Request, res: Response) => 
     const data = await qboReportWithRefresh('reportCashFlow', { date_macro: 'This Fiscal Year-to-date' });
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks Cash Flow error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch cash flow report' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks Cash Flow error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -523,9 +523,9 @@ router.get('/api/quickbooks/trial-balance', async (_req: Request, res: Response)
     const data = await qboReportWithRefresh('reportTrialBalance', {});
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks Trial Balance error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch trial balance' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks Trial Balance error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -541,9 +541,9 @@ router.get('/api/quickbooks/general-ledger', async (req: Request, res: Response)
     });
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks General Ledger error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch general ledger' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks General Ledger error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -552,9 +552,9 @@ router.get('/api/quickbooks/aged-receivables', async (_req: Request, res: Respon
     const data = await qboReportWithRefresh('reportAgedReceivableDetail', {});
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks Aged Receivables error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch aged receivables' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks Aged Receivables error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -563,9 +563,9 @@ router.get('/api/quickbooks/aged-payables', async (_req: Request, res: Response)
     const data = await qboReportWithRefresh('reportAgedPayableDetail', {});
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks Aged Payables error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch aged payables' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks Aged Payables error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -574,9 +574,9 @@ router.get('/api/quickbooks/invoices', async (_req: Request, res: Response) => {
     const data = await qboQueryWithRefresh('findInvoices', { fetchAll: true });
     res.json({ invoices: data?.QueryResponse?.Invoice || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks invoices error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch invoices' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks invoices error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -585,9 +585,9 @@ router.get('/api/quickbooks/customers', async (_req: Request, res: Response) => 
     const data = await qboQueryWithRefresh('findCustomers', { fetchAll: true });
     res.json({ customers: data?.QueryResponse?.Customer || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks customers error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch customers' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks customers error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -596,9 +596,9 @@ router.get('/api/quickbooks/vendors', async (_req: Request, res: Response) => {
     const data = await qboQueryWithRefresh('findVendors', { fetchAll: true });
     res.json({ vendors: data?.QueryResponse?.Vendor || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks vendors error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch vendors' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks vendors error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -607,9 +607,9 @@ router.get('/api/quickbooks/bills', async (_req: Request, res: Response) => {
     const data = await qboQueryWithRefresh('findBills', { fetchAll: true });
     res.json({ bills: data?.QueryResponse?.Bill || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks bills error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch bills' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks bills error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -618,9 +618,9 @@ router.get('/api/quickbooks/payments', async (_req: Request, res: Response) => {
     const data = await qboQueryWithRefresh('findPayments', { fetchAll: true });
     res.json({ payments: data?.QueryResponse?.Payment || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks payments error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch payments' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks payments error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -629,9 +629,9 @@ router.get('/api/quickbooks/expenses', async (_req: Request, res: Response) => {
     const data = await qboQueryWithRefresh('findPurchases', { fetchAll: true });
     res.json({ expenses: data?.QueryResponse?.Purchase || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks expenses error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch expenses' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks expenses error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -640,9 +640,9 @@ router.get('/api/quickbooks/items', async (_req: Request, res: Response) => {
     const data = await qboQueryWithRefresh('findItems', { fetchAll: true });
     res.json({ items: data?.QueryResponse?.Item || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks items error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch items' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks items error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -651,9 +651,9 @@ router.get('/api/quickbooks/tax-codes', async (_req: Request, res: Response) => 
     const data = await qboQueryWithRefresh('findTaxCodes', { fetchAll: true });
     res.json({ taxCodes: data?.QueryResponse?.TaxCode || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks tax codes error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch tax codes' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks tax codes error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -662,9 +662,9 @@ router.get('/api/quickbooks/journal-entries', async (_req: Request, res: Respons
     const data = await qboQueryWithRefresh('findJournalEntries', { fetchAll: true });
     res.json({ journalEntries: data?.QueryResponse?.JournalEntry || [] });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks journal entries error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch journal entries' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks journal entries error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -740,9 +740,9 @@ router.get('/api/quickbooks/transaction-list', async (req: Request, res: Respons
     });
     res.json(data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('QuickBooks Transaction List error', { error: msg });
-    res.status(500).json({ error: 'Failed to fetch transaction list' });
+    const correlationId = crypto.randomUUID();
+    logger.error('QuickBooks Transaction List error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 

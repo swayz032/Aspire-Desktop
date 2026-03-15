@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import crypto from 'crypto';
+import { logger } from './logger';
 import { resolveGooglePlacesApiKey } from './runtimeGuards';
 
 const router = Router();
@@ -27,7 +29,9 @@ router.post('/api/places/autocomplete', async (req, res) => {
     }
     return res.json({ suggestions: data.suggestions || [] });
   } catch (e: unknown) {
-    return res.status(500).json({ error: e instanceof Error ? e.message : 'Places fetch failed' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Places autocomplete error', { error: e instanceof Error ? e.message : String(e), correlationId });
+    return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -44,7 +48,9 @@ router.get('/api/places/details/:placeId', async (req, res) => {
     if (data.error) return res.status(400).json({ error: data.error.message });
     return res.json(data);
   } catch (e: unknown) {
-    return res.status(500).json({ error: e instanceof Error ? e.message : 'Place details fetch failed' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Place details fetch error', { error: e instanceof Error ? e.message : String(e), correlationId });
+    return res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 

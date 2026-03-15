@@ -8,6 +8,7 @@
  * The client uses Nova-3 model for real-time transcription.
  */
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { logger } from '../logger';
 
 const router = Router();
@@ -24,7 +25,7 @@ router.get('/api/deepgram/token', async (req: Request, res: Response) => {
     if (!DEEPGRAM_API_KEY) {
       return res
         .status(500)
-        .json({ error: 'Voice transcription service not configured' });
+        .json({ error: 'SERVICE_UNAVAILABLE', code: 'SERVICE_UNAVAILABLE' });
     }
 
     // For production, use Deepgram's project key API to create short-lived keys.
@@ -34,9 +35,9 @@ router.get('/api/deepgram/token', async (req: Request, res: Response) => {
       url: 'wss://api.deepgram.com/v1/listen',
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Deepgram token error', { error: msg });
-    res.status(500).json({ error: 'Internal server error' });
+    const correlationId = crypto.randomUUID();
+    logger.error('Deepgram token error', { error: error instanceof Error ? error.message : String(error), correlationId });
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 

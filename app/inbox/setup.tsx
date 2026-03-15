@@ -4,11 +4,13 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Platform, TextInput, Swi
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { navigateTo } from '@/lib/navigation';
+import { devError } from '@/lib/devLog';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { mailApi, initMailApi, DomainSearchResult } from '@/lib/mailApi';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { MailProvider, MailOnboardingState, OnboardingCheck, DnsPlanRecord, MailSetupReceipt, DomainMode, EliConfig, DnsCheckResult } from '@/types/mailbox';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const STEPS = ['Choose Provider', 'Configure', 'Verify', 'Enable Eli'];
 
@@ -57,7 +59,7 @@ export default function MailboxSetupScreen() {
         setCurrentStep(3);
       }
     } catch (e) {
-      console.error('Auto-check failed:', e);
+      devError('Auto-check failed:', e);
       // Non-fatal — user can still click "Run All Checks" manually
     }
     setChecksRunning(false);
@@ -149,7 +151,7 @@ export default function MailboxSetupScreen() {
 
       fetchReceipts(jId);
     } catch (e) {
-      console.error('Failed to resume job', e);
+      devError('Failed to resume job', e);
       sessionStorage.removeItem('mailSetupJobId');
       setJobId(null);
     }
@@ -171,7 +173,7 @@ export default function MailboxSetupScreen() {
     try {
       const data = await mailApi.getReceipts(id);
       setReceipts(data.receipts || []);
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
   };
 
   const handleSelectProvider = async (provider: MailProvider) => {
@@ -186,7 +188,7 @@ export default function MailboxSetupScreen() {
       }
       fetchReceipts(newJobId);
       setCurrentStep(1);
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 
@@ -206,7 +208,7 @@ export default function MailboxSetupScreen() {
       }));
       fetchReceipts();
       setCurrentStep(2);
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 
@@ -217,7 +219,7 @@ export default function MailboxSetupScreen() {
       const result = await mailApi.checkDns(jobId);
       setOnboarding(prev => ({ ...prev, dnsStatus: result.dnsStatus }));
       fetchReceipts();
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setDnsChecking(false);
   };
 
@@ -227,7 +229,7 @@ export default function MailboxSetupScreen() {
     try {
       const result = await mailApi.searchDomains(domainSearchQuery.trim());
       setDomainSearchResults(result.results || []);
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setDomainSearching(false);
   };
 
@@ -259,7 +261,7 @@ export default function MailboxSetupScreen() {
         setPurchaseStatus(result.status);
         fetchReceipts();
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 
@@ -283,7 +285,7 @@ export default function MailboxSetupScreen() {
         fetchReceipts();
         setCurrentStep(2);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 
@@ -294,7 +296,7 @@ export default function MailboxSetupScreen() {
       const data = await mailApi.runChecks(jobId);
       setOnboarding(prev => ({ ...prev, checks: data.checks }));
       fetchReceipts();
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setChecksRunning(false);
   };
 
@@ -310,7 +312,7 @@ export default function MailboxSetupScreen() {
     try {
       await mailApi.applyEliPolicy(jobId, eli);
       fetchReceipts();
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
   };
 
   const handleActivate = async () => {
@@ -324,7 +326,7 @@ export default function MailboxSetupScreen() {
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('mailSetupJobId');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 
@@ -397,6 +399,7 @@ export default function MailboxSetupScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="MailboxSetupScreen">
     <DesktopShell>
       <View style={s.page}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
@@ -525,6 +528,7 @@ export default function MailboxSetupScreen() {
         </ScrollView>
       </View>
     </DesktopShell>
+      </ErrorBoundary>
   );
 }
 

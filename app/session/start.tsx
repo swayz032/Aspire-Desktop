@@ -6,6 +6,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { SessionPurpose, SessionMode } from '@/types/session';
 import { AVAILABLE_STAFF, createSession } from '@/data/session';
 import { useTenant } from '@/providers/TenantProvider';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const PURPOSES: { id: SessionPurpose; label: string; icon: keyof typeof Ionicons.glyphMap; description: string }[] = [
   { id: 'Internal', label: 'Internal', icon: 'business', description: 'Team sync or planning session' },
@@ -72,6 +73,7 @@ export default function StartSessionScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="StartSessionScreen">
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
@@ -269,6 +271,7 @@ export default function StartSessionScreen() {
         </Pressable>
       </View>
     </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 

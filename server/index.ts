@@ -19,6 +19,7 @@ import { getBreakerStates } from './circuitBreaker';
 import { getIdempotencyStats } from './webhookIdempotency';
 import { initSentry, sentryRequestHandler, sentryErrorHandler } from './sentry';
 import { tagActionOrigin } from './orchestratorGateway';
+import { isProductionEnv } from './runtimeGuards';
 import type { AuthenticatedRequest, MaybeAuthenticatedRequest } from './types';
 
 // Initialize Sentry early — before app setup so it captures startup errors.
@@ -103,12 +104,17 @@ function secureTokenEquals(left: string, right: string): boolean {
   return crypto.timingSafeEqual(leftBuf, rightBuf);
 }
 
-const DEV_BYPASS_AUTH = process.env.DEV_BYPASS_AUTH === 'true' && !process.env.SUPABASE_URL && process.env.NODE_ENV !== 'production';
+const DEV_BYPASS_AUTH = process.env.DEV_BYPASS_AUTH === 'true'
+  && !process.env.SUPABASE_URL
+  && process.env.NODE_ENV !== 'production'
+  && !isProductionEnv();
 const DEV_SUITE_ID = 'dev-suite-00000000-0000-0000-0000-000000000000';
 const DEV_USER_ID = 'dev-user-00000000-0000-0000-0000-000000000000';
 
 if (DEV_BYPASS_AUTH) {
-  logger.info('DEV_BYPASS_AUTH enabled — all requests will skip JWT verification');
+  logger.warn('DEV_BYPASS_AUTH active — all requests skip JWT verification (Law #3 suspended for local dev)');
+} else if (process.env.DEV_BYPASS_AUTH === 'true') {
+  logger.warn('DEV_BYPASS_AUTH was requested but blocked — production/Supabase guards prevented activation');
 }
 
 app.use((req, res, next) => {
@@ -242,7 +248,7 @@ app.use(async (req, res, next) => {
   } catch (error) {
     // Law #3: Fail closed on unexpected errors
     logger.error('RLS middleware error', { error: error instanceof Error ? error.message : 'unknown' });
-    res.status(500).json({ error: 'AUTH_ERROR', message: 'Authentication check failed' });
+    res.status(500).json({ error: 'AUTH_ERROR', code: 'AUTH_ERROR' });
   }
 });
 
@@ -644,12 +650,21 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/ops-snapshot', async (req, res) => {
   try {
+    // Law #3: Fail Closed — require authenticated user
+    const suiteId = req.authenticatedSuiteId;
+    if (!suiteId) {
+      return res.status(401).json({ error: 'AUTH_REQUIRED' });
+    }
+
     const snapshot = {
       cashPosition: { availableCash: 0, upcomingOutflows7d: 0, expectedInflows7d: 0, accountsConnected: 0 },
       providers: { plaid: false, stripe: false, gusto: false, quickbooks: false },
     };
 
     const authHeader = req.headers['authorization'];
+    if (!authHeader) {
+      logger.warn('ops-snapshot: No authorization header to forward to sub-requests', { suiteId });
+    }
     const safeFetch = async (url: string) => {
       try {
         const headers: Record<string, string> = {};

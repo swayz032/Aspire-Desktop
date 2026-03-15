@@ -21,6 +21,7 @@ import {
   type AgentActivityEvent,
   type OrchestratorResponse,
 } from '@/components/chat';
+import { devLog, devError } from '@/lib/devLog';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
 
 /* ── Web-only keyframe animations for immersive mode ─────── */
@@ -337,7 +338,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     },
     onError: (error) => {
-      console.error('Finn voice error:', error);
+      devError('Finn voice error:', error);
       setIsSessionActive(false);
       // Classify and surface the error to the user
       const msg = error.message || String(error);
@@ -378,7 +379,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
         await finnVoice.sendText('Confirm voice is live in one short sentence and ask what financial task to handle.');
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.error('Failed to start Finn voice session:', msg);
+        devError('Failed to start Finn voice session:', msg);
         if (/auth_required/i.test(msg)) {
           showVoiceError('Session expired. Please sign in again.');
         } else if (/circuit_open/i.test(msg)) {
@@ -423,14 +424,14 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
     try {
       const connectOptions: AnamConnectOptions = {
         onConnectionEstablished: () => {
-          console.log('[Anam/Finn] WebRTC connection established');
+          devLog('[Anam/Finn] WebRTC connection established');
         },
         onVideoStarted: () => {
-          console.log('[Anam/Finn] Video stream playing');
+          devLog('[Anam/Finn] Video stream playing');
           setVideoState('connected');
         },
         onConnectionClosed: (reason, details) => {
-          console.log('[Anam/Finn] Connection closed', reason ? { reason, details } : undefined);
+          devLog('[Anam/Finn] Connection closed', reason ? { reason, details } : undefined);
           setVideoState('idle');
           setConnectionStatus('');
           anamClientRef.current = null;
@@ -496,7 +497,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
       setVideoState('idle');
       setConnectionStatus('');
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('[FinnDeskPanel] Video connection failed:', msg);
+      devError('[FinnDeskPanel] Video connection failed:', msg);
 
       // Classify error with actionable message
       if (/not configured|503|AVATAR_NOT_CONFIGURED/i.test(msg)) {
@@ -679,7 +680,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
         if (activeTab === 'voice' && responseText) {
           speakText('finn', responseText, session?.access_token).catch((err) => {
             showVoiceError('Voice playback failed - response shown in chat.');
-            console.error('[FinnDeskPanel] TTS error:', err);
+            devError('[FinnDeskPanel] TTS error:', err);
           });
         }
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -715,7 +716,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
             if (activeTab === 'voice' && responseText) {
               speakText('finn', responseText, session?.access_token).catch((err) => {
                 showVoiceError('Voice playback failed — response shown in chat.');
-                console.error('[FinnDeskPanel] TTS error:', err);
+                devError('[FinnDeskPanel] TTS error:', err);
               });
             }
           }

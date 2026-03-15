@@ -19,6 +19,7 @@ import { View, StyleSheet, Platform, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { devWarn } from '@/lib/devLog';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,7 +110,7 @@ function PersonaWeb({ state, variant = 'obsidian', style, onReady, onLoadError }
         if (!cancelled) setRiveModule(mod);
       })
       .catch((err) => {
-        console.warn('[Persona] Failed to load Rive:', err);
+        devWarn('[Persona] Failed to load Rive:', err);
         onLoadError?.(err);
       });
     return () => { cancelled = true; };

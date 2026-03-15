@@ -16,6 +16,7 @@ import type { AuthorityItem } from '@/types';
 import ExplainDrawer from '@/components/finance/ExplainDrawer';
 import { FinnDeskOverlay } from '@/components/finance/FinnDeskOverlay';
 import { FinnChatModal } from '@/components/finance/FinnChatModal';
+import { devWarn, devError } from '@/lib/devLog';
 
 import ReconcileCard from '@/components/finance/ReconcileCard';
 import LifecycleChain from '@/components/finance/LifecycleChain';
@@ -598,7 +599,7 @@ function RocketDecoration() {
 class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean; error: unknown}> {
   constructor(props: {children: React.ReactNode}) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error: unknown) { return { hasError: true, error }; }
-  componentDidCatch(error: Error, info: React.ErrorInfo) { console.error('FinanceHub crash:', error, info); }
+  componentDidCatch(error: Error, info: React.ErrorInfo) { devError('FinanceHub crash:', error, info); }
   render() {
     if (this.state.hasError) {
       return (
@@ -733,7 +734,7 @@ function FinanceHubContent() {
       if (timeRes?.events) setTimeline(timeRes.events);
       if (lcRes?.steps) setLifecycleSteps(lcRes.steps);
     } catch (e) {
-      console.warn('Failed to fetch finance data:', e);
+      devWarn('Failed to fetch finance data:', e);
     } finally {
       setLoading(false);
     }

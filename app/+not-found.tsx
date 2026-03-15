@@ -3,9 +3,11 @@ import { StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function NotFoundScreen() {
   return (
+    <ErrorBoundary routeName="NotFoundScreen">
     <>
       <Stack.Screen options={{ title: 'Oops!' }} />
       <ThemedView style={styles.container}>
@@ -15,6 +17,7 @@ export default function NotFoundScreen() {
         </Link>
       </ThemedView>
     </>
+      </ErrorBoundary>
   );
 }
 

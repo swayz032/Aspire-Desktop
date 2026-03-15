@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { devLog } from '@/lib/devLog';
 
 export type BlobState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -66,7 +67,7 @@ export function AvaBlob3DEmbed({ state = 'idle', size = 280 }: AvaBlob3DEmbedPro
         bounces={false}
         onLoad={() => setIsLoaded(true)}
         onMessage={(event) => {
-          console.log('WebView message:', event.nativeEvent.data);
+          devLog('WebView message:', event.nativeEvent.data);
         }}
         javaScriptEnabled={true}
         domStorageEnabled={true}

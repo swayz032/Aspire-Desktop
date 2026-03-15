@@ -7,6 +7,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { getSuiteProfile } from '@/lib/api';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { Tenant } from '@/types/tenant';
+import { devWarn } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function EditableField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
@@ -84,7 +86,7 @@ export default function OfficeIdentityScreen() {
         setOwnerName(t.ownerName);
         setOwnerEmail(t.ownerEmail);
       } catch (e) {
-        console.warn('Failed to load tenant profile:', e);
+        devWarn('Failed to load tenant profile:', e);
       } finally {
         setLoading(false);
       }
@@ -160,6 +162,7 @@ export default function OfficeIdentityScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="OfficeIdentityScreen">
     <View style={styles.container}>
       <PageHeader title="Office Identity" showBackButton />
       
@@ -205,6 +208,7 @@ export default function OfficeIdentityScreen() {
         </Text>
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

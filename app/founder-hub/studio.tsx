@@ -5,6 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -81,12 +83,13 @@ export default function StudioScreen() {
           }));
         }
       } catch (err) {
-        console.error('Failed to load studio sessions:', err);
+        devError('Failed to load studio sessions:', err);
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return (
+    ) => { mounted = false; };
   }, []);
 
   const rightRail = (
@@ -192,6 +195,7 @@ export default function StudioScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="StudioScreen">
     <HubPageShell rightRail={rightRail}>
       <View style={styles.header}>
         <Text style={styles.pageTitle}>Studio</Text>
@@ -297,6 +301,7 @@ export default function StudioScreen() {
         </View>
       </View>
     </HubPageShell>
+      </ErrorBoundary>
   );
 }
 

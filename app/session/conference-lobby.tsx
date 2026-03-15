@@ -23,6 +23,7 @@ import {
   SessionPurpose,
 } from '@/data/session';
 import { useDesktop } from '@/lib/useDesktop';
+import { devError } from '@/lib/devLog';
 import { useSupabase, useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { formatDisplayId } from '@/lib/formatters';
@@ -36,6 +37,7 @@ import {
   type VideoCallInvitation,
 } from '@/lib/incomingVideoCallStore';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // ─── Pulsing dot for pending/invited participants ────────────────────────────
 function PulsingDot({ color }: { color: string }) {
@@ -571,6 +573,7 @@ export default function ConferenceLobby() {
   const pendingCount = authorityItems.filter(i => i.status === 'pending').length;
 
   const lobbyContent = (
+    <ErrorBoundary routeName="ConferenceLobby">
     <SafeAreaView style={styles.container}>
       <Toast 
         visible={toastVisible} 
@@ -963,7 +966,7 @@ export default function ConferenceLobby() {
             if (inviteType === 'cross-suite' || inviteType === 'internal') {
               // Law #3: Fail closed — suiteId must be present
               if (!suiteIdParam) {
-                console.error('[ConferenceLobby] Missing suiteId for invite — cannot send');
+                devError('[ConferenceLobby] Missing suiteId for invite — cannot send');
                 showToast(`Cannot invite ${name}: missing suite identity`, 'error');
                 return;
               }
@@ -981,11 +984,11 @@ export default function ConferenceLobby() {
                   showToast(`${name} invited to conference`, 'success');
                 } else {
                   const body = await resp.json().catch(() => ({ error: 'Unknown error' }));
-                  console.error('[ConferenceLobby] Invite failed:', resp.status, body);
+                  devError('[ConferenceLobby] Invite failed:', resp.status, body);
                   showToast(body.detail || body.error || `Failed to invite ${name}`, 'error');
                 }
               } catch (err) {
-                console.error('[ConferenceLobby] Invite exception:', err);
+                devError('[ConferenceLobby] Invite exception:', err);
                 showToast(`Failed to send invite to ${name}`, 'error');
               }
             } else {
@@ -1022,6 +1025,7 @@ export default function ConferenceLobby() {
         onSelect={handleMenuSelect}
       />
     </SafeAreaView>
+    </ErrorBoundary>
   );
 
   if (isDesktop) {

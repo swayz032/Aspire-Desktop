@@ -6,6 +6,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { getDefaultSession, bookmarkTranscript, createActionItem } from '@/data/session';
 import { TranscriptEntry } from '@/types/session';
 import { Toast } from '@/components/session/Toast';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -41,6 +42,7 @@ export default function TranscriptScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="TranscriptScreen">
     <SafeAreaView style={styles.container}>
       <Toast 
         visible={toastVisible} 
@@ -119,6 +121,7 @@ export default function TranscriptScreen() {
         ))}
       </ScrollView>
     </SafeAreaView>
+      </ErrorBoundary>
   );
 }
 

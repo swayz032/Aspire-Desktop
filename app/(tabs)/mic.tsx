@@ -4,6 +4,7 @@ import { Colors, Typography, Spacing } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { useDesktop } from '@/lib/useDesktop';
 import { useRouter } from 'expo-router';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function MicScreen() {
   const isDesktop = useDesktop();
@@ -20,6 +21,7 @@ export default function MicScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="MicScreen">
     <View style={styles.container}>
       <View style={styles.content}>
         <View style={styles.iconContainer}>
@@ -31,6 +33,7 @@ export default function MicScreen() {
         </Text>
       </View>
     </View>
+      </ErrorBoundary>
   );
 }
 

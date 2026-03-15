@@ -5,6 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { devWarn, devError } from '@/lib/devLog';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -50,12 +52,12 @@ export default function NotesScreen() {
         .order('updated_at', { ascending: false });
 
       if (error) {
-        console.error('Failed to fetch notes:', error);
+        devError('Failed to fetch notes:', error);
         return;
       }
       setNotes(data ?? []);
     } catch (err) {
-      console.error('Failed to load notes:', err);
+      devError('Failed to load notes:', err);
     } finally {
       setLoading(false);
     }
@@ -80,7 +82,7 @@ export default function NotesScreen() {
         metadata: { note_id: noteId, action },
       });
     } catch (err) {
-      console.warn(`Note ${action} receipt failed:`, err);
+      devWarn(`Note ${action} receipt failed:`, err);
     }
   };
 
@@ -95,7 +97,7 @@ export default function NotesScreen() {
         .single();
 
       if (error) {
-        console.error('Failed to create note:', error);
+        devError('Failed to create note:', error);
         return;
       }
       if (data) {
@@ -121,7 +123,7 @@ export default function NotesScreen() {
         .eq('suite_id', tenant!.suiteId); // Defense-in-depth: explicit tenant filter over RLS-only
 
       if (error) {
-        console.error('Failed to save note:', error);
+        devError('Failed to save note:', error);
         return;
       }
       setNotes((prev) =>
@@ -152,7 +154,7 @@ export default function NotesScreen() {
         .eq('suite_id', tenant!.suiteId); // Defense-in-depth: explicit tenant filter over RLS-only
 
       if (error) {
-        console.error('Failed to delete note:', error);
+        devError('Failed to delete note:', error);
         return;
       }
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
@@ -161,7 +163,7 @@ export default function NotesScreen() {
       }
       emitNoteReceipt('delete', noteId, 'yellow'); // Delete is YELLOW — irreversible
     } catch (err) {
-      console.error('Failed to delete note:', err);
+      devError('Failed to delete note:', err);
     }
   };
 
@@ -174,7 +176,7 @@ export default function NotesScreen() {
         .eq('suite_id', tenant!.suiteId); // Defense-in-depth: explicit tenant filter over RLS-only
 
       if (error) {
-        console.error('Failed to toggle pin:', error);
+        devError('Failed to toggle pin:', error);
         return;
       }
       setNotes((prev) =>
@@ -182,7 +184,7 @@ export default function NotesScreen() {
       );
       emitNoteReceipt('pin_toggle', note.id);
     } catch (err) {
-      console.error('Failed to toggle pin:', err);
+      devError('Failed to toggle pin:', err);
     }
   };
 
@@ -344,6 +346,7 @@ export default function NotesScreen() {
   }
 
   return (
+    <ErrorBoundary routeName="NotesScreen">
     <HubPageShell rightRail={rightRail}>
       <View style={styles.header}>
         <Text style={styles.pageTitle}>Notes & Journal</Text>
@@ -515,6 +518,7 @@ export default function NotesScreen() {
         </View>
       </View>
     </HubPageShell>
+    </ErrorBoundary>
   );
 }
 

@@ -3,6 +3,8 @@ import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Platform, TextInput, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { validateForm, bookingDetailsSchema } from '@/lib/validation';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
 
@@ -60,6 +62,7 @@ export default function PublicBookingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [bookingResult, setBookingResult] = useState<any>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const accent = profile?.accentColor || '#3B82F6';
 
@@ -142,7 +145,13 @@ export default function PublicBookingPage() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedService || !selectedDate || !selectedSlot || !clientName || !clientEmail) return;
+    if (!selectedService || !selectedDate || !selectedSlot) return;
+    const validation = validateForm(bookingDetailsSchema, { clientName, clientEmail, clientPhone, clientNotes });
+    if (!validation.success) {
+      setFieldErrors(validation.errors);
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -209,6 +218,7 @@ export default function PublicBookingPage() {
   }
 
   return (
+    <ErrorBoundary routeName="PublicBookingPage">
     <View style={s.root}>
       <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={s.card}>
@@ -441,11 +451,13 @@ export default function PublicBookingPage() {
 
               <View style={s.formGroup}>
                 <Text style={s.label}>Full Name <Text style={{ color: '#ef4444' }}>*</Text></Text>
-                <TextInput style={s.input} value={clientName} onChangeText={setClientName} placeholder="John Smith" placeholderTextColor="#48484a" />
+                <TextInput style={[s.input, fieldErrors.clientName ? { borderColor: '#ef4444' } : undefined]} value={clientName} onChangeText={setClientName} placeholder="John Smith" placeholderTextColor="#48484a" />
+                {fieldErrors.clientName && <Text style={s.fieldError}>{fieldErrors.clientName}</Text>}
               </View>
               <View style={s.formGroup}>
                 <Text style={s.label}>Email <Text style={{ color: '#ef4444' }}>*</Text></Text>
-                <TextInput style={s.input} value={clientEmail} onChangeText={setClientEmail} placeholder="john@example.com" placeholderTextColor="#48484a" keyboardType="email-address" autoCapitalize="none" />
+                <TextInput style={[s.input, fieldErrors.clientEmail ? { borderColor: '#ef4444' } : undefined]} value={clientEmail} onChangeText={setClientEmail} placeholder="john@example.com" placeholderTextColor="#48484a" keyboardType="email-address" autoCapitalize="none" />
+                {fieldErrors.clientEmail && <Text style={s.fieldError}>{fieldErrors.clientEmail}</Text>}
               </View>
               <View style={s.formGroup}>
                 <Text style={s.label}>Phone</Text>
@@ -515,6 +527,7 @@ export default function PublicBookingPage() {
         <Text style={s.poweredBy}>Powered by Aspire</Text>
       </ScrollView>
     </View>
+    </ErrorBoundary>
   );
 }
 
@@ -900,6 +913,11 @@ const s = StyleSheet.create({
   textArea: {
     minHeight: 80,
     textAlignVertical: 'top',
+  },
+  fieldError: {
+    color: '#ef4444',
+    fontSize: 12,
+    marginTop: 4,
   },
   confirmationContainer: {
     alignItems: 'center',

@@ -3,6 +3,7 @@ import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
+import { devError } from '@/lib/devLog';
 import { Colors } from '@/constants/tokens';
 import { CanvasToggle } from '@/components/canvas/CanvasToggle';
 import { useSupabase, useTenant } from '@/providers';
@@ -394,7 +395,7 @@ export function DesktopHeader({
                       try {
                         await signOut();
                       } catch (e) {
-                        console.error('Sign out error:', e);
+                        devError('Sign out error:', e);
                       }
                       setActivePanel('none');
                       // Redirect to login — full page reload clears all state

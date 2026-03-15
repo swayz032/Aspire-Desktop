@@ -5,6 +5,8 @@ import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { validateForm, quoteCreateSchema } from '@/lib/validation';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -77,6 +79,7 @@ export default function QuotesPage() {
   const [expiryDays, setExpiryDays] = useState('30');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const fetchQuotes = useCallback(async () => {
     setLoading(true);
@@ -142,21 +145,21 @@ export default function QuotesPage() {
   };
 
   const handleCreate = async () => {
-    if (!customerEmail.trim()) {
-      setCreateError('Customer email is required');
+    const validItems = lineItems.filter(li => li.description.trim() || li.amount.trim());
+    const validation = validateForm(quoteCreateSchema, {
+      customerEmail: customerEmail.trim(),
+      lineItems: validItems.length > 0 ? validItems : lineItems,
+      expiryDays,
+    });
+    if (!validation.success) {
+      setFieldErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      setCreateError(firstError);
       return;
     }
-    const items = lineItems
-      .filter(li => li.description.trim() && li.amount.trim())
-      .map(li => ({ description: li.description, amount: parseFloat(li.amount) }));
-    if (items.length === 0) {
-      setCreateError('At least one line item is required');
-      return;
-    }
-    if (items.some(i => isNaN(i.amount) || i.amount <= 0)) {
-      setCreateError('All amounts must be positive numbers');
-      return;
-    }
+    setFieldErrors({});
+
+    const items = validItems.map(li => ({ description: li.description, amount: parseFloat(li.amount) }));
 
     setCreating(true);
     setCreateError(null);
@@ -217,6 +220,7 @@ export default function QuotesPage() {
     setLineItems([{ description: '', amount: '' }]);
     setExpiryDays('30');
     setCreateError(null);
+    setFieldErrors({});
   };
 
   const addLineItem = () => {
@@ -257,6 +261,7 @@ export default function QuotesPage() {
   ];
 
   return (
+    <ErrorBoundary routeName="QuotesPage">
     <FinanceHubShell>
       <View style={s.page}>
         <View style={s.headerRow}>
@@ -463,7 +468,7 @@ export default function QuotesPage() {
               <ScrollView style={s.modalBody} showsVerticalScrollIndicator={false}>
                 <Text style={s.fieldLabel}>Customer Email *</Text>
                 <TextInput
-                  style={s.textInput}
+                  style={[s.textInput, fieldErrors.customerEmail ? { borderColor: '#ef4444' } : undefined]}
                   value={customerEmail}
                   onChangeText={setCustomerEmail}
                   placeholder="customer@example.com"
@@ -471,6 +476,7 @@ export default function QuotesPage() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
+                {fieldErrors.customerEmail && <Text style={s.fieldErrorText}>{fieldErrors.customerEmail}</Text>}
 
                 <Text style={s.fieldLabel}>Customer Name</Text>
                 <TextInput
@@ -559,6 +565,7 @@ export default function QuotesPage() {
         </Modal>
       </View>
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 
@@ -893,6 +900,12 @@ const s = StyleSheet.create({
     color: '#ef4444',
     fontSize: 13,
     flex: 1,
+  },
+  fieldErrorText: {
+    color: '#ef4444',
+    fontSize: 12,
+    marginTop: 4,
+    marginBottom: 8,
   },
   modalFooter: {
     flexDirection: 'row',

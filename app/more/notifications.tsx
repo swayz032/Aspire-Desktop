@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { NotificationSettings } from '@/types/tenant';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function SettingRow({ icon, title, subtitle, value, onChange }: { 
   icon: string; 
@@ -56,6 +57,7 @@ export default function NotificationsScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="NotificationsScreen">
     <View style={styles.container}>
       <PageHeader title="Notifications" showBackButton />
       
@@ -111,6 +113,7 @@ export default function NotificationsScreen() {
         </View>
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

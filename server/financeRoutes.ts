@@ -2,13 +2,45 @@ import { Router, Request, Response } from 'express';
 import type { AuthenticatedRequest } from './types';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
-import { createReceipt } from './receiptService';
+import { createReceipt, createTrustSpineReceipt } from './receiptService';
 import { getConnectionsByTenant } from './financeTokenStore';
 import { computeSnapshot } from './snapshotEngine';
 import { getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
 import { withBreakerAction } from './circuitBreaker';
+
+/**
+ * Emit a failure receipt for finance error paths (Law #2).
+ * Non-blocking: receipt failures are logged but do not affect the error response.
+ */
+async function emitFailureReceipt(
+  suiteId: string,
+  receiptType: string,
+  correlationId: string,
+  errorReason: string,
+  officeId?: string,
+): Promise<void> {
+  try {
+    await createTrustSpineReceipt({
+      suiteId: suiteId || 'UNKNOWN',
+      officeId,
+      receiptType,
+      status: 'FAILED',
+      correlationId,
+      actorType: 'SYSTEM',
+      action: { risk_tier: 'GREEN' },
+      result: { error: errorReason },
+      riskTier: 'GREEN',
+      toolUsed: receiptType,
+    });
+  } catch (receiptErr) {
+    logger.error('Failure receipt emission failed (Law #2 violation)', {
+      receiptType,
+      error: receiptErr instanceof Error ? receiptErr.message : 'unknown',
+    });
+  }
+}
 
 const router = Router();
 
@@ -120,9 +152,11 @@ router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
       });
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Finance snapshot error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Finance snapshot error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'finance.snapshot.read', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -172,9 +206,11 @@ router.get('/api/finance/timeline', async (req: Request, res: Response) => {
 
     res.json({ events, total, limit, offset });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Finance timeline error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Finance timeline error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'finance.timeline.read', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -233,9 +269,11 @@ router.get('/api/finance/explain', async (req: Request, res: Response) => {
       relatedEvents,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Finance explain error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Finance explain error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'finance.explain.read', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -277,9 +315,11 @@ router.get('/api/connections/status', async (req: Request, res: Response) => {
       },
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Connections status error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Connections status error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'finance.connections.status', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -365,9 +405,11 @@ router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
 
     res.json({ steps, entityId: entityId || null });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Finance lifecycle error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Finance lifecycle error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'finance.lifecycle.read', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -383,9 +425,11 @@ router.post('/api/finance/compute-snapshot', async (req: Request, res: Response)
     );
     res.json(snapshot);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Compute snapshot error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Compute snapshot error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'finance.snapshot.compute', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -458,9 +502,11 @@ router.post('/api/finance/proposals', async (req: Request, res: Response) => {
       receiptId,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Create proposal error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Create proposal error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'finance.proposal.create', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -539,9 +585,11 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
       receiptId,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Execute action error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Execute action error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'finance.action.execute', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -660,9 +708,11 @@ router.get('/api/finance/exceptions', async (req: Request, res: Response) => {
       correlation_id: correlationId,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Finance exceptions error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Finance exceptions error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'finance.exceptions.read', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -709,9 +759,11 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
 
     res.json({ items, total: items.length, domain });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Authority queue error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Authority queue error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'authority.queue.read', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -766,9 +818,11 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
 
     res.json({ id: eventId, status: 'approved', approvedBy, receiptId, correlation_id: correlationId });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Authority approve error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Authority approve error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'authority.item.approve', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 
@@ -823,9 +877,11 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
 
     res.json({ id: eventId, status: 'denied', deniedBy, reason, receiptId, correlation_id: correlationId });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Authority deny error', { error: msg });
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    const correlationId = crypto.randomUUID();
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Authority deny error', { error: errMsg, correlationId });
+    await emitFailureReceipt(suiteId, 'authority.item.deny', correlationId, errMsg);
+    res.status(500).json({ error: 'INTERNAL_ERROR', code: 'INTERNAL_ERROR', correlationId });
   }
 });
 

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { PayrollSettings } from '@/components/finance/payroll/PayrollSettings';
 import { Colors } from '@/constants/tokens';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function SettingsPage() {
   const [gustoCompany, setGustoCompany] = useState<any>(null);
@@ -42,6 +43,7 @@ export default function SettingsPage() {
   const gustoConnected = !gustoLoading && !gustoError && gustoCompany;
 
   return (
+    <ErrorBoundary routeName="SettingsPage">
     <FinanceHubShell>
       <View style={styles.pageHeader}>
         <Ionicons name="settings-outline" size={22} color="#3B82F6" />
@@ -60,6 +62,7 @@ export default function SettingsPage() {
         />
       )}
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

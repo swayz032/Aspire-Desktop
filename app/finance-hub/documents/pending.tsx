@@ -25,6 +25,7 @@ import {
   ContractStatusBadge,
   type ContractStatus,
 } from '@/components/finance/documents';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const webOnly = (s: Record<string, unknown>) => Platform.OS === 'web' ? s : {};
 
@@ -198,6 +199,7 @@ export default function PendingSignaturesPage() {
   const keyExtractor = useCallback((item: PendingContract) => item.id, []);
 
   return (
+    <ErrorBoundary routeName="PendingSignaturesPage">
     <FinanceHubShell>
       <View style={styles.page}>
         {/* Header */}
@@ -249,6 +251,7 @@ export default function PendingSignaturesPage() {
         </View>
       </View>
     </FinanceHubShell>
+      </ErrorBoundary>
   );
 }
 

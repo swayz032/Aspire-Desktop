@@ -8,6 +8,7 @@
  * API key stays server-side — client never touches secrets (Law #9).
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { devWarn } from '@/lib/devLog';
 
 interface UseElevenLabsSTTOptions {
   /** Called each time a complete utterance is transcribed */
@@ -114,7 +115,7 @@ export function useElevenLabsSTT(
         onUtteranceRef.current?.(text);
       }
     } catch (err) {
-      console.warn('[ElevenLabsSTT] Transcription failed:', err instanceof Error ? err.message : err);
+      devWarn('[ElevenLabsSTT] Transcription failed:', err instanceof Error ? err.message : err);
       // Don't set error state for transient failures — keep listening
     } finally {
       sendingRef.current = false;

@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useSmsThreads, useSmsMessages } from '@/hooks/useSmsThreads';
 import type { SmsThread, SmsMessage } from '@/types/frontdesk';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -511,7 +512,8 @@ export default function MessagesPage() {
       const timer = setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
-      return () => clearTimeout(timer);
+      return (
+      ) => clearTimeout(timer);
     }
   }, [messages.length]);
 
@@ -572,6 +574,7 @@ export default function MessagesPage() {
   // -------------------------------------------------------------------------
 
   return (
+    <ErrorBoundary routeName="MessagesPage">
     <DesktopShell>
       <View style={styles.root}>
         {/* ============================================================== */}
@@ -752,6 +755,7 @@ export default function MessagesPage() {
         </View>
       </View>
     </DesktopShell>
+      </ErrorBoundary>
   );
 }
 

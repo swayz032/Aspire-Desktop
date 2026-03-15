@@ -3,6 +3,7 @@ import { View, StyleSheet, Text, ScrollView } from 'react-native';
 import { WidgetDock, DEFAULT_WIDGETS } from '@/components/canvas';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { Colors, Typography } from '@/constants/tokens';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 /**
  * Canvas Demo Page - Showcases WidgetDock component
@@ -27,6 +28,7 @@ export default function CanvasDemoScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="CanvasDemoScreen">
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
@@ -97,6 +99,7 @@ export default function CanvasDemoScreen() {
         position="bottom"
       />
     </View>
+      </ErrorBoundary>
   );
 }
 

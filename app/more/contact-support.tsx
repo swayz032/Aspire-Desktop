@@ -5,6 +5,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { validateForm, contactSupportSchema } from '@/lib/validation';
 
 const CATEGORIES = [
   'Technical Issue',
@@ -32,12 +34,19 @@ export default function ContactSupportScreen() {
   const [priority, setPriority] = useState('Medium');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = () => {
-    if (!subject.trim() || !description.trim() || !category) {
-      Alert.alert('Missing Information', 'Please fill in all required fields.');
+    const validation = validateForm(contactSupportSchema, {
+      subject: subject.trim(),
+      category,
+      description: description.trim(),
+    });
+    if (!validation.success) {
+      setFieldErrors(validation.errors);
       return;
     }
+    setFieldErrors({});
 
     setSubmitting(true);
     setTimeout(() => {
@@ -51,6 +60,7 @@ export default function ContactSupportScreen() {
   };
 
   return (
+    <ErrorBoundary routeName="ContactSupportScreen">
     <View style={styles.container}>
       <PageHeader title="Contact Support" showBackButton />
       
@@ -65,12 +75,13 @@ export default function ContactSupportScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Subject *</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, fieldErrors.subject ? { borderColor: '#ef4444' } : undefined]}
             placeholder="Brief description of your issue"
             placeholderTextColor={Colors.text.muted}
             value={subject}
             onChangeText={setSubject}
           />
+          {fieldErrors.subject && <Text style={styles.fieldError}>{fieldErrors.subject}</Text>}
         </View>
 
         <View style={styles.section}>
@@ -106,12 +117,13 @@ export default function ContactSupportScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          {fieldErrors.category && <Text style={styles.fieldError}>{fieldErrors.category}</Text>}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Description *</Text>
           <TextInput
-            style={[styles.input, styles.textArea]}
+            style={[styles.input, styles.textArea, fieldErrors.description ? { borderColor: '#ef4444' } : undefined]}
             placeholder="Please describe your issue in detail..."
             placeholderTextColor={Colors.text.muted}
             value={description}
@@ -120,6 +132,7 @@ export default function ContactSupportScreen() {
             numberOfLines={6}
             textAlignVertical="top"
           />
+          {fieldErrors.description && <Text style={styles.fieldError}>{fieldErrors.description}</Text>}
         </View>
 
         <TouchableOpacity 
@@ -142,6 +155,7 @@ export default function ContactSupportScreen() {
         </Text>
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 
@@ -267,6 +281,11 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     fontWeight: '600',
     marginLeft: Spacing.sm,
+  },
+  fieldError: {
+    color: '#ef4444',
+    fontSize: 12,
+    marginTop: 4,
   },
   footerNote: {
     ...Typography.small,

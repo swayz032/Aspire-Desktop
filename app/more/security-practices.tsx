@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function Practice({ icon, title, description }: { icon: string; title: string; description: string }) {
   return (
@@ -24,6 +25,7 @@ export default function SecurityPracticesScreen() {
   const headerHeight = insets.top + 60;
 
   return (
+    <ErrorBoundary routeName="SecurityPracticesScreen">
     <View style={styles.container}>
       <PageHeader title="Security Practices" showBackButton />
       <ScrollView style={[styles.scroll, { paddingTop: headerHeight }]} contentContainerStyle={styles.scrollContent}>
@@ -114,6 +116,7 @@ export default function SecurityPracticesScreen() {
         </View>
       </ScrollView>
     </View>
+      </ErrorBoundary>
   );
 }
 

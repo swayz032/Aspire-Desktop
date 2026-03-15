@@ -10,6 +10,7 @@ import { DocumentThumbnail } from '@/components/DocumentThumbnail';
 import { Toast } from '@/components/session/Toast';
 import { getOutboxJobs, getAuthorityQueue } from '@/lib/api';
 import { useDesktop } from '@/lib/useDesktop';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function FullPlanScreen() {
   const router = useRouter();
@@ -72,6 +73,7 @@ export default function FullPlanScreen() {
   const visibleRiskItems = atRiskItems.filter(item => !dismissedRiskItems.includes(item.id));
 
   return (
+    <ErrorBoundary routeName="FullPlanScreen">
     <View style={styles.container}>
       <View style={[styles.contentWrapper, isDesktop && styles.desktopWrapper]}>
         <View style={styles.header}>
@@ -175,6 +177,7 @@ export default function FullPlanScreen() {
         onHide={() => setToastVisible(false)}
       />
     </View>
+    </ErrorBoundary>
   );
 }
 
