@@ -119,13 +119,20 @@ export function GlowTrendCard({ title, value, delta, deltaDirection = 'up', data
                 stroke={accentColor}
                 strokeWidth={2}
                 fill={`url(#${gradientId})`}
-                dot={false}
-                activeDot={{
-                  r: 4,
-                  fill: accentColor,
-                  stroke: '#0A0A0F',
-                  strokeWidth: 2,
+                dot={(props: Record<string, unknown>) => {
+                  const { cx, cy, index } = props as { cx: number; cy: number; index: number };
+                  if (index !== data.length - 1) return <circle key={index} r={0} />;
+                  return (
+                    <g key="pulse-dot">
+                      <circle cx={cx} cy={cy} r={6} fill={accentColor} opacity={0.2}>
+                        <animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite" />
+                        <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2s" repeatCount="indefinite" />
+                      </circle>
+                      <circle cx={cx} cy={cy} r={3.5} fill={accentColor} stroke="#0A0A0F" strokeWidth={2} />
+                    </g>
+                  );
                 }}
+                activeDot={false}
               />
             </AreaChart>
           </ResponsiveContainer>

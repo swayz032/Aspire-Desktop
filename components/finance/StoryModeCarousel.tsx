@@ -220,7 +220,7 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
                   background: '#0A0A0F',
                 }}>
                   <div style={{
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: 700,
                     color: '#ffffff',
                     marginBottom: 3,

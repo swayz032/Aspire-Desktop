@@ -78,7 +78,7 @@ export function SegmentRingCard({ title, centerValue, centerLabel, segments, acc
         }}>{title}</div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div style={{ position: 'relative' as const, width: 110, height: 110, flexShrink: 0 }}>
+          <div style={{ position: 'relative' as const, width: 110, height: 110, flexShrink: 0, minWidth: 110, minHeight: 110 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -109,7 +109,7 @@ export function SegmentRingCard({ title, centerValue, centerLabel, segments, acc
               pointerEvents: 'none' as const,
             }}>
               <div style={{
-                fontSize: 22,
+                fontSize: 28,
                 fontWeight: 700,
                 color: '#ffffff',
                 lineHeight: '1',

@@ -29,13 +29,8 @@ interface Props {
   providers?: ProviderItem[];
 }
 
-/** Card padding uses 18 for a slightly more spacious desktop right-rail feel. */
 const CARD_PADDING = 18;
-
-/** Status dot diameter — 10px for comfortable visibility at a glance. */
 const DOT_SIZE = 10;
-
-/** Empty-state icon size — 28px balances presence without dominating. */
 const EMPTY_ICON_SIZE = 28;
 
 export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }: Props) {

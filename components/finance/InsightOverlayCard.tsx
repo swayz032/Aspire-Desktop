@@ -75,7 +75,18 @@ export function InsightOverlayCard({ quote, sparkData, accentColor, loading }: I
                 stroke={accentColor}
                 strokeWidth={1.5}
                 fill={`url(#${sparkGradientId})`}
-                dot={false}
+                dot={(props: Record<string, unknown>) => {
+                  const { cx, cy, index } = props as { cx: number; cy: number; index: number };
+                  if (!sparkData || index !== sparkData.length - 1) return <circle key={index} r={0} />;
+                  return (
+                    <g key="spark-end-dot">
+                      <circle cx={cx} cy={cy} r={4} fill={accentColor} opacity={0.25}>
+                        <animate attributeName="r" values="3;5;3" dur="2s" repeatCount="indefinite" />
+                      </circle>
+                      <circle cx={cx} cy={cy} r={2} fill={accentColor} />
+                    </g>
+                  );
+                }}
               />
             </AreaChart>
           </ResponsiveContainer>

@@ -19,6 +19,12 @@ import { FinnChatModal } from '@/components/finance/FinnChatModal';
 
 import ReconcileCard from '@/components/finance/ReconcileCard';
 import LifecycleChain from '@/components/finance/LifecycleChain';
+import { StoryModeCarousel, STORY_MODES } from '@/components/finance/StoryModeCarousel';
+import type { StoryModeId } from '@/components/finance/StoryModeCarousel';
+import { GlowTrendCard } from '@/components/finance/GlowTrendCard';
+import { SegmentRingCard } from '@/components/finance/SegmentRingCard';
+import { QueueInstrumentCard } from '@/components/finance/QueueInstrumentCard';
+import { InsightOverlayCard } from '@/components/finance/InsightOverlayCard';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern, heroCardBg } from '@/constants/cardPatterns';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
@@ -568,6 +574,33 @@ function FinanceHubContent() {
   const [showFinnOverlay, setShowFinnOverlay] = useState(false);
   const [finnOverlayTab, setFinnOverlayTab] = useState<'voice' | 'video'>('voice');
   const [showFinnChat, setShowFinnChat] = useState(false);
+  const [activeStoryMode, setActiveStoryMode] = useState<StoryModeId>('cash-truth');
+
+  const activeModeCfg = STORY_MODES.find(m => m.id === activeStoryMode) ?? STORY_MODES[0];
+
+  const storyDemoData = useMemo(() => ({
+    trend: [
+      { value: 42 }, { value: 45 }, { value: 40 }, { value: 48 },
+      { value: 52 }, { value: 49 }, { value: 55 }, { value: 58 },
+      { value: 54 }, { value: 60 }, { value: 63 }, { value: 67 },
+    ],
+    segments: [
+      { label: 'Revenue', value: 45, color: activeModeCfg.accent },
+      { label: 'Expenses', value: 30, color: `${activeModeCfg.accent}88` },
+      { label: 'Tax Reserve', value: 15, color: `${activeModeCfg.accent}55` },
+      { label: 'Other', value: 10, color: 'rgba(255,255,255,0.15)' },
+    ],
+    queue: [
+      { label: 'Vendor invoice #1042', amount: '$3,200', status: 'active' as const, age: '2d', progress: 75 },
+      { label: 'Payroll run Mar 15', amount: '$12,400', status: 'warning' as const, age: '5d', progress: 40 },
+      { label: 'Tax payment Q1', amount: '$8,750', status: 'overdue' as const, age: '12d', progress: 90 },
+      { label: 'Office lease renewal', amount: '$2,100', status: 'pending' as const, progress: 10 },
+    ],
+    spark: [
+      { value: 30 }, { value: 35 }, { value: 28 }, { value: 42 },
+      { value: 38 }, { value: 45 }, { value: 50 }, { value: 48 },
+    ],
+  }), [activeModeCfg.accent]);
 
   // Authority Queue state
   const dynamicItems = useDynamicAuthorityQueue();
@@ -851,6 +884,67 @@ function FinanceHubContent() {
               </View>
             </View>
           </View>
+        </View>
+      )}
+
+      <View style={{ marginBottom: 24, marginTop: 8 }}>
+        <StoryModeCarousel
+          activeMode={activeStoryMode}
+          onSelectMode={(mode) => setActiveStoryMode(mode.id)}
+        />
+      </View>
+
+      {Platform.OS === 'web' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+          <GlowTrendCard
+            title={`${activeModeCfg.name} — Trend`}
+            value="$67,240"
+            delta="+12.4% vs last period"
+            deltaDirection="up"
+            data={storyDemoData.trend}
+            accentColor={activeModeCfg.accent}
+            mode={activeStoryMode}
+          />
+          <div style={{ display: 'flex', gap: 12, flexWrap: isCompact ? 'wrap' : 'nowrap' as const }}>
+            <div style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
+              <SegmentRingCard
+                title="Breakdown"
+                centerValue="$67K"
+                centerLabel="total"
+                segments={storyDemoData.segments}
+                accentColor={activeModeCfg.accent}
+                mode={activeStoryMode}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
+              <QueueInstrumentCard
+                title="Action Queue"
+                items={storyDemoData.queue}
+                accentColor={activeModeCfg.accent}
+                mode={activeStoryMode}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
+              <InsightOverlayCard
+                quote="Cash position is strong this week. Revenue trending 12% above forecast — consider accelerating the Q2 tax reserve."
+                sparkData={storyDemoData.spark}
+                accentColor={activeModeCfg.accent}
+                mode={activeStoryMode}
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <View style={{ marginBottom: 24, gap: 12 }}>
+          <GlowTrendCard
+            title={`${activeModeCfg.name} — Trend`}
+            value="$67,240"
+            delta="+12.4% vs last period"
+            deltaDirection="up"
+            data={storyDemoData.trend}
+            accentColor={activeModeCfg.accent}
+            mode={activeStoryMode}
+          />
         </View>
       )}
 
