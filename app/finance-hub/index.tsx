@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions, ViewStyle } from 'react-native';
+
+type WebStyle = ViewStyle & Record<string, unknown>;
 import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
@@ -279,7 +281,7 @@ function GlassCard({ children, style, onPress, hovered, tint, ...rest }: GlassCa
     : CARD_BG;
   return (
     <Comp
-      style={[s.card, style, hovered && s.cardHover, { background: bg, border: `1px solid ${CARD_BORDER}` } as any]}
+      style={[s.card, style, hovered && s.cardHover, Platform.OS === 'web' ? { background: bg, border: `1px solid ${CARD_BORDER}` } as WebStyle : undefined]}
       onPress={onPress}
       {...rest}
     >
@@ -1134,7 +1136,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({ web: { boxShadow: '0 0 20px rgba(59,130,246,0.4)' } }),
-  } as any,
+  } as WebStyle,
   heroBannerTitle: {
     color: '#fff',
     fontSize: 28,
@@ -1182,7 +1184,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
     padding: 20,
     overflow: 'hidden' as const,
-  } as any,
+  } as WebStyle,
   cardHover: {
     borderColor: 'rgba(255,255,255,0.10)',
   },
@@ -1277,7 +1279,7 @@ const s = StyleSheet.create({
     minHeight: 320,
     borderWidth: 1,
     borderColor: 'rgba(139,92,246,0.15)',
-  } as any,
+  } as WebStyle,
   finnCardOuterStacked: {
     flexDirection: 'column',
     minHeight: undefined,
@@ -1288,7 +1290,7 @@ const s = StyleSheet.create({
     paddingLeft: 18,
     paddingVertical: 18,
     zIndex: 2,
-  } as any,
+  } as WebStyle,
   finnPanelInner: {
     backgroundColor: CARD_BG,
     borderWidth: 1,
@@ -1308,7 +1310,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.03)',
     marginBottom: 8,
     ...Platform.select({ web: { cursor: 'pointer', transition: 'all 0.2s ease' } }),
-  } as any,
+  } as WebStyle,
   finnPanelBtnText: {
     color: '#ddd',
     fontSize: 13,
@@ -1319,7 +1321,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-  } as any,
+  } as WebStyle,
   finnCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1420,7 +1422,7 @@ const s = StyleSheet.create({
     flex: 1,
   },
   kpiPressableCompact: {
-    flexBasis: '45%' as any,
+    flexBasis: '45%' as unknown as number,
     flex: undefined,
     flexGrow: 1,
     marginBottom: 10,
@@ -1570,13 +1572,13 @@ const s = StyleSheet.create({
       overflowY: 'hidden',
       scrollbarWidth: 'thin',
       scrollbarColor: '#3B3B3D transparent',
-    } as any }),
+    } as WebStyle }),
     paddingVertical: 4,
     alignItems: 'stretch',
-  } as any,
+  } as WebStyle,
   authorityCardWrap: {
     width: 300,
     flexShrink: 0,
     display: 'flex',
-  } as any,
+  } as WebStyle,
 });
