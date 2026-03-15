@@ -10,11 +10,16 @@ const SUPABASE_ANON_KEY = SUPABASE_WEB_CONFIGURED
   ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
   : 'placeholder-anon-key';
 
-if (!SUPABASE_WEB_CONFIGURED && isProductionRuntime()) {
-  throw new Error('Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY in production.');
-}
-
 if (!SUPABASE_WEB_CONFIGURED && !DEV_BYPASS) {
+  // Only throw when neither Supabase config nor bypass is set.
+  // Note: isProductionRuntime() is always true for Expo web builds regardless of environment,
+  // so we rely on the explicit DEV_BYPASS flag instead of NODE_ENV.
+  if (isProductionRuntime()) {
+    throw new Error(
+      'Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY. ' +
+      'Set EXPO_PUBLIC_ALLOW_SUPABASE_BYPASS=true to run without Supabase credentials.',
+    );
+  }
   throw new Error(
     'Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY. ' +
     'Set EXPO_PUBLIC_ALLOW_SUPABASE_BYPASS=true only for local development.',

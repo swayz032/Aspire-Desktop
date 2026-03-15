@@ -12,5 +12,7 @@ export function isProductionRuntime(): boolean {
 
 export function allowDevSupabaseBypass(): boolean {
   const explicitBypass = process.env.EXPO_PUBLIC_ALLOW_SUPABASE_BYPASS === 'true';
-  return !isProductionRuntime() && !hasSupabaseWebConfig() && explicitBypass;
+  // Allow bypass even in production builds when explicitly set and Supabase is not configured.
+  // Expo web always sets NODE_ENV=production at build time, so we cannot use it to gate this.
+  return !hasSupabaseWebConfig() && explicitBypass;
 }
