@@ -1,10 +1,9 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { DesktopHeader } from '@/components/desktop/DesktopHeader';
-import { FinanceSidebar } from './FinanceSidebar';
+import { FinanceTopNav } from './FinanceTopNav';
 import { Colors } from '@/constants/tokens';
 
-/** Breakpoint: below this width the right rail collapses inline */
 const RIGHT_RAIL_BREAKPOINT = 1100;
 
 type Props = {
@@ -18,34 +17,30 @@ export function FinanceHubShell({ children, rightRail }: Props) {
 
   return (
     <View style={styles.container}>
-      <FinanceSidebar />
-      <View style={styles.rightSection}>
-        <DesktopHeader />
-        <View style={[styles.content, !showRailColumn && styles.contentStacked]}>
-          <View style={styles.mainArea}>
-            <ScrollView
-              style={styles.scrollView}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {children}
-              {/* Right rail inlined below main content on narrow viewports */}
-              {rightRail && !showRailColumn && (
-                <View style={styles.rightRailInline}>
-                  {rightRail}
-                </View>
-              )}
+      <DesktopHeader hideSearch />
+      <FinanceTopNav />
+      <View style={[styles.content, !showRailColumn && styles.contentStacked]}>
+        <View style={styles.mainArea}>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {children}
+            {rightRail && !showRailColumn && (
+              <View style={styles.rightRailInline}>
+                {rightRail}
+              </View>
+            )}
+          </ScrollView>
+        </View>
+        {rightRail && showRailColumn && (
+          <View style={styles.rightRail}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {rightRail}
             </ScrollView>
           </View>
-          {/* Right rail as a fixed column on wide viewports */}
-          {rightRail && showRailColumn && (
-            <View style={styles.rightRail}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {rightRail}
-              </ScrollView>
-            </View>
-          )}
-        </View>
+        )}
       </View>
     </View>
   );
@@ -54,12 +49,8 @@ export function FinanceHubShell({ children, rightRail }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: 'row',
-    backgroundColor: Colors.background.primary,
-  },
-  rightSection: {
-    flex: 1,
     flexDirection: 'column',
+    backgroundColor: Colors.background.primary,
   },
   content: {
     flex: 1,
@@ -76,9 +67,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rightRail: {
-    width: 300,
+    width: 260,
     borderLeftWidth: 1,
-    borderLeftColor: Colors.background.tertiary,
+    borderLeftColor: 'rgba(255,255,255,0.04)',
     paddingHorizontal: 16,
     paddingVertical: 16,
   },

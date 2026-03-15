@@ -59,12 +59,14 @@ interface DesktopHeaderProps {
   businessName?: string;
   role?: string;
   suiteId?: string;
+  hideSearch?: boolean;
 }
 
 export function DesktopHeader({
   businessName: businessNameProp,
   role: roleProp,
   suiteId: suiteIdProp,
+  hideSearch,
 }: DesktopHeaderProps) {
   const { session, signOut } = useSupabase();
   const { tenant } = useTenant();
@@ -452,12 +454,14 @@ export function DesktopHeader({
       <View style={s.leftSection} />
 
       <View style={s.centerSection}>
-        <Pressable
-          style={({ hovered }: any) => [s.searchBar, hovered && s.searchBarHover]}
-        >
-          <Ionicons name="search" size={16} color={Colors.text.tertiary} />
-          <Text style={s.searchPlaceholder}>Search or press ⌘K</Text>
-        </Pressable>
+        {!hideSearch && (
+          <Pressable
+            style={({ hovered }: any) => [s.searchBar, hovered && s.searchBarHover]}
+          >
+            <Ionicons name="search" size={16} color={Colors.text.tertiary} />
+            <Text style={s.searchPlaceholder}>Search or press ⌘K</Text>
+          </Pressable>
+        )}
       </View>
 
       <View style={s.rightSection}>

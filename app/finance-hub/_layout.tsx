@@ -13,6 +13,7 @@ export default function FinanceHubLayout() {
       <Stack.Screen name="documents" />
       <Stack.Screen name="connections" />
       <Stack.Screen name="receipts" />
+      <Stack.Screen name="memory" />
     </Stack>
   );
 }
