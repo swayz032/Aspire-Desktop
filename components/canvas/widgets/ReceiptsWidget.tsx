@@ -45,7 +45,7 @@ export function ReceiptsWidget({ suiteId, officeId }: ReceiptsWidgetProps) {
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const getCategoryIcon = (category: string): keyof typeof Ionicons.hasGlyph | any => {
+  const getCategoryIcon = (category: string): string => {
     switch (category) {
       case 'Food': return 'restaurant-outline';
       case 'Travel': return 'airplane-outline';

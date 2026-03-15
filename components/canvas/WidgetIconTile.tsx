@@ -127,8 +127,7 @@ export function WidgetIconTile({
         {/* Tap area — whole tile */}
         <Pressable
           onPress={onPress}
-          style={s.tapArea}
-          {...(Platform.OS === 'web' ? ({ style: [s.tapArea, { cursor: 'pointer' } as any] }) : {})}
+          style={[s.tapArea, ...(Platform.OS === 'web' ? [{ cursor: 'pointer' } as any] : [])]}
         >
           {/* Icon circle */}
           <View style={[s.iconCircle, { backgroundColor: `${accent}28`, borderColor: `${accent}66` }]}>

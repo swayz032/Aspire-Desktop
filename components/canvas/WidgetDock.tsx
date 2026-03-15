@@ -336,8 +336,7 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
           />
         )}
         <View
-          style={styles.iconTile}
-          {...(Platform.OS === 'web' ? { style: [styles.iconTile, { filter: icon3DFilter } as any] } : {})}
+          style={[styles.iconTile, ...(Platform.OS === 'web' ? [{ filter: icon3DFilter } as any] : [])]}
         >
           {widget.avatarImage ? (
             <Image

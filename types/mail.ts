@@ -33,6 +33,7 @@ export interface MailThread extends BaseEntity {
   unread: boolean;
   messageCount: number;
   hasAttachments: boolean;
+  labelIds?: string[];
 }
 
 export interface MailDetail extends MailThread {

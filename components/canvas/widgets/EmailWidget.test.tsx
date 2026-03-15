@@ -49,13 +49,11 @@ describe('EmailWidget', () => {
   });
 
   it('accepts optional callback props', () => {
-    const handleEmailClick = jest.fn();
     const handleComposeClick = jest.fn();
 
     const { toJSON } = render(
       <EmailWidget
         {...mockProps}
-        onEmailClick={handleEmailClick}
         onComposeClick={handleComposeClick}
       />
     );

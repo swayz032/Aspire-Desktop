@@ -19,6 +19,10 @@ export type CanvasTelemetryEvent =
   | 'sound_play'
   | 'fallback_trigger'
   | 'slo_violation'
+  | 'risk_modal_open'
+  | 'risk_modal_close'
+  | 'risk_modal_submit'
+  | 'risk_modal_tier_select'
   | 'error';
 
 export interface TelemetryPayload {
@@ -80,6 +84,10 @@ function createEmptyEventCounts(): Record<CanvasTelemetryEvent, number> {
     sound_play: 0,
     fallback_trigger: 0,
     slo_violation: 0,
+    risk_modal_open: 0,
+    risk_modal_close: 0,
+    risk_modal_submit: 0,
+    risk_modal_tier_select: 0,
     error: 0,
   };
 }

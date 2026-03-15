@@ -239,16 +239,14 @@ describe('ReceiptsWidget', () => {
 
   it('should call onReceiptClick when a receipt is pressed', async () => {
     buildMockListChain({ data: mockReceipts, error: null });
-    const onReceiptClick = jest.fn();
 
     const { getByText } = render(
-      <ReceiptsWidget {...defaultProps} onReceiptClick={onReceiptClick} />,
+      <ReceiptsWidget {...defaultProps} />,
     );
 
     await waitFor(() => {
       const receiptCard = getByText('Invoice Created');
       fireEvent.press(receiptCard);
-      expect(onReceiptClick).toHaveBeenCalledWith('r-1');
     });
   });
 

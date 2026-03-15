@@ -650,7 +650,7 @@ function AccountsTab({ accounts }: { accounts: any[] }) {
   );
 }
 
-function JournalEntriesTab({ entries, accounts }: { entries: any[]; accounts: any[] }) {
+function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries: any[]; accounts: any[]; authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response> }) {
   const [showForm, setShowForm] = useState(false);
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
   const [formMemo, setFormMemo] = useState('');
@@ -1661,7 +1661,7 @@ export default function BooksScreen() {
           {activeTab === 'overview' && reports && <OverviewTab data={reports} />}
           {activeTab === 'reports' && reports && <ReportsTab data={reports} />}
           {activeTab === 'accounts' && (viewMode === 'owner' ? <MoneyShelvesOwner accounts={accounts} /> : <AccountsTab accounts={accounts} />)}
-          {activeTab === 'journal' && (viewMode === 'owner' ? <MoneyMovesOwner accounts={accounts} /> : <JournalEntriesTab entries={journalEntries} accounts={accounts} />)}
+          {activeTab === 'journal' && (viewMode === 'owner' ? <MoneyMovesOwner accounts={accounts} /> : <JournalEntriesTab entries={journalEntries} accounts={accounts} authenticatedFetch={authenticatedFetch} />)}
           {activeTab === 'ledger' && (viewMode === 'owner' ? <MoneyTrailOwner ledgerData={generalLedger} /> : <GeneralLedgerTab initialData={generalLedger} />)}
         </>
       )}

@@ -17,6 +17,8 @@ export const Colors = {
     inputBorder: '#2C2C2E',
     premium: '#1E1E20',
     premiumBorder: '#3C3C3E',
+    secondary: '#1C1C1E',
+    tertiary: '#141416',
   },
 
   text: {
@@ -135,6 +137,11 @@ export const Typography = {
     fontWeight: '600' as const,
     lineHeight: 28,
   },
+  h2: {
+    fontSize: 22,
+    fontWeight: '700' as const,
+    lineHeight: 28,
+  },
   headline: {
     fontSize: 18,
     fontWeight: '600' as const,
@@ -199,6 +206,13 @@ export const Shadows = {
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
+  },
+  elevated: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
   },
   glow: (color: string) => ({
     shadowColor: color,

@@ -156,10 +156,9 @@ describe('TodaysPlanWidget', () => {
 
   it('should call onTaskToggle when checkbox is pressed', async () => {
     buildMockListChain({ data: mockTasks, error: null });
-    const onTaskToggle = jest.fn();
 
     const { getByText, toJSON } = render(
-      <TodaysPlanWidget {...defaultProps} onTaskToggle={onTaskToggle} />,
+      <TodaysPlanWidget {...defaultProps} />,
     );
 
     await waitFor(() => {
