@@ -7,7 +7,21 @@ import { saveToken, loadToken, deleteToken } from './tokenStore';
 const router = Router();
 
 const stripeKey = process.env.STRIPE_CONNECT_SECRET_KEY || process.env.STRIPE_SECRET_KEY || '';
-const stripe = new Stripe(stripeKey);
+let _stripeInstance: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!_stripeInstance) {
+    _stripeInstance = new Stripe(stripeKey);
+  }
+  return _stripeInstance;
+}
+// Lazy alias — all existing references use `stripe`
+const stripe = new Proxy({} as Stripe, {
+  get: (_target, prop) => {
+    const instance = getStripe();
+    const val = (instance as any)[prop];
+    return typeof val === 'function' ? val.bind(instance) : val;
+  },
+});
 
 const DOMAIN = process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000';
 const BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || (DOMAIN.includes('localhost') ? `http://${DOMAIN}` : `https://${DOMAIN}`);

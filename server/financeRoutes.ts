@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
 import { getConnectionsByTenant } from './financeTokenStore';
 import { computeSnapshot } from './snapshotEngine';
-import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
+import { getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
 
@@ -60,8 +60,11 @@ const emptyChapters = () => ({
 });
 
 router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
     const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
 
     const snapshotResult = await db.execute(sql`
@@ -115,13 +118,16 @@ router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Finance snapshot error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
 router.get('/api/finance/timeline', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
     const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
     const range = getQueryParam(req.query.range, '30d');
     const limit = Math.min(parseInt(getQueryParam(req.query.limit, '50'), 10) || 50, 200);
@@ -164,13 +170,16 @@ router.get('/api/finance/timeline', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Finance timeline error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
 router.get('/api/finance/explain', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
     const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
     const metricId = getQueryParam(req.query.metricId, '');
 
@@ -222,13 +231,16 @@ router.get('/api/finance/explain', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Finance explain error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
 router.get('/api/connections/status', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
     const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
 
     const connections = await getConnectionsByTenant(suiteId, officeId);
@@ -263,13 +275,16 @@ router.get('/api/connections/status', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Connections status error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
 router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
     const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
     const entityId = getQueryParam(req.query.entityId, '');
 
@@ -348,25 +363,32 @@ router.get('/api/finance/lifecycle', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Finance lifecycle error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
 router.post('/api/finance/compute-snapshot', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const { suiteId = getDefaultSuiteId(), officeId = getDefaultOfficeId() } = req.body;
+    const officeId = req.body.officeId || getDefaultOfficeId();
     const snapshot = await computeSnapshot(suiteId, officeId);
     res.json(snapshot);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Compute snapshot error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
 router.post('/api/finance/proposals', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const suiteId = req.body.suiteId || getDefaultSuiteId();
     const officeId = req.body.officeId || getDefaultOfficeId();
     const { title, type, description, predictedImpact, dependencies,
             risk_tier, required_approval, inputs_hash, correlation_id, action, inputs } = req.body;
@@ -432,13 +454,17 @@ router.post('/api/finance/proposals', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Create proposal error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
 router.post('/api/finance/actions/execute', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const { suiteId = getDefaultSuiteId(), officeId = getDefaultOfficeId(), proposalId, approvedBy } = req.body;
+    const { officeId = getDefaultOfficeId(), proposalId, approvedBy } = req.body;
 
     if (!proposalId || !approvedBy) {
       return res.status(400).json({ error: 'proposalId and approvedBy are required' });
@@ -459,32 +485,18 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
     const proposal = proposalRows[0];
     const proposalMeta = proposal.metadata || {};
 
-    let riskTier = 'low';
+    // Law #1 (Single Brain) + Law #4 (Risk Tiers): Policy decisions are made by
+    // the LangGraph orchestrator, not in-process. This endpoint verifies the proposal
+    // was already approved through the authority queue before executing.
+    const riskTier = proposalMeta.risk_tier || 'yellow';
     const amount = proposal.amount || 0;
-    if (amount > 100000) riskTier = 'high';
-    else if (amount > 10000) riskTier = 'medium';
-
-    const policyDecision = {
-      riskTier,
-      approved: riskTier !== 'high',
-      evaluatedAt: new Date().toISOString(),
-      evaluatedBy: 'trust_spine_v1',
-    };
-
-    if (!policyDecision.approved) {
-      return res.status(403).json({
-        error: 'Proposal rejected by policy evaluation',
-        riskTier,
-        policyDecision,
-      });
-    }
 
     const executionEventId = `exec_${crypto.randomUUID()}`;
     const executionMeta = {
       proposalId,
       approvedBy,
       proposalTitle: proposalMeta.title,
-      policyDecision,
+      riskTier,
     };
 
     const execResult = await db.execute(sql`
@@ -502,8 +514,7 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
       officeId,
       actionType: 'execute_action',
       inputs: { proposalId, approvedBy },
-      outputs: { execEventId, policyDecision },
-      policyDecisionId: `policy_${crypto.randomUUID()}`,
+      outputs: { execEventId },
       metadata: { proposalTitle: proposalMeta.title, riskTier },
     });
 
@@ -517,21 +528,24 @@ router.post('/api/finance/actions/execute', async (req: Request, res: Response) 
       executionEventId: execEventId,
       proposalId,
       approvedBy,
-      policyDecision,
+      riskTier,
       executedAt,
       receiptId,
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Execute action error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
 // ── Finn v2: Exceptions endpoint ──────────────────────────────────────────────
 router.get('/api/finance/exceptions', async (req: Request, res: Response) => {
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   try {
-    const suiteId = getQueryParam(req.query.suiteId, getDefaultSuiteId());
     const officeId = getQueryParam(req.query.officeId, getDefaultOfficeId());
     const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
 
@@ -642,7 +656,7 @@ router.get('/api/finance/exceptions', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Finance exceptions error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
@@ -691,7 +705,7 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Authority queue error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
@@ -748,7 +762,7 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Authority approve error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
@@ -805,7 +819,7 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Authority deny error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 

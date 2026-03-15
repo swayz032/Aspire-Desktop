@@ -45,7 +45,10 @@ function verifyQBOSignature(payload: string, signature: string): boolean {
     const hash = crypto.createHmac('sha256', verifierToken)
       .update(payload)
       .digest('base64');
-    return hash === signature;
+    const hashBuf = Buffer.from(hash, 'base64');
+    const sigBuf = Buffer.from(signature, 'base64');
+    if (hashBuf.length !== sigBuf.length) return false;
+    return crypto.timingSafeEqual(hashBuf, sigBuf);
   } catch (error: unknown) {
     logger.error('QBO webhook signature verification error', { error: error instanceof Error ? error.message : 'unknown' });
     return false;

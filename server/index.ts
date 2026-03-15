@@ -620,9 +620,12 @@ app.get('/api/ops-snapshot', async (req, res) => {
       providers: { plaid: false, stripe: false, gusto: false, quickbooks: false },
     };
 
+    const authHeader = req.headers['authorization'];
     const safeFetch = async (url: string) => {
       try {
-        const r = await fetch(url);
+        const headers: Record<string, string> = {};
+        if (authHeader) headers['authorization'] = authHeader;
+        const r = await fetch(url, { headers });
         if (!r.ok) return null;
         return await r.json();
       } catch { return null; }
@@ -935,23 +938,49 @@ async function start() {
     if (defaultSuiteId) {
       setDefaultSuiteId(defaultSuiteId);
 
-      // Try to find default office
-      try {
-        const officeResult = await db.execute(sql`
-          SELECT office_id FROM app.offices WHERE suite_id = ${defaultSuiteId} LIMIT 1
-        `);
-        const officeRows = (officeResult.rows || officeResult) as any[];
-        defaultOfficeId = officeRows[0]?.office_id || '';
-      } catch {
-        // app.offices not available — office context from JWT
+      // Try multiple schemas/table shapes for office lookup.
+      // If none exists, fail closed to suite-scoped office context.
+      const officeLookupQueries = [
+        sql`SELECT office_id FROM app.offices WHERE suite_id = ${defaultSuiteId} LIMIT 1`,
+        sql`SELECT office_id FROM offices WHERE suite_id = ${defaultSuiteId} LIMIT 1`,
+        sql`SELECT id AS office_id FROM offices WHERE suite_id = ${defaultSuiteId} LIMIT 1`,
+      ];
+
+      for (const officeQuery of officeLookupQueries) {
+        if (defaultOfficeId) break;
+        try {
+          const officeResult = await db.execute(officeQuery);
+          const officeRows = (officeResult.rows || officeResult) as any[];
+          defaultOfficeId = officeRows[0]?.office_id || '';
+        } catch {
+          // Table/schema variant not available — continue to next probe.
+        }
       }
+
+      if (!defaultOfficeId) {
+        try {
+          const createdOfficeResult = await db.execute(sql`
+            INSERT INTO app.offices (suite_id, label)
+            VALUES (${defaultSuiteId}::uuid, 'Primary')
+            RETURNING office_id
+          `);
+          const createdOfficeRows = (createdOfficeResult.rows || createdOfficeResult) as any[];
+          defaultOfficeId = createdOfficeRows[0]?.office_id || '';
+        } catch {
+          // If office creation is unavailable in this schema, leave unresolved.
+        }
+      }
+
+      if (!defaultOfficeId) {
+        logger.warn('No office row found or creatable for suite; using JWT-based office context', { suite_id: defaultSuiteId });
+      }
+
       if (defaultOfficeId) setDefaultOfficeId(defaultOfficeId);
     }
 
     logger.info('Suite context initialized', { suite_id: defaultSuiteId || 'JWT-based', office_id: defaultOfficeId || 'JWT-based' });
 
     await loadOAuthTokens();
-    await initStripe();
   } catch (err: unknown) {
     logger.error('Startup initialization failed', { error: err instanceof Error ? err.message : 'unknown' });
     logger.warn('Server will continue with JWT-based suite context');
@@ -959,6 +988,11 @@ async function start() {
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     logger.info('Aspire Desktop server running', { port: PORT });
+  });
+
+  // Do not block service availability on external Stripe setup.
+  initStripe().catch((err: unknown) => {
+    logger.error('Stripe init background task failed', { error: err instanceof Error ? err.message : 'unknown' });
   });
 
   // Mount multi-context WebSocket TTS proxy on the HTTP server

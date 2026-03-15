@@ -288,7 +288,13 @@ export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): P
 
 let capturedVerificationToken: string | null = null;
 
-router.get('/api/gusto/webhook-verification-token', (_req: Request, res: Response) => {
+router.get('/api/gusto/webhook-verification-token', (req: Request, res: Response) => {
+  // Law #3 (Fail Closed): Admin-only endpoint — exposes sensitive webhook config
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  }
+  // TODO: Add admin role check when role system is available
   if (capturedVerificationToken) {
     res.json({ verification_token: capturedVerificationToken, message: 'Token captured from Gusto verification POST. Use this as GUSTO_WEBHOOK_SECRET.' });
   } else {
@@ -385,7 +391,7 @@ router.post('/api/gusto/verify-subscription', async (req: Request, res: Response
       });
     }
 
-    res.json({ message: 'Verification attempted', results, verification_token_used: verificationToken });
+    res.json({ message: 'Verification attempted', results });
   } catch (error: unknown) {
     logger.error('Gusto verify subscription error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
