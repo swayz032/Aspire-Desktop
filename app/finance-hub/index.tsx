@@ -37,10 +37,15 @@ interface FlowItem {
 
 interface MismatchItem {
   id: string;
+  type: 'settlement_timing' | 'payout_matching' | 'cash_vs_books' | 'missing_entry';
+  title: string;
   description: string;
-  delta: number;
-  bookAmount?: number;
-  bankAmount?: number;
+  reasonCode: string;
+  severity: 'info' | 'warning' | 'critical';
+  amounts: { expected: number; actual: number; difference: number };
+  providers: string[];
+  nextStep: string;
+  relatedEventIds: string[];
 }
 
 interface ProposalItem {
@@ -476,7 +481,7 @@ function FinanceHubContent() {
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
   const [timeline, setTimeline] = useState<{ date: string; description: string; amount?: number }[]>([]);
-  const [lifecycleSteps, setLifecycleSteps] = useState<{ id: string; label: string; status: string; completedAt?: string }[]>([]);
+  const [lifecycleSteps, setLifecycleSteps] = useState<{ label: string; status: 'completed' | 'current' | 'pending' | 'error'; provider?: string; timestamp?: string | null; eventId?: string; amount?: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [explainMetric, setExplainMetric] = useState<string | null>(null);
   const [showFinnOverlay, setShowFinnOverlay] = useState(false);
