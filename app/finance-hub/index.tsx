@@ -28,22 +28,43 @@ import { getStoryDashboardConfig } from '@/components/finance/storyModeConfigs';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 
+interface FlowItem {
+  description: string;
+  amount: number;
+  type: string;
+  dueDate?: string;
+}
+
+interface MismatchItem {
+  id: string;
+  description: string;
+  delta: number;
+  bookAmount?: number;
+  bankAmount?: number;
+}
+
+interface ProposalItem {
+  title: string;
+  status: string;
+  amount?: number;
+}
+
 interface SnapshotData {
   chapters: {
     now: { cashAvailable: number; bankBalance: number; stripeAvailable: number; stripePending: number; lastUpdated: string | null };
-    next: { expectedInflows7d: number; expectedOutflows7d: number; netCashFlow7d: number; items: any[] };
+    next: { expectedInflows7d: number; expectedOutflows7d: number; netCashFlow7d: number; items: FlowItem[] };
     month: { revenue: number; expenses: number; netIncome: number; period: string };
-    reconcile: { mismatches: any[]; mismatchCount: number };
-    actions: { proposals: any[]; proposalCount: number };
+    reconcile: { mismatches: MismatchItem[]; mismatchCount: number };
+    actions: { proposals: ProposalItem[]; proposalCount: number };
   };
-  provenance: Record<string, any>;
-  staleness: Record<string, any>;
+  provenance: Record<string, string>;
+  staleness: Record<string, string>;
   generatedAt: string | null;
   connected: boolean;
 }
 
 interface ConnectionStatus {
-  connections: Array<{ id: string; provider: string; status: string; lastSyncAt: string | null; nextStep: string | null }>;
+  connections: { id: string; provider: string; status: string; lastSyncAt: string | null; nextStep: string | null }[];
   summary: { total: number; connected: number; needsAttention: number };
 }
 
@@ -208,7 +229,7 @@ function FinnOrbVideo() {
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
       <video
-        ref={videoRef as any}
+        ref={videoRef as React.RefObject<HTMLVideoElement>}
         src="/finn-3d-object.mp4"
         autoPlay
         loop
@@ -233,7 +254,15 @@ function FinnOrbVideo() {
   );
 }
 
-function GlassCard({ children, style, onPress, hovered, tint, ...rest }: any) {
+interface GlassCardProps {
+  children: React.ReactNode;
+  style?: object;
+  onPress?: () => void;
+  hovered?: boolean;
+  tint?: { color: string; position?: string };
+  [key: string]: unknown;
+}
+function GlassCard({ children, style, onPress, hovered, tint, ...rest }: GlassCardProps) {
   if (Platform.OS !== 'web') {
     const Comp = onPress ? Pressable : View;
     return <Comp style={[s.card, style]} onPress={onPress} {...rest}>{children}</Comp>;
@@ -419,10 +448,10 @@ function SectionLabel({ icon, label, color = '#555', ledDelay }: { icon: string;
 }
 
 
-class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean; error: any}> {
-  constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
-  componentDidCatch(error: any, info: any) { console.error('FinanceHub crash:', error, info); }
+class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean; error: Error | null}> {
+  constructor(props: {children: React.ReactNode}) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) { console.error('FinanceHub crash:', error, info); }
   render() {
     if (this.state.hasError) {
       return (
@@ -446,8 +475,8 @@ function FinanceHubContent() {
   const [, setHoveredButton] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
-  const [timeline, setTimeline] = useState<any[]>([]);
-  const [lifecycleSteps, setLifecycleSteps] = useState<any[]>([]);
+  const [timeline, setTimeline] = useState<{ date: string; description: string; amount?: number }[]>([]);
+  const [lifecycleSteps, setLifecycleSteps] = useState<{ id: string; label: string; status: string; completedAt?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [explainMetric, setExplainMetric] = useState<string | null>(null);
   const [showFinnOverlay, setShowFinnOverlay] = useState(false);
@@ -705,7 +734,7 @@ function FinanceHubContent() {
             />
           </div>
           <div style={{ flex: '1 1 40%', minWidth: 0 }}>
-            <View style={[s.finnCardOuter, { minHeight: 280 } as any]}>
+            <View style={[s.finnCardOuter, { minHeight: 280 }]}>
               <View style={s.finnFloatingPanel}>
                 <View style={s.finnPanelInner}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -757,7 +786,12 @@ function FinanceHubContent() {
             <HealthScoreRing
               connectedCount={connections?.summary?.connected ?? 0}
               mismatchCount={snapshot?.chapters?.reconcile?.mismatchCount ?? 0}
-              cashRunwayDays={60}
+              cashRunwayDays={(() => {
+                const cash = snapshot?.chapters?.now?.cashAvailable ?? 0;
+                const outflows7d = snapshot?.chapters?.next?.expectedOutflows7d ?? 0;
+                const dailyBurn = outflows7d > 0 ? outflows7d / 7 : 0;
+                return dailyBurn > 0 ? Math.round((cash / 100) / (dailyBurn / 100)) : 90;
+              })()}
             />
             <FinnDailyBrief
               activeMode={activeStoryMode}
@@ -917,14 +951,14 @@ function FinanceHubContent() {
                       <Text style={[s.proposalCountText, { color: '#F59E0B' }]}>{snapshot.chapters.reconcile.mismatchCount}</Text>
                     </View>
                   </View>
-                  {snapshot.chapters.reconcile.mismatches.map((m: any) => (
+                  {snapshot.chapters.reconcile.mismatches.map((m: MismatchItem) => (
                     <ReconcileCard key={m.id} mismatch={m} onAction={() => {}} onDismiss={() => {}} />
                   ))}
                 </View>
               </>
             )}
 
-            {isConnected && lifecycleSteps.length > 0 && lifecycleSteps.some((st: any) => st.status !== 'pending') && (
+            {isConnected && lifecycleSteps.length > 0 && lifecycleSteps.some((st) => st.status !== 'pending') && (
               <>
                 <SectionLabel icon="git-branch" label="MONEY LIFECYCLE" color="#999" ledDelay={2} />
                 <LifecycleChain
