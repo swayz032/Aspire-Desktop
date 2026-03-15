@@ -115,7 +115,7 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
       zIndex,
       opacity,
       transition: 'all 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
-      pointerEvents: absOffset === 0 ? 'auto' as const : 'none' as const,
+      pointerEvents: 'auto' as const,
     };
   };
 
@@ -183,11 +183,8 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
               key={mode.id}
               style={style}
               onClick={() => {
-                if (isCenter && onSelectMode) {
-                  onSelectMode(mode);
-                } else {
-                  setCenterIndex(i);
-                }
+                if (!isCenter) setCenterIndex(i);
+                if (onSelectMode) onSelectMode(mode);
               }}
             >
               <div style={{

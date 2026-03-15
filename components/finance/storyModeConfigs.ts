@@ -23,35 +23,92 @@ export interface StoryDashboardConfig {
   finnFocus: string;
 }
 
-export function getStoryDashboardConfig(mode: StoryModeId, accent: string): StoryDashboardConfig {
+interface SnapshotChapters {
+  now?: { cashAvailable?: number; bankBalance?: number; stripeAvailable?: number; stripePending?: number };
+  next?: { expectedInflows7d?: number; expectedOutflows7d?: number; netCashFlow7d?: number; items?: { description?: string; amount?: number; type?: string }[] };
+  month?: { revenue?: number; expenses?: number; netIncome?: number; period?: string };
+  reconcile?: { mismatchCount?: number; mismatches?: { description?: string; delta?: number }[] };
+  actions?: { proposalCount?: number; proposals?: { title?: string; status?: string }[] };
+}
+
+interface ConnectionsSummary {
+  connected?: number;
+  total?: number;
+  needsAttention?: number;
+}
+
+function fmtDollars(cents: number): string {
+  const abs = Math.abs(cents);
+  if (abs >= 100000) return `$${Math.round(abs / 100).toLocaleString('en-US')}`;
+  return `$${(abs / 100).toFixed(2)}`;
+}
+
+function fmtShort(cents: number): string {
+  const val = Math.abs(cents) / 100;
+  if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
+  return `$${val.toFixed(0)}`;
+}
+
+export function getStoryDashboardConfig(
+  mode: StoryModeId,
+  accent: string,
+  snapshot?: { chapters?: SnapshotChapters } | null,
+  _connSummary?: ConnectionsSummary | null,
+): StoryDashboardConfig {
+  const now = snapshot?.chapters?.now;
+  const next = snapshot?.chapters?.next;
+  const month = snapshot?.chapters?.month;
+  const recon = snapshot?.chapters?.reconcile;
+
+  const totalCash = now ? (now.cashAvailable ?? 0) : 0;
+  const bankBal = now?.bankBalance ?? 0;
+  const stripeAvail = now?.stripeAvailable ?? 0;
+  const stripePend = now?.stripePending ?? 0;
+  const otherCash = Math.max(0, totalCash - bankBal - stripeAvail - stripePend);
+
   const configs: Record<StoryModeId, StoryDashboardConfig> = {
     'cash-truth': {
-      hero: { title: 'Cash Balance Trend', value: '$67,240', delta: '+12.4% vs last period', deltaDirection: 'up' },
+      hero: {
+        title: 'Cash Balance Trend',
+        value: now ? fmtDollars(totalCash) : '$67,240',
+        delta: next ? `${next.netCashFlow7d != null && next.netCashFlow7d >= 0 ? '+' : ''}${fmtShort(next.netCashFlow7d ?? 0)} 7-day net` : '+12.4% vs last period',
+        deltaDirection: (next?.netCashFlow7d ?? 1) >= 0 ? 'up' : 'down',
+      },
       ring: {
         title: 'Cash Sources',
-        centerValue: '$67K',
+        centerValue: now ? fmtShort(totalCash) : '$67K',
         centerLabel: 'total',
         segments: [
-          { label: 'Bank', value: 45, color: accent },
-          { label: 'Stripe', value: 30, color: `${accent}88` },
-          { label: 'Pending', value: 15, color: `${accent}55` },
-          { label: 'Other', value: 10, color: 'rgba(255,255,255,0.15)' },
+          { label: 'Bank', value: now ? Math.max(1, Math.round(bankBal / (totalCash || 1) * 100)) : 45, color: accent },
+          { label: 'Stripe', value: now ? Math.max(1, Math.round(stripeAvail / (totalCash || 1) * 100)) : 30, color: `${accent}88` },
+          { label: 'Pending', value: now ? Math.max(1, Math.round(stripePend / (totalCash || 1) * 100)) : 15, color: `${accent}55` },
+          { label: 'Other', value: now ? Math.max(1, Math.round(otherCash / (totalCash || 1) * 100)) : 10, color: 'rgba(255,255,255,0.15)' },
         ],
       },
       queue: {
         title: '7-Day Flows',
-        items: [
-          { label: 'Client payment — Acme Co', amount: '+$8,400', status: 'active', age: '1d', progress: 85 },
-          { label: 'Payroll run Mar 15', amount: '-$12,400', status: 'warning', age: '3d', progress: 60 },
-          { label: 'Office rent deposit', amount: '-$3,200', status: 'pending', progress: 20 },
-          { label: 'Stripe settlement', amount: '+$4,100', status: 'active', age: '2d', progress: 70 },
+        items: next?.items?.slice(0, 4).map(it => ({
+          label: it.description ?? 'Flow item',
+          amount: `${(it.amount ?? 0) >= 0 ? '+' : ''}${fmtDollars(it.amount ?? 0)}`,
+          status: (it.type === 'outflow' ? 'warning' : 'active') as 'active' | 'warning',
+          progress: 60,
+        })) ?? [
+          { label: 'Client payment — Acme Co', amount: '+$8,400', status: 'active' as const, age: '1d', progress: 85 },
+          { label: 'Payroll run Mar 15', amount: '-$12,400', status: 'warning' as const, age: '3d', progress: 60 },
+          { label: 'Office rent deposit', amount: '-$3,200', status: 'pending' as const, progress: 20 },
+          { label: 'Stripe settlement', amount: '+$4,100', status: 'active' as const, age: '2d', progress: 70 },
         ],
       },
       insight: { quote: 'Cash position is strong this week. Revenue trending 12% above forecast — consider accelerating the Q2 tax reserve.' },
       finnFocus: 'Monitoring real-time cash across all providers.',
     },
     'what-changed': {
-      hero: { title: 'Revenue vs Expenses MoM', value: '+$14,820', delta: '+8.2% revenue growth', deltaDirection: 'up' },
+      hero: {
+        title: 'Revenue vs Expenses MoM',
+        value: month ? `${(month.netIncome ?? 0) >= 0 ? '+' : ''}${fmtDollars(month.netIncome ?? 0)}` : '+$14,820',
+        delta: month ? `${month.period ?? 'This month'} net income` : '+8.2% revenue growth',
+        deltaDirection: (month?.netIncome ?? 1) >= 0 ? 'up' : 'down',
+      },
       ring: {
         title: 'Category Changes',
         centerValue: '6',
@@ -151,7 +208,12 @@ export function getStoryDashboardConfig(mode: StoryModeId, accent: string): Stor
       finnFocus: 'Clearing unmatched transactions and data inconsistencies.',
     },
     'books-vs-bank': {
-      hero: { title: 'Books vs Bank Delta', value: '$120', delta: 'Nearly reconciled', deltaDirection: 'up' },
+      hero: {
+        title: 'Books vs Bank Delta',
+        value: recon ? `${recon.mismatchCount ?? 0} issues` : '$120',
+        delta: recon?.mismatchCount ? `${recon.mismatchCount} mismatches found` : 'Nearly reconciled',
+        deltaDirection: (recon?.mismatchCount ?? 0) > 0 ? 'down' : 'up',
+      },
       ring: {
         title: 'Match Status',
         centerValue: '96%',

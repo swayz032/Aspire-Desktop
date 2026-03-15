@@ -460,8 +460,8 @@ function FinanceHubContent() {
   const activeModeCfg = STORY_MODES.find(m => m.id === activeStoryMode) ?? STORY_MODES[0];
 
   const dashConfig = useMemo(
-    () => getStoryDashboardConfig(activeStoryMode, activeModeCfg.accent),
-    [activeStoryMode, activeModeCfg.accent]
+    () => getStoryDashboardConfig(activeStoryMode, activeModeCfg.accent, snapshot, connections?.summary),
+    [activeStoryMode, activeModeCfg.accent, snapshot, connections]
   );
 
   const trendData = useMemo(() => [
@@ -685,21 +685,6 @@ function FinanceHubContent() {
     };
   }, []);
 
-  const graphicRightRail = Platform.OS === 'web' ? (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <GreetingCard ownerName={tenant?.ownerName ? tenant.ownerName.split(' ').pop() ? `Mr. ${tenant.ownerName.split(' ').pop()}` : tenant.ownerName : 'Mr. Scott'} />
-      <HealthScoreRing
-        connectedCount={connections?.summary?.connected ?? 0}
-        mismatchCount={snapshot?.chapters?.reconcile?.mismatchCount ?? 0}
-        cashRunwayDays={60}
-      />
-      <FinnDailyBrief
-        activeMode={activeStoryMode}
-        accentColor={activeModeCfg.accent}
-        onAskFinn={() => setShowFinnChat(true)}
-      />
-    </div>
-  ) : null;
 
   const dashCardClass = (index: number) => {
     if (dashTransition === 'fading') return 'dash-card-fading';
@@ -709,7 +694,7 @@ function FinanceHubContent() {
 
   return (
     <>
-    <FinanceHubShell rightRail={graphicRightRail}>
+    <FinanceHubShell>
       {/* ═══ SELECTOR ROW ═══ */}
       {Platform.OS === 'web' ? (
         <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
@@ -767,6 +752,19 @@ function FinanceHubContent() {
               </View>
             </View>
           </div>
+          <div style={{ flex: '0 0 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <GreetingCard ownerName={tenant?.ownerName ? tenant.ownerName.split(' ').pop() ? `Mr. ${tenant.ownerName.split(' ').pop()}` : tenant.ownerName : 'Mr. Scott'} />
+            <HealthScoreRing
+              connectedCount={connections?.summary?.connected ?? 0}
+              mismatchCount={snapshot?.chapters?.reconcile?.mismatchCount ?? 0}
+              cashRunwayDays={60}
+            />
+            <FinnDailyBrief
+              activeMode={activeStoryMode}
+              accentColor={activeModeCfg.accent}
+              onAskFinn={() => setShowFinnChat(true)}
+            />
+          </div>
         </div>
       ) : (
         <View style={{ marginBottom: 24 }}>
@@ -803,6 +801,7 @@ function FinanceHubContent() {
               data={trendData}
               accentColor={activeModeCfg.accent}
               mode={activeStoryMode}
+              loading={loading}
             />
           </div>
           <div style={{
@@ -820,6 +819,7 @@ function FinanceHubContent() {
                 segments={dashConfig.ring.segments}
                 accentColor={activeModeCfg.accent}
                 mode={activeStoryMode}
+                loading={loading}
               />
             </div>
             <div className={dashCardClass(2)} style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
@@ -828,6 +828,7 @@ function FinanceHubContent() {
                 items={dashConfig.queue.items}
                 accentColor={activeModeCfg.accent}
                 mode={activeStoryMode}
+                loading={loading}
               />
             </div>
             <div className={dashCardClass(3)} style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
@@ -836,6 +837,7 @@ function FinanceHubContent() {
                 sparkData={sparkData}
                 accentColor={activeModeCfg.accent}
                 mode={activeStoryMode}
+                loading={loading}
               />
             </div>
           </div>
