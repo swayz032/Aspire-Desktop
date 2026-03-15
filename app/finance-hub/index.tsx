@@ -23,9 +23,7 @@ import { GlowTrendCard } from '@/components/finance/GlowTrendCard';
 import { SegmentRingCard } from '@/components/finance/SegmentRingCard';
 import { QueueInstrumentCard } from '@/components/finance/QueueInstrumentCard';
 import { InsightOverlayCard } from '@/components/finance/InsightOverlayCard';
-import { GreetingCard } from '@/components/finance/GreetingCard';
-import { HealthScoreRing } from '@/components/finance/HealthScoreRing';
-import { FinnDailyBrief } from '@/components/finance/FinnDailyBrief';
+import { FinanceRightRail } from '@/components/finance/FinanceRightRail';
 import { getStoryDashboardConfig } from '@/components/finance/storyModeConfigs';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
@@ -788,9 +786,9 @@ function FinanceHubContent() {
               </View>
             </View>
           </div>
-          <div style={{ flex: '0 0 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <GreetingCard ownerName={tenant?.ownerName ? tenant.ownerName.split(' ').pop() ? `Mr. ${tenant.ownerName.split(' ').pop()}` : tenant.ownerName : 'Mr. Scott'} />
-            <HealthScoreRing
+          <div style={{ flex: '0 0 260px', minWidth: 0 }}>
+            <FinanceRightRail
+              ownerName={tenant?.ownerName ? tenant.ownerName.split(' ').pop() ? `Mr. ${tenant.ownerName.split(' ').pop()}` : tenant.ownerName : 'Mr. Scott'}
               connectedCount={connections?.summary?.connected ?? 0}
               mismatchCount={snapshot?.chapters?.reconcile?.mismatchCount ?? 0}
               cashRunwayDays={(() => {
@@ -799,8 +797,6 @@ function FinanceHubContent() {
                 const dailyBurn = outflows7d > 0 ? outflows7d / 7 : 0;
                 return dailyBurn > 0 ? Math.round((cash / 100) / (dailyBurn / 100)) : 90;
               })()}
-            />
-            <FinnDailyBrief
               activeMode={activeStoryMode}
               accentColor={activeModeCfg.accent}
               onAskFinn={() => setShowFinnChat(true)}
