@@ -7,6 +7,8 @@ export type ReceiptStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'DENIED';
 export type ActorType = 'USER' | 'SYSTEM' | 'WORKER';
 export type ReceiptActionType = 'ingest_webhook' | 'sync_pull' | 'compute_snapshot' | 'propose_action' | 'execute_action';
 
+export type RiskTier = 'GREEN' | 'YELLOW' | 'RED';
+
 export interface TrustSpineReceiptParams {
   suiteId: string;
   officeId?: string;
@@ -17,6 +19,9 @@ export interface TrustSpineReceiptParams {
   actorId?: string;
   action: Record<string, any>;
   result: Record<string, any>;
+  riskTier?: RiskTier;
+  toolUsed?: string;
+  capabilityTokenId?: string;
 }
 
 export interface CreateReceiptParams {
@@ -89,9 +94,16 @@ export async function createTrustSpineReceipt(params: TrustSpineReceiptParams): 
     const tenantRows = (tenantResult.rows || tenantResult) as Record<string, unknown>[];
     const tenantId = (tenantRows[0]?.tenant_id as string) || 'unknown';
 
+    const enrichedAction = {
+      ...params.action,
+      risk_tier: params.riskTier || 'GREEN',
+      tool_used: params.toolUsed || 'unknown',
+      capability_token_id: params.capabilityTokenId || 'direct_server',
+    };
+
     await db.execute(sql`
       INSERT INTO receipts (receipt_id, suite_id, tenant_id, receipt_type, status, correlation_id, actor_type, actor_id, office_id, action, result)
-      VALUES (${receiptId}, ${params.suiteId}::uuid, ${tenantId}, ${params.receiptType}, ${status}, ${correlationId}, ${actorType}, ${params.actorId || null}, ${params.officeId || null}::uuid, ${JSON.stringify(params.action)}::jsonb, ${JSON.stringify(params.result)}::jsonb)
+      VALUES (${receiptId}, ${params.suiteId}::uuid, ${tenantId}, ${params.receiptType}, ${status}, ${correlationId}, ${actorType}, ${params.actorId || null}, ${params.officeId || null}::uuid, ${JSON.stringify(enrichedAction)}::jsonb, ${JSON.stringify(params.result)}::jsonb)
     `);
 
     logger.info(`Receipt created: ${receiptId} (${params.receiptType}/${status})`);

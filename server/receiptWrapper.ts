@@ -111,11 +111,11 @@ export function withReceipt(
         action: {
           method: req.method,
           path: req.path,
-          risk_tier: riskTier,
-          // Redact sensitive params — never log full request bodies (Law #9)
           params: req.params,
         },
         result: resultData,
+        riskTier: riskTier as 'GREEN' | 'YELLOW' | 'RED',
+        toolUsed: receiptType,
       });
     } catch (receiptError) {
       // Receipt creation failed — this is critical but don't crash the request

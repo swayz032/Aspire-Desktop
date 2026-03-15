@@ -58,6 +58,8 @@ async function emitReceipt(
       actorId: ctx.actorId,
       action,
       result,
+      riskTier: 'GREEN',
+      toolUsed: `plaid_${receiptType}`,
     });
   } catch (err) {
     logger.error('Receipt creation failed', { receiptType, error: err instanceof Error ? err.message : 'unknown' });

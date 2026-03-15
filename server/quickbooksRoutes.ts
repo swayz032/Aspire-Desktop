@@ -8,6 +8,24 @@ const QuickBooks = require('node-quickbooks');
 
 const router = Router();
 
+/**
+ * Sanitize user-supplied values before passing to QBO SDK.
+ * Defense-in-depth: validates date format and strips injection characters.
+ */
+function sanitizeQboDate(input: string): string {
+  // Only allow YYYY-MM-DD format
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(input)) {
+    throw new Error('Invalid date format. Expected YYYY-MM-DD.');
+  }
+  return input;
+}
+
+function sanitizeQboString(input: string): string {
+  // Strip characters that could be used in SOQL injection
+  return input.replace(/['"\\;{}()]/g, '').substring(0, 500);
+}
+
 const DOMAIN = process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000';
 const BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || (DOMAIN.includes('localhost') ? `http://${DOMAIN}` : `https://${DOMAIN}`);
 const REDIRECT_URI = `${BASE_URL}/api/quickbooks/callback`;
@@ -79,6 +97,8 @@ async function emitReceipt(
       actorId: ctx.actorId,
       action,
       result,
+      riskTier: 'YELLOW',
+      toolUsed: `quickbooks_${receiptType}`,
     });
   } catch (err) {
     logger.error('Receipt creation failed', { receiptType, error: err instanceof Error ? err.message : 'unknown' });
@@ -445,8 +465,10 @@ router.get('/api/quickbooks/accounts', async (_req: Request, res: Response) => {
 
 router.get('/api/quickbooks/profit-and-loss', async (req: Request, res: Response) => {
   try {
-    const startDate = (req.query.start_date as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
-    const endDate = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
+    const rawStart = (req.query.start_date as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+    const rawEnd = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
+    const startDate = sanitizeQboDate(rawStart);
+    const endDate = sanitizeQboDate(rawEnd);
     const data = await qboReportWithRefresh('reportProfitAndLoss', { start_date: startDate, end_date: endDate });
     res.json(data);
   } catch (error: unknown) {
@@ -458,8 +480,10 @@ router.get('/api/quickbooks/profit-and-loss', async (req: Request, res: Response
 
 router.get('/api/quickbooks/profit-and-loss-detail', async (req: Request, res: Response) => {
   try {
-    const startDate = (req.query.start_date as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
-    const endDate = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
+    const rawStart = (req.query.start_date as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+    const rawEnd = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
+    const startDate = sanitizeQboDate(rawStart);
+    const endDate = sanitizeQboDate(rawEnd);
     const data = await qboReportWithRefresh('reportProfitAndLossDetail', { start_date: startDate, end_date: endDate });
     res.json(data);
   } catch (error: unknown) {
@@ -504,8 +528,10 @@ router.get('/api/quickbooks/trial-balance', async (_req: Request, res: Response)
 
 router.get('/api/quickbooks/general-ledger', async (req: Request, res: Response) => {
   try {
-    const startDate = (req.query.start_date as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
-    const endDate = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
+    const rawStart = (req.query.start_date as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+    const rawEnd = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
+    const startDate = sanitizeQboDate(rawStart);
+    const endDate = sanitizeQboDate(rawEnd);
     const data = await qboReportWithRefresh('reportGeneralLedgerDetail', {
       start_date: startDate,
       end_date: endDate,
@@ -668,8 +694,8 @@ router.post('/api/quickbooks/journal-entries', async (req: Request, res: Respons
       })),
     };
 
-    if (txnDate) journalEntry.TxnDate = txnDate;
-    if (privateNote) journalEntry.PrivateNote = privateNote;
+    if (txnDate) journalEntry.TxnDate = sanitizeQboDate(txnDate);
+    if (privateNote) journalEntry.PrivateNote = sanitizeQboString(privateNote);
 
     if (isTokenExpiringSoon()) await doRefreshToken();
 
@@ -701,8 +727,10 @@ router.post('/api/quickbooks/journal-entries', async (req: Request, res: Respons
 
 router.get('/api/quickbooks/transaction-list', async (req: Request, res: Response) => {
   try {
-    const startDate = (req.query.start_date as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
-    const endDate = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
+    const rawStart = (req.query.start_date as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+    const rawEnd = (req.query.end_date as string) || new Date().toISOString().split('T')[0];
+    const startDate = sanitizeQboDate(rawStart);
+    const endDate = sanitizeQboDate(rawEnd);
     const data = await qboReportWithRefresh('reportTransactionList', {
       start_date: startDate,
       end_date: endDate,
