@@ -82,12 +82,20 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
   );
 
   const goLeft = useCallback(() => {
-    setCenterIndex(prev => (prev - 1 + STORY_MODES.length) % STORY_MODES.length);
-  }, []);
+    setCenterIndex(prev => {
+      const next = (prev - 1 + STORY_MODES.length) % STORY_MODES.length;
+      if (onSelectMode) onSelectMode(STORY_MODES[next]);
+      return next;
+    });
+  }, [onSelectMode]);
 
   const goRight = useCallback(() => {
-    setCenterIndex(prev => (prev + 1) % STORY_MODES.length);
-  }, []);
+    setCenterIndex(prev => {
+      const next = (prev + 1) % STORY_MODES.length;
+      if (onSelectMode) onSelectMode(STORY_MODES[next]);
+      return next;
+    });
+  }, [onSelectMode]);
 
   if (Platform.OS !== 'web') {
     return (
@@ -293,7 +301,10 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
         {STORY_MODES.map((mode, i) => (
           <button
             key={mode.id}
-            onClick={() => setCenterIndex(i)}
+            onClick={() => {
+              setCenterIndex(i);
+              if (onSelectMode) onSelectMode(STORY_MODES[i]);
+            }}
             style={{
               width: i === centerIndex ? 16 : 6,
               height: 6,
