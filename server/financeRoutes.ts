@@ -7,6 +7,7 @@ import { computeSnapshot } from './snapshotEngine';
 import { getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
+import { withBreakerAction } from './circuitBreaker';
 
 const router = Router();
 
@@ -85,7 +86,9 @@ router.get('/api/finance/snapshot', async (req: Request, res: Response) => {
 
     if (connected && (!snap || (Date.now() - new Date(snap.generated_at).getTime()) > staleThresholdMs)) {
       try {
-        const freshSnapshot = await computeSnapshot(suiteId, officeId);
+        const freshSnapshot = await withBreakerAction('backend', () =>
+          computeSnapshot(suiteId, officeId)
+        );
         return res.json(freshSnapshot);
       } catch (computeError: unknown) {
         logger.warn('Auto-compute snapshot failed, using cached', { error: computeError instanceof Error ? computeError.message : 'unknown' });
@@ -374,7 +377,9 @@ router.post('/api/finance/compute-snapshot', async (req: Request, res: Response)
   }
   try {
     const officeId = req.body.officeId || getDefaultOfficeId();
-    const snapshot = await computeSnapshot(suiteId, officeId);
+    const snapshot = await withBreakerAction('backend', () =>
+      computeSnapshot(suiteId, officeId)
+    );
     res.json(snapshot);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';

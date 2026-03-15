@@ -8,6 +8,7 @@ import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
 import { resolvePlaidBasePath } from './providerEnvironment';
+import { isDuplicateWebhook } from './webhookIdempotency';
 
 const configuration = new Configuration({
   basePath: resolvePlaidBasePath(),
@@ -433,6 +434,12 @@ router.post('/api/plaid/finance-webhook', async (req: Request, res: Response) =>
     if (!eventType) {
       logger.info('Unhandled Plaid webhook type, acknowledging', { compositeType });
       return res.status(200).json({ received: true, handled: false });
+    }
+
+    // Idempotency guard — Plaid has no global event ID, so compose one from type+item+code
+    const plaidEventKey = `${compositeType}_${itemId}_${body.new_transactions || 0}`;
+    if (isDuplicateWebhook(plaidEventKey, 'plaid')) {
+      return res.status(200).json({ received: true, duplicate: true, idempotent_skip: true });
     }
 
     const connection = await findConnectionByItemId(itemId);

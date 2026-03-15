@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import { logger } from './logger';
 import { isProductionEnv } from './runtimeGuards';
 import { resolveQboApiBase } from './providerEnvironment';
+import { isDuplicateWebhook } from './webhookIdempotency';
 
 const router = Router();
 
@@ -433,6 +434,12 @@ router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
     const eventNotifications = body.eventNotifications || [];
 
     logger.info('QBO webhook received', { notificationCount: eventNotifications.length });
+
+    // Idempotency guard — QBO uses the raw body hash as the event key
+    const qboEventKey = computeRawHash(body);
+    if (isDuplicateWebhook(qboEventKey, 'qbo')) {
+      return res.status(200).json({ received: true, duplicate: true, idempotent_skip: true });
+    }
 
     let totalWritten = 0;
 

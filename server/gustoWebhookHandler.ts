@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import { logger } from './logger';
 import { isProductionEnv } from './runtimeGuards';
 import { resolveGustoBaseUrl } from './providerEnvironment';
+import { isDuplicateWebhook } from './webhookIdempotency';
 
 const router = Router();
 
@@ -431,6 +432,12 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
     if (!normalizedType) {
       logger.info('Unhandled Gusto webhook event type, acknowledging', { eventType });
       return res.status(200).json({ received: true, handled: false });
+    }
+
+    // Idempotency guard — compose key from event type + resource + timestamp
+    const gustoEventKey = `${eventType}_${resourceUuid}_${timestamp}`;
+    if (isDuplicateWebhook(gustoEventKey, 'gusto')) {
+      return res.status(200).json({ received: true, duplicate: true, idempotent_skip: true });
     }
 
     const connection = await getConnectionByProvider(getDefaultSuiteId(), getDefaultOfficeId(), 'gusto');

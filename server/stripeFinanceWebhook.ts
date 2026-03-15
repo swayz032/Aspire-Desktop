@@ -8,6 +8,8 @@ import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
 import { logger } from './logger';
 import { isProductionEnv } from './runtimeGuards';
+import { isDuplicateWebhook } from './webhookIdempotency';
+import { withBreakerAction } from './circuitBreaker';
 
 const STRIPE_EVENT_MAP: Record<string, string> = {
   'invoice.sent': 'invoice_sent',
@@ -281,6 +283,11 @@ router.post(
         return res.status(200).json({ received: true, skipped: true });
       }
 
+      // Idempotency guard — skip already-processed events (Law #10: reliability)
+      if (isDuplicateWebhook(event.id, 'stripe')) {
+        return res.status(200).json({ received: true, duplicate: true, idempotent_skip: true });
+      }
+
       const dataObject = event.data?.object || {};
       const amount = extractAmount(stripeEventType, dataObject);
       const entityRefs = extractEntityRefs(stripeEventType, dataObject, event.id);
@@ -350,7 +357,9 @@ router.post(
 
       if (stripeEventType.startsWith('payout.') && dataObject.id) {
         try {
-          await fetchPayoutReconciliation(dataObject.id, getDefaultSuiteId(), getDefaultOfficeId());
+          await withBreakerAction('stripe', () =>
+            fetchPayoutReconciliation(dataObject.id, getDefaultSuiteId(), getDefaultOfficeId())
+          );
         } catch (reconErr: unknown) {
           logger.error('Payout reconciliation failed', { error: reconErr instanceof Error ? reconErr.message : 'unknown' });
         }

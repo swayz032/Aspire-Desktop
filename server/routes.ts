@@ -193,7 +193,7 @@ async function fetchWithTimeoutAndRetry(
   options: FetchRetryOptions,
 ): Promise<globalThis.Response> {
   const retryStatuses = new Set(options.retryOnStatuses || [429, 500, 502, 503, 504]);
-  const backoffMs = options.backoffMs ?? 250;
+  const baseBackoffMs = options.backoffMs ?? 250;
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt <= options.retries; attempt++) {
@@ -207,7 +207,10 @@ async function fetchWithTimeoutAndRetry(
       clearTimeout(timeoutId);
 
       if (attempt < options.retries && retryStatuses.has(response.status)) {
-        await new Promise((resolve) => setTimeout(resolve, backoffMs * (attempt + 1)));
+        // Exponential backoff with jitter: base * 2^attempt + random jitter
+        const expDelay = baseBackoffMs * Math.pow(2, attempt);
+        const jitter = Math.random() * expDelay * 0.5;
+        await new Promise((resolve) => setTimeout(resolve, expDelay + jitter));
         continue;
       }
       return response;
@@ -215,7 +218,10 @@ async function fetchWithTimeoutAndRetry(
       clearTimeout(timeoutId);
       lastError = error;
       if (attempt >= options.retries) break;
-      await new Promise((resolve) => setTimeout(resolve, backoffMs * (attempt + 1)));
+      // Exponential backoff with jitter on network errors
+      const expDelay = baseBackoffMs * Math.pow(2, attempt);
+      const jitter = Math.random() * expDelay * 0.5;
+      await new Promise((resolve) => setTimeout(resolve, expDelay + jitter));
     }
   }
 
