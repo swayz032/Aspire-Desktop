@@ -29,7 +29,7 @@ const GUSTO_EVENT_MAP: Record<string, string> = {
   'company.updated': 'employee_changed',
 };
 
-function computeRawHash(data: any): string {
+function computeRawHash(data: Record<string, any> | string): string {
   return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
 }
 
@@ -65,10 +65,10 @@ async function writeFinanceEvent(params: {
   amount: number | null;
   currency: string;
   status: string;
-  entityRefs: any;
+  entityRefs: Record<string, any>;
   rawHash: string;
   receiptId: string | null;
-  metadata: any;
+  metadata: Record<string, any>;
 }): Promise<boolean> {
   try {
     const result = await db.execute(sql`
@@ -78,7 +78,7 @@ async function writeFinanceEvent(params: {
       RETURNING event_id
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
+    if (rows && (rows as Record<string, any>[]).length > 0) {
       logger.info('Gusto finance event written', { providerEventId: params.providerEventId });
       return true;
     }
@@ -164,7 +164,7 @@ function getGustoHeaders(token: string) {
   };
 }
 
-async function gustoApiFetch(url: string, accessToken: string): Promise<any> {
+async function gustoApiFetch(url: string, accessToken: string): Promise<Record<string, any>> {
   const response = await fetch(url, { headers: getGustoHeaders(accessToken) });
 
   if (!response.ok) {
@@ -182,7 +182,7 @@ async function gustoApiFetch(url: string, accessToken: string): Promise<any> {
   }
 }
 
-export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): Promise<any[]> {
+export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): Promise<Record<string, any>[]> {
   const sId = suiteId || getDefaultSuiteId();
   const oId = officeId || getDefaultOfficeId();
 
@@ -208,7 +208,7 @@ export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): P
     );
 
     const payrollList = Array.isArray(payrolls) ? payrolls : [];
-    const results: any[] = [];
+    const results: Record<string, any>[] = [];
 
     for (const payroll of payrollList) {
       const payrollUuid = payroll.uuid || payroll.payroll_uuid || 'unknown';

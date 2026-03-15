@@ -340,7 +340,7 @@ export default function EducationScreen() {
                 <View style={[styles.trackChipIconOuter, { backgroundColor: `${track.color}15` }]}>
                   <View style={[styles.trackChipIconGlow, { borderColor: `${track.color}40` }]} />
                   <View style={[styles.trackChipIconInner, { backgroundColor: `${track.color}35` }]}>
-                    <Ionicons name={track.icon as any} size={12} color={track.color} />
+                    <Ionicons name={track.icon as keyof typeof Ionicons.glyphMap} size={12} color={track.color} />
                   </View>
                 </View>
                 <Text style={[
@@ -380,7 +380,7 @@ export default function EducationScreen() {
                   <View style={[styles.lessonIconOuter, { backgroundColor: `${lesson.color}15` }]}>
                     <View style={[styles.lessonIconGlow, { borderColor: `${lesson.color}40` }]} />
                     <View style={[styles.lessonIconInner, { backgroundColor: `${lesson.color}35` }]}>
-                      <Ionicons name={lesson.icon as any} size={16} color={lesson.color} />
+                      <Ionicons name={lesson.icon as keyof typeof Ionicons.glyphMap} size={16} color={lesson.color} />
                     </View>
                   </View>
                   <View style={styles.lessonContent}>

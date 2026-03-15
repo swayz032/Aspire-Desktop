@@ -19,7 +19,7 @@ describe('DEV_BYPASS_AUTH hardening', () => {
     // Without DEV_BYPASS_AUTH=true, auth bypass should be disabled
     delete process.env.DEV_BYPASS_AUTH;
     delete process.env.SUPABASE_URL;
-    process.env.NODE_ENV = 'development';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
 
     const bypass =
       process.env.DEV_BYPASS_AUTH === 'true' &&
@@ -31,7 +31,7 @@ describe('DEV_BYPASS_AUTH hardening', () => {
 
   test('DEV_BYPASS_AUTH blocked in production', () => {
     process.env.DEV_BYPASS_AUTH = 'true';
-    process.env.NODE_ENV = 'production';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
     delete process.env.SUPABASE_URL;
 
     const bypass =
@@ -44,7 +44,7 @@ describe('DEV_BYPASS_AUTH hardening', () => {
 
   test('DEV_BYPASS_AUTH blocked when SUPABASE_URL is set', () => {
     process.env.DEV_BYPASS_AUTH = 'true';
-    process.env.NODE_ENV = 'development';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
     process.env.SUPABASE_URL = 'https://example.supabase.co';
 
     const bypass =
@@ -57,7 +57,7 @@ describe('DEV_BYPASS_AUTH hardening', () => {
 
   test('DEV_BYPASS_AUTH only enabled with all 3 conditions met', () => {
     process.env.DEV_BYPASS_AUTH = 'true';
-    process.env.NODE_ENV = 'development';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
     delete process.env.SUPABASE_URL;
 
     const bypass =
@@ -136,7 +136,7 @@ describe('Raw body preservation for webhooks', () => {
 describe('Cross-tenant isolation (finance endpoints)', () => {
   test('authenticatedSuiteId is required for finance operations', () => {
     // Simulate request without authenticatedSuiteId
-    const req = { query: { suiteId: 'attacker-suite-id' } } as any;
+    const req: { query: Record<string, string>; authenticatedSuiteId?: string } = { query: { suiteId: 'attacker-suite-id' } };
     const suiteId = req.authenticatedSuiteId;
 
     // Should be undefined — endpoint must return 401
@@ -148,7 +148,7 @@ describe('Cross-tenant isolation (finance endpoints)', () => {
     const req = {
       query: { suiteId: 'attacker-suite-id' },
       authenticatedSuiteId: 'real-suite-id',
-    } as any;
+    };
 
     // Only authenticatedSuiteId should be used
     expect(req.authenticatedSuiteId).toBe('real-suite-id');
@@ -159,7 +159,7 @@ describe('Cross-tenant isolation (finance endpoints)', () => {
     const req = {
       body: { suiteId: 'attacker-suite-id', action: 'create_invoice' },
       authenticatedSuiteId: 'real-suite-id',
-    } as any;
+    };
 
     expect(req.authenticatedSuiteId).toBe('real-suite-id');
     expect(req.authenticatedSuiteId).not.toBe(req.body.suiteId);

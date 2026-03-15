@@ -9,7 +9,7 @@
  * - Drag via header, resize via corners
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, ComponentProps } from 'react';
 import {
   View,
   Text,
@@ -159,8 +159,8 @@ export function WidgetContainer({
   }));
 
   const headerCursorStyle = useAnimatedStyle(() => {
-    if (Platform.OS !== 'web') return {};
-    return { cursor: isDragging.value ? 'grabbing' : 'grab' } as any;
+    if (Platform.OS !== 'web') return {} as unknown as ViewStyle;
+    return { cursor: isDragging.value ? 'grabbing' : 'grab' } as unknown as ViewStyle;
   });
 
   // Premium shadow
@@ -178,7 +178,7 @@ export function WidgetContainer({
       <GestureDetector gesture={dragGesture}>
         <Reanimated.View style={[s.header, headerCursorStyle]}>
           <View style={[s.accentDot, { backgroundColor: accent }]} />
-          {icon && <Ionicons name={icon as any} size={16} color={accent} />}
+          {icon && <Ionicons name={icon as ComponentProps<typeof Ionicons>['name']} size={16} color={accent} />}
           <Text style={[s.title, { color: accent }]}>{title}</Text>
           <Pressable
             onPress={handleClose}
@@ -202,7 +202,7 @@ export function WidgetContainer({
 
       {/* Resize handle */}
       <GestureDetector gesture={resizeGesture}>
-        <Reanimated.View style={s.resizeHandle}>
+        <Reanimated.View style={s.resizeHandle as ViewStyle}>
           <View style={s.resizeDotWrap}>
             <View style={[s.resizeDot, { backgroundColor: `${accent}99` }]} />
             <View style={[s.resizeDot, { backgroundColor: `${accent}B3` }]} />
@@ -230,7 +230,7 @@ const s = StyleSheet.create({
       ? ({
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-        } as any)
+        })
       : {}),
   },
 
@@ -244,7 +244,7 @@ const s = StyleSheet.create({
     ...(Platform.OS === 'web'
       ? ({
           backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 45%, transparent 100%)',
-        } as any)
+        })
       : { backgroundColor: 'rgba(255,255,255,0.04)' }),
   },
 
@@ -265,7 +265,7 @@ const s = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 8px currentColor' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 8px currentColor' }) : {}),
   },
 
   title: {
@@ -274,7 +274,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-  } as any,
+  },
 
   closeBtn: {
     width: 28,
@@ -283,7 +283,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
 
   content: {
@@ -299,7 +299,7 @@ const s = StyleSheet.create({
     height: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'nwse-resize' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'nwse-resize' }) : {}),
   },
 
   resizeDotWrap: {

@@ -165,7 +165,7 @@ export function ReceiptsWidget({ suiteId, officeId }: ReceiptsWidgetProps) {
               onPress={() => playClickSound()}
             >
               <View style={[s.receiptCircle, { backgroundColor: `${color}18` }]}>
-                <Ionicons name={getCategoryIcon(receipt.category)} size={18} color={color} />
+                <Ionicons name={getCategoryIcon(receipt.category) as keyof typeof Ionicons.glyphMap} size={18} color={color} />
               </View>
               <View style={s.receiptInfo}>
                 <Text style={s.receiptMerchant} numberOfLines={1}>{receipt.merchant}</Text>
@@ -212,12 +212,12 @@ const s = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#FFF',
-  } as any,
+  },
   headerTotal: {
     fontSize: 16,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.5)',
-  } as any,
+  },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -235,7 +235,7 @@ const s = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: '#FFF',
-    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' }) : {}),
   },
   filterRow: {
     flexDirection: 'row',
@@ -251,13 +251,13 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(255,255,255,0.03)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   filterChipText: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.45)',
     fontWeight: '600',
-  } as any,
+  },
   filterChipTextActive: {
     color: '#FFF',
   },
@@ -291,13 +291,13 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   receiptInfo: { flex: 1 },
   receiptMerchant: {
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
-  } as any,
+  },
   receiptMeta: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.35)',
@@ -311,7 +311,7 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   statusDot: {
     width: 6,
     height: 6,
@@ -331,11 +331,11 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: 100,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   uploadBtnText: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.5)',
     fontWeight: '600',
-  } as any,
+  },
 });

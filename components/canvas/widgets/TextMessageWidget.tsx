@@ -278,7 +278,7 @@ const s = StyleSheet.create({
     fontWeight: '800',
     color: '#FFF',
     letterSpacing: -0.5,
-  } as any,
+  },
   composeIconBtn: {
     width: 36,
     height: 36,
@@ -288,7 +288,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }) : {}),
   },
   searchBar: {
     backgroundColor: 'rgba(255,255,255,0.06)',
@@ -328,7 +328,7 @@ const s = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   favName: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.6)',
@@ -353,7 +353,7 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.05)',
     gap: 12,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   threadAvatar: {
     width: 56,
@@ -367,7 +367,7 @@ const s = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   threadInfo: { flex: 1, gap: 3 },
   threadTopRow: {
     flexDirection: 'row',
@@ -379,7 +379,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: '#FFF',
     flex: 1,
-  } as any,
+  },
   threadTime: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.3)',
@@ -401,7 +401,7 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   emptyListContainer: {
     padding: 20,
   },
@@ -436,7 +436,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }) : {}),
   },
   convAvatar: {
     width: 38,
@@ -450,13 +450,13 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   convHeaderInfo: { flex: 1 },
   convName: {
     fontSize: 15,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   convStatus: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.35)',
@@ -471,7 +471,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }) : {}),
   },
   msgList: {
     padding: 16,
@@ -536,14 +536,14 @@ const s = StyleSheet.create({
     fontSize: 14,
     color: '#FFF',
     maxHeight: 100,
-    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' }) : {}),
   },
   sendBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   sendBtnDisabled: { opacity: 0.5 },
   sendGrad: {
@@ -553,7 +553,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#3B82F6',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 24px rgba(59,130,246,0.5)' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 24px rgba(59,130,246,0.5)' }) : {}),
   },
   sendGradInactive: {
     width: 40,

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { ComponentProps } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
@@ -37,7 +37,7 @@ export function PipelineCard({ stages, onPress }: PipelineCardProps) {
                 <View style={styles.stageStats}>
                   <Text style={styles.stageCount}>{stage.count}</Text>
                   <Text style={styles.stageTarget}>/{stage.target}</Text>
-                  <Ionicons name={trendIcon as any} size={12} color={trendColor} style={styles.trendIcon} />
+                  <Ionicons name={trendIcon as ComponentProps<typeof Ionicons>['name']} size={12} color={trendColor} style={styles.trendIcon} />
                 </View>
               </View>
               

@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
   ScrollView,
   type ImageSourcePropType,
+  type ViewStyle,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -290,21 +291,21 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
 
   const icon3DFilter = Platform.OS === 'web'
     ? isHovered
-      ? (`drop-shadow(0 5px 0px rgba(0,0,0,0.75)) drop-shadow(0 10px 20px rgba(0,0,0,0.65)) drop-shadow(0 0 18px ${iconColor}99)` as any)
-      : (`drop-shadow(0 3px 0px rgba(0,0,0,0.65)) drop-shadow(0 6px 14px rgba(0,0,0,0.55)) drop-shadow(0 0 10px ${iconColor}66)` as any)
+      ? (`drop-shadow(0 5px 0px rgba(0,0,0,0.75)) drop-shadow(0 10px 20px rgba(0,0,0,0.65)) drop-shadow(0 0 18px ${iconColor}99)` )
+      : (`drop-shadow(0 3px 0px rgba(0,0,0,0.65)) drop-shadow(0 6px 14px rgba(0,0,0,0.55)) drop-shadow(0 0 10px ${iconColor}66)` )
     : undefined;
 
   const voiceGlowWebStyle = Platform.OS === 'web' && isVoiceActive
     ? ({
         boxShadow: `0 0 16px 4px ${iconColor}88, 0 0 32px 8px ${iconColor}44`,
-      } as any)
+      })
     : {};
 
-  const cursorStyle = Platform.OS === 'web'
+  const cursorStyle = (Platform.OS === 'web'
     ? isDragging
-      ? ({ cursor: 'grabbing' } as any)
-      : ({ cursor: 'grab' } as any)
-    : {};
+      ? { cursor: 'grabbing' as const }
+      : { cursor: 'grab' as const }
+    : {}) as ViewStyle;
 
   const IconComponent = widget.icon;
 
@@ -336,7 +337,7 @@ function WidgetIconButton({ widget, onPress, onDragDrop, index, isActive, isVoic
           />
         )}
         <View
-          style={[styles.iconTile, ...(Platform.OS === 'web' ? [{ filter: icon3DFilter } as any] : [])]}
+          style={[styles.iconTile, ...(Platform.OS === 'web' ? [{ filter: icon3DFilter }] : [])]}
         >
           {widget.avatarImage ? (
             <Image
@@ -447,9 +448,9 @@ export function WidgetDock({
               Platform.OS === 'web' && ({
                 scrollbarWidth: 'none',
                 msOverflowStyle: 'none',
-              } as any),
+              }),
             ]}
-            {...(Platform.OS === 'web' ? { dataSet: { class: 'dock-scroll' }, className: 'dock-scroll' } as any : {})}
+            {...(Platform.OS === 'web' ? { dataSet: { class: 'dock-scroll' }, className: 'dock-scroll' } : {})}
           >
             <View style={styles.iconsContainer}>
               {allWidgets.map((widget, index) => {
@@ -535,7 +536,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
     ...(Platform.OS === 'web' && {
       boxShadow: CanvasTokens.dock.outerShadow,
-    } as any),
+    }),
   },
 
   shelfDecorationClip: {
@@ -560,7 +561,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web'
       ? ({
           backgroundImage: 'linear-gradient(90deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.1) 100%)',
-        } as any)
+        })
       : { backgroundColor: CanvasTokens.dock.topHighlight }),
   },
 
@@ -574,7 +575,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web'
       ? ({
           backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, transparent 100%)',
-        } as any)
+        })
       : {}),
   },
 
@@ -588,7 +589,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web'
       ? ({
           backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.12) 0%, transparent 100%)',
-        } as any)
+        })
       : {}),
   },
 
@@ -625,7 +626,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
     ...(Platform.OS === 'web' && {
       boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-    } as any),
+    }),
   },
 
   tooltipText: {
@@ -693,6 +694,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     ...(Platform.OS === 'web' && {
       boxShadow: '0 0 4px rgba(255,255,255,0.5)',
-    } as any),
+    }),
   },
 });

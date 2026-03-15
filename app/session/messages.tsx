@@ -102,10 +102,10 @@ function ThreadItem({ thread, selected, onSelect }: ThreadItemProps) {
       <Card
         variant="default"
         padding="sm"
-        style={[
+        style={StyleSheet.flatten([
           threadItemStyles.card,
           selected ? threadItemStyles.cardSelected : undefined,
-        ] as any}
+        ])}
       >
         <View style={threadItemStyles.row}>
           {/* Contact avatar placeholder */}

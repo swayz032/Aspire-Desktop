@@ -1059,6 +1059,7 @@ function JournalEntriesTab({ entries, accounts, authenticatedFetch }: { entries:
 }
 
 function GeneralLedgerTab({ initialData }: { initialData: QBReport | null }) {
+  const { authenticatedFetch } = useAuthFetch();
   const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [ledgerData, setLedgerData] = useState<QBReport | null>(initialData);
@@ -1255,6 +1256,7 @@ function MoneyShelvesOwner({ accounts }: { accounts: QBAccount[] }) {
 }
 
 function MoneyMovesOwner({ accounts }: { accounts: QBAccount[] }) {
+  const { authenticatedFetch } = useAuthFetch();
   const handleWizardSubmit = async (journalEntry: { date: string; memo: string; lines: { accountId: string; accountName: string; type: 'Debit' | 'Credit'; amount: string; description: string }[] }) => {
     const res = await authenticatedFetch('/api/quickbooks/journal-entries', {
       method: 'POST',
@@ -1796,7 +1798,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 2px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)',
-    } as any : {}),
+    } : {}),
   },
   tabPill: {
     flexDirection: 'row',
@@ -1828,7 +1830,7 @@ const styles = StyleSheet.create({
       background: CARD_BG,
       border: `1px solid ${CARD_BORDER}`,
       boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-    } as any : {}),
+    } : {}),
   },
   chartCard: {
     backgroundColor: CARD_BG,
@@ -1841,7 +1843,7 @@ const styles = StyleSheet.create({
       background: CARD_BG,
       border: `1px solid ${CARD_BORDER}`,
       boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-    } as any : {}),
+    } : {}),
   },
   kpiTile: {
     flex: 1,
@@ -1856,7 +1858,7 @@ const styles = StyleSheet.create({
       background: CARD_BG,
       border: `1px solid ${CARD_BORDER}`,
       boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-    } as any : {}),
+    } : {}),
   },
   kpiIconWrap: {
     width: 36,
@@ -1869,7 +1871,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   reportHeaderLeft: {
     flexDirection: 'row',
@@ -1911,13 +1913,13 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       background: CARD_BG,
       border: `1px solid ${CARD_BORDER}`,
-    } as any : {}),
+    } : {}),
   },
   searchInput: {
     flex: 1,
     color: Colors.text.primary,
     fontSize: 14,
-    ...(Platform.OS === 'web' ? { outline: 'none' } as any : {}),
+    ...(Platform.OS === 'web' ? { outline: 'none' } : {}),
   },
   tableHeader: {
     flexDirection: 'row',
@@ -1930,7 +1932,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   tableHeaderCell: {
     fontSize: 11,
@@ -2002,7 +2004,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     color: Colors.text.primary,
     fontSize: 13,
-    ...(Platform.OS === 'web' ? { outline: 'none' } as any : {}),
+    ...(Platform.OS === 'web' ? { outline: 'none' } : {}),
   },
   lineHeader: {
     flexDirection: 'row',
@@ -2038,21 +2040,21 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   typeToggle: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   addLineBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingVertical: 10,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   totalsRow: {
     flexDirection: 'row',
@@ -2080,7 +2082,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent.blue,
     paddingVertical: 12,
     borderRadius: 10,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   submitBtnText: {
     color: '#fff',

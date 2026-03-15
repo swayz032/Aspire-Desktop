@@ -70,7 +70,7 @@ function Paperclip({ color }: { color: string }) {
         top: -14,
         alignSelf: 'center',
         zIndex: 10,
-        ...(Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : {}),
+        ...(Platform.OS === 'web' ? ({ pointerEvents: 'none' }) : {}),
       }}
       pointerEvents="none"
     >
@@ -232,7 +232,7 @@ export function StickyNoteWidget({
           ? ({
               boxShadow:
                 '0 24px 64px rgba(0,0,0,0.55), 0 8px 24px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.45)',
-            } as any)
+            })
           : {
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 12 },
@@ -271,7 +271,7 @@ export function StickyNoteWidget({
                       ...(Platform.OS === 'web'
                         ? ({
                             boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
-                          } as any)
+                          })
                         : {}),
                     }
                   : { borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' },
@@ -336,7 +336,7 @@ const s = StyleSheet.create({
       ? ({
           backgroundImage:
             'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\' opacity=\'0.04\'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 35%, transparent 65%)',
-        } as any)
+        })
       : { backgroundColor: 'rgba(255,255,255,0.10)' }),
   },
 
@@ -360,7 +360,7 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.2,
-  } as any,
+  },
 
   colorPicker: {
     flexDirection: 'row',
@@ -372,7 +372,7 @@ const s = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
 
   ruled: {
@@ -391,7 +391,7 @@ const s = StyleSheet.create({
     zIndex: 1,
     fontFamily: Platform.OS === 'web' ? "'Georgia', serif" : undefined,
     ...(Platform.OS === 'web'
-      ? ({ outlineStyle: 'none', resize: 'none' } as any)
+      ? ({ outlineStyle: 'none', resize: 'none' })
       : {}),
   },
 

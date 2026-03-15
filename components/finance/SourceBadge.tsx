@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, type ViewStyle } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 
 interface SourceBadgeProps {
@@ -56,7 +56,7 @@ export default function SourceBadge({ source, lastSyncAt, confidence, compact = 
     <View style={[
       styles.container,
       { backgroundColor: bgColor, borderColor },
-      Platform.OS === 'web' && ({ cursor: 'default' } as any),
+      Platform.OS === 'web' ? { cursor: 'default' } as unknown as ViewStyle : undefined,
     ]}>
       <View style={[styles.dot, { backgroundColor: dotColor }]} />
       <Text style={styles.sourceLabel}>{SOURCE_LABELS[source] || source}</Text>

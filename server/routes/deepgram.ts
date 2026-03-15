@@ -15,7 +15,7 @@ const router = Router();
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY || '';
 
 router.get('/api/deepgram/token', async (req: Request, res: Response) => {
-  const suiteId = (req as any).authenticatedSuiteId;
+  const suiteId = req.authenticatedSuiteId;
   if (!suiteId) {
     return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required' });
   }

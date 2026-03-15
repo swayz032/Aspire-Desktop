@@ -283,7 +283,7 @@ function FinnOrbVideo() {
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
       <video
-        ref={videoRef as any}
+        ref={videoRef as React.RefObject<HTMLVideoElement>}
         src="/finn-3d-object.mp4"
         autoPlay
         loop
@@ -308,7 +308,7 @@ function FinnOrbVideo() {
   );
 }
 
-function GlassCard({ children, style, onPress, hovered, tint, ...rest }: { children?: React.ReactNode; style?: unknown; onPress?: () => void; hovered?: boolean; tint?: { color: string; position?: string }; [key: string]: unknown }) {
+function GlassCard({ children, style, onPress, hovered, tint, ...rest }: { children?: React.ReactNode; style?: any; onPress?: () => void; hovered?: boolean; tint?: { color: string; position?: string }; [key: string]: unknown }) {
   if (Platform.OS !== 'web') {
     const Comp = onPress ? Pressable : View;
     return <Comp style={[s.card, style]} onPress={onPress} {...rest}>{children}</Comp>;
@@ -320,7 +320,7 @@ function GlassCard({ children, style, onPress, hovered, tint, ...rest }: { child
     : CARD_BG;
   return (
     <Comp
-      style={[s.card, style, hovered && s.cardHover, { background: bg, border: `1px solid ${CARD_BORDER}` } as any]}
+      style={[s.card, style, hovered && s.cardHover, { background: bg, border: `1px solid ${CARD_BORDER}` }]}
       onPress={onPress}
       {...rest}
     >
@@ -932,7 +932,7 @@ function FinanceHubContent() {
             <Pressable key={i} onPress={() => setExplainMetric(ch.metricId)} style={[s.kpiPressable, isCompact && s.kpiPressableCompact]}>
               <GlassCard style={[{ padding: 14 }, Platform.OS === 'web' && { cursor: 'pointer' }]} tint={{ color: ch.color, position: 'top-left' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                  <Ionicons name={ch.icon as any} size={14} color={ch.color} />
+                  <Ionicons name={ch.icon as keyof typeof Ionicons.glyphMap} size={14} color={ch.color} />
                   <Text style={{ color: '#bbb', fontSize: 11, fontWeight: '600', letterSpacing: 0.5 }}>{ch.label}</Text>
                 </View>
                 <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{ch.value}</Text>
@@ -1102,7 +1102,7 @@ function FinanceHubContent() {
           return (
           <Pressable key={i} onPress={() => setExplainMetric(kpi.metricId)} style={[s.kpiPressable, isCompact && s.kpiPressableCompact]}>
           <GlassCard style={[s.kpiCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.barChart(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '40% auto', cursor: 'pointer' }]} tint={kpiTints[i]}>
-            {i === 0 && <View style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', backgroundColor: '#3B82F6', borderRadius: 2 } as any} />}
+            {i === 0 && <View style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', backgroundColor: '#3B82F6', borderRadius: 2 }} />}
             <View style={s.kpiTopRow}>
               {Platform.OS === 'web' ? (
                 <span className={`led-icon led-icon-d${(i % 6) + 1}`}>
@@ -1497,7 +1497,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({ web: { boxShadow: '0 0 20px rgba(59,130,246,0.4)' } }),
-  } as any,
+  },
   heroBannerTitle: {
     color: '#fff',
     fontSize: 28,
@@ -1545,7 +1545,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
     padding: 20,
     overflow: 'hidden' as const,
-  } as any,
+  },
   cardHover: {
     borderColor: 'rgba(255,255,255,0.10)',
   },
@@ -1640,7 +1640,7 @@ const s = StyleSheet.create({
     minHeight: 320,
     borderWidth: 1,
     borderColor: 'rgba(139,92,246,0.15)',
-  } as any,
+  },
   finnCardOuterStacked: {
     flexDirection: 'column',
     minHeight: undefined,
@@ -1651,7 +1651,7 @@ const s = StyleSheet.create({
     paddingLeft: 18,
     paddingVertical: 18,
     zIndex: 2,
-  } as any,
+  },
   finnPanelInner: {
     backgroundColor: CARD_BG,
     borderWidth: 1,
@@ -1671,7 +1671,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.03)',
     marginBottom: 8,
     ...Platform.select({ web: { cursor: 'pointer', transition: 'all 0.2s ease' } }),
-  } as any,
+  },
   finnPanelBtnText: {
     color: '#ddd',
     fontSize: 13,
@@ -1682,7 +1682,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-  } as any,
+  },
   finnCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1783,7 +1783,7 @@ const s = StyleSheet.create({
     flex: 1,
   },
   kpiPressableCompact: {
-    flexBasis: '45%' as any,
+    flexBasis: '45%',
     flex: undefined,
     flexGrow: 1,
     marginBottom: 10,
@@ -1933,13 +1933,13 @@ const s = StyleSheet.create({
       overflowY: 'hidden',
       scrollbarWidth: 'thin',
       scrollbarColor: '#3B3B3D transparent',
-    } as any }),
+    } }),
     paddingVertical: 4,
     alignItems: 'stretch',
-  } as any,
+  },
   authorityCardWrap: {
     width: 300,
     flexShrink: 0,
     display: 'flex',
-  } as any,
+  },
 });

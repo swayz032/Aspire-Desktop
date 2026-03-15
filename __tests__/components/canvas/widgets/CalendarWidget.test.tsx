@@ -17,7 +17,11 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
-const mockSupabase = supabase as jest.Mocked<typeof supabase>;
+const mockSupabase = supabase as unknown as {
+  from: jest.Mock;
+  channel: jest.Mock;
+  removeChannel: jest.Mock;
+};
 
 describe('CalendarWidget', () => {
   const defaultProps = {
@@ -37,7 +41,7 @@ describe('CalendarWidget', () => {
     },
   ];
 
-  const buildQueryMock = (data: any[]) => ({
+  const buildQueryMock = (data: typeof mockEvents | never[]) => ({
     select: jest.fn().mockReturnValue({
       eq: jest.fn().mockReturnValue({
         eq: jest.fn().mockReturnValue({
@@ -53,12 +57,12 @@ describe('CalendarWidget', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    const subscribedChannel = { id: 'channel' } as any;
+    const subscribedChannel = { id: 'channel' };
     const channelBuilder = {
       on: jest.fn().mockReturnThis(),
       subscribe: jest.fn().mockReturnValue(subscribedChannel),
     };
-    mockSupabase.channel.mockReturnValue(channelBuilder as any);
+    mockSupabase.channel.mockReturnValue(channelBuilder);
   });
 
   it('fetches with suite and office filters', async () => {
@@ -75,7 +79,7 @@ describe('CalendarWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     render(<CalendarWidget {...defaultProps} date={new Date(2024, 0, 15, 12, 0, 0)} />);
 
@@ -87,13 +91,13 @@ describe('CalendarWidget', () => {
   });
 
   it('sets up and cleans up realtime subscription', async () => {
-    const subscribedChannel = { id: 'channel' } as any;
+    const subscribedChannel = { id: 'channel' };
     const channelBuilder = {
       on: jest.fn().mockReturnThis(),
       subscribe: jest.fn().mockReturnValue(subscribedChannel),
     };
-    mockSupabase.channel.mockReturnValue(channelBuilder as any);
-    mockSupabase.from.mockReturnValue(buildQueryMock([]) as any);
+    mockSupabase.channel.mockReturnValue(channelBuilder);
+    mockSupabase.from.mockReturnValue(buildQueryMock([]));
 
     const { unmount } = render(<CalendarWidget {...defaultProps} />);
 
@@ -108,7 +112,7 @@ describe('CalendarWidget', () => {
   });
 
   it('renders calendar grid and weekday headers', async () => {
-    mockSupabase.from.mockReturnValue(buildQueryMock([]) as any);
+    mockSupabase.from.mockReturnValue(buildQueryMock([]));
     const { getByText } = render(<CalendarWidget {...defaultProps} />);
 
     await waitFor(() => {
@@ -118,7 +122,7 @@ describe('CalendarWidget', () => {
   });
 
   it('shows selected-day event details when date has events', async () => {
-    mockSupabase.from.mockReturnValue(buildQueryMock(mockEvents) as any);
+    mockSupabase.from.mockReturnValue(buildQueryMock(mockEvents));
     const { getByText } = render(
       <CalendarWidget {...defaultProps} date={new Date(2024, 0, 15, 12, 0, 0)} />
     );
@@ -130,7 +134,7 @@ describe('CalendarWidget', () => {
   });
 
   it('triggers onEventClick from detail card row', async () => {
-    mockSupabase.from.mockReturnValue(buildQueryMock(mockEvents) as any);
+    mockSupabase.from.mockReturnValue(buildQueryMock(mockEvents));
     const onEventClick = jest.fn();
     const { getByText } = render(
       <CalendarWidget
@@ -147,7 +151,7 @@ describe('CalendarWidget', () => {
   });
 
   it('calls onAddEventClick when add button is pressed', async () => {
-    mockSupabase.from.mockReturnValue(buildQueryMock([]) as any);
+    mockSupabase.from.mockReturnValue(buildQueryMock([]));
     const onAddEventClick = jest.fn();
     const { getByLabelText } = render(
       <CalendarWidget {...defaultProps} onAddEventClick={onAddEventClick} />

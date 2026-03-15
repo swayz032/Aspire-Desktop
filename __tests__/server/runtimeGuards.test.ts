@@ -6,7 +6,7 @@ describe('runtimeGuards', () => {
   });
 
   test('production is detected from ASPIRE_ENV', () => {
-    expect(isProductionEnv({ ASPIRE_ENV: 'production' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(isProductionEnv({ ASPIRE_ENV: 'production' } as unknown as NodeJS.ProcessEnv)).toBe(true);
   });
 
   test('insecure webhook sandbox is blocked in production', () => {

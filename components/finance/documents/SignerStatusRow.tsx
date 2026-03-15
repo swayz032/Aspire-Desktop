@@ -1,7 +1,7 @@
 /**
  * SignerStatusRow -- Row component showing a signer's name, masked email, and signing status.
  */
-import React from 'react';
+import React, { ComponentProps } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
@@ -42,7 +42,7 @@ function SignerStatusRowInner({ signer }: SignerStatusRowProps) {
     <View
       style={[
         styles.row,
-        Platform.OS === 'web' ? { transition: 'background-color 0.15s ease' } as any : {},
+        Platform.OS === 'web' ? { transition: 'background-color 0.15s ease' } : {},
       ]}
       accessibilityRole="text"
       accessibilityLabel={`Signer ${signer.name}, ${meta.label}`}
@@ -59,7 +59,7 @@ function SignerStatusRowInner({ signer }: SignerStatusRowProps) {
         </View>
       </View>
       <View style={styles.right}>
-        <Ionicons name={meta.icon as any} size={16} color={meta.color} />
+        <Ionicons name={meta.icon as ComponentProps<typeof Ionicons>['name']} size={16} color={meta.color} />
         <Text style={[styles.statusLabel, { color: meta.color }]}>{meta.label}</Text>
       </View>
     </View>

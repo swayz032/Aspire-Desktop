@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ImageBackground, type ViewStyle, type TextStyle, type ImageStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   pulseCard: {
-    width: 'calc(50% - 10px)' as any,
+    width: 'calc(50% - 10px)' as unknown as number,
     minWidth: 280,
     backgroundColor: THEME.surface,
     borderRadius: 14,
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   skeletonCard: {
-    width: 'calc(50% - 10px)' as any,
+    width: 'calc(50% - 10px)' as unknown as number,
     minWidth: 280,
     height: 240,
     borderRadius: 14,

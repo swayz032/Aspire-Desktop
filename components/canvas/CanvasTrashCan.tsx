@@ -583,8 +583,8 @@ const styles = StyleSheet.create({
   underglow: {
     position: 'absolute',
     bottom: -20,
-    left: '10%' as any,
-    right: '10%' as any,
+    left: '10%' as unknown as number,
+    right: '10%' as unknown as number,
     height: 40,
     borderRadius: 20,
     zIndex: -1,

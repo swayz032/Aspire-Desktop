@@ -530,7 +530,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 40,
     paddingHorizontal: 20,
-    minHeight: '100%' as any,
+    minHeight: '100%',
   },
   loadingContainer: {
     flex: 1,
@@ -552,7 +552,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? { boxShadow: '0 8px 40px rgba(0,0,0,0.5)' } as any : {}),
+    ...(Platform.OS === 'web' ? { boxShadow: '0 8px 40px rgba(0,0,0,0.5)' } : {}),
   },
   brandHeader: {
     flexDirection: 'row',
@@ -662,7 +662,7 @@ const s = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
     gap: 14,
-    ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease-out', cursor: 'pointer' } as any : {}),
+    ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease-out', cursor: 'pointer' } : {}),
   },
   serviceCardHover: {
     borderColor: '#3C3C3E',
@@ -723,7 +723,7 @@ const s = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     marginTop: 20,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'opacity 0.15s ease-out' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'opacity 0.15s ease-out' } : {}),
   },
   primaryBtnText: {
     color: '#fff',
@@ -735,7 +735,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     marginBottom: 16,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   backBtnText: {
     color: '#8e8e93',
@@ -784,7 +784,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#2C2C2E',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   calMonthLabel: {
     color: '#f2f2f2',
@@ -808,14 +808,14 @@ const s = StyleSheet.create({
     flexWrap: 'wrap',
   },
   calCell: {
-    width: '14.28%' as any,
+    width: '14.28%',
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
   },
   calCellAvail: {
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   calCellText: {
     color: '#d1d1d6',
@@ -852,7 +852,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2C2C2E',
     backgroundColor: '#141414',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.12s ease-out' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.12s ease-out' } : {}),
   },
   slotText: {
     color: '#d1d1d6',
@@ -895,7 +895,7 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     color: '#f2f2f2',
     fontSize: 14,
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
   },
   textArea: {
     minHeight: 80,

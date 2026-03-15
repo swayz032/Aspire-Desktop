@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '@/constants/tokens';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useDesktop } from '@/lib/useDesktop';
@@ -46,7 +47,8 @@ const getAudioContext = (): AudioContext | null => {
   if (Platform.OS !== 'web') return null;
 
   try {
-    const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+    const w = window as Window & { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext };
+    const AudioContextClass = w.AudioContext || w.webkitAudioContext;
     if (!AudioContextClass) return null;
 
     if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
@@ -778,7 +780,7 @@ export default function CallsScreen() {
                   style={styles.modalPrimaryButton}
                   onPress={() => {
                     setShowSetupModal(false);
-                    router.push('/session/calls/setup' as any);
+                    navigateTo('/session/calls/setup');
                   }}
                 >
                   <Text style={styles.modalPrimaryButtonText}>Set Up Front Desk</Text>
@@ -822,7 +824,7 @@ export default function CallsScreen() {
                   style={desktopStyles.blockedPrimaryButton}
                   onPress={() => {
                     setOutboundBlocked(false);
-                    router.push('/session/calls/setup' as any);
+                    navigateTo('/session/calls/setup');
                   }}
                 >
                   <Text style={desktopStyles.blockedPrimaryButtonText}>Upgrade Line</Text>
@@ -906,21 +908,21 @@ export default function CallsScreen() {
                   <Text style={desktopStyles.quickActionLabel}>Call Back Queue</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/(tabs)/explore' as any)} activeOpacity={0.7}>
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => navigateTo('/(tabs)/explore')} activeOpacity={0.7}>
                   <LinearGradient colors={['#8B5CF6', '#7C3AED']} style={desktopStyles.quickActionIconCircle}>
                     <Ionicons name="people" size={20} color="#fff" />
                   </LinearGradient>
                   <Text style={desktopStyles.quickActionLabel}>Contacts</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/session/messages' as any)} activeOpacity={0.7}>
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => navigateTo('/session/messages')} activeOpacity={0.7}>
                   <LinearGradient colors={['#06B6D4', '#0891B2']} style={desktopStyles.quickActionIconCircle}>
                     <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
                   </LinearGradient>
                   <Text style={desktopStyles.quickActionLabel}>Text Messages</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => router.push('/session/calls/setup' as any)} activeOpacity={0.7}>
+                <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => navigateTo('/session/calls/setup')} activeOpacity={0.7}>
                   <LinearGradient colors={[Colors.semantic.success, '#16a34a']} style={desktopStyles.quickActionIconCircle}>
                     <Ionicons name="headset-outline" size={20} color="#fff" />
                   </LinearGradient>
@@ -1092,7 +1094,7 @@ export default function CallsScreen() {
                   ))}
 
                   {filteredCalls.length > 0 && (
-                    <TouchableOpacity style={desktopStyles.viewAllLink} onPress={() => router.push('/(tabs)/inbox' as any)} activeOpacity={0.7}>
+                    <TouchableOpacity style={desktopStyles.viewAllLink} onPress={() => navigateTo('/(tabs)/inbox')} activeOpacity={0.7}>
                       <Text style={desktopStyles.viewAllText}>View All in Inbox</Text>
                       <Ionicons name="chevron-forward" size={16} color={Colors.accent.cyan} />
                     </TouchableOpacity>
@@ -1171,7 +1173,7 @@ export default function CallsScreen() {
               style={styles.modalPrimaryButton}
               onPress={() => {
                 setOutboundBlocked(false);
-                router.push('/session/calls/setup' as any);
+                navigateTo('/session/calls/setup');
               }}
             >
               <Text style={styles.modalPrimaryButtonText}>Upgrade Line</Text>
@@ -1196,7 +1198,7 @@ export default function CallsScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Return Calls</Text>
         <TouchableOpacity
-          onPress={() => router.push('/(tabs)/inbox' as any)}
+          onPress={() => navigateTo('/(tabs)/inbox')}
           style={styles.inboxButton}
         >
           <Ionicons name="time-outline" size={22} color={Colors.text.primary} />
@@ -1336,7 +1338,7 @@ export default function CallsScreen() {
 
             <TouchableOpacity
               style={styles.quickAction}
-              onPress={() => router.push('/(tabs)/explore' as any)}
+              onPress={() => navigateTo('/(tabs)/explore')}
             >
               <View style={styles.quickActionIcon}>
                 <Ionicons name="people" size={24} color={Colors.text.secondary} />
@@ -1346,7 +1348,7 @@ export default function CallsScreen() {
 
             <TouchableOpacity
               style={styles.quickAction}
-              onPress={() => router.push('/session/messages' as any)}
+              onPress={() => navigateTo('/session/messages')}
             >
               <View style={styles.quickActionIcon}>
                 <Ionicons name="chatbubble-ellipses" size={24} color={Colors.semantic.info} />
@@ -1356,7 +1358,7 @@ export default function CallsScreen() {
 
             <TouchableOpacity
               style={styles.quickAction}
-              onPress={() => router.push('/session/calls/setup' as any)}
+              onPress={() => navigateTo('/session/calls/setup')}
             >
               <View style={styles.quickActionIcon}>
                 <Ionicons name="headset-outline" size={24} color={Colors.semantic.success} />
@@ -1414,7 +1416,7 @@ export default function CallsScreen() {
           {filteredCalls.length > 0 && (
             <TouchableOpacity
               style={styles.viewAllButton}
-              onPress={() => router.push('/(tabs)/inbox' as any)}
+              onPress={() => navigateTo('/(tabs)/inbox')}
             >
               <Text style={styles.viewAllText}>View all in Inbox</Text>
               <Ionicons name="chevron-forward" size={16} color={Colors.accent.cyan} />
@@ -1748,7 +1750,7 @@ const desktopStyles = StyleSheet.create({
   headerBannerImage: {
     resizeMode: 'cover',
     ...(Platform.OS === 'web'
-      ? { objectPosition: 'center 25%' } as any
+      ? { objectPosition: 'center 25%' }
       : {}),
   },
   headerOverlay: {

@@ -360,7 +360,7 @@ export function FinnVideoChatOverlay({
                           <ChainOfThoughtStep
                             key={event.id}
                             label={event.label}
-                            icon={event.icon as any}
+                            icon={event.icon as keyof typeof Ionicons.glyphMap}
                             status={
                               event.status === 'completed' || event.type === 'done'
                                 ? 'complete'

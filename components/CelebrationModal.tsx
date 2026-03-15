@@ -503,7 +503,7 @@ function CelebrationWeb({
           gap: 10,
         }}>
           <ShinyText
-            style={{ fontSize: 22, fontWeight: '300' } as any}
+            style={{ fontSize: 22, fontWeight: '300' }}
             speed={4}
             baseColor="rgba(255,255,255,0.55)"
             shineColor="#ffffff"

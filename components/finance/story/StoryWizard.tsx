@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, ComponentProps } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, TextInput, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
@@ -302,7 +302,7 @@ export function StoryWizard({ accounts, onSubmit }: StoryWizardProps) {
     return (
       <View style={styles.container}>
         <View style={styles.stepHeader}>
-          <Pressable onPress={() => setStep('fill')} style={[styles.backBtn, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}>
+          <Pressable onPress={() => setStep('fill')} style={[styles.backBtn, Platform.OS === 'web' ? { cursor: 'pointer' } : {}]}>
             <Ionicons name="arrow-back" size={18} color="#3B82F6" />
           </Pressable>
           <Text style={styles.stepTitle}>Review Entry</Text>
@@ -385,11 +385,11 @@ export function StoryWizard({ accounts, onSubmit }: StoryWizardProps) {
     return (
       <View style={styles.container}>
         <View style={styles.stepHeader}>
-          <Pressable onPress={() => setStep('choose')} style={[styles.backBtn, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}>
+          <Pressable onPress={() => setStep('choose')} style={[styles.backBtn, Platform.OS === 'web' ? { cursor: 'pointer' } : {}]}>
             <Ionicons name="arrow-back" size={18} color="#3B82F6" />
           </Pressable>
           <View style={[styles.scenarioIconSmall, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
-            <Ionicons name={selectedScenario.icon as any} size={16} color="#3B82F6" />
+            <Ionicons name={selectedScenario.icon as ComponentProps<typeof Ionicons>['name']} size={16} color="#3B82F6" />
           </View>
           <Text style={styles.stepTitle}>{selectedScenario.label}</Text>
         </View>
@@ -412,7 +412,7 @@ export function StoryWizard({ accounts, onSubmit }: StoryWizardProps) {
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>Receipt / Attachment (optional)</Text>
           <Pressable
-            style={[styles.attachBtn, Platform.OS === 'web' && { cursor: 'pointer' } as any]}
+            style={[styles.attachBtn, Platform.OS === 'web' && { cursor: 'pointer' }]}
             onPress={handleFileSelect}
           >
             <Ionicons name="camera-outline" size={18} color="#3B82F6" />
@@ -431,7 +431,7 @@ export function StoryWizard({ accounts, onSubmit }: StoryWizardProps) {
                   )}
                   <Text style={styles.attachItemName} numberOfLines={1}>{att.name}</Text>
                   <Pressable
-                    style={[styles.attachRemove, Platform.OS === 'web' && { cursor: 'pointer' } as any]}
+                    style={[styles.attachRemove, Platform.OS === 'web' && { cursor: 'pointer' }]}
                     onPress={() => removeAttachment(i)}
                   >
                     <Ionicons name="close-circle" size={18} color="#ff3b30" />
@@ -476,7 +476,7 @@ export function StoryWizard({ accounts, onSubmit }: StoryWizardProps) {
           return (
             <Pressable
               key={scenario.id}
-              style={[styles.scenarioCard, isHovered && styles.scenarioCardHover, Platform.OS === 'web' && { cursor: 'pointer' } as any]}
+              style={[styles.scenarioCard, isHovered && styles.scenarioCardHover, Platform.OS === 'web' && { cursor: 'pointer' }]}
               onPress={() => handleSelectScenario(scenario)}
               {...(Platform.OS === 'web' ? {
                 onHoverIn: () => setHoveredScenario(scenario.id),
@@ -484,7 +484,7 @@ export function StoryWizard({ accounts, onSubmit }: StoryWizardProps) {
               } : {})}
             >
               <View style={[styles.scenarioIcon, { backgroundColor: isHovered ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.08)' }]}>
-                <Ionicons name={scenario.icon as any} size={20} color="#3B82F6" />
+                <Ionicons name={scenario.icon as ComponentProps<typeof Ionicons>['name']} size={20} color="#3B82F6" />
               </View>
               <Text style={styles.scenarioLabel}>{scenario.label}</Text>
               <Text style={styles.scenarioDesc} numberOfLines={2}>{scenario.description}</Text>

@@ -1154,7 +1154,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.semantic.successLight,
     // Web-only success halo
     boxShadow: `0 0 24px ${Colors.semantic.successLight}, inset 0 0 0 1px rgba(52, 199, 89, 0.1)`,
-  } as any,
+  },
   successTitle: {
     ...Typography.headline,
     color: Colors.semantic.success,

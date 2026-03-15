@@ -30,6 +30,62 @@ import { createClient, AnamEvent } from '@anam-ai/js-sdk';
 
 export type AnamClientInstance = ReturnType<typeof createClient>;
 
+/**
+ * Extended Anam client methods available at runtime but not fully typed by the SDK.
+ * These are runtime-checked before use (typeof guard pattern).
+ */
+interface AnamClientExtended {
+  interruptPersona(): void;
+  sendUserMessage(text: string): void;
+  muteInputAudio(): void;
+  unmuteInputAudio(): void;
+  getInputAudioState(): boolean;
+  getActiveSessionId(): string | null;
+  createTalkMessageStream(): AnamTalkStream;
+  talk(text: string): void;
+}
+
+/** Talk stream interface for streaming long responses to the avatar. */
+interface AnamTalkStream {
+  streamMessageChunk(chunk: string, isLast: boolean): Promise<void>;
+  endMessage(): void;
+  isActive(): boolean;
+}
+
+/** Anam SDK event payload for MESSAGE_HISTORY_UPDATED */
+interface AnamMessageHistoryEvent {
+  messages?: Array<{ role: string; content?: string; timestamp?: number }>;
+}
+
+/** Anam SDK event payload for SESSION_READY */
+type AnamSessionReadyEvent = unknown;
+
+/** Anam SDK event payload for MESSAGE_STREAM_EVENT_RECEIVED */
+interface AnamMessageStreamEvent {
+  content?: string;
+  role?: string;
+}
+
+/** Anam SDK event payload for SERVER_WARNING */
+interface AnamServerWarningEvent {
+  message?: string;
+}
+
+/**
+ * Type-safe access to extended Anam client methods.
+ * Returns the method if available, undefined otherwise.
+ */
+function getExtendedMethod<K extends keyof AnamClientExtended>(
+  client: AnamClientInstance,
+  method: K,
+): AnamClientExtended[K] | undefined {
+  const obj = client as unknown as Partial<AnamClientExtended>;
+  if (typeof obj[method] === 'function') {
+    return (obj[method] as AnamClientExtended[K]);
+  }
+  return undefined;
+}
+
 /** Conversation message for multi-turn context */
 export interface AnamMessage {
   role: 'user' | 'assistant';
@@ -107,40 +163,34 @@ export function createAnamClient(sessionToken: string): AnamClientInstance {
 // ─── SDK v4.8 Wrapper Functions ─────────────────────────────
 
 export function interruptPersona(client: AnamClientInstance): void {
-  if (client && typeof (client as any).interruptPersona === 'function') {
-    (client as any).interruptPersona();
-  }
+  const fn = getExtendedMethod(client, 'interruptPersona');
+  if (fn) fn.call(client);
 }
 
 export function sendUserMessage(client: AnamClientInstance, text: string): void {
-  if (client && typeof (client as any).sendUserMessage === 'function') {
-    (client as any).sendUserMessage(text);
-  }
+  const fn = getExtendedMethod(client, 'sendUserMessage');
+  if (fn) fn.call(client, text);
 }
 
 export function muteAnamInput(client: AnamClientInstance): void {
-  if (client && typeof (client as any).muteInputAudio === 'function') {
-    (client as any).muteInputAudio();
-  }
+  const fn = getExtendedMethod(client, 'muteInputAudio');
+  if (fn) fn.call(client);
 }
 
 export function unmuteAnamInput(client: AnamClientInstance): void {
-  if (client && typeof (client as any).unmuteInputAudio === 'function') {
-    (client as any).unmuteInputAudio();
-  }
+  const fn = getExtendedMethod(client, 'unmuteInputAudio');
+  if (fn) fn.call(client);
 }
 
 export function getAnamInputAudioState(client: AnamClientInstance): boolean {
-  if (client && typeof (client as any).getInputAudioState === 'function') {
-    return (client as any).getInputAudioState();
-  }
+  const fn = getExtendedMethod(client, 'getInputAudioState');
+  if (fn) return fn.call(client);
   return false;
 }
 
 export function getActiveAnamSessionId(client: AnamClientInstance): string | null {
-  if (client && typeof (client as any).getActiveSessionId === 'function') {
-    return (client as any).getActiveSessionId();
-  }
+  const fn = getExtendedMethod(client, 'getActiveSessionId');
+  if (fn) return fn.call(client);
   return null;
 }
 
@@ -186,17 +236,15 @@ async function bindAnamSession(
   }
 }
 
-export function createAnamTalkStream(client: AnamClientInstance): unknown {
-  if (client && typeof (client as any).createTalkMessageStream === 'function') {
-    return (client as any).createTalkMessageStream();
-  }
+export function createAnamTalkStream(client: AnamClientInstance): AnamTalkStream | null {
+  const fn = getExtendedMethod(client, 'createTalkMessageStream');
+  if (fn) return fn.call(client);
   return null;
 }
 
 export function finnTalk(client: AnamClientInstance, text: string): void {
-  if (client && typeof (client as any).talk === 'function') {
-    (client as any).talk(text);
-  }
+  const fn = getExtendedMethod(client, 'talk');
+  if (fn) fn.call(client, text);
 }
 
 /**
@@ -210,21 +258,19 @@ export async function streamResponseToAvatar(
 ): Promise<void> {
   if (!client || !responseText?.trim()) return;
 
+  const talkFn = getExtendedMethod(client, 'talk');
+
   // Short responses: use simple talk()
   if (responseText.length < 200) {
-    if (typeof (client as any).talk === 'function') {
-      (client as any).talk(responseText);
-    }
+    if (talkFn) talkFn.call(client, responseText);
     return;
   }
 
   // Longer responses: stream for lower latency
   const talkStream = createAnamTalkStream(client);
-  if (!talkStream || typeof (talkStream as any).streamMessageChunk !== 'function') {
+  if (!talkStream) {
     // Fallback to talk()
-    if (typeof (client as any).talk === 'function') {
-      (client as any).talk(responseText);
-    }
+    if (talkFn) talkFn.call(client, responseText);
     return;
   }
 
@@ -232,18 +278,14 @@ export async function streamResponseToAvatar(
     // Split into sentence chunks for natural speech pacing
     const chunks = responseText.match(/[^.!?]+[.!?]+\s*/g) || [responseText];
     for (let i = 0; i < chunks.length; i++) {
-      if (typeof (talkStream as any).isActive === 'function' && (talkStream as any).isActive()) {
-        await (talkStream as any).streamMessageChunk(chunks[i], i === chunks.length - 1);
+      if (talkStream.isActive()) {
+        await talkStream.streamMessageChunk(chunks[i], i === chunks.length - 1);
       }
     }
-    if (typeof (talkStream as any).endMessage === 'function') {
-      (talkStream as any).endMessage();
-    }
+    talkStream.endMessage();
   } catch (err) {
     console.warn('[Anam] Talk stream error, falling back:', err);
-    if (typeof (client as any).talk === 'function') {
-      (client as any).talk(responseText);
-    }
+    if (talkFn) talkFn.call(client, responseText);
   }
 }
 
@@ -259,11 +301,12 @@ export function setupAllEventListeners(
   options?: AnamConnectOptions,
 ): void {
   // Message history — detect new user messages and forward to orchestrator via callback
-  client.addListener(AnamEvent.MESSAGE_HISTORY_UPDATED, (event: any) => {
-    const msgArray = event?.messages || (Array.isArray(event) ? event : null);
+  client.addListener(AnamEvent.MESSAGE_HISTORY_UPDATED, (event: unknown) => {
+    const evt = event as AnamMessageHistoryEvent | Array<{ role: string; content?: string; timestamp?: number }>;
+    const msgArray = (!Array.isArray(evt) && evt?.messages) || (Array.isArray(evt) ? evt : null);
     if (msgArray && Array.isArray(msgArray)) {
-      const mapped: AnamMessage[] = msgArray.map((msg: any) => ({
-        role: msg.role === 'user' ? 'user' : 'assistant',
+      const mapped: AnamMessage[] = msgArray.map((msg) => ({
+        role: msg.role === 'user' ? ('user' as const) : ('assistant' as const),
         content: msg.content || '',
         timestamp: msg.timestamp || Date.now(),
       }));
@@ -300,16 +343,17 @@ export function setupAllEventListeners(
   });
 
   // Session ready
-  client.addListener(AnamEvent.SESSION_READY, (event: any) => {
-    const sessionId = extractSessionId(event);
+  client.addListener(AnamEvent.SESSION_READY, (event: unknown) => {
+    const sessionId = extractSessionId(event as AnamSessionReadyEvent);
     console.log(`[Anam ${historyTarget}] Session ready`, sessionId ? { sessionId } : undefined);
     options?.onSessionReady?.(sessionId ?? undefined);
   });
 
   // Message streaming
-  client.addListener(AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED, (event: any) => {
-    if (event?.content) {
-      options?.onMessageStream?.(event.content, event.role || 'assistant');
+  client.addListener(AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED, (event: unknown) => {
+    const streamEvent = event as AnamMessageStreamEvent;
+    if (streamEvent?.content) {
+      options?.onMessageStream?.(streamEvent.content, streamEvent.role || 'assistant');
     }
   });
 
@@ -329,8 +373,9 @@ export function setupAllEventListeners(
   });
 
   // Warnings
-  client.addListener(AnamEvent.SERVER_WARNING, (event: any) => {
-    const msg = event?.message || 'Unknown warning';
+  client.addListener(AnamEvent.SERVER_WARNING, (event: unknown) => {
+    const warningEvent = event as AnamServerWarningEvent;
+    const msg = warningEvent?.message || 'Unknown warning';
     console.warn(`[Anam ${historyTarget}] Server warning: ${msg}`);
     options?.onWarning?.(msg);
   });

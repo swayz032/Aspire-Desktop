@@ -6,6 +6,7 @@ import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { Colors, Typography, BorderRadius, Spacing } from '@/constants/tokens';
 import { CARD_BG } from '@/constants/cardPatterns';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
 const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -177,9 +178,9 @@ export default function BookingsPage() {
 
   const openBookingPage = () => {
     if (user?.bookingSlug) {
-      router.push(`/book/${user.bookingSlug}` as any);
+      navigateTo(`/book/${user.bookingSlug}`);
     } else {
-      router.push('/book/my-business' as any);
+      navigateTo('/book/my-business');
     }
   };
 
@@ -347,15 +348,15 @@ export default function BookingsPage() {
               {Platform.OS === 'web' && (
                 <input
                   type="file"
-                  ref={fileInputRef as any}
+                  ref={fileInputRef as React.RefObject<HTMLInputElement>}
                   accept="image/*"
                   style={{ display: 'none' }}
-                  onChange={handleLogoUpload as any}
+                  onChange={handleLogoUpload as React.ChangeEventHandler<HTMLInputElement>}
                 />
               )}
               <Pressable 
                 style={styles.logoUploadContainer} 
-                onPress={() => (fileInputRef.current as any)?.click()}
+                onPress={() => (fileInputRef.current as HTMLInputElement | null)?.click()}
               >
                 {uploadingLogo ? (
                   <ActivityIndicator size="small" color={Colors.accent.cyan} />

@@ -182,7 +182,7 @@ router.post('/api/plaid/processor/stripe', async (req: Request, res: Response) =
     for (const pi of plaidItems) {
       try {
         const accts = await plaidClient.accountsGet({ access_token: pi.accessToken });
-        if (accts.data.accounts.some((a: any) => a.account_id === account_id)) {
+        if (accts.data.accounts.some((a) => a.account_id === account_id)) {
           matchedItem = pi;
           break;
         }
@@ -204,7 +204,7 @@ router.post('/api/plaid/processor/stripe', async (req: Request, res: Response) =
     const stripeBankToken = tokenResponse.data.stripe_bank_account_token;
 
     const Stripe = (await import('stripe')).default;
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2024-06-20' as any });
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
 
     const customer = await stripe.customers.create({
       source: stripeBankToken,
@@ -245,7 +245,7 @@ router.post('/api/plaid/processor/gusto', async (req: Request, res: Response) =>
     for (const pi of plaidItems) {
       try {
         const accts = await plaidClient.accountsGet({ access_token: pi.accessToken });
-        if (accts.data.accounts.some((a: any) => a.account_id === account_id)) {
+        if (accts.data.accounts.some((a) => a.account_id === account_id)) {
           matchedItem = pi;
           break;
         }
@@ -263,7 +263,7 @@ router.post('/api/plaid/processor/gusto', async (req: Request, res: Response) =>
     const processorResponse = await plaidClient.processorTokenCreate({
       access_token: matchedItem.accessToken,
       account_id,
-      processor: 'gusto' as any,
+      processor: 'gusto' as Parameters<typeof plaidClient.processorTokenCreate>[0]['processor'],
     });
     const processorToken = processorResponse.data.processor_token;
 
@@ -357,11 +357,11 @@ router.get('/api/plaid/accounts', async (_req: Request, res: Response) => {
     if (plaidItems.length === 0) {
       return res.json({ accounts: [] });
     }
-    const allAccounts: any[] = [];
+    const allAccounts: Record<string, any>[] = [];
     for (const item of plaidItems) {
       try {
         const response = await plaidClient.accountsGet({ access_token: item.accessToken });
-        const accounts = response.data.accounts.map((acc: any) => ({
+        const accounts = response.data.accounts.map((acc) => ({
           ...acc,
           _plaid_item_id: item.itemId,
         }));
@@ -392,7 +392,7 @@ router.get('/api/plaid/transactions', async (_req: Request, res: Response) => {
     const startDate = thirtyDaysAgo.toISOString().split('T')[0];
     const endDate = now.toISOString().split('T')[0];
 
-    const allTransactions: any[] = [];
+    const allTransactions: Record<string, any>[] = [];
     for (const item of plaidItems) {
       try {
         const response = await plaidClient.transactionsGet({
@@ -422,11 +422,11 @@ router.get('/api/plaid/balances', async (_req: Request, res: Response) => {
     if (plaidItems.length === 0) {
       return res.json({ accounts: [] });
     }
-    const allAccounts: any[] = [];
+    const allAccounts: Record<string, any>[] = [];
     for (const item of plaidItems) {
       try {
         const response = await plaidClient.accountsBalanceGet({ access_token: item.accessToken });
-        const accounts = response.data.accounts.map((acc: any) => ({
+        const accounts = response.data.accounts.map((acc) => ({
           ...acc,
           _plaid_item_id: item.itemId,
         }));
@@ -451,7 +451,7 @@ router.get('/api/plaid/identity', async (_req: Request, res: Response) => {
     if (plaidItems.length === 0) {
       return res.json({ accounts: [] });
     }
-    const allAccounts: any[] = [];
+    const allAccounts: Record<string, any>[] = [];
     for (const item of plaidItems) {
       try {
         const response = await plaidClient.identityGet({ access_token: item.accessToken });
@@ -513,7 +513,7 @@ router.get('/api/plaid/linked-accounts', async (_req: Request, res: Response) =>
     if (plaidItems.length === 0) {
       return res.json({ accounts: [] });
     }
-    const allAccounts: any[] = [];
+    const allAccounts: Record<string, any>[] = [];
     for (const item of plaidItems) {
       try {
         const response = await plaidClient.accountsGet({ access_token: item.accessToken });
@@ -525,7 +525,7 @@ router.get('/api/plaid/linked-accounts', async (_req: Request, res: Response) =>
             mask: acc.mask,
             type: acc.type,
             subtype: acc.subtype,
-            institution: (response.data as any).item?.institution_id || null,
+            institution: (response.data as Record<string, any>).item?.institution_id || null,
             _plaid_item_id: item.itemId,
           });
         }

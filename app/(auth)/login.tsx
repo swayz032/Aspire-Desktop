@@ -11,6 +11,7 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { replaceTo } from '@/lib/navigation';
 import { supabase } from '@/lib/supabase';
 
 type AuthMode = 'signin' | 'signup';
@@ -81,7 +82,7 @@ function getLandPoints(): Promise<[number, number][]> {
   if (_landPromise) return _landPromise;
   _landPromise = fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json')
     .then(r => r.json())
-    .then((topo: any) => {
+    .then((topo: { transform: { scale: number[]; translate: number[] }; arcs: number[][][] }) => {
       const { scale, translate } = topo.transform;
       const pts: [number, number][] = [];
       for (const arc of topo.arcs) {
@@ -233,7 +234,7 @@ function GlobeCanvas({ accent, accentRgb, landColor, initAngle }: GlobeProps) {
 
   return (
     <canvas
-      ref={canvasRef as any}
+      ref={canvasRef as React.RefObject<HTMLCanvasElement>}
       width={520}
       height={520}
       style={{ display: 'block', animation: 'floatGlobe 6s ease-in-out infinite' } as React.CSSProperties}
@@ -298,12 +299,12 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
             .select('onboarding_completed_at, owner_name, business_name, industry')
             .eq('suite_id', suiteId).single();
           if (!profile?.onboarding_completed_at || !profile?.owner_name || !profile?.business_name || !profile?.industry) {
-            router.replace('/(auth)/onboarding' as any); return;
+            replaceTo('/(auth)/onboarding'); return;
           }
         }
         router.replace('/(tabs)');
       }
-    } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally { setLoading(false); }
   };
 
@@ -322,8 +323,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
       if (!res.ok || !rd.success) { setError(rd.error || 'Signup failed.'); return; }
       const { error: sie } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (sie) { setError(sie.message); return; }
-      router.replace('/(auth)/onboarding' as any);
-    } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
+      replaceTo('/(auth)/onboarding');
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally { setLoading(false); }
   };
 
@@ -369,7 +370,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
 
   return (
     <div
-      ref={cardRef as any}
+      ref={cardRef as React.RefObject<HTMLDivElement>}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       onClick={() => !isActive && Math.abs(offset) === 1 && onSetActive(index)}
@@ -763,12 +764,12 @@ function NativeLoginScreen() {
             .select('onboarding_completed_at, owner_name, business_name, industry')
             .eq('suite_id', suiteId).single();
           if (!profile?.onboarding_completed_at || !profile?.owner_name || !profile?.business_name || !profile?.industry) {
-            router.replace('/(auth)/onboarding' as any); return;
+            replaceTo('/(auth)/onboarding'); return;
           }
         }
         router.replace('/(tabs)');
       }
-    } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally { setLoading(false); }
   };
 
@@ -787,8 +788,8 @@ function NativeLoginScreen() {
       if (!signupRes.ok || !signupData.success) { setError(signupData.error || 'Signup failed.'); return; }
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (signInError) { setError(signInError.message); return; }
-      router.replace('/(auth)/onboarding' as any);
-    } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
+      replaceTo('/(auth)/onboarding');
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally { setLoading(false); }
   };
 

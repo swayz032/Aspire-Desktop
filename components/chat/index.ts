@@ -9,6 +9,7 @@
 export type {
   AgentId,
   FileAttachment,
+  ChatMediaItem,
   AgentActivityEvent,
   ActiveRun,
   AgentChatMessage,

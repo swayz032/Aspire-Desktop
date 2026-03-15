@@ -34,12 +34,12 @@ function getStripeClient() {
   return new Stripe(key);
 }
 
-function computeRawHash(data: any): string {
+function computeRawHash(data: Record<string, any> | string | Buffer): string {
   const raw = Buffer.isBuffer(data) ? data : Buffer.from(typeof data === 'string' ? data : JSON.stringify(data));
   return crypto.createHash('sha256').update(raw).digest('hex');
 }
 
-function extractAmount(eventType: string, dataObject: any): number | null {
+function extractAmount(eventType: string, dataObject: Record<string, any>): number | null {
   if (eventType.startsWith('invoice.')) {
     return dataObject.amount_paid ?? dataObject.amount_due ?? null;
   }
@@ -55,14 +55,14 @@ function extractAmount(eventType: string, dataObject: any): number | null {
   if (eventType === 'balance.available') {
     const available = dataObject.available;
     if (Array.isArray(available) && available.length > 0) {
-      return available.reduce((sum: number, b: any) => sum + (b.amount || 0), 0);
+      return available.reduce((sum: number, b: Record<string, any>) => sum + (b.amount || 0), 0);
     }
     return null;
   }
   return null;
 }
 
-function extractEntityRefs(eventType: string, dataObject: any, stripeEventId: string): Record<string, string> {
+function extractEntityRefs(eventType: string, dataObject: Record<string, any>, stripeEventId: string): Record<string, string> {
   const refs: Record<string, string> = { stripe_event_id: stripeEventId };
 
   if (dataObject.id) {
@@ -88,7 +88,7 @@ function extractEntityRefs(eventType: string, dataObject: any, stripeEventId: st
   return refs;
 }
 
-function extractFee(eventType: string, dataObject: any): number | null {
+function extractFee(eventType: string, dataObject: Record<string, any>): number | null {
   if (eventType === 'payment_intent.succeeded' || eventType === 'invoice.paid' || eventType === 'invoice.payment_succeeded') {
     if (dataObject.charges?.data?.[0]?.balance_transaction) {
       return null;
@@ -115,9 +115,9 @@ async function writeFinanceEvent(params: {
   occurredAt: Date;
   amount: number | null;
   currency: string;
-  entityRefs: any;
+  entityRefs: Record<string, any>;
   rawHash: string;
-  metadata?: any;
+  metadata?: Record<string, any>;
 }): Promise<string | null> {
   try {
     const result = await db.execute(sql`
@@ -127,8 +127,8 @@ async function writeFinanceEvent(params: {
       RETURNING event_id
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
-      return (rows as any[])[0].event_id;
+    if (rows && (rows as Record<string, any>[]).length > 0) {
+      return (rows as Record<string, any>[])[0].event_id;
     }
     return null;
   } catch (error: unknown) {
@@ -196,11 +196,11 @@ export async function checkSettlementState(suiteId?: string, officeId?: string):
 
     const balance = await stripe.balance.retrieve();
 
-    const available = (balance.available || []).map((b: any) => ({
+    const available = (balance.available || []).map((b: { amount: number; currency: string }) => ({
       amount: b.amount,
       currency: b.currency,
     }));
-    const pending = (balance.pending || []).map((b: any) => ({
+    const pending = (balance.pending || []).map((b: { amount: number; currency: string }) => ({
       amount: b.amount,
       currency: b.currency,
     }));
@@ -208,8 +208,8 @@ export async function checkSettlementState(suiteId?: string, officeId?: string):
     const connection = await getConnectionByProvider(sId, oId, 'stripe');
     const connectionId = connection?.id || null;
 
-    const totalAvailable = available.reduce((sum: number, b: any) => sum + b.amount, 0);
-    const totalPending = pending.reduce((sum: number, b: any) => sum + b.amount, 0);
+    const totalAvailable = available.reduce((sum: number, b: { amount: number }) => sum + b.amount, 0);
+    const totalPending = pending.reduce((sum: number, b: { amount: number }) => sum + b.amount, 0);
 
     if (totalAvailable > 0) {
       const providerEventId = `balance_check_${Date.now()}`;
@@ -245,7 +245,7 @@ router.post(
     try {
       const signature = req.headers['stripe-signature'];
       const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-      let event: any;
+      let event: Record<string, any>;
 
       if (webhookSecret) {
         if (!signature) {

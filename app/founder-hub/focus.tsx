@@ -123,7 +123,7 @@ export default function FocusScreen() {
       <View style={styles.container}>
         <View style={styles.heroWrapper}>
           <LinearGradient
-            colors={config.gradientColors as any}
+            colors={config.gradientColors as [string, string, ...string[]]}
             locations={[0, 0.2, 0.5, 0.8, 1]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -161,7 +161,7 @@ export default function FocusScreen() {
       <View style={styles.container}>
         <View style={styles.heroWrapper}>
           <LinearGradient
-            colors={config.gradientColors as any}
+            colors={config.gradientColors as [string, string, ...string[]]}
             locations={[0, 0.2, 0.5, 0.8, 1]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -200,7 +200,7 @@ export default function FocusScreen() {
     <View style={styles.container}>
       <View style={styles.heroWrapper}>
         <LinearGradient
-          colors={config.gradientColors as any}
+          colors={config.gradientColors as [string, string, ...string[]]}
           locations={[0, 0.2, 0.5, 0.8, 1]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -220,7 +220,7 @@ export default function FocusScreen() {
             <View style={styles.headerIconOuter}>
               <View style={[styles.headerIconGlow, { borderColor: `${config.color}30` }]} />
               <View style={[styles.headerIconInner, { backgroundColor: `${config.color}25` }]}>
-                <Ionicons name={config.icon as any} size={16} color="#fff" />
+                <Ionicons name={config.icon as keyof typeof Ionicons.glyphMap} size={16} color="#fff" />
               </View>
             </View>
             <View style={styles.headerText}>
@@ -263,7 +263,7 @@ export default function FocusScreen() {
             insights.map((insight) => (
               <View key={insight.id} style={styles.insightCardWrapper}>
                 <LinearGradient
-                  colors={config.gradientColors as any}
+                  colors={config.gradientColors as [string, string, ...string[]]}
                   locations={[0, 0.2, 0.5, 0.8, 1]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}

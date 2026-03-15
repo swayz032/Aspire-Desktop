@@ -91,6 +91,7 @@ import {
 import {
   animateWidgetDelete,
   TOTAL_DURATION,
+  type DeleteAnimationTargets,
 } from '@/lib/widgetDeleteAnimation';
 
 // ---------------------------------------------------------------------------
@@ -200,7 +201,7 @@ describe('Integration: Keyboard delete triggers animation and cleanup', () => {
       translateY: { value: 0 },
     };
 
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets as DeleteAnimationTargets, { onComplete });
 
     expect(onComplete).not.toHaveBeenCalled();
 
@@ -226,7 +227,7 @@ describe('Integration: Keyboard delete triggers animation and cleanup', () => {
       translateY: { value: 0 },
     };
 
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets as DeleteAnimationTargets, { onComplete });
     jest.advanceTimersByTime(TOTAL_DURATION + 50);
 
     const loaded = loadCanvasState('suite-1', 'office-1');
@@ -249,7 +250,7 @@ describe('Integration: Reduced motion instant delete', () => {
       translateY: { value: 0 },
     };
 
-    animateWidgetDelete(targets as any, {
+    animateWidgetDelete(targets as DeleteAnimationTargets, {
       reducedMotion: true,
       onComplete,
     });
@@ -385,7 +386,7 @@ describe('Integration: Full delete flow (animation + storage + cleanup)', () => 
     };
 
     // Trigger delete animation
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets as DeleteAnimationTargets, { onComplete });
 
     // Wait for animation to complete
     jest.advanceTimersByTime(TOTAL_DURATION + 50);

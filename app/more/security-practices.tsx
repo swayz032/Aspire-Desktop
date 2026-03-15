@@ -9,7 +9,7 @@ function Practice({ icon, title, description }: { icon: string; title: string; d
   return (
     <View style={styles.practiceCard}>
       <View style={styles.practiceIcon}>
-        <Ionicons name={icon as any} size={22} color={Colors.accent.cyan} />
+        <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={22} color={Colors.accent.cyan} />
       </View>
       <View style={styles.practiceContent}>
         <Text style={styles.practiceTitle}>{title}</Text>

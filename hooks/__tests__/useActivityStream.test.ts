@@ -191,7 +191,7 @@ describe('useActivityStream', () => {
     };
 
     act(() => {
-      getLastInstance().simulateMessage(event as Record<string, unknown>);
+      getLastInstance().simulateMessage(event as unknown as Record<string, unknown>);
     });
 
     expect(onEvent).toHaveBeenCalledWith(event);

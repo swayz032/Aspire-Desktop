@@ -108,7 +108,7 @@ export function WidgetModal({
                 {
                   backgroundColor: accent,
                   ...(Platform.OS === 'web'
-                    ? ({ background: `linear-gradient(90deg, ${accent}, ${accent}66)` } as any)
+                    ? ({ background: `linear-gradient(90deg, ${accent}, ${accent}66)` })
                     : {}),
                 },
               ]}
@@ -144,7 +144,7 @@ const s = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.82)',
     ...(Platform.OS === 'web'
-      ? ({ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' } as any)
+      ? ({ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' })
       : {}),
   },
   card: {
@@ -159,7 +159,7 @@ const s = StyleSheet.create({
           boxShadow: '0 32px 96px rgba(0,0,0,0.72), 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
           backdropFilter: 'blur(40px)',
           WebkitBackdropFilter: 'blur(40px)',
-        } as any)
+        })
       : {
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 16 },
@@ -191,7 +191,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     zIndex: 100,
     ...(Platform.OS === 'web'
-      ? ({ cursor: 'pointer' } as any)
+      ? ({ cursor: 'pointer' })
       : {}),
   },
   closeLine1: {

@@ -14,14 +14,14 @@ import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { QuoteWidget } from '@/components/canvas/widgets/QuoteWidget';
 import { supabase } from '@/lib/supabase';
 
-// Mock Supabase
+// Mock Supabase — plain mock object avoids needing `as any` on mockReturnValue
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
   },
 }));
 
-const mockSupabase = supabase as jest.Mocked<typeof supabase>;
+const mockSupabase = supabase as unknown as { from: jest.Mock };
 
 describe('QuoteWidget', () => {
   const mockQuote = {
@@ -74,7 +74,7 @@ describe('QuoteWidget', () => {
 
     mockSupabase.from.mockReturnValue({
       select: mockSelect,
-    } as any);
+    });
 
     render(<QuoteWidget {...defaultProps} />);
 
@@ -96,7 +96,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     render(<QuoteWidget {...defaultProps} />);
 
@@ -119,7 +119,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<QuoteWidget {...defaultProps} />);
 
@@ -138,7 +138,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<QuoteWidget {...defaultProps} />);
 
@@ -159,7 +159,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<QuoteWidget {...defaultProps} />);
 
@@ -178,7 +178,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<QuoteWidget {...defaultProps} />);
 
@@ -200,7 +200,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const onSendClick = jest.fn();
     const { getByText } = render(
@@ -223,7 +223,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const onSendClick = jest.fn();
     const { queryByText } = render(
@@ -244,7 +244,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const onSendClick = jest.fn();
     const { getByText } = render(
@@ -274,7 +274,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<QuoteWidget {...defaultProps} />);
 
@@ -292,7 +292,7 @@ describe('QuoteWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<QuoteWidget {...defaultProps} />);
 

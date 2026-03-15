@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
@@ -99,7 +100,7 @@ export default function PendingSignaturesPage() {
   }, [authenticatedFetch, fetchPending]);
 
   const handleViewDetail = useCallback((id: string) => {
-    router.push(`/finance-hub/documents/${id}` as any);
+    navigateTo(`/finance-hub/documents/${id}`);
   }, [router]);
 
   const getDaysWaiting = (isoStr: string): number => {

@@ -8,7 +8,7 @@ import type { AuthenticatedRequest } from './types';
 const router = Router();
 
 // Lazy-load Twilio client to avoid crash if credentials are missing
-let twilioClient: any = null;
+let twilioClient: Record<string, any> | null = null;
 
 function getTwilioClient() {
   if (twilioClient) return twilioClient;
@@ -148,7 +148,7 @@ router.get('/api/calls/history', async (req: Request, res: Response) => {
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     res.json({ calls: rows, total: rows.length });
   } catch (error: unknown) {
     logger.error('Call history error', { error: error instanceof Error ? error.message : 'unknown' });

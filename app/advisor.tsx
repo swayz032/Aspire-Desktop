@@ -435,7 +435,7 @@ export default function AdvisorScreen() {
               >
                 <View style={styles.toolInfo}>
                   <View style={styles.toolIconWrapper}>
-                    <Ionicons name={tool.icon as any} size={18} color="#3B82F6" />
+                    <Ionicons name={tool.icon as keyof typeof Ionicons.glyphMap} size={18} color="#3B82F6" />
                   </View>
                   <View style={styles.toolText}>
                     <Text style={styles.toolName}>{tool.name}</Text>

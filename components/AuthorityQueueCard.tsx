@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
   container: {
     marginBottom: 0,
     height: '100%',
-  } as any,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

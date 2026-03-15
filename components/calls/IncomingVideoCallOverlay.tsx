@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { useSupabase } from '@/providers';
 import {
   acceptVideoCall,
@@ -70,7 +70,7 @@ function unlockAudio(): void {
   let ctxUnlock = Promise.resolve(false);
   try {
     if (!_audioCtx) {
-      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (AC) _audioCtx = new AC();
     }
     if (_audioCtx?.state === 'suspended') {
@@ -181,7 +181,6 @@ function CallerDetailRow({
 
 /* ─── Component ─── */
 export function IncomingVideoCallOverlay(): React.ReactElement | null {
-  const router = useRouter();
   const { session, suiteId } = useSupabase();
   const [overlayState, setOverlayState] = useState(getIncomingVideoCallState());
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -307,13 +306,10 @@ export function IncomingVideoCallOverlay(): React.ReactElement | null {
     if (!invitation || !session?.access_token) return;
     try {
       const result = await acceptVideoCall(invitation.id, session.access_token, suiteId ?? undefined);
-      router.push({
-        pathname: '/session/conference-live' as any,
-        params: {
-          roomName: result.roomName,
-          token: result.token,
-          serverUrl: result.serverUrl,
-        },
+      navigateTo('/session/conference-live', {
+        roomName: result.roomName,
+        token: result.token,
+        serverUrl: result.serverUrl,
       });
     } catch (err) {
       console.error('Failed to accept video call:', err);
@@ -507,13 +503,11 @@ const styles = StyleSheet.create({
   name: {
     marginTop: 8,
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: '700' as const,
     color: '#fff',
     paddingHorizontal: 24,
-    textAlign: 'center',
-    ...(Platform.OS === 'web'
-      ? ({ lineHeight: '1.2' } as unknown as ViewStyle)
-      : { lineHeight: 30 }),
+    textAlign: 'center' as const,
+    lineHeight: Platform.OS === 'web' ? (('1.2' as unknown) as number) : 30,
   },
   subtitle: {
     marginTop: 4,
@@ -582,12 +576,12 @@ const styles = StyleSheet.create({
   countdown: {
     marginTop: 14,
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '500' as const,
     color: 'rgba(255,255,255,0.35)',
     letterSpacing: 0.3,
     ...(Platform.OS === 'web'
-      ? ({ fontVariantNumeric: 'tabular-nums' } as unknown as ViewStyle)
-      : { fontVariant: ['tabular-nums'] as any }),
+      ? { fontVariantNumeric: 'tabular-nums' }
+      : { fontVariant: ['tabular-nums' as const] }),
   },
 
   /* Actions */

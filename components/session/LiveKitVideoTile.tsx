@@ -131,7 +131,7 @@ function LiveKitVideoView({ trackRef }: { trackRef: TrackReferenceOrPlaceholder 
         right: 0,
         bottom: 0,
         overflow: 'hidden',
-      } as any}
+      }}
     />
   );
 }

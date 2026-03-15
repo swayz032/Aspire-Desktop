@@ -259,7 +259,7 @@ export default function SavedScreen() {
             <View style={styles.savedContent}>
               <View style={styles.savedMeta}>
                 <View style={styles.savedType}>
-                  <Ionicons name={getTypeIcon(item.type) as any} size={12} color={THEME.text.muted} />
+                  <Ionicons name={getTypeIcon(item.type) as keyof typeof Ionicons.glyphMap} size={12} color={THEME.text.muted} />
                   <Text style={styles.savedTypeText}>{item.source}</Text>
                 </View>
                 <Text style={styles.savedDate}>{item.date}</Text>

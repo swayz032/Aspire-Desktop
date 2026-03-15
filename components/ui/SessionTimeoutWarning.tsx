@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 9999,
     ...(Platform.OS === 'web' ? { backdropFilter: 'blur(4px)' } : {}),
-  } as any,
+  },
   modal: {
     backgroundColor: '#1C1C1E',
     borderRadius: 16,
@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
     maxWidth: '90%',
     alignItems: 'center',
     ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0, 0, 0, 0.6)' } : {}),
-  } as any,
+  },
   iconWrap: {
     width: 56,
     height: 56,
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease-out' } : {}),
-  } as any,
+  },
   primaryButton: {
     backgroundColor: '#3B82F6',
   },

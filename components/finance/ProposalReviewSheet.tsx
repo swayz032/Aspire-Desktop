@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import type { PressableState } from '@/types/common';
-import { View, Text, StyleSheet, Pressable, Platform, Modal, ScrollView, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, Modal, ScrollView, Animated, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   overlay: {
     ...Platform.select({
       web: {
-        position: 'fixed' as any,
+        position: 'fixed' as ViewStyle['position'],
         top: 0,
         left: 0,
         right: 0,
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   backdrop: {
     ...Platform.select({
       web: {
-        position: 'absolute' as any,
+        position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column' as const,
     ...Platform.select({
       web: {
-        position: 'absolute' as any,
+        position: 'absolute',
         right: 0,
         top: 0,
         bottom: 0,
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   closeButtonHover: {
     backgroundColor: Colors.surface.cardHover,
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   sendButtonHover: {
     backgroundColor: Colors.accent.cyanDark,
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     alignItems: 'center',
     borderRadius: BorderRadius.lg,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   cancelButtonHover: {
     backgroundColor: Colors.surface.cardHover,

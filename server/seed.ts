@@ -9,7 +9,7 @@ async function seed() {
   const suiteResult = await db.execute(sql`
     SELECT app.ensure_suite('demo-tenant', 'Aspire Demo') AS suite_id
   `);
-  const rows = (suiteResult.rows || suiteResult) as any[];
+  const rows = (suiteResult.rows || suiteResult) as Record<string, any>[];
   const demoSuiteId = rows[0].suite_id;
   logger.info('Demo suite created', { demoSuiteId });
 

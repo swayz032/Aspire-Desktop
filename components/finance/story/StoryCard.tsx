@@ -77,7 +77,7 @@ export function StoryCard({ title, subtitle, value, valueColor, icon, iconColor,
 
   if (onPress) {
     return (
-      <Pressable onPress={onPress} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
+      <Pressable onPress={onPress} style={Platform.OS === 'web' ? { cursor: 'pointer' } : {}}>
         {content}
       </Pressable>
     );

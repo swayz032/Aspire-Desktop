@@ -13,6 +13,7 @@ import {
   Image,
   ImageBackground,
   TouchableOpacity,
+  ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '@/constants/tokens';
@@ -344,7 +345,7 @@ function PeopleTab({
                 </View>
               </View>
               <View style={[styles.tableCell, { flex: 1 }]}>
-                <View style={[styles.statusBadge, styles[`status_${member.status}` as keyof typeof styles] as any]}>
+                <View style={[styles.statusBadge, styles[`status_${member.status}` as keyof typeof styles] as ViewStyle]}>
                   <View style={[styles.statusDot, member.status === 'active' && styles.statusDotActive]} />
                   <Text style={[styles.statusText, member.status === 'active' && { color: Colors.semantic.success }]}>
                     {member.status.charAt(0).toUpperCase() + member.status.slice(1)}
@@ -675,10 +676,10 @@ function QueuesTab({
             <View style={styles.deskCardHeader}>
               <View style={styles.deskCardHeaderLeft}>
                 {staffMember ? (
-                  <Image source={(staffMember as any).avatarImage} style={styles.deskStaffAvatar} />
+                  <Image source={'avatarImage' in staffMember ? (staffMember as { avatarImage: number }).avatarImage : undefined} style={styles.deskStaffAvatar} />
                 ) : (
                   <View style={[styles.deskStaffIconWrap, { backgroundColor: `${info.color}15` }]}>
-                    <Ionicons name={info.icon as any} size={22} color={info.color} />
+                    <Ionicons name={info.icon as keyof typeof Ionicons.glyphMap} size={22} color={info.color} />
                   </View>
                 )}
                 <View style={styles.deskHeaderInfo}>
@@ -717,7 +718,7 @@ function QueuesTab({
                       ]}
                     >
                       <View style={styles.deskQueueItemRow}>
-                        <View style={[styles.priorityDot, styles[`priority_${item.priority}` as keyof typeof styles] as any]} />
+                        <View style={[styles.priorityDot, styles[`priority_${item.priority}` as keyof typeof styles] as ViewStyle]} />
                         <View style={styles.deskQueueItemContent}>
                           <Text style={styles.deskQueueItemSummary} numberOfLines={2}>{item.summary}</Text>
                           <View style={styles.deskQueueItemMeta}>
@@ -855,7 +856,7 @@ function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
                 <View style={styles.receiptHeader}>
                   <View style={styles.receiptLeft}>
                     <Ionicons 
-                      name={actionIcon.icon as any} 
+                      name={actionIcon.icon as keyof typeof Ionicons.glyphMap}
                       size={20} 
                       color={actionIcon.color} 
                     />
@@ -991,7 +992,7 @@ function UsageTab({ suiteUsage, memberUsage }: { suiteUsage: UsageLedger; member
                   <Animated.View 
                     style={[
                       styles.usageBarFill, 
-                      { width: barWidth as any },
+                      { width: barWidth as unknown as number },
                       isWarning && styles.usageBarWarning,
                       isCritical && styles.usageBarCritical,
                     ]} 
@@ -1425,7 +1426,7 @@ export default function TeamWorkspacePage() {
             <TouchableOpacity key={tab.id} onPress={() => setActiveTab(tab.id)} activeOpacity={0.7}>
               {isActive ? (
                 <LinearGradient colors={[Colors.accent.cyan, Colors.accent.cyanDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tabActiveGradient}>
-                  <Ionicons name={tab.icon as any} size={18} color="#fff" />
+                  <Ionicons name={tab.icon as keyof typeof Ionicons.glyphMap} size={18} color="#fff" />
                   <Text style={styles.tabTextActive}>{tab.label}</Text>
                   {count > 0 && (
                     <View style={styles.tabBadgeActive}>
@@ -1436,7 +1437,7 @@ export default function TeamWorkspacePage() {
                 </LinearGradient>
               ) : (
                 <View style={styles.tabInactive}>
-                  <Ionicons name={tab.icon as any} size={18} color={Colors.text.tertiary} />
+                  <Ionicons name={tab.icon as keyof typeof Ionicons.glyphMap} size={18} color={Colors.text.tertiary} />
                   <Text style={styles.tabTextInactive}>{tab.label}</Text>
                   {count > 0 && (
                     <View style={styles.tabBadgeInactive}>
@@ -1979,7 +1980,7 @@ const styles = StyleSheet.create({
     width: 140,
     height: '100%',
     minHeight: 140,
-  } as any,
+  },
   approvalThumbnailOverlay: {
     position: 'absolute',
     bottom: 0,

@@ -42,9 +42,9 @@ function PaperBackground({ height, accentColor }: { height: number; accentColor:
   const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="${height}" preserveAspectRatio="none">${lines}</svg>`;
   const dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`;
   return (
-    <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' as any }]}>
-      <img src={dataUri} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 1 } as any} />
-      <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', opacity: 0.04, pointerEvents: 'none' as any }]}>
+    <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
+      <img src={dataUri} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 1 }} />
+      <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', opacity: 0.04, pointerEvents: 'none' }]}>
         <Ionicons name="create" size={180} color={accentColor} />
       </View>
     </View>
@@ -233,7 +233,7 @@ const s = StyleSheet.create({
   swatchRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   swatch:     { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5 },
   swatchActive: { transform: [{ scale: 1.2 }], borderWidth: 2, borderColor: '#FFF' },
-  headerRight:{ flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' as any },
+  headerRight:{ flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   voiceBtn:   { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.12)' },
   voiceBtnText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
   newBtn:     { width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
@@ -244,13 +244,13 @@ const s = StyleSheet.create({
     marginHorizontal: 16, marginTop: 8, marginBottom: 4,
     fontSize: 26, fontWeight: '800', color: TP,
     backgroundColor: 'transparent',
-    ...(Platform.OS === 'web' ? ({ outline: 'none' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ outline: 'none' }) : {}),
   },
   bodyInput:  {
     flex: 1, marginHorizontal: 16, marginBottom: 8,
     fontSize: 15, color: TP, lineHeight: 28,
     backgroundColor: 'transparent',
-    ...(Platform.OS === 'web' ? ({ outline: 'none', resize: 'none' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ outline: 'none', resize: 'none' }) : {}),
   },
   thumbBar:     { height: 80, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.07)', backgroundColor: 'rgba(0,0,0,0.4)' },
   thumbContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 8, alignItems: 'center' },

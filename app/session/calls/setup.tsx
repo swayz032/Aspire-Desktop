@@ -1228,7 +1228,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(56,189,248,0.35)',
     backgroundColor: 'rgba(14,165,233,0.14)',
     paddingHorizontal: Spacing.md,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   testIncomingCallButtonText: {
     ...Typography.captionMedium,

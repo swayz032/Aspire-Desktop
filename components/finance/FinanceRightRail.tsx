@@ -2,7 +2,7 @@ import React from 'react';
 import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 
 interface ApprovalItem {
@@ -85,7 +85,7 @@ export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }
                 styles.linkButton,
                 hovered && styles.linkButtonHover,
               ]}
-              onPress={() => router.push('/inbox' as any)}
+              onPress={() => router.push('/inbox' as Href)}
               accessibilityRole="link"
               accessibilityLabel="View all approvals in Inbox"
             >
@@ -191,7 +191,7 @@ export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }
                 styles.linkButton,
                 hovered && styles.linkButtonHover,
               ]}
-              onPress={() => router.push('/more/integrations' as any)}
+              onPress={() => router.push('/more/integrations' as Href)}
               accessibilityRole="link"
               accessibilityLabel="Manage provider connections"
             >
@@ -216,7 +216,7 @@ export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }
                 styles.linkButton,
                 hovered && styles.linkButtonHover,
               ]}
-              onPress={() => router.push('/finance-hub/connections' as any)}
+              onPress={() => router.push('/finance-hub/connections' as Href)}
               accessibilityRole="link"
               accessibilityLabel="Connect accounts"
             >
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
       ? { boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }
       : {}
     ),
-  } as any,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
       ? { cursor: 'pointer', transition: 'opacity 0.15s ease' }
       : {}
     ),
-  } as any,
+  },
   linkButtonHover: {
     opacity: 0.75,
   },
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
       ? { cursor: 'pointer', transition: 'background-color 0.15s ease' }
       : {}
     ),
-  } as any,
+  },
   providerRowHover: {
     backgroundColor: Colors.surface.cardHover, // #242426 — existing token
   },

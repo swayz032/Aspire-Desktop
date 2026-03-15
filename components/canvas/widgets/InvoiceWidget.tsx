@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderRadius: 8,
     padding: 10,
-    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(12px)' } : {}) as any,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(12px)' } : {}),
   },
   statLabel: {
     fontSize: 10,

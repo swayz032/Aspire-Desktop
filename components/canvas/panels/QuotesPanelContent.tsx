@@ -184,7 +184,7 @@ const s = StyleSheet.create({
   orbBehind:    {
     position: 'absolute', top: -80, right: -60, width: 260, height: 260,
     borderRadius: 130, backgroundColor: 'rgba(14,165,233,0.12)',
-    ...(Platform.OS === 'web' ? { filter: 'blur(70px)' } as any : {}),
+    ...(Platform.OS === 'web' ? { filter: 'blur(70px)' } : {}),
   },
   kpiGrid:      { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, gap: 8 },
   kpiTile:      { flex: 1, minWidth: '40%', backgroundColor: GLASS, borderRadius: 14, borderWidth: 1, borderColor: BORDER, padding: 14, alignItems: 'center', ...GLASS_WEB },

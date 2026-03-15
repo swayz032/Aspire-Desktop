@@ -176,7 +176,7 @@ export function TemplatePreviewModal({
                 accessibilityLabel="Close preview"
                 style={({ hovered, pressed }: PressableState) => [
                   styles.closeBtn,
-                  Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease' } as any : {},
+                  Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease' } : {},
                   hovered && styles.closeBtnHovered,
                   pressed && styles.closeBtnPressed,
                 ]}
@@ -214,7 +214,7 @@ export function TemplatePreviewModal({
                         animationDuration: '2s',
                         animationTimingFunction: 'ease-in-out',
                         animationIterationCount: 'infinite',
-                      } as any]}
+                      }]}
                       accessibilityElementsHidden
                       importantForAccessibility="no-hide-descendants"
                     />
@@ -240,8 +240,8 @@ export function TemplatePreviewModal({
                       opacity: iframeReady ? 0 : 1,
                       transition: 'opacity 0.3s ease',
                       pointerEvents: iframeReady ? 'none' : 'auto',
-                    } as any : {},
-                    iframeReady && Platform.OS !== 'web' ? { display: 'none' } as any : {},
+                    } : {},
+                    iframeReady && Platform.OS !== 'web' ? { display: 'none' } : {},
                   ]}>
                     <Image
                       source={{ uri: template.preview_image_url }}
@@ -343,7 +343,7 @@ export function TemplatePreviewModal({
               accessibilityLabel={`Draft ${displayName} with Finn`}
               style={({ hovered, pressed }: PressableState) => [
                 styles.draftCta,
-                Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease' } as any : {},
+                Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease' } : {},
                 hovered && styles.draftCtaHovered,
                 pressed && styles.draftCtaPressed,
               ]}
@@ -401,12 +401,12 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       backdropFilter: 'blur(8px)',
       WebkitBackdropFilter: 'blur(8px)',
-    } as any : {}),
+    } : {}),
   },
   modalContainer: {
     width: '100%',
     maxWidth: 920,
-    maxHeight: '95vh' as any,
+    maxHeight: '95vh',
     backgroundColor: Colors.background.elevated,
     borderRadius: 16,
     borderWidth: 1,
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
       animationDuration: '0.25s',
       animationTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
       animationFillMode: 'both',
-    } as any : {
+    } : {
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 24 },
       shadowOpacity: 0.5,

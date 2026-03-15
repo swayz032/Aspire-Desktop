@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { DocumentThumbnail } from './DocumentThumbnail';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 interface TodayPlanItem {
   id: string;
@@ -60,7 +60,7 @@ export function TodayPlanTabs({ planItems }: { planItems: TodayPlanItem[] }) {
           </Text>
           <TouchableOpacity
             style={styles.emptyCta}
-            onPress={() => router.push('/inbox/setup' as any)}
+            onPress={() => router.push('/inbox/setup' as Href)}
             activeOpacity={0.8}
           >
             <Text style={styles.emptyCtaText}>Set up your inbox</Text>

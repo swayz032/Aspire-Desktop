@@ -20,7 +20,7 @@ function PlaidLinkButton({ onSuccess: onLinkSuccess, label, compact, authenticat
     if (typeof window === 'undefined') return Promise.reject(new Error('Not in browser'));
     const p = new Promise<void>((resolve, reject) => {
       const check = setInterval(() => {
-        if ((window as any).Plaid) { clearInterval(check); clearTimeout(timeout); resolve(); }
+        if ((window as unknown as Record<string, unknown>).Plaid) { clearInterval(check); clearTimeout(timeout); resolve(); }
       }, 100);
       const timeout = setTimeout(() => { clearInterval(check); plaidSdkRef.current = null; reject(new Error('Plaid SDK load timeout')); }, 10000);
       const existing = document.getElementById('plaid-link-sdk');
@@ -46,7 +46,7 @@ function PlaidLinkButton({ onSuccess: onLinkSuccess, label, compact, authenticat
         setLoading(false);
         return;
       }
-      const handler = (window as any).Plaid.create({
+      const handler = ((window as unknown as Record<string, { create: (config: Record<string, unknown>) => { open: () => void } }>).Plaid).create({
         token: data.link_token,
         onLoad: () => handler.open(),
         onSuccess: async (publicToken: string) => {
@@ -151,7 +151,7 @@ export function CashPositionContent() {
       contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
       showsVerticalScrollIndicator={false}
     >
-      <View style={[styles.card, Platform.OS === 'web' ? { background: `radial-gradient(ellipse at top right, rgba(16,185,129,0.08) 0%, transparent 50%), ${CARD_BG}` } as any : {}]}>
+      <View style={[styles.card, Platform.OS === 'web' ? { background: `radial-gradient(ellipse at top right, rgba(16,185,129,0.08) 0%, transparent 50%), ${CARD_BG}` } : {}]}>
         <View style={styles.heroHeader}>
           <View style={styles.heroStatus}>
             <View style={[styles.statusDot, { backgroundColor: plaidConnected ? Colors.semantic.success : Colors.text.muted }]} />
@@ -247,7 +247,7 @@ export function CashPositionContent() {
         </View>
       )}
 
-      <View style={[styles.card, Platform.OS === 'web' ? { backgroundImage: svgPatterns.trendLine('rgba(255,255,255,0.03)', 'rgba(16,185,129,0.05)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '45% auto' } as any : {}]}>
+      <View style={[styles.card, Platform.OS === 'web' ? { backgroundImage: svgPatterns.trendLine('rgba(255,255,255,0.03)', 'rgba(16,185,129,0.05)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '45% auto' } : {}]}>
         <View style={styles.sectionHeader}>
           <Ionicons name="receipt-outline" size={18} color={Colors.text.secondary} />
           <Text style={styles.sectionTitle}>Recent Transactions</Text>
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
       background: CARD_BG,
       border: `1px solid ${CARD_BORDER}`,
       boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-    } as any : {}),
+    } : {}),
   },
   heroHeader: {
     flexDirection: 'row',
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
       backgroundPosition: 'right center',
       backgroundSize: '20% auto',
       boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-    } as any : {}),
+    } : {}),
   },
   accountHeader: {
     flexDirection: 'row',

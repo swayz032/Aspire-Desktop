@@ -180,7 +180,7 @@ export function ContractWidget({ suiteId, officeId, contractId, onViewClick, onS
         <View style={s.progressSection}>
           <View style={s.progressTrack}>
             <View style={[s.progressFill, {
-              width: `${progress * 100}%` as any,
+              width: `${progress * 100}%`,
               backgroundColor: allSigned ? '#10B981' : '#3B82F6',
             }]} />
           </View>
@@ -263,7 +263,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(255,255,255,0.3)',
     letterSpacing: 1,
-  } as any,
+  },
   typePill: {
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -277,7 +277,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: '#3B82F6',
     letterSpacing: 0.5,
-  } as any,
+  },
   contractTitle: {
     fontSize: 20,
     fontWeight: '800',
@@ -285,7 +285,7 @@ const s = StyleSheet.create({
     lineHeight: 26,
     marginBottom: 28,
     letterSpacing: -0.4,
-  } as any,
+  },
   partiesContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -310,7 +310,7 @@ const s = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   signedBadge: {
     position: 'absolute',
     bottom: 0,
@@ -330,7 +330,7 @@ const s = StyleSheet.create({
     color: '#FFF',
     textAlign: 'center',
     maxWidth: 100,
-  } as any,
+  },
   partyRole: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.35)',
@@ -344,7 +344,7 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   connectorWrap: {
     flex: 0.4,
     alignItems: 'center',
@@ -393,7 +393,7 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.28)',
     letterSpacing: 1.5,
     marginBottom: 8,
-  } as any,
+  },
   dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -410,7 +410,7 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#FFF',
-  } as any,
+  },
   ctaRow: {
     flexDirection: 'row',
     gap: 10,
@@ -426,24 +426,24 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   reminderBtnText: {
     fontSize: 13,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.6)',
-  } as any,
+  },
   viewBtn: {
     flex: 1,
     paddingVertical: 13,
     borderRadius: 20,
     backgroundColor: '#3B82F6',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   viewBtnText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
 });

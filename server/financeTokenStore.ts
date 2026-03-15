@@ -43,12 +43,12 @@ export interface ConnectionRecord {
   provider: string;
   externalAccountId: string;
   status: string;
-  scopes: any;
+  scopes: Record<string, any> | null;
   lastSyncAt: Date | null;
   lastWebhookAt: Date | null;
 }
 
-function rowToConnection(row: any): ConnectionRecord {
+function rowToConnection(row: Record<string, any>): ConnectionRecord {
   return {
     id: row.id,
     suiteId: row.suite_id,
@@ -67,7 +67,7 @@ export async function createConnection(params: {
   officeId: string;
   provider: 'plaid' | 'stripe' | 'qbo' | 'gusto';
   externalAccountId: string;
-  scopes?: any;
+  scopes?: Record<string, any> | null;
 }): Promise<string> {
   try {
     const result = await db.execute(sql`
@@ -76,7 +76,7 @@ export async function createConnection(params: {
       RETURNING id
     `);
     const rows = result.rows || result;
-    const id = (rows as any)[0].id;
+    const id = (rows as Record<string, any>[])[0].id;
     logger.info('Finance connection created', { id, provider: params.provider });
     return id;
   } catch (error: unknown) {
@@ -94,8 +94,8 @@ export async function getConnection(connectionId: string): Promise<ConnectionRec
       WHERE id = ${connectionId}
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
-      return rowToConnection((rows as any[])[0]);
+    if (rows && (rows as Record<string, any>[]).length > 0) {
+      return rowToConnection((rows as Record<string, any>[])[0]);
     }
     return null;
   } catch (error: unknown) {
@@ -112,7 +112,7 @@ export async function getConnectionsByTenant(suiteId: string, officeId: string):
       WHERE suite_id = ${suiteId} AND office_id = ${officeId}
       ORDER BY created_at ASC
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     return rows.map(rowToConnection);
   } catch (error: unknown) {
     logger.error('Failed to get connections by tenant', { error: error instanceof Error ? error.message : 'unknown' });
@@ -129,8 +129,8 @@ export async function getConnectionByProvider(suiteId: string, officeId: string,
       LIMIT 1
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
-      return rowToConnection((rows as any[])[0]);
+    if (rows && (rows as Record<string, any>[]).length > 0) {
+      return rowToConnection((rows as Record<string, any>[])[0]);
     }
     return null;
   } catch (error: unknown) {
@@ -187,7 +187,7 @@ export async function saveConnectionToken(connectionId: string, accessToken: str
     `);
     const existingRows = existing.rows || existing;
 
-    if (existingRows && (existingRows as any[]).length > 0) {
+    if (existingRows && (existingRows as Record<string, any>[]).length > 0) {
       await db.execute(sql`
         UPDATE finance_tokens
         SET access_token_enc = ${accessTokenEnc},
@@ -220,8 +220,8 @@ export async function loadConnectionToken(connectionId: string): Promise<{ acces
       LIMIT 1
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
-      const row = (rows as any[])[0];
+    if (rows && (rows as Record<string, any>[]).length > 0) {
+      const row = (rows as Record<string, any>[])[0];
       return {
         accessToken: decrypt(row.access_token_enc),
         refreshToken: row.refresh_token_enc ? decrypt(row.refresh_token_enc) : null,

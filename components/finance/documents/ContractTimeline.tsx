@@ -36,7 +36,7 @@ function ContractTimelineInner({ currentStatus }: ContractTimelineProps) {
                   isFuture && styles.dotFuture,
                   isCurrent && Platform.OS === 'web' ? {
                     boxShadow: `0 0 12px ${meta.color}, 0 0 4px ${meta.color}`,
-                  } as any : {},
+                  } : {},
                   isCurrent && Platform.OS !== 'web' ? Shadows.glow(meta.color) : {},
                 ]}
               />

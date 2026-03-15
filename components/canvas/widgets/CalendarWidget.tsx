@@ -257,14 +257,14 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   monthLabel: {
     fontSize: 17,
     fontWeight: '700',
     color: '#FFF',
     letterSpacing: -0.3,
-  } as any,
+  },
   weekRow: {
     flexDirection: 'row',
     paddingHorizontal: 8,
@@ -277,17 +277,17 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(255,255,255,0.3)',
     letterSpacing: 0.5,
-  } as any,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 8,
   },
   dayCell: {
-    width: `${100 / 7}%` as any,
+    width: `${100 / 7}%`,
     alignItems: 'center',
     paddingVertical: 3,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   dayInner: {
     width: 30,
@@ -307,18 +307,18 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.75)',
     fontWeight: '500',
-  } as any,
+  },
   dayNumOther: {
     color: 'rgba(255,255,255,0.2)',
   },
   dayNumToday: {
     color: '#FFF',
     fontWeight: '700',
-  } as any,
+  },
   dayNumSelected: {
     color: '#3B82F6',
     fontWeight: '700',
-  } as any,
+  },
   dotRow: {
     flexDirection: 'row',
     gap: 2,
@@ -346,7 +346,7 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     marginBottom: 10,
     letterSpacing: 0.3,
-  } as any,
+  },
   noEventsContainer: {
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.02)',
@@ -383,7 +383,7 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
-  } as any,
+  },
   eventTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',

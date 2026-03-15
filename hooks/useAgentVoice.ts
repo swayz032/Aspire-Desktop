@@ -215,7 +215,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
     const url = URL.createObjectURL(audioBlob);
     const audio = new Audio(url);
-    (audio as any).playsInline = true;
+    audio.setAttribute('playsinline', '');
     audioRef.current = audio;
 
     audio.onerror = () => {
@@ -239,8 +239,9 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       if (activeRef.current) updateStatus('listening');
     };
 
-    audio.play().catch((playError: any) => {
-      console.error('[useAgentVoice] Autoplay blocked:', playError?.message);
+    audio.play().catch((playError: unknown) => {
+      const errorMsg = playError instanceof Error ? playError.message : String(playError);
+      console.error('[useAgentVoice] Autoplay blocked:', errorMsg);
       lastAudioUrlRef.current = url;
       onError?.(new Error('Audio blocked by browser — tap to retry.'));
       emitDiagnostic({
@@ -248,7 +249,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         stage: 'autoplay',
         code: 'AUTOPLAY_BLOCKED',
         message: 'Browser blocked audio playback until user interaction.',
-        raw: playError?.message ? String(playError.message).slice(0, 220) : undefined,
+        raw: errorMsg ? errorMsg.slice(0, 220) : undefined,
         recoverable: true,
       });
       processingRef.current = false;
@@ -264,7 +265,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     if (typeof window === 'undefined') return true;
     if (audioUnlockedRef.current) return true;
     try {
-      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         const ctx = new AudioCtx();
         if (ctx.state === 'suspended') {
@@ -283,7 +284,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       const probe = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAABCxAgAEABAAZGF0YQAAAAA=');
       probe.muted = false;
       probe.volume = 0.00001;
-      (probe as any).playsInline = true;
+      probe.setAttribute('playsinline', '');
       await probe.play();
       probe.pause();
       probe.currentTime = 0;
@@ -330,7 +331,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
       const url = URL.createObjectURL(audioBlob);
       const audio = new Audio(url);
-      (audio as any).playsInline = true;
+      audio.setAttribute('playsinline', '');
       audioRef.current = audio;
 
       audio.onerror = () => {
@@ -355,7 +356,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
       try {
         await audio.play();
-      } catch (playError: any) {
+      } catch (playError: unknown) {
+        const errorMsg = playError instanceof Error ? playError.message : String(playError);
         lastAudioUrlRef.current = url;
         onError?.(new Error('Audio blocked by browser — tap to retry.'));
       emitDiagnostic({
@@ -363,7 +365,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         stage: 'autoplay',
         code: 'AUTOPLAY_BLOCKED',
         message: 'Browser blocked audio playback until user interaction.',
-        raw: playError?.message ? String(playError.message).slice(0, 220) : undefined,
+        raw: errorMsg ? errorMsg.slice(0, 220) : undefined,
         recoverable: true,
       });
         processingRef.current = false;

@@ -27,7 +27,7 @@ const QBO_EVENT_MAP: Record<string, string> = {
 const QBO_API_BASE = resolveQboApiBase();
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 
-function computeRawHash(data: any): string {
+function computeRawHash(data: Record<string, any> | string): string {
   return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
 }
 
@@ -66,10 +66,10 @@ async function writeFinanceEvent(params: {
   amount: number | null;
   currency: string;
   status: string;
-  entityRefs: any;
+  entityRefs: Record<string, any>;
   rawHash: string;
   receiptId: string | null;
-  metadata: any;
+  metadata: Record<string, any>;
 }): Promise<boolean> {
   try {
     const result = await db.execute(sql`
@@ -79,7 +79,7 @@ async function writeFinanceEvent(params: {
       RETURNING event_id
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
+    if (rows && (rows as Record<string, any>[]).length > 0) {
       logger.info('QBO finance event written', { providerEventId: params.providerEventId });
       return true;
     }
@@ -142,7 +142,7 @@ async function refreshQBOToken(refreshToken: string): Promise<{ accessToken: str
   }
 }
 
-async function qboApiFetch(path: string, accessToken: string, realmId: string, retried = false, refreshToken?: string): Promise<any> {
+async function qboApiFetch(path: string, accessToken: string, realmId: string, retried = false, refreshToken?: string): Promise<Record<string, any>> {
   const url = `${QBO_API_BASE}/v3/company/${realmId}${path}`;
   const response = await fetch(url, {
     headers: {
@@ -193,8 +193,8 @@ export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Pr
       LIMIT 1
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0 && (rows as any[])[0].last_poll) {
-      lastPollTime = (rows as any[])[0].last_poll;
+    if (rows && (rows as Record<string, any>[]).length > 0 && (rows as Record<string, any>[])[0].last_poll) {
+      lastPollTime = (rows as Record<string, any>[])[0].last_poll;
     } else {
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       lastPollTime = oneDayAgo.toISOString();
@@ -277,7 +277,7 @@ export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Pr
         LIMIT 1
       `);
       const existingRows = existing.rows || existing;
-      if (existingRows && (existingRows as any[]).length > 0) {
+      if (existingRows && (existingRows as Record<string, any>[]).length > 0) {
         await db.execute(sql`
           UPDATE finance_entities
           SET data = ${JSON.stringify({ last_cdc_poll: nowIso })}, updated_at = NOW()
@@ -318,7 +318,7 @@ export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Pr
   }
 }
 
-export async function fetchQBOReports(suiteId?: string, officeId?: string): Promise<{ profitAndLoss: any; balanceSheet: any }> {
+export async function fetchQBOReports(suiteId?: string, officeId?: string): Promise<{ profitAndLoss: Record<string, any> | null; balanceSheet: Record<string, any> | null }> {
   const sId = suiteId || getDefaultSuiteId();
   const oId = officeId || getDefaultOfficeId();
 
@@ -331,8 +331,8 @@ export async function fetchQBOReports(suiteId?: string, officeId?: string): Prom
   const connection = await getConnectionByProvider(sId, oId, 'qbo');
   const connectionId = connection?.id || null;
 
-  let profitAndLoss: any = null;
-  let balanceSheet: any = null;
+  let profitAndLoss: Record<string, any> | null = null;
+  let balanceSheet: Record<string, any> | null = null;
 
   try {
     const plReport = await qboApiFetch('/reports/ProfitAndLoss?date_macro=This Month', creds.accessToken, creds.realmId, false, creds.refreshToken);

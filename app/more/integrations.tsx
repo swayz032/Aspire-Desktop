@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
@@ -37,7 +38,7 @@ function IntegrationCard({ integration, onPress }: { integration: Integration; o
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.cardHeader}>
         <View style={styles.iconContainer}>
-          <Ionicons name={integration.icon as any} size={24} color={Colors.accent.cyan} />
+          <Ionicons name={integration.icon as keyof typeof Ionicons.glyphMap} size={24} color={Colors.accent.cyan} />
         </View>
         <View style={styles.cardInfo}>
           <Text style={styles.cardTitle}>{integration.name}</Text>
@@ -128,7 +129,7 @@ export default function IntegrationsScreen() {
   const notConnected = integrations.filter(i => i.status === 'Not connected');
 
   const handlePress = (id: string) => {
-    router.push(`/more/integration/${id}` as any);
+    navigateTo(`/more/integration/${id}`);
   };
 
   return (

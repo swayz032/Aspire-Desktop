@@ -73,7 +73,7 @@ export function FinnChatModal({ visible, onClose }: Props) {
             ? 'active'
             : 'completed',
         timestamp: event.timestamp || Date.now(),
-        icon: event.icon as any,
+        icon: event.icon as keyof typeof Ionicons.glyphMap,
       };
       setActiveRuns(prev => {
         const run = prev[runId] || { events: [], status: 'running' as const };
@@ -178,7 +178,7 @@ export function FinnChatModal({ visible, onClose }: Props) {
                           <ChainOfThoughtStep
                             key={event.id}
                             label={event.label}
-                            icon={event.icon as any}
+                            icon={event.icon as keyof typeof Ionicons.glyphMap}
                             status={
                               event.status === 'completed' || event.type === 'done'
                                 ? 'complete'
@@ -238,7 +238,7 @@ const modalStyles = StyleSheet.create({
     bottom: 8,
     right: 8,
     zIndex: 100,
-  } as any,
+  },
   modal: {
     width: 360,
     height: 480,
@@ -252,7 +252,7 @@ const modalStyles = StyleSheet.create({
       WebkitBackdropFilter: 'blur(20px)',
       boxShadow: '0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(139,92,246,0.1)',
     } : {}),
-  } as any,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -288,7 +288,7 @@ const modalStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-  } as any,
+  },
   messageArea: {
     flex: 1,
   },

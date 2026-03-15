@@ -196,7 +196,7 @@ export const cardWithPattern = (patternSvg: string, position: PatternPosition = 
     border: `1px solid ${CARD_BORDER}`,
     borderRadius: 14,
     overflow: 'hidden',
-  } as any;
+  };
 };
 
 export const heroCardBg = (accent1: string, accent2?: string) => {
@@ -211,7 +211,7 @@ export const heroCardBg = (accent1: string, accent2?: string) => {
     border: `1px solid ${CARD_BORDER}`,
     borderRadius: 16,
     overflow: 'hidden',
-  } as any;
+  };
 };
 
 export const gridDotsBg = () => {
@@ -220,7 +220,7 @@ export const gridDotsBg = () => {
     backgroundImage: svgPatterns.gridDots(),
     backgroundRepeat: 'repeat',
     backgroundSize: '30px 30px',
-  } as any;
+  };
 };
 
 export const diagonalLinesBg = () => {
@@ -229,5 +229,5 @@ export const diagonalLinesBg = () => {
     backgroundImage: svgPatterns.diagonalLines(),
     backgroundRepeat: 'repeat',
     backgroundSize: '40px 40px',
-  } as any;
+  };
 };

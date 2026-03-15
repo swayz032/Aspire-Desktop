@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { PressableState } from '@/types/common';
-import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Platform, Pressable, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius } from '@/constants/tokens';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
@@ -167,7 +167,7 @@ function DocLine({ spec, lineGap }: { spec: LineSpec; lineGap: number }) {
       marginBottom: spec.mb ?? lineGap,
     }}>
       <View style={{
-        width: spec.w as any,
+        width: spec.w as ViewStyle['width'],
         height: spec.h,
         backgroundColor: spec.bold ? '#1F2937' : '#6B7280',
         opacity: spec.o,
@@ -270,7 +270,7 @@ export function DocumentThumbnail({
         onHoverOut={() => setHovered(false)}
         style={({ pressed }: PressableState) => [
           pressed && styles.pressed,
-          Platform.OS === 'web' ? { cursor: 'pointer' } as any : {},
+          Platform.OS === 'web' ? { cursor: 'pointer' } : {},
         ]}
       >
         {cardContent}
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
       boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 0.5px 1.5px rgba(0,0,0,0.05)',
       transition: 'transform 0.2s ease-out, box-shadow 0.2s ease-out',
     } : {}),
-  } as any,
+  },
   section: {
     overflow: 'hidden',
   },
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     } : {
       backgroundColor: '#E5E7EB',
     }),
-  } as any,
+  },
   curlShadow: {
     position: 'absolute' as const,
     bottom: 0,
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       background: 'linear-gradient(135deg, rgba(0,0,0,0.08) 0%, transparent 60%)',
     } : {}),
-  } as any,
+  },
   strip: {
     width: '100%',
     justifyContent: 'center',
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     } : {
       backgroundColor: '#3B82F6',
     }),
-  } as any,
+  },
   stripLabel: {
     color: '#FFFFFF',
     fontWeight: '700',
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
       textShadow: '0 1px 2px rgba(0,0,0,0.15)',
     } : {}),
-  } as any,
+  },
   hoverOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
       transition: 'opacity 0.2s ease-out',
       pointerEvents: 'none',
     } : {}),
-  } as any,
+  },
   hoverOverlayVisible: {
     opacity: 1,
   },
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       textShadow: '0 1px 3px rgba(0,0,0,0.3)',
     } : {}),
-  } as any,
+  },
   pressed: {
     transform: [{ scale: 0.96 }],
   },

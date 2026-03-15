@@ -48,7 +48,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Revenue: 'arrow-down-circle-outline',
-  Software: 'logo-electron' as any, // logo-electron is valid in Ionicons
+  Software: 'logo-electron' as keyof typeof Ionicons.glyphMap, // logo-electron is valid in Ionicons
   Travel: 'airplane-outline',
   Food: 'restaurant-outline',
   Office: 'briefcase-outline',
@@ -241,7 +241,7 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     letterSpacing: 2,
     marginBottom: 4,
-  } as any,
+  },
   heroRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -251,12 +251,12 @@ const s = StyleSheet.create({
     fontWeight: '800',
     color: '#FFF',
     letterSpacing: -2,
-  } as any,
+  },
   deltaInline: {
     fontSize: 16,
     fontWeight: '700',
     marginLeft: 10,
-  } as any,
+  },
   heroSub: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.25)',
@@ -286,12 +286,12 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(255,255,255,0.3)',
     letterSpacing: 1.5,
-  } as any,
+  },
   statValue: {
     fontSize: 18,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   txnHeader: {
     paddingHorizontal: 24,
     paddingTop: 16,
@@ -302,7 +302,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(255,255,255,0.3)',
     letterSpacing: 1.5,
-  } as any,
+  },
   txnList: {
     flex: 1,
   },
@@ -326,7 +326,7 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
-  } as any,
+  },
   txnCategory: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.35)',
@@ -335,7 +335,7 @@ const s = StyleSheet.create({
   txnAmount: {
     fontSize: 15,
     fontWeight: '700',
-  } as any,
+  },
   separator: {
     fontSize: 10,
     fontWeight: '700',
@@ -344,5 +344,5 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 4,
-  } as any,
+  },
 });

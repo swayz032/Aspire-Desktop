@@ -686,7 +686,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'opacity 0.15s ease' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'opacity 0.15s ease' } : {}),
   },
   requestBtnPressed: {
     opacity: 0.8,
@@ -707,9 +707,9 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 10,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   policyHeader: {
     flexDirection: 'row',
@@ -762,9 +762,9 @@ const styles = StyleSheet.create({
     padding: 40,
     alignItems: 'center',
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   emptyPoliciesIcon: {
     width: 56,
@@ -795,7 +795,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 10,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'opacity 0.15s ease' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'opacity 0.15s ease' } : {}),
   },
   setupBtnPressed: {
     opacity: 0.8,
@@ -812,9 +812,9 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 10,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   ptoHeader: {
     flexDirection: 'row',
@@ -911,9 +911,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   formTitle: {
     color: '#ffffff',
@@ -939,7 +939,7 @@ const styles = StyleSheet.create({
     ...Typography.body,
   },
   textAreaInput: {
-    textAlignVertical: 'top' as any,
+    textAlignVertical: 'top',
     minHeight: 80,
   },
   toggleGroup: {
@@ -954,7 +954,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CARD_BORDER,
     backgroundColor: CARD_BG,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   toggleBtnSelected: {
     backgroundColor: 'rgba(59, 130, 246, 0.15)',
@@ -981,7 +981,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: CARD_BORDER,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   dropdownItemText: {
     color: '#ffffff',
@@ -1002,7 +1002,7 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   cancelBtnText: {
     color: '#ffffff',
@@ -1017,7 +1017,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#3B82F6',
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   submitBtnText: {
     color: '#ffffff',
@@ -1052,9 +1052,9 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   requestHeader: {
     flexDirection: 'row',

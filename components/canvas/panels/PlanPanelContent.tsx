@@ -107,7 +107,7 @@ function RingHero({ pct, completed, total }: { pct: number; completed: number; t
           <svg
             width={size}
             height={size}
-            style={{ position: 'absolute' as any, top: 0, left: 0 }}
+            style={{ position: 'absolute', top: 0, left: 0 }}
           >
             <circle
               cx={size / 2}
@@ -232,7 +232,7 @@ const s = StyleSheet.create({
   orbBehind:    {
     position: 'absolute', top: -80, right: -60, width: 280, height: 280,
     borderRadius: 140, backgroundColor: 'rgba(14,165,233,0.12)',
-    ...(Platform.OS === 'web' ? ({ filter: 'blur(70px)' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ filter: 'blur(70px)' }) : {}),
   },
   ring:         { alignItems: 'center', justifyContent: 'center', position: 'relative' },
   ringTrack:    {
@@ -246,7 +246,7 @@ const s = StyleSheet.create({
     borderBottomColor: 'transparent', borderLeftColor: 'transparent',
   },
   ringCenter:   { alignItems: 'center', justifyContent: 'center', backgroundColor: SURFACE },
-  ringPct:      { fontSize: 34, fontWeight: '800', color: TP, fontVariant: ['tabular-nums'] as any },
+  ringPct:      { fontSize: 34, fontWeight: '800', color: TP, fontVariant: ['tabular-nums' as const] },
   ringLabel:    { fontSize: 10, color: TT, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 2 },
   heroSub:      { fontSize: 13, color: TS, marginTop: 12, letterSpacing: 0.2 },
   atRiskCard:   {
@@ -272,7 +272,7 @@ const s = StyleSheet.create({
     backgroundColor: GLASS, borderRadius: 16,
     borderWidth: 1, borderColor: BORDER,
     padding: 16,
-    ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(20px)', boxShadow: '0 4px 24px rgba(0,0,0,0.3)' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(20px)', boxShadow: '0 4px 24px rgba(0,0,0,0.3)' }) : {}),
   },
   cardTop:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   priorityChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1 },

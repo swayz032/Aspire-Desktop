@@ -4811,7 +4811,7 @@ router.post('/v1/domains/checkout/start', async (req: Request, res: Response) =>
     // 1. Verify domain is still available via Domain Rail
     const { data: checkData } = await domainRailProxy('GET', `/v1/domains/check?domain=${encodeURIComponent(domain)}`, undefined, suiteId);
     const rawAvail: Record<string, any> = checkData?.data || {};
-    const availEntry = Object.values(rawAvail).find((v) => typeof v === 'object' && v && (v as any).status) as Record<string, any>;
+    const availEntry = Object.values(rawAvail).find((v) => typeof v === 'object' && v && (v as Record<string, any>).status) as Record<string, any>;
     if (!availEntry || availEntry?.status !== 'available') {
       return res.status(400).json({ error: 'DOMAIN_NOT_AVAILABLE', message: 'Domain is not available for purchase' });
     }

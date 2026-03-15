@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from './ui/Card';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 interface CalendarEvent {
   id: string;
@@ -151,7 +151,7 @@ export function CalendarCard({ events }: CalendarCardProps) {
 
         <TouchableOpacity 
           style={styles.seeFullButton}
-          onPress={() => router.push('/calendar' as any)}
+          onPress={() => router.push('/calendar' as Href)}
         >
           <Text style={styles.seeFullText}>See full calendar</Text>
           <Ionicons name="chevron-forward" size={16} color={Colors.accent.cyan} />

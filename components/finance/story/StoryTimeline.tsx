@@ -26,7 +26,7 @@ function EventRow({ event, onExplain }: { event: FinanceEvent; onExplain?: (even
 
   return (
     <Pressable
-      style={[styles.eventRow, hovered && styles.eventRowHover, Platform.OS === 'web' && { cursor: 'pointer' } as any]}
+      style={[styles.eventRow, hovered && styles.eventRowHover, Platform.OS === 'web' && { cursor: 'pointer' }]}
       onPress={() => onExplain?.(event)}
       {...(Platform.OS === 'web' ? {
         onHoverIn: () => setHovered(true),
@@ -94,7 +94,7 @@ export function StoryTimeline({ groups, onExplain, emptyMessage }: StoryTimeline
         return (
           <View key={group.label} style={styles.groupContainer}>
             <Pressable
-              style={[styles.groupHeader, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}
+              style={[styles.groupHeader, Platform.OS === 'web' ? { cursor: 'pointer' } : {}]}
               onPress={() => toggleGroup(group.label)}
             >
               <View style={styles.groupLeft}>

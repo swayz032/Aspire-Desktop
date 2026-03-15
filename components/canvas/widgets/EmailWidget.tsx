@@ -249,7 +249,7 @@ const s = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   composeBtn: {
     width: 32,
     height: 32,
@@ -257,7 +257,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   searchWrap: {
     flexDirection: 'row',
@@ -274,7 +274,7 @@ const s = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: '#FFF',
-    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' }) : {}),
   },
   thread: {
     flexDirection: 'row',
@@ -285,7 +285,7 @@ const s = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.04)',
     gap: 10,
     position: 'relative',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   threadSelected: {
     backgroundColor: 'rgba(59,130,246,0.08)',
@@ -311,7 +311,7 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   threadBody: { flex: 1, gap: 2 },
   threadTop: {
     flexDirection: 'row',
@@ -323,11 +323,11 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
     fontWeight: '500',
     flex: 1,
-  } as any,
+  },
   senderBold: {
     color: '#FFF',
     fontWeight: '700',
-  } as any,
+  },
   threadTime: {
     fontSize: 10,
     color: 'rgba(255,255,255,0.3)',
@@ -337,7 +337,7 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.55)',
     fontWeight: '600',
-  } as any,
+  },
   threadPreview: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.3)',
@@ -384,13 +384,13 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   detailSenderInfo: { flex: 1 },
   detailSenderName: {
     fontSize: 15,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   detailSenderEmail: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.4)',
@@ -405,7 +405,7 @@ const s = StyleSheet.create({
     fontWeight: '800',
     color: '#FFF',
     lineHeight: 26,
-  } as any,
+  },
   detailBody: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.65)',
@@ -424,13 +424,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 20,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   replyBtnText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   forwardBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -440,13 +440,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 20,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   forwardBtnText: {
     fontSize: 13,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.6)',
-  } as any,
+  },
   noSelect: {
     flex: 1,
     justifyContent: 'center',

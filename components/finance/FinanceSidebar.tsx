@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, ComponentProps } from 'react';
 import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, Animated, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, usePathname } from 'expo-router';
+import { useRouter, usePathname, type Href } from 'expo-router';
 import { Colors, Typography } from '@/constants/tokens';
 import { useSidebarState } from '@/lib/uiStore';
 
@@ -157,7 +157,7 @@ export function FinanceSidebar() {
   } : {};
 
   return (
-    <Animated.View style={[styles.container, Platform.OS !== 'web' && { width: widthAnim }, webStyle as any]}>
+    <Animated.View style={[styles.container, Platform.OS !== 'web' && { width: widthAnim }, webStyle]}>
       <View style={[styles.logoSection, !expanded && styles.logoSectionCollapsed]}>
         <Pressable 
           style={styles.logoContainer}
@@ -175,7 +175,7 @@ export function FinanceSidebar() {
               <Pressable
                 style={[
                   styles.collapseToggle,
-                  { opacity: isLogoHovered ? 1 : 0 } as any
+                  { opacity: isLogoHovered ? 1 : 0 }
                 ]}
                 onPress={toggleSidebar}
               >
@@ -230,7 +230,7 @@ export function FinanceSidebar() {
                   pressed && styles.navItemPressed,
                 ]}
                 onPress={() => {
-                  router.push(item.route as any);
+                  router.push(item.route as Href);
                   if (hasSubItems && expanded) {
                     if (item.id === 'payroll') setPayrollExpanded(prev => !prev);
                     else if (item.id === 'invoices') setInvoicesExpanded(prev => !prev);
@@ -266,7 +266,7 @@ export function FinanceSidebar() {
                         width: expanded ? 'auto' : 0,
                         overflow: 'hidden',
                         transition: 'opacity 200ms ease-out, width 200ms ease-out',
-                      } as any
+                      }
                     ]}
                   >
                     {item.label}
@@ -317,10 +317,10 @@ export function FinanceSidebar() {
                           !subActive && hovered && styles.subItemHover,
                           pressed && styles.subItemPressed,
                         ]}
-                        onPress={() => router.push(sub.route as any)}
+                        onPress={() => router.push(sub.route as Href)}
                       >
                         <Ionicons
-                          name={sub.icon as any}
+                          name={sub.icon as ComponentProps<typeof Ionicons>['name']}
                           size={16}
                           color={subActive ? '#3B82F6' : Colors.text.muted}
                         />
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
       transition: 'opacity 150ms ease-out, background-color 150ms ease-out',
       cursor: 'pointer',
     } : {}),
-  } as any,
+  },
   collapsedLogoContainer: {
     width: 48,
     height: 48,
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
       cursor: 'pointer',
       transition: 'all 150ms ease-out',
     } : {}),
-  } as any,
+  },
   collapsedLogoHovered: {
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
       transition: 'all 0.15s ease-out',
       cursor: 'pointer',
     } : {}),
-  } as any,
+  },
   navItemActive: {
     borderColor: 'rgba(255, 255, 255, 0.08)',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
     } : {}),
-  } as any,
+  },
   subItemsContainer: {
     marginLeft: 0,
     marginBottom: 4,
@@ -569,7 +569,7 @@ const styles = StyleSheet.create({
       cursor: 'pointer',
       transition: 'all 0.15s ease-out',
     } : {}),
-  } as any,
+  },
   subItemActive: {
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },

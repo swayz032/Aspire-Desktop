@@ -130,7 +130,7 @@ export function DragPreview({
       return {
         shadowOpacity: shadowOpacity.value,
         shadowRadius: shadowRadius.value,
-      } as any;
+      };
     }
     return {
       shadowOpacity: shadowOpacity.value,

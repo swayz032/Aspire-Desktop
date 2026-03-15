@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern } from '@/constants/cardPatterns';
@@ -202,7 +203,7 @@ export default function DocumentLibraryPage() {
 
   const handleAskFinn = useCallback(() => {
     // Navigate to main Ava desk -- Finn is invoked through Ava
-    router.push('/(tabs)' as any);
+    navigateTo('/(tabs)');
   }, [router]);
 
   // ── Premium empty state (feature not yet launched) ───────────────────────
@@ -517,7 +518,7 @@ export default function DocumentLibraryPage() {
                   <View style={styles.searchWrap}>
                     <Ionicons name="search-outline" size={16} color={Colors.text.muted} style={styles.searchIcon} />
                     <TextInput
-                      style={[styles.searchInput, Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}]}
+                      style={[styles.searchInput, Platform.OS === 'web' ? { outlineStyle: 'none' } : {}]}
                       value={searchQuery}
                       onChangeText={setSearchQuery}
                       placeholder="Search documents..."

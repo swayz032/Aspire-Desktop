@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useMemo, useState, useEffect, useRef, useCallback, ComponentProps } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Linking, Alert, Image, ImageBackground } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,6 +12,7 @@ import {
   type AgentActivityEvent,
   type ActiveRun,
   type FileAttachment,
+  type ChatMediaItem,
   MessageBubble,
   ThinkingIndicator,
   ChainOfThought,
@@ -65,7 +66,7 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
   return (
     <div style={{ position: 'relative', width: size, height: size }}>
       <video
-        ref={videoRef as any}
+        ref={videoRef as React.RefObject<HTMLVideoElement>}
         className="ava-orb-video"
         src="/ava-orb.mp4"
         autoPlay
@@ -447,7 +448,8 @@ export function AvaDeskPanel() {
       // Send personalized greeting since CUSTOMER_CLIENT_V1 has no built-in LLM
       // Ava knows who she works for — address by name (Law #9: no raw PII, just business name)
       setTimeout(() => {
-        if (anamClientRef.current && typeof (anamClientRef.current as any).talk === 'function') {
+        const client = anamClientRef.current as AnamClientInstance & { talk?: (text: string) => void };
+        if (client && typeof client.talk === 'function') {
           const ownerName = tenant?.ownerName;
           const lastName = ownerName?.trim().split(' ').pop();
           const hour = new Date().getHours();
@@ -455,7 +457,7 @@ export function AvaDeskPanel() {
           const greeting = lastName
             ? `${timeGreeting}, Mr. ${lastName}. I'm Ava, your chief of staff. What can I help you with?`
             : `${timeGreeting}! I'm Ava, your chief of staff. How can I help you today?`;
-          (anamClientRef.current as any).talk(greeting);
+          client.talk(greeting);
         }
       }, 1500);
     } catch (error: any) {
@@ -680,7 +682,7 @@ export function AvaDeskPanel() {
       const data = await resp.json();
       const responseText = data.response || data.text || "I'm ready for your next step.";
       const activityEvents = buildActivityFromResponse(data, 'ava');
-      const mediaItems = Array.isArray((data as any).media) ? (data as any).media : [];
+      const mediaItems = Array.isArray((data as Record<string, unknown>).media) ? (data as Record<string, unknown>).media as ChatMediaItem[] : [];
 
       // If video connected, pipe response to Anam avatar (Cara speaks with Emma voice)
       // Anam handles voice output â€” our LLM drives what she says (Law #1: Single Brain)
@@ -1027,7 +1029,7 @@ export function AvaDeskPanel() {
                         <ChainOfThoughtStep
                           key={event.id}
                           label={event.label}
-                          icon={event.icon as any}
+                          icon={event.icon as ComponentProps<typeof Ionicons>['name']}
                           status={
                             event.status === 'completed' || event.type === 'done'
                               ? 'complete'
@@ -1132,7 +1134,7 @@ const styles = StyleSheet.create({
     } : {
       flex: 1,
     }),
-  } as any,
+  },
   header: {
     paddingHorizontal: 16,
     paddingTop: 14,
@@ -1185,7 +1187,7 @@ const styles = StyleSheet.create({
   surfaceContainerExpanded: {
     flex: 1,
     height: 'auto',
-  } as any,
+  },
   voiceSurface: {
     flex: 1,
     backgroundColor: '#000',
@@ -1210,7 +1212,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       transition: 'all 0.2s ease',
     } : {}),
-  } as any,
+  },
   companyPillActive: {
     backgroundColor: 'rgba(59,130,246,0.2)',
     borderWidth: 1,
@@ -1218,7 +1220,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 0 16px rgba(59,130,246,0.3)',
     } : {}),
-  } as any,
+  },
   onlineDot: {
     width: 8,
     height: 8,
@@ -1230,7 +1232,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 0 8px #3B82F6',
     } : {}),
-  } as any,
+  },
   companyName: {
     fontSize: 13,
     fontWeight: '600',
@@ -1306,14 +1308,14 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 0 20px rgba(59,130,246,0.3), 0 0 40px rgba(59,130,246,0.15)',
     } : {}),
-  } as any,
+  },
   floatingMicOrbActive: {
     backgroundColor: Colors.accent.cyan,
     borderColor: Colors.accent.cyan,
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 0 20px rgba(59,130,246,0.6), 0 0 40px rgba(59,130,246,0.4)',
     } : {}),
-  } as any,
+  },
   videoSurface: {
     flex: 1,
     position: 'relative',
@@ -1451,14 +1453,14 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     overflow: 'hidden',
     minHeight: 0,
-  } as any,
+  },
   chatScroll: {
     flex: 1,
     paddingHorizontal: 16,
     ...(Platform.OS === 'web' ? {
       scrollbarWidth: 'none',
     } : {}),
-  } as any,
+  },
   chatContent: {
     paddingTop: 16,
     paddingBottom: 8,
@@ -1531,7 +1533,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
-  } as any,
+  },
   videoIdleVignetteTop: {
     position: 'absolute',
     top: 0,

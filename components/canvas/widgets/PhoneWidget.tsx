@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, ComponentProps } from 'react';
 import {
   View, Text, Pressable, FlatList, StyleSheet, Platform,
 } from 'react-native';
@@ -125,7 +125,7 @@ export function PhoneWidget({ suiteId, officeId }: PhoneWidgetProps) {
         {/* Call button */}
         <View style={s.callRow}>
           <Pressable style={s.callBtnOuter} onPress={handleCall}>
-            <View style={[s.callBtnInner, Platform.OS === 'web' && ({ boxShadow: '0 0 24px rgba(59,130,246,0.5)' } as any)]}>
+            <View style={[s.callBtnInner, Platform.OS === 'web' && ({ boxShadow: '0 0 24px rgba(59,130,246,0.5)' })]}>
               <Ionicons name="call" size={32} color="#FFF" />
             </View>
           </Pressable>
@@ -155,7 +155,7 @@ export function PhoneWidget({ suiteId, officeId }: PhoneWidgetProps) {
             return (
               <Pressable style={({ pressed }) => [s.recentRow, pressed && { backgroundColor: 'rgba(255,255,255,0.04)' }]}>
                 <View style={[s.recentIcon, { backgroundColor: `${icon.color}22` }]}>
-                  <Ionicons name={icon.name as any} size={16} color={icon.color} />
+                  <Ionicons name={icon.name as ComponentProps<typeof Ionicons>['name']} size={16} color={icon.color} />
                 </View>
                 <View style={s.recentInfo}>
                   <Text style={s.recentName}>
@@ -221,18 +221,18 @@ const s = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     position: 'relative',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   tabItemActive: {},
   tabText: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.38)',
     fontWeight: '600',
-  } as any,
+  },
   tabTextActive: {
     color: '#FFF',
     fontWeight: '700',
-  } as any,
+  },
   tabUnderline: {
     position: 'absolute',
     top: -1,
@@ -263,13 +263,13 @@ const s = StyleSheet.create({
     letterSpacing: 2,
     textAlign: 'center',
     flex: 1,
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'monospace' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ fontFamily: 'monospace' }) : {}),
   },
   deleteBtn: {
     position: 'absolute',
     right: 0,
     padding: 8,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   grid: {
     gap: 12,
@@ -291,7 +291,7 @@ const s = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({
       cursor: 'pointer',
       boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)',
-    } as any) : {}),
+    }) : {}),
   },
   dialBtnPressed: {
     backgroundColor: 'rgba(255,255,255,0.14)',
@@ -302,18 +302,18 @@ const s = StyleSheet.create({
     fontWeight: '600',
     color: '#FFF',
     lineHeight: 30,
-  } as any,
+  },
   dialSub: {
     fontSize: 9,
     color: 'rgba(255,255,255,0.4)',
     letterSpacing: 1.2,
     lineHeight: 12,
-  } as any,
+  },
   callRow: {
     alignItems: 'center',
   },
   callBtnOuter: {
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   callBtnInner: {
     width: 72,
@@ -354,7 +354,7 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
-  } as any,
+  },
   recentTime: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.35)',
@@ -367,7 +367,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   emptyState: {
     flex: 1,

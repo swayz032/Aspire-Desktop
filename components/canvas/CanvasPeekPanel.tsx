@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, ComponentProps } from 'react';
 import {
   View,
   Text,
@@ -112,7 +112,7 @@ export function CanvasPeekPanel({
                   boxShadow: `-32px 0 80px rgba(0,0,0,0.7), -1px 0 0 rgba(255,255,255,0.06)`,
                   backdropFilter: 'blur(40px)',
                   WebkitBackdropFilter: 'blur(40px)',
-                } as any)
+                })
               : {},
           ]}
         >
@@ -122,7 +122,7 @@ export function CanvasPeekPanel({
             <View style={s.headerInner}>
               <View style={s.headerLeft}>
                 <View style={[s.iconWrap, { backgroundColor: `${accent}18` }]}>
-                  <Ionicons name={icon as any} size={18} color={accent} />
+                  <Ionicons name={icon as ComponentProps<typeof Ionicons>['name']} size={18} color={accent} />
                 </View>
                 <View style={s.titleBlock}>
                   <Text style={s.title} numberOfLines={1}>{title}</Text>
@@ -250,7 +250,7 @@ const s = StyleSheet.create({
     paddingVertical: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   openBtnText: {
     fontSize: 11,
@@ -266,7 +266,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.09)',
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   headerSep: {
     position: 'absolute',

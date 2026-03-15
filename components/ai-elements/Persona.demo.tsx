@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Pressable, Text } from 'react-native';
-import { Persona, PersonaState } from './Persona';
+import { Persona, PersonaState, type PersonaVariant } from './Persona';
 import { Colors } from '@/constants/tokens';
 import type { AgentName } from '@/lib/elevenlabs';
 
@@ -45,9 +45,7 @@ export function PersonaDemo() {
       {/* Persona Component */}
       <Persona
         state={state}
-        variant={agent}
-        onVoiceInput={(text) => console.log('Voice input:', text)}
-        onVoiceEnd={() => console.log('Voice ended')}
+        variant={agent as unknown as PersonaVariant}
       />
 
       {/* State Controls */}

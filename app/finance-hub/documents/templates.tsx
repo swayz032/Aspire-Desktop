@@ -219,7 +219,7 @@ export default function TemplatesPage() {
                 >
                   {meta && (
                     <Ionicons
-                      name={meta.icon as any}
+                      name={meta.icon as keyof typeof Ionicons.glyphMap}
                       size={14}
                       color={active ? meta.color : Colors.text.muted}
                     />

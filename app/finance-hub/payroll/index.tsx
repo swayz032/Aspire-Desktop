@@ -753,7 +753,7 @@ export default function RunPayrollScreen() {
       </View>
       <Text style={styles.flowSubtitle}>Run tax calculations and generate payroll totals.</Text>
       <View style={styles.calcGrid}>
-        <View style={[styles.calcCard, Platform.OS === 'web' ? { backgroundImage: svgPatterns.currency('rgba(255,255,255,0.02)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '20% auto' } as any : {}]}>
+        <View style={[styles.calcCard, Platform.OS === 'web' ? { backgroundImage: svgPatterns.currency('rgba(255,255,255,0.02)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '20% auto' } : {}]}>
           <Text style={styles.calcCardTitle}>Employee Compensation</Text>
           <View style={styles.calcRow}>
             <Text style={styles.calcLabel}>Gross Pay</Text>
@@ -783,7 +783,7 @@ export default function RunPayrollScreen() {
             <Text style={[styles.calcValue, { color: '#10B981', fontWeight: '700' }]}>{fmt(totalNet)}</Text>
           </View>
         </View>
-        <View style={[styles.calcCard, Platform.OS === 'web' ? { backgroundImage: svgPatterns.shieldCheck('rgba(255,255,255,0.02)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '25% auto' } as any : {}]}>
+        <View style={[styles.calcCard, Platform.OS === 'web' ? { backgroundImage: svgPatterns.shieldCheck('rgba(255,255,255,0.02)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '25% auto' } : {}]}>
           <Text style={styles.calcCardTitle}>Employer Tax Obligations</Text>
           <View style={styles.calcRow}>
             <Text style={styles.calcLabelSub}>FICA (Social Security + Medicare) — 7.65%</Text>
@@ -1018,7 +1018,7 @@ export default function RunPayrollScreen() {
       </View>
       <Text style={styles.paystubsTitle}>Individual Paystubs</Text>
       {employees.map((emp) => (
-        <View key={emp.id} style={[styles.paystubRow, Platform.OS === 'web' ? { backgroundImage: svgPatterns.people('rgba(255,255,255,0.02)', 'rgba(139,92,246,0.04)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '35% auto' } as any : {}]}>
+        <View key={emp.id} style={[styles.paystubRow, Platform.OS === 'web' ? { backgroundImage: svgPatterns.people('rgba(255,255,255,0.02)', 'rgba(139,92,246,0.04)'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '35% auto' } : {}]}>
           <View style={styles.paystubLeft}>
             <View style={styles.paystubAvatar}>
               <Text style={styles.paystubAvatarText}>{emp.name.split(' ').map(n => n[0]).join('')}</Text>
@@ -1490,9 +1490,9 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 20,
     ...(Platform.OS === 'web' ? {
-      background: `radial-gradient(ellipse at top right, rgba(139,92,246,0.08) 0%, transparent 50%), ${CARD_BG}` as any,
-      border: `1px solid ${CARD_BORDER}` as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
+      background: `radial-gradient(ellipse at top right, rgba(139,92,246,0.08) 0%, transparent 50%), ${CARD_BG}`,
+      border: `1px solid ${CARD_BORDER}`,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
     } : {}),
   },
   aspireHeaderTop: {
@@ -1597,9 +1597,9 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      border: `1px solid ${CARD_BORDER}` as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
+      background: CARD_BG,
+      border: `1px solid ${CARD_BORDER}`,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
     } : {}),
   },
   stepItem: {
@@ -1609,7 +1609,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 6,
     borderRadius: 8,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   stepItemCurrent: {
     backgroundColor: 'rgba(59, 130, 246, 0.08)',
@@ -1627,14 +1627,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
     borderColor: '#10B981',
     ...(Platform.OS === 'web' ? {
-      boxShadow: '0 0 8px rgba(16, 185, 129, 0.3)' as any,
+      boxShadow: '0 0 8px rgba(16, 185, 129, 0.3)',
     } : {}),
   },
   stepCircleCurrent: {
     borderColor: '#3B82F6',
     backgroundColor: 'rgba(59, 130, 246, 0.15)',
     ...(Platform.OS === 'web' ? {
-      boxShadow: '0 0 12px rgba(59, 130, 246, 0.4)' as any,
+      boxShadow: '0 0 12px rgba(59, 130, 246, 0.4)',
     } : {}),
   },
   stepCircleText: {
@@ -1675,9 +1675,9 @@ const styles = StyleSheet.create({
     padding: 24,
     marginBottom: 20,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      border: `1px solid ${CARD_BORDER}` as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
+      background: CARD_BG,
+      border: `1px solid ${CARD_BORDER}`,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
     } : {}),
   },
   flowHeader: {
@@ -1820,7 +1820,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontVariant: ['tabular-nums'],
     ...(Platform.OS === 'web' ? {
-      outlineStyle: 'none' as any,
+      outlineStyle: 'none',
     } : {}),
   },
   totalRow: {
@@ -1856,9 +1856,9 @@ const styles = StyleSheet.create({
     borderColor: CARD_BORDER,
     padding: 20,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      border: `1px solid ${CARD_BORDER}` as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
+      background: CARD_BG,
+      border: `1px solid ${CARD_BORDER}`,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
     } : {}),
   },
   calcCardTitle: {
@@ -1906,7 +1906,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 24,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any, transition: 'all 0.15s ease' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease' } : {}),
   },
   primaryBtnDisabled: {
     backgroundColor: '#2563EB',
@@ -2004,7 +2004,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
     borderRadius: 10,
     paddingVertical: 14,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any, transition: 'all 0.15s ease' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease' } : {}),
   },
   proposalBtnHover: {
     backgroundColor: '#059669',
@@ -2086,8 +2086,8 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      border: `1px solid ${CARD_BORDER}` as any,
+      background: CARD_BG,
+      border: `1px solid ${CARD_BORDER}`,
     } : {}),
   },
   paystubLeft: {
@@ -2141,7 +2141,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(59, 130, 246, 0.2)',
     backgroundColor: 'rgba(59, 130, 246, 0.06)',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   paystubBtnHover: {
     backgroundColor: 'rgba(59, 130, 246, 0.12)',
@@ -2160,7 +2160,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 14,
     marginTop: 16,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any, transition: 'all 0.15s ease' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease' } : {}),
   },
   storeReceiptBtnHover: {
     backgroundColor: '#2563EB',
@@ -2195,9 +2195,9 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      border: `1px solid ${CARD_BORDER}` as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
+      background: CARD_BG,
+      border: `1px solid ${CARD_BORDER}`,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
     } : {}),
   },
   gustoConnectionHeader: {
@@ -2369,7 +2369,7 @@ const stubStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } as any : {}),
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}),
   },
   modalContent: {
     width: '90%',
@@ -2380,7 +2380,7 @@ const stubStyles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     padding: 24,
     maxHeight: '85%',
-    ...(Platform.OS === 'web' ? { boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.1) inset' } as any : {}),
+    ...(Platform.OS === 'web' ? { boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.1) inset' } : {}),
   },
   modalHeader: {
     flexDirection: 'row',
@@ -2606,7 +2606,7 @@ const stubStyles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 12,
     marginTop: 16,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any, transition: 'all 0.15s ease' as any } : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease' } : {}),
   },
   pdfBtnText: {
     color: '#fff',

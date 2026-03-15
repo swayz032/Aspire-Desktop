@@ -209,7 +209,7 @@ export default function DailyBriefScreen() {
         {aiInsights.map((insight) => (
           <View key={insight.id} style={styles.insightCard}>
             <View style={styles.insightIcon}>
-              <Ionicons name={insight.icon as any} size={16} color={THEME.accent} />
+              <Ionicons name={insight.icon as keyof typeof Ionicons.glyphMap} size={16} color={THEME.accent} />
             </View>
             <View style={styles.insightContent}>
               <Text style={styles.insightTitle}>{insight.title}</Text>

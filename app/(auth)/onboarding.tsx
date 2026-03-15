@@ -315,7 +315,7 @@ function saveDraft(form: FormState): void {
       // No consent yet — allowlist approach: only safe non-PII fields
       const safeDraft: Partial<FormState> = {};
       for (const key of SAFE_DRAFT_FIELDS) {
-        (safeDraft as any)[key] = form[key];
+        (safeDraft as Record<string, unknown>)[key] = form[key];
       }
       localStorage.setItem(DRAFT_KEY, JSON.stringify(safeDraft));
     }
@@ -424,7 +424,7 @@ export default function OnboardingScreen() {
       const safeDraft: Partial<FormState> = {};
       for (const [key, value] of Object.entries(draft)) {
         if (validKeys.has(key)) {
-          (safeDraft as any)[key] = value;
+          (safeDraft as Record<string, unknown>)[key] = value;
         }
       }
       setForm((prev) => ({ ...prev, ...safeDraft }));
@@ -848,7 +848,7 @@ export default function OnboardingScreen() {
           {Platform.OS === 'web' ? (
             <select
               value={form.gender}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ gender: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateForm({ gender: e.target.value })}
               style={webSelectStyle}
             >
               <option value="">Select gender</option>
@@ -904,13 +904,13 @@ export default function OnboardingScreen() {
       />
 
       {/* Industry + Specialty — linked dropdowns */}
-      <View style={Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'row', gap: 12 } as any) : { gap: 12 }}>
+      <View style={Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'row', gap: 12 }) : { gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Industry</Text>
           {Platform.OS === 'web' ? (
             <select
               value={form.industry}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ industry: e.target.value, industrySpecialty: '' })}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateForm({ industry: e.target.value, industrySpecialty: '' })}
               style={webSelectStyle}
             >
               <option value="">Select industry</option>
@@ -944,7 +944,7 @@ export default function OnboardingScreen() {
             {Platform.OS === 'web' ? (
               <select
                 value={form.industrySpecialty}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ industrySpecialty: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateForm({ industrySpecialty: e.target.value })}
                 style={webSelectStyle}
               >
                 <option value="">Select specialty</option>
@@ -981,7 +981,7 @@ export default function OnboardingScreen() {
           {Platform.OS === 'web' ? (
             <select
               value={form.teamSize}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ teamSize: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateForm({ teamSize: e.target.value })}
               style={webSelectStyle}
             >
               <option value="">Select team size</option>
@@ -1008,7 +1008,7 @@ export default function OnboardingScreen() {
           {Platform.OS === 'web' ? (
             <select
               value={form.yearsInBusiness}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ yearsInBusiness: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateForm({ yearsInBusiness: e.target.value })}
               style={webSelectStyle}
             >
               <option value="">Select years</option>
@@ -1037,7 +1037,7 @@ export default function OnboardingScreen() {
       {Platform.OS === 'web' ? (
         <select
           value={form.entityType}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ entityType: e.target.value })}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateForm({ entityType: e.target.value })}
           style={webSelectStyle}
         >
           <option value="">Select entity type</option>
@@ -1105,7 +1105,7 @@ export default function OnboardingScreen() {
         );
       }
       return (
-        <View style={isWeb ? ({ position: 'relative', zIndex: 200 } as any) : {}}>
+        <View style={isWeb ? ({ position: 'relative', zIndex: 200 }) : {}}>
           <View style={styles.searchInputWrap}>
             <Ionicons name="search-outline" size={18} color="#888" style={styles.searchIcon} />
             {isWeb ? (
@@ -1136,7 +1136,7 @@ export default function OnboardingScreen() {
             <View style={styles.placesDropdown}>
               {suggestions.map((s: any, i: number) => (
                 <TouchableOpacity key={i} style={styles.placesItem} onPress={() => onSelect(s)}>
-                  <Ionicons name="location-outline" size={14} color={ACCENT} style={{ marginRight: 10, flexShrink: 0 } as any} />
+                  <Ionicons name="location-outline" size={14} color={ACCENT} style={{ marginRight: 10, flexShrink: 0 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.placesItemMain} numberOfLines={1}>
                       {s.placePrediction?.structuredFormat?.mainText?.text || s.placePrediction?.text?.text || ''}
@@ -1200,7 +1200,7 @@ export default function OnboardingScreen() {
         </View>
 
         {!form.businessAddressSameAsHome && (
-          <View style={isWeb ? ({ zIndex: 100 } as any) : {}}>
+          <View style={isWeb ? ({ zIndex: 100 }) : {}}>
             <Text style={[styles.label, { marginTop: 20 }]}>Business Address</Text>
             {renderAddressField(
               form.businessSearchText,
@@ -1233,7 +1233,7 @@ export default function OnboardingScreen() {
       {Platform.OS === 'web' ? (
         <select
           value={form.incomeRange}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateForm({ incomeRange: e.target.value })}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateForm({ incomeRange: e.target.value })}
           style={webSelectStyle}
         >
           <option value="">Select income range</option>
@@ -1444,7 +1444,7 @@ export default function OnboardingScreen() {
               style={[
                 styles.nextButton,
                 !(step === 1 ? canProceedStep1 : canProceedStep2) && styles.buttonDisabled,
-                Platform.OS === 'web' ? ({ background: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)' } as any) : null,
+                Platform.OS === 'web' ? ({ background: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)' }) : null,
               ]}
               onPress={goNext}
               disabled={!(step === 1 ? canProceedStep1 : canProceedStep2)}
@@ -1457,7 +1457,7 @@ export default function OnboardingScreen() {
               style={[
                 styles.launchButton,
                 (!canSubmit || loading) && styles.buttonDisabled,
-                Platform.OS === 'web' ? ({ background: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)' } as any) : null,
+                Platform.OS === 'web' ? ({ background: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)' }) : null,
               ]}
               onPress={handleComplete}
               disabled={!canSubmit || loading}
@@ -1517,8 +1517,8 @@ const webSelectStyle: React.CSSProperties = {
   color: '#fff',
   cursor: 'pointer',
   outline: 'none',
-  appearance: 'none' as any,
-  WebkitAppearance: 'none' as any,
+  appearance: 'none',
+  WebkitAppearance: 'none',
   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23888' d='M6 8L0 0h12z'/%3E%3C/svg%3E")`,
   backgroundRepeat: 'no-repeat',
   backgroundPosition: 'right 14px center',
@@ -1537,7 +1537,7 @@ const webDateStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   marginTop: 6,
   colorScheme: 'dark',
-  boxSizing: 'border-box' as any,
+  boxSizing: 'border-box',
 };
 
 
@@ -2018,7 +2018,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginTop: 4,
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? { position: 'absolute' as any, top: '100%' as any, left: 0, right: 0, zIndex: 9999 } : {}),
+    ...(Platform.OS === 'web' ? { position: 'absolute' as const, top: '100%', left: 0, right: 0, zIndex: 9999 } : {}),
   } as ViewStyle,
   placesItem: {
     flexDirection: 'row',
@@ -2050,7 +2050,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginTop: 4,
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? { position: 'absolute' as any, top: '100%' as any, left: 0, right: 0, zIndex: 9999 } : {}),
+    ...(Platform.OS === 'web' ? { position: 'absolute' as const, top: '100%', left: 0, right: 0, zIndex: 9999 } : {}),
   } as ViewStyle,
   nominatimItem: {
     flexDirection: 'row',

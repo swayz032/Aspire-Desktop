@@ -204,7 +204,7 @@ const s = StyleSheet.create({
   orbBehind:        {
     position: 'absolute', top: -60, right: -60, width: 220, height: 220,
     borderRadius: 110, backgroundColor: 'rgba(14,165,233,0.10)',
-    ...(Platform.OS === 'web' ? { filter: 'blur(60px)' } as any : {}),
+    ...(Platform.OS === 'web' ? { filter: 'blur(60px)' } : {}),
   },
   monthNav:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   navBtn:           { width: 36, height: 36, borderRadius: 18, backgroundColor: GLASS, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },

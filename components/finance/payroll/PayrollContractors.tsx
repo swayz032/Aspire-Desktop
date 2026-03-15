@@ -339,7 +339,7 @@ export function PayrollContractors({ gustoCompany, gustoEmployees, gustoConnecte
             {...(Platform.OS === 'web' ? {
               onMouseEnter: () => setHoveredId(id),
               onMouseLeave: () => setHoveredId(null),
-            } as any : {})}
+            } : {})}
           >
             <View style={styles.cardTop}>
               <View style={styles.avatar}>
@@ -350,12 +350,12 @@ export function PayrollContractors({ gustoCompany, gustoEmployees, gustoConnecte
                 {c.email && <Text style={styles.contractorEmail}>{c.email}</Text>}
               </View>
               <View style={styles.badgeRow}>
-                <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isActive ? '0 0 6px #10B98125' : '0 0 6px #ef444425' } as any : {}]}>
+                <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isActive ? '0 0 6px #10B98125' : '0 0 6px #ef444425' } : {}]}>
                   <Text style={[styles.statusText, { color: isActive ? '#10B981' : '#ef4444' }]}>
                     {isActive ? 'Active' : 'Inactive'}
                   </Text>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: isOnboarded ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isOnboarded ? '0 0 6px #10B98125' : '0 0 6px #f59e0b25' } as any : {}]}>
+                <View style={[styles.statusBadge, { backgroundColor: isOnboarded ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isOnboarded ? '0 0 6px #10B98125' : '0 0 6px #f59e0b25' } : {}]}>
                   <Text style={[styles.statusText, { color: isOnboarded ? '#10B981' : '#f59e0b' }]}>
                     {isOnboarded ? 'Onboarded' : 'Not Onboarded'}
                   </Text>
@@ -464,9 +464,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     ...(Platform.OS === 'web' ? {
       transition: 'all 0.15s ease',
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   cardEvenRow: {
     backgroundColor: 'rgba(28,28,30,0.7)',

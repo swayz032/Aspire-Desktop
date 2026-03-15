@@ -83,7 +83,7 @@ import {
 } from './panels';
 
 // Router for "Open Full Page" navigation
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 // ---------------------------------------------------------------------------
 // Widget content registry
@@ -564,7 +564,7 @@ export function CanvasWorkspace(): React.ReactElement {
                 ]}>
                   <ChatCanvas
                     webPreviewProps={{
-                      activityEvents: activityEvents as any,
+                      activityEvents,
                       trustLevel: 'internal',
                     }}
                     personaElement={
@@ -662,7 +662,7 @@ export function CanvasWorkspace(): React.ReactElement {
 
               <View
                 style={ws.canvasArea}
-                {...(Platform.OS === 'web' ? { dataSet: { canvasDrop: 'true' } } as any : {})}
+                {...(Platform.OS === 'web' ? { dataSet: { canvasDrop: 'true' } } : {})}
               >
                 {placedWidgets.map((pw) => {
                   const widgetDef = WIDGET_CONTENT[pw.id];
@@ -776,7 +776,7 @@ export function CanvasWorkspace(): React.ReactElement {
             onClose={() => setOpenModalInstanceId(null)}
             onOpenFullPage={() => {
               setOpenModalInstanceId(null);
-              router.push(widgetDef.pageRoute as any);
+              router.push(widgetDef.pageRoute as Href);
             }}
             accent={widgetDef.accent}
             icon={widgetDef.icon}
@@ -1031,7 +1031,7 @@ const ws = StyleSheet.create({
     color: Colors.text.bright,
     letterSpacing: CanvasTokens.tileType.headerTitle.letterSpacing,
     textTransform: 'uppercase',
-  } as any,
+  },
 
   headerSub: {
     fontSize: CanvasTokens.tileType.headerSub.fontSize,

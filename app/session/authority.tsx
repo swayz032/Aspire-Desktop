@@ -34,17 +34,17 @@ function mapRiskTier(tier: string): 'Low' | 'Medium' | 'High' {
   return 'Medium';
 }
 
-function mapAuthorityItem(item: any): SessionAuthorityItem {
+function mapAuthorityItem(item: Record<string, unknown>): SessionAuthorityItem {
   return {
     id: String(item.id),
-    title: item.title || 'Finance Proposal',
-    description: item.type || '',
-    risk: mapRiskTier(item.risk_tier || 'yellow'),
-    whyRequired: `${item.required_approval || 'admin'} approval required (${item.risk_tier || 'yellow'} tier)`,
-    status: item.status || 'pending',
+    title: (item.title as string) || 'Finance Proposal',
+    description: (item.type as string) || '',
+    risk: mapRiskTier(((item.risk_tier as string) || 'yellow')),
+    whyRequired: `${(item.required_approval as string) || 'admin'} approval required (${(item.risk_tier as string) || 'yellow'} tier)`,
+    status: ((item.status as string) || 'pending') as 'pending' | 'approved' | 'denied',
     evidence: item.inputs_hash ? [`inputs_hash: ${item.inputs_hash}`] : [],
-    createdAt: new Date(item.createdAt),
-    pandadocDocumentId: item.pandadocDocumentId || undefined,
+    createdAt: new Date(item.createdAt as string),
+    pandadocDocumentId: (item.pandadocDocumentId as string) || undefined,
   };
 }
 
@@ -165,7 +165,7 @@ export default function AuthorityScreen() {
         // Move the resolved item into history so it shows under Resolved
         const resolvedItem = pendingItems.find(i => i.id === itemId);
         if (resolvedItem) {
-          setHistoryItems(prev => [{ ...resolvedItem, status: newStatus as any }, ...prev]);
+          setHistoryItems(prev => [{ ...resolvedItem, status: newStatus }, ...prev]);
         }
 
         // Check if the response contains a signing session (contract.sign flow)
@@ -530,9 +530,9 @@ const signingStyles = StyleSheet.create({
   },
   container: {
     position: 'absolute',
-    width: '90%' as any,
+    width: '90%',
     maxWidth: 900,
-    height: '85%' as any,
+    height: '85%',
     maxHeight: 720,
     backgroundColor: Colors.background.primary,
     borderRadius: BorderRadius.xl,

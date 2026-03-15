@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       position: 'fixed',
     } : {}),
-  } as any,
+  },
   backdrop: {
     position: 'absolute',
     top: 0,
@@ -70,13 +70,13 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.75)',
-  } as any,
+  },
   panelContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     pointerEvents: 'box-none',
-  } as any,
+  },
   panel: {
     overflow: 'hidden',
     backgroundColor: '#0a0a0a',
@@ -84,19 +84,19 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 32px 64px -16px rgba(0,0,0,0.7), 0 16px 32px -8px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06), 0 0 80px rgba(59,130,246,0.06)',
     } : {}),
-  } as any,
+  },
   panelLandscape: {
     width: '75%',
     maxWidth: 860,
     height: 540,
     borderRadius: 20,
-  } as any,
+  },
   panelDefault: {
     width: '70%',
     maxWidth: 900,
     height: '90%',
     borderRadius: 16,
-  } as any,
+  },
   closeBtn: {
     position: 'absolute',
     top: Spacing.md,

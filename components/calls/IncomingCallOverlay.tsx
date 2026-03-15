@@ -26,7 +26,7 @@ function playRingTone(): void {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
   try {
-    const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
     const notes = [740, 880, 988];

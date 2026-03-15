@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useSupabase } from '@/providers';
 
 const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel'] as const;
@@ -42,7 +42,7 @@ export function useIdleTimeout(timeoutMs = 15 * 60_000) {
     if (typeof window !== 'undefined') {
       window.location.href = '/(auth)/login';
     } else {
-      router.replace('/(auth)/login' as any);
+      router.replace('/(auth)/login' as Href);
     }
   }, [signOut, router, clearAllTimers]);
 

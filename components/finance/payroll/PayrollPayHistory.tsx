@@ -109,10 +109,9 @@ export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected
         <Text style={styles.emptyTitle}>No Payroll History</Text>
         <Text style={styles.emptySubtitle}>No payroll records found. Payrolls will appear here after processing.</Text>
         <Pressable
-          style={[styles.retrieveButton, refreshing && { opacity: 0.7 }]}
+          style={[styles.retrieveButton, refreshing && { opacity: 0.7 }, Platform.OS === 'web' ? { cursor: 'pointer' } : undefined]}
           onPress={handleRefreshPayrolls}
           disabled={refreshing}
-          {...(Platform.OS === 'web' ? { style: [styles.retrieveButton, refreshing && { opacity: 0.7 }, { cursor: 'pointer' }] } as any : {})}
         >
           {refreshing ? (
             <ActivityIndicator size="small" color="#ffffff" style={{ marginRight: 8 }} />
@@ -142,11 +141,11 @@ export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected
         <Text style={styles.sectionTitle}>Payroll History</Text>
         <View style={styles.headerControls}>
           <View style={styles.statsRow}>
-            <View style={[styles.statBadge, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }, Platform.OS === 'web' ? { boxShadow: '0 0 6px #10B98125' } as any : {}]}>
+            <View style={[styles.statBadge, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }, Platform.OS === 'web' ? { boxShadow: '0 0 6px #10B98125' } : {}]}>
               <Text style={[styles.statText, { color: '#10B981' }]}>{processed} Processed</Text>
             </View>
             {unprocessed > 0 && (
-              <View style={[styles.statBadge, { backgroundColor: 'rgba(245, 158, 11, 0.12)' }, Platform.OS === 'web' ? { boxShadow: '0 0 6px #f59e0b25' } as any : {}]}>
+              <View style={[styles.statBadge, { backgroundColor: 'rgba(245, 158, 11, 0.12)' }, Platform.OS === 'web' ? { boxShadow: '0 0 6px #f59e0b25' } : {}]}>
                 <Text style={[styles.statText, { color: '#f59e0b' }]}>{unprocessed} Pending</Text>
               </View>
             )}
@@ -155,7 +154,7 @@ export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected
             style={[styles.refreshButton, refreshing && { opacity: 0.7 }]}
             onPress={handleRefreshPayrolls}
             disabled={refreshing}
-            {...(Platform.OS === 'web' ? { onMouseEnter: () => {}, onMouseLeave: () => {} } as any : {})}
+            {...(Platform.OS === 'web' ? { onMouseEnter: () => {}, onMouseLeave: () => {} } : {})}
           >
             {refreshing ? (
               <ActivityIndicator size="small" color="#ffffff" />
@@ -186,7 +185,7 @@ export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected
             {...(Platform.OS === 'web' ? {
               onMouseEnter: () => setHoveredId(id),
               onMouseLeave: () => setHoveredId(null),
-            } as any : {})}
+            } : {})}
           >
             <View style={styles.cardTop}>
               <View style={[styles.statusDot, { backgroundColor: isProcessed ? '#10B981' : '#f59e0b' }]} />
@@ -196,7 +195,7 @@ export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected
                 </Text>
                 <Text style={styles.checkDateText}>Check Date: {formatDate(payroll.check_date)}</Text>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: isProcessed ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isProcessed ? '0 0 6px #10B98125' : '0 0 6px #f59e0b25' } as any : {}]}>
+              <View style={[styles.statusBadge, { backgroundColor: isProcessed ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isProcessed ? '0 0 6px #10B98125' : '0 0 6px #f59e0b25' } : {}]}>
                 <Text style={[styles.statusText, { color: isProcessed ? '#10B981' : '#f59e0b' }]}>
                   {isProcessed ? 'Processed' : 'Unprocessed'}
                 </Text>
@@ -275,7 +274,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12,
-    ...(Platform.OS === 'web' ? { boxShadow: '0 0 6px #10B98125' } as any : {}),
+    ...(Platform.OS === 'web' ? { boxShadow: '0 0 6px #10B98125' } : {}),
   },
   successText: {
     color: '#10B981',
@@ -314,7 +313,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'all 0.15s ease',
-    } as any : {}),
+    } : {}),
   },
   statBadge: {
     paddingHorizontal: 10,
@@ -334,9 +333,9 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'all 0.15s ease',
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   cardEvenRow: {
     backgroundColor: 'rgba(28,28,30,0.7)',
@@ -443,7 +442,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'all 0.15s ease',
-    } as any : {}),
+    } : {}),
   },
   retrieveButtonText: {
     color: '#ffffff',

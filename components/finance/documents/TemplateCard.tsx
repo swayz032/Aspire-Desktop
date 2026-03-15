@@ -5,7 +5,7 @@
  */
 import React, { useCallback, useState } from 'react';
 import type { PressableState } from '@/types/common';
-import { View, Text, Image, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, Text, Image, StyleSheet, Pressable, Platform, type ViewStyle, type StyleProp } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, CARD_BORDER_HOVER } from '@/constants/cardPatterns';
@@ -88,24 +88,24 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
     animationFillMode: 'both',
     animationDelay: `${index * 40}ms`,
     transition: 'transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
-  } as any : {};
+  } : {};
 
   // Web hover lift + border glow (matching ContractCard pattern)
   const webHoverStyle = Platform.OS === 'web' ? {
     transform: [{ translateY: -2 }],
     boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
     borderColor: CARD_BORDER_HOVER,
-  } as any : {};
+  } : {};
 
   // Shimmer gradient for thumbnail loading state (web only)
-  const shimmerStyle = Platform.OS === 'web' ? {
+  const shimmerStyle: ViewStyle = Platform.OS === 'web' ? {
     background: `linear-gradient(90deg, #161618 25%, #222224 50%, #161618 75%)`,
     backgroundSize: '200% 100%',
     animationName: 'templateCardShimmer',
     animationDuration: '1.8s',
     animationTimingFunction: 'ease-in-out',
     animationIterationCount: 'infinite',
-  } as any : {};
+  } : {};
 
   return (
     <Pressable
@@ -118,15 +118,15 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
           : `${displayName} template, coming soon.`
       }
       accessibilityState={{ disabled: !isAvailable }}
-      style={({ hovered, pressed }: PressableState) => [
+      style={(({ hovered, pressed }: PressableState) => [
         styles.card,
         webAnimationStyle,
         !isAvailable && styles.cardDisabled,
         isAvailable && hovered && styles.cardHovered,
         isAvailable && hovered && webHoverStyle,
         isAvailable && pressed && styles.cardPressed,
-        Platform.OS === 'web' ? { cursor: isAvailable ? 'pointer' : 'default' } as any : {},
-      ]}
+        Platform.OS === 'web' ? { cursor: isAvailable ? 'pointer' : 'default' } : {},
+      ]) as unknown as StyleProp<ViewStyle>}
     >
       {/* Template preview image — capped at 220px to keep grid proportions balanced */}
       {template.preview_image_url ? (
@@ -145,7 +145,7 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
               style={[
                 styles.previewImage,
                 { opacity: imageLoaded ? 1 : 0 },
-                Platform.OS === 'web' ? { transition: 'opacity 0.3s ease' } as any : {},
+                Platform.OS === 'web' ? { transition: 'opacity 0.3s ease' } : {},
               ]}
               resizeMode="stretch"
               onLoad={() => setImageLoaded(true)}
@@ -225,12 +225,12 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
         <View style={styles.actionButtons}>
           {/* Preview button — glass surface */}
           <Pressable
-            onPress={(e: React.MouseEvent<HTMLElement>) => { if (e?.stopPropagation) e.stopPropagation(); handlePreview(); }}
+            onPress={(e) => { if (e?.stopPropagation) e.stopPropagation(); handlePreview(); }}
             accessibilityRole="button"
             accessibilityLabel={`Preview ${displayName} template`}
             style={({ hovered, pressed }: PressableState) => [
               styles.previewBtn,
-              Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', outlineOffset: 2 } as any : {},
+              Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', outlineOffset: 2 } : {},
               hovered && styles.previewBtnHovered,
               pressed && styles.previewBtnPressed,
             ]}
@@ -241,12 +241,12 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
 
           {/* Draft with Finn button — cyan accent */}
           <Pressable
-            onPress={(e: React.MouseEvent<HTMLElement>) => { if (e?.stopPropagation) e.stopPropagation(); handleDraft(); }}
+            onPress={(e) => { if (e?.stopPropagation) e.stopPropagation(); handleDraft(); }}
             accessibilityRole="button"
             accessibilityLabel={`Draft ${displayName} with Finn`}
             style={({ hovered, pressed }: PressableState) => [
               styles.draftBtn,
-              Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', outlineOffset: 2 } as any : {},
+              Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', outlineOffset: 2 } : {},
               hovered && styles.draftBtnHovered,
               pressed && styles.draftBtnPressed,
             ]}

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { PressableState } from '@/types/common';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
 import SourceBadge from './SourceBadge';
@@ -52,11 +52,11 @@ export default function ReconcileCard({ mismatch, onAction, onDismiss }: Reconci
 
   return (
     <Pressable
-      style={({ hovered }: PressableState) => [
+      style={(({ hovered }: PressableState) => [
         styles.card,
         Platform.OS === 'web' && hovered && styles.cardHovered,
-        Platform.OS === 'web' && ({ cursor: 'default' } as any),
-      ]}
+        Platform.OS === 'web' && { cursor: 'default' as const },
+      ]) as unknown as StyleProp<ViewStyle>}
     >
       <View style={[styles.accentStripe, { backgroundColor: severityColor }]} />
 
@@ -94,7 +94,7 @@ export default function ReconcileCard({ mismatch, onAction, onDismiss }: Reconci
             {mismatch.providers.map((p) => (
               <SourceBadge
                 key={p}
-                source={p as any}
+                source={p as 'plaid' | 'stripe' | 'qbo' | 'gusto' | 'computed'}
                 lastSyncAt={null}
                 confidence="none"
                 compact

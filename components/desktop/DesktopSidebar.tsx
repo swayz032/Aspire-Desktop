@@ -2,10 +2,10 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, Animated, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { usePathname, useRouter } from 'expo-router';
+import { usePathname, useRouter, type Href } from 'expo-router';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { useSidebarState } from '@/lib/uiStore';
-import { canAccessTeamWorkspace } from '@/lib/permissions';
+import { canAccessTeamWorkspace, type Member, type RoleType } from '@/lib/permissions';
 import { useTenant } from '@/providers/TenantProvider';
 
 const logoSource = require('../../assets/images/aspire-logo-new.png');
@@ -73,7 +73,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
 
   const filteredNavItems = useMemo(() => {
     // In production, team workspace is always visible for authenticated users
-    const authUser = tenant ? { id: tenant.id, name: tenant.ownerName, email: tenant.ownerEmail, roleId: (tenant.role?.toLowerCase() ?? 'owner') as any, status: 'active' as const, suiteAccessIds: [tenant.suiteId], lastActiveAt: new Date().toISOString() } : null;
+    const authUser: Member | null = tenant ? { id: tenant.id, name: tenant.ownerName, email: tenant.ownerEmail, roleId: (tenant.role?.toLowerCase() ?? 'owner') as RoleType, status: 'active', suiteAccessIds: [tenant.suiteId], lastActiveAt: new Date().toISOString() } : null;
     return navItems.filter(item => {
       if (item.id === 'team') {
         return canAccessTeamWorkspace(authUser, 1);
@@ -110,7 +110,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
   } : {};
 
   return (
-    <Animated.View style={[styles.container, Platform.OS !== 'web' && { width: widthAnim }, webStyle as any]}>
+    <Animated.View style={[styles.container, Platform.OS !== 'web' && { width: widthAnim }, webStyle]}>
       {/* Logo section with Lovable-style collapse toggle */}
       <View style={[styles.logoSection, !expanded && styles.logoSectionCollapsed]}>
         <Pressable 
@@ -130,7 +130,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
               <Pressable
                 style={[
                   styles.collapseToggle,
-                  { opacity: isLogoHovered ? 1 : 0 } as any
+                  { opacity: isLogoHovered ? 1 : 0 }
                 ]}
                 onPress={toggleSidebar}
               >
@@ -180,7 +180,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
                   !expanded && hovered && styles.navItemCollapsedHover,
                   pressed && styles.navItemPressed,
                 ]}
-                onPress={() => router.push(item.route as any)}
+                onPress={() => router.push(item.route as Href)}
                 {...webProps}
               >
                 {expanded ? (
@@ -210,7 +210,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
                         width: expanded ? 'auto' : 0,
                         overflow: 'hidden',
                         transition: 'opacity 200ms ease-out, width 200ms ease-out',
-                      } as any
+                      }
                     ]}
                   >
                     {item.label}
@@ -244,7 +244,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
                           subActive && styles.subNavItemActive,
                           !subActive && hovered && styles.subNavItemHover,
                         ]}
-                        onPress={() => router.push(subItem.route as any)}
+                        onPress={() => router.push(subItem.route as Href)}
                       >
                         <View style={styles.subNavDot} />
                         <Text style={[styles.subNavLabel, subActive && styles.subNavLabelActive]}>
@@ -268,7 +268,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
             !expanded && styles.footerItemCollapsed,
             hovered && styles.footerItemHover,
           ]}
-          onPress={() => router.push('/(tabs)/more' as any)}
+          onPress={() => router.push('/(tabs)/more' as Href)}
           {...(Platform.OS === 'web' && !expanded ? { title: 'More' } : {})}
         >
           <View style={styles.footerIconContainer}>
@@ -284,7 +284,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
                   width: expanded ? 'auto' : 0,
                   overflow: 'hidden',
                   transition: 'opacity 200ms ease-out, width 200ms ease-out',
-                } as any
+                }
               ]}
             >
               More
@@ -318,7 +318,7 @@ export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
                   width: expanded ? 'auto' : 0,
                   overflow: 'hidden',
                   transition: 'opacity 200ms ease-out, width 200ms ease-out',
-                } as any
+                }
               ]}
             >
               Help & Support
@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
       transition: 'opacity 150ms ease-out, background-color 150ms ease-out',
       cursor: 'pointer',
     } : {}),
-  } as any,
+  },
   collapsedLogoContainer: {
     width: 48,
     height: 48,
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
       cursor: 'pointer',
       transition: 'all 150ms ease-out',
     } : {}),
-  } as any,
+  },
   collapsedLogoHovered: {
     backgroundColor: 'rgba(59, 130, 246, 0.1)',
   },
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
       transition: 'all 0.15s ease-out',
       cursor: 'pointer',
     } : {}),
-  } as any,
+  },
   navItemActive: {
     borderColor: '#2C2C2E',
     backgroundColor: '#1a2a3a',
@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
     marginTop: 1,
-  } as any,
+  },
   navLabel: {
     ...Typography.bodyMedium,
     color: Colors.text.secondary,
@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
       transition: 'all 0.15s ease-out',
       cursor: 'pointer',
     } : {}),
-  } as any,
+  },
   footerItemCollapsed: {
     flexDirection: 'column',
     justifyContent: 'center',
@@ -595,7 +595,7 @@ const styles = StyleSheet.create({
       transition: 'all 0.15s ease-out',
       cursor: 'pointer',
     } : {}),
-  } as any,
+  },
   subNavItemActive: {
     backgroundColor: '#1a2a3a',
   },

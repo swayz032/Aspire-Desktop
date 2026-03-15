@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, TextInput, ScrollView, ActivityIndicator, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
@@ -363,7 +363,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
         <Pressable 
           style={styles.emptyAddButton}
           onPress={() => setShowAddForm(true)}
-          {...(Platform.OS === 'web' ? { onMouseEnter: () => {}, onMouseLeave: () => {} } as any : {})}
+          {...(Platform.OS === 'web' ? { onMouseEnter: () => {}, onMouseLeave: () => {} } : {})}
         >
           <Ionicons name="add-circle-outline" size={18} color="#ffffff" />
           <Text style={styles.emptyAddButtonText}>Add Employee</Text>
@@ -525,7 +525,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
 
           <View style={styles.formActions}>
             <Pressable
-              style={[styles.saveButton, isSubmitting && styles.buttonDisabled]}
+              style={[styles.saveButton, isSubmitting ? (styles.buttonDisabled as ViewStyle) : undefined]}
               onPress={handleAddEmployee}
               disabled={isSubmitting}
               {...(Platform.OS === 'web' ? {
@@ -585,7 +585,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
                 {...(Platform.OS === 'web' ? {
                   onMouseEnter: () => setHoveredId(id),
                   onMouseLeave: () => setHoveredId(null),
-                } as any : {})}
+                } : {})}
               >
                 <View style={styles.cardRow}>
                   <View style={styles.avatar}>
@@ -601,7 +601,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
                         <Text style={styles.deptText}>{emp.department}</Text>
                       </View>
                     )}
-                    <View style={[styles.statusBadge, { backgroundColor: empStatus.bg }, Platform.OS === 'web' ? { boxShadow: `0 0 6px ${empStatus.text}25` } as any : {}]}>
+                    <View style={[styles.statusBadge, { backgroundColor: empStatus.bg }, Platform.OS === 'web' ? { boxShadow: `0 0 6px ${empStatus.text}25` } : {}]}>
                       <Text style={[styles.statusText, { color: empStatus.text }]}>
                         {emp.current_employment_status === 'full_time' ? 'Full Time' : emp.current_employment_status === 'part_time' ? 'Part Time' : formatStatusLabel(emp.current_employment_status)}
                       </Text>
@@ -781,7 +781,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                       paddingVertical: 12, borderRadius: 10,
                       backgroundColor: 'rgba(255, 59, 48, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 59, 48, 0.2)',
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                     }}
                     onPress={() => { setShowTerminateConfirm(true); setTerminateError(null); }}
                   >
@@ -817,7 +817,7 @@ export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: 
                           />
                         </View>
                         <Pressable
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => setTerminateRunPayroll(!terminateRunPayroll)}
                         >
                           <Ionicons
@@ -911,7 +911,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#ffffff',
     ...Typography.caption,
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
   },
   countBadge: {
     backgroundColor: 'rgba(59, 130, 246, 0.12)',
@@ -941,9 +941,9 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'all 0.15s ease',
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   cardEvenRow: {
     backgroundColor: 'rgba(28,28,30,0.7)',
@@ -1026,9 +1026,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   detailHeader: {
     flexDirection: 'row',
@@ -1129,7 +1129,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: '#ffffff',
     fontSize: 14,
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
   },
   emptyContainer: {
     flex: 1,
@@ -1167,7 +1167,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'all 0.2s ease',
-    } as any : {}),
+    } : {}),
   },
   addButtonText: {
     color: '#ffffff',
@@ -1195,8 +1195,8 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 20,
     ...(Platform.OS === 'web' ? {
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   formHeader: {
     flexDirection: 'row',
@@ -1217,7 +1217,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
-    } as any : {}),
+    } : {}),
   },
   formField: {
     marginBottom: 16,
@@ -1237,8 +1237,8 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     ...Typography.caption,
     ...(Platform.OS === 'web' ? {
-      outlineStyle: 'none' as any,
-    } as any : {}),
+      outlineStyle: 'none',
+    } : {}),
   },
   formActions: {
     flexDirection: 'row',
@@ -1258,7 +1258,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'all 0.2s ease',
-    } as any : {}),
+    } : {}),
   },
   saveButtonText: {
     color: '#ffffff',
@@ -1280,7 +1280,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'all 0.2s ease',
-    } as any : {}),
+    } : {}),
   },
   cancelButtonText: {
     color: '#d1d1d6',
@@ -1290,8 +1290,8 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.6,
     ...(Platform.OS === 'web' ? {
-      cursor: 'not-allowed' as any,
-    } as any : {}),
+      cursor: 'not-allowed' as const,
+    } : {}),
   },
   emptyAddButton: {
     flexDirection: 'row',
@@ -1305,7 +1305,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'all 0.2s ease',
-    } as any : {}),
+    } : {}),
   },
   emptyAddButtonText: {
     color: '#ffffff',

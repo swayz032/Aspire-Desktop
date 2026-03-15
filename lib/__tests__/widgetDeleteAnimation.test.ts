@@ -16,6 +16,7 @@ import {
   PHASE_2_DURATION,
   PHASE_3_DURATION,
   TOTAL_DURATION,
+  type DeleteAnimationTargets,
 } from '../widgetDeleteAnimation';
 
 // ---------------------------------------------------------------------------
@@ -51,13 +52,13 @@ jest.mock('react-native-reanimated', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createMockTargets() {
+function createMockTargets(): DeleteAnimationTargets {
   return {
     scale: { value: 1 },
     opacity: { value: 1 },
     rotation: { value: 0 },
     translateY: { value: 0 },
-  };
+  } as DeleteAnimationTargets;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +103,7 @@ describe('animateWidgetDelete (standard)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets, { onComplete });
 
     // Phase 1: scale should be animated (withSpring called)
     expect(mockWithSpring).toHaveBeenCalled();
@@ -112,7 +113,7 @@ describe('animateWidgetDelete (standard)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets, { onComplete });
 
     expect(mockWithTiming).toHaveBeenCalled();
   });
@@ -121,7 +122,7 @@ describe('animateWidgetDelete (standard)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets, { onComplete });
 
     // Rotation uses withSequence for shake effect
     expect(mockWithSequence).toHaveBeenCalled();
@@ -131,7 +132,7 @@ describe('animateWidgetDelete (standard)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets, { onComplete });
 
     // withDelay should be called with PHASE_1_DURATION offset
     expect(mockWithDelay).toHaveBeenCalledWith(
@@ -144,7 +145,7 @@ describe('animateWidgetDelete (standard)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets, { onComplete });
 
     // withDelay should be called with PHASE_1 + PHASE_2 offset
     expect(mockWithDelay).toHaveBeenCalledWith(
@@ -157,7 +158,7 @@ describe('animateWidgetDelete (standard)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets, { onComplete });
 
     // Not called yet
     expect(onComplete).not.toHaveBeenCalled();
@@ -172,7 +173,7 @@ describe('animateWidgetDelete (standard)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, { onComplete });
+    animateWidgetDelete(targets, { onComplete });
 
     jest.advanceTimersByTime(TOTAL_DURATION - 10);
 
@@ -189,7 +190,7 @@ describe('animateWidgetDelete (reduced motion)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, {
+    animateWidgetDelete(targets, {
       reducedMotion: true,
       onComplete,
     });
@@ -201,7 +202,7 @@ describe('animateWidgetDelete (reduced motion)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, {
+    animateWidgetDelete(targets, {
       reducedMotion: true,
       onComplete,
     });
@@ -214,7 +215,7 @@ describe('animateWidgetDelete (reduced motion)', () => {
     targets.rotation.value = 5; // Pre-existing rotation
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, {
+    animateWidgetDelete(targets, {
       reducedMotion: true,
       onComplete,
     });
@@ -227,7 +228,7 @@ describe('animateWidgetDelete (reduced motion)', () => {
     targets.translateY.value = 10;
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, {
+    animateWidgetDelete(targets, {
       reducedMotion: true,
       onComplete,
     });
@@ -239,7 +240,7 @@ describe('animateWidgetDelete (reduced motion)', () => {
     const targets = createMockTargets();
     const onComplete = jest.fn();
 
-    animateWidgetDelete(targets as any, {
+    animateWidgetDelete(targets, {
       reducedMotion: true,
       onComplete,
     });
@@ -254,7 +255,7 @@ describe('animateWidgetDelete (reduced motion)', () => {
 
     const targets = createMockTargets();
 
-    animateWidgetDelete(targets as any, {
+    animateWidgetDelete(targets, {
       reducedMotion: true,
       onComplete: jest.fn(),
     });
@@ -273,7 +274,7 @@ describe('resetWidgetAnimation', () => {
     const targets = createMockTargets();
     targets.scale.value = 0;
 
-    resetWidgetAnimation(targets as any);
+    resetWidgetAnimation(targets);
 
     expect(mockWithSpring).toHaveBeenCalledWith(1, expect.objectContaining({
       damping: 20,
@@ -285,7 +286,7 @@ describe('resetWidgetAnimation', () => {
     const targets = createMockTargets();
     targets.opacity.value = 0;
 
-    resetWidgetAnimation(targets as any);
+    resetWidgetAnimation(targets);
 
     expect(mockWithTiming).toHaveBeenCalledWith(1, expect.objectContaining({
       duration: 200,
@@ -296,7 +297,7 @@ describe('resetWidgetAnimation', () => {
     const targets = createMockTargets();
     targets.rotation.value = -8;
 
-    resetWidgetAnimation(targets as any);
+    resetWidgetAnimation(targets);
 
     expect(mockWithSpring).toHaveBeenCalledWith(0, expect.any(Object));
   });
@@ -305,7 +306,7 @@ describe('resetWidgetAnimation', () => {
     const targets = createMockTargets();
     targets.translateY.value = 24;
 
-    resetWidgetAnimation(targets as any);
+    resetWidgetAnimation(targets);
 
     expect(mockWithSpring).toHaveBeenCalledWith(0, expect.any(Object));
   });

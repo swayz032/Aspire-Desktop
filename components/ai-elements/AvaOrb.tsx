@@ -60,7 +60,7 @@ export function AvaOrb({ size = 320 }: AvaOrbProps) {
   return (
     <div style={{ position: 'relative', width: size, height: size }}>
       <video
-        ref={videoRef as any}
+        ref={videoRef as React.RefObject<HTMLVideoElement>}
         className="ava-orb-shared"
         src="/ava-orb.mp4"
         autoPlay

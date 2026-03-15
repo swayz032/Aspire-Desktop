@@ -24,7 +24,7 @@ function ContractStatusBadgeInner({ status, size = 'sm' }: ContractStatusBadgePr
         Platform.OS === 'web' ? {
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
-        } as any : {},
+        } : {},
       ]}
       accessibilityRole="text"
       accessibilityLabel={`Status: ${meta.label}`}

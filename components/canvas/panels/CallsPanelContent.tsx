@@ -176,7 +176,7 @@ const s = StyleSheet.create({
     position: 'absolute', top: -60, right: -60, width: 240, height: 240,
     borderRadius: 120, backgroundColor: 'rgba(14,165,233,0.10)',
     pointerEvents: 'none',
-    ...(Platform.OS === 'web' ? { filter: 'blur(60px)' } as any : {}),
+    ...(Platform.OS === 'web' ? { filter: 'blur(60px)' } : {}),
   },
   tabBar:           { flexDirection: 'row', marginHorizontal: 16, marginTop: 16, marginBottom: 12, backgroundColor: GLASS, borderRadius: 12, borderWidth: 1, borderColor: BORDER, padding: 4 },
   tab:              { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 9 },

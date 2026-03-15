@@ -1,6 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { replaceTo } from '@/lib/navigation';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -170,9 +171,10 @@ function useAuthGate() {
   useEffect(() => {
     if (isLoading) return;
 
-    const inAuthGroup = segments[0] === ('(auth)' as any);
-    const inPublicGroup = segments.length === 0 || segments[0] === ('sign' as any) || segments[0] === ('book' as any) || segments[0] === ('join' as any) || segments[0] === ('landing' as any) || segments[0] === ('index' as any);
-    const onOnboarding = segments[1] === ('onboarding' as any);
+    const segs = segments as string[];
+    const inAuthGroup = segs[0] === '(auth)';
+    const inPublicGroup = segs.length === 0 || segs[0] === 'sign' || segs[0] === 'book' || segs[0] === 'join' || segs[0] === 'landing' || segs[0] === 'index';
+    const onOnboarding = segs[1] === 'onboarding';
 
     if (DEV_BYPASS_AUTH) {
       if (inAuthGroup) {
@@ -182,9 +184,9 @@ function useAuthGate() {
     }
 
     if (!session && !inAuthGroup && !inPublicGroup) {
-      router.replace('/(auth)/login' as any);
+      replaceTo('/(auth)/login');
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
-      router.replace('/(auth)/onboarding' as any);
+      replaceTo('/(auth)/onboarding');
     } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
       router.replace('/(tabs)');
     }
@@ -363,7 +365,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0a0a',
-    minHeight: '100%' as any,
-    height: '100%' as any,
+    minHeight: '100%',
+    height: '100%',
   },
 });

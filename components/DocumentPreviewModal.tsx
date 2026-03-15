@@ -593,7 +593,7 @@ const p = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       backdropFilter: 'blur(8px)',
     } : {}),
-  } as any,
+  },
   modalContainer: {
     width: '90%',
     maxWidth: 720,
@@ -606,7 +606,7 @@ const p = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
     } : {}),
-  } as any,
+  },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -656,7 +656,7 @@ const p = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   modalActionBtnHover: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderColor: 'rgba(255,255,255,0.12)',
@@ -672,7 +672,7 @@ const p = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
     marginLeft: 4,
     ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   modalCloseBtnHover: {
     backgroundColor: 'rgba(239, 68, 68, 0.12)',
     borderColor: 'rgba(239, 68, 68, 0.2)',
@@ -749,7 +749,7 @@ const p = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
     } : {}),
-  } as any,
+  },
 
   docHeader: {
     flexDirection: 'row',
@@ -1079,7 +1079,7 @@ const p = StyleSheet.create({
     fontWeight: '600',
     color: '#3B82F6',
     fontVariant: ['tabular-nums'],
-  } as any,
+  },
   transcriptSpeaker: {
     fontSize: 12,
     fontWeight: '600',

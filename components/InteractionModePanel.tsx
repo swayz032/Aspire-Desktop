@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { ComponentProps } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { InteractionModeOption } from '@/types';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 interface InteractionModePanelProps {
   options: InteractionModeOption[];
@@ -24,11 +24,11 @@ export function InteractionModePanel({ options }: InteractionModePanelProps) {
             pressed && styles.rowPressed,
             index === options.length - 1 && styles.lastRow,
           ]}
-          onPress={() => router.push(option.route as any)}
+          onPress={() => router.push(option.route as Href)}
         >
           <View style={styles.iconContainer}>
             <Ionicons 
-              name={option.icon as any} 
+              name={option.icon as ComponentProps<typeof Ionicons>['name']}
               size={22} 
               color={Colors.accent.cyan} 
             />

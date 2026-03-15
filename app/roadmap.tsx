@@ -77,7 +77,7 @@ export default function RoadmapScreen() {
 
   const getStaffColor = (staffName?: string) => {
     const staff = STAFF_ROSTER.find(s => s.name === staffName);
-    return (staff as any)?.avatarColor || '#3B82F6';
+    return (staff as { avatarColor?: string } | undefined)?.avatarColor || '#3B82F6';
   };
 
   const totalOpportunityValue = (score.hiddenOpportunities ?? []).reduce((sum: number, opp: any) => sum + opp.dollarValue, 0);

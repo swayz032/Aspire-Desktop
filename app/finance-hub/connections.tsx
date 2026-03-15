@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { PressableState } from '@/types/common';
-import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking, Modal, TextInput, Alert, ScrollView, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
@@ -59,7 +59,7 @@ const premiumCardBase = Platform.OS === 'web' ? {
   border: `1px solid ${CARD_BORDER}`,
 } : {};
 
-const providerPatternMap: Record<string, Record<string, string>> = Platform.OS === 'web' ? {
+const providerPatternMap: Record<string, Record<string, unknown>> = Platform.OS === 'web' ? {
   plaid: cardWithPattern(svgPatterns.networkNodes(), 'right', '40% auto'),
   quickbooks: cardWithPattern(svgPatterns.barChart(), 'right', '35% auto'),
   gusto: cardWithPattern(svgPatterns.people(), 'right', '35% auto'),
@@ -609,7 +609,7 @@ export default function ConnectionsScreen() {
           style={({ hovered }: PressableState) => [
             s.connectBtn,
             { backgroundColor: config.brandColor },
-            Platform.OS === 'web' && { boxShadow: `0 4px 16px ${config.brandColor}40` } as any,
+            Platform.OS === 'web' && { boxShadow: `0 4px 16px ${config.brandColor}40` },
             hovered && { opacity: 0.9, transform: [{ scale: 1.01 }] },
           ]}
         >
@@ -638,7 +638,7 @@ export default function ConnectionsScreen() {
 
   return (
     <FinanceHubShell>
-      <View style={[s.heroBanner, premiumCardBase as any, Platform.OS === 'web' && { background: `radial-gradient(ellipse at top right, rgba(59,130,246,0.08) 0%, transparent 50%), ${CARD_BG}` } as any]}>
+      <View style={[s.heroBanner, premiumCardBase as ViewStyle, Platform.OS === 'web' && { background: `radial-gradient(ellipse at top right, rgba(59,130,246,0.08) 0%, transparent 50%), ${CARD_BG}` }]}>
         <View style={s.heroContent}>
           <View style={s.heroLeft}>
             <View style={s.heroIconWrap}>
@@ -754,7 +754,7 @@ export default function ConnectionsScreen() {
                       style={({ hovered }: PressableState) => [{
                         paddingHorizontal: 12, paddingVertical: 5, borderRadius: 6,
                         backgroundColor: svc.color,
-                        ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease' } as any : {}),
+                        ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease' } : {}),
                       }, hovered && { opacity: 0.85 }]}
                     >
                       {crossLinking === svc.key ? (
@@ -781,9 +781,9 @@ export default function ConnectionsScreen() {
         const isGusto = config.key === 'gusto';
 
         return (
-          <View key={config.key} style={[s.providerCard, premiumCardBase as any, getProviderCardStyle(config.key)]}>
+          <View key={config.key} style={[s.providerCard, premiumCardBase as ViewStyle, getProviderCardStyle(config.key)]}>
             <View style={s.cardHeader}>
-              <View style={[s.providerIcon, { backgroundColor: `${config.brandColor}22` }, Platform.OS === 'web' && { boxShadow: `0 0 24px ${config.brandColor}30` } as any]}>
+              <View style={[s.providerIcon, { backgroundColor: `${config.brandColor}22` }, Platform.OS === 'web' && { boxShadow: `0 0 24px ${config.brandColor}30` }]}>
                 <Ionicons name={config.icon} size={24} color={config.brandColor} />
               </View>
               <View style={s.providerMeta}>
@@ -850,7 +850,7 @@ export default function ConnectionsScreen() {
                     paddingVertical: 7,
                     borderRadius: 8,
                     backgroundColor: config.brandColor,
-                    ...(Platform.OS === 'web' ? { boxShadow: `0 2px 12px ${config.brandColor}50`, transition: 'all 0.2s ease' } as any : {}),
+                    ...(Platform.OS === 'web' ? { boxShadow: `0 2px 12px ${config.brandColor}50`, transition: 'all 0.2s ease' } : {}),
                   }, hovered && { opacity: 0.9, transform: [{ scale: 1.02 }] }]}
                 >
                   {crossLinking === config.key ? (
@@ -944,7 +944,7 @@ export default function ConnectionsScreen() {
                   style={({ hovered }: PressableState) => [
                     s.connectBtn,
                     { backgroundColor: config.brandColor },
-                    Platform.OS === 'web' && { boxShadow: `0 4px 16px ${config.brandColor}40` } as any,
+                    Platform.OS === 'web' && { boxShadow: `0 4px 16px ${config.brandColor}40` },
                     hovered && { opacity: 0.9, transform: [{ scale: 1.01 }] },
                   ]}
                 >
@@ -966,7 +966,7 @@ export default function ConnectionsScreen() {
       <View style={[s.dataHealthSection]}>
         <Text style={[Typography.headline, { color: Colors.text.primary, marginBottom: 4, marginTop: 12 }]}>Data Health</Text>
         <Text style={{ color: Colors.text.tertiary, fontSize: 13, marginBottom: 16 }}>Real-time sync status for all connected services</Text>
-        <View style={[s.healthCard, premiumCardBase as any]}>
+        <View style={[s.healthCard, premiumCardBase as ViewStyle]}>
           {providerConfigs.map((config, i) => {
             const state = providers[config.key as keyof ProviderState];
             const isConnected = state.status === 'connected';
@@ -980,7 +980,7 @@ export default function ConnectionsScreen() {
                   : 'Not connected';
             return (
               <View key={config.key} style={[s.healthRow, i < providerConfigs.length - 1 && s.healthDivider]}>
-                <View style={[s.healthDot, { backgroundColor: dotColor }, Platform.OS === 'web' && { boxShadow: `0 0 8px ${dotColor}` } as any]} />
+                <View style={[s.healthDot, { backgroundColor: dotColor }, Platform.OS === 'web' && { boxShadow: `0 0 8px ${dotColor}` }]} />
                 <Text style={s.healthName}>{config.name}</Text>
                 <Text style={[s.healthStatus, { color: isConnected ? '#34D399' : state.status === 'error' ? '#EF4444' : state.status === 'unavailable' ? '#FF9500' : Colors.text.muted }]}>{statusText}</Text>
                 <Text style={s.healthTime}>{state.lastSync || '\u2014'}</Text>
@@ -990,7 +990,7 @@ export default function ConnectionsScreen() {
         </View>
       </View>
 
-      <View style={[s.securityNote, premiumCardBase as any]}>
+      <View style={[s.securityNote, premiumCardBase as ViewStyle]}>
         <View style={s.securityIcon}>
           <Ionicons name="shield-checkmark" size={20} color="#3B82F6" />
         </View>
@@ -1007,7 +1007,7 @@ export default function ConnectionsScreen() {
         onRequestClose={() => setSetupModalVisible(false)}
       >
         <View style={s.modalOverlay}>
-          <View style={[s.modalContainer, premiumCardBase as any]}>
+          <View style={[s.modalContainer, premiumCardBase as ViewStyle]}>
             <View style={s.modalHeader}>
               <View style={s.modalTitleRow}>
                 <View style={[s.modalIconWrap, { backgroundColor: 'rgba(244, 93, 72, 0.15)' }]}>
@@ -1098,7 +1098,7 @@ export default function ConnectionsScreen() {
         onRequestClose={() => setConsentModalVisible(false)}
       >
         <View style={s.modalOverlay}>
-          <View style={[s.modalContainer, premiumCardBase as any]}>
+          <View style={[s.modalContainer, premiumCardBase as ViewStyle]}>
             <View style={s.modalHeader}>
               <View style={s.modalTitleRow}>
                 <View style={[s.modalIconWrap, { backgroundColor: 'rgba(0, 208, 156, 0.15)' }]}>
@@ -1170,7 +1170,7 @@ export default function ConnectionsScreen() {
         onRequestClose={() => setMfaModalVisible(false)}
       >
         <View style={s.modalOverlay}>
-          <View style={[s.modalContainer, premiumCardBase as any]}>
+          <View style={[s.modalContainer, premiumCardBase as ViewStyle]}>
             <View style={s.modalHeader}>
               <View style={s.modalTitleRow}>
                 <View style={[s.modalIconWrap, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
@@ -1236,7 +1236,7 @@ export default function ConnectionsScreen() {
               style={({ hovered }: PressableState) => [
                 s.modalSubmitBtn,
                 { backgroundColor: '#3B82F6' },
-                Platform.OS === 'web' && { boxShadow: '0 4px 16px rgba(59, 130, 246, 0.3)' } as any,
+                Platform.OS === 'web' && { boxShadow: '0 4px 16px rgba(59, 130, 246, 0.3)' },
                 hovered && { opacity: 0.9 },
                 (mfaLoading || mfaCode.length < 6) && { opacity: 0.5 },
               ]}
@@ -1505,7 +1505,7 @@ const s = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       background: CARD_BG,
       border: `1px solid ${CARD_BORDER}`,
-    } as any : {}),
+    } : {}),
   },
   healthRow: {
     flexDirection: 'row',
@@ -1590,7 +1590,7 @@ const s = StyleSheet.create({
       background: CARD_BG,
       border: `1px solid ${CARD_BORDER}`,
       boxShadow: '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
-    } as any : {}),
+    } : {}),
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1648,7 +1648,7 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     color: '#fff',
     fontSize: 15,
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
   },
   errorBanner: {
     flexDirection: 'row',
@@ -1672,7 +1672,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 4px 16px rgba(244, 93, 72, 0.3)' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 4px 16px rgba(244, 93, 72, 0.3)' } : {}),
   },
   modalSubmitText: {
     color: '#fff',
@@ -1740,7 +1740,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: '#00D09C',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 4px 16px rgba(0, 208, 156, 0.3)' } as any : {}),
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 4px 16px rgba(0, 208, 156, 0.3)' } : {}),
   },
   consentAcceptText: {
     color: '#fff',

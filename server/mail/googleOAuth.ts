@@ -202,7 +202,7 @@ export async function refreshToken(suiteId: string): Promise<string> {
     SELECT refresh_token FROM oauth_tokens
     WHERE suite_id = ${suiteId}::uuid AND provider = 'google'
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length || !rows[0].refresh_token) {
     throw new Error('No Google refresh token found — re-authentication required');
   }
@@ -259,7 +259,7 @@ export async function getValidToken(suiteId: string): Promise<string> {
     SELECT access_token, expires_at FROM oauth_tokens
     WHERE suite_id = ${suiteId}::uuid AND provider = 'google'
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length) {
     throw new Error('No Google OAuth token found — setup required');
   }
@@ -279,6 +279,6 @@ export async function getConnectedEmail(suiteId: string): Promise<string | null>
     SELECT email FROM oauth_tokens
     WHERE suite_id = ${suiteId}::uuid AND provider = 'google'
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   return rows.length ? rows[0].email : null;
 }

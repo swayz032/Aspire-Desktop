@@ -212,12 +212,12 @@ export default function ReceiptsScreen() {
               key={r.id}
               style={({ hovered }: PressableState) => [
                 styles.receiptCard,
-                premiumCardStyle as any,
+                premiumCardStyle,
                 hovered && styles.receiptCardHover,
               ]}
             >
               {Platform.OS === 'web' && (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', backgroundImage: svgPatterns.invoice(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '15% auto', opacity: 0.5 } as any} />
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', backgroundImage: svgPatterns.invoice(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '15% auto', opacity: 0.5 }} />
               )}
               <View style={[styles.accentBorder, { backgroundColor: r.accentColor }]} />
               <View style={[styles.receiptIcon, { backgroundColor: `${r.accentColor}15` }]}>
@@ -229,7 +229,7 @@ export default function ReceiptsScreen() {
               </View>
               <Text style={styles.receiptAmount}>{r.amount}</Text>
               <Text style={styles.receiptTime}>{r.time}</Text>
-              <View style={[styles.badge, { backgroundColor: r.badgeBg }, Platform.OS === 'web' && { boxShadow: `0 0 8px ${r.badgeColor}30` } as any]}>
+              <View style={[styles.badge, { backgroundColor: r.badgeBg }, Platform.OS === 'web' && { boxShadow: `0 0 8px ${r.badgeColor}30` }]}>
                 <Text style={[styles.badgeText, { color: r.badgeColor }]}>{r.badge}</Text>
               </View>
             </Pressable>
@@ -237,9 +237,9 @@ export default function ReceiptsScreen() {
         </View>
       )}
 
-      <View style={[styles.statsBar, premiumCardStyle as any]}>
+      <View style={[styles.statsBar, premiumCardStyle]}>
         {Platform.OS === 'web' && (
-          <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none', backgroundImage: svgPatterns.barChart(), backgroundRepeat: 'no-repeat', backgroundPosition: 'center center', backgroundSize: '60% auto', opacity: 0.4 } as any} />
+          <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none', backgroundImage: svgPatterns.barChart(), backgroundRepeat: 'no-repeat', backgroundPosition: 'center center', backgroundSize: '60% auto', opacity: 0.4 }} />
         )}
         {stats.map((s, i) => (
           <View key={s.label} style={styles.statItem}>
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       cursor: 'pointer',
       transition: 'background-color 0.15s ease',
-    } as any : {}),
+    } : {}),
   },
   receiptCardHover: {
     backgroundColor: '#1a1f2e',

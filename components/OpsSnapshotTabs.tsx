@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from './ui/Card';
 import { CashPosition, PipelineStage, BusinessScore, FounderHubData } from '@/types';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 interface OpsSnapshotTabsProps {
   cashData: CashPosition;
@@ -88,7 +88,7 @@ function CashContent({ data }: { data: CashPosition }) {
         </Text>
         <TouchableOpacity
           style={styles.emptyCta}
-          onPress={() => router.push('/finance-hub/connections' as any)}
+          onPress={() => router.push('/finance-hub/connections' as Href)}
           activeOpacity={0.8}
         >
           <Text style={styles.emptyCtaText}>Connect accounts</Text>
@@ -174,7 +174,7 @@ function CashContent({ data }: { data: CashPosition }) {
 
       <TouchableOpacity 
         style={styles.dashboardButton}
-        onPress={() => router.push('/finance-hub' as any)}
+        onPress={() => router.push('/finance-hub' as Href)}
         activeOpacity={0.8}
       >
         <View style={styles.dashboardButtonInner}>
@@ -241,7 +241,7 @@ function FounderHubContent({ data }: { data: FounderHubData }) {
 
       <TouchableOpacity 
         style={styles.dashboardButton}
-        onPress={() => router.push('/founder-hub' as any)}
+        onPress={() => router.push('/founder-hub' as Href)}
         activeOpacity={0.8}
       >
         <View style={styles.dashboardButtonInner}>

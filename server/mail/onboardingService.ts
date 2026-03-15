@@ -38,14 +38,14 @@ async function transitionState(
   jobId: string,
   suiteId: string,
   targetState: string,
-  updates?: Record<string, any>,
+  updates?: Record<string, string | Record<string, unknown>>,
 ): Promise<void> {
   // Read current state
   const result = await db.execute(sql`
     SELECT state FROM app.mail_onboarding_jobs
     WHERE id = ${jobId}::uuid AND suite_id = ${suiteId}::uuid
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length) throw new Error('Onboarding job not found');
 
   const currentState = rows[0].state;
@@ -117,7 +117,7 @@ export async function startOnboarding(
   suiteId: string,
   officeId: string,
   provider: 'POLARIS' | 'GOOGLE',
-  context?: any,
+  context?: Record<string, unknown>,
 ): Promise<{ jobId: string; correlationId: string; provider: string; state: string }> {
   const correlationId = `corr_${crypto.randomUUID()}`;
 
@@ -127,7 +127,7 @@ export async function startOnboarding(
       VALUES (${suiteId}::uuid, ${officeId}::uuid, ${correlationId}, ${provider}, 'INIT')
       RETURNING id
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     const jobId = rows[0].id;
 
     // YELLOW receipt — starting external service setup
@@ -146,7 +146,7 @@ export async function startOnboarding(
     }
 
     return { jobId, correlationId, provider, state: provider === 'GOOGLE' ? 'GOOGLE_OAUTH_PENDING' : 'INIT' };
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Failure receipt — Law #2: receipt even on failure
     await createTrustSpineReceipt({
       suiteId,
@@ -163,12 +163,12 @@ export async function startOnboarding(
 export async function getOnboarding(
   jobId: string,
   suiteId: string,
-): Promise<any> {
+): Promise<Record<string, any>> {
   const result = await db.execute(sql`
     SELECT * FROM app.mail_onboarding_jobs
     WHERE id = ${jobId}::uuid AND suite_id = ${suiteId}::uuid
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length) throw new Error('Onboarding job not found');
 
   const job = rows[0];
@@ -200,7 +200,7 @@ export async function getOnboarding(
   };
 }
 
-function getDnsPlanRecords(job: any): Array<{ type: string; host: string; value: string; ttl?: number }> {
+function getDnsPlanRecords(job: Record<string, any>): Array<{ type: string; host: string; value: string; ttl?: number }> {
   const records: Array<{ type: string; host: string; value: string; ttl?: number }> = [
     { type: 'MX', host: '@', value: 'mx1.emailarray.com', ttl: 3600 },
     { type: 'MX', host: '@', value: 'mx2.emailarray.com', ttl: 3600 },
@@ -219,7 +219,7 @@ function getDnsPlanRecords(job: any): Array<{ type: string; host: string; value:
   return records;
 }
 
-function formatHealthResults(health: any): Array<{ type: string; ok: boolean; observed?: string }> {
+function formatHealthResults(health: Record<string, any>): Array<{ type: string; ok: boolean; observed?: string }> {
   if (!health || typeof health !== 'object') return [];
   return [
     { type: 'MX', ok: !!health.mxOk },
@@ -276,7 +276,7 @@ export async function setDomain(
       `);
 
       return { verificationTxt: result.verificationTxt };
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Failure receipt — Law #2
       await createTrustSpineReceipt({
         suiteId,
@@ -302,13 +302,13 @@ export async function generateDnsPlan(
   mailbox: string,
   displayName: string,
   domainMode: string,
-): Promise<{ records: any[] }> {
+): Promise<{ records: Array<{ type: string; host: string; value: string; ttl?: number }> }> {
   // Get job to read verification_txt and dkim values
   const result = await db.execute(sql`
     SELECT * FROM app.mail_onboarding_jobs
     WHERE id = ${jobId}::uuid AND suite_id = ${suiteId}::uuid
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length) throw new Error('Job not found');
 
   const job = rows[0];
@@ -376,7 +376,7 @@ export async function checkDns(
     SELECT domain, state FROM app.mail_onboarding_jobs
     WHERE id = ${jobId}::uuid AND suite_id = ${suiteId}::uuid
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length) throw new Error('Job not found');
 
   const { domain, state } = rows[0];
@@ -402,7 +402,7 @@ export async function checkDns(
       SELECT dkim_host, dkim_value FROM app.mail_onboarding_jobs
       WHERE id = ${jobId}::uuid AND suite_id = ${suiteId}::uuid
     `);
-    const jobRows = (jobData.rows || jobData) as any[];
+    const jobRows = (jobData.rows || jobData) as Record<string, any>[];
     if (!jobRows[0]?.dkim_host) {
       try {
         const dkim = await polaris.enableDKIM(domain, suiteId);
@@ -450,7 +450,7 @@ export async function createMailboxOnJob(
     SELECT domain, office_id FROM app.mail_onboarding_jobs
     WHERE id = ${jobId}::uuid AND suite_id = ${suiteId}::uuid
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length) throw new Error('Job not found');
 
   const { domain, office_id } = rows[0];
@@ -501,7 +501,7 @@ export async function createMailboxOnJob(
 export async function applyEliPolicy(
   jobId: string,
   suiteId: string,
-  policy: any,
+  policy: Record<string, any>,
 ): Promise<void> {
   await db.execute(sql`
     UPDATE app.mail_onboarding_jobs
@@ -526,7 +526,7 @@ export async function activateOnboarding(
     SELECT * FROM app.mail_onboarding_jobs
     WHERE id = ${jobId}::uuid AND suite_id = ${suiteId}::uuid
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length) {
     await createTrustSpineReceipt({
       suiteId,
@@ -543,7 +543,7 @@ export async function activateOnboarding(
   // Fail-closed: verify checks passed
   const checks = job.eli_config?.checks;
   if (checks && Array.isArray(checks)) {
-    const failed = checks.filter((c: any) => c.status === 'FAIL');
+    const failed = checks.filter((c: Record<string, any>) => c.status === 'FAIL');
     if (failed.length > 0) {
       await createTrustSpineReceipt({
         suiteId,
@@ -578,7 +578,7 @@ export async function activateOnboarding(
     });
 
     return { email: job.mailbox_email || '' };
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Failure receipt — Law #2
     await createTrustSpineReceipt({
       suiteId,
@@ -591,23 +591,23 @@ export async function activateOnboarding(
   }
 }
 
-export async function listAccounts(suiteId: string): Promise<any[]> {
+export async function listAccounts(suiteId: string): Promise<Record<string, any>[]> {
   const result = await db.execute(sql`
     SELECT account_id, email_address, display_name, mailbox_provider, status, encrypted_password
     FROM app.mail_accounts
     WHERE suite_id = ${suiteId}::uuid
     ORDER BY created_at DESC
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
 
   // Also check for Google OAuth connection
   const oauthResult = await db.execute(sql`
     SELECT email FROM oauth_tokens
     WHERE suite_id = ${suiteId}::uuid AND provider = 'google'
   `);
-  const oauthRows = (oauthResult.rows || oauthResult) as any[];
+  const oauthRows = (oauthResult.rows || oauthResult) as Record<string, any>[];
 
-  const accounts = rows.map((r: any) => ({
+  const accounts = rows.map((r: Record<string, any>) => ({
     id: r.account_id,
     provider: r.mailbox_provider?.toUpperCase() || 'POLARIS',
     email: r.email_address,
@@ -625,7 +625,7 @@ export async function listAccounts(suiteId: string): Promise<any[]> {
 
   // Add Google account if connected
   if (oauthRows.length) {
-    const existing = accounts.find((a: any) => a.provider === 'GOOGLE' || a.provider === 'GMAIL');
+    const existing = accounts.find((a: Record<string, any>) => a.provider === 'GOOGLE' || a.provider === 'GMAIL');
     if (!existing) {
       accounts.unshift({
         id: 'google-oauth',
@@ -660,7 +660,7 @@ export async function removeAccount(suiteId: string, accountId: string): Promise
       WHERE suite_id = ${suiteId}::uuid
         AND provider = 'google'
     `);
-    const rowCount = (result as any)?.rowCount ?? 0;
+    const rowCount = (result as Record<string, any>)?.rowCount ?? 0;
     return { removed: rowCount > 0 };
   }
 
@@ -676,11 +676,11 @@ export async function removeAccount(suiteId: string, accountId: string): Promise
       AND account_id = ${accountId}::uuid
       AND status <> 'inactive'
   `);
-  const rowCount = (result as any)?.rowCount ?? 0;
+  const rowCount = (result as Record<string, any>)?.rowCount ?? 0;
   return { removed: rowCount > 0 };
 }
 
-export async function listMailReceipts(suiteId: string): Promise<any[]> {
+export async function listMailReceipts(suiteId: string): Promise<Record<string, any>[]> {
   const result = await db.execute(sql`
     SELECT receipt_id, receipt_type, status, action, result, created_at
     FROM receipts
@@ -689,8 +689,8 @@ export async function listMailReceipts(suiteId: string): Promise<any[]> {
     ORDER BY created_at DESC
     LIMIT 100
   `);
-  const rows = (result.rows || result) as any[];
-  return rows.map((r: any) => ({
+  const rows = (result.rows || result) as Record<string, any>[];
+  return rows.map((r: Record<string, any>) => ({
     id: r.receipt_id,
     action: r.receipt_type,
     timestamp: r.created_at,

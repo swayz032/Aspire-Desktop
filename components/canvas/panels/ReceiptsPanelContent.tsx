@@ -1,4 +1,4 @@
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useCallback, memo, ComponentProps } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRealtimeReceipts } from '@/hooks/useRealtimeReceipts';
@@ -48,7 +48,7 @@ const ReceiptCard = memo(function ReceiptCard({ receipt, isOpen, onToggle }: Rec
   return (
     <Pressable onPress={() => onToggle(receipt.id)} style={s.card}>
       <View style={[s.statusIcon, { backgroundColor: bg }]}>
-        <Ionicons name={icon as any} size={20} color={color} />
+        <Ionicons name={icon as ComponentProps<typeof Ionicons>['name']} size={20} color={color} />
       </View>
       <View style={s.cardBody}>
         <Text style={s.cardType} numberOfLines={1}>
@@ -82,8 +82,8 @@ const ReceiptCard = memo(function ReceiptCard({ receipt, isOpen, onToggle }: Rec
 });
 
 export default function ReceiptsPanelContent(_props: PanelContentProps) {
-  const { receipts: rawReceipts } = useRealtimeReceipts(80) as any;
-  const receipts                  = (rawReceipts || []) as Receipt[];
+  const { receipts: rawReceipts } = useRealtimeReceipts(80);
+  const receipts                  = (rawReceipts || []) as unknown as Receipt[];
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const handleToggle = useCallback((id: string) => setExpanded(p => p === id ? null : id), []);
@@ -141,7 +141,7 @@ const s = StyleSheet.create({
   orbBehind:       {
     position: 'absolute', top: -80, right: -60, width: 280, height: 280,
     borderRadius: 140, backgroundColor: 'rgba(14,165,233,0.12)',
-    ...(Platform.OS === 'web' ? { filter: 'blur(70px)' } as any : {}),
+    ...(Platform.OS === 'web' ? { filter: 'blur(70px)' } : {}),
   },
   heroLabel:       { fontSize: 12, letterSpacing: 1.3, textTransform: 'uppercase', color: TS, marginBottom: 8 },
   heroNumber:      { fontSize: 56, fontWeight: '800', color: TP, letterSpacing: -2 },

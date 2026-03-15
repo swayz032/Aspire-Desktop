@@ -14,14 +14,14 @@ import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { ContractWidget } from '@/components/canvas/widgets/ContractWidget';
 import { supabase } from '@/lib/supabase';
 
-// Mock Supabase
+// Mock Supabase — plain mock object avoids needing `as any` on mockReturnValue
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
   },
 }));
 
-const mockSupabase = supabase as jest.Mocked<typeof supabase>;
+const mockSupabase = supabase as unknown as { from: jest.Mock };
 
 describe('ContractWidget', () => {
   const mockContract = {
@@ -75,7 +75,7 @@ describe('ContractWidget', () => {
 
     mockSupabase.from.mockReturnValue({
       select: mockSelect,
-    } as any);
+    });
 
     render(<ContractWidget {...defaultProps} />);
 
@@ -97,7 +97,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     render(<ContractWidget {...defaultProps} />);
 
@@ -119,7 +119,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<ContractWidget {...defaultProps} />);
 
@@ -137,7 +137,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<ContractWidget {...defaultProps} />);
 
@@ -156,7 +156,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getAllByText } = render(<ContractWidget {...defaultProps} />);
 
@@ -179,7 +179,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getAllByText } = render(<ContractWidget {...defaultProps} />);
 
@@ -197,7 +197,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getAllByText } = render(<ContractWidget {...defaultProps} />);
 
@@ -219,7 +219,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<ContractWidget {...defaultProps} />);
 
@@ -242,7 +242,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<ContractWidget {...defaultProps} />);
 
@@ -264,7 +264,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const onViewClick = jest.fn();
     const { getByText } = render(
@@ -285,7 +285,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const onViewClick = jest.fn();
     const { getByText } = render(
@@ -308,7 +308,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const onSendReminderClick = jest.fn();
     const { getByText } = render(
@@ -334,7 +334,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const onSendReminderClick = jest.fn();
     const { queryByText } = render(
@@ -362,7 +362,7 @@ describe('ContractWidget', () => {
           }),
         }),
       }),
-    } as any);
+    });
 
     const { getByText } = render(<ContractWidget {...defaultProps} />);
 

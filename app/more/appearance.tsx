@@ -57,7 +57,7 @@ export default function AppearanceScreen() {
                 onPress={() => handleUpdate('theme', option.value)}
               >
                 <Ionicons 
-                  name={option.icon as any} 
+                  name={option.icon as keyof typeof Ionicons.glyphMap}
                   size={24} 
                   color={settings.theme === option.value ? Colors.accent.cyan : Colors.text.secondary} 
                 />

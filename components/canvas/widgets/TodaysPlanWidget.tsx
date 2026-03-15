@@ -190,7 +190,7 @@ export function TodaysPlanWidget({ suiteId, officeId }: TodaysPlanWidgetProps) {
                 s.taskRow,
                 pressed && { backgroundColor: 'rgba(255,255,255,0.04)' }
               ]}
-              onPress={() => { playClickSound(); setSelectedTask(task); setViewState('list' as any === 'detail' ? 'detail' : 'detail'); }}
+              onPress={() => { playClickSound(); setSelectedTask(task); setViewState('detail'); }}
             >
               <View style={s.taskLeft}>
                 <View style={[s.badge, { backgroundColor: PRIORITY[task.priority].bg, borderWidth: 1, borderColor: PRIORITY[task.priority].border }]}>
@@ -206,7 +206,7 @@ export function TodaysPlanWidget({ suiteId, officeId }: TodaysPlanWidgetProps) {
               <View style={s.taskRight}>
                 <Text style={s.taskTime}>{task.timeEstimate}</Text>
                 <Pressable
-                  onPress={e => { (e as any).stopPropagation?.(); toggleTask(task); }}
+                  onPress={e => { (e as unknown as { stopPropagation?: () => void }).stopPropagation?.(); toggleTask(task); }}
                   style={[s.checkbox, task.completed && s.checkboxDone]}
                   hitSlop={8}
                 >
@@ -252,27 +252,27 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.4)',
     fontWeight: '500',
-  } as any,
+  },
   heroCount: {
     fontSize: 40,
     fontWeight: '800',
     color: '#FFFFFF',
     lineHeight: 46,
     letterSpacing: -1.5,
-  } as any,
+  },
   heroCrush: {
     fontSize: 15,
     color: 'rgba(255,255,255,0.45)',
     fontWeight: '500',
     marginTop: 2,
-  } as any,
+  },
   heroDate: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.22)',
     textAlign: 'right',
     maxWidth: 90,
     lineHeight: 16,
-  } as any,
+  },
   filters: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -285,7 +285,7 @@ const s = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   filterPillActive: {
     backgroundColor: 'rgba(59,130,246,0.15)',
@@ -295,7 +295,7 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.4)',
     fontWeight: '600',
-  } as any,
+  },
   filterTextActive: { color: '#FFF', fontWeight: '700' },
   list: { flex: 1 },
   centerPad: {
@@ -317,7 +317,7 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.05)',
     gap: 12,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   taskLeft: { flex: 1, gap: 4 },
   badge: {
@@ -330,13 +330,13 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
-  } as any,
+  },
   taskTitle: {
     fontSize: 15,
     fontWeight: '700',
     color: '#FFF',
     lineHeight: 20,
-  } as any,
+  },
   taskDone: {
     color: 'rgba(255,255,255,0.28)',
     textDecorationLine: 'line-through',
@@ -358,7 +358,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   checkboxDone: {
     backgroundColor: '#3B82F6',
@@ -377,13 +377,13 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 12,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   addText: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.3)',
     fontWeight: '600',
-  } as any,
+  },
   detailHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -400,13 +400,13 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.07)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   detailHeaderTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   detailScroll: { flex: 1 },
   detailContent: { padding: 24, gap: 12 },
   detailPriorityBadge: {
@@ -419,14 +419,14 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,
-  } as any,
+  },
   detailTitle: {
     fontSize: 22,
     fontWeight: '800',
     color: '#FFF',
     lineHeight: 28,
     marginTop: 4,
-  } as any,
+  },
   detailDesc: {
     fontSize: 15,
     color: 'rgba(255,255,255,0.5)',
@@ -456,5 +456,5 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
 });

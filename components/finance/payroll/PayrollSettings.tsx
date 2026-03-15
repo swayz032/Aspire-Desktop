@@ -266,7 +266,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                   <Text style={styles.cardTitle}>{formatStatusLabel(schedule.frequency || 'Unknown')} Schedule</Text>
                   {schedule.name && <Text style={styles.cardSubtitle}>{schedule.name}</Text>}
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(110, 110, 115, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isActive ? '0 0 6px #10B98125' : 'none' } as any : {}]}>
+                <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(110, 110, 115, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isActive ? '0 0 6px #10B98125' : 'none' } : {}]}>
                   <Text style={[styles.statusText, { color: isActive ? '#10B981' : '#6e6e73' }]}>
                     {isActive ? 'Active' : 'Inactive'}
                   </Text>
@@ -553,7 +553,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                   </Text>
                   {loc.street_2 && <Text style={styles.cardSubtitle}>{loc.street_2}</Text>}
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(110, 110, 115, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isActive ? '0 0 6px #10B98125' : 'none' } as any : {}]}>
+                <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(110, 110, 115, 0.12)' }, Platform.OS === 'web' ? { boxShadow: isActive ? '0 0 6px #10B98125' : 'none' } : {}]}>
                   <Text style={[styles.statusText, { color: isActive ? '#10B981' : '#6e6e73' }]}>
                     {isActive ? 'Active' : 'Inactive'}
                   </Text>
@@ -680,7 +680,7 @@ export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }
                 {bank.verification_status && (
                   <View style={[styles.statusBadge, {
                     backgroundColor: bank.verification_status === 'verified' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)'
-                  }, Platform.OS === 'web' ? { boxShadow: bank.verification_status === 'verified' ? '0 0 6px #10B98125' : '0 0 6px #f59e0b25' } as any : {}]}>
+                  }, Platform.OS === 'web' ? { boxShadow: bank.verification_status === 'verified' ? '0 0 6px #10B98125' : '0 0 6px #f59e0b25' } : {}]}>
                     <Text style={[styles.statusText, {
                       color: bank.verification_status === 'verified' ? '#10B981' : '#f59e0b'
                     }]}>
@@ -735,9 +735,9 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 10,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   cardHeader: {
     flexDirection: 'row',
@@ -892,9 +892,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   emptyCardText: {
     color: '#6e6e73',

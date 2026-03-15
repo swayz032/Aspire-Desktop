@@ -19,7 +19,7 @@ async function checkList(accessToken: string): Promise<CheckResult> {
   try {
     const result = await listThreads(accessToken, { maxResults: 1 });
     return { id: 'LIST', status: 'PASS', message: `Can list threads (${result.resultSizeEstimate || 0} estimated)` };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return { id: 'LIST', status: 'FAIL', message: 'Cannot list messages' };
   }
 }
@@ -33,7 +33,7 @@ async function checkDraft(accessToken: string): Promise<CheckResult> {
     });
     await createDraft(accessToken, raw);
     return { id: 'DRAFT', status: 'PASS', message: 'Successfully created test draft' };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return { id: 'DRAFT', status: 'FAIL', message: 'Cannot create draft' };
   }
 }
@@ -48,7 +48,7 @@ async function checkSendTest(accessToken: string, email: string): Promise<CheckR
     });
     await sendMessage(accessToken, raw);
     return { id: 'SEND_TEST', status: 'PASS', message: 'Successfully sent test email to self' };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return { id: 'SEND_TEST', status: 'FAIL', message: 'Cannot send test email' };
   }
 }
@@ -56,14 +56,14 @@ async function checkSendTest(accessToken: string, email: string): Promise<CheckR
 async function checkLabel(accessToken: string): Promise<CheckResult> {
   try {
     const labels = await listLabels(accessToken);
-    const aspireLabel = labels.find((l: any) => l.name === 'Aspire/Managed');
+    const aspireLabel = labels.find((l: Record<string, any>) => l.name === 'Aspire/Managed');
 
     if (!aspireLabel) {
       await createLabel(accessToken, 'Aspire/Managed');
     }
 
     return { id: 'LABEL', status: 'PASS', message: 'Aspire/Managed label exists' };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return { id: 'LABEL', status: 'FAIL', message: 'Cannot manage labels' };
   }
 }
@@ -80,7 +80,7 @@ export async function runChecks(
     SELECT provider, mailbox_email, state FROM app.mail_onboarding_jobs
     WHERE id = ${jobId}::uuid AND suite_id = ${suiteId}::uuid
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as Record<string, any>[];
   if (!rows.length) throw new Error('Onboarding job not found');
 
   const { provider, mailbox_email } = rows[0];
@@ -126,7 +126,7 @@ export async function runChecks(
   const existingConfig = await db.execute(sql`
     SELECT eli_config FROM app.mail_onboarding_jobs WHERE id = ${jobId}::uuid AND suite_id = ${suiteId}::uuid
   `);
-  const configRows = (existingConfig.rows || existingConfig) as any[];
+  const configRows = (existingConfig.rows || existingConfig) as Record<string, any>[];
   const currentConfig = configRows[0]?.eli_config || {};
 
   await db.execute(sql`

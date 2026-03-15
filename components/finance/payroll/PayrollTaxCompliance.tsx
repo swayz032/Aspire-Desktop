@@ -176,7 +176,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
             <Text style={styles.taxInfoTitle}>{taxDetails?.legal_name || companyName}</Text>
             <Text style={styles.taxInfoSubtitle}>Federal Tax Information</Text>
           </View>
-          <View style={[styles.verifiedBadge, { backgroundColor: einVerified ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)' }, Platform.OS === 'web' ? { boxShadow: einVerified ? '0 0 6px #10B98125' : '0 0 6px #f59e0b25' } as any : {}]}>
+          <View style={[styles.verifiedBadge, { backgroundColor: einVerified ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)' }, Platform.OS === 'web' ? { boxShadow: einVerified ? '0 0 6px #10B98125' : '0 0 6px #f59e0b25' } : {}]}>
             <Ionicons name={einVerified ? 'checkmark-circle' : 'time-outline'} size={14} color={einVerified ? '#10B981' : '#f59e0b'} />
             <Text style={[styles.verifiedText, { color: einVerified ? '#10B981' : '#f59e0b' }]}>
               {einVerified ? 'EIN Verified' : 'EIN Pending'}
@@ -231,7 +231,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
               )}
             </View>
             <Pressable
-              style={[styles.updateButton, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}
+              style={[styles.updateButton, Platform.OS === 'web' ? { cursor: 'pointer' } : {}]}
               onPress={() => setIsEditing(true)}
             >
               <Ionicons name="create-outline" size={16} color="#ffffff" />
@@ -250,7 +250,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
                       styles.toggleButton,
                       editedValues.filing_form === option && styles.toggleButtonSelected,
                       editedValues.filing_form === option && { backgroundColor: 'rgba(59,130,246,0.15)', borderColor: '#3B82F6' },
-                      Platform.OS === 'web' ? { cursor: 'pointer' } as any : {},
+                      Platform.OS === 'web' ? { cursor: 'pointer' } : {},
                     ]}
                     onPress={() => toggleOption('filing_form', option)}
                   >
@@ -277,7 +277,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
                       styles.toggleButton,
                       editedValues.deposit_schedule === option && styles.toggleButtonSelected,
                       editedValues.deposit_schedule === option && { backgroundColor: 'rgba(59,130,246,0.15)', borderColor: '#3B82F6' },
-                      Platform.OS === 'web' ? { cursor: 'pointer' } as any : {},
+                      Platform.OS === 'web' ? { cursor: 'pointer' } : {},
                     ]}
                     onPress={() => toggleOption('deposit_schedule', option)}
                   >
@@ -304,7 +304,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
                       styles.toggleButton,
                       editedValues.tax_payer_type === option && styles.toggleButtonSelected,
                       editedValues.tax_payer_type === option && { backgroundColor: 'rgba(59,130,246,0.15)', borderColor: '#3B82F6' },
-                      Platform.OS === 'web' ? { cursor: 'pointer' } as any : {},
+                      Platform.OS === 'web' ? { cursor: 'pointer' } : {},
                     ]}
                     onPress={() => toggleOption('tax_payer_type', option)}
                   >
@@ -323,7 +323,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
 
             <View style={styles.editActions}>
               <Pressable
-                style={[styles.actionButton, styles.saveButton, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}
+                style={[styles.actionButton, styles.saveButton, Platform.OS === 'web' ? { cursor: 'pointer' } : {}]}
                 onPress={handleSaveChanges}
                 disabled={savingChanges}
               >
@@ -337,7 +337,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
                 )}
               </Pressable>
               <Pressable
-                style={[styles.actionButton, styles.cancelButton, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}
+                style={[styles.actionButton, styles.cancelButton, Platform.OS === 'web' ? { cursor: 'pointer' } : {}]}
                 onPress={handleCancel}
                 disabled={savingChanges}
               >
@@ -371,7 +371,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
             <View style={styles.checkActions}>
               {check.status !== 'verified' && (
                 <Pressable
-                  style={[styles.configureButton, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}
+                  style={[styles.configureButton, Platform.OS === 'web' ? { cursor: 'pointer' } : {}]}
                   onPress={() => setIsEditing(true)}
                 >
                   <Text style={styles.configureButtonText}>{check.status === 'default' ? 'Review' : 'Configure'}</Text>
@@ -406,7 +406,7 @@ export function PayrollTaxCompliance({ gustoCompany, gustoEmployees, gustoConnec
               </View>
             </View>
             <Pressable
-              style={[styles.viewDetailsButton, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}]}
+              style={[styles.viewDetailsButton, Platform.OS === 'web' ? { cursor: 'pointer' } : {}]}
               onPress={() => {
                 if (expandedEmployee === employee.uuid) {
                   setExpandedEmployee(null);
@@ -469,9 +469,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   taxInfoHeader: {
     flexDirection: 'row',
@@ -619,9 +619,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
     ...(Platform.OS === 'web' ? {
-      background: CARD_BG as any,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.4)' as any,
-    } as any : {}),
+      background: CARD_BG,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    } : {}),
   },
   checkIcon: {
     width: 36,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, TouchableWithoutFeedback, Text, Platform, Animated, TextInput, Image, ImageBackground, Alert, Pressable, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
@@ -182,9 +183,9 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
   }
 
   return (
-    <Animated.View style={{ overflow: 'hidden' as any, height: iframeHeightAnim }}>
+    <Animated.View style={{ overflow: 'hidden', height: iframeHeightAnim }}>
       <iframe
-        ref={iframeRef as any}
+        ref={iframeRef as React.RefObject<HTMLIFrameElement>}
         srcDoc={wrappedHtml}
         sandbox="allow-same-origin allow-scripts"
         scrolling="no"
@@ -197,7 +198,7 @@ function EmailHtmlRenderer({ htmlContent }: { htmlContent: string }) {
           backgroundColor: '#0D0D0F',
           display: 'block',
           overflow: 'hidden',
-        } as any}
+        }}
         title="Email content"
       />
     </Animated.View>
@@ -2159,9 +2160,9 @@ export default function InboxScreen() {
                 </TouchableOpacity>
                 {isWeb && (
                   <input
-                    ref={dateInputRef as any}
+                    ref={dateInputRef as React.RefObject<HTMLInputElement>}
                     type="date"
-                    style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, top: -100, left: -100 } as any}
+                    style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, top: -100, left: -100 }}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDateFilter(e.target.value || null)}
                   />
                 )}
@@ -2229,7 +2230,7 @@ export default function InboxScreen() {
                 style={styles.mailSetupPrimaryButton}
                 onPress={() => {
                   setShowMailSetupModal(false);
-                  router.push('/inbox/setup' as any);
+                  navigateTo('/inbox/setup');
                 }}
               >
                 <Text style={styles.mailSetupPrimaryButtonText}>Set Up Mailbox</Text>
@@ -2252,7 +2253,7 @@ export default function InboxScreen() {
             <Text style={styles.mailSetupEmptyDesc}>Set up your business email to start receiving and managing mail in Aspire Inbox.</Text>
             <TouchableOpacity
               style={styles.mailSetupEmptyCTA}
-              onPress={() => router.push('/inbox/setup' as any)}
+              onPress={() => navigateTo('/inbox/setup')}
             >
               <Ionicons name="settings-outline" size={15} color="#fff" />
               <Text style={styles.mailSetupEmptyCTAText}>Set Up Mailbox</Text>
@@ -2457,7 +2458,7 @@ export default function InboxScreen() {
                 {/* Hidden file input for web */}
                 {isWeb && (
                   <input
-                    ref={fileInputRef as any}
+                    ref={fileInputRef as React.RefObject<HTMLInputElement>}
                     type="file"
                     multiple
                     style={{ display: 'none' }}
@@ -2515,7 +2516,7 @@ export default function InboxScreen() {
             <TouchableOpacity
               style={styles.mailboxModalAddBtn}
               activeOpacity={0.8}
-              onPress={() => { setShowMailboxModal(false); router.push('/inbox/setup' as any); }}
+              onPress={() => { setShowMailboxModal(false); navigateTo('/inbox/setup'); }}
             >
               <Ionicons name="add-circle-outline" size={16} color="#fff" />
               <Text style={styles.mailboxModalAddText}>Add Mailbox</Text>
@@ -2677,7 +2678,7 @@ const fp = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     ...(isWeb ? { transition: 'background-color 0.2s ease' } : {}),
-  } as any,
+  },
   actionBtnText: {
     ...Typography.caption,
     color: Colors.text.tertiary,
@@ -2890,7 +2891,7 @@ const fp = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
-  } as any,
+  },
   attachmentIconWrap: {
     width: 36,
     height: 36,
@@ -3007,7 +3008,7 @@ const styles = StyleSheet.create({
   headerBannerImage: {
     resizeMode: 'cover',
     ...(Platform.OS === 'web'
-      ? { objectPosition: 'center 35%' } as any
+      ? { objectPosition: 'center 35%' }
       : {}),
   },
   headerOverlay: {
@@ -3127,13 +3128,13 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
-  } as any,
+  },
   searchInput: {
     flex: 1,
     ...Typography.caption,
     color: Colors.text.primary,
     padding: 0,
-  } as any,
+  },
   capacityText: {
     ...Typography.small,
     color: Colors.text.disabled,
@@ -3160,7 +3161,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(255,255,255,0.04)',
     ...(isWeb ? { transition: 'all 0.2s ease', cursor: 'pointer' } : {}),
-  } as any,
+  },
   filterPillActive: {
     backgroundColor: Colors.accent.cyan,
   },
@@ -3203,7 +3204,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
     marginBottom: Spacing.sm,
     ...(isWeb ? { transition: 'background-color 0.2s ease', cursor: 'pointer' } : {}),
-  } as any,
+  },
   cardSelected: {
     borderLeftWidth: 3,
     borderLeftColor: Colors.accent.cyan,
@@ -3338,7 +3339,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     ...(isWeb ? { transition: 'background-color 0.2s ease', cursor: 'pointer' } : {}),
-  } as any,
+  },
   smartReplyText: {
     ...Typography.small,
     color: Colors.text.secondary,
@@ -3413,7 +3414,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
     backgroundColor: Colors.surface.card,
     ...(isWeb ? { transition: 'background-color 0.2s ease', cursor: 'pointer' } : {}),
-  } as any,
+  },
   mailboxSelectorHover: {
     backgroundColor: Colors.surface.cardHover,
   },
@@ -3458,7 +3459,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm + 2,
     ...(isWeb ? { cursor: 'pointer' } : {}),
-  } as any,
+  },
   mailboxRemoveButton: {
     width: 32,
     height: 32,
@@ -3467,7 +3468,7 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     ...(isWeb ? { cursor: 'pointer' } : {}),
-  } as any,
+  },
   mailboxDropdownItemActive: {
     backgroundColor: 'rgba(59,130,246,0.06)',
   },
@@ -3491,11 +3492,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm + 2,
     borderBottomWidth: 0,
     ...(isWeb ? { cursor: 'pointer' } : {}),
-  } as any,
+  },
 
   // ── Mail Setup ──
   mailSetupOverlay: {
-    ...(Platform.OS === 'web' ? { position: 'fixed' as any } : { position: 'absolute' as const }),
+    ...(Platform.OS === 'web' ? { position: 'fixed' as const } : { position: 'absolute' as const }),
     top: 0,
     left: 0,
     right: 0,
@@ -3506,7 +3507,7 @@ const styles = StyleSheet.create({
     zIndex: 9999,
     paddingHorizontal: Spacing.xl,
     ...(isWeb ? { backdropFilter: 'blur(12px)' } : {}),
-  } as any,
+  },
   mailSetupModal: {
     width: '100%' as unknown as number,
     maxWidth: 440,
@@ -3517,7 +3518,7 @@ const styles = StyleSheet.create({
     padding: Spacing.xl + Spacing.sm,
     alignItems: 'center' as const,
     ...(isWeb ? { boxShadow: '0 24px 64px rgba(0,0,0,0.5)' } : {}),
-  } as any,
+  },
   mailSetupIconContainer: {
     width: 64,
     height: 64,
@@ -3632,7 +3633,7 @@ const styles = StyleSheet.create({
       cursor: 'pointer',
       transition: 'transform 0.2s ease, box-shadow 0.2s ease',
     } : {}),
-  } as any,
+  },
   unifiedFabText: {
     color: '#fff',
     fontSize: 14,
@@ -3641,7 +3642,7 @@ const styles = StyleSheet.create({
 
   // ── Unified Modal (Compose + Eli) ──
   unifiedOverlay: {
-    ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
+    ...(isWeb ? { position: 'fixed' as const } : { position: 'absolute' as const }),
     top: 0,
     left: 0,
     right: 0,
@@ -3651,7 +3652,7 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     zIndex: 200,
     ...(isWeb ? { backdropFilter: 'blur(12px)' } : {}),
-  } as any,
+  },
   unifiedModal: {
     width: '92%',
     maxWidth: 640,
@@ -3664,7 +3665,7 @@ const styles = StyleSheet.create({
     ...(isWeb ? {
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px rgba(0,0,0,0.5)',
     } : {}),
-  } as any,
+  },
   unifiedModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3673,11 +3674,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
-  } as any,
+  },
   unifiedModalTabs: {
     flexDirection: 'row',
     gap: Spacing.xs,
-  } as any,
+  },
   unifiedModalTab: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3686,7 +3687,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.md,
     ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
-  } as any,
+  },
   unifiedModalTabActive: {
     backgroundColor: Colors.accent.cyanLight,
   },
@@ -3725,7 +3726,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
-  } as any,
+  },
 
   // ── Compose Tab ──
   composeContent: {
@@ -3739,7 +3740,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm + 2,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.04)',
-  } as any,
+  },
   composeFieldLabel: {
     ...Typography.small,
     color: Colors.text.muted,
@@ -3752,7 +3753,7 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     padding: 0,
     ...(isWeb ? { outlineStyle: 'none' } : {}),
-  } as any,
+  },
   composeFromText: {
     ...Typography.caption,
     color: Colors.text.tertiary,
@@ -3764,7 +3765,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: Spacing.sm,
     ...(isWeb ? { cursor: 'pointer' } : {}),
-  } as any,
+  },
   composeBody: {
     flex: 1,
     minHeight: 240,
@@ -3774,7 +3775,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     textAlignVertical: 'top',
     ...(isWeb ? { outlineStyle: 'none' } : {}),
-  } as any,
+  },
   composeAttachmentsList: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.sm,
@@ -3788,7 +3789,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.sm + 2,
     paddingVertical: Spacing.xs + 2,
-  } as any,
+  },
   composeAttachmentName: {
     ...Typography.small,
     color: Colors.text.primary,
@@ -3811,11 +3812,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.04)',
-  } as any,
+  },
   composeToolbar: {
     flexDirection: 'row',
     gap: Spacing.xs,
-  } as any,
+  },
   composeToolbarBtn: {
     width: 36,
     height: 36,
@@ -3823,7 +3824,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
-  } as any,
+  },
   composeSendBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3833,7 +3834,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm + 2,
     borderRadius: BorderRadius.full,
     ...(isWeb ? { cursor: 'pointer', transition: 'opacity 0.2s ease' } : {}),
-  } as any,
+  },
   composeSendText: {
     color: '#fff',
     fontSize: 13,
@@ -3853,7 +3854,7 @@ const styles = StyleSheet.create({
     right: 24,
     alignItems: 'flex-end',
     zIndex: 90,
-  } as any,
+  },
   finnFab: {
     width: 56,
     height: 56,
@@ -3866,7 +3867,7 @@ const styles = StyleSheet.create({
       cursor: 'pointer',
       transition: 'transform 0.2s ease, box-shadow 0.2s ease',
     } : {}),
-  } as any,
+  },
   finnFabImage: {
     width: 52,
     height: 52,
@@ -3885,7 +3886,7 @@ const styles = StyleSheet.create({
     zIndex: 200,
     ...Shadows.lg,
     ...(isWeb ? { backdropFilter: 'blur(16px)', boxShadow: '0 16px 48px rgba(0,0,0,0.5)' } : {}),
-  } as any,
+  },
   finnMenuItem: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -3893,7 +3894,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
-  } as any,
+  },
   finnMenuIcon: {
     width: 36,
     height: 36,
@@ -3921,7 +3922,7 @@ const styles = StyleSheet.create({
     position: 'relative' as const,
     backgroundColor: 'transparent',
     ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.15s ease' } : {}),
-  } as any,
+  },
   mailRowInner: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -4050,7 +4051,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     maxWidth: 260,
     ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.2s ease' } : {}),
-  } as any,
+  },
   mailboxPillText: {
     ...Typography.small,
     color: Colors.text.secondary,
@@ -4086,7 +4087,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.05)',
     backgroundColor: '#0a0a0c',
     ...(isWeb ? { boxShadow: '0 1px 0 rgba(255,255,255,0.04)' } : {}),
-  } as any,
+  },
   emailFullNavBack: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -4107,13 +4108,13 @@ const styles = StyleSheet.create({
   emailFullBody: {
     flex: 1,
     ...(isWeb ? { scrollbarWidth: 'none', msOverflowStyle: 'none' } : {}),
-  } as any,
+  },
   emailFullBodyContent: {
     paddingHorizontal: isWideScreen ? 56 : 22,
     paddingTop: 32,
     paddingBottom: 100,
     ...(isWideScreen ? { maxWidth: 720, alignSelf: 'center' as const, width: '100%' } : {}),
-  } as any,
+  },
   emailFullSenderBlock: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -4178,7 +4179,7 @@ const styles = StyleSheet.create({
     zIndex: 20,
     ...(isWeb ? { boxShadow: '0 4px 20px rgba(217,119,6,0.45)' } : { elevation: 8 }),
     overflow: 'hidden' as const,
-  } as any,
+  },
   emailReplyPopup: {
     position: 'absolute' as const,
     bottom: 92,
@@ -4191,7 +4192,7 @@ const styles = StyleSheet.create({
     zIndex: 20,
     overflow: 'hidden' as const,
     ...(isWeb ? { backdropFilter: 'blur(24px)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' } : { elevation: 12 }),
-  } as any,
+  },
   emailReplyPopupPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -4220,7 +4221,7 @@ const styles = StyleSheet.create({
     fontWeight: '400' as const,
   },
   emailModalOverlay: {
-    ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
+    ...(isWeb ? { position: 'fixed' as const } : { position: 'absolute' as const }),
     top: 0,
     left: 0,
     right: 0,
@@ -4230,7 +4231,7 @@ const styles = StyleSheet.create({
     justifyContent: isWideScreen ? ('center' as const) : ('flex-end' as const),
     alignItems: isWideScreen ? ('center' as const) : ('stretch' as const),
     ...(isWideScreen ? { backdropFilter: 'blur(10px)' } : {}),
-  } as any,
+  },
   emailModalCard: {
     backgroundColor: '#0D0D0F',
     borderTopLeftRadius: 20,
@@ -4238,12 +4239,12 @@ const styles = StyleSheet.create({
     ...(isWideScreen ? { borderBottomLeftRadius: 20, borderBottomRightRadius: 20 } : {}),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.07)',
-    height: isWideScreen ? ('88%' as any) : ('95%' as any),
-    ...(isTablet ? { width: '90%' as any, maxWidth: 720 } : {}),
-    ...(isDesktop ? { width: '82%' as any, maxWidth: 1000 } : {}),
+    height: isWideScreen ? '88%' : '95%',
+    ...(isTablet ? { width: '90%', maxWidth: 720 } : {}),
+    ...(isDesktop ? { width: '82%', maxWidth: 1000 } : {}),
     flexDirection: 'column' as const,
     ...(isWideScreen ? { boxShadow: '0 32px 80px rgba(0,0,0,0.7)' } : { boxShadow: '0 -24px 64px rgba(0,0,0,0.6)' }),
-  } as any,
+  },
   emailModalHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -4367,7 +4368,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     ...(isWeb ? { cursor: 'pointer' } : {}),
-  } as any,
+  },
   emailModalAttachName: {
     flex: 1,
     fontSize: 13,
@@ -4439,7 +4440,7 @@ const styles = StyleSheet.create({
 
   // ── Mailbox Manager Modal (T001) ──
   mailboxModalOverlay: {
-    ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
+    ...(isWeb ? { position: 'fixed' as const } : { position: 'absolute' as const }),
     top: 0,
     left: 0,
     right: 0,
@@ -4450,7 +4451,7 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     paddingHorizontal: 20,
     ...(isWeb ? { backdropFilter: 'blur(10px)' } : {}),
-  } as any,
+  },
   mailboxModalCard: {
     width: '100%' as unknown as number,
     maxWidth: 420,
@@ -4461,7 +4462,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden' as const,
     maxHeight: '70%' as unknown as number,
     ...(isWeb ? { boxShadow: '0 24px 64px rgba(0,0,0,0.6)' } : {}),
-  } as any,
+  },
   mailboxModalHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -4485,7 +4486,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.04)',
     ...(isWeb ? { cursor: 'pointer', transition: 'background-color 0.15s ease' } : {}),
-  } as any,
+  },
   mailboxModalItemActive: {
     backgroundColor: 'rgba(56,189,248,0.05)',
   },
@@ -4543,7 +4544,7 @@ const styles = StyleSheet.create({
 
   // ── Eli Voice Modal (T006) ──
   eliVoiceOverlay: {
-    ...(isWeb ? { position: 'fixed' as any } : { position: 'absolute' as const }),
+    ...(isWeb ? { position: 'fixed' as const } : { position: 'absolute' as const }),
     top: 0,
     left: 0,
     right: 0,
@@ -4553,18 +4554,18 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     ...(isWeb ? { backdropFilter: 'blur(8px)' } : {}),
-  } as any,
+  },
   eliVoiceModal: {
     backgroundColor: '#000',
     borderRadius: 28,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    width: isWeb ? 440 : '92%' as any,
+    width: isWeb ? 440 : '92%',
     height: isWeb ? 560 : 520,
     overflow: 'hidden' as const,
     position: 'relative' as const,
     ...(isWeb ? { boxShadow: '0 32px 80px rgba(0,0,0,0.9)' } : {}),
-  } as any,
+  },
   eliVoiceClose: {
     position: 'absolute' as const,
     top: 20,
@@ -4612,7 +4613,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#F59E0B',
     ...(isWeb ? { boxShadow: '0 0 40px rgba(245,158,11,0.4)' } : {}),
-  } as any,
+  },
   eliOrbFallback: {
     width: 220,
     height: 220,

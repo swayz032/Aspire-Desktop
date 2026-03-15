@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, View, ScrollView, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
@@ -59,7 +60,7 @@ function LinkCard({ item, onPress }: { item: PolicyLink; onPress: () => void }) 
   return (
     <TouchableOpacity style={styles.linkCard} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.linkIcon}>
-        <Ionicons name={item.icon as any} size={22} color={Colors.accent.cyan} />
+        <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={22} color={Colors.accent.cyan} />
       </View>
       <View style={styles.linkInfo}>
         <Text style={styles.linkTitle}>{item.title}</Text>
@@ -86,12 +87,12 @@ export default function PoliciesScreen() {
 
         <Text style={styles.sectionLabel}>Legal</Text>
         {legalLinks.map((item) => (
-          <LinkCard key={item.id} item={item} onPress={() => router.push(item.route as any)} />
+          <LinkCard key={item.id} item={item} onPress={() => navigateTo(item.route)} />
         ))}
 
         <Text style={[styles.sectionLabel, { marginTop: Spacing.lg }]}>Plaid & Security</Text>
         {plaidLinks.map((item) => (
-          <LinkCard key={item.id} item={item} onPress={() => router.push(item.route as any)} />
+          <LinkCard key={item.id} item={item} onPress={() => navigateTo(item.route)} />
         ))}
 
         <View style={styles.footerNote}>

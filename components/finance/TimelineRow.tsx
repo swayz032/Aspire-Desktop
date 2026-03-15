@@ -1,6 +1,6 @@
 import React from 'react';
 import type { PressableState } from '@/types/common';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 
@@ -112,17 +112,17 @@ export default function TimelineRow({ event, onPress, expanded = false }: Timeli
   const label = getEventLabel(event.eventType);
   const relTime = getRelativeTime(event.occurredAt);
 
-  const webHoverStyle = Platform.OS === 'web' ? { cursor: 'pointer' as any } : {};
+  const webHoverStyle = Platform.OS === 'web' ? { cursor: 'pointer' } : {};
 
   return (
     <View style={styles.wrapper}>
       <Pressable
         onPress={onPress}
-        style={({ hovered }: PressableState) => [
+        style={(({ hovered }: PressableState) => [
           styles.row,
           Platform.OS === 'web' && hovered && styles.rowHovered,
           webHoverStyle,
-        ]}
+        ]) as unknown as StyleProp<ViewStyle>}
       >
         <View style={[styles.iconCircle, { backgroundColor: providerColor + '1A' }]}>
           <Ionicons
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   detailValue: {
     ...Typography.caption,
     color: Colors.text.secondary,
-    maxWidth: '60%' as any,
+    maxWidth: '60%',
     textAlign: 'right',
   },
 });

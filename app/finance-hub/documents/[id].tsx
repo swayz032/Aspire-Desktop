@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
@@ -221,7 +222,7 @@ export default function ContractDetailPage() {
         {/* Back button */}
         <Pressable
           style={[styles.backBtn, webOnly({ cursor: 'pointer' })]}
-          onPress={() => router.push('/finance-hub/documents' as any)}
+          onPress={() => navigateTo('/finance-hub/documents')}
           accessibilityRole="button"
           accessibilityLabel="Back to documents"
         >
@@ -249,7 +250,7 @@ export default function ContractDetailPage() {
               <View style={styles.metaRow}>
                 {laneMeta && (
                   <View style={[styles.metaPill, { backgroundColor: laneMeta.color + '15' }]}>
-                    <Ionicons name={laneMeta.icon as any} size={14} color={laneMeta.color} />
+                    <Ionicons name={laneMeta.icon as keyof typeof Ionicons.glyphMap} size={14} color={laneMeta.color} />
                     <Text style={[styles.metaPillText, { color: laneMeta.color }]}>
                       {laneMeta.label}
                     </Text>
@@ -376,7 +377,7 @@ const ActionButton = React.memo(function ActionButtonInner({ icon, label, color,
       {isLoading ? (
         <ActivityIndicator size="small" color={color} />
       ) : (
-        <Ionicons name={icon as any} size={18} color={color} />
+        <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={18} color={color} />
       )}
       <Text style={[styles.actionBtnLabel, { color }]}>{label}</Text>
     </Pressable>

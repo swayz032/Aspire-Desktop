@@ -13,6 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Typography, BorderRadius, Canvas } from '@/constants/tokens';
 import { Toast } from '@/components/session/Toast';
@@ -256,18 +257,18 @@ export default function ConferenceLobby() {
     // Filter store items for conference-relevant types + merge local video invitation items
     const conferenceItems: AuthorityItem[] = storeItems
       .filter(i => {
-        const dt = (i as any).documentType;
-        const t = (i as any).type;
-        return dt === 'pdf' || dt === 'report' || dt === 'document'
+        const dt = i.documentType;
+        const t = i.type;
+        return dt === 'pdf' || dt === 'image' || dt === 'video'
           || (typeof t === 'string' && /document|report|pdf/i.test(t));
       })
       .map(i => ({
         id: i.id,
-        title: (i as any).draftSummary || i.title || (i as any).type || 'Pending Approval',
-        description: (i as any).assignedAgent
-          ? `${(i as any).assignedAgent} \u00b7 ${((i as any).risk || 'YELLOW').toUpperCase()} tier`
-          : ((i as any).type || 'Awaiting review'),
-        risk: (i as any).risk === 'red' ? 'High' as const : (i as any).risk === 'green' ? 'Low' as const : 'Medium' as const,
+        title: i.draftSummary || i.title || i.type || 'Pending Approval',
+        description: i.assignedAgent
+          ? `${i.assignedAgent} \u00b7 ${(i.riskTier || 'YELLOW').toUpperCase()} tier`
+          : (i.type || 'Awaiting review'),
+        risk: i.riskTier === 'red' ? 'High' as const : i.riskTier === 'green' ? 'Low' as const : 'Medium' as const,
         status: i.status === 'approved' ? 'approved' as const : i.status === 'denied' ? 'denied' as const : 'pending' as const,
         icon: 'shield-checkmark' as keyof typeof Ionicons.glyphMap,
       }));
@@ -485,13 +486,10 @@ export default function ConferenceLobby() {
         setLocalVideoItems(prev => prev.map(i =>
           i.id === itemId ? { ...i, status: 'approved' as const } : i
         ));
-        router.push({
-          pathname: '/session/conference-live' as any,
-          params: {
+        navigateTo('/session/conference-live', {
             roomName: result.roomName,
             token: result.token,
             serverUrl: result.serverUrl,
-          },
         });
         return;
       } catch {
@@ -563,13 +561,10 @@ export default function ConferenceLobby() {
   const handleStartSession = async () => {
     const ready = await checkConferenceReady();
     if (!ready) return;
-    router.push({
-      pathname: '/session/conference-live' as any,
-      params: {
+    navigateTo('/session/conference-live', {
         purpose,
         roomName,
         participantIds: participants.map(p => p.id).join(','),
-      }
     });
   };
 
@@ -778,13 +773,10 @@ export default function ConferenceLobby() {
                             const result = await acceptVideoCall(pendingInvitation.id, session.access_token, suiteId ?? undefined);
                             dismissIncomingVideoCall();
                             setPendingInvitation(null);
-                            router.push({
-                              pathname: '/session/conference-live' as any,
-                              params: {
+                            navigateTo('/session/conference-live', {
                                 roomName: result.roomName,
                                 token: result.token,
                                 serverUrl: result.serverUrl,
-                              },
                             });
                           } catch {
                             showToast('Failed to join conference', 'error');
@@ -1162,13 +1154,13 @@ const styles = StyleSheet.create({
   sessionImage: {
     borderRadius: 15,
     ...(Platform.OS === 'web'
-      ? { objectPosition: 'center 45%', objectFit: 'cover' } as any
+      ? { objectPosition: 'center 45%', objectFit: 'cover' }
       : {}),
   },
   sessionImageBack: {
     borderRadius: 15,
     ...(Platform.OS === 'web'
-      ? { objectPosition: 'center 20%', objectFit: 'cover' } as any
+      ? { objectPosition: 'center 20%', objectFit: 'cover' }
       : {}),
   },
   sessionGradientOverlay: {

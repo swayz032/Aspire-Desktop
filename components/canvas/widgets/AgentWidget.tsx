@@ -217,7 +217,7 @@ function OrbVideo({
           }}
         >
           <video
-            ref={videoRef as any}
+            ref={videoRef as React.RefObject<HTMLVideoElement>}
             src={src}
             autoPlay
             loop
@@ -300,7 +300,7 @@ function MiniOrbThumb({
       }}
     >
       <video
-        ref={videoRef as any}
+        ref={videoRef as React.RefObject<HTMLVideoElement>}
         src={src}
         autoPlay
         loop
@@ -435,7 +435,7 @@ export function AgentWidget({
             s.ambientGlow,
             { backgroundColor: meta.glow },
             Platform.OS === 'web'
-              ? ({ filter: 'blur(90px)' } as any)
+              ? ({ filter: 'blur(90px)' })
               : {},
           ]}
         />
@@ -504,7 +504,7 @@ export function AgentWidget({
                     ...(Platform.OS === 'web'
                       ? ({
                           boxShadow: `0 0 20px ${meta.micGrad[0]}66`,
-                        } as any)
+                        })
                       : {}),
                   },
                 ]}
@@ -539,7 +539,7 @@ export function AgentWidget({
           s.chatAmbient,
           { backgroundColor: meta.glow },
           Platform.OS === 'web'
-            ? ({ filter: 'blur(60px)' } as any)
+            ? ({ filter: 'blur(60px)' })
             : {},
         ]}
       />
@@ -702,7 +702,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
 
   micBtn: {
@@ -713,7 +713,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
 
   micGrad: {
@@ -772,7 +772,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.07)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
 
   chatName: {
@@ -885,7 +885,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     color: '#FFF',
     fontSize: 14,
-    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' }) : {}),
   },
 
   sendBtn: {
@@ -893,7 +893,7 @@ const s = StyleSheet.create({
     height: 42,
     borderRadius: 21,
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
 
   sendGrad: {

@@ -3,11 +3,11 @@
  * Displays contract title, counterparty, status badge, lane, and date.
  * Hover lift effect on web, press navigation to detail page.
  */
-import React, { useCallback } from 'react';
+import React, { useCallback, ComponentProps } from 'react';
 import type { PressableState } from '@/types/common';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 import { ContractStatusBadge } from './ContractStatusBadge';
@@ -33,7 +33,7 @@ function ContractCardInner({ contract, index = 0 }: ContractCardProps) {
   const router = useRouter();
 
   const handlePress = useCallback(() => {
-    router.push(`/finance-hub/documents/${contract.id}` as any);
+    router.push(`/finance-hub/documents/${contract.id}` as Href);
   }, [router, contract.id]);
 
   const laneMeta = contract.lane ? LANE_META[contract.lane] : undefined;
@@ -47,14 +47,14 @@ function ContractCardInner({ contract, index = 0 }: ContractCardProps) {
     animationDelay: `${index * 50}ms`,
     transition: 'transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
     cursor: 'pointer',
-  } as any : {};
+  } : {};
 
   return (
     <Pressable
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={`Contract: ${contract.title}, Status: ${contract.status}`}
-      style={({ hovered, pressed }: PressableState) => [
+      style={(({ hovered, pressed }: PressableState) => [
         styles.card,
         webAnimationStyle,
         hovered && styles.cardHovered,
@@ -63,8 +63,8 @@ function ContractCardInner({ contract, index = 0 }: ContractCardProps) {
           transform: [{ translateY: -2 }],
           boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
           borderColor: 'rgba(255,255,255,0.10)',
-        } as any : {},
-      ]}
+        } : {},
+      ]) as unknown as StyleProp<ViewStyle>}
     >
       {/* Top row: icon + lane */}
       <View style={styles.topRow}>
@@ -77,7 +77,7 @@ function ContractCardInner({ contract, index = 0 }: ContractCardProps) {
         </View>
         {laneMeta && (
           <View style={[styles.lanePill, { backgroundColor: laneMeta.color + '18' }]}>
-            <Ionicons name={laneMeta.icon as any} size={12} color={laneMeta.color} />
+            <Ionicons name={laneMeta.icon as ComponentProps<typeof Ionicons>['name']} size={12} color={laneMeta.color} />
             <Text style={[styles.laneLabel, { color: laneMeta.color }]}>
               {laneMeta.label}
             </Text>

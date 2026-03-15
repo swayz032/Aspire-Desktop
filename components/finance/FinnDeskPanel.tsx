@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, ActivityIndicator, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, ActivityIndicator, type ViewStyle, type TextStyle } from 'react-native';
 import { ImageBackground } from 'react-native';
 const financeConnectHero = require('@/assets/images/finance-connect-hero.jpg');
 import { LinearGradient } from 'expo-linear-gradient';
@@ -870,7 +870,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
               style={immersiveStyles.preConnectBg}
               resizeMode="cover"
               imageStyle={Platform.OS === 'web'
-                ? { opacity: 0.18, objectPosition: '55% center', objectFit: 'cover', filter: 'saturate(0.7) contrast(1.05)' } as any
+                ? { opacity: 0.18, objectPosition: '55% center', objectFit: 'cover', filter: 'saturate(0.7) contrast(1.05)' }
                 : { opacity: 0.18 }
               }
             >
@@ -1228,7 +1228,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}
                 resizeMode="cover"
                 imageStyle={Platform.OS === 'web'
-                  ? { opacity: 0.2, objectPosition: 'center 40%' } as any
+                  ? { opacity: 0.2, objectPosition: 'center 40%' }
                   : { opacity: 0.2 }
                 }
               >
@@ -1358,7 +1358,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                               <ChainOfThoughtStep
                                 key={event.id}
                                 label={event.label}
-                                icon={event.icon as any}
+                                icon={event.icon as keyof typeof Ionicons.glyphMap}
                                 status={
                                   event.status === 'completed' || event.type === 'done'
                                     ? 'complete'
@@ -1420,26 +1420,26 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       maxWidth: 520,
       width: '100%',
-      alignSelf: 'center',
-      height: 'calc(100vh - 40px)',
-      margin: '20px auto',
+      alignSelf: 'center' as const,
+      height: 'calc(100vh - 40px)' as unknown as number,
+      margin: '20px auto' as unknown as number,
     } : {
       flex: 1,
     }),
-  } as any,
+  },
   cardOverlay: {
     flex: 1,
     borderRadius: 0,
     borderWidth: 0,
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? {
-      maxWidth: 'none',
-      width: '100%',
-      height: '100%',
+      maxWidth: 'none' as unknown as number,
+      width: '100%' as unknown as number,
+      height: '100%' as unknown as number,
       margin: 0,
-      alignSelf: 'stretch',
+      alignSelf: 'stretch' as const,
     } : {}),
-  } as any,
+  },
   header: {
     paddingHorizontal: 16,
     paddingTop: 14,
@@ -1489,7 +1489,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     position: 'relative',
     overflow: 'hidden',
-  } as any,
+  },
   surfaceContainer: {
     height: 360,
     position: 'relative',
@@ -1525,7 +1525,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       transition: 'all 0.2s ease',
     } : {}),
-  } as any,
+  },
   companyPillActive: {
     backgroundColor: 'rgba(59,130,246,0.2)',
     borderWidth: 1,
@@ -1533,7 +1533,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 0 16px rgba(59,130,246,0.3)',
     } : {}),
-  } as any,
+  },
   onlineDot: {
     width: 8,
     height: 8,
@@ -1545,7 +1545,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       boxShadow: '0 0 8px #3B82F6',
     } : {}),
-  } as any,
+  },
   companyName: {
     fontSize: 13,
     fontWeight: '600',
@@ -1574,14 +1574,14 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     overflow: 'hidden',
     minHeight: 0,
-  } as any,
+  },
   chatScroll: {
     flex: 1,
     paddingHorizontal: 16,
     ...(Platform.OS === 'web' ? {
       scrollbarWidth: 'none',
     } : {}),
-  } as any,
+  },
   chatContent: {
     paddingTop: 16,
     paddingBottom: 8,
@@ -1677,7 +1677,7 @@ const immersiveStyles = StyleSheet.create({
     overflow: 'hidden',
     width: '100%' as unknown as number,
     height: '100%' as unknown as number,
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   /* Pre-connect background (idle / connecting / error) */
   preConnectBg: {
@@ -1688,7 +1688,7 @@ const immersiveStyles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   /* Animated ambient gradient overlay for subtle visual life over the bg image */
   ambientOverlay: {
@@ -1699,7 +1699,7 @@ const immersiveStyles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(59, 130, 246, 0.06)',
     zIndex: 0,
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   gradientTop: {
     position: 'absolute',
@@ -1708,7 +1708,7 @@ const immersiveStyles = StyleSheet.create({
     right: 0,
     height: 140,
     zIndex: 1,
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   gradientBottom: {
     position: 'absolute',
@@ -1717,7 +1717,7 @@ const immersiveStyles = StyleSheet.create({
     right: 0,
     height: 160,
     zIndex: 1,
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   centerContent: {
     alignItems: 'center',
@@ -1752,7 +1752,7 @@ const immersiveStyles = StyleSheet.create({
     letterSpacing: 0.3,
     textTransform: 'uppercase',
     marginTop: -Spacing.sm,
-  } as Record<string, unknown>,
+  } as TextStyle,
 
   /* Error state -- elegant, not clinical */
   errorIcon: {
@@ -1815,7 +1815,7 @@ const immersiveStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   connectIconRing: {
     position: 'absolute',
@@ -1824,7 +1824,7 @@ const immersiveStyles = StyleSheet.create({
     borderRadius: 44,
     borderWidth: 2,
     borderColor: 'rgba(59, 130, 246, 0.3)',
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   connectIcon: {
     width: 76,
@@ -1883,7 +1883,7 @@ const immersiveStyles = StyleSheet.create({
     right: 0,
     height: 160,
     zIndex: 5,
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   /* Connected status badge (top-left) */
   connectedBadge: {
@@ -1906,7 +1906,7 @@ const immersiveStyles = StyleSheet.create({
           WebkitBackdropFilter: 'blur(12px)',
         }
       : {}),
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   connectedDot: {
     width: 7,
@@ -1921,7 +1921,7 @@ const immersiveStyles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-  } as Record<string, unknown>,
+  } as TextStyle,
 
   /* Floating bottom control bar (over video) */
   floatingBar: {
@@ -1937,7 +1937,7 @@ const immersiveStyles = StyleSheet.create({
     paddingBottom: Spacing.xxxl,
     paddingTop: Spacing.xl,
     zIndex: 10,
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   /* Glass-morphism floating pill (Chat toggle) */
   floatingPill: {
@@ -1960,7 +1960,7 @@ const immersiveStyles = StyleSheet.create({
           cursor: 'pointer',
         }
       : {}),
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   /* Active state for chat pill when overlay is open */
   floatingPillActive: {
@@ -1999,7 +1999,7 @@ const immersiveStyles = StyleSheet.create({
           cursor: 'pointer',
         }
       : {}),
-  } as Record<string, unknown>,
+  } as ViewStyle,
 
   endCallText: {
     color: '#fff',

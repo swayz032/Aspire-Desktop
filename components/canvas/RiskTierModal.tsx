@@ -546,10 +546,10 @@ export function RiskTierModal(props: RiskTierModalProps): React.ReactElement | n
               <TextInput
                 ref={inputRef}
                 style={[
-                  styles.approvalInput,
-                  isApprovalValid && approvalText.length > 0 && styles.approvalInputValid,
+                  styles.approvalInput as unknown as TextStyle,
+                  isApprovalValid && approvalText.length > 0 ? styles.approvalInputValid : undefined,
                   Platform.OS === 'web'
-                    ? ({ outlineStyle: 'none' } as unknown as ViewStyle)
+                    ? ({ outlineStyle: 'none' } as unknown as TextStyle)
                     : {},
                 ]}
                 value={approvalText}

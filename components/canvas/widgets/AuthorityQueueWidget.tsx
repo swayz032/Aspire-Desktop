@@ -258,7 +258,7 @@ const s = StyleSheet.create({
     fontWeight: '800',
     color: '#FFF',
     flex: 1,
-  } as any,
+  },
   countBadge: {
     backgroundColor: 'rgba(59,130,246,0.15)',
     borderWidth: 1,
@@ -274,7 +274,7 @@ const s = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#3B82F6',
-  } as any,
+  },
   reqRow: {
     flexDirection: 'row',
     paddingVertical: 16,
@@ -314,7 +314,7 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   reqInfo: { flex: 1, gap: 4 },
   reqTitleRow: {
     flexDirection: 'row',
@@ -326,7 +326,7 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   reqDesc: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.55)',
@@ -345,7 +345,7 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.6)',
-  } as any,
+  },
   actionRow: {
     flexDirection: 'row',
     gap: 8,
@@ -361,13 +361,13 @@ const s = StyleSheet.create({
     height: 34,
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   approveBtnText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#3B82F6',
-  } as any,
+  },
   denyBtn: {
     backgroundColor: 'rgba(239,68,68,0.08)',
     borderWidth: 1,
@@ -377,13 +377,13 @@ const s = StyleSheet.create({
     height: 34,
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   denyBtnText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#EF4444',
-  } as any,
+  },
   btnDisabled: {
     opacity: 0.5,
   },
@@ -400,7 +400,7 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.5)',
-  } as any,
+  },
   emptyText: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.25)',

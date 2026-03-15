@@ -187,7 +187,7 @@ async function resolveSuiteByBusinessNumber(e164: string): Promise<{
   const result = await db.execute(sql`
     SELECT * FROM public.frontdesk_resolve_suite_by_business_number(${e164})
   `);
-  const rows = (result.rows || result) as any[];
+  const rows = (result.rows || result) as { suite_id: string; business_line_id: string; owner_office_id: string; line_mode: string }[];
   return rows[0] || null;
 }
 

@@ -314,7 +314,7 @@ export default function LibraryScreen() {
             <View style={styles.itemContent}>
               <View style={styles.itemMeta}>
                 <View style={styles.itemType}>
-                  <Ionicons name={getTypeIcon(item.type) as any} size={12} color={THEME.text.muted} />
+                  <Ionicons name={getTypeIcon(item.type) as keyof typeof Ionicons.glyphMap} size={12} color={THEME.text.muted} />
                   <Text style={styles.itemTypeText}>{item.type}</Text>
                 </View>
                 <View style={[styles.itemCategory, { backgroundColor: getCategoryColor(item.category) + '20' }]}>

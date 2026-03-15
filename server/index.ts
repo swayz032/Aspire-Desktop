@@ -946,7 +946,7 @@ async function start() {
       const profileResult = await db.execute(sql`
         SELECT suite_id FROM suite_profiles LIMIT 1
       `);
-      const profileRows = (profileResult.rows || profileResult) as any[];
+      const profileRows = (profileResult.rows || profileResult) as Record<string, any>[];
       if (profileRows.length > 0) {
         defaultSuiteId = profileRows[0].suite_id;
       }
@@ -960,7 +960,7 @@ async function start() {
         const suiteResult = await db.execute(sql`
           SELECT app.ensure_suite('default-tenant', 'Aspire Desktop') AS suite_id
         `);
-        const rows = (suiteResult.rows || suiteResult) as any[];
+        const rows = (suiteResult.rows || suiteResult) as Record<string, any>[];
         defaultSuiteId = rows[0]?.suite_id || '';
       } catch {
         // app schema not available — JWT-only mode
@@ -982,7 +982,7 @@ async function start() {
         if (defaultOfficeId) break;
         try {
           const officeResult = await db.execute(officeQuery);
-          const officeRows = (officeResult.rows || officeResult) as any[];
+          const officeRows = (officeResult.rows || officeResult) as Record<string, any>[];
           defaultOfficeId = officeRows[0]?.office_id || '';
         } catch {
           // Table/schema variant not available — continue to next probe.
@@ -996,7 +996,7 @@ async function start() {
             VALUES (${defaultSuiteId}::uuid, 'Primary')
             RETURNING office_id
           `);
-          const createdOfficeRows = (createdOfficeResult.rows || createdOfficeResult) as any[];
+          const createdOfficeRows = (createdOfficeResult.rows || createdOfficeResult) as Record<string, any>[];
           defaultOfficeId = createdOfficeRows[0]?.office_id || '';
         } catch {
           // If office creation is unavailable in this schema, leave unresolved.

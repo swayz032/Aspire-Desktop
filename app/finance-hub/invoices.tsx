@@ -304,7 +304,7 @@ export default function InvoicesPage() {
           ))}
         </View>
 
-        <View style={[s.card, Platform.OS === 'web' && { backgroundImage: svgPatterns.invoice(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '20% auto' } as any]}>
+        <View style={[s.card, Platform.OS === 'web' && { backgroundImage: svgPatterns.invoice(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '20% auto' }]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterRow}>
             {FILTER_TABS.map(tab => {
               const active = activeTab === tab.key;
@@ -817,7 +817,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)' } : {}),
-  } as any,
+  },
   confirmModal: {
     width: 380,
     borderRadius: 16,

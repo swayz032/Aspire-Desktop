@@ -45,7 +45,7 @@ export async function loadToken(provider: string): Promise<StoredToken | null> {
     `);
     const rows = result.rows || result;
     if (rows && rows.length > 0) {
-      const row = rows[0] as any;
+      const row = rows[0] as Record<string, any>;
       logger.info('Token loaded', { provider });
       return {
         access_token: row.access_token,
@@ -82,7 +82,7 @@ export async function loadAllTokens(providerPrefix: string): Promise<StoredToken
       WHERE suite_id = ${suiteId} AND provider LIKE ${providerPrefix + '%'}
       ORDER BY created_at ASC
     `);
-    const rows = (result.rows || result) as any[];
+    const rows = (result.rows || result) as Record<string, any>[];
     if (rows && rows.length > 0) {
       return rows.map((row: any) => ({
         access_token: row.access_token,

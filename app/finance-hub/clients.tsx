@@ -410,7 +410,7 @@ export default function ClientsPage() {
           </View>
         </View>
 
-        <View style={[s.listCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.people(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '15% auto' } as any]}>
+        <View style={[s.listCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.people(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '15% auto' }]}>
           {loading ? (
             <View style={s.centerState}>
               <ActivityIndicator size="large" color={Colors.accent.blue} />
@@ -826,7 +826,7 @@ const s = StyleSheet.create({
     fontSize: 14,
     color: Colors.text.primary,
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
-  } as any,
+  },
   listCard: {
     borderRadius: 16,
     borderWidth: 1,
@@ -918,7 +918,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)' } : {}),
-  } as any,
+  },
   formModal: {
     width: 520,
     maxHeight: '85%',
@@ -987,7 +987,7 @@ const s = StyleSheet.create({
     color: Colors.text.primary,
     marginBottom: 4,
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
-  } as any,
+  },
   addressRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

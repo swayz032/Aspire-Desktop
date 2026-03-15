@@ -295,7 +295,7 @@ export const Persona = memo(function Persona(props: PersonaProps) {
   return <PersonaNative {...props} />;
 });
 
-(Persona as any).displayName = 'Persona';
+Persona.displayName = 'Persona';
 
 // ---------------------------------------------------------------------------
 // Styles

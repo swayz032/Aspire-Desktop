@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { ComponentProps } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 
 export type ActionStatus = 'in_progress' | 'complete' | 'pending' | 'failed';
@@ -39,7 +40,7 @@ const statusColors: Record<ActionStatus, string> = {
 };
 
 function ActionItem({ action, onDownload }: { action: ContextAction; onDownload?: (action: ContextAction) => void }) {
-  const iconName = actionIcons[action.type] as any;
+  const iconName = actionIcons[action.type] as IoniconsName;
   const statusColor = statusColors[action.status];
   const isInProgress = action.status === 'in_progress';
 

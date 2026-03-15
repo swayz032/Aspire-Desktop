@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: Colors.text.muted,
     letterSpacing: 3,
-  } as any,
+  },
 });
 
 export default PremiumLoadingScreen;

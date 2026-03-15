@@ -127,7 +127,7 @@ function ReceiptCard({ receipt, selected, onPress }: { receipt: Receipt; selecte
       {...(isWeb ? {
         onMouseEnter: () => setHovered(true),
         onMouseLeave: () => setHovered(false),
-      } as any : {})}
+      } : {})}
     >
       <View style={styles.cardRow}>
         <View style={[styles.iconCircle, { backgroundColor: typeColor.bg }]}>
@@ -170,7 +170,7 @@ function DetailActionButton({ icon, label }: { icon: keyof typeof Ionicons.glyph
       {...(isWeb ? {
         onMouseEnter: () => setHovered(true),
         onMouseLeave: () => setHovered(false),
-      } as any : {})}
+      } : {})}
     >
       <Ionicons name={icon} size={18} color={hovered ? Colors.accent.cyan : Colors.text.secondary} />
       <Text style={[styles.detailActionText, hovered && { color: Colors.accent.cyan }]}>{label}</Text>
@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
   headerBannerImage: {
     resizeMode: 'cover',
     ...(Platform.OS === 'web'
-      ? { objectPosition: 'center 35%', objectFit: 'cover' } as any
+      ? { objectPosition: 'center 35%', objectFit: 'cover' }
       : {}),
   },
   headerOverlay: {

@@ -16,7 +16,7 @@ function SettingRow({ icon, title, subtitle, value, onChange }: {
   return (
     <View style={styles.settingRow}>
       <View style={styles.settingIcon}>
-        <Ionicons name={icon as any} size={20} color={Colors.accent.cyan} />
+        <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={20} color={Colors.accent.cyan} />
       </View>
       <View style={styles.settingInfo}>
         <Text style={styles.settingTitle}>{title}</Text>

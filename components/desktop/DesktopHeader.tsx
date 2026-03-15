@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { PressableState } from '@/types/common';
 import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Colors } from '@/constants/tokens';
 import { CanvasToggle } from '@/components/canvas/CanvasToggle';
 import { useSupabase, useTenant } from '@/providers';
@@ -243,7 +243,7 @@ export function DesktopHeader({
   }, [activePanel]);
 
   const renderNotificationPanel = () => (
-    <View style={s.panelDropdown} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
+    <View style={s.panelDropdown} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } : {})}>
       <View style={s.panelHeader}>
         <Text style={s.panelTitle}>Notifications</Text>
         {unreadCount > 0 && (
@@ -340,7 +340,7 @@ export function DesktopHeader({
     return (
       <Animated.View
         style={[s.panelDropdown, s.profileDropdown, animatedStyle]}
-        {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}
+        {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } : {})}
       >
         {/* --- Profile header: avatar + identity --- */}
         <View
@@ -401,7 +401,7 @@ export function DesktopHeader({
                       if (typeof window !== 'undefined') {
                         window.location.href = '/(auth)/login';
                       } else {
-                        router.replace('/(auth)/login' as any);
+                        router.replace('/(auth)/login' as Href);
                       }
                       return;
                     }
@@ -462,7 +462,7 @@ export function DesktopHeader({
       </View>
 
       <View style={s.rightSection}>
-        <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
+        <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } : {})}>
           <Pressable
             onPress={() => togglePanel('suite')}
             style={({ hovered }: PressableState) => [
@@ -528,7 +528,7 @@ export function DesktopHeader({
 
         <CanvasToggle />
 
-        <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
+        <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } : {})}>
           <Pressable
             onPress={() => togglePanel('notifications')}
             style={({ pressed, hovered }: PressableState) => [
@@ -548,7 +548,7 @@ export function DesktopHeader({
           {activePanel === 'notifications' && renderNotificationPanel()}
         </View>
 
-        <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } as any : {})}>
+        <View style={s.panelWrapper} {...(Platform.OS === 'web' ? { 'data-header-panel': 'true' } : {})}>
           <Pressable
             onPress={() => togglePanel('profile')}
             style={({ pressed, hovered }: PressableState) => [
@@ -612,7 +612,7 @@ const s = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     ...(Platform.OS === 'web' ? { transition: TRANSITION_FAST, cursor: 'pointer' } : {}),
-  } as any,
+  },
   searchBarHover: {
     borderColor: '#3C3C3E',
     backgroundColor: '#1E1E20',
@@ -643,7 +643,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
     ...(Platform.OS === 'web' ? { transition: TRANSITION_FAST, cursor: 'pointer' } : {}),
-  } as any,
+  },
   suiteToggleHover: { backgroundColor: '#141416', borderColor: '#2C2C2E' },
   suiteToggleActive: { backgroundColor: '#141416', borderColor: '#3C3C3E' },
   companyInfo: { alignItems: 'flex-end' },
@@ -665,7 +665,7 @@ const s = StyleSheet.create({
     overflow: 'hidden',
     paddingBottom: 6,
     ...(Platform.OS === 'web' ? { boxShadow: PANEL_SHADOW } : {}),
-  } as any,
+  },
   sdHeader: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
   sdHeaderText: { fontSize: 11, fontWeight: '600', color: '#6e6e73', textTransform: 'uppercase', letterSpacing: 0.5 },
   sdItem: {
@@ -677,7 +677,7 @@ const s = StyleSheet.create({
     marginHorizontal: 6,
     borderRadius: 8,
     ...(Platform.OS === 'web' ? { transition: 'background-color 0.12s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   sdItemActive: { backgroundColor: 'rgba(59, 130, 246, 0.08)' },
   sdItemHover: { backgroundColor: 'rgba(255,255,255,0.04)' },
   sdItemLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
@@ -696,7 +696,7 @@ const s = StyleSheet.create({
     borderColor: '#2C2C2E',
     backgroundColor: '#1C1C1E',
     ...(Platform.OS === 'web' ? { transition: TRANSITION_FAST, cursor: 'pointer' } : {}),
-  } as any,
+  },
   iconButtonHover: { backgroundColor: '#242426', borderColor: '#3C3C3E' },
   iconButtonPressed: { backgroundColor: '#0a0a0c', transform: [{ scale: 0.95 }] },
   iconButtonActive: { backgroundColor: '#1a1a2e', borderColor: 'rgba(59, 130, 246, 0.3)' },
@@ -731,7 +731,7 @@ const s = StyleSheet.create({
     borderColor: '#2C2C2E',
     backgroundColor: '#1C1C1E',
     ...(Platform.OS === 'web' ? { transition: TRANSITION_FAST, cursor: 'pointer' } : {}),
-  } as any,
+  },
   profileButtonHover: { backgroundColor: '#242426', borderColor: '#3C3C3E' },
   profileButtonPressed: { backgroundColor: '#0a0a0c', transform: [{ scale: 0.95 }] },
   profileButtonActive: { borderColor: 'rgba(59, 130, 246, 0.4)' },
@@ -773,7 +773,7 @@ const s = StyleSheet.create({
     borderColor: PANEL_BORDER,
     overflow: 'visible',
     ...(Platform.OS === 'web' ? { boxShadow: PANEL_SHADOW } : {}),
-  } as any,
+  },
   profileDropdown: {
     width: 300,
     overflow: 'hidden',
@@ -799,7 +799,7 @@ const s = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 6,
     ...(Platform.OS === 'web' ? { transition: 'background-color 0.12s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   markAllBtnHover: {
     backgroundColor: 'rgba(59, 130, 246, 0.1)',
   },
@@ -852,7 +852,7 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
     ...(Platform.OS === 'web' ? { transition: 'background-color 0.12s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   notifItemUnread: {
     backgroundColor: 'rgba(59, 130, 246, 0.03)',
   },
@@ -929,7 +929,7 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     gap: 6,
     ...(Platform.OS === 'web' ? { transition: 'background-color 0.12s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   panelFooterBtnHover: {
     backgroundColor: 'rgba(59, 130, 246, 0.06)',
   },
@@ -1025,7 +1025,7 @@ const s = StyleSheet.create({
       transition: 'background-color 0.14s ease-out, transform 0.1s ease-out',
       cursor: 'pointer',
     } : {}),
-  } as any,
+  },
   profileMenuItemHover: {
     backgroundColor: 'rgba(255,255,255,0.05)',
   },

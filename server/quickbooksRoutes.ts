@@ -156,7 +156,7 @@ function initQBO() {
   return qbo;
 }
 
-function ensureQBO(): any {
+function ensureQBO(): InstanceType<typeof QuickBooks> | null {
   if (!qbo) initQBO();
   return qbo;
 }
@@ -210,7 +210,7 @@ async function doRefreshToken(): Promise<boolean> {
   }
 }
 
-async function qboQueryWithRefresh(method: string, ...args: any[]): Promise<any> {
+async function qboQueryWithRefresh(method: string, ...args: unknown[]): Promise<Record<string, any>> {
   if (isTokenExpiringSoon()) {
     logger.info('QuickBooks: Token expiring soon, proactively refreshing...');
     await doRefreshToken();
@@ -218,15 +218,16 @@ async function qboQueryWithRefresh(method: string, ...args: any[]): Promise<any>
 
   try {
     return await qboQuery(method, ...args);
-  } catch (err: any) {
+  } catch (err: unknown) {
     const errStr = JSON.stringify(err);
+    const errObj = err as Record<string, any>;
     const isAuthError = errStr.includes('AuthenticationFailed') ||
       errStr.includes('TOKEN_EXPIRED') ||
       errStr.includes('AuthorizationFailed') ||
-      (err?.fault?.error?.[0]?.code === '3200') ||
-      (err?.fault?.type === 'SERVICE' && errStr.includes('token'));
+      (errObj?.fault?.error?.[0]?.code === '3200') ||
+      (errObj?.fault?.type === 'SERVICE' && errStr.includes('token'));
 
-    if (isAuthError || err?.fault?.type === 'SERVICE') {
+    if (isAuthError || errObj?.fault?.type === 'SERVICE') {
       logger.info('QuickBooks: API error, attempting token refresh...');
       const refreshed = await doRefreshToken();
       if (refreshed) {
@@ -237,27 +238,27 @@ async function qboQueryWithRefresh(method: string, ...args: any[]): Promise<any>
   }
 }
 
-function qboQuery(method: string, ...args: any[]): Promise<any> {
+function qboQuery(method: string, ...args: unknown[]): Promise<Record<string, any>> {
   return new Promise((resolve, reject) => {
     const instance = ensureQBO();
     if (!instance) return reject(new Error('Not connected to QuickBooks'));
-    instance[method](...args, (err: any, data: any) => {
+    instance[method](...args, (err: unknown, data: Record<string, any>) => {
       if (err) reject(err);
       else resolve(data);
     });
   });
 }
 
-async function qboReportWithRefresh(reportMethod: string, params: any): Promise<any> {
+async function qboReportWithRefresh(reportMethod: string, params: Record<string, any>): Promise<Record<string, any>> {
   if (isTokenExpiringSoon()) {
     logger.info('QuickBooks: Token expiring soon, proactively refreshing...');
     await doRefreshToken();
   }
 
-  const runReport = () => new Promise((resolve, reject) => {
+  const runReport = () => new Promise<Record<string, any>>((resolve, reject) => {
     const instance = ensureQBO();
     if (!instance) return reject(new Error('Not connected to QuickBooks'));
-    instance[reportMethod](params, (err: any, report: any) => {
+    instance[reportMethod](params, (err: unknown, report: Record<string, any>) => {
       if (err) reject(err);
       else resolve(report);
     });
@@ -265,8 +266,9 @@ async function qboReportWithRefresh(reportMethod: string, params: any): Promise<
 
   try {
     return await runReport();
-  } catch (err: any) {
-    if (err?.fault?.type === 'SERVICE' || err?.fault?.error?.[0]?.code === '3200') {
+  } catch (err: unknown) {
+    const errObj = err as Record<string, any>;
+    if (errObj?.fault?.type === 'SERVICE' || errObj?.fault?.error?.[0]?.code === '3200') {
       logger.info('QuickBooks: Report error, attempting token refresh...');
       const refreshed = await doRefreshToken();
       if (refreshed) {
@@ -683,8 +685,8 @@ router.post('/api/quickbooks/journal-entries', async (req: Request, res: Respons
       }
     }
 
-    const journalEntry: any = {
-      Line: lines.map((line: any) => ({
+    const journalEntry: Record<string, any> = {
+      Line: lines.map((line: Record<string, any>) => ({
         DetailType: 'JournalEntryLineDetail',
         Amount: Math.abs(parseFloat(line.amount)),
         Description: line.description || '',
@@ -703,7 +705,7 @@ router.post('/api/quickbooks/journal-entries', async (req: Request, res: Respons
     const data = await new Promise((resolve, reject) => {
       const instance = ensureQBO();
       if (!instance) return reject(new Error('Not connected'));
-      instance.createJournalEntry(journalEntry, (err: any, result: any) => {
+      instance.createJournalEntry(journalEntry, (err: unknown, result: Record<string, any>) => {
         if (err) reject(err);
         else resolve(result);
       });
@@ -711,12 +713,12 @@ router.post('/api/quickbooks/journal-entries', async (req: Request, res: Respons
 
     await emitReceipt(req, 'quickbooks.journal_entry.create', 'SUCCEEDED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', line_count: lines.length, txn_date: txnDate || null },
-      { journal_entry_id: (data as any)?.Id || null },
+      { journal_entry_id: (data as Record<string, any>)?.Id || null },
     );
     res.json(data);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
-    const detailMsg = (error as any)?.response?.data?.Fault?.Error?.[0]?.Detail || msg;
+    const detailMsg = (error as Record<string, any>)?.response?.data?.Fault?.Error?.[0]?.Detail || msg;
     logger.error('QuickBooks create journal entry error', { error: detailMsg });
     await emitReceipt(req, 'quickbooks.journal_entry.create', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },

@@ -4,6 +4,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { supabase } from '@/lib/supabase';
 
 const BRIGHT_BG = '#0a0a0c';
@@ -171,13 +172,13 @@ export default function PreparedScreen() {
             <TouchableOpacity
               key={artifact.id}
               style={styles.artifactCard}
-              onPress={() => router.push(`/founder-hub/artifacts/${artifact.id}` as any)}
+              onPress={() => navigateTo(`/founder-hub/artifacts/${artifact.id}`)}
             >
               <View style={styles.artifactHeader}>
                 <View style={styles.artifactIconOuter}>
                   <View style={styles.artifactIconGlow} />
                   <View style={styles.artifactIconInner}>
-                    <Ionicons name={getArtifactIcon(artifact.type) as any} size={14} color="#3B82F6" />
+                    <Ionicons name={getArtifactIcon(artifact.type) as keyof typeof Ionicons.glyphMap} size={14} color="#3B82F6" />
                   </View>
                 </View>
                 <View style={styles.artifactMeta}>

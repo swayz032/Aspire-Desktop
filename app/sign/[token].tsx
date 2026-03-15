@@ -436,7 +436,7 @@ function StatusScreen({ icon, iconColor, title, body, actionLabel, onAction, isM
       <View style={styles.statusContent}>
         <AspireLogo size="small" />
         <View style={[styles.statusIconRing, { borderColor: iconColor }]}>
-          <Ionicons name={icon as any} size={32} color={iconColor} />
+          <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={32} color={iconColor} />
         </View>
         <Text style={[styles.statusTitle, isMobile && styles.statusTitleMobile]}>{title}</Text>
         <Text style={[styles.statusBody, isMobile && styles.statusBodyMobile]}>{body}</Text>
@@ -1183,7 +1183,7 @@ const styles = StyleSheet.create({
   modalContainer: {
     position: 'absolute',
     width: 480,
-    maxWidth: '92%' as any,
+    maxWidth: '92%',
     backgroundColor: SignColors.modalBg,
     borderRadius: BorderRadius.xl,
     borderWidth: 1,
@@ -1252,7 +1252,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   acquisitionDivider: {
-    width: '100%' as any,
+    width: '100%',
     height: 1,
     backgroundColor: SignColors.modalBorder,
     marginBottom: Spacing.xxl,

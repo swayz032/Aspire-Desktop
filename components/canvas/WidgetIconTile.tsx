@@ -7,7 +7,7 @@
  * Draggable to reposition.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, ComponentProps } from 'react';
 import type { PressableState } from '@/types/common';
 import {
   View,
@@ -15,6 +15,7 @@ import {
   Pressable,
   StyleSheet,
   Platform,
+  type ViewStyle,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
@@ -100,14 +101,14 @@ export function WidgetIconTile({
   const shortLabel = title.length > 8 ? title.slice(0, 8) + '…' : title;
 
   const boxShadow = Platform.OS === 'web'
-    ? `0 8px 24px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.35), 0 0 0 1px ${accent}44, 0 0 20px ${accent}22` as any
+    ? `0 8px 24px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.35), 0 0 0 1px ${accent}44, 0 0 20px ${accent}22`
     : undefined;
 
   return (
     <GestureDetector gesture={dragGesture}>
       <Reanimated.View
         style={[
-          s.tile,
+          s.tile as ViewStyle,
           tileStyle,
           Platform.OS === 'web' ? { boxShadow } : {
             shadowColor: accent,
@@ -128,11 +129,11 @@ export function WidgetIconTile({
         {/* Tap area — whole tile */}
         <Pressable
           onPress={onPress}
-          style={[s.tapArea, ...(Platform.OS === 'web' ? [{ cursor: 'pointer' } as any] : [])]}
+          style={[s.tapArea, ...(Platform.OS === 'web' ? [{ cursor: 'pointer' } as ViewStyle] : [])]}
         >
           {/* Icon circle */}
           <View style={[s.iconCircle, { backgroundColor: `${accent}28`, borderColor: `${accent}66` }]}>
-            <Ionicons name={icon as any} size={26} color={accent} />
+            <Ionicons name={icon as ComponentProps<typeof Ionicons>['name']} size={26} color={accent} />
           </View>
 
           {/* Label */}
@@ -167,7 +168,7 @@ const s = StyleSheet.create({
     height: TILE_SIZE,
     borderRadius: 20,
     overflow: 'visible',
-    ...(Platform.OS === 'web' ? ({ cursor: 'grab' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'grab' }) : {}),
   },
 
   bg: {
@@ -180,7 +181,7 @@ const s = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     ...(Platform.OS === 'web'
-      ? ({ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any)
+      ? ({ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' })
       : {}),
   },
 
@@ -198,7 +199,7 @@ const s = StyleSheet.create({
       ? ({
           backgroundImage:
             'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 100%)',
-        } as any)
+        })
       : { backgroundColor: 'rgba(255,255,255,0.05)' }),
   },
 
@@ -225,7 +226,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-  } as any,
+  },
 
   removeBtn: {
     position: 'absolute',
@@ -238,6 +239,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
 });

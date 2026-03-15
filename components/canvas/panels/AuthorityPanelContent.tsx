@@ -187,7 +187,7 @@ const s = StyleSheet.create({
   orbBehind:       {
     position: 'absolute', top: -80, right: -60, width: 280, height: 280,
     borderRadius: 140, backgroundColor: 'rgba(14,165,233,0.12)',
-    ...(Platform.OS === 'web' ? { filter: 'blur(70px)' } as any : {}),
+    ...(Platform.OS === 'web' ? { filter: 'blur(70px)' } : {}),
   },
   heroLabel:       { fontSize: 12, letterSpacing: 1.3, textTransform: 'uppercase', color: TS, marginBottom: 8 },
   heroNumber:      { fontSize: 56, fontWeight: '800', color: TP, letterSpacing: -2 },

@@ -60,7 +60,7 @@ export function ShimmeringText({
   style: extraStyle,
 }: ShimmeringTextProps) {
   const ref = useRef<HTMLSpanElement>(null);
-  const isInView = useInView(ref, { once, margin: inViewMargin as any });
+  const isInView = useInView(ref, { once, ...(inViewMargin ? { margin: inViewMargin as `${number}px` } : {}) });
 
   // Scale shimmer width to text length for consistent visual density
   const dynamicSpread = useMemo(() => text.length * spread, [text, spread]);

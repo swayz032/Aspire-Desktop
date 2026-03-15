@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { PressableState } from '@/types/common';
-import { View, Text, StyleSheet, ScrollView, Pressable, Platform, TextInput, Switch, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Platform, TextInput, Switch, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { mailApi, initMailApi, DomainSearchResult } from '@/lib/mailApi';
@@ -363,7 +364,7 @@ export default function MailboxSetupScreen() {
             <View style={s.completionActions}>
               <Pressable
                 style={({ hovered }: PressableState) => [s.primaryBtn, hovered && s.primaryBtnHover]}
-                onPress={() => router.push('/(tabs)/inbox' as any)}
+                onPress={() => navigateTo('/(tabs)/inbox')}
               >
                 <Ionicons name="mail" size={18} color="#fff" />
                 <Text style={s.primaryBtnText}>Go to Inbox → Mail</Text>
@@ -413,7 +414,7 @@ export default function MailboxSetupScreen() {
             <View style={s.headerRight}>
               <Pressable
                 style={({ hovered }: PressableState) => [s.headerAction, hovered && s.headerActionHover]}
-                onPress={() => router.push('/(tabs)/receipts' as any)}
+                onPress={() => navigateTo('/(tabs)/receipts')}
               >
                 <Ionicons name="receipt-outline" size={16} color={Colors.text.secondary} />
                 <Text style={s.headerActionText}>View Receipts</Text>
@@ -581,7 +582,7 @@ function Step0ChooseProvider({ onSelect, loading }: { onSelect: (p: MailProvider
       </View>
 
       <Pressable
-        style={({ hovered }: PressableState) => [s.primaryBtn, !selected && s.primaryBtnDisabled, hovered && selected && s.primaryBtnHover]}
+        style={(({ hovered }: PressableState) => [s.primaryBtn, !selected && s.primaryBtnDisabled, hovered && selected && s.primaryBtnHover]) as unknown as StyleProp<ViewStyle>}
         onPress={() => selected && onSelect(selected)}
         disabled={!selected || loading}
       >
@@ -772,12 +773,12 @@ function BuyDomainSection({
           {results.map((r: DomainSearchResult, i: number) => (
             <Pressable
               key={r.domain}
-              style={({ hovered }: PressableState) => [
+              style={(({ hovered }: PressableState) => [
                 s.domainResultRow,
                 selected?.domain === r.domain && s.domainResultSelected,
                 hovered && s.domainResultHover,
                 !r.available && s.domainResultUnavailable,
-              ]}
+              ]) as unknown as StyleProp<ViewStyle>}
               onPress={() => r.available && setSelected(r)}
               disabled={!r.available}
             >
@@ -1106,7 +1107,7 @@ function Step2Verify({ checks, onRunChecks, running, onContinue }: { checks: Onb
 
       <View style={s.checkActions}>
         <Pressable
-          style={({ hovered }: PressableState) => [s.primaryBtn, running && s.primaryBtnDisabled, hovered && !running && s.primaryBtnHover]}
+          style={(({ hovered }: PressableState) => [s.primaryBtn, running && s.primaryBtnDisabled, hovered && !running && s.primaryBtnHover]) as unknown as StyleProp<ViewStyle>}
           onPress={onRunChecks}
           disabled={running}
         >
@@ -1382,7 +1383,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   backBtnHover: {
     backgroundColor: Colors.background.tertiary,
     borderColor: Colors.border.default,
@@ -1413,7 +1414,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border.subtle,
     ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   headerActionHover: {
     backgroundColor: Colors.background.tertiary,
     borderColor: Colors.border.default,
@@ -1447,7 +1448,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-  } as any,
+  },
   stepCircle: {
     width: 28,
     height: 28,
@@ -1492,7 +1493,7 @@ const s = StyleSheet.create({
     color: Colors.text.muted,
     fontWeight: '500',
     width: 80,
-  } as any,
+  },
   stepLabelActive: {
     color: '#3B82F6',
     fontWeight: '600',
@@ -1511,7 +1512,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border.subtle,
     ...(Platform.OS === 'web' ? { boxShadow: '0 2px 12px rgba(0,0,0,0.15)' } : {}),
-  } as any,
+  },
   stepTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -1540,7 +1541,7 @@ const s = StyleSheet.create({
     borderColor: Colors.border.subtle,
     position: 'relative',
     ...(Platform.OS === 'web' ? { transition: 'all 0.2s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   providerCardSelected: {
     borderColor: '#3B82F6',
     backgroundColor: 'rgba(59, 130, 246, 0.06)',
@@ -1548,7 +1549,7 @@ const s = StyleSheet.create({
   providerCardHover: {
     borderColor: Colors.border.default,
     ...(Platform.OS === 'web' ? { transform: 'translateY(-2px)', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' } : {}),
-  } as any,
+  },
   providerIconWrap: {
     width: 52,
     height: 52,
@@ -1664,7 +1665,7 @@ const s = StyleSheet.create({
     borderColor: Colors.border.subtle,
     flex: 1,
     ...(Platform.OS === 'web' ? { outlineStyle: 'none', transition: 'border-color 0.15s ease-out' } : {}),
-  } as any,
+  },
   inputSuffix: {
     fontSize: 14,
     color: Colors.text.muted,
@@ -1685,7 +1686,7 @@ const s = StyleSheet.create({
     backgroundColor: '#2563EB',
     borderRadius: 10,
     ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease-out' } : {}),
-  } as any,
+  },
   searchBtnHover: {
     backgroundColor: '#1d4ed8',
   },
@@ -1718,7 +1719,7 @@ const s = StyleSheet.create({
     borderColor: Colors.border.subtle,
     marginBottom: 6,
     ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease-out' } : {}),
-  } as any,
+  },
   domainResultSelected: {
     borderColor: '#3B82F6',
     backgroundColor: 'rgba(59, 130, 246, 0.06)',
@@ -1729,7 +1730,7 @@ const s = StyleSheet.create({
   domainResultUnavailable: {
     opacity: 0.5,
     ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : {}),
-  } as any,
+  },
   domainResultLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1850,7 +1851,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(59, 130, 246, 0.15)',
     ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease-out' } : {}),
-  } as any,
+  },
   dnsCheckBtnHover: {
     backgroundColor: 'rgba(59, 130, 246, 0.14)',
   },
@@ -1957,15 +1958,15 @@ const s = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 12,
     ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease-out', cursor: 'pointer', boxShadow: '0 4px 16px rgba(37, 99, 235, 0.25)' } : {}),
-  } as any,
+  },
   primaryBtnHover: {
     backgroundColor: '#1d4ed8',
     ...(Platform.OS === 'web' ? { transform: 'translateY(-1px)', boxShadow: '0 6px 20px rgba(37, 99, 235, 0.35)' } : {}),
-  } as any,
+  },
   primaryBtnDisabled: {
     opacity: 0.4,
     ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : {}),
-  } as any,
+  },
   primaryBtnText: {
     fontSize: 14,
     fontWeight: '600',
@@ -1980,7 +1981,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 10,
     ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease-out', cursor: 'pointer' } : {}),
-  } as any,
+  },
   secondaryBtnHover: {
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
@@ -2199,10 +2200,10 @@ const s = StyleSheet.create({
     padding: 22,
     borderWidth: 1,
     borderColor: Colors.border.subtle,
-    position: 'sticky' as any,
+    position: 'sticky' as const,
     top: 32,
     ...(Platform.OS === 'web' ? { boxShadow: '0 2px 12px rgba(0,0,0,0.12)' } : {}),
-  } as any,
+  },
   summaryTitle: {
     fontSize: 15,
     fontWeight: '700',
@@ -2365,7 +2366,7 @@ const s = StyleSheet.create({
   },
 
   termPopupOverlay: {
-    ...(Platform.OS === 'web' ? { position: 'fixed' as any } : { position: 'absolute' as any }),
+    ...(Platform.OS === 'web' ? { position: 'fixed' as const } : { position: 'absolute' as const }),
     top: 0,
     left: 0,
     right: 0,
@@ -2375,9 +2376,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
     zIndex: 9999,
     paddingHorizontal: 24,
-  } as any,
+  },
   termPopupCard: {
-    width: '100%' as any,
+    width: '100%',
     maxWidth: 440,
     backgroundColor: Colors.surface.card,
     borderRadius: 20,
@@ -2385,7 +2386,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border.subtle,
     ...(Platform.OS === 'web' ? { boxShadow: '0 24px 48px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04)' } : {}),
-  } as any,
+  },
   termPopupHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2408,7 +2409,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-  } as any,
+  },
   termPopupTitle: {
     fontSize: 18,
     fontWeight: '700',

@@ -499,7 +499,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2.5,
     color: CanvasTokens.text.muted,
     textTransform: 'uppercase',
-  } as any, // TextStyle with textTransform requires `any` cast in StyleSheet
+  }, // TextStyle with textTransform requires `any` cast in StyleSheet
 
   countBadge: {
     paddingHorizontal: 8,

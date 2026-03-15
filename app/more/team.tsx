@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, Text, TouchableOpacity, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
@@ -112,7 +113,7 @@ export default function TeamScreen() {
   };
 
   const handlePress = (id: string) => {
-    router.push(`/more/team/${id}` as any);
+    navigateTo(`/more/team/${id}`);
   };
 
   const humanMembers = members.filter(m => m.type === 'human');

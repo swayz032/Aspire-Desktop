@@ -110,7 +110,7 @@ router.post('/api/livekit/token', async (req: Request, res: Response) => {
     await ensureRoom(roomName);
 
     const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
-      identity: `${(req as any).authenticatedUserId || participantName}-${suiteId || 'default'}`,
+      identity: `${req.authenticatedUserId || participantName}-${suiteId || 'default'}`,
       name: participantName,
       ttl: '10m',
       metadata: suiteId ? JSON.stringify({ suiteId }) : undefined,
@@ -155,8 +155,8 @@ router.get('/api/livekit/status', async (_req: Request, res: Response) => {
 router.get('/api/conference/members', async (req: Request, res: Response) => {
   try {
     const rawQuery = (req.query.q as string || '').trim();
-    const suiteId = (req as any).authenticatedSuiteId;
-    const userId = (req as any).authenticatedUserId;
+    const suiteId = req.authenticatedSuiteId;
+    const userId = req.authenticatedUserId;
 
     if (!suiteId) {
       return res.status(400).json({ error: 'Suite context required' });
@@ -375,8 +375,8 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
 
 router.get('/api/conference/lookup', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).authenticatedUserId as string | undefined;
-    const suiteId = (req as any).authenticatedSuiteId as string | undefined;
+    const userId = req.authenticatedUserId;
+    const suiteId = req.authenticatedSuiteId;
 
     // Law #3: Fail Closed — userId required for rate limiting and audit trail
     if (!userId) {
@@ -489,8 +489,8 @@ router.get('/api/conference/lookup', async (req: Request, res: Response) => {
 router.post('/api/conference/invite-external', async (req: Request, res: Response) => {
   try {
     const { email, guestName, roomName, hostName, purpose } = req.body;
-    const suiteId = (req as any).authenticatedSuiteId;
-    const userId = (req as any).authenticatedUserId;
+    const suiteId = req.authenticatedSuiteId ?? '';
+    const userId = req.authenticatedUserId ?? '';
     const correlationId = req.headers['x-correlation-id'] as string | undefined;
 
     if (!email || !guestName || !roomName) {
@@ -670,8 +670,8 @@ router.post('/api/conference/invite-external', async (req: Request, res: Respons
 router.post('/api/conference/room-link', async (req: Request, res: Response) => {
   try {
     const { roomName } = req.body;
-    const suiteId = (req as any).authenticatedSuiteId;
-    const userId = (req as any).authenticatedUserId;
+    const suiteId = req.authenticatedSuiteId ?? '';
+    const userId = req.authenticatedUserId ?? '';
     const correlationId = req.headers['x-correlation-id'] as string | undefined;
 
     if (!roomName || typeof roomName !== 'string' || roomName.length > 200) {
@@ -750,8 +750,8 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
     const { invitee_suite_id, invitee_user_id, room_name } = req.body;
     // Prefer X-Suite-Id header (active suite selection) over JWT metadata suite_id
     const headerSuiteId = typeof req.headers['x-suite-id'] === 'string' ? req.headers['x-suite-id'].trim() : '';
-    const suiteId = headerSuiteId || (req as any).authenticatedSuiteId as string | undefined;
-    const userId = (req as any).authenticatedUserId as string | undefined;
+    const suiteId = headerSuiteId || req.authenticatedSuiteId as string | undefined;
+    const userId = req.authenticatedUserId as string | undefined;
     const correlationId = req.headers['x-correlation-id'] as string | undefined;
 
     if (!invitee_suite_id || !invitee_user_id || !room_name) {
@@ -790,7 +790,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
     }
 
     // Look up inviter's profile for display in the notification
-    logger.info('Profile lookup for invite', { suiteId, headerSuiteId, authSuiteId: (req as any).authenticatedSuiteId });
+    logger.info('Profile lookup for invite', { suiteId, headerSuiteId, authSuiteId: req.authenticatedSuiteId });
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('suite_profiles')
       .select('display_id, office_display_id, owner_name, business_name, logo_url, owner_title')
@@ -822,7 +822,15 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
           SELECT display_id, office_display_id, owner_name, business_name, logo_url, owner_title
           FROM suite_profiles WHERE suite_id = ${suiteId} LIMIT 1
         `);
-        const rows = (result.rows || result) as any[];
+        interface SuiteProfileRow {
+          display_id: string;
+          office_display_id: string;
+          owner_name: string;
+          business_name: string | null;
+          logo_url: string | null;
+          owner_title: string | null;
+        }
+        const rows = (result.rows || result) as unknown as SuiteProfileRow[];
         if (rows.length > 0) {
           inviterProfile = rows[0];
           logger.info('Profile resolved via direct SQL fallback', { suiteId });
@@ -837,7 +845,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
       inviterProfile = {
         display_id: '',
         office_display_id: '',
-        owner_name: (req as any).authenticatedUserName || 'Aspire User',
+        owner_name: req.authenticatedUserName || 'Aspire User',
         business_name: null,
         logo_url: null,
         owner_title: null,
@@ -937,8 +945,8 @@ router.patch('/api/conference/invite-internal/:id', async (req: Request, res: Re
   try {
     const { id } = req.params;
     const { action } = req.body;
-    const userId = (req as any).authenticatedUserId as string | undefined;
-    const suiteId = (req as any).authenticatedSuiteId as string | undefined;
+    const userId = req.authenticatedUserId as string | undefined;
+    const suiteId = req.authenticatedSuiteId as string | undefined;
     const correlationId = req.headers['x-correlation-id'] as string | undefined;
 
     if (!id) {

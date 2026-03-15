@@ -23,6 +23,8 @@ export type CanvasTelemetryEvent =
   | 'risk_modal_close'
   | 'risk_modal_submit'
   | 'risk_modal_tier_select'
+  | 'risk_modal_approve'
+  | 'risk_modal_cancel'
   | 'error';
 
 export interface TelemetryPayload {
@@ -88,6 +90,8 @@ function createEmptyEventCounts(): Record<CanvasTelemetryEvent, number> {
     risk_modal_close: 0,
     risk_modal_submit: 0,
     risk_modal_tier_select: 0,
+    risk_modal_approve: 0,
+    risk_modal_cancel: 0,
     error: 0,
   };
 }

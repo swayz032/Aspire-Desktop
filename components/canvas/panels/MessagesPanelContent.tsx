@@ -221,7 +221,7 @@ const s = StyleSheet.create({
   orbBehind:         {
     position: 'absolute', top: -80, right: -60, width: 260, height: 260,
     borderRadius: 130, backgroundColor: 'rgba(14,165,233,0.12)',
-    ...(Platform.OS === 'web' ? { filter: 'blur(70px)' } as any : {}),
+    ...(Platform.OS === 'web' ? { filter: 'blur(70px)' } : {}),
   },
   heroRow:           { flexDirection: 'row', alignItems: 'center', gap: 10 },
   heroTitle:         { fontSize: 28, fontWeight: '800', color: TP, letterSpacing: -0.5 },

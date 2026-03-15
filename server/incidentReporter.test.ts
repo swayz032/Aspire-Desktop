@@ -33,7 +33,7 @@ describe('incidentReporter', () => {
 
   it('posts incident payload with correlation headers', async () => {
     process.env.ASPIRE_ADMIN_INCIDENT_S2S_SECRET = 'incident-secret';
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 202 }) as any;
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 202 }) as typeof fetch;
 
     const ok = await reportAdminIncident('http://localhost:8000', {
       title: 'Desktop proxy failed',

@@ -10,7 +10,7 @@ import { AuthorityQueueCard } from '@/components/AuthorityQueueCard';
 import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Colors, Spacing, BorderRadius, Canvas } from '@/constants/tokens';
 import { ImmersionLayer } from '@/components/canvas/ImmersionLayer';
 import { VignetteOverlay } from '@/components/canvas/VignetteOverlay';
@@ -302,7 +302,7 @@ export function DesktopHome() {
                   <View style={styles.profileBannerActions}>
                     <Pressable
                       style={styles.profileBannerButton}
-                      onPress={() => router.push('/(auth)/onboarding' as any)}
+                      onPress={() => router.push('/(auth)/onboarding' as Href)}
                     >
                       <Text style={styles.profileBannerButtonText}>Complete Profile</Text>
                     </Pressable>
@@ -344,7 +344,7 @@ export function DesktopHome() {
                         title="Today's Plan"
                         subtitle={`${planItems.length} tasks`}
                         actionLabel="See all"
-                        onAction={() => router.push('/session/plan' as any)}
+                        onAction={() => router.push('/session/plan' as Href)}
                       />
                       <TodayPlanTabs planItems={planItems} />
                     </View>
@@ -405,7 +405,7 @@ export function DesktopHome() {
                   >
                     <View style={[styles.section, styles.flexSection]}>
                       <SectionHeader title="Calendar" />
-                      <CalendarCard events={calendarEvents as any} />
+                      <CalendarCard events={calendarEvents} />
                     </View>
                   </CanvasTileWrapper>
                 </View>
@@ -425,7 +425,7 @@ export function DesktopHome() {
                 <SectionHeader
                   title="Authority Queue"
                   actionLabel="View all"
-                  onAction={() => router.push('/inbox' as any)}
+                  onAction={() => router.push('/inbox' as Href)}
                 />
                 {allAuthorityItems.length > 0 ? (
                   <View style={styles.authorityScrollRow}>
@@ -435,7 +435,7 @@ export function DesktopHome() {
                           item={item}
                           onAction={async (action) => {
                             if (action === 'join') {
-                              router.push('/session/conference-live' as any);
+                              router.push('/session/conference-live' as Href);
                             } else if (action === 'approve') {
                               // W6: Approve chains into orchestrator resume via Desktop server
                               try {
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: Spacing.xxl,
-    minHeight: Platform.OS === 'web' ? 'calc(100vh - 120px)' as any : undefined,
+    minHeight: Platform.OS === 'web' ? 'calc(100vh - 120px)' : undefined,
   },
   grid: {
     flexDirection: 'column',
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
     maxWidth: Canvas.layout.wideMaxWidth,
     alignSelf: 'center',
     width: '100%',
-  } as any,
+  },
   threeColWrapper: {
     flexDirection: 'row',
     gap: Spacing.lg,
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? {
       position: 'relative',
     } : {}),
-  } as any,
+  },
   rightCol: {
     width: Canvas.layout.rightColDesktop,
     gap: Spacing.lg,
@@ -615,7 +615,7 @@ const styles = StyleSheet.create({
       scrollbarWidth: 'thin',
       scrollbarColor: '#3B3B3D transparent',
     } : {}),
-  } as any,
+  },
   authorityCardWrapper: {
     width: 300,
     flexShrink: 0,
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
   tabletTopRow: {
     width: '100%',
     marginBottom: Spacing.md,
-  } as any,
+  },
   greeting: {
     color: Colors.text.primary,
     fontSize: 18,

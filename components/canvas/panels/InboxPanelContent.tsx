@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo, ComponentProps } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
@@ -152,7 +152,7 @@ export default function InboxPanelContent(_props: PanelContentProps) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabBar} contentContainerStyle={s.tabBarContent}>
         {TABS.map(t => (
           <Pressable key={t.key} onPress={() => setTab(t.key)} style={[s.tab, tab === t.key && s.tabActive]}>
-            <Ionicons name={t.icon as any} size={15} color={tab === t.key ? '#FFF' : TS} />
+            <Ionicons name={t.icon as ComponentProps<typeof Ionicons>['name']} size={15} color={tab === t.key ? '#FFF' : TS} />
             <Text style={[s.tabText, tab === t.key && s.tabTextActive]}>{t.label}</Text>
             {(t.badge ?? 0) > 0 && (
               <View style={[s.tabBadge, tab === t.key && s.tabBadgeActive]}>
@@ -277,7 +277,7 @@ const s = StyleSheet.create({
   orbBehind:      {
     position: 'absolute', top: -60, right: -60, width: 220, height: 220,
     borderRadius: 110, backgroundColor: 'rgba(14,165,233,0.10)',
-    ...(Platform.OS === 'web' ? { filter: 'blur(60px)' } as any : {}),
+    ...(Platform.OS === 'web' ? { filter: 'blur(60px)' } : {}),
   },
   tabBar:         { maxHeight: 52, marginTop: 12 },
   tabBarContent:  { paddingHorizontal: 12, gap: 6, alignItems: 'center', paddingVertical: 4 },

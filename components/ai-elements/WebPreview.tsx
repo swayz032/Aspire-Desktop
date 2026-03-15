@@ -20,6 +20,7 @@ import {
   StyleSheet,
   Platform,
   ViewStyle,
+  TextStyle,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import ReactMarkdown from 'react-markdown';
@@ -197,7 +198,7 @@ function NavigationBar({
       <View style={s.urlFieldContainer}>
         <Ionicons name="lock-closed" size={12} color="rgba(255,255,255,0.3)" style={s.urlLock} />
         <TextInput
-          style={s.urlInput as any}
+          style={s.urlInput as unknown as TextStyle}
           value={inputUrl}
           onChangeText={setInputUrl}
           onSubmitEditing={handleSubmit}

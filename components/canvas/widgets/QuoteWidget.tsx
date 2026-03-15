@@ -245,7 +245,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(255,255,255,0.35)',
     letterSpacing: 1,
-  } as any,
+  },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -256,7 +256,7 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,
-  } as any,
+  },
   clientRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -274,13 +274,13 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   clientInfo: { flex: 1 },
   clientName: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFF',
-  } as any,
+  },
   companyName: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.45)',
@@ -318,7 +318,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(255,255,255,0.3)',
     letterSpacing: 1,
-  } as any,
+  },
   lineRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -332,7 +332,7 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
-  } as any,
+  },
   itemDesc: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.35)',
@@ -352,13 +352,13 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(255,255,255,0.5)',
     letterSpacing: 1.5,
-  } as any,
+  },
   totalAmount: {
     fontSize: 22,
     fontWeight: '800',
     color: '#FFF',
     letterSpacing: -0.5,
-  } as any,
+  },
   bottomSpacer: { height: 20 },
   ctaWrap: {
     paddingHorizontal: 20,
@@ -369,7 +369,7 @@ const s = StyleSheet.create({
   ctaBtn: {
     borderRadius: 26,
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' }) : {}),
   },
   ctaGrad: {
     height: 52,
@@ -381,5 +381,5 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: '#FFF',
     letterSpacing: 0.3,
-  } as any,
+  },
 });

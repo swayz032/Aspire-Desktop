@@ -148,7 +148,7 @@ function ConnectorLine({ fromStatus, toStatus }: { fromStatus: string; toStatus:
             flex: 1,
             height: 2,
             borderTop: `2px ${lineStyle} ${lineColor}`,
-          } as any}
+          }}
         />
       </View>
     );
@@ -188,7 +188,7 @@ export default function LifecycleChain({ steps, title, onExplainStep }: Lifecycl
               onPress={() => onExplainStep?.(step)}
               style={({ hovered }: PressableState) => [
                 styles.stepColumn,
-                Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                Platform.OS === 'web' && ({ cursor: 'pointer' }),
                 Platform.OS === 'web' && hovered && styles.stepHovered,
               ]}
             >
@@ -206,7 +206,7 @@ export default function LifecycleChain({ steps, title, onExplainStep }: Lifecycl
 
               {step.provider && (
                 <SourceBadge
-                  source={step.provider as any}
+                  source={step.provider as 'plaid' | 'stripe' | 'qbo' | 'gusto' | 'computed'}
                   lastSyncAt={step.timestamp ?? null}
                   confidence="none"
                   compact

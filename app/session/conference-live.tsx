@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Animated, StatusBar, useWindowDimensions, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Animated, StatusBar, useWindowDimensions, ScrollView, TextInput, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -254,7 +254,7 @@ function AvaTile({
                   ? '0 0 12px 4px rgba(0, 255, 255, 0.8), 0 0 25px 8px rgba(79, 172, 254, 0.6), 0 0 40px 12px rgba(0, 242, 254, 0.4)'
                   : '0 0 8px 2px rgba(79, 172, 254, 0.6), 0 0 15px 3px rgba(0, 242, 254, 0.4), 0 0 25px 5px rgba(79, 172, 254, 0.3)',
                 cursor: 'pointer',
-              } as any,
+              },
             ]}
           >
             <Image 
@@ -1043,7 +1043,7 @@ export default function ConferenceLive() {
                   style={[
                     desktopStyles.galleryTile,
                     {
-                      width: `${(100 / cols) - 0.5}%` as any,
+                      width: `${(100 / cols) - 0.5}%`,
                     },
                   ]}
                 >
@@ -1158,7 +1158,7 @@ export default function ConferenceLive() {
       <View style={desktopStyles.multiSpeakerContainer}>
         <View style={desktopStyles.multiStage}>
           {topSpeakers.map((p) => (
-            <View key={p.id} style={[desktopStyles.multiStageTile, { width: `${100 / Math.max(topSpeakers.length, 1) - 1}%` as any }]}>
+            <View key={p.id} style={[desktopStyles.multiStageTile, { width: `${100 / Math.max(topSpeakers.length, 1) - 1}%` }]}>
               <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="spotlight" isActiveSpeaker={p.id === activeSpeakerId} isLocal={p.isHost} />
             </View>
           ))}
@@ -1204,12 +1204,12 @@ export default function ConferenceLive() {
               )}
             </View>
             <Pressable
-              style={desktopStyles.dividerHandle}
+              style={desktopStyles.dividerHandle as unknown as ViewStyle}
               {...(Platform.OS === 'web' ? {
                 onMouseDown: () => {
                   isInteractingRef.current = true;
                 },
-              } : {} as any)}
+              } : {})}
             >
               <View style={desktopStyles.dividerLine} />
             </Pressable>
@@ -1273,7 +1273,7 @@ export default function ConferenceLive() {
               style={[desktopStyles.viewMenuItem, viewMode === m.mode && desktopStyles.viewMenuItemActive]}
               onPress={() => handleViewModeChange(m.mode)}
             >
-              <Ionicons name={m.icon as any} size={16} color={viewMode === m.mode ? Colors.accent.cyan : '#A1A1AA'} />
+              <Ionicons name={m.icon as keyof typeof Ionicons.glyphMap} size={16} color={viewMode === m.mode ? Colors.accent.cyan : '#A1A1AA'} />
               <Text style={[desktopStyles.viewMenuItemText, viewMode === m.mode && { color: Colors.accent.cyan }]}>{m.label}</Text>
               {viewMode === m.mode && <Ionicons name="checkmark" size={16} color={Colors.accent.cyan} />}
             </Pressable>
@@ -1406,8 +1406,8 @@ export default function ConferenceLive() {
             onHide={() => setToastVisible(false)}
           />
 
-          <View style={desktopStyles.videoSection} {...(Platform.OS === 'web' ? { 'data-video-section': true } as any : {})}>
-            <Animated.View style={[desktopStyles.topBar, { opacity: chromeOpacity }, chromeMode === 'hidden' && !alwaysShowControls && { pointerEvents: 'none' as any }]}>
+          <View style={desktopStyles.videoSection} {...(Platform.OS === 'web' ? { 'data-video-section': true } : {})}>
+            <Animated.View style={[desktopStyles.topBar, { opacity: chromeOpacity }, chromeMode === 'hidden' && !alwaysShowControls && { pointerEvents: 'none' }]}>
               <View style={desktopStyles.callInfo}>
                 <View style={desktopStyles.liveBadge}>
                   <View style={desktopStyles.liveDot} />
@@ -1467,7 +1467,7 @@ export default function ConferenceLive() {
               )}
             </View>
 
-            <Animated.View style={[desktopStyles.controlBar, { opacity: chromeOpacity }, chromeMode === 'hidden' && !alwaysShowControls && { pointerEvents: 'none' as any }]}>
+            <Animated.View style={[desktopStyles.controlBar, { opacity: chromeOpacity }, chromeMode === 'hidden' && !alwaysShowControls && { pointerEvents: 'none' }]}>
               <View style={desktopStyles.avaIndicatorBar}>
                 <Ionicons name="sparkles" size={12} color={Colors.accent.cyan} />
                 <Text style={desktopStyles.avaBarText}>Ava {avaState === 'idle' ? 'ready' : avaState}</Text>
@@ -1898,7 +1898,7 @@ const desktopStyles = StyleSheet.create({
     backgroundColor: '#1C1C1E',
     alignItems: 'center',
     justifyContent: 'center',
-    cursor: 'col-resize' as any,
+    cursor: 'col-resize' as const,
   },
   dividerLine: {
     width: 3,

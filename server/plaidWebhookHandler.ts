@@ -3,6 +3,7 @@ import { Configuration, PlaidApi } from 'plaid';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { createReceipt } from './receiptService';
+import type { WebhookRequest } from './types';
 import { updateConnectionSyncTime } from './financeTokenStore';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import crypto from 'crypto';
@@ -75,7 +76,7 @@ async function verifyPlaidWebhook(req: Request): Promise<boolean> {
     });
 
     const jwk = keyResponse.data.key;
-    const publicKey = crypto.createPublicKey({ key: jwk as any, format: 'jwk' });
+    const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' } as crypto.JsonWebKeyInput);
 
     const signatureInput = `${tokenParts[0]}.${tokenParts[1]}`;
     const signature = Buffer.from(tokenParts[2], 'base64url');
@@ -95,7 +96,7 @@ async function verifyPlaidWebhook(req: Request): Promise<boolean> {
     const payloadJson = Buffer.from(tokenParts[1], 'base64url').toString('utf-8');
     const payload = JSON.parse(payloadJson);
 
-    const bodyString = (req as any).rawBody ? (req as any).rawBody.toString('utf-8') : JSON.stringify(req.body);
+    const bodyString = (req as WebhookRequest).rawBody ? (req as WebhookRequest).rawBody!.toString('utf-8') : JSON.stringify(req.body);
     const bodyHash = computeBodyHash(bodyString);
 
     if (payload.request_body_sha256 !== bodyHash) {
@@ -124,8 +125,8 @@ async function findConnectionByItemId(itemId: string): Promise<{ id: string; sui
       LIMIT 1
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
-      const row = (rows as any[])[0];
+    if (rows && (rows as Record<string, any>[]).length > 0) {
+      const row = (rows as Record<string, any>[])[0];
       return { id: row.id, suiteId: row.suite_id, officeId: row.office_id };
     }
     return null;
@@ -146,10 +147,10 @@ async function writeFinanceEvent(params: {
   amount: number | null;
   currency: string;
   status: string;
-  entityRefs: any;
+  entityRefs: Record<string, any>;
   rawHash: string;
   receiptId: string | null;
-  metadata: any;
+  metadata: Record<string, any>;
 }): Promise<boolean> {
   try {
     const result = await db.execute(sql`
@@ -159,7 +160,7 @@ async function writeFinanceEvent(params: {
       RETURNING event_id
     `);
     const rows = result.rows || result;
-    if (rows && (rows as any[]).length > 0) {
+    if (rows && (rows as Record<string, any>[]).length > 0) {
       logger.info('Finance event written', { providerEventId: params.providerEventId });
       return true;
     }
@@ -184,8 +185,8 @@ export async function pullPlaidTransactionsSync(accessToken: string, connectionI
         LIMIT 1
       `);
       const cursorRows = cursorResult.rows || cursorResult;
-      if (cursorRows && (cursorRows as any[]).length > 0 && (cursorRows as any[])[0].cursor) {
-        cursor = (cursorRows as any[])[0].cursor;
+      if (cursorRows && (cursorRows as Record<string, any>[]).length > 0 && (cursorRows as Record<string, any>[])[0].cursor) {
+        cursor = (cursorRows as Record<string, any>[])[0].cursor;
       }
     } catch (e: unknown) {
       logger.info('No existing sync cursor found, starting fresh');
@@ -305,7 +306,7 @@ export async function pullPlaidTransactionsSync(accessToken: string, connectionI
           LIMIT 1
         `);
         const existingRows = existing.rows || existing;
-        if (existingRows && (existingRows as any[]).length > 0) {
+        if (existingRows && (existingRows as Record<string, any>[]).length > 0) {
           await db.execute(sql`
             UPDATE finance_entities
             SET data = ${JSON.stringify({ sync_cursor: cursor })}, updated_at = NOW()
@@ -337,21 +338,21 @@ export async function pullPlaidTransactionsSync(accessToken: string, connectionI
     return { added, modified, removed };
   } catch (error: unknown) {
     const errorDetail = error instanceof Error
-      ? ((error as any)?.response?.data || error.message)
+      ? ((error as Record<string, any>)?.response?.data || error.message)
       : 'unknown';
     logger.error('Plaid transactions sync error', { error: errorDetail });
     throw error;
   }
 }
 
-export async function fetchPlaidBalances(accessToken: string, connectionId: string, suiteId: string, officeId: string): Promise<any[]> {
+export async function fetchPlaidBalances(accessToken: string, connectionId: string, suiteId: string, officeId: string): Promise<Record<string, any>[]> {
   try {
     const response = await plaidClient.accountsBalanceGet({
       access_token: accessToken,
     });
 
     const accounts = response.data.accounts;
-    const balanceResults: any[] = [];
+    const balanceResults: Record<string, any>[] = [];
 
     for (const account of accounts) {
       const providerEventId = `plaid_balance_${account.account_id}_${new Date().toISOString().split('T')[0]}`;
@@ -405,7 +406,7 @@ export async function fetchPlaidBalances(accessToken: string, connectionId: stri
     return balanceResults;
   } catch (error: unknown) {
     const errorDetail = error instanceof Error
-      ? ((error as any)?.response?.data || error.message)
+      ? ((error as Record<string, any>)?.response?.data || error.message)
       : 'unknown';
     logger.error('Plaid balance fetch error', { error: errorDetail });
     throw error;
