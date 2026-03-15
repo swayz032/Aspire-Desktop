@@ -1,4 +1,13 @@
 import 'dotenv/config';
+// Also load .env.local for local dev overrides (e.g. DEV_BYPASS_AUTH)
+// dotenv/config only reads .env — .env.local must be loaded explicitly.
+import dotenv from 'dotenv';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
+const localEnvPath = resolve(process.cwd(), '.env.local');
+if (existsSync(localEnvPath)) {
+  dotenv.config({ path: localEnvPath, override: false });
+}
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
