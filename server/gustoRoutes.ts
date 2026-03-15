@@ -24,9 +24,9 @@ let tokenExpiresAt: Date | null = null;
 // --- Helper: extract suite context from headers ---
 function getSuiteContext(req: Request) {
   return {
-    suiteId: (req.headers['x-suite-id'] as string) || '',
+    suiteId: (req as any).authenticatedSuiteId || '',
     officeId: (req.headers['x-office-id'] as string) || undefined,
-    actorId: (req.headers['x-actor-id'] as string) || (req.headers['x-user-id'] as string) || 'unknown',
+    actorId: (req as any).authenticatedUserId || 'unknown',
     correlationId: (req.headers['x-correlation-id'] as string) || undefined,
   };
 }
@@ -419,7 +419,7 @@ router.post('/api/gusto/create-company', async (req: Request, res: Response) => 
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -473,7 +473,7 @@ router.post('/api/gusto/migrate', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -493,8 +493,8 @@ router.get('/api/gusto/status', async (_req: Request, res: Response) => {
       detail: 'Healthy · API reachable',
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    res.json({ connected: true, healthy: false, detail: msg });
+    logger.error('Gusto status check error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.json({ connected: true, healthy: false, detail: 'Unable to verify connection' });
   }
 });
 
@@ -988,7 +988,7 @@ router.put('/api/gusto/payrolls/:uuid/prepare', async (req: Request, res: Respon
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', payroll_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: msg || 'Failed to prepare/calculate payroll' });
+    res.status(500).json({ error: 'Failed to prepare/calculate payroll' });
   }
 });
 
@@ -1356,7 +1356,7 @@ router.post('/api/gusto/employees/:uuid/terminations', async (req: Request, res:
       { method: 'POST', path: req.path, risk_tier: 'RED', employee_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: msg || 'Failed to terminate employee' });
+    res.status(500).json({ error: 'Failed to terminate employee' });
   }
 });
 
@@ -1382,7 +1382,7 @@ router.delete('/api/gusto/employees/:uuid', async (req: Request, res: Response) 
       { method: 'DELETE', path: req.path, risk_tier: 'RED', employee_uuid: req.params.uuid },
       { error: msg },
     );
-    res.status(500).json({ error: msg || 'Failed to delete employee' });
+    res.status(500).json({ error: 'Failed to delete employee' });
   }
 });
 

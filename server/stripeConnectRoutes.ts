@@ -52,9 +52,9 @@ export async function loadStripeConnectState(): Promise<void> {
 // --- Helper: extract suite context from headers ---
 function getSuiteContext(req: Request) {
   return {
-    suiteId: (req.headers['x-suite-id'] as string) || '',
+    suiteId: (req as any).authenticatedSuiteId || '',
     officeId: (req.headers['x-office-id'] as string) || undefined,
-    actorId: (req.headers['x-actor-id'] as string) || (req.headers['x-user-id'] as string) || 'unknown',
+    actorId: (req as any).authenticatedUserId || 'unknown',
     correlationId: (req.headers['x-correlation-id'] as string) || undefined,
   };
 }
@@ -114,7 +114,7 @@ router.post('/api/stripe-connect/create-account', async (req: Request, res: Resp
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -142,7 +142,7 @@ router.post('/api/stripe-connect/account-link', async (req: Request, res: Respon
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -176,7 +176,7 @@ router.get('/api/stripe-connect/authorize', async (req: Request, res: Response) 
       { method: 'GET', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -221,8 +221,8 @@ router.get('/api/stripe-connect/account', async (_req: Request, res: Response) =
     const account = await stripe.accounts.retrieve(connectedAccountId);
     res.json(account);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: msg });
+    logger.error('Stripe account retrieve error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -236,7 +236,7 @@ router.post('/api/stripe-connect/login-link', async (req: Request, res: Response
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Stripe login link error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -360,7 +360,7 @@ router.post('/api/stripe/invoices', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -375,11 +375,12 @@ router.post('/api/stripe/invoices/:id/send', async (req: Request, res: Response)
     res.json(invoice);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe send invoice error', { error: msg });
     await emitReceipt(req, 'stripe.invoice.send', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', invoice_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -394,11 +395,12 @@ router.post('/api/stripe/invoices/:id/finalize', async (req: Request, res: Respo
     res.json(invoice);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe finalize invoice error', { error: msg });
     await emitReceipt(req, 'stripe.invoice.finalize', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', invoice_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -413,11 +415,12 @@ router.post('/api/stripe/invoices/:id/void', async (req: Request, res: Response)
     res.json(invoice);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe void invoice error', { error: msg });
     await emitReceipt(req, 'stripe.invoice.void', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'RED', invoice_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -432,11 +435,12 @@ router.delete('/api/stripe/invoices/:id', async (req: Request, res: Response) =>
     res.json({ success: true });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe delete invoice error', { error: msg });
     await emitReceipt(req, 'stripe.invoice.delete', 'FAILED',
       { method: 'DELETE', path: req.path, risk_tier: 'RED', invoice_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -501,7 +505,7 @@ router.post('/api/stripe/quotes', async (req: Request, res: Response) => {
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -516,11 +520,12 @@ router.post('/api/stripe/quotes/:id/finalize', async (req: Request, res: Respons
     res.json(quote);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe finalize quote error', { error: msg });
     await emitReceipt(req, 'stripe.quote.finalize', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', quote_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -535,11 +540,12 @@ router.post('/api/stripe/quotes/:id/accept', async (req: Request, res: Response)
     res.json(quote);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe accept quote error', { error: msg });
     await emitReceipt(req, 'stripe.quote.accept', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'RED', quote_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -554,11 +560,12 @@ router.post('/api/stripe/quotes/:id/cancel', async (req: Request, res: Response)
     res.json(quote);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe cancel quote error', { error: msg });
     await emitReceipt(req, 'stripe.quote.cancel', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW', quote_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -574,8 +581,8 @@ router.get('/api/stripe/quotes/:id/pdf', async (req: Request, res: Response) => 
     }
     res.send(Buffer.concat(chunks));
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: msg });
+    logger.error('Stripe quote PDF error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -597,8 +604,8 @@ router.get('/api/stripe/customers/:id', async (req: Request, res: Response) => {
     const customer = await stripe.customers.retrieve(id);
     res.json(customer);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: msg });
+    logger.error('Stripe customer retrieve error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -617,11 +624,12 @@ router.post('/api/stripe/customers', async (req: Request, res: Response) => {
     res.json(customer);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe create customer error', { error: msg });
     await emitReceipt(req, 'stripe.customer.create', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -640,11 +648,12 @@ router.put('/api/stripe/customers/:id', async (req: Request, res: Response) => {
     res.json(customer);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe update customer error', { error: msg });
     await emitReceipt(req, 'stripe.customer.update', 'FAILED',
       { method: 'PUT', path: req.path, risk_tier: 'YELLOW', customer_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -659,11 +668,12 @@ router.delete('/api/stripe/customers/:id', async (req: Request, res: Response) =
     res.json({ success: true });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe delete customer error', { error: msg });
     await emitReceipt(req, 'stripe.customer.delete', 'FAILED',
       { method: 'DELETE', path: req.path, risk_tier: 'RED', customer_id: req.params.id },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -755,11 +765,12 @@ router.post('/api/stripe/payment-links', async (req: Request, res: Response) => 
     res.json(paymentLink);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Stripe create payment link error', { error: msg });
     await emitReceipt(req, 'stripe.payment_link.create', 'FAILED',
       { method: 'POST', path: req.path, risk_tier: 'YELLOW' },
       { error: msg },
     );
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

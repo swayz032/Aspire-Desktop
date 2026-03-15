@@ -30,9 +30,9 @@ const router = Router();
 // --- Helper: extract suite context from headers ---
 function getSuiteContext(req: Request) {
   return {
-    suiteId: (req.headers['x-suite-id'] as string) || '',
+    suiteId: (req as any).authenticatedSuiteId || '',
     officeId: (req.headers['x-office-id'] as string) || undefined,
-    actorId: (req.headers['x-actor-id'] as string) || (req.headers['x-user-id'] as string) || 'unknown',
+    actorId: (req as any).authenticatedUserId || 'unknown',
     correlationId: (req.headers['x-correlation-id'] as string) || undefined,
   };
 }

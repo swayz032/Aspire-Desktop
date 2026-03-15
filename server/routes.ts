@@ -1205,6 +1205,8 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
 });
 
 router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const profile = await storage.getSuiteProfile(getParam(req.params.suiteId));
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
@@ -1216,6 +1218,8 @@ router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
 
 // Backward-compatible alias: /api/users/:userId -> suite profile lookup
 router.get('/api/users/:userId', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const profile = await storage.getSuiteProfile(getParam(req.params.userId));
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
@@ -1330,6 +1334,8 @@ router.patch('/api/users/:userId', async (req: Request, res: Response) => {
 });
 
 router.get('/api/users/:userId/services', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const services = await storage.getServices(getParam(req.params.userId));
     res.json(services);
@@ -1339,6 +1345,8 @@ router.get('/api/users/:userId/services', async (req: Request, res: Response) =>
 });
 
 router.get('/api/users/:userId/services/active', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const services = await storage.getActiveServices(getParam(req.params.userId));
     res.json(services);
@@ -1482,6 +1490,8 @@ router.delete('/api/services/:serviceId', async (req: Request, res: Response) =>
 });
 
 router.get('/api/users/:userId/availability', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const availability = await storage.getAvailability(getParam(req.params.userId));
     res.json(availability);
@@ -1532,6 +1542,8 @@ router.put('/api/users/:userId/availability', async (req: Request, res: Response
 });
 
 router.get('/api/users/:userId/buffer-settings', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const settings = await storage.getBufferSettings(getParam(req.params.userId));
     res.json(settings || { beforeBuffer: 0, afterBuffer: 15, minimumNotice: 60, maxAdvanceBooking: 30 });
@@ -1578,6 +1590,8 @@ router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
 });
 
 router.get('/api/users/:userId/bookings', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const bookings = await storage.getBookings(getParam(req.params.userId));
     res.json(bookings);
@@ -1587,6 +1601,8 @@ router.get('/api/users/:userId/bookings', async (req: Request, res: Response) =>
 });
 
 router.get('/api/users/:userId/bookings/upcoming', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const bookings = await storage.getUpcomingBookings(getParam(req.params.userId));
     res.json(bookings);
@@ -1596,6 +1612,8 @@ router.get('/api/users/:userId/bookings/upcoming', async (req: Request, res: Res
 });
 
 router.get('/api/users/:userId/bookings/stats', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const stats = await storage.getBookingStats(getParam(req.params.userId));
     res.json(stats);
@@ -2652,7 +2670,7 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
     });
   }
 
-  const suiteId = (req as any).authenticatedSuiteId || (typeof req.query.suiteId === 'string' ? req.query.suiteId : '');
+  const suiteId = (req as any).authenticatedSuiteId || '';
   if (!suiteId) {
     return res.status(401).json({
       error: 'AUTH_REQUIRED',

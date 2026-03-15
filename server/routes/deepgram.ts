@@ -36,7 +36,7 @@ router.get('/api/deepgram/token', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Deepgram token error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -128,7 +128,7 @@ router.post('/api/livekit/token', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('LiveKit token error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -144,7 +144,7 @@ router.get('/api/livekit/status', async (_req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('LiveKit status error', { error: msg });
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

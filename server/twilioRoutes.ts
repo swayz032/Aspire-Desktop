@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
-import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
+import { getDefaultOfficeId } from './suiteContext';
 import { logger } from './logger';
 
 const router = Router();
@@ -42,12 +42,13 @@ router.post('/api/calls/initiate', async (req: Request, res: Response) => {
       return res.status(503).json({ error: 'TWILIO_PHONE_NUMBER not configured' });
     }
 
-    const { to, suiteId } = req.body;
+    const { to } = req.body;
     if (!to) {
       return res.status(400).json({ error: 'Missing required field: to (phone number)' });
     }
 
-    const effectiveSuiteId = suiteId || getDefaultSuiteId();
+    const effectiveSuiteId = (req as any).authenticatedSuiteId;
+    if (!effectiveSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
     const effectiveOfficeId = getDefaultOfficeId();
 
     // Initiate the call via Twilio
@@ -83,9 +84,8 @@ router.post('/api/calls/initiate', async (req: Request, res: Response) => {
       status: call.status,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Call initiation error', { error: msg });
-    res.status(500).json({ error: msg });
+    logger.error('Call initiation error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -129,7 +129,8 @@ router.post('/api/calls/webhook', async (req: Request, res: Response) => {
 // GET /api/calls/history — Query provider_call_log from Supabase
 router.get('/api/calls/history', async (req: Request, res: Response) => {
   try {
-    const suiteId = (req.query.suiteId as string) || getDefaultSuiteId();
+    const suiteId = (req as any).authenticatedSuiteId;
+    if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
     const limit = parseInt((req.query.limit as string) || '50', 10);
     const offset = parseInt((req.query.offset as string) || '0', 10);
 
@@ -149,9 +150,8 @@ router.get('/api/calls/history', async (req: Request, res: Response) => {
     const rows = (result.rows || result) as any[];
     res.json({ calls: rows, total: rows.length });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'unknown';
-    logger.error('Call history error', { error: msg });
-    res.status(500).json({ error: msg });
+    logger.error('Call history error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
