@@ -48,6 +48,10 @@ The platform utilizes Expo/React Native Web with expo-router for the frontend, a
     - Finance Hub v2 redesign: top pill nav (`FinanceTopNav`), `StoryModeCarousel` (7 Story Modes with 3D CSS stagger), chart card primitives (`GlowTrendCard`, `SegmentRingCard`, `QueueInstrumentCard`, `InsightOverlayCard`) with premium thin aesthetic.
     - Story Mode identities: Cash Truth (cyan), What Changed (violet), Invoice Pressure (amber), Tax Review (emerald), Cleanup Sprint (coral), Books vs Bank (indigo), Money Memory (magenta).
     - Card animation keyframes injected via `components/finance/cardAnimations.ts`.
+    - Finance Hub Overview two-zone layout: Selector Row (carousel left ~35%, Finn desk center ~40%, graphic right rail ~25%) + Dashboard Zone (hero + 3 support cards).
+    - Right rail: 3 graphic blocks — `GreetingCard` (time-of-day ambient gradient), `HealthScoreRing` (gradient arc gauge, derived score), `FinnDailyBrief` (mode-specific insight, LED avatar, "Ask Finn →").
+    - Dashboard Zone: Option D staggered transitions on mode switch (150ms blur-fade-out, then 300ms staggered slide-up with 80ms delay per card). Config-driven via `storyModeConfigs.ts`.
+    - Legacy sections (ReconcileCard, LifecycleChain, Authority Queue) in collapsible Details section below Dashboard Zone.
     - Compliance features: Explicit consent screens (e.g., Plaid consent), MFA, and dedicated legal/security pages.
     - Finance Hub Books page with "Money Shelves" (department tiles), "Money Moves" (guided journal entry wizard), and "Money Trail" (timeline-grouped GL data).
 - **Office Store**: Manages AI staff members.

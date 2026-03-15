@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
-import { FinanceRightRail } from '@/components/finance/FinanceRightRail';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import SourceBadge from '@/components/finance/SourceBadge';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import { AuthorityQueueCard } from '@/components/AuthorityQueueCard';
 import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
@@ -25,9 +21,12 @@ import { GlowTrendCard } from '@/components/finance/GlowTrendCard';
 import { SegmentRingCard } from '@/components/finance/SegmentRingCard';
 import { QueueInstrumentCard } from '@/components/finance/QueueInstrumentCard';
 import { InsightOverlayCard } from '@/components/finance/InsightOverlayCard';
-import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
-import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern, heroCardBg } from '@/constants/cardPatterns';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
+import { GreetingCard } from '@/components/finance/GreetingCard';
+import { HealthScoreRing } from '@/components/finance/HealthScoreRing';
+import { FinnDailyBrief } from '@/components/finance/FinnDailyBrief';
+import { getStoryDashboardConfig } from '@/components/finance/storyModeConfigs';
+import { Colors } from '@/constants/tokens';
+import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 
 interface SnapshotData {
   chapters: {
@@ -48,21 +47,6 @@ interface ConnectionStatus {
   summary: { total: number; connected: number; needsAttention: number };
 }
 
-
-function formatCurrency(cents: number | null | undefined): string {
-  const safe = cents ?? 0;
-  const abs = Math.abs(safe);
-  if (abs >= 100000) return `$${(abs / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-  return `$${(abs / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function formatShortCurrency(cents: number | null | undefined): string {
-  const val = Math.abs(cents ?? 0) / 100;
-  if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
-  return `$${val.toFixed(0)}`;
-}
-
-const webOnly = (webStyles: any) => Platform.OS === 'web' ? webStyles : {};
 
 const tintPositionMap: Record<string, string> = {
   'top-right': 'top right',
@@ -270,31 +254,6 @@ function GlassCard({ children, style, onPress, hovered, tint, ...rest }: any) {
   );
 }
 
-function GlowBlob({ color, size, top, left, right, bottom, opacity = 0.15 }: { color: string; size: number; top?: any; left?: any; right?: any; bottom?: any; opacity?: number }) {
-  return null;
-}
-
-function KpiMiniChart({ data, color }: { data: number[]; color: string }) {
-  if (Platform.OS !== 'web') return null;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 32, marginTop: 10 }}>
-      {data.map((v, i) => (
-        <div key={i} className="kpi-spark-bar" style={{
-          flex: 1,
-          height: `${20 + ((v - min) / range) * 80}%`,
-          background: `linear-gradient(to top, ${color}CC, ${color})`,
-          borderRadius: 3,
-          minWidth: 4,
-          borderTop: `1px solid ${color}`,
-          animationDelay: `${i * 0.2}s`,
-        }} />
-      ))}
-    </div>
-  );
-}
 
 function EnterpriseIcon({ type, color, bgColor, size = 36 }: { type: string; color: string; bgColor: string; size?: number }) {
   if (Platform.OS !== 'web') {
@@ -459,82 +418,6 @@ function SectionLabel({ icon, label, color = '#555', ledDelay }: { icon: string;
   );
 }
 
-const ChartTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload || !payload.length) return null;
-  const accentColor = payload[0]?.color || '#3B82F6';
-  return (
-    <div style={{
-      background: 'linear-gradient(135deg, rgba(18,21,35,0.97) 0%, rgba(12,15,25,0.98) 100%)',
-      border: '1px solid rgba(255,255,255,0.08)',
-      borderLeft: `3px solid ${accentColor}`,
-      borderRadius: 12,
-      padding: '12px 16px',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      boxShadow: `0 12px 40px rgba(0,0,0,0.5), 0 0 20px ${accentColor}15, inset 0 1px 0 rgba(255,255,255,0.06)`,
-      minWidth: 140,
-    }}>
-      <p style={{
-        color: 'rgba(255,255,255,0.5)',
-        fontSize: 10,
-        fontWeight: 600,
-        letterSpacing: '0.05em',
-        textTransform: 'uppercase' as const,
-        margin: '0 0 8px 0',
-      }}>{label}</p>
-      {payload.map((p: any, i: number) => (
-        <div key={i} style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginTop: i > 0 ? 6 : 0,
-        }}>
-          <div style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: p.color || '#fff',
-            border: '1px solid rgba(255,255,255,0.2)',
-          }} />
-          <span style={{
-            color: 'rgba(255,255,255,0.6)',
-            fontSize: 12,
-            fontWeight: 500,
-          }}>{p.name}</span>
-          <span style={{
-            color: '#fff',
-            fontSize: 14,
-            fontWeight: 700,
-            marginLeft: 'auto',
-            fontFeatureSettings: '"tnum"',
-          }}>${(p.value / 1000).toFixed(1)}K</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-function HeroCardDecoration() {
-  return null;
-}
-
-function ChartCardDecoration({ variant = 'grid', accentColor = '#3B82F6' }: { variant?: 'grid' | 'dots' | 'waves'; accentColor?: string }) {
-  return null;
-}
-
-function RocketDecoration() {
-  if (Platform.OS !== 'web') return null;
-  return (
-    <div style={{ position: 'absolute', bottom: 16, right: 20, opacity: 0.08, pointerEvents: 'none' }}>
-      <svg width="56" height="56" viewBox="0 0 64 64" fill="none">
-        <path d="M32 4C32 4 48 16 48 36C48 40 46 44 44 46L36 42V52L32 56L28 52V42L20 46C18 44 16 40 16 36C16 16 32 4 32 4Z" fill="white" />
-        <circle cx="32" cy="28" r="4" fill="#1a1a1a" />
-        <path d="M20 46C16 48 12 48 10 46" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M44 46C48 48 52 48 54 46" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    </div>
-  );
-}
 
 class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean; error: any}> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -556,15 +439,11 @@ class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode
 /** Breakpoint: below this, KPI cards wrap 2x2 and chart rows stack vertically */
 const COMPACT_BREAKPOINT = 1100;
 /** Breakpoint: below this, KPI cards stack fully and Finn card stacks vertically */
-const NARROW_BREAKPOINT = 800;
-
 function FinanceHubContent() {
   React.useEffect(() => { if (Platform.OS === 'web') injectFinnCss(); }, []);
-  const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
   const isCompact = windowWidth < COMPACT_BREAKPOINT;
-  const isNarrow = windowWidth < NARROW_BREAKPOINT;
-  const [hoveredButton, setHoveredButton] = useState<string | null>(null);
+  const [, setHoveredButton] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
@@ -575,32 +454,41 @@ function FinanceHubContent() {
   const [finnOverlayTab, setFinnOverlayTab] = useState<'voice' | 'video'>('voice');
   const [showFinnChat, setShowFinnChat] = useState(false);
   const [activeStoryMode, setActiveStoryMode] = useState<StoryModeId>('cash-truth');
+  const [dashTransition, setDashTransition] = useState<'idle' | 'fading' | 'entering'>('idle');
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
 
   const activeModeCfg = STORY_MODES.find(m => m.id === activeStoryMode) ?? STORY_MODES[0];
 
-  const storyDemoData = useMemo(() => ({
-    trend: [
-      { value: 42 }, { value: 45 }, { value: 40 }, { value: 48 },
-      { value: 52 }, { value: 49 }, { value: 55 }, { value: 58 },
-      { value: 54 }, { value: 60 }, { value: 63 }, { value: 67 },
-    ],
-    segments: [
-      { label: 'Revenue', value: 45, color: activeModeCfg.accent },
-      { label: 'Expenses', value: 30, color: `${activeModeCfg.accent}88` },
-      { label: 'Tax Reserve', value: 15, color: `${activeModeCfg.accent}55` },
-      { label: 'Other', value: 10, color: 'rgba(255,255,255,0.15)' },
-    ],
-    queue: [
-      { label: 'Vendor invoice #1042', amount: '$3,200', status: 'active' as const, age: '2d', progress: 75 },
-      { label: 'Payroll run Mar 15', amount: '$12,400', status: 'warning' as const, age: '5d', progress: 40 },
-      { label: 'Tax payment Q1', amount: '$8,750', status: 'overdue' as const, age: '12d', progress: 90 },
-      { label: 'Office lease renewal', amount: '$2,100', status: 'pending' as const, progress: 10 },
-    ],
-    spark: [
-      { value: 30 }, { value: 35 }, { value: 28 }, { value: 42 },
-      { value: 38 }, { value: 45 }, { value: 50 }, { value: 48 },
-    ],
-  }), [activeModeCfg.accent]);
+  const dashConfig = useMemo(
+    () => getStoryDashboardConfig(activeStoryMode, activeModeCfg.accent),
+    [activeStoryMode, activeModeCfg.accent]
+  );
+
+  const trendData = useMemo(() => [
+    { value: 42 }, { value: 45 }, { value: 40 }, { value: 48 },
+    { value: 52 }, { value: 49 }, { value: 55 }, { value: 58 },
+    { value: 54 }, { value: 60 }, { value: 63 }, { value: 67 },
+  ], []);
+
+  const sparkData = useMemo(() => [
+    { value: 30 }, { value: 35 }, { value: 28 }, { value: 42 },
+    { value: 38 }, { value: 45 }, { value: 50 }, { value: 48 },
+  ], []);
+
+  const transitionTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleModeSwitch = useCallback((mode: StoryModeId) => {
+    if (mode === activeStoryMode) return;
+    if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    setDashTransition('fading');
+    transitionTimerRef.current = setTimeout(() => {
+      setActiveStoryMode(mode);
+      setDashTransition('entering');
+      transitionTimerRef.current = setTimeout(() => setDashTransition('idle'), 600);
+    }, 150);
+  }, [activeStoryMode]);
+  React.useEffect(() => {
+    return () => { if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current); };
+  }, []);
 
   // Authority Queue state
   const dynamicItems = useDynamicAuthorityQueue();
@@ -634,59 +522,6 @@ function FinanceHubContent() {
   const isConnected = connections?.summary?.connected ? connections.summary.connected > 0 : false;
   const hasSnapshot = snapshot?.connected && snapshot?.generatedAt;
 
-  const cashTrendData = hasSnapshot
-    ? [
-        { day: 'Now', value: (snapshot.chapters.now.cashAvailable || 0) / 100 },
-        {
-          day: '7d',
-          value:
-            ((snapshot.chapters.now.cashAvailable || 0) + (snapshot.chapters.next.netCashFlow7d || 0)) / 100,
-        },
-      ]
-    : [];
-  const moneyInOutData = hasSnapshot
-    ? [
-        {
-          day: '7d',
-          inflow: (snapshot.chapters.next.expectedInflows7d || 0) / 100,
-          outflow: (snapshot.chapters.next.expectedOutflows7d || 0) / 100,
-        },
-      ]
-    : [];
-  const expenseData = hasSnapshot && snapshot.chapters.month.expenses > 0
-    ? [{ name: 'Total Expenses', value: 100, color: '#2563EB' }]
-    : [];
-  const kpiSparkData = hasSnapshot
-    ? {
-        balance: Array(8).fill((snapshot.chapters.now.cashAvailable || 0) / 100),
-        income: Array(8).fill((snapshot.chapters.month.revenue || 0) / 100),
-        savings: Array(8).fill((snapshot.chapters.now.stripeAvailable || 0) / 100),
-        expenses: Array(8).fill((snapshot.chapters.month.expenses || 0) / 100),
-      }
-    : {
-        balance: [],
-        income: [],
-        savings: [],
-        expenses: [],
-      };
-
-
-  const kpiCards = hasSnapshot ? [
-    { label: 'Balance', value: formatShortCurrency(snapshot.chapters.now.cashAvailable), change: 'Live', up: true, icon: 'wallet', sparkKey: 'balance' as const, color: '#10B981', metricId: 'cash_available' },
-    { label: 'Income', value: `+${formatShortCurrency(snapshot.chapters.month.revenue)}`, change: 'Live', up: (snapshot.chapters.month.revenue || 0) > 0, icon: 'chart', sparkKey: 'income' as const, color: '#10B981', metricId: 'monthly_revenue' },
-    { label: 'Savings', value: formatShortCurrency(snapshot.chapters.now.stripeAvailable), change: 'Live', up: true, icon: 'shield', sparkKey: 'savings' as const, color: '#10B981', metricId: 'stripe_available' },
-    { label: 'Expenses', value: `-${formatShortCurrency(snapshot.chapters.month.expenses)}`, change: 'Live', up: false, icon: 'receipt', sparkKey: 'expenses' as const, color: '#ef4444', metricId: 'monthly_expenses' },
-  ] : [
-    { label: 'Balance', value: '\u2014', change: '\u2014', up: true, icon: 'wallet', sparkKey: 'balance' as const, color: '#666', metricId: 'cash_available' },
-    { label: 'Income', value: '\u2014', change: '\u2014', up: true, icon: 'chart', sparkKey: 'income' as const, color: '#666', metricId: 'monthly_revenue' },
-    { label: 'Savings', value: '\u2014', change: '\u2014', up: true, icon: 'shield', sparkKey: 'savings' as const, color: '#666', metricId: 'stripe_available' },
-    { label: 'Expenses', value: '\u2014', change: '\u2014', up: false, icon: 'receipt', sparkKey: 'expenses' as const, color: '#666', metricId: 'monthly_expenses' },
-  ];
-
-  const balanceValue = hasSnapshot ? formatCurrency(snapshot.chapters.now.cashAvailable) : '\u2014';
-  const checkingValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.bankBalance) : '\u2014';
-  const savingsValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.stripeAvailable) : '\u2014';
-  const taxReserveValue = hasSnapshot ? formatShortCurrency(snapshot.chapters.now.stripePending) : '\u2014';
 
   const fetchData = useCallback(async () => {
     try {
@@ -715,7 +550,7 @@ function FinanceHubContent() {
       try {
         const items = await getAuthorityQueue();
         setSupabaseAuthority(items as AuthorityItem[]);
-      } catch (_e) {
+      } catch {
         // Silently fail — authority queue is non-critical
       }
     }
@@ -724,24 +559,19 @@ function FinanceHubContent() {
     return () => clearInterval(interval);
   }, []);
 
-  // Filter to finance-related agents
-  const financeAgents = ['finn', 'quinn', 'teressa'];
   const allAuthorityItems = useMemo(() => {
+    const financeAgents = ['finn', 'quinn', 'teressa'];
     const merged = [...dynamicItems, ...supabaseAuthority];
-    const filtered = merged.filter(item =>
+    return merged.filter(item =>
       financeAgents.includes(item.assignedAgent?.toLowerCase() || '') ||
       financeAgents.includes(item.staffRole?.toLowerCase() || '')
     );
-    return filtered;
   }, [dynamicItems, supabaseAuthority]);
 
   const webHover = (key: string) => Platform.OS === 'web' ? {
     onMouseEnter: () => setHoveredButton(key),
     onMouseLeave: () => setHoveredButton(null),
   } : {};
-
-  const totalIn = moneyInOutData.reduce((s, d) => s + d.inflow, 0);
-  const totalOut = moneyInOutData.reduce((s, d) => s + d.outflow, 0);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -827,6 +657,25 @@ function FinanceHubContent() {
         .finn-chat-drawer {
           animation: finnChatSlideIn 0.25s ease-out both;
         }
+        @keyframes dashFadeOut {
+          0% { opacity: 1; filter: blur(0); }
+          100% { opacity: 0; filter: blur(6px); }
+        }
+        @keyframes dashSlideUp {
+          0% { opacity: 0; transform: translateY(16px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .dash-card-fading {
+          animation: dashFadeOut 150ms ease-in both;
+        }
+        .dash-card-entering-0 { animation: dashSlideUp 300ms ease-out both; }
+        .dash-card-entering-1 { animation: dashSlideUp 300ms ease-out 80ms both; }
+        .dash-card-entering-2 { animation: dashSlideUp 300ms ease-out 160ms both; }
+        .dash-card-entering-3 { animation: dashSlideUp 300ms ease-out 240ms both; }
+        .details-collapsible {
+          overflow: hidden;
+          transition: max-height 0.3s ease, opacity 0.3s ease;
+        }
       `;
       document.head.appendChild(styleEl);
     }
@@ -836,98 +685,155 @@ function FinanceHubContent() {
     };
   }, []);
 
+  const graphicRightRail = Platform.OS === 'web' ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <GreetingCard ownerName={tenant?.ownerName ? tenant.ownerName.split(' ').pop() ? `Mr. ${tenant.ownerName.split(' ').pop()}` : tenant.ownerName : 'Mr. Scott'} />
+      <HealthScoreRing
+        connectedCount={connections?.summary?.connected ?? 0}
+        mismatchCount={snapshot?.chapters?.reconcile?.mismatchCount ?? 0}
+        cashRunwayDays={60}
+      />
+      <FinnDailyBrief
+        activeMode={activeStoryMode}
+        accentColor={activeModeCfg.accent}
+        onAskFinn={() => setShowFinnChat(true)}
+      />
+    </div>
+  ) : null;
+
+  const dashCardClass = (index: number) => {
+    if (dashTransition === 'fading') return 'dash-card-fading';
+    if (dashTransition === 'entering') return `dash-card-entering-${index}`;
+    return '';
+  };
+
   return (
     <>
-    <FinanceHubShell rightRail={<FinanceRightRail />}>
+    <FinanceHubShell rightRail={graphicRightRail}>
+      {/* ═══ SELECTOR ROW ═══ */}
       {Platform.OS === 'web' ? (
-        <div style={{
-          height: 155, borderRadius: 16, overflow: 'hidden', marginBottom: 20, position: 'relative',
-          display: 'flex', flexDirection: 'column',
-          background: `radial-gradient(ellipse at top right, rgba(59,130,246,0.08) 0%, transparent 50%), radial-gradient(ellipse at bottom left, rgba(139,92,246,0.05) 0%, transparent 50%), ${CARD_BG}`,
-          border: `1px solid ${CARD_BORDER}`,
-          backgroundImage: svgPatterns.financeDashboard('rgba(255,255,255,0.025)', 'rgba(59,130,246,0.05)'),
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'right center',
-          backgroundSize: '55% auto',
-        }}>
-          <View style={[s.heroBannerOverlay, { justifyContent: 'flex-end', paddingBottom: 20 }]}>
-            <View style={s.heroBannerRow}>
-              <View style={s.heroBannerLeft}>
-                <div className="hero-led-icon" style={{
-                  width: 44, height: 44, borderRadius: 12,
-                  backgroundColor: 'rgba(59,130,246,0.1)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: '1px solid rgba(59,130,246,0.15)',
-                }}>
-                  <Ionicons name="analytics" size={22} color="currentColor" />
-                </div>
-                <View style={{ marginLeft: 14 }}>
-                  <Text style={s.heroBannerTitle}>Finance Hub</Text>
-                  <Text style={s.heroBannerSubtitle}>Your money story + governed actions</Text>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
+          <div style={{ flex: '0 0 35%', minWidth: 0 }}>
+            <StoryModeCarousel
+              activeMode={activeStoryMode}
+              onSelectMode={(mode) => handleModeSwitch(mode.id)}
+            />
+          </div>
+          <div style={{ flex: '1 1 40%', minWidth: 0 }}>
+            <View style={[s.finnCardOuter, { minHeight: 280 } as any]}>
+              <View style={s.finnFloatingPanel}>
+                <View style={s.finnPanelInner}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(139,92,246,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="analytics" size={16} color="#A78BFA" />
+                    </View>
+                    <View>
+                      <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Finn</Text>
+                      <Text style={{ color: '#888', fontSize: 11 }}>Financial Intelligence</Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    style={[s.finnPanelBtn, finnVoice.isActive && { borderColor: 'rgba(139,92,246,0.5)', backgroundColor: 'rgba(139,92,246,0.15)' }]}
+                    onPress={handleFinnVoiceToggle}
+                    {...webHover('finn-voice')}
+                  >
+                    <Ionicons name={finnVoice.isActive ? 'mic' : 'mic-outline'} size={16} color={finnVoice.isActive ? '#C4B5FD' : '#A78BFA'} />
+                    <Text style={s.finnPanelBtnText}>{finnVoice.isActive ? 'Talking...' : 'Voice with Finn'}</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.finnPanelBtn}
+                    onPress={() => { setFinnOverlayTab('video'); setShowFinnOverlay(true); }}
+                    {...webHover('finn-video')}
+                  >
+                    <Ionicons name="videocam-outline" size={16} color="#A78BFA" />
+                    <Text style={s.finnPanelBtnText}>Video with Finn</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.finnPanelBtn}
+                    onPress={() => setShowFinnChat(true)}
+                    {...webHover('finn-chat')}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={16} color="#A78BFA" />
+                    <Text style={s.finnPanelBtnText}>Chat with Finn</Text>
+                  </Pressable>
+                  <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 10 }} />
+                  <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, lineHeight: 16 }}>
+                    Finn&apos;s focus: {dashConfig.finnFocus}
+                  </Text>
                 </View>
               </View>
+              <View style={s.finn3dContainer}>
+                <FinnOrbVideo />
+              </View>
             </View>
-          </View>
+          </div>
         </div>
       ) : (
-        <View style={[s.heroBanner, { backgroundColor: '#111827' }]}>
-          <View style={s.heroBannerOverlay}>
-            <View style={s.heroBannerRow}>
-              <View style={s.heroBannerLeft}>
-                <LinearGradient colors={['#3B82F6', '#8B5CF6']} style={s.heroBannerIconWrap}>
-                  <Ionicons name="stats-chart" size={22} color="#fff" />
-                </LinearGradient>
-                <View style={{ marginLeft: 14 }}>
-                  <Text style={s.heroBannerTitle}>Finance Hub</Text>
-                  <Text style={s.heroBannerSubtitle}>Your money story + governed actions</Text>
-                </View>
-              </View>
-            </View>
-          </View>
+        <View style={{ marginBottom: 24 }}>
+          <StoryModeCarousel
+            activeMode={activeStoryMode}
+            onSelectMode={(mode) => handleModeSwitch(mode.id)}
+          />
         </View>
       )}
 
-      <View style={{ marginBottom: 24, marginTop: 8 }}>
-        <StoryModeCarousel
-          activeMode={activeStoryMode}
-          onSelectMode={(mode) => setActiveStoryMode(mode.id)}
-        />
-      </View>
-
+      {/* ═══ DASHBOARD ZONE ═══ */}
       {Platform.OS === 'web' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-          <GlowTrendCard
-            title={`${activeModeCfg.name} — Trend`}
-            value="$67,240"
-            delta="+12.4% vs last period"
-            deltaDirection="up"
-            data={storyDemoData.trend}
-            accentColor={activeModeCfg.accent}
-            mode={activeStoryMode}
-          />
-          <div style={{ display: 'flex', gap: 12, flexWrap: isCompact ? 'wrap' : 'nowrap' as const }}>
-            <div style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          marginBottom: 24,
+          position: 'relative',
+        }}>
+          <div style={{
+            position: 'absolute',
+            inset: -20,
+            background: `radial-gradient(ellipse at 50% 0%, ${activeModeCfg.accent}08 0%, transparent 60%)`,
+            pointerEvents: 'none',
+            transition: 'background 0.4s ease',
+            borderRadius: 20,
+          }} />
+          <div className={dashCardClass(0)} style={{ position: 'relative', zIndex: 1 }}>
+            <GlowTrendCard
+              title={dashConfig.hero.title}
+              value={dashConfig.hero.value}
+              delta={dashConfig.hero.delta}
+              deltaDirection={dashConfig.hero.deltaDirection}
+              data={trendData}
+              accentColor={activeModeCfg.accent}
+              mode={activeStoryMode}
+            />
+          </div>
+          <div style={{
+            display: 'flex',
+            gap: 12,
+            flexWrap: isCompact ? 'wrap' : 'nowrap' as const,
+            position: 'relative',
+            zIndex: 1,
+          }}>
+            <div className={dashCardClass(1)} style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
               <SegmentRingCard
-                title="Breakdown"
-                centerValue="$67K"
-                centerLabel="total"
-                segments={storyDemoData.segments}
+                title={dashConfig.ring.title}
+                centerValue={dashConfig.ring.centerValue}
+                centerLabel={dashConfig.ring.centerLabel}
+                segments={dashConfig.ring.segments}
                 accentColor={activeModeCfg.accent}
                 mode={activeStoryMode}
               />
             </div>
-            <div style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
+            <div className={dashCardClass(2)} style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
               <QueueInstrumentCard
-                title="Action Queue"
-                items={storyDemoData.queue}
+                title={dashConfig.queue.title}
+                items={dashConfig.queue.items}
                 accentColor={activeModeCfg.accent}
                 mode={activeStoryMode}
               />
             </div>
-            <div style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
+            <div className={dashCardClass(3)} style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
               <InsightOverlayCard
-                quote="Cash position is strong this week. Revenue trending 12% above forecast — consider accelerating the Q2 tax reserve."
-                sparkData={storyDemoData.spark}
+                quote={dashConfig.insight.quote}
+                sparkData={sparkData}
                 accentColor={activeModeCfg.accent}
                 mode={activeStoryMode}
               />
@@ -937,523 +843,193 @@ function FinanceHubContent() {
       ) : (
         <View style={{ marginBottom: 24, gap: 12 }}>
           <GlowTrendCard
-            title={`${activeModeCfg.name} — Trend`}
-            value="$67,240"
-            delta="+12.4% vs last period"
-            deltaDirection="up"
-            data={storyDemoData.trend}
+            title={dashConfig.hero.title}
+            value={dashConfig.hero.value}
+            delta={dashConfig.hero.delta}
+            deltaDirection={dashConfig.hero.deltaDirection}
+            data={trendData}
             accentColor={activeModeCfg.accent}
             mode={activeStoryMode}
           />
         </View>
       )}
 
-      {hasSnapshot && (
-        <>
-        <SectionLabel icon="book" label="CHAPTERS" color="#999" ledDelay={1} />
-        <View style={[s.kpiRow, { marginBottom: 16 }, isCompact && s.kpiRowWrap]}>
-          {[
-            { label: 'Now', subtitle: 'Cash truth', value: formatShortCurrency(snapshot.chapters.now.cashAvailable), icon: 'wallet-outline', color: '#10B981', metricId: 'cash_available' },
-            { label: 'Next 7d', subtitle: `Net ${formatShortCurrency(snapshot.chapters.next.netCashFlow7d)}`, value: `${(snapshot.chapters.next.netCashFlow7d ?? 0) >= 0 ? '+' : ''}${formatShortCurrency(snapshot.chapters.next.netCashFlow7d)}`, icon: 'trending-up', color: (snapshot.chapters.next.netCashFlow7d ?? 0) >= 0 ? '#10B981' : '#ef4444', metricId: 'expected_inflows' },
-            { label: 'This Month', subtitle: snapshot.chapters.month.period, value: formatShortCurrency(snapshot.chapters.month.netIncome), icon: 'bar-chart-outline', color: (snapshot.chapters.month.netIncome ?? 0) >= 0 ? '#10B981' : '#ef4444', metricId: 'net_income' },
-            { label: 'Trust', subtitle: `${snapshot.chapters.reconcile.mismatchCount} mismatches`, value: snapshot.chapters.reconcile.mismatchCount > 0 ? `${snapshot.chapters.reconcile.mismatchCount}` : '\u2713', icon: 'git-compare-outline', color: snapshot.chapters.reconcile.mismatchCount > 0 ? '#F59E0B' : '#10B981', metricId: 'reconciliation' },
-          ].map((ch, i) => (
-            <Pressable key={i} onPress={() => setExplainMetric(ch.metricId)} style={[s.kpiPressable, isCompact && s.kpiPressableCompact]}>
-              <GlassCard style={[{ padding: 14 }, Platform.OS === 'web' && { cursor: 'pointer' }]} tint={{ color: ch.color, position: 'top-left' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                  <Ionicons name={ch.icon as any} size={14} color={ch.color} />
-                  <Text style={{ color: '#bbb', fontSize: 11, fontWeight: '600', letterSpacing: 0.5 }}>{ch.label}</Text>
-                </View>
-                <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{ch.value}</Text>
-                <Text style={{ color: '#888', fontSize: 10, marginTop: 2 }}>{ch.subtitle}</Text>
-              </GlassCard>
-            </Pressable>
-          ))}
-        </View>
-        </>
-      )}
-
-      <SectionLabel icon="wallet" label="YOUR POSITION" color="#999" ledDelay={2} />
-
-      <View style={[s.row, isCompact && s.rowStacked]}>
-        <GlassCard style={[s.balanceCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.trendLine(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '50% auto' }]} tint={{ color: '#3B82F6', position: 'top-right' }}>
-          <View style={s.balanceHeader}>
-            <Pressable onPress={() => setExplainMetric('cash_available')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={s.balanceLabel}>Total Balance</Text>
-              {Platform.OS === 'web' && <Ionicons name="information-circle-outline" size={14} color="#666" />}
-            </Pressable>
-            {isConnected ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <SourceBadge source="computed" lastSyncAt={snapshot?.generatedAt || null} confidence={hasSnapshot ? 'high' : 'none'} compact />
-                <View style={s.liveBadge}>
-                  <View style={s.liveDot} />
-                  <Text style={s.liveText}>Live</Text>
-                </View>
-              </View>
-            ) : (
-              <View style={[s.liveBadge, { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.12)' }]}>
-                <Ionicons name="unlink" size={10} color="#888" />
-                <Text style={[s.liveText, { color: '#888' }]}>Disconnected</Text>
-              </View>
-            )}
-          </View>
-          <Text style={s.balanceValue}>{balanceValue}</Text>
-          {hasSnapshot ? (
-            <View style={s.balanceChangeRow}>
-              <Text style={s.balanceChangeUp}>↑ Cash position from {connections?.summary?.connected || 0} providers</Text>
-            </View>
-          ) : (
-            <View style={s.balanceChangeRow}>
-              <Text style={{ color: '#888', fontSize: 12 }}>Connect providers for live data</Text>
-            </View>
-          )}
-          <View style={s.balanceMetaRow}>
-            <View style={s.balanceMeta}>
-              <Text style={s.balanceMetaLabel}>{isConnected ? 'Bank' : 'Checking'}</Text>
-              <Text style={s.balanceMetaValue}>{checkingValue}</Text>
-            </View>
-            <View style={[s.balanceMeta, { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)', paddingLeft: 16 }]}>
-              <Text style={s.balanceMetaLabel}>{isConnected ? 'Stripe' : 'Savings'}</Text>
-              <Text style={s.balanceMetaValue}>{savingsValue}</Text>
-            </View>
-            <View style={[s.balanceMeta, { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)', paddingLeft: 16 }]}>
-              <Text style={s.balanceMetaLabel}>{isConnected ? 'Pending' : 'Tax Reserve'}</Text>
-              <Text style={s.balanceMetaValue}>{taxReserveValue}</Text>
-            </View>
-          </View>
-          {!isConnected && (
-            <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.6 }}>
-              <Ionicons name="information-circle-outline" size={12} color="#888" />
-              <Text style={{ color: '#888', fontSize: 11 }}>Connect providers in Finance Hub → Connections for live data</Text>
-            </View>
-          )}
-          {Platform.OS === 'web' && hasSnapshot && (
-            <div style={{
-              marginTop: 16, marginLeft: -4, marginRight: -4,
-              position: 'relative',
-              animation: 'fadeSlideUp 1s ease-out both',
-              filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))',
-            }}>
-              <ResponsiveContainer width="100%" height={80}>
-                <AreaChart data={cashTrendData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="balanceMiniGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#60A5FA" stopOpacity={0.6} />
-                      <stop offset="60%" stopColor="#3B82F6" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#1E3A5F" stopOpacity={0.15} />
-                    </linearGradient>
-                  </defs>
-                  <Area type="monotone" dataKey="value" stroke="#60A5FA" strokeWidth={3} fill="url(#balanceMiniGrad)" dot={false} animationDuration={2000} animationEasing="ease-out" />
-                </AreaChart>
-              </ResponsiveContainer>
-              <div style={{
-                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                pointerEvents: 'none',
-                borderRadius: 8,
-              }} />
-            </div>
-          )}
-        </GlassCard>
-
-        {/* Finn Card — Black bg, floating panel left, 3D object right */}
-        <View style={[s.finnCardOuter, isNarrow && s.finnCardOuterStacked]}>
-          {/* Floating Panel (left) */}
-          <View style={s.finnFloatingPanel}>
-            <View style={s.finnPanelInner}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(139,92,246,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="analytics" size={16} color="#A78BFA" />
-                </View>
-                <View>
-                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Finn</Text>
-                  <Text style={{ color: '#888', fontSize: 11 }}>Financial Intelligence</Text>
-                </View>
-              </View>
-
-              <Pressable
-                style={[s.finnPanelBtn, finnVoice.isActive && { borderColor: 'rgba(139,92,246,0.5)', backgroundColor: 'rgba(139,92,246,0.15)' }]}
-                onPress={handleFinnVoiceToggle}
-                {...webHover('finn-voice')}
-              >
-                <Ionicons name={finnVoice.isActive ? 'mic' : 'mic-outline'} size={16} color={finnVoice.isActive ? '#C4B5FD' : '#A78BFA'} />
-                <Text style={s.finnPanelBtnText}>{finnVoice.isActive ? 'Talking...' : 'Voice with Finn'}</Text>
-              </Pressable>
-
-              <Pressable
-                style={s.finnPanelBtn}
-                onPress={() => { setFinnOverlayTab('video'); setShowFinnOverlay(true); }}
-                {...webHover('finn-video')}
-              >
-                <Ionicons name="videocam-outline" size={16} color="#A78BFA" />
-                <Text style={s.finnPanelBtnText}>Video with Finn</Text>
-              </Pressable>
-
-              <Pressable
-                style={s.finnPanelBtn}
-                onPress={() => setShowFinnChat(true)}
-                {...webHover('finn-chat')}
-              >
-                <Ionicons name="chatbubble-ellipses-outline" size={16} color="#A78BFA" />
-                <Text style={s.finnPanelBtnText}>Chat with Finn</Text>
-              </Pressable>
-
-              <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 12 }} />
-              <Text style={{ color: '#666', fontSize: 11, lineHeight: 16 }}>
-                Your financial intelligence advisor. Cash flow, invoicing, payments, and strategy.
-              </Text>
-            </View>
-          </View>
-
-          {/* 3D Object (right) */}
-          <View style={s.finn3dContainer}>
-            {Platform.OS === 'web' ? (
-              <FinnOrbVideo />
-            ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={s.finnTitle}>Finn</Text>
-                <Text style={s.finnSubtitle}>Financial Intelligence</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </View>
-
-      <SectionLabel icon="pulse" label="QUICK PULSE" color="#999" ledDelay={3} />
-
-      <View style={[s.kpiRow, isCompact && s.kpiRowWrap]}>
-        {kpiCards.map((kpi, i) => {
-          const kpiTints = [
-            { color: '#3B82F6', position: 'top-left' },
-            { color: '#10B981', position: 'bottom-right' },
-            { color: '#06b6d4', position: 'top-right' },
-            { color: '#ef4444', position: 'bottom-left' },
-          ];
-          return (
-          <Pressable key={i} onPress={() => setExplainMetric(kpi.metricId)} style={[s.kpiPressable, isCompact && s.kpiPressableCompact]}>
-          <GlassCard style={[s.kpiCard, Platform.OS === 'web' && { backgroundImage: svgPatterns.barChart(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '40% auto', cursor: 'pointer' }]} tint={kpiTints[i]}>
-            {i === 0 && <View style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', backgroundColor: '#3B82F6', borderRadius: 2 } as any} />}
-            <View style={s.kpiTopRow}>
-              {Platform.OS === 'web' ? (
-                <span className={`led-icon led-icon-d${(i % 6) + 1}`}>
-                  <EnterpriseIcon type={kpi.icon} color="currentColor" bgColor="rgba(255,255,255,0.06)" size={34} />
-                </span>
-              ) : (
-                <EnterpriseIcon type={kpi.icon} color={kpi.up ? '#34D399' : '#F87171'} bgColor={kpi.up ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)'} size={34} />
-              )}
-              {hasSnapshot ? (
-                <View style={[s.kpiChangeBadge, { backgroundColor: kpi.up ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' }]}>
-                  <Text style={[s.kpiChangeText, { color: kpi.color }]}>{kpi.change}</Text>
-                </View>
-              ) : (
-                <View style={[s.kpiChangeBadge, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-                  <Text style={[s.kpiChangeText, { color: '#666' }]}>{'\u2014'}</Text>
-                </View>
-              )}
-            </View>
-            <Text style={s.kpiLabel}>{kpi.label}</Text>
-            <Text style={[s.kpiValue, { color: kpi.up ? '#fff' : '#ef4444' }]}>{kpi.value}</Text>
-            {hasSnapshot && <KpiMiniChart data={kpiSparkData[kpi.sparkKey]} color={kpi.color} />}
-          </GlassCard>
-          </Pressable>
-          );
-        })}
-      </View>
-
-      <SectionLabel icon="flow" label="MONEY FLOW" color="#999" ledDelay={4} />
-
-      <View style={[s.row, isCompact && s.rowStacked]}>
-        <GlassCard style={[s.chartCard, { flex: 2 }, isCompact && { flex: undefined }]} tint={{ color: '#10B981', position: 'top-right' }}>
-          <View style={s.chartHeader}>
-            <View>
-              <Text style={s.cardTitle}>Transaction Reports</Text>
-              <Text style={s.cardSubtitle}>This week's cash flow activity</Text>
-            </View>
-            <View style={s.chartLegend}>
-              <View style={s.legendItem}>
-                <View style={[s.legendDot, { backgroundColor: '#10B981' }]} />
-                <Text style={s.legendText}>In ${(totalIn / 1000).toFixed(1)}K</Text>
-              </View>
-              <View style={s.legendItem}>
-                <View style={[s.legendDot, { backgroundColor: '#ef4444' }]} />
-                <Text style={s.legendText}>Out ${(totalOut / 1000).toFixed(1)}K</Text>
-              </View>
-            </View>
-          </View>
-          {Platform.OS === 'web' && hasSnapshot ? (
-            <div className="bar-chart-container" style={{
-              position: 'relative',
-              animation: 'fadeSlideUp 0.8s ease-out both',
-              filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.4))',
-            }}>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={moneyInOutData} margin={{ top: 5, right: 5, left: -15, bottom: 0 }} barGap={4}>
-                <defs>
-                  <linearGradient id="inflowGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#34D399" stopOpacity={1} />
-                    <stop offset="60%" stopColor="#10B981" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#065F46" stopOpacity={1} />
-                  </linearGradient>
-                  <linearGradient id="outflowGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#F87171" stopOpacity={1} />
-                    <stop offset="60%" stopColor="#EF4444" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#991B1B" stopOpacity={1} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="4 8" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="day" tick={{ fill: '#666', fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#666', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}K`} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)', radius: 6 }} />
-                <Bar dataKey="inflow" name="Inflow" fill="url(#inflowGrad)" radius={[8, 8, 0, 0]} barSize={22} animationDuration={1200} animationBegin={200} animationEasing="ease-out" />
-                <Bar dataKey="outflow" name="Outflow" fill="url(#outflowGrad)" radius={[8, 8, 0, 0]} barSize={22} animationDuration={1200} animationBegin={500} animationEasing="ease-out" />
-              </BarChart>
-            </ResponsiveContainer>
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              pointerEvents: 'none',
-              borderRadius: 8,
-            }} />
-            </div>
-          ) : (
-            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-              <Text style={{ color: '#888', fontSize: 12 }}>Awaiting live flow data from connected providers.</Text>
-            </View>
-          )}
-        </GlassCard>
-
-        <View style={{ flex: 1, gap: 0 }}>
-          <SectionLabel icon="pie" label="WHERE IT GOES" color="#999" ledDelay={5} />
-          <GlassCard style={[s.chartCard, { marginBottom: 0 }]} tint={{ color: '#8b5cf6', position: 'bottom-right' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <EnterpriseIcon type="pie" color="#A78BFA" bgColor="rgba(139,92,246,0.18)" size={28} />
-              <View>
-                <Text style={s.cardTitle}>Expenses</Text>
-                <Text style={s.cardSubtitle}>Monthly breakdown</Text>
-              </View>
-            </View>
-          {Platform.OS === 'web' && (
-            <div className="pie-chart-animated" style={{
-              width: '100%', height: 160, marginTop: 8,
-              display: 'flex', justifyContent: 'center',
-              animation: 'fadeSlideUp 1s ease-out 0.3s both',
-              filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))',
-            }}>
-              <ResponsiveContainer width="100%" height={160}>
-                <PieChart>
-                  <defs>
-                    {expenseData.map((entry, i) => (
-                      <radialGradient key={`pieGrad-${i}`} id={`pieGrad-${i}`} cx="30%" cy="30%" r="70%">
-                        <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
-                        <stop offset="100%" stopColor={entry.color} stopOpacity={0.6} />
-                      </radialGradient>
-                    ))}
-                  </defs>
-                  <Pie
-                    data={expenseData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={38}
-                    outerRadius={42}
-                    paddingAngle={3}
-                    dataKey="value"
-                    stroke="none"
-                    strokeWidth={0}
-                    animationDuration={1800}
-                    animationBegin={300}
-                    animationEasing="ease-out"
-                  >
-                    {expenseData.map((entry, index) => (
-                      <Cell key={`inner-${index}`} fill={`${entry.color}25`} />
-                    ))}
-                  </Pie>
-                  <Pie
-                    data={expenseData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={45}
-                    outerRadius={75}
-                    paddingAngle={2}
-                    dataKey="value"
-                    stroke="rgba(255,255,255,0.06)"
-                    strokeWidth={0.5}
-                    animationDuration={1800}
-                    animationBegin={300}
-                    animationEasing="ease-out"
-                  >
-                    {expenseData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={`url(#pieGrad-${index})`} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-            <View style={s.expenseLegend}>
-            {expenseData.length > 0 ? expenseData.map((item, i) => (
-              <View key={i} style={s.expenseLegendItem}>
-                <View style={[s.expenseLegendDot, { backgroundColor: item.color }]} />
-                <Text style={s.expenseLegendName}>{item.name}</Text>
-                <Text style={s.expenseLegendVal}>{item.value}%</Text>
-              </View>
-            )) : (
-              <Text style={{ color: '#888', fontSize: 12 }}>No live expense composition available yet.</Text>
-            )}
-          </View>
-          </GlassCard>
-        </View>
-      </View>
-
-      <SectionLabel icon="trend" label="THE TREND" color="#999" ledDelay={6} />
-
-      <GlassCard style={s.chartCard} tint={{ color: '#3B82F6', position: 'top-left' }}>
-        <View style={s.chartHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <EnterpriseIcon type="trend" color="#60A5FA" bgColor="rgba(59,130,246,0.2)" size={32} />
-            <View>
-              <Text style={s.cardTitle}>Cash Trend</Text>
-              <Text style={s.cardSubtitle}>14-day balance trajectory</Text>
-            </View>
-          </View>
-          <View style={s.trendBadge}>
-            <Ionicons name="trending-up" size={12} color="#10B981" />
-            <Text style={{ color: '#10B981', fontSize: 12, fontWeight: '600' }}>+12.4%</Text>
-          </View>
-        </View>
-        {Platform.OS === 'web' && (
-          <div style={{
-            position: 'relative',
-            animation: 'fadeSlideUp 0.8s ease-out 0.2s both',
-            filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))',
-          }}>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={cashTrendData} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
-              <defs>
-                <linearGradient id="cashGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#60A5FA" stopOpacity={0.55} />
-                  <stop offset="40%" stopColor="#3B82F6" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#1E3A5F" stopOpacity={0.08} />
-                </linearGradient>
-                <linearGradient id="cashStroke" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#60A5FA" />
-                  <stop offset="50%" stopColor="#3B82F6" />
-                  <stop offset="100%" stopColor="#818CF8" />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="4 8" stroke="rgba(255,255,255,0.06)" vertical={false} />
-              <XAxis dataKey="day" tick={{ fill: '#666', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false} interval={2} />
-              <YAxis tick={{ fill: '#666', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}K`} domain={['dataMin - 1000', 'dataMax + 1000']} />
-              <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(96,165,250,0.3)', strokeWidth: 1 }} />
-              <Area type="monotone" dataKey="value" name="Cash" stroke="url(#cashStroke)" strokeWidth={3} fill="url(#cashGrad)" dot={{ r: 4, fill: '#60A5FA', stroke: '#1C1C1E', strokeWidth: 2 }} activeDot={{ r: 8, fill: '#93C5FD', stroke: '#1D4ED8', strokeWidth: 3 }} animationDuration={2000} animationEasing="ease-out" />
-            </AreaChart>
-          </ResponsiveContainer>
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            pointerEvents: 'none',
-            borderRadius: 8,
-          }} />
-          </div>
-        )}
-      </GlassCard>
-
-      {hasSnapshot && snapshot.chapters.reconcile.mismatchCount > 0 && (
-        <>
-          <SectionLabel icon="git-compare" label="RECONCILIATION" color="#999" ledDelay={1} />
-          <View style={{ gap: 10, marginBottom: 4 }}>
-            <View style={s.sectionHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="git-compare" size={14} color="#F59E0B" />
-                </View>
-                <Text style={s.sectionTitle}>Items to Reconcile</Text>
-              </View>
-              <View style={[s.proposalCount, { backgroundColor: 'rgba(245,158,11,0.2)' }]}>
-                <Text style={[s.proposalCountText, { color: '#F59E0B' }]}>{snapshot.chapters.reconcile.mismatchCount}</Text>
-              </View>
-            </View>
-            {snapshot.chapters.reconcile.mismatches.map((m: any) => (
-              <ReconcileCard
-                key={m.id}
-                mismatch={m}
-                onAction={() => {}}
-                onDismiss={() => {}}
-              />
-            ))}
-          </View>
-        </>
-      )}
-
-      {isConnected && lifecycleSteps.length > 0 && lifecycleSteps.some((st: any) => st.status !== 'pending') && (
-        <>
-          <SectionLabel icon="git-branch" label="MONEY LIFECYCLE" color="#999" ledDelay={2} />
-          <LifecycleChain
-            steps={lifecycleSteps}
-            title="Revenue Flow"
-            onExplainStep={(step) => {
-              const stageToMetric: Record<string, string> = {
-                'Booked': 'expected_inflows',
-                'Invoiced': 'expected_inflows',
-                'Paid': 'monthly_revenue',
-                'Deposited': 'cash_available',
-                'Posted': 'net_income',
-              };
-              const metricId = stageToMetric[step.label];
-              if (metricId) setExplainMetric(metricId);
+      {/* ═══ DETAILS SECTION (collapsible legacy) ═══ */}
+      {Platform.OS === 'web' ? (
+        <div style={{ marginBottom: 16 }}>
+          <div
+            onClick={() => setDetailsExpanded(!detailsExpanded)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              padding: '8px 0',
+              userSelect: 'none',
             }}
-          />
-        </>
-      )}
+          >
+            <div style={{
+              width: 20,
+              height: 20,
+              borderRadius: 6,
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'transform 0.2s ease',
+              transform: detailsExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            }}>
+              <Ionicons name="chevron-forward" size={12} color="rgba(255,255,255,0.4)" />
+            </div>
+            <span style={{
+              color: 'rgba(255,255,255,0.45)',
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: 1.5,
+              textTransform: 'uppercase' as const,
+            }}>
+              DETAILS
+            </span>
+            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)', marginLeft: 8 }} />
+          </div>
+          <div
+            className="details-collapsible"
+            style={{
+              maxHeight: detailsExpanded ? 2000 : 0,
+              opacity: detailsExpanded ? 1 : 0,
+            }}
+          >
+            {hasSnapshot && snapshot.chapters.reconcile.mismatchCount > 0 && (
+              <>
+                <SectionLabel icon="git-compare" label="RECONCILIATION" color="#999" ledDelay={1} />
+                <View style={{ gap: 10, marginBottom: 4 }}>
+                  <View style={s.sectionHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="git-compare" size={14} color="#F59E0B" />
+                      </View>
+                      <Text style={s.sectionTitle}>Items to Reconcile</Text>
+                    </View>
+                    <View style={[s.proposalCount, { backgroundColor: 'rgba(245,158,11,0.2)' }]}>
+                      <Text style={[s.proposalCountText, { color: '#F59E0B' }]}>{snapshot.chapters.reconcile.mismatchCount}</Text>
+                    </View>
+                  </View>
+                  {snapshot.chapters.reconcile.mismatches.map((m: any) => (
+                    <ReconcileCard key={m.id} mismatch={m} onAction={() => {}} onDismiss={() => {}} />
+                  ))}
+                </View>
+              </>
+            )}
 
-      <SectionLabel icon="shield" label="FINANCE AUTHORITY QUEUE" color="#999" ledDelay={3} />
-
-      <View style={s.authoritySection}>
-        {allAuthorityItems.length > 0 ? (
-          <View style={s.authorityScrollRow}>
-            {allAuthorityItems.map((item) => (
-              <View key={item.id} style={s.authorityCardWrap}>
-                <AuthorityQueueCard
-                  item={item}
-                  onAction={async (action) => {
-                    if (action === 'approve') {
-                      try {
-                        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                        const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
-                        if (res.ok) {
-                          setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
-                        }
-                      } catch (_e) { /* silent */ }
-                    } else if (action === 'deny') {
-                      try {
-                        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                        await fetch(`/api/authority-queue/${item.id}/deny`, { method: 'POST', headers });
-                        setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
-                      } catch (_e) { /* silent */ }
-                    } else if (action === 'review') {
-                      const docType = item.type === 'invoice' ? 'invoice' as const
-                        : item.type === 'contract' ? 'contract' as const
-                        : 'document' as const;
-                      setReviewPreview({
-                        visible: true,
-                        type: docType,
-                        documentName: item.title,
-                        pandadocDocumentId: item.pandadocDocumentId,
-                      });
-                    }
+            {isConnected && lifecycleSteps.length > 0 && lifecycleSteps.some((st: any) => st.status !== 'pending') && (
+              <>
+                <SectionLabel icon="git-branch" label="MONEY LIFECYCLE" color="#999" ledDelay={2} />
+                <LifecycleChain
+                  steps={lifecycleSteps}
+                  title="Revenue Flow"
+                  onExplainStep={(step) => {
+                    const stageToMetric: Record<string, string> = {
+                      'Booked': 'expected_inflows',
+                      'Invoiced': 'expected_inflows',
+                      'Paid': 'monthly_revenue',
+                      'Deposited': 'cash_available',
+                      'Posted': 'net_income',
+                    };
+                    const metricId = stageToMetric[step.label];
+                    if (metricId) setExplainMetric(metricId);
                   }}
                 />
+              </>
+            )}
+
+            <SectionLabel icon="shield" label="FINANCE AUTHORITY QUEUE" color="#999" ledDelay={3} />
+            <View style={s.authoritySection}>
+              {allAuthorityItems.length > 0 ? (
+                <View style={s.authorityScrollRow}>
+                  {allAuthorityItems.map((item) => (
+                    <View key={item.id} style={s.authorityCardWrap}>
+                      <AuthorityQueueCard
+                        item={item}
+                        onAction={async (action) => {
+                          if (action === 'approve') {
+                            try {
+                              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                              if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                              const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
+                              if (res.ok) setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
+                            } catch { /* silent */ }
+                          } else if (action === 'deny') {
+                            try {
+                              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                              if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                              await fetch(`/api/authority-queue/${item.id}/deny`, { method: 'POST', headers });
+                              setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
+                            } catch { /* silent */ }
+                          } else if (action === 'review') {
+                            const docType = item.type === 'invoice' ? 'invoice' as const
+                              : item.type === 'contract' ? 'contract' as const
+                              : 'document' as const;
+                            setReviewPreview({
+                              visible: true,
+                              type: docType,
+                              documentName: item.title,
+                              pandadocDocumentId: item.pandadocDocumentId,
+                            });
+                          }
+                        }}
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <GlassCard style={{ padding: 32, alignItems: 'center' }}>
+                  <Ionicons name="shield-checkmark-outline" size={32} color={Colors.accent.cyan} style={{ marginBottom: 12 }} />
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 6 }}>No pending financial approvals</Text>
+                  <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>
+                    When Finn, Quinn, or Teressa need your sign-off, their requests appear here.
+                  </Text>
+                </GlassCard>
+              )}
+            </View>
+          </div>
+        </div>
+      ) : (
+        <View style={{ marginBottom: 16 }}>
+          <SectionLabel icon="shield" label="FINANCE AUTHORITY QUEUE" color="#999" ledDelay={3} />
+          <View style={s.authoritySection}>
+            {allAuthorityItems.length > 0 ? (
+              <View style={s.authorityScrollRow}>
+                {allAuthorityItems.map((item) => (
+                  <View key={item.id} style={s.authorityCardWrap}>
+                    <AuthorityQueueCard
+                      item={item}
+                      onAction={async (action) => {
+                        if (action === 'approve') {
+                          try {
+                            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                            if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                            const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
+                            if (res.ok) setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
+                          } catch { /* silent */ }
+                        }
+                      }}
+                    />
+                  </View>
+                ))}
               </View>
-            ))}
+            ) : (
+              <GlassCard style={{ padding: 32, alignItems: 'center' }}>
+                <Ionicons name="shield-checkmark-outline" size={32} color={Colors.accent.cyan} style={{ marginBottom: 12 }} />
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 6 }}>No pending financial approvals</Text>
+                <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>
+                  When Finn, Quinn, or Teressa need your sign-off, their requests appear here.
+                </Text>
+              </GlassCard>
+            )}
           </View>
-        ) : (
-          <GlassCard style={{ padding: 32, alignItems: 'center' }}>
-            <Ionicons name="shield-checkmark-outline" size={32} color={Colors.accent.cyan} style={{ marginBottom: 12 }} />
-            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 6 }}>No pending financial approvals</Text>
-            <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>
-              When Finn, Quinn, or Teressa need your sign-off, their requests appear here. Every action leaves a receipt.
-            </Text>
-          </GlassCard>
-        )}
-      </View>
+        </View>
+      )}
 
     </FinanceHubShell>
     {/* Finn Chat Modal — outside shell so position:absolute floats above scroll */}
@@ -1489,15 +1065,6 @@ export default function FinanceHubIndex() {
     </FinanceHubErrorBoundary>
   );
 }
-
-const glassCardBase = {
-  backgroundColor: '#1C1C1E',
-  borderRadius: 14,
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.06)',
-  overflow: 'hidden' as const,
-  position: 'relative' as const,
-};
 
 const s = StyleSheet.create({
   heroBanner: {
