@@ -201,14 +201,14 @@ export function FinanceTopNav() {
                 }}
                 onMouseEnter={(e) => {
                   if (!active) {
-                    (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.8)';
-                    (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
+                    (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.8)';
+                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!active) {
-                    (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.5)';
-                    (e.target as HTMLElement).style.background = 'transparent';
+                    (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)';
+                    (e.currentTarget as HTMLElement).style.background = 'transparent';
                   }
                 }}
               >
