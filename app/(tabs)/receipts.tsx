@@ -308,6 +308,7 @@ export default function ReceiptsScreen() {
   const { receipts: supabaseReceipts, loading: supabaseLoading, error: supabaseError } = useRealtimeReceipts(100);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterType>('All');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -317,15 +318,26 @@ export default function ReceiptsScreen() {
 
     if (supabaseReceipts.length > 0) {
       setReceipts(supabaseReceipts.map(mapSupabaseReceipt));
+      setLoadError(null);
       setLoading(false);
     } else {
       // Fetch from Supabase API — empty result means no receipts yet
       fetchReceipts(100)
-        .then((rows: any[]) => setReceipts(rows.map(mapSupabaseReceipt)))
-        .catch(() => setReceipts([]))
+        .then((rows: any[]) => {
+          setReceipts(rows.map(mapSupabaseReceipt));
+          setLoadError(null);
+        })
+        .catch((err) => {
+          setReceipts([]);
+          setLoadError(
+            err instanceof Error
+              ? err.message
+              : supabaseError || 'Receipts service unavailable. Verify backend and Supabase connectivity.',
+          );
+        })
         .finally(() => setLoading(false));
     }
-  }, [supabaseReceipts, supabaseLoading]);
+  }, [supabaseReceipts, supabaseLoading, supabaseError]);
 
   const filteredReceipts = receipts.filter((r) => {
     const typeMatch = activeFilter === 'All' || r.type === activeFilter;
@@ -441,11 +453,19 @@ export default function ReceiptsScreen() {
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
             ) : filteredReceipts.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="receipt-outline" size={48} color={Colors.text.muted} />
-                <Text style={styles.emptyTitle}>No receipts found</Text>
-                <Text style={styles.emptySubtitle}>Try adjusting your filters</Text>
-              </View>
+              loadError ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="alert-circle-outline" size={48} color={Colors.text.muted} />
+                  <Text style={styles.emptyTitle}>Receipts Unavailable</Text>
+                  <Text style={styles.emptySubtitle}>{loadError}</Text>
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="receipt-outline" size={48} color={Colors.text.muted} />
+                  <Text style={styles.emptyTitle}>No receipts found</Text>
+                  <Text style={styles.emptySubtitle}>Try adjusting your filters</Text>
+                </View>
+              )
             ) : (
               filteredReceipts.map((receipt) => (
                 <ReceiptCard

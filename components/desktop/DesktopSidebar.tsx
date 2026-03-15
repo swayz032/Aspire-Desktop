@@ -50,8 +50,8 @@ const navItems: NavItem[] = [
     ]
   },
   { id: 'receipts', label: 'Receipts', icon: 'document-text', iconActive: 'document-text', route: '/(tabs)/receipts' },
+  { id: 'office-store', label: 'Office Store', icon: 'storefront', iconActive: 'storefront', route: '/office-store' },
   { id: 'team', label: 'Team Workspace', icon: 'people', iconActive: 'people', route: '/team-workspace' },
-  { id: 'store', label: 'Office Store', icon: 'storefront', iconActive: 'storefront', route: '/office-store' },
 ];
 
 const SIDEBAR_EXPANDED = 240;

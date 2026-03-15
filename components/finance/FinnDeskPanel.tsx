@@ -639,7 +639,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
 
       if (orchestratorResp.ok) {
         const data = await orchestratorResp.json();
-        responseText = data.response || 'I processed your request.';
+        responseText = data.response || data.text || "I'm ready for your next step.";
         activityEvents = buildActivityFromResponse(data as OrchestratorResponse, 'finn');
       } else {
         // Orchestrator unavailable — fall back to local financial data

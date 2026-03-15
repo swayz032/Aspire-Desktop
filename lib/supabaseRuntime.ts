@@ -11,5 +11,6 @@ export function isProductionRuntime(): boolean {
 }
 
 export function allowDevSupabaseBypass(): boolean {
-  return !isProductionRuntime() && !hasSupabaseWebConfig();
+  const explicitBypass = process.env.EXPO_PUBLIC_ALLOW_SUPABASE_BYPASS === 'true';
+  return !isProductionRuntime() && !hasSupabaseWebConfig() && explicitBypass;
 }

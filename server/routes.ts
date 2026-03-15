@@ -230,6 +230,17 @@ function secureTokenEquals(left: string, right: string): boolean {
   return crypto.timingSafeEqual(leftBuf, rightBuf);
 }
 
+function shortCorrelationRef(correlationId: string): string {
+  const compact = String(correlationId || '').replace(/[^a-zA-Z0-9]/g, '');
+  if (!compact) return 'UNKNOWN';
+  return compact.slice(0, 10).toUpperCase();
+}
+
+function humanizeUserError(message: string | null | undefined, correlationId: string): string {
+  const base = (message || '').trim() || 'I hit a temporary issue while handling that. Please try again in a moment.';
+  return `${base} (ref ${shortCorrelationRef(correlationId)})`;
+}
+
 // ─── Anam Session Store (CUSTOMER_CLIENT_V1 Auth Bridge) ───
 // When a user starts an Anam avatar session, we store their auth context.
 // When Anam's brain routing calls /api/ava/chat-stream (without JWT), we look up
@@ -3121,7 +3132,10 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       // Extract human-readable text from orchestrator error response
       let errorData: any = null;
       try { errorData = JSON.parse(errorText); } catch { /* non-JSON error */ }
-      const responseText = errorData?.text || errorData?.message || 'I\'m having trouble processing that right now. Please try again.';
+      const responseText = humanizeUserError(
+        errorData?.text || errorData?.message,
+        correlationId,
+      );
 
       return res.status(response.status).json({
         response: responseText,
@@ -3182,7 +3196,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       },
     });
     res.json({
-      response: data.text || data.message || 'I processed your request.',
+      response: data.text || data.message || "I'm ready for your next step.",
       receipt_id: data.governance?.receipt_ids?.[0] || null,
       receipt_ids: data.governance?.receipt_ids || [],
       resolved_agent: resolvedAgent,

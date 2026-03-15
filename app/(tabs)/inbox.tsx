@@ -1052,6 +1052,11 @@ export default function InboxScreen() {
   const searchTimerRef = useRef<any>(null);
 
   const [contactsLoadError, setContactsLoadError] = useState<string | null>(null);
+  const [loadErrors, setLoadErrors] = useState<Record<'office' | 'calls' | 'mail', string | null>>({
+    office: null,
+    calls: null,
+    mail: null,
+  });
   const modalScaleAnim = useRef(new Animated.Value(0.97)).current;
   const modalOpacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -1245,7 +1250,7 @@ export default function InboxScreen() {
       const msg = e instanceof Error ? e.message : String(e);
       setEliMessages(prev => [
         ...prev,
-        { id: String(Date.now() + 2), from: 'eli', text: `I couldn't process that: ${msg}`, ts: Date.now() },
+        { id: String(Date.now() + 2), from: 'eli', text: `I hit an issue on that request: ${msg}`, ts: Date.now() },
       ]);
       appendEliRunEvent({
         type: 'error',
@@ -1358,11 +1363,17 @@ export default function InboxScreen() {
       if (mailRes.ok) {
         const mailData = await mailRes.json();
         setMailThreads(mailData.threads ?? []);
+        setLoadErrors((prev) => ({ ...prev, mail: null }));
       } else {
         setMailThreads([]);
+        setLoadErrors((prev) => ({ ...prev, mail: 'Mail service unavailable. Verify mailbox setup and backend mail routes.' }));
       }
-    } catch {
+    } catch (err) {
       setMailThreads([]);
+      setLoadErrors((prev) => ({
+        ...prev,
+        mail: err instanceof Error ? err.message : 'Mail service unavailable. Verify backend connectivity.',
+      }));
     }
   }, [authenticatedFetch, selectedMailboxEmail]);
 
@@ -1460,18 +1471,40 @@ export default function InboxScreen() {
   useEffect(() => {
     let cancelled = false;
     async function loadData() {
+      if (!cancelled) {
+        setLoading(true);
+        setLoadErrors({ office: null, calls: null, mail: null });
+      }
       await loadMailThreads();
       try {
         const items = await getInboxItems(50);
-        if (!cancelled) setOfficeItems(items);
-      } catch {
-        if (!cancelled) setOfficeItems([]);
+        if (!cancelled) {
+          setOfficeItems(items);
+          setLoadErrors((prev) => ({ ...prev, office: null }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setOfficeItems([]);
+          setLoadErrors((prev) => ({
+            ...prev,
+            office: err instanceof Error ? err.message : 'Office inbox unavailable. Verify backend and database connectivity.',
+          }));
+        }
       }
       try {
         const callData = await getProviderCalls(50);
-        if (!cancelled) setCalls(callData);
-      } catch {
-        if (!cancelled) setCalls([]);
+        if (!cancelled) {
+          setCalls(callData);
+          setLoadErrors((prev) => ({ ...prev, calls: null }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCalls([]);
+          setLoadErrors((prev) => ({
+            ...prev,
+            calls: err instanceof Error ? err.message : 'Calls feed unavailable. Verify provider call logging and backend routes.',
+          }));
+        }
       }
       if (!cancelled) setLoading(false);
     }
@@ -1801,6 +1834,23 @@ export default function InboxScreen() {
     }
 
     if (filteredItems.length === 0) {
+      const tabError =
+        activeTab === 'office'
+          ? loadErrors.office
+          : activeTab === 'calls'
+          ? loadErrors.calls
+          : activeTab === 'mail'
+          ? loadErrors.mail
+          : null;
+      if (tabError) {
+        return (
+          <View style={styles.emptyState}>
+            <Ionicons name="alert-circle-outline" size={40} color={Colors.text.disabled} style={{ opacity: 0.5 }} />
+            <Text style={styles.emptyTitle}>{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Unavailable</Text>
+            <Text style={styles.emptySubtitle}>{tabError}</Text>
+          </View>
+        );
+      }
       if (activeTab === 'contacts' && contactsLoadError) {
         return (
           <View style={styles.emptyState}>

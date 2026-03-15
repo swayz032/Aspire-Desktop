@@ -161,10 +161,15 @@ export function DesktopHome() {
   };
 
   useEffect(() => {
+    const headers: Record<string, string> = {};
+    if (session?.access_token) {
+      headers.Authorization = `Bearer ${session.access_token}`;
+    }
+
     // Fetch live cash position from ops-snapshot
     (async () => {
       try {
-        const res = await fetch('/api/ops-snapshot');
+        const res = await fetch('/api/ops-snapshot', { headers });
         if (res.ok) {
           const data = await res.json();
           const cp = data.cashPosition;
@@ -193,9 +198,9 @@ export function DesktopHome() {
       try {
         const [calRes, authRes] = await Promise.all([
           fetch('/api/calendar/today', {
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...headers },
           }).catch(() => null),
-          fetch('/api/authority-queue').catch(() => null),
+          fetch('/api/authority-queue', { headers }).catch(() => null),
         ]);
 
         const calItems: any[] = [];
@@ -243,7 +248,7 @@ export function DesktopHome() {
         setPlanItems(merged);
       } catch (e) { /* plan not available */ }
     })();
-  }, []);
+  }, [session?.access_token]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
   const leftWidth = isTablet ? 0 : isLaptop ? Canvas.layout.leftColLaptop : Canvas.layout.leftColDesktop;

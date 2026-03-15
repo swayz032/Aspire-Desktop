@@ -678,7 +678,7 @@ export function AvaDeskPanel() {
       }
 
       const data = await resp.json();
-      const responseText = data.response || data.text || 'I processed your request.';
+      const responseText = data.response || data.text || "I'm ready for your next step.";
       const activityEvents = buildActivityFromResponse(data, 'ava');
       const mediaItems = Array.isArray((data as any).media) ? (data as any).media : [];
 

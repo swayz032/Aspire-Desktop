@@ -1,21 +1,47 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Card } from '@/components/ui/Card';
 import { useRouter } from 'expo-router';
+import { supabase } from '@/lib/supabase';
 
 const BRIGHT_BG = '#0a0a0c';
 
-const mockArtifacts = [
-  { id: '1', type: 'draft', title: '7/14/21 Follow-Up Scripts', status: 'needs_review', createdAt: '2026-01-20T10:00:00Z', riskTier: 'medium' },
-  { id: '2', type: 'template', title: 'Delivery Price Capture Spreadsheet', status: 'approved', createdAt: '2026-01-19T14:30:00Z', riskTier: 'low' },
-  { id: '3', type: 'plan', title: '30-Day AR Recovery Plan', status: 'needs_review', createdAt: '2026-01-20T09:15:00Z', riskTier: 'medium' },
-  { id: '4', type: 'checklist', title: 'New Client Onboarding Checklist', status: 'approved', createdAt: '2026-01-18T16:45:00Z', riskTier: 'low' },
-  { id: '5', type: 'draft', title: 'Quarterly Review Email', status: 'drafted', createdAt: '2026-01-20T11:30:00Z', riskTier: 'medium' },
-  { id: '6', type: 'plan', title: 'Broker Pilot Program', status: 'receipt_required', createdAt: '2026-01-17T09:00:00Z', riskTier: 'high' },
-];
+interface PreparedArtifact {
+  id: string;
+  type: string;
+  title: string;
+  status: string;
+  createdAt: string;
+  riskTier: string;
+}
+
+function mapReceiptToArtifact(receipt: any): PreparedArtifact {
+  const actionType = receipt.action_type || '';
+  let type = 'draft';
+  if (actionType.includes('invoice') || actionType.includes('payment')) type = 'plan';
+  else if (actionType.includes('email') || actionType.includes('message')) type = 'draft';
+  else if (actionType.includes('contract') || actionType.includes('document')) type = 'template';
+  else if (actionType.includes('meeting') || actionType.includes('calendar')) type = 'checklist';
+
+  let status = 'needs_review';
+  if (receipt.status === 'SUCCEEDED') status = 'approved';
+  else if (receipt.status === 'FAILED') status = 'receipt_required';
+  else if (receipt.status === 'DENIED') status = 'receipt_required';
+  else if (receipt.status === 'PENDING') status = 'needs_review';
+
+  const riskTier = receipt.risk_tier === 'red' ? 'high' : receipt.risk_tier === 'yellow' ? 'medium' : 'low';
+
+  return {
+    id: receipt.id,
+    type,
+    title: receipt.action_type?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Unnamed Action',
+    status,
+    createdAt: receipt.created_at,
+    riskTier,
+  };
+}
 
 const getArtifactIcon = (type: string) => {
   switch (type) {
@@ -62,11 +88,46 @@ const getRiskTierColor = (tier: string) => {
 
 export default function PreparedScreen() {
   const router = useRouter();
+  const [artifacts, setArtifacts] = useState<PreparedArtifact[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchArtifacts() {
+      try {
+        const { data, error } = await supabase
+          .from('receipts')
+          .select('id, action_type, status, risk_tier, created_at')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (error) {
+          console.error('Failed to fetch receipts:', error.message);
+          return;
+        }
+
+        setArtifacts((data || []).map(mapReceiptToArtifact));
+      } catch (err) {
+        console.error('Unexpected error fetching receipts:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchArtifacts();
+  }, []);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -78,7 +139,7 @@ export default function PreparedScreen() {
         style={styles.heroGradient}
       >
         <View style={styles.header}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.canGoBack() ? router.back() : router.push('/founder-hub')}
           >
@@ -86,60 +147,69 @@ export default function PreparedScreen() {
           </TouchableOpacity>
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>What Aspire Prepared</Text>
-            <Text style={styles.headerSubtitle}>{mockArtifacts.length} artifacts ready for review</Text>
+            <Text style={styles.headerSubtitle}>{artifacts.length} artifacts ready for review</Text>
           </View>
           <TouchableOpacity style={styles.filterButton}>
             <Ionicons name="filter" size={20} color={Colors.text.secondary} />
           </TouchableOpacity>
         </View>
       </LinearGradient>
-      
-      <ScrollView 
+
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {mockArtifacts.map((artifact) => (
-          <TouchableOpacity 
-            key={artifact.id}
-            style={styles.artifactCard}
-            onPress={() => router.push(`/founder-hub/artifacts/${artifact.id}` as any)}
-          >
-            <View style={styles.artifactHeader}>
-              <View style={styles.artifactIconOuter}>
-                <View style={styles.artifactIconGlow} />
-                <View style={styles.artifactIconInner}>
-                  <Ionicons name={getArtifactIcon(artifact.type) as any} size={14} color="#3B82F6" />
+        {artifacts.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingTop: 60 }}>
+            <Ionicons name="checkmark-circle-outline" size={48} color={Colors.text.muted} />
+            <Text style={{ color: Colors.text.muted, marginTop: Spacing.md, fontSize: Typography.body.fontSize }}>
+              No artifacts to review
+            </Text>
+          </View>
+        ) : (
+          artifacts.map((artifact) => (
+            <TouchableOpacity
+              key={artifact.id}
+              style={styles.artifactCard}
+              onPress={() => router.push(`/founder-hub/artifacts/${artifact.id}` as any)}
+            >
+              <View style={styles.artifactHeader}>
+                <View style={styles.artifactIconOuter}>
+                  <View style={styles.artifactIconGlow} />
+                  <View style={styles.artifactIconInner}>
+                    <Ionicons name={getArtifactIcon(artifact.type) as any} size={14} color="#3B82F6" />
+                  </View>
+                </View>
+                <View style={styles.artifactMeta}>
+                  <Text style={styles.artifactType}>
+                    {artifact.type.charAt(0).toUpperCase() + artifact.type.slice(1)}
+                  </Text>
+                  <Text style={styles.artifactDate}>{formatDate(artifact.createdAt)}</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(artifact.status)}15`, borderColor: `${getStatusColor(artifact.status)}25` }]}>
+                  <View style={[styles.statusDot, { backgroundColor: getStatusColor(artifact.status) }]} />
+                  <Text style={[styles.statusText, { color: getStatusColor(artifact.status) }]}>
+                    {getStatusLabel(artifact.status)}
+                  </Text>
                 </View>
               </View>
-              <View style={styles.artifactMeta}>
-                <Text style={styles.artifactType}>
-                  {artifact.type.charAt(0).toUpperCase() + artifact.type.slice(1)}
-                </Text>
-                <Text style={styles.artifactDate}>{formatDate(artifact.createdAt)}</Text>
+
+              <Text style={styles.artifactTitle}>{artifact.title}</Text>
+
+              <View style={styles.artifactFooter}>
+                <View style={[styles.riskBadge, { backgroundColor: `${getRiskTierColor(artifact.riskTier)}15`, borderColor: `${getRiskTierColor(artifact.riskTier)}25` }]}>
+                  <Text style={[styles.riskText, { color: getRiskTierColor(artifact.riskTier) }]}>
+                    {artifact.riskTier.charAt(0).toUpperCase() + artifact.riskTier.slice(1)} Risk
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.reviewButton}>
+                  <Text style={styles.reviewText}>Review</Text>
+                  <Ionicons name="chevron-forward" size={14} color="#3B82F6" />
+                </TouchableOpacity>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(artifact.status)}15`, borderColor: `${getStatusColor(artifact.status)}25` }]}>
-                <View style={[styles.statusDot, { backgroundColor: getStatusColor(artifact.status) }]} />
-                <Text style={[styles.statusText, { color: getStatusColor(artifact.status) }]}>
-                  {getStatusLabel(artifact.status)}
-                </Text>
-              </View>
-            </View>
-            
-            <Text style={styles.artifactTitle}>{artifact.title}</Text>
-            
-            <View style={styles.artifactFooter}>
-              <View style={[styles.riskBadge, { backgroundColor: `${getRiskTierColor(artifact.riskTier)}15`, borderColor: `${getRiskTierColor(artifact.riskTier)}25` }]}>
-                <Text style={[styles.riskText, { color: getRiskTierColor(artifact.riskTier) }]}>
-                  {artifact.riskTier.charAt(0).toUpperCase() + artifact.riskTier.slice(1)} Risk
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.reviewButton}>
-                <Text style={styles.reviewText}>Review</Text>
-                <Ionicons name="chevron-forward" size={14} color="#3B82F6" />
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
     </View>
   );
