@@ -15,6 +15,13 @@ import { loadSecrets } from './secrets';
 import { logger } from './logger';
 import { setupTtsWebSocket } from './wsTts';
 import { applyTenantContext } from './tenantContext';
+import { getBreakerStates } from './circuitBreaker';
+import { getIdempotencyStats } from './webhookIdempotency';
+import { initSentry, sentryRequestHandler, sentryErrorHandler } from './sentry';
+
+// Initialize Sentry early — before app setup so it captures startup errors.
+// No-op if SENTRY_DSN is not set (Law #9: PII stripped in beforeSend hook).
+initSentry();
 
 let runMigrations: ((opts: { databaseUrl: string }) => Promise<void>) | null = null;
 let getStripeSync: (() => Promise<{ findOrCreateManagedWebhook: (url: string) => Promise<void>; syncBackfill: () => Promise<void> }>) | null = null;
@@ -37,6 +44,9 @@ try {
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '5000', 10);
+
+// Sentry request handler — MUST be first middleware (captures request context)
+app.use(sentryRequestHandler());
 
 // Default suite ID — bootstrapped at startup
 let defaultSuiteId: string = '';
@@ -606,6 +616,12 @@ app.get('/api/health', async (_req, res) => {
   const isDegraded = checks.database === true && !checks.supabase_admin;
   const status = isHealthy ? 'ok' : isDegraded ? 'degraded' : 'unhealthy';
 
+  // Circuit breaker states (Law #10: reliability observability)
+  checks.circuit_breakers = getBreakerStates();
+
+  // Webhook idempotency cache stats
+  checks.webhook_idempotency = getIdempotencyStats();
+
   // Pool pressure warning
   if (pool.waitingCount > 5) {
     checks.pool_pressure = 'high';
@@ -855,6 +871,9 @@ app.use((req, res, next) => {
     next();
   }
 });
+
+// Sentry error handler — MUST be last error middleware (reports unhandled errors)
+app.use(sentryErrorHandler());
 
 async function loadOAuthTokens() {
   try {
