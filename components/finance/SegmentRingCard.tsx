@@ -35,7 +35,7 @@ function ShimmerLine({ width, height = 12 }: { width: string | number; height?: 
   );
 }
 
-export function SegmentRingCard({ title, centerValue, centerLabel, segments, accentColor, loading }: SegmentRingCardProps) {
+export function SegmentRingCard({ title, centerValue, centerLabel, segments, accentColor, mode, loading }: SegmentRingCardProps) {
   if (Platform.OS !== 'web') {
     return (
       <View style={nativeStyles.card}>
@@ -47,7 +47,7 @@ export function SegmentRingCard({ title, centerValue, centerLabel, segments, acc
 
   if (loading) {
     return (
-      <div style={cardShell()}>
+      <div style={cardShell(accentColor)}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16 }}>
           <ShimmerLine width="50%" height={10} />
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
@@ -66,7 +66,7 @@ export function SegmentRingCard({ title, centerValue, centerLabel, segments, acc
   const total = segments.reduce((sum, s) => sum + s.value, 0);
 
   return (
-    <div style={cardShell()}>
+    <div style={cardShell(accentColor)}>
       <div style={{ padding: 16 }}>
         <div style={{
           fontSize: 11,
@@ -81,17 +81,29 @@ export function SegmentRingCard({ title, centerValue, centerLabel, segments, acc
           <div style={{ position: 'relative' as const, width: 110, height: 110, flexShrink: 0, minWidth: 110, minHeight: 110 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
+
+                <defs>
+                  <filter id="ring-glow">
+                    <feGaussianBlur stdDeviation="2" result="blur" />
+                    <feMerge>
+                      <feMergeNode in="blur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
                 <Pie
                   data={segments}
                   cx="50%"
                   cy="50%"
-                  innerRadius={38}
+                  innerRadius={36}
                   outerRadius={50}
                   dataKey="value"
                   startAngle={90}
                   endAngle={-270}
                   strokeWidth={0}
-                  paddingAngle={3}
+                  paddingAngle={4}
+                  cornerRadius={6}
+                  filter="url(#ring-glow)"
                 >
                   {segments.map((seg, i) => (
                     <Cell key={i} fill={seg.color} />
@@ -166,11 +178,14 @@ export function SegmentRingCard({ title, centerValue, centerLabel, segments, acc
   );
 }
 
-function cardShell(): React.CSSProperties {
+function cardShell(accentColor?: string): React.CSSProperties {
   return {
+    position: 'relative' as const,
     borderRadius: 14,
     border: '1px solid rgba(255,255,255,0.07)',
-    background: '#0A0A0F',
+    background: accentColor
+      ? `radial-gradient(ellipse at top right, ${accentColor}0D 0%, transparent 60%), #0A0A0F`
+      : '#0A0A0F',
     overflow: 'hidden',
     boxShadow: '0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.02)',
   };

@@ -225,15 +225,15 @@ export function FinanceRightRail({ approvals = [], alerts = [], providers = [] }
 
 const styles = StyleSheet.create({
   container: {
-    gap: Spacing.xxl, // 24 — matches the previous marginBottom cadence
+    gap: Spacing.xxl,
   },
   sectionCard: {
     backgroundColor: Colors.surface.card,
     borderWidth: 1,
     borderColor: Colors.border.default,
-    borderRadius: Colors.desktop.cardRadius, // 14 — aligns with desktop token
+    borderRadius: Colors.desktop.cardRadius,
     padding: CARD_PADDING,
-    gap: Spacing.xs, // 4 — subtle breathing room between header and content
+    gap: Spacing.xs,
     ...(Platform.OS === 'web'
       ? { boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }
       : {}
@@ -242,8 +242,8 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm, // 8
-    marginBottom: Spacing.sm, // 8 — replaces old 12, combined with sectionCard gap:4 = 12 total visual separation
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   sectionTitle: {
     color: Colors.text.primary,
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   countBadge: {
     backgroundColor: Colors.accent.cyan,
     borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.sm, // 8
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 2,
     minWidth: 22,
     alignItems: 'center',
@@ -261,20 +261,20 @@ const styles = StyleSheet.create({
   countBadgeAmber: {
     backgroundColor: Colors.accent.amber,
     borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.sm, // 8
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 2,
     minWidth: 22,
     alignItems: 'center',
   },
   countBadgeText: {
     color: Colors.text.primary,
-    fontSize: Typography.small.fontSize, // 12
+    fontSize: Typography.small.fontSize,
     fontWeight: '700',
   },
 
   /* -- Approval Items -- */
   approvalItem: {
-    paddingVertical: Spacing.md, // 12 — bumped from 10 for more comfortable touch targets
+    paddingVertical: Spacing.md,
   },
   approvalDivider: {
     borderBottomWidth: 1,
@@ -287,17 +287,17 @@ const styles = StyleSheet.create({
   },
   approvalTitle: {
     color: Colors.text.primary,
-    ...Typography.captionMedium, // 14 / 500
+    ...Typography.captionMedium,
   },
   approvalAmount: {
     color: Colors.text.secondary,
     fontSize: 13,
-    fontWeight: '600', // bolder for scannability of monetary values
+    fontWeight: '600',
     marginTop: 2,
   },
   approvalLevel: {
     color: Colors.text.tertiary,
-    ...Typography.small, // 12 / 400
+    ...Typography.small,
     marginTop: 2,
   },
 
@@ -310,9 +310,9 @@ const styles = StyleSheet.create({
 
   /* -- Link Buttons -- */
   linkButton: {
-    marginTop: Spacing.md, // 12
+    marginTop: Spacing.md,
     alignItems: 'center',
-    paddingVertical: Spacing.sm, // 8 — increased from 6 for better tap target
+    paddingVertical: Spacing.sm,
     minHeight: 44, // a11y minimum
     justifyContent: 'center',
     ...(Platform.OS === 'web'
@@ -333,23 +333,23 @@ const styles = StyleSheet.create({
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.lg, // 16 — tightened from 20 to reduce dead space
-    paddingHorizontal: Spacing.md, // 12
-    minHeight: 100, // reduced from 120 — less dead space while still giving presence
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    minHeight: 100,
   },
   emptyStateIcon: {
-    marginBottom: Spacing.sm, // 8
+    marginBottom: Spacing.sm,
   },
   emptyHeadline: {
     color: Colors.text.primary,
-    ...Typography.captionMedium, // 14 / 500
-    fontWeight: '600', // override to 600 for headline emphasis
+    ...Typography.captionMedium,
+    fontWeight: '600',
     textAlign: 'center',
-    marginBottom: Spacing.sm, // 8 — slightly more breathing room than previous 6
+    marginBottom: Spacing.sm,
   },
   emptyBody: {
     color: Colors.text.tertiary,
-    ...Typography.small, // 12 / 400
+    ...Typography.small,
     textAlign: 'center',
     lineHeight: 17,
   },
@@ -363,19 +363,19 @@ const styles = StyleSheet.create({
   alertItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: Spacing.md, // 12 — slightly wider than previous 10 for dot breathing room
-    paddingVertical: Spacing.sm, // 8
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm,
   },
   alertContent: {
     flex: 1,
   },
   alertTitle: {
     color: Colors.text.primary,
-    ...Typography.captionMedium, // 14 / 500
+    ...Typography.captionMedium,
   },
   alertDescription: {
     color: Colors.text.tertiary,
-    ...Typography.small, // 12 / 400
+    ...Typography.small,
     marginTop: 2,
   },
 
@@ -383,10 +383,10 @@ const styles = StyleSheet.create({
   providerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md, // 12 — slightly wider than previous 10
-    paddingVertical: Spacing.sm, // 8
-    paddingHorizontal: Spacing.xs, // 4 — allows hover highlight to extend slightly
-    borderRadius: BorderRadius.sm, // 6 — subtle rounding for hover state
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: BorderRadius.sm,
     ...(Platform.OS === 'web'
       ? { cursor: 'pointer', transition: 'background-color 0.15s ease' }
       : {}
@@ -400,11 +400,11 @@ const styles = StyleSheet.create({
   },
   providerName: {
     color: Colors.text.primary,
-    ...Typography.captionMedium, // 14 / 500
+    ...Typography.captionMedium,
   },
   providerStatus: {
     color: Colors.text.tertiary,
-    ...Typography.small, // 12 / 400
+    ...Typography.small,
     marginTop: 2,
   },
 });

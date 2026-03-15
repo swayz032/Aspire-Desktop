@@ -25,49 +25,49 @@ export const STORY_MODES: StoryModeConfig[] = [
     name: 'Cash Truth',
     tagline: 'Real-time liquidity at a glance',
     accent: '#00E5CC',
-    gradient: 'radial-gradient(ellipse at 30% 20%, #004D40 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, #00BCD4 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, #00E5CC22 0%, transparent 70%), linear-gradient(135deg, #003333 0%, #001A1A 100%)',
+    gradient: 'conic-gradient(from 200deg at 70% 30%, #00E5CC20 0deg, transparent 90deg), radial-gradient(ellipse at 30% 20%, #004D40 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, #00BCD4 0%, transparent 50%), linear-gradient(135deg, #003333 0%, #001A1A 100%)',
   },
   {
     id: 'what-changed',
     name: 'What Changed',
     tagline: 'Deltas since your last look',
     accent: '#A78BFA',
-    gradient: 'radial-gradient(ellipse at 25% 30%, #1E1B4B 0%, transparent 55%), radial-gradient(ellipse at 75% 70%, #7C3AED 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, #A78BFA18 0%, transparent 65%), linear-gradient(135deg, #0F0A2E 0%, #0A0520 100%)',
+    gradient: 'conic-gradient(from 160deg at 65% 35%, #A78BFA20 0deg, transparent 100deg), radial-gradient(ellipse at 25% 30%, #1E1B4B 0%, transparent 55%), radial-gradient(ellipse at 75% 70%, #7C3AED 0%, transparent 50%), linear-gradient(135deg, #0F0A2E 0%, #0A0520 100%)',
   },
   {
     id: 'invoice-pressure',
     name: 'Invoice Pressure',
     tagline: 'What is owed and overdue',
     accent: '#F59E0B',
-    gradient: 'radial-gradient(ellipse at 30% 25%, #78350F 0%, transparent 55%), radial-gradient(ellipse at 70% 75%, #D97706 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, #F59E0B15 0%, transparent 65%), linear-gradient(135deg, #451A03 0%, #1C0A00 100%)',
+    gradient: 'conic-gradient(from 220deg at 60% 40%, #F59E0B18 0deg, transparent 80deg), radial-gradient(ellipse at 30% 25%, #78350F 0%, transparent 55%), radial-gradient(ellipse at 70% 75%, #D97706 0%, transparent 50%), linear-gradient(135deg, #451A03 0%, #1C0A00 100%)',
   },
   {
     id: 'tax-review',
     name: 'Tax Review',
     tagline: 'Stay ahead of obligations',
     accent: '#10B981',
-    gradient: 'radial-gradient(ellipse at 30% 30%, #064E3B 0%, transparent 55%), radial-gradient(ellipse at 70% 70%, #059669 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, #10B98118 0%, transparent 65%), linear-gradient(135deg, #022C22 0%, #011A14 100%)',
+    gradient: 'conic-gradient(from 180deg at 55% 45%, #10B98118 0deg, transparent 90deg), radial-gradient(ellipse at 30% 30%, #064E3B 0%, transparent 55%), radial-gradient(ellipse at 70% 70%, #059669 0%, transparent 50%), linear-gradient(135deg, #022C22 0%, #011A14 100%)',
   },
   {
     id: 'cleanup-sprint',
     name: 'Cleanup Sprint',
     tagline: 'Unresolved items need attention',
     accent: '#F87171',
-    gradient: 'radial-gradient(ellipse at 25% 25%, #3B1010 0%, transparent 55%), radial-gradient(ellipse at 70% 75%, #EF4444 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, #F8717115 0%, transparent 65%), linear-gradient(135deg, #1C0606 0%, #0F0303 100%)',
+    gradient: 'conic-gradient(from 240deg at 70% 25%, #F8717118 0deg, transparent 85deg), radial-gradient(ellipse at 25% 25%, #3B1010 0%, transparent 55%), radial-gradient(ellipse at 70% 75%, #EF4444 0%, transparent 50%), linear-gradient(135deg, #1C0606 0%, #0F0303 100%)',
   },
   {
     id: 'books-vs-bank',
     name: 'Books vs Bank',
     tagline: 'Reconciliation at a glance',
     accent: '#818CF8',
-    gradient: 'radial-gradient(ellipse at 30% 20%, #1E1B4B 0%, transparent 55%), radial-gradient(ellipse at 75% 80%, #4F46E5 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, #818CF815 0%, transparent 65%), linear-gradient(135deg, #0C0A30 0%, #050320 100%)',
+    gradient: 'conic-gradient(from 150deg at 60% 30%, #818CF81A 0deg, transparent 95deg), radial-gradient(ellipse at 30% 20%, #1E1B4B 0%, transparent 55%), radial-gradient(ellipse at 75% 80%, #4F46E5 0%, transparent 50%), linear-gradient(135deg, #0C0A30 0%, #050320 100%)',
   },
   {
     id: 'money-memory',
     name: 'Money Memory',
     tagline: 'Your financial timeline',
     accent: '#E879F9',
-    gradient: 'radial-gradient(ellipse at 25% 30%, #4A044E 0%, transparent 55%), radial-gradient(ellipse at 75% 70%, #C026D3 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, #E879F918 0%, transparent 65%), linear-gradient(135deg, #2E0230 0%, #15011A 100%)',
+    gradient: 'conic-gradient(from 190deg at 65% 40%, #E879F91A 0deg, transparent 90deg), radial-gradient(ellipse at 25% 30%, #4A044E 0%, transparent 55%), radial-gradient(ellipse at 75% 70%, #C026D3 0%, transparent 50%), linear-gradient(135deg, #2E0230 0%, #15011A 100%)',
   },
 ];
 
@@ -99,13 +99,13 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
 
   const getCardStyle = (offset: number): React.CSSProperties => {
     const absOffset = Math.abs(offset);
-    if (absOffset > 2) return { display: 'none' };
+    if (absOffset > 1) return { display: 'none' };
 
-    const translateX = offset * 180;
+    const translateX = offset * 200;
     const scale = 1 - absOffset * 0.1;
     const zIndex = 10 - absOffset;
-    const opacity = absOffset === 0 ? 1 : absOffset === 1 ? 0.7 : 0.4;
-    const rotateY = offset * -8;
+    const opacity = absOffset === 0 ? 1 : 0.55;
+    const rotateY = offset * -10;
 
     return {
       position: 'absolute' as const,

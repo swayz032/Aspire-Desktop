@@ -42,7 +42,7 @@ function ShimmerLine({ width, height = 12 }: { width: string | number; height?: 
   );
 }
 
-export function QueueInstrumentCard({ title, items, accentColor, loading }: QueueInstrumentCardProps) {
+export function QueueInstrumentCard({ title, items, accentColor, mode, loading }: QueueInstrumentCardProps) {
   if (Platform.OS !== 'web') {
     return (
       <View style={nativeStyles.card}>
@@ -54,7 +54,7 @@ export function QueueInstrumentCard({ title, items, accentColor, loading }: Queu
 
   if (loading) {
     return (
-      <div style={cardShell()}>
+      <div style={cardShell(accentColor)}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16 }}>
           <ShimmerLine width="40%" height={10} />
           {[1, 2, 3].map(i => (
@@ -69,7 +69,7 @@ export function QueueInstrumentCard({ title, items, accentColor, loading }: Queu
   }
 
   return (
-    <div style={cardShell()}>
+    <div style={cardShell(accentColor)}>
       <div style={{ padding: 16 }}>
         <div style={{
           fontSize: 11,
@@ -168,11 +168,14 @@ export function QueueInstrumentCard({ title, items, accentColor, loading }: Queu
   );
 }
 
-function cardShell(): React.CSSProperties {
+function cardShell(accentColor?: string): React.CSSProperties {
   return {
+    position: 'relative' as const,
     borderRadius: 14,
     border: '1px solid rgba(255,255,255,0.07)',
-    background: '#0A0A0F',
+    background: accentColor
+      ? `radial-gradient(ellipse at top right, ${accentColor}0D 0%, transparent 60%), #0A0A0F`
+      : '#0A0A0F',
     overflow: 'hidden',
     boxShadow: '0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.02)',
   };
