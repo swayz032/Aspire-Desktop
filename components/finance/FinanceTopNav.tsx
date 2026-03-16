@@ -133,7 +133,7 @@ export function FinanceTopNav({ isTablet }: FinanceTopNavProps) {
       height: 52,
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'flex-start',
+      justifyContent: 'center',
       paddingLeft: 24,
       paddingRight: 24,
       gap: 20,
