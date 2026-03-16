@@ -675,6 +675,9 @@ function FinanceHubContent() {
 
   const finnPanelNode = (
     <View style={[s.finnCardOuter]}>
+      <View style={s.finn3dContainer}>
+        <FinnOrbVideo />
+      </View>
       <View style={s.finnFloatingPanel}>
         <View style={s.finnPanelInner}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -710,14 +713,7 @@ function FinanceHubContent() {
             <Ionicons name="chatbubble-ellipses-outline" size={16} color="#A78BFA" />
             <Text style={s.finnPanelBtnText}>Chat with Finn</Text>
           </Pressable>
-          <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 10 }} />
-          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, lineHeight: 18 }}>
-            Finn analyzes your connected accounts in real time, surfaces cash flow patterns, and flags anomalies before they become problems. Ask Finn anything about your numbers. He's not a CPA and doesn't give tax or legal advice — but he knows your books better than anyone.
-          </Text>
         </View>
-      </View>
-      <View style={s.finn3dContainer}>
-        <FinnOrbVideo />
       </View>
     </View>
   );
@@ -799,7 +795,7 @@ function FinanceHubContent() {
         ) : (
           <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', minHeight: 560 }}>
                 <div style={{ flex: '3 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                   <StoryModeCarousel
                     activeMode={activeStoryMode}
@@ -1018,11 +1014,10 @@ const s = StyleSheet.create({
   },
   finnCardOuter: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     backgroundColor: '#000',
     borderRadius: 16,
     overflow: 'hidden',
-    minHeight: 440,
     borderWidth: 1,
     borderColor: 'rgba(139,92,246,0.15)',
   } as WebStyle,
@@ -1031,9 +1026,9 @@ const s = StyleSheet.create({
     minHeight: undefined,
   },
   finnFloatingPanel: {
-    width: '38%',
-    justifyContent: 'center',
-    paddingLeft: 18,
+    width: '100%',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 18,
     paddingVertical: 18,
     zIndex: 2,
   } as WebStyle,
@@ -1064,6 +1059,7 @@ const s = StyleSheet.create({
   },
   finn3dContainer: {
     flex: 1,
+    minHeight: 260,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
