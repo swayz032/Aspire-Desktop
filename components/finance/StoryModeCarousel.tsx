@@ -91,6 +91,13 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
   const [isHovered, setIsHovered] = useState(false);
   const autoRotateRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  useEffect(() => {
+    if (activeMode) {
+      const idx = STORY_MODES.findIndex(m => m.id === activeMode);
+      if (idx >= 0 && idx !== centerIndex) setCenterIndex(idx);
+    }
+  }, [activeMode]);
+
   const goLeft = useCallback(() => {
     setCenterIndex(prev => {
       const next = (prev - 1 + STORY_MODES.length) % STORY_MODES.length;
