@@ -27,11 +27,11 @@ export function FinanceRightRail({
   if (Platform.OS !== 'web') return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div>
         <GreetingCard ownerName={ownerName} />
       </div>
-      <div style={{ maxHeight: 280, overflow: 'hidden' }}>
+      <div style={{ maxHeight: 320, overflow: 'hidden' }}>
         <HealthScoreRing
           connectedCount={connectedCount}
           mismatchCount={mismatchCount}
