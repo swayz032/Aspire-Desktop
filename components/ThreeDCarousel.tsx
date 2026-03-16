@@ -176,7 +176,7 @@ const ThreeDCarousel = ({
                       maxWidth: 360,
                       height: cardHeight,
                       overflow: "hidden",
-                      backgroundColor: "#111116",
+                      backgroundColor: "#1C1C1E",
                       border: `1px solid ${isCenter ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.06)"}`,
                       boxShadow: isCenter
                         ? "0 12px 40px rgba(0,0,0,0.6)"
@@ -190,7 +190,7 @@ const ThreeDCarousel = ({
                     <div
                       style={{
                         position: "relative",
-                        backgroundColor: "#0A0A0F",
+                        backgroundColor: "#1C1C1E",
                         height: 192,
                         overflow: "hidden",
                         flexShrink: 0,

@@ -73,7 +73,7 @@ export function HealthScoreRing({
         borderRadius: 14,
         border: '1px solid rgba(255,255,255,0.07)',
         borderLeft: accentColor ? `2px solid ${accentColor}` : '1px solid rgba(255,255,255,0.07)',
-        background: '#0A0A0F',
+        background: '#1C1C1E',
         padding: 16,
         display: 'flex',
         flexDirection: 'column',

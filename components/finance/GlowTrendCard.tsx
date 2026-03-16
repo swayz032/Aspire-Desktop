@@ -136,7 +136,7 @@ function cardShell(_accentColor: string): React.CSSProperties {
     position: 'relative' as const,
     borderRadius: 14,
     border: '1px solid rgba(255,255,255,0.07)',
-    background: '#0A0A0F',
+    background: '#1C1C1E',
     overflow: 'hidden',
     boxShadow: '0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.02)',
   };
@@ -147,7 +147,7 @@ const nativeStyles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.07)',
-    backgroundColor: '#0A0A0F',
+    backgroundColor: '#1C1C1E',
     padding: 16,
   },
   title: {
