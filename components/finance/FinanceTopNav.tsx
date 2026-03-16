@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname, type Href } from 'expo-router';
 import { useSupabase, useTenant } from '@/providers';
-import { getInitials, getAvatarColor } from '@/utils/avatar';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -65,16 +64,14 @@ const navPills: NavPill[] = [
   { id: 'receipts', label: 'Memory', route: '/finance-hub/receipts' },
 ];
 
-export function FinanceTopNav() {
+interface FinanceTopNavProps {
+  isTablet?: boolean;
+}
+
+export function FinanceTopNav({ isTablet }: FinanceTopNavProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const { session } = useSupabase();
-  const { tenant } = useTenant();
-  const userName = tenant?.ownerName || session?.user?.user_metadata?.full_name || 'User';
-  const businessName = tenant?.businessName || 'Finance Hub';
-  const userInitials = useMemo(() => getInitials(userName), [userName]);
-  const avatarColor = useMemo(() => getAvatarColor(userName), [userName]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !openDropdown) return;
@@ -136,29 +133,22 @@ export function FinanceTopNav() {
       height: 52,
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      justifyContent: 'center',
       paddingLeft: 24,
       paddingRight: 24,
-      backgroundColor: '#0A0A0F',
+      backgroundColor: '#1A1A24',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       position: 'relative' as const,
       zIndex: 100,
       flexShrink: 0,
     }}>
       <div style={{
+        position: 'absolute' as const,
+        left: 24,
         display: 'flex',
         alignItems: 'center',
         gap: 10,
-        minWidth: 180,
       }}>
-        <div style={{
-          width: 7,
-          height: 7,
-          borderRadius: 4,
-          background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
-          boxShadow: '0 0 10px rgba(59,130,246,0.5)',
-          flexShrink: 0,
-        }} />
         <span style={{
           fontSize: 27,
           fontWeight: 800,
@@ -172,12 +162,13 @@ export function FinanceTopNav() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(255,255,255,0.04)',
+        background: 'rgba(0,0,0,0.35)',
         borderRadius: 26,
         padding: '3px 4px',
-        border: '1px solid rgba(255,255,255,0.06)',
+        border: '1px solid rgba(255,255,255,0.04)',
         gap: 1,
         position: 'relative' as const,
+        ...(isTablet ? { overflowX: 'auto' as const, whiteSpace: 'nowrap' as const, maxWidth: 'calc(100% - 240px)' } : {}),
       }} data-finance-dropdown="true">
         {navPills.map((pill) => {
           const active = isActive(pill);
@@ -298,56 +289,6 @@ export function FinanceTopNav() {
           );
         })}
       </div>
-
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        minWidth: 180,
-        justifyContent: 'flex-end',
-      }}>
-        <div style={{ textAlign: 'right' as const }}>
-          <div style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: 'rgba(255,255,255,0.85)',
-            letterSpacing: '-0.1px',
-            lineHeight: '1.2',
-            maxWidth: 140,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap' as const,
-          }}>
-            {businessName}
-          </div>
-          <div style={{
-            fontSize: 10,
-            fontWeight: 400,
-            color: 'rgba(255,255,255,0.3)',
-            letterSpacing: '0.3px',
-            lineHeight: '1.3',
-          }}>
-            Finance Suite
-          </div>
-        </div>
-        <div style={{
-          width: 32,
-          height: 32,
-          borderRadius: 10,
-          backgroundColor: avatarColor,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 12,
-          fontWeight: 700,
-          color: '#ffffff',
-          flexShrink: 0,
-          border: '1px solid rgba(255,255,255,0.12)',
-          letterSpacing: '0.3px',
-        }}>
-          {userInitials}
-        </div>
-      </div>
     </div>
   );
 }
@@ -358,7 +299,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 24,
-    backgroundColor: '#0A0A0F',
+    backgroundColor: '#1A1A24',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
   },

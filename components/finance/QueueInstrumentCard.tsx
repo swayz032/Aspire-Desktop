@@ -168,16 +168,15 @@ export function QueueInstrumentCard({ title, items, accentColor, mode, loading }
   );
 }
 
-function cardShell(accentColor?: string): React.CSSProperties {
+function cardShell(_accentColor?: string): React.CSSProperties {
   return {
     position: 'relative' as const,
     borderRadius: 14,
     border: '1px solid rgba(255,255,255,0.07)',
-    background: accentColor
-      ? `radial-gradient(ellipse at top right, ${accentColor}0D 0%, transparent 60%), #0A0A0F`
-      : '#0A0A0F',
+    background: '#0A0A0F',
     overflow: 'hidden',
     boxShadow: '0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.02)',
+    height: '100%',
   };
 }
 

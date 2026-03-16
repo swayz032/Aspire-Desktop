@@ -16,7 +16,8 @@ export interface StoryModeConfig {
   name: string;
   tagline: string;
   accent: string;
-  gradient: string;
+  photo: string;
+  tags?: string[];
 }
 
 export const STORY_MODES: StoryModeConfig[] = [
@@ -24,50 +25,57 @@ export const STORY_MODES: StoryModeConfig[] = [
     id: 'cash-truth',
     name: 'Cash Truth',
     tagline: 'Real-time liquidity at a glance',
-    accent: '#00E5CC',
-    gradient: 'conic-gradient(from 200deg at 70% 30%, #00E5CC20 0deg, transparent 90deg), radial-gradient(ellipse at 30% 20%, #004D40 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, #00BCD4 0%, transparent 50%), linear-gradient(135deg, #003333 0%, #001A1A 100%)',
+    accent: '#38BDF8',
+    photo: '/images/story-modes/cash-truth.jpeg',
+    tags: ['Liquidity', 'Runway'],
   },
   {
     id: 'what-changed',
     name: 'What Changed',
     tagline: 'Deltas since your last look',
     accent: '#A78BFA',
-    gradient: 'conic-gradient(from 160deg at 65% 35%, #A78BFA20 0deg, transparent 100deg), radial-gradient(ellipse at 25% 30%, #1E1B4B 0%, transparent 55%), radial-gradient(ellipse at 75% 70%, #7C3AED 0%, transparent 50%), linear-gradient(135deg, #0F0A2E 0%, #0A0520 100%)',
+    photo: '/images/story-modes/what-changed.jpeg',
+    tags: ['Deltas', 'Trends'],
   },
   {
     id: 'invoice-pressure',
     name: 'Invoice Pressure',
     tagline: 'What is owed and overdue',
-    accent: '#F59E0B',
-    gradient: 'conic-gradient(from 220deg at 60% 40%, #F59E0B18 0deg, transparent 80deg), radial-gradient(ellipse at 30% 25%, #78350F 0%, transparent 55%), radial-gradient(ellipse at 70% 75%, #D97706 0%, transparent 50%), linear-gradient(135deg, #451A03 0%, #1C0A00 100%)',
+    accent: '#EA580C',
+    photo: '/images/story-modes/invoice-pressure.jpeg',
+    tags: ['AR', 'Collections'],
   },
   {
     id: 'tax-review',
     name: 'Tax Review',
     tagline: 'Stay ahead of obligations',
     accent: '#10B981',
-    gradient: 'conic-gradient(from 180deg at 55% 45%, #10B98118 0deg, transparent 90deg), radial-gradient(ellipse at 30% 30%, #064E3B 0%, transparent 55%), radial-gradient(ellipse at 70% 70%, #059669 0%, transparent 50%), linear-gradient(135deg, #022C22 0%, #011A14 100%)',
+    photo: '/images/story-modes/tax-review.jpeg',
+    tags: ['Compliance', 'Reserves'],
   },
   {
     id: 'cleanup-sprint',
     name: 'Cleanup Sprint',
     tagline: 'Unresolved items need attention',
     accent: '#F87171',
-    gradient: 'conic-gradient(from 240deg at 70% 25%, #F8717118 0deg, transparent 85deg), radial-gradient(ellipse at 25% 25%, #3B1010 0%, transparent 55%), radial-gradient(ellipse at 70% 75%, #EF4444 0%, transparent 50%), linear-gradient(135deg, #1C0606 0%, #0F0303 100%)',
+    photo: '/images/story-modes/cleanup-sprint.jpeg',
+    tags: ['Reconcile', 'Action'],
   },
   {
     id: 'books-vs-bank',
     name: 'Books vs Bank',
     tagline: 'Reconciliation at a glance',
-    accent: '#818CF8',
-    gradient: 'conic-gradient(from 150deg at 60% 30%, #818CF81A 0deg, transparent 95deg), radial-gradient(ellipse at 30% 20%, #1E1B4B 0%, transparent 55%), radial-gradient(ellipse at 75% 80%, #4F46E5 0%, transparent 50%), linear-gradient(135deg, #0C0A30 0%, #050320 100%)',
+    accent: '#F59E0B',
+    photo: '/images/story-modes/books-vs-bank.jpeg',
+    tags: ['Matching', 'Ledger'],
   },
   {
     id: 'money-memory',
     name: 'Money Memory',
     tagline: 'Your financial timeline',
     accent: '#E879F9',
-    gradient: 'conic-gradient(from 190deg at 65% 40%, #E879F91A 0deg, transparent 90deg), radial-gradient(ellipse at 25% 30%, #4A044E 0%, transparent 55%), radial-gradient(ellipse at 75% 70%, #C026D3 0%, transparent 50%), linear-gradient(135deg, #2E0230 0%, #15011A 100%)',
+    photo: '/images/story-modes/money-memory.jpeg',
+    tags: ['History', 'Patterns'],
   },
 ];
 
@@ -110,7 +118,7 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
         if (onSelectMode) onSelectMode(STORY_MODES[next]);
         return next;
       });
-    }, 3500);
+    }, 4000);
     return () => {
       if (autoRotateRef.current) clearInterval(autoRotateRef.current);
     };
@@ -124,28 +132,38 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
     );
   }
 
-  const CARD_WIDTH = 210;
-  const SIDE_OFFSET = 240;
-
   const getCardStyle = (offset: number): React.CSSProperties => {
     const absOffset = Math.abs(offset);
-    if (absOffset > 1) return { display: 'none' };
+    if (absOffset > 1) return {
+      position: 'absolute' as const,
+      left: '50%',
+      top: 0,
+      transform: `translateX(calc(-50% + ${offset > 0 ? 80 : -80}%)) scale(0.9)`,
+      opacity: 0,
+      pointerEvents: 'none' as const,
+      zIndex: 0,
+      transition: 'transform 400ms ease, opacity 400ms ease',
+      width: '70%',
+      maxWidth: 320,
+    };
 
-    const translateX = offset * SIDE_OFFSET;
+    const translateXPercent = offset * 40;
     const scale = absOffset === 0 ? 1 : 0.95;
     const zIndex = absOffset === 0 ? 20 : 10;
     const opacity = absOffset === 0 ? 1 : 0.60;
-    const rotateY = offset * -8;
 
     return {
       position: 'absolute' as const,
       left: '50%',
       top: 0,
-      transform: `translateX(calc(-50% + ${translateX}px)) scale(${scale}) perspective(900px) rotateY(${rotateY}deg)`,
+      transform: `translateX(calc(-50% + ${translateXPercent}%)) scale(${scale})`,
       zIndex,
       opacity,
-      transition: 'all 0.42s cubic-bezier(0.22, 1, 0.36, 1)',
+      transition: 'transform 400ms ease, opacity 400ms ease',
       pointerEvents: 'auto' as const,
+      cursor: absOffset === 0 ? 'default' : 'pointer',
+      width: '70%',
+      maxWidth: 320,
     };
   };
 
@@ -165,9 +183,9 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
       <div style={{
         width: '100%',
         position: 'relative' as const,
-        height: 320,
+        height: 340,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
         overflow: 'hidden',
       }}>
@@ -176,6 +194,8 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
           style={{
             position: 'absolute' as const,
             left: 8,
+            top: '50%',
+            transform: 'translateY(-50%)',
             zIndex: 30,
             width: 32,
             height: 32,
@@ -209,8 +229,6 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
           if (offset < -3) offset += STORY_MODES.length;
 
           const style = getCardStyle(offset);
-          if (style.display === 'none') return null;
-
           const isCenter = offset === 0;
 
           return (
@@ -218,83 +236,88 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
               key={mode.id}
               style={style}
               onClick={() => {
-                if (!isCenter) setCenterIndex(i);
-                if (onSelectMode) onSelectMode(mode);
+                if (!isCenter) {
+                  setCenterIndex(i);
+                  if (onSelectMode) onSelectMode(mode);
+                }
               }}
             >
               <div style={{
-                width: CARD_WIDTH,
-                borderRadius: 16,
+                height: 310,
+                borderRadius: 14,
                 overflow: 'hidden',
-                border: isCenter
-                  ? `1px solid ${mode.accent}40`
-                  : '1px solid rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.07)',
                 boxShadow: isCenter
-                  ? `0 12px 40px rgba(0,0,0,0.55), 0 0 24px ${mode.accent}18`
+                  ? '0 12px 40px rgba(0,0,0,0.55)'
                   : '0 4px 18px rgba(0,0,0,0.35)',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
               }}>
                 <div style={{
-                  height: 178,
-                  background: mode.gradient,
+                  height: '60%',
                   position: 'relative' as const,
+                  backgroundColor: '#0A0A0F',
                   overflow: 'hidden',
                 }}>
+                  <img
+                    src={mode.photo}
+                    alt={mode.name}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      objectPosition: 'center',
+                      display: 'block',
+                    }}
+                  />
                   <div style={{
                     position: 'absolute' as const,
                     inset: 0,
-                    background: `radial-gradient(circle at 50% 50%, ${mode.accent}12 0%, transparent 65%)`,
+                    backgroundColor: mode.accent,
+                    opacity: 0.25,
+                    pointerEvents: 'none' as const,
                   }} />
-                  {isCenter && (
-                    <div style={{
-                      position: 'absolute' as const,
-                      top: 12,
-                      right: 12,
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
-                      background: mode.accent,
-                      boxShadow: `0 0 10px ${mode.accent}80`,
-                    }} />
-                  )}
                 </div>
                 <div style={{
-                  padding: '14px 16px 16px',
-                  background: '#111116',
-                  borderTop: `1px solid ${isCenter ? `${mode.accent}20` : 'rgba(255,255,255,0.05)'}`,
+                  height: '40%',
+                  backgroundColor: '#111116',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
                 }}>
                   <div style={{
                     fontSize: 15,
                     fontWeight: 700,
                     color: '#ffffff',
-                    marginBottom: 4,
-                    letterSpacing: '-0.2px',
                   }}>{mode.name}</div>
                   <div style={{
                     fontSize: 11,
-                    fontWeight: 400,
-                    color: 'rgba(255,255,255,0.42)',
-                    marginBottom: 12,
-                    lineHeight: '1.4',
+                    color: 'rgba(255,255,255,0.5)',
                   }}>{mode.tagline}</div>
+                  {mode.tags && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {mode.tags.map(tag => (
+                        <span key={tag} style={{
+                          fontSize: 10,
+                          backgroundColor: 'rgba(255,255,255,0.06)',
+                          color: 'rgba(255,255,255,0.35)',
+                          borderRadius: 10,
+                          padding: '2px 8px',
+                        }}>{tag}</span>
+                      ))}
+                    </div>
+                  )}
                   <div style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '5px 12px',
-                    borderRadius: 20,
-                    background: `${mode.accent}18`,
-                    border: `1px solid ${mode.accent}30`,
                     fontSize: 10,
-                    fontWeight: 600,
+                    fontWeight: 700,
                     color: mode.accent,
-                    letterSpacing: '0.5px',
+                    backgroundColor: mode.accent + '26',
+                    borderRadius: 20,
+                    padding: '4px 10px',
+                    alignSelf: 'flex-start',
+                    marginTop: 'auto',
                     textTransform: 'uppercase' as const,
-                  }}>
-                    <span style={{ width: 5, height: 5, borderRadius: 3, background: mode.accent, display: 'inline-block' }} />
-                    Explore
-                  </div>
+                    letterSpacing: '0.5px',
+                  }}>EXPLORE</div>
                 </div>
               </div>
             </div>
@@ -306,6 +329,8 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
           style={{
             position: 'absolute' as const,
             right: 8,
+            top: '50%',
+            transform: 'translateY(-50%)',
             zIndex: 30,
             width: 32,
             height: 32,
@@ -357,7 +382,6 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
               background: i === centerIndex ? mode.accent : 'rgba(255,255,255,0.15)',
               transition: 'all 0.3s ease',
               padding: 0,
-              boxShadow: i === centerIndex ? `0 0 8px ${mode.accent}60` : 'none',
             }}
           />
         ))}

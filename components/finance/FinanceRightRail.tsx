@@ -27,18 +27,24 @@ export function FinanceRightRail({
   if (Platform.OS !== 'web') return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <GreetingCard ownerName={ownerName} />
-      <HealthScoreRing
-        connectedCount={connectedCount}
-        mismatchCount={mismatchCount}
-        cashRunwayDays={cashRunwayDays}
-      />
-      <FinnDailyBrief
-        activeMode={activeMode}
-        accentColor={accentColor}
-        onAskFinn={onAskFinn}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
+      <div style={{ flex: 1 }}>
+        <GreetingCard ownerName={ownerName} />
+      </div>
+      <div style={{ flex: 2 }}>
+        <HealthScoreRing
+          connectedCount={connectedCount}
+          mismatchCount={mismatchCount}
+          cashRunwayDays={cashRunwayDays}
+        />
+      </div>
+      <div style={{ flex: 1 }}>
+        <FinnDailyBrief
+          activeMode={activeMode}
+          accentColor={accentColor}
+          onAskFinn={onAskFinn}
+        />
+      </div>
     </div>
   );
 }

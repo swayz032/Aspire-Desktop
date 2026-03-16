@@ -44,18 +44,11 @@ export function GreetingCard({ ownerName = 'Mr. Scott' }: Props) {
       background: `radial-gradient(ellipse at 30% 20%, ${gradientColors[0]} 0%, transparent 60%), radial-gradient(ellipse at 80% 80%, ${gradientColors[1]} 0%, transparent 50%), linear-gradient(135deg, #0A0A0F 0%, #111116 100%)`,
       padding: 22,
       overflow: 'hidden',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
     }}>
-      <div style={{
-        position: 'absolute',
-        top: -20,
-        right: -20,
-        width: 100,
-        height: 100,
-        borderRadius: '50%',
-        background: `radial-gradient(circle, ${gradientColors[0]} 0%, transparent 70%)`,
-        filter: 'blur(20px)',
-        pointerEvents: 'none',
-      }} />
       <div style={{
         color: '#fff',
         fontSize: 24,

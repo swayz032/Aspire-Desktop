@@ -27,14 +27,33 @@ function getScoreStatus(score: number): { label: string; color: string } {
   return { label: 'Critical', color: '#EF4444' };
 }
 
+function deriveReasons(connectedCount: number, mismatchCount: number, cashRunwayDays: number) {
+  const reasons: { label: string; pts: string; color: string }[] = [];
+
+  if (connectedCount >= 3) reasons.push({ label: '3+ accounts connected', pts: '+20', color: '#10B981' });
+  else if (connectedCount >= 1) reasons.push({ label: `${connectedCount} account${connectedCount > 1 ? 's' : ''} connected`, pts: '+10', color: '#F59E0B' });
+  else reasons.push({ label: 'No accounts connected', pts: '+0', color: 'rgba(255,255,255,0.35)' });
+
+  if (mismatchCount === 0) reasons.push({ label: 'No mismatches found', pts: '+20', color: '#10B981' });
+  else if (mismatchCount <= 3) reasons.push({ label: `${mismatchCount} mismatches`, pts: '+10', color: '#F59E0B' });
+  else reasons.push({ label: `${mismatchCount} mismatches`, pts: '-10', color: '#EF4444' });
+
+  if (cashRunwayDays >= 90) reasons.push({ label: `${cashRunwayDays}d runway`, pts: '+10', color: '#10B981' });
+  else if (cashRunwayDays >= 30) reasons.push({ label: `${cashRunwayDays}d runway`, pts: '+5', color: '#F59E0B' });
+  else reasons.push({ label: `${cashRunwayDays}d runway`, pts: '-10', color: '#EF4444' });
+
+  return reasons;
+}
+
 export function HealthScoreRing({ score, connectedCount = 0, mismatchCount = 0, cashRunwayDays = 60 }: Props) {
   if (Platform.OS !== 'web') return null;
 
   const finalScore = score ?? deriveScore(connectedCount, mismatchCount, cashRunwayDays);
   const { label, color } = getScoreStatus(finalScore);
+  const reasons = deriveReasons(connectedCount, mismatchCount, cashRunwayDays);
 
-  const size = 140;
-  const strokeWidth = 10;
+  const size = 120;
+  const strokeWidth = 9;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = (finalScore / 100) * circumference;
@@ -45,11 +64,11 @@ export function HealthScoreRing({ score, connectedCount = 0, mismatchCount = 0, 
     <div style={{
       borderRadius: 14,
       border: '1px solid rgba(255,255,255,0.07)',
-      background: `radial-gradient(ellipse at 50% 50%, ${color}14 0%, transparent 70%), linear-gradient(135deg, #0A0A0F 0%, #111116 100%)`,
+      background: '#0A0A0F',
       padding: 16,
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center',
+      height: '100%',
     }}>
       <div style={{
         color: 'rgba(255,255,255,0.45)',
@@ -58,11 +77,10 @@ export function HealthScoreRing({ score, connectedCount = 0, mismatchCount = 0, 
         letterSpacing: 1,
         textTransform: 'uppercase' as const,
         marginBottom: 12,
-        alignSelf: 'flex-start',
       }}>
         FINANCE HEALTH
       </div>
-      <div style={{ position: 'relative', width: size, height: size }}>
+      <div style={{ position: 'relative', width: size, height: size, alignSelf: 'center', marginBottom: 16 }}>
         <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
           <defs>
             <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
@@ -109,21 +127,54 @@ export function HealthScoreRing({ score, connectedCount = 0, mismatchCount = 0, 
         }}>
           <div style={{
             color: '#fff',
-            fontSize: 40,
+            fontSize: 36,
             fontWeight: 700,
-            lineHeight: '44px',
+            lineHeight: '40px',
           }}>
             {finalScore}
           </div>
           <div style={{
             color,
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: 600,
             marginTop: 2,
           }}>
             {label}
           </div>
         </div>
+      </div>
+
+      <div style={{
+        color: 'rgba(255,255,255,0.35)',
+        fontSize: 10,
+        fontWeight: 400,
+        letterSpacing: 1,
+        textTransform: 'uppercase' as const,
+        marginBottom: 8,
+      }}>
+        SCORE BREAKDOWN
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {reasons.map((r, i) => (
+          <div key={i} style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '6px 0',
+            ...(i < reasons.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : {}),
+          }}>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{r.label}</span>
+            <span style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: r.color,
+              backgroundColor: typeof r.color === 'string' && r.color.startsWith('#') ? r.color + '20' : 'rgba(255,255,255,0.05)',
+              borderRadius: 8,
+              padding: '2px 7px',
+            }}>{r.pts}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

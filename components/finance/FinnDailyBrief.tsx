@@ -49,22 +49,14 @@ export function FinnDailyBrief({ activeMode, accentColor, onAskFinn }: Props) {
       borderRadius: 14,
       border: '1px solid rgba(255,255,255,0.07)',
       borderLeft: `2px solid ${accentColor}`,
-      background: `radial-gradient(ellipse at 0% 50%, ${accentColor}14 0%, transparent 60%), linear-gradient(135deg, #0A0A0F 0%, #111116 100%)`,
+      background: '#0A0A0F',
       padding: 16,
       position: 'relative',
       overflow: 'hidden',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: 3,
-        height: '100%',
-        background: `linear-gradient(to bottom, ${accentColor}, transparent)`,
-        filter: `blur(4px)`,
-        opacity: 0.6,
-        pointerEvents: 'none',
-      }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <div style={{
           width: 28,
@@ -76,7 +68,6 @@ export function FinnDailyBrief({ activeMode, accentColor, onAskFinn }: Props) {
           alignItems: 'center',
           justifyContent: 'center',
           position: 'relative',
-          animation: 'ledPulse 2s ease-in-out infinite',
         }}>
           <div style={{
             width: 12,
@@ -111,6 +102,7 @@ export function FinnDailyBrief({ activeMode, accentColor, onAskFinn }: Props) {
         fontStyle: 'italic',
         lineHeight: '16px',
         marginBottom: 12,
+        flex: 1,
       }}>
         {insight.context}
       </div>

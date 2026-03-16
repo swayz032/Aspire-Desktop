@@ -460,13 +460,15 @@ class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode
   }
 }
 
-/** Breakpoint: below this, KPI cards wrap 2x2 and chart rows stack vertically */
-const COMPACT_BREAKPOINT = 1100;
-/** Breakpoint: below this, KPI cards stack fully and Finn card stacks vertically */
+const BREAKPOINT_DESKTOP = 1280;
+const BREAKPOINT_LAPTOP = 960;
+
 function FinanceHubContent() {
   React.useEffect(() => { if (Platform.OS === 'web') injectFinnCss(); }, []);
   const { width: windowWidth } = useWindowDimensions();
-  const isCompact = windowWidth < COMPACT_BREAKPOINT;
+  const isDesktop = windowWidth >= BREAKPOINT_DESKTOP;
+  const isLaptop = windowWidth >= BREAKPOINT_LAPTOP && windowWidth < BREAKPOINT_DESKTOP;
+  const isTablet = windowWidth < BREAKPOINT_LAPTOP;
   const [, setHoveredButton] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
@@ -619,12 +621,7 @@ function FinanceHubContent() {
           filter: brightness(1.25);
           transform: scale(1.04);
         }
-        @keyframes finnAmbientGlow {
-          0%, 100% { box-shadow: 0 0 16px rgba(139,92,246,0.25), 0 0 32px rgba(139,92,246,0.1); }
-          50% { box-shadow: 0 0 20px rgba(139,92,246,0.4), 0 0 44px rgba(139,92,246,0.15), 0 0 60px rgba(99,102,241,0.08); }
-        }
         .finn-session-btn {
-          animation: finnAmbientGlow 3s ease-in-out infinite;
           background: linear-gradient(135deg, rgba(139,92,246,0.35) 0%, rgba(99,102,241,0.3) 50%, rgba(139,92,246,0.35) 100%);
           border: 1px solid rgba(139,92,246,0.4);
           transition: all 0.2s ease;
@@ -671,162 +668,173 @@ function FinanceHubContent() {
     return '';
   };
 
+  const rightRailNode = (
+    <FinanceRightRail
+      ownerName={tenant?.ownerName ? tenant.ownerName.split(' ').pop() ? `Mr. ${tenant.ownerName.split(' ').pop()}` : tenant.ownerName : 'Mr. Scott'}
+      connectedCount={connections?.summary?.connected ?? 0}
+      mismatchCount={snapshot?.chapters?.reconcile?.mismatchCount ?? 0}
+      cashRunwayDays={(() => {
+        const cash = snapshot?.chapters?.now?.cashAvailable ?? 0;
+        const outflows7d = snapshot?.chapters?.next?.expectedOutflows7d ?? 0;
+        const dailyBurn = outflows7d > 0 ? outflows7d / 7 : 0;
+        return dailyBurn > 0 ? Math.round((cash / 100) / (dailyBurn / 100)) : 90;
+      })()}
+      activeMode={activeStoryMode}
+      accentColor={activeModeCfg.accent}
+      onAskFinn={() => setShowFinnChat(true)}
+    />
+  );
+
+  const finnPanelNode = (
+    <View style={[s.finnCardOuter, { minHeight: 340 }]}>
+      <View style={s.finnFloatingPanel}>
+        <View style={s.finnPanelInner}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(139,92,246,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="analytics" size={16} color="#A78BFA" />
+            </View>
+            <View>
+              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Finn</Text>
+              <Text style={{ color: '#888', fontSize: 11 }}>Financial Intelligence</Text>
+            </View>
+          </View>
+          <Pressable
+            style={[s.finnPanelBtn, finnVoice.isActive && { borderColor: 'rgba(139,92,246,0.5)', backgroundColor: 'rgba(139,92,246,0.15)' }]}
+            onPress={handleFinnVoiceToggle}
+            {...webHover('finn-voice')}
+          >
+            <Ionicons name={finnVoice.isActive ? 'mic' : 'mic-outline'} size={16} color={finnVoice.isActive ? '#C4B5FD' : '#A78BFA'} />
+            <Text style={s.finnPanelBtnText}>{finnVoice.isActive ? 'Talking...' : 'Voice with Finn'}</Text>
+          </Pressable>
+          <Pressable
+            style={s.finnPanelBtn}
+            onPress={() => { setFinnOverlayTab('video'); setShowFinnOverlay(true); }}
+            {...webHover('finn-video')}
+          >
+            <Ionicons name="videocam-outline" size={16} color="#A78BFA" />
+            <Text style={s.finnPanelBtnText}>Video with Finn</Text>
+          </Pressable>
+          <Pressable
+            style={s.finnPanelBtn}
+            onPress={() => setShowFinnChat(true)}
+            {...webHover('finn-chat')}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color="#A78BFA" />
+            <Text style={s.finnPanelBtnText}>Chat with Finn</Text>
+          </Pressable>
+          <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 10 }} />
+          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, lineHeight: 16 }}>
+            Finn&apos;s focus: {dashConfig.finnFocus}
+          </Text>
+        </View>
+      </View>
+      <View style={s.finn3dContainer}>
+        <FinnOrbVideo />
+      </View>
+    </View>
+  );
+
+  const dashboardNode = (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12,
+      position: 'relative',
+    }}>
+      <div className={dashCardClass(0)} style={{ position: 'relative', zIndex: 1 }}>
+        <GlowTrendCard
+          title={dashConfig.hero.title}
+          value={dashConfig.hero.value}
+          delta={dashConfig.hero.delta}
+          deltaDirection={dashConfig.hero.deltaDirection}
+          data={trendData}
+          accentColor={activeModeCfg.accent}
+          mode={activeStoryMode}
+          loading={loading}
+        />
+      </div>
+      <div style={{
+        display: 'flex',
+        gap: 12,
+        flexWrap: isTablet ? 'wrap' : 'nowrap' as const,
+        position: 'relative',
+        zIndex: 1,
+        alignItems: 'stretch',
+      }}>
+        <div className={dashCardClass(1)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0 }}>
+          <SegmentRingCard
+            title={dashConfig.ring.title}
+            centerValue={dashConfig.ring.centerValue}
+            centerLabel={dashConfig.ring.centerLabel}
+            segments={dashConfig.ring.segments}
+            accentColor={activeModeCfg.accent}
+            mode={activeStoryMode}
+            loading={loading}
+          />
+        </div>
+        <div className={dashCardClass(2)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0 }}>
+          <QueueInstrumentCard
+            title={dashConfig.queue.title}
+            items={dashConfig.queue.items}
+            accentColor={activeModeCfg.accent}
+            mode={activeStoryMode}
+            loading={loading}
+          />
+        </div>
+        <div className={dashCardClass(3)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0 }}>
+          <InsightOverlayCard
+            quote={dashConfig.insight.quote}
+            sparkData={sparkData}
+            accentColor={activeModeCfg.accent}
+            mode={activeStoryMode}
+            loading={loading}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <>
     <FinanceHubShell>
-      {/* ═══ SELECTOR ROW ═══ */}
       {Platform.OS === 'web' ? (
-        <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
-          <div style={{ flex: '0 0 35%', minWidth: 0 }}>
+        isTablet ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
             <StoryModeCarousel
               activeMode={activeStoryMode}
               onSelectMode={(mode) => handleModeSwitch(mode.id)}
             />
+            {finnPanelNode}
+            {rightRailNode}
+            {dashboardNode}
           </div>
-          <div style={{ flex: '1 1 40%', minWidth: 0 }}>
-            <View style={[s.finnCardOuter, { minHeight: 340 }]}>
-              <View style={s.finnFloatingPanel}>
-                <View style={s.finnPanelInner}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(139,92,246,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name="analytics" size={16} color="#A78BFA" />
-                    </View>
-                    <View>
-                      <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Finn</Text>
-                      <Text style={{ color: '#888', fontSize: 11 }}>Financial Intelligence</Text>
-                    </View>
-                  </View>
-                  <Pressable
-                    style={[s.finnPanelBtn, finnVoice.isActive && { borderColor: 'rgba(139,92,246,0.5)', backgroundColor: 'rgba(139,92,246,0.15)' }]}
-                    onPress={handleFinnVoiceToggle}
-                    {...webHover('finn-voice')}
-                  >
-                    <Ionicons name={finnVoice.isActive ? 'mic' : 'mic-outline'} size={16} color={finnVoice.isActive ? '#C4B5FD' : '#A78BFA'} />
-                    <Text style={s.finnPanelBtnText}>{finnVoice.isActive ? 'Talking...' : 'Voice with Finn'}</Text>
-                  </Pressable>
-                  <Pressable
-                    style={s.finnPanelBtn}
-                    onPress={() => { setFinnOverlayTab('video'); setShowFinnOverlay(true); }}
-                    {...webHover('finn-video')}
-                  >
-                    <Ionicons name="videocam-outline" size={16} color="#A78BFA" />
-                    <Text style={s.finnPanelBtnText}>Video with Finn</Text>
-                  </Pressable>
-                  <Pressable
-                    style={s.finnPanelBtn}
-                    onPress={() => setShowFinnChat(true)}
-                    {...webHover('finn-chat')}
-                  >
-                    <Ionicons name="chatbubble-ellipses-outline" size={16} color="#A78BFA" />
-                    <Text style={s.finnPanelBtnText}>Chat with Finn</Text>
-                  </Pressable>
-                  <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 10 }} />
-                  <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, lineHeight: 16 }}>
-                    Finn&apos;s focus: {dashConfig.finnFocus}
-                  </Text>
-                </View>
-              </View>
-              <View style={s.finn3dContainer}>
-                <FinnOrbVideo />
-              </View>
-            </View>
+        ) : (
+          <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
+                <div style={{ flex: isDesktop ? '0 0 35%' : '0 0 40%', minWidth: 0 }}>
+                  <StoryModeCarousel
+                    activeMode={activeStoryMode}
+                    onSelectMode={(mode) => handleModeSwitch(mode.id)}
+                  />
+                </div>
+                <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+                  {finnPanelNode}
+                </div>
+              </div>
+              {dashboardNode}
+            </div>
+            <div style={{ flex: '0 0 260px', minWidth: 0 }}>
+              {rightRailNode}
+            </div>
           </div>
-          <div style={{ flex: '0 0 260px', minWidth: 0 }}>
-            <FinanceRightRail
-              ownerName={tenant?.ownerName ? tenant.ownerName.split(' ').pop() ? `Mr. ${tenant.ownerName.split(' ').pop()}` : tenant.ownerName : 'Mr. Scott'}
-              connectedCount={connections?.summary?.connected ?? 0}
-              mismatchCount={snapshot?.chapters?.reconcile?.mismatchCount ?? 0}
-              cashRunwayDays={(() => {
-                const cash = snapshot?.chapters?.now?.cashAvailable ?? 0;
-                const outflows7d = snapshot?.chapters?.next?.expectedOutflows7d ?? 0;
-                const dailyBurn = outflows7d > 0 ? outflows7d / 7 : 0;
-                return dailyBurn > 0 ? Math.round((cash / 100) / (dailyBurn / 100)) : 90;
-              })()}
-              activeMode={activeStoryMode}
-              accentColor={activeModeCfg.accent}
-              onAskFinn={() => setShowFinnChat(true)}
-            />
-          </div>
-        </div>
+        )
       ) : (
-        <View style={{ marginBottom: 24 }}>
+        <View style={{ marginBottom: 24, gap: 16 }}>
           <StoryModeCarousel
             activeMode={activeStoryMode}
             onSelectMode={(mode) => handleModeSwitch(mode.id)}
           />
-        </View>
-      )}
-
-      {/* ═══ DASHBOARD ZONE ═══ */}
-      {Platform.OS === 'web' ? (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-          marginBottom: 24,
-          position: 'relative',
-        }}>
-          <div style={{
-            position: 'absolute',
-            inset: -20,
-            background: `radial-gradient(ellipse at 50% 0%, ${activeModeCfg.accent}08 0%, transparent 60%)`,
-            pointerEvents: 'none',
-            transition: 'background 0.4s ease',
-            borderRadius: 20,
-          }} />
-          <div className={dashCardClass(0)} style={{ position: 'relative', zIndex: 1 }}>
-            <GlowTrendCard
-              title={dashConfig.hero.title}
-              value={dashConfig.hero.value}
-              delta={dashConfig.hero.delta}
-              deltaDirection={dashConfig.hero.deltaDirection}
-              data={trendData}
-              accentColor={activeModeCfg.accent}
-              mode={activeStoryMode}
-              loading={loading}
-            />
-          </div>
-          <div style={{
-            display: 'flex',
-            gap: 12,
-            flexWrap: isCompact ? 'wrap' : 'nowrap' as const,
-            position: 'relative',
-            zIndex: 1,
-            alignItems: 'stretch',
-          }}>
-            <div className={dashCardClass(1)} style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
-              <SegmentRingCard
-                title={dashConfig.ring.title}
-                centerValue={dashConfig.ring.centerValue}
-                centerLabel={dashConfig.ring.centerLabel}
-                segments={dashConfig.ring.segments}
-                accentColor={activeModeCfg.accent}
-                mode={activeStoryMode}
-                loading={loading}
-              />
-            </div>
-            <div className={dashCardClass(2)} style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
-              <QueueInstrumentCard
-                title={dashConfig.queue.title}
-                items={dashConfig.queue.items}
-                accentColor={activeModeCfg.accent}
-                mode={activeStoryMode}
-                loading={loading}
-              />
-            </div>
-            <div className={dashCardClass(3)} style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
-              <InsightOverlayCard
-                quote={dashConfig.insight.quote}
-                sparkData={sparkData}
-                accentColor={activeModeCfg.accent}
-                mode={activeStoryMode}
-                loading={loading}
-              />
-            </div>
-          </div>
-        </div>
-      ) : (
-        <View style={{ marginBottom: 24, gap: 12 }}>
           <GlowTrendCard
             title={dashConfig.hero.title}
             value={dashConfig.hero.value}
@@ -838,12 +846,8 @@ function FinanceHubContent() {
           />
         </View>
       )}
-
-
     </FinanceHubShell>
-    {/* Finn Chat Modal — outside shell so position:absolute floats above scroll */}
     <FinnChatModal visible={showFinnChat} onClose={() => setShowFinnChat(false)} />
-    {/* Finn Desk Overlay — video with Finn popup */}
     {showFinnOverlay && (
       <FinnDeskOverlay
         visible={showFinnOverlay}
