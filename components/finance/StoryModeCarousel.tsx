@@ -106,20 +106,11 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
   }));
 
   return (
-    <div
-      style={{
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        height: '100%',
-      }}
-    >
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <ThreeDCarousel
         items={items}
         autoRotate={true}
         rotateInterval={4000}
-        cardHeight={380}
       />
     </div>
   );
