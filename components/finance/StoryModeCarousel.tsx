@@ -97,9 +97,11 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
   const items: ThreeDCarouselItem[] = STORY_MODES.map(m => ({
     id: m.id,
     title: m.name,
+    brand: m.name,
     description: m.tagline,
     tags: m.tags ?? [],
     imageUrl: m.photo,
+    link: '#',
     accent: m.accent,
   }));
 
