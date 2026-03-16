@@ -106,21 +106,22 @@ const ThreeDCarousel = ({
       width: "100%",
       display: "flex",
       justifyContent: "center",
-      transition: "transform 400ms ease, opacity 400ms ease",
+      transition: "transform 420ms cubic-bezier(0.4,0,0.2,1), opacity 420ms ease",
+      willChange: "transform, opacity",
     };
 
     if (index === active) {
-      return { ...base, transform: "translateX(0) scale(1)", opacity: 1, zIndex: 20 };
+      return { ...base, transform: "translateX(0) scale(1) rotateY(0deg)", opacity: 1, zIndex: 20 };
     }
     if (index === (active + 1) % items.length) {
-      return { ...base, transform: "translateX(40%) scale(0.95)", opacity: 0.6, zIndex: 10, cursor: "pointer" };
+      return { ...base, transform: "translateX(36%) scale(0.82) rotateY(-16deg)", opacity: 0.7, zIndex: 10, cursor: "pointer" };
     }
     if (index === (active - 1 + items.length) % items.length) {
-      return { ...base, transform: "translateX(-40%) scale(0.95)", opacity: 0.6, zIndex: 10, cursor: "pointer" };
+      return { ...base, transform: "translateX(-36%) scale(0.82) rotateY(16deg)", opacity: 0.7, zIndex: 10, cursor: "pointer" };
     }
     return {
       ...base,
-      transform: `translateX(${index > active ? 80 : -80}%) scale(0.9)`,
+      transform: `translateX(${index > active ? 90 : -90}%) scale(0.7) rotateY(${index > active ? -24 : 24}deg)`,
       opacity: 0,
       pointerEvents: "none",
     };
@@ -139,7 +140,7 @@ const ThreeDCarousel = ({
     >
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
         <div
-          style={{ position: "relative", overflow: "hidden", flex: 1, minHeight: cardHeight }}
+          style={{ position: "relative", overflow: "visible", flex: 1, minHeight: cardHeight, perspective: "900px" }}
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
           onTouchStart={onTouchStart}
@@ -157,6 +158,7 @@ const ThreeDCarousel = ({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              transformStyle: "preserve-3d" as any,
             }}
           >
             {items.map((item, index) => {
@@ -172,8 +174,8 @@ const ThreeDCarousel = ({
                 >
                   <div
                     style={{
-                      width: "72%",
-                      maxWidth: 360,
+                      width: "64%",
+                      maxWidth: 330,
                       height: cardHeight,
                       overflow: "hidden",
                       backgroundColor: "#1C1C1E",
