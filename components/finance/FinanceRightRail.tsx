@@ -12,6 +12,7 @@ interface FinanceRightRailProps {
   cashRunwayDays: number;
   activeMode: StoryModeId;
   accentColor: string;
+  imageUrl?: string;
   onAskFinn: () => void;
 }
 
@@ -22,29 +23,29 @@ export function FinanceRightRail({
   cashRunwayDays,
   activeMode,
   accentColor,
+  imageUrl,
   onAskFinn,
 }: FinanceRightRailProps) {
   if (Platform.OS !== 'web') return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div>
-        <GreetingCard ownerName={ownerName} />
-      </div>
-      <div style={{ maxHeight: 320, overflow: 'hidden' }}>
-        <HealthScoreRing
-          connectedCount={connectedCount}
-          mismatchCount={mismatchCount}
-          cashRunwayDays={cashRunwayDays}
-        />
-      </div>
-      <div>
-        <FinnDailyBrief
-          activeMode={activeMode}
-          accentColor={accentColor}
-          onAskFinn={onAskFinn}
-        />
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <GreetingCard
+        ownerName={ownerName}
+        accentColor={accentColor}
+        imageUrl={imageUrl}
+      />
+      <HealthScoreRing
+        connectedCount={connectedCount}
+        mismatchCount={mismatchCount}
+        cashRunwayDays={cashRunwayDays}
+        accentColor={accentColor}
+      />
+      <FinnDailyBrief
+        activeMode={activeMode}
+        accentColor={accentColor}
+        onAskFinn={onAskFinn}
+      />
     </div>
   );
 }

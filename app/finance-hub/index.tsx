@@ -668,6 +668,7 @@ function FinanceHubContent() {
       })()}
       activeMode={activeStoryMode}
       accentColor={activeModeCfg.accent}
+      imageUrl={activeModeCfg.photo}
       onAskFinn={() => setShowFinnChat(true)}
     />
   );

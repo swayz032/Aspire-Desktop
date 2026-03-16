@@ -53,7 +53,6 @@ export function FinnDailyBrief({ activeMode, accentColor, onAskFinn }: Props) {
       padding: 16,
       position: 'relative',
       overflow: 'hidden',
-      height: '100%',
       display: 'flex',
       flexDirection: 'column',
     }}>
