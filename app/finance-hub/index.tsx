@@ -799,7 +799,7 @@ function FinanceHubContent() {
           <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-                <div style={{ flex: '1 1 0', minWidth: 0 }}>
+                <div style={{ flex: '1 1 0', minWidth: 0, minHeight: 340 }}>
                   <StoryModeCarousel
                     activeMode={activeStoryMode}
                     onSelectMode={(mode) => handleModeSwitch(mode.id)}
