@@ -184,57 +184,70 @@ const ThreeDCarousel = ({
                       borderRadius: 12,
                     }}
                   >
-                    {/* Image hero section — cover bg + text overlay (Lightswind style) */}
+                    {/* Image hero — #0A0A0F photo zone, img objectFit contain (no cropping) */}
                     <div
                       style={{
                         position: "relative",
-                        backgroundColor: "#000",
-                        padding: 24,
+                        backgroundColor: "#0A0A0F",
+                        height: 192,
+                        overflow: "hidden",
+                        flexShrink: 0,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        height: 192,
-                        overflow: "hidden",
-                        backgroundImage: `url(${item.imageUrl})`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                        flexShrink: 0,
                       }}
                     >
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            objectPosition: "center",
+                            display: "block",
+                          }}
+                        />
+                      ) : null}
+                      {/* Accent colour overlay */}
                       <div
                         style={{
                           position: "absolute",
                           inset: 0,
-                          backgroundColor: "rgba(0,0,0,0.5)",
+                          backgroundColor: accent,
+                          opacity: 0.25,
+                          pointerEvents: "none",
                         }}
                       />
+                      {/* Text overlay */}
                       <div
                         style={{
-                          position: "relative",
+                          position: "absolute",
+                          inset: 0,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
                           zIndex: 1,
                           textAlign: "center",
                           color: "#ffffff",
+                          padding: "0 12px",
                         }}
                       >
-                        <h3
-                          style={{
-                            fontSize: 24,
-                            fontWeight: 700,
-                            margin: "0 0 8px 0",
-                          }}
-                        >
+                        <h3 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px 0", textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>
                           {item.brand.toUpperCase()}
                         </h3>
                         <div
                           style={{
-                            width: 48,
-                            height: 4,
+                            width: 40,
+                            height: 3,
                             backgroundColor: accent,
-                            margin: "0 auto 8px",
+                            margin: "0 auto 6px",
                             borderRadius: 2,
                           }}
                         />
-                        <p style={{ fontSize: 14, margin: 0 }}>{item.title}</p>
+                        <p style={{ fontSize: 13, margin: 0, opacity: 0.9, textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>{item.title}</p>
                       </div>
                     </div>
 
