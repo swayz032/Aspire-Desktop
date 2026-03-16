@@ -133,24 +133,14 @@ export function FinanceTopNav({ isTablet }: FinanceTopNavProps) {
       height: 52,
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'flex-start',
+      justifyContent: 'center',
       paddingLeft: 24,
       paddingRight: 24,
-      gap: 20,
       backgroundColor: 'transparent',
       position: 'relative' as const,
       zIndex: 100,
       flexShrink: 0,
     }}>
-      <span style={{
-        fontSize: 27,
-        fontWeight: 800,
-        color: '#ffffff',
-        letterSpacing: '-0.5px',
-        lineHeight: '1',
-        flexShrink: 0,
-      }}>Finance Hub</span>
-
       <div style={{
         display: 'flex',
         alignItems: 'center',
