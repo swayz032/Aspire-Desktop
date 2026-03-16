@@ -1,0 +1,123 @@
+8 - Finance Hub Visual Fixes — Task #8
+What & Why
+Groups 1–9 of the original Finance Hub UI Polish were implemented but the result has confirmed visual gaps. This task fixes all of them. The specs below are the authoritative new plan — where they differ from the old plan (task-7.md), the specs here take precedence.
+
+Done looks like
+Carousel shows 3 visible cards with depth — Center card full-size, left and right cards at ±40% offset, scale 0.95, opacity 0.60, 400ms smooth transitions. All 7 modes cycle correctly. No card is invisible or off-screen.
+Carousel images never cropped — Each card photo uses objectFit: contain with dark #0A0A0F background behind it. The full image is always shown.
+Finance Hub title sits close, directly to the left of the nav pill tray — Both are in a flex-start row with gap: 20. Title is NOT absolute-positioned. They are side by side on the left.
+Header is transparent with no border — No #1A1A24 background visible. No bottom border line. The #0a0a0c page background shows through seamlessly.
+Pill tray is Aspire dark gray — The nav pill container background is #1C1C1E (same dark gray used for all Aspire cards).
+Bottom 3 dashboard cards have no wide gaps between them — The horizontal spacing between SegmentRingCard, QueueInstrumentCard, and InsightOverlayCard is tight and consistent. No large empty spaces between cards.
+Right rail blocks have premium spacing — GreetingCard, HealthScoreRing, and FinnDailyBrief have balanced, premium-feeling vertical gaps between them. Not compressed, not over-spaced.
+Section heights are tall enough — Carousel wrapper and Finn panel wrapper both have minHeight: 480. finnCardOuter has minHeight: 440. No dead empty space.
+Finn 3D object is centered — The Finn orb sits perfectly centered vertically inside the taller card. Not pinned to the top or bottom.
+Finn card text fills the space and mentions he is not a CPA — A 2-3 sentence paragraph below the orb explains what Finn does and clearly states he is not a CPA and does not give tax or legal advice. Text feels warm and helpful, not a legal disclaimer.
+Rebuilt and verified — Build completes with no errors. Page loads correctly.
+Fix 1 — Lightswind carousel: install exact component, wire Story Mode data
+File: components/finance/StoryModeCarousel.tsx, components/ThreeDCarousel.tsx
+
+Step 1 — Install via CLI: Run npx lightswind-ui add 3d-carousel. This drops the exact Lightswind source into components/ThreeDCarousel.tsx. The @/ alias already maps to ./ in tsconfig.json so import ThreeDCarousel from '@/components/ThreeDCarousel' works with no config change.
+
+Step 2 — Convert Tailwind to inline styles: Tailwind CSS is NOT installed in this project. After the CLI install, convert every className="..." string in the file to an equivalent inline style={{ ... }} object. All Framer Motion logic, 3D transforms, drag navigation, and auto-rotation stay exactly as Lightswind wrote them. Replace any Next.js-only imports (next/link, next/image) with plain <a> and <img>.
+
+Step 3 — Wire Story Mode data: In StoryModeCarousel.tsx, import and use the component for the web path:
+
+import ThreeDCarousel, { ThreeDCarouselItem } from '@/components/ThreeDCarousel';
+const items: ThreeDCarouselItem[] = STORY_MODES.map(m => ({
+  id: m.id,
+  title: m.name,
+  description: m.tagline,
+  tags: m.tags ?? [],
+  imageUrl: m.photo,
+  accent: m.accent,
+}));
+Keep the Platform.OS !== 'web' early-return native fallback unchanged.
+
+Step 4 — If CLI unavailable, fall back to manual rotor fix: Root cause of the current invisible right card: cards use left: 50% + 70% width. At offset +1 the right card's left edge lands at ~90% of the container and goes off-screen. Fix: cards use position: absolute, top: 0, left: 0, width: 100%. Transforms only handle the visual offset:
+
+Slot	Transform	Opacity	z-index
+Center	scale(1) translateX(0)	1	20
+Left (offset −1)	scale(0.95) translateX(-40%)	0.60	10
+Right (offset +1)	scale(0.95) translateX(+40%)	0.60	10
+Others	scale(0.9) translateX(±80%)	0	0
+Card image spec — no cropping:
+
+Photo zone (top 60%): backgroundColor: '#0A0A0F', overflow: hidden, position: relative
+<img>: width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center' — full image shown, never cropped
+Accent overlay: position: absolute, inset: 0, backgroundColor: mode.accent, opacity: 0.25, pointerEvents: 'none'
+Fix 2 — Header: transparent, no border, title beside pills, pill tray #1C1C1E
+File: components/finance/FinanceTopNav.tsx
+
+Outer bar backgroundColor → transparent. The #0a0a0c page background shows through. No separate header layer visible.
+Remove borderBottom line entirely.
+Remove position: absolute, left: 24 from the title <div>.
+Outer bar: justifyContent: 'flex-start', alignItems: 'center', gap: 20. Title is first flex child, pill tray is second — side by side on the left.
+Pill container background → #1C1C1E. This is Colors.background.secondary from @/constants/tokens — the exact same gray token used for all Aspire cards, the DesktopHeader nav container, and the AuthorityQueueCard sections on the homepage. Do not use rgba(0,0,0,0.35) or any other value — it must be the solid #1C1C1E Aspire card gray. Keep existing borderRadius, padding, border unchanged.
+Fix 3 — Bottom 3 dashboard cards: tighten wide gaps between cards
+File: app/finance-hub/index.tsx
+
+The 3-card row (SegmentRingCard, QueueInstrumentCard, InsightOverlayCard) has wide gaps between the cards that make the layout feel loose.
+
+3-card row container gap: reduce to 12px — consistent with the quality bar spacing spec.
+Verify alignItems: 'stretch' is on the row container.
+Verify each card wrapper <div> has display: 'flex' so stretch propagates.
+Fix 4 — Right rail: premium spacing between blocks
+File: components/finance/FinanceRightRail.tsx
+
+The three blocks (GreetingCard, HealthScoreRing, FinnDailyBrief) need balanced, premium-feeling vertical spacing — not compressed, not over-spaced.
+
+Outer container gap → 16px.
+Outer container height: '100%' to span the full right column.
+GreetingCard wrapper: flex: 1
+HealthScoreRing wrapper: flex: 2 (dominant, taller block)
+FinnDailyBrief wrapper: flex: 1
+Add height: '100%' to GreetingCard and FinnDailyBrief root divs so they fill their flex slots.
+Fix 5 — Section heights
+File: app/finance-hub/index.tsx
+
+Carousel wrapper <div>: minHeight: 480
+Finn panel wrapper <div>: minHeight: 480, add display: 'flex', flexDirection: 'column'
+finnCardOuter StyleSheet entry: minHeight: 440
+Fix 6 — Finn panel: centered 3D object and expanded context text
+File: app/finance-hub/index.tsx
+
+The Finn card (finnCardOuter) has two distinct sections:
+
+finnFloatingPanel — the left content panel containing the Finn header, 3 action buttons (Voice, Video, Chat), a divider, and a context text paragraph (lines ~688–716)
+finn3dContainer — the separate right section containing only the orb video (line ~718–720)
+Finn 3D object centered (finn3dContainer):
+
+finn3dContainer must have justifyContent: 'center', alignItems: 'center', flex: 1 so the orb video stays perfectly vertically centered inside the taller card (minHeight: 440). It must not sit pinned to the top or bottom.
+Do NOT add any text or content to the finn3dContainer section — it contains only the orb.
+Expanded context text — in finnFloatingPanel below the buttons: The existing text paragraph at line ~714 (inside finnFloatingPanel, below the 3 buttons and divider) currently says one short sentence. This is the correct location. Replace the text with a fuller paragraph that fills the extra space now that the card is taller (minHeight: 440). The paragraph must cover:
+
+What Finn does (analyzes accounts, surfaces patterns, flags anomalies)
+That he is NOT a CPA and does not give tax or legal advice
+Tone is warm and helpful — not a legal disclaimer
+Suggested copy:
+
+"Finn analyzes your connected accounts in real time, surfaces cash flow patterns, and flags anomalies before they become problems. Ask Finn anything about your numbers. He's not a CPA and doesn't give tax or legal advice — but he knows your books better than anyone."
+
+fontSize: 13, color: rgba(255,255,255,0.55), lineHeight: 18
+Stays in the finnFloatingPanel section, below the divider line (line ~712), replacing the existing short finnFocus sentence
+Rebuild
+npx expo export -p web && node scripts/fix-viewport.js
+Restart "Aspire Desktop" workflow.
+
+Out of scope
+Chart internals (SVG filters, recharts, trend lines, pie arcs) — not touched
+Finance Hub sub-pages, Finance Memory page
+Mobile/native layout below 768px
+Story mode config logic, chart data
+Relevant files
+File	Fix
+components/ThreeDCarousel.tsx	Created by CLI (Fix 1)
+components/finance/StoryModeCarousel.tsx	Fix 1
+components/landing/AIStaffPhotoCarousel.tsx	Reference for fallback (Fix 1)
+components/finance/FinanceTopNav.tsx	Fix 2
+app/finance-hub/index.tsx	Fix 3, Fix 5
+components/finance/FinanceRightRail.tsx	Fix 4
+components/finance/GreetingCard.tsx	Fix 4
+components/finance/FinnDailyBrief.tsx	Fix 4
+app/finance-hub/index.tsx (Finn card content)	Fix 6
