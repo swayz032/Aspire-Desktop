@@ -42,6 +42,47 @@ interface WeatherState {
   unit: string;
 }
 
+async function fetchWeatherForCoords(lat: number, lon: number): Promise<WeatherState> {
+  const res = await fetch(
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current_weather=true&temperature_unit=fahrenheit`
+  );
+  const data = await res.json();
+  return {
+    temp: Math.round(data.current_weather.temperature),
+    code: data.current_weather.weathercode,
+    unit: '°F',
+  };
+}
+
+async function loadWeather(): Promise<WeatherState> {
+  // 1. Try browser geolocation (fast, 4s timeout)
+  const fromBrowser = await new Promise<{ lat: number; lon: number } | null>((resolve) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    const timer = setTimeout(() => resolve(null), 4000);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { clearTimeout(timer); resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }); },
+      () => { clearTimeout(timer); resolve(null); },
+      { timeout: 4000, maximumAge: 300000 }
+    );
+  });
+
+  if (fromBrowser) {
+    return fetchWeatherForCoords(fromBrowser.lat, fromBrowser.lon);
+  }
+
+  // 2. Fallback: IP-based approximate location (no permission needed)
+  const ipRes = await fetch('https://ipapi.co/json/');
+  const ipData = await ipRes.json();
+  if (ipData.latitude && ipData.longitude) {
+    return fetchWeatherForCoords(ipData.latitude, ipData.longitude);
+  }
+
+  throw new Error('No location available');
+}
+
 interface Props {
   ownerName?: string;
   accentColor?: string;
@@ -66,25 +107,7 @@ export function GreetingCard({
   });
 
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const { latitude, longitude } = pos.coords;
-          const res = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${latitude.toFixed(4)}&longitude=${longitude.toFixed(4)}&current_weather=true&temperature_unit=fahrenheit`
-          );
-          const data = await res.json();
-          setWeather({
-            temp: Math.round(data.current_weather.temperature),
-            code: data.current_weather.weathercode,
-            unit: '°F',
-          });
-        } catch {}
-      },
-      () => {},
-      { timeout: 6000, maximumAge: 300000 }
-    );
+    loadWeather().then(setWeather).catch(() => {});
   }, []);
 
   const [wmoLabel, wmoIcon] = weather ? getWmo(weather.code) : ['', ''];
@@ -96,17 +119,16 @@ export function GreetingCard({
         borderRadius: 14,
         border: '1px solid rgba(255,255,255,0.08)',
         overflow: 'hidden',
-        minHeight: 190,
+        height: 210,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'flex-end',
-        height: '100%',
       }}
     >
       {/* Dark base */}
       <div style={{ position: 'absolute', inset: 0, backgroundColor: '#0A0A0F' }} />
 
-      {/* Story mode image — contained, no cropping, blends into dark bg */}
+      {/* Story mode image — COVER fills the block completely */}
       {imageUrl && (
         <img
           key={imageUrl}
@@ -117,22 +139,22 @@ export function GreetingCard({
             inset: 0,
             width: '100%',
             height: '100%',
-            objectFit: 'contain',
+            objectFit: 'cover',
             objectPosition: 'center',
-            opacity: 0.5,
-            transition: 'opacity 0.7s ease',
+            opacity: 0.55,
+            transition: 'opacity 0.3s ease',
           }}
         />
       )}
 
-      {/* Accent tint overlay — updates with story mode */}
+      {/* Accent tint overlay */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           backgroundColor: accentColor,
-          opacity: 0.1,
-          transition: 'background-color 0.5s ease',
+          opacity: 0.12,
+          transition: 'background-color 0.4s ease',
           pointerEvents: 'none',
         }}
       />
@@ -143,12 +165,12 @@ export function GreetingCard({
           position: 'absolute',
           inset: 0,
           background:
-            'linear-gradient(to top, rgba(0,0,0,0.90) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.08) 100%)',
+            'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.1) 100%)',
           pointerEvents: 'none',
         }}
       />
 
-      {/* Accent left-edge accent bar */}
+      {/* Left accent bar */}
       <div
         style={{
           position: 'absolute',
@@ -157,45 +179,32 @@ export function GreetingCard({
           bottom: 0,
           width: 3,
           backgroundColor: accentColor,
-          opacity: 0.7,
+          opacity: 0.75,
           borderRadius: '14px 0 0 14px',
-          transition: 'background-color 0.5s ease',
+          transition: 'background-color 0.4s ease',
         }}
       />
 
-      {/* Content */}
-      <div style={{ position: 'relative', zIndex: 1, padding: '16px 18px 18px 20px' }}>
+      {/* Content pinned to bottom */}
+      <div style={{ position: 'relative', zIndex: 1, padding: '14px 16px 16px 20px' }}>
+        {/* Weather row */}
         {weather && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginBottom: 10,
-            }}
-          >
-            <span style={{ fontSize: 17, lineHeight: 1 }}>{wmoIcon}</span>
-            <span style={{ color: 'rgba(255,255,255,0.80)', fontSize: 13, fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <span style={{ fontSize: 16, lineHeight: 1 }}>{wmoIcon}</span>
+            <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 600 }}>
               {weather.temp}{weather.unit}
             </span>
-            <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12 }}>· {wmoLabel}</span>
+            <span style={{ color: 'rgba(255,255,255,0.40)', fontSize: 12 }}>· {wmoLabel}</span>
           </div>
         )}
 
-        <div style={{ color: '#fff', fontSize: 21, fontWeight: 700, lineHeight: '27px' }}>
+        <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, lineHeight: '26px' }}>
           {greeting},
         </div>
-        <div style={{ color: '#fff', fontSize: 21, fontWeight: 700, lineHeight: '27px', marginBottom: 6 }}>
+        <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, lineHeight: '26px', marginBottom: 5 }}>
           {ownerName}
         </div>
-        <div
-          style={{
-            color: 'rgba(255,255,255,0.38)',
-            fontSize: 11,
-            fontWeight: 400,
-            letterSpacing: 0.3,
-          }}
-        >
+        <div style={{ color: 'rgba(255,255,255,0.38)', fontSize: 11, letterSpacing: 0.3 }}>
           {dateStr}
         </div>
       </div>
