@@ -1,437 +1,530 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
-import { Colors, Typography } from '@/constants/tokens';
-import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 
-const filters = ['All', 'Payments', 'Proposals', 'Approvals', 'Transfers'];
+type ViewMode = 'engine' | 'results';
 
-type TimelineEvent = {
-  eventId: string;
-  provider: string;
-  eventType: string;
-  occurredAt: string;
-  amount: number | null;
-  currency: string | null;
-  status: string | null;
-  entityRefs: Record<string, unknown> | null;
-  metadata: Record<string, unknown> | null;
-};
+type DocumentCategory = 'invoice' | 'quote' | 'contract' | 'receipt' | 'w9';
 
-type ReceiptItem = {
+interface DocItem {
   id: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  iconColor: string;
-  accentColor: string;
+  category: DocumentCategory;
   title: string;
-  description: string;
-  amount: string;
-  time: string;
-  badge: string;
-  badgeColor: string;
-  badgeBg: string;
-  category: string;
-  successLike: boolean;
-};
+  subtitle: string;
+  date: string;
+  amount?: string;
+  thumbnail?: string;
+}
 
-const premiumCardStyle = {
-  backgroundColor: CARD_BG,
-  borderColor: CARD_BORDER,
-};
+const SAMPLE_DOCS: DocItem[] = [
+  { id: 'inv-001', category: 'invoice', title: 'Invoice #1042', subtitle: 'Meridian HVAC Services', date: 'Mar 12, 2026', amount: '$4,800.00' },
+  { id: 'inv-002', category: 'invoice', title: 'Invoice #1039', subtitle: 'Northside Electric', date: 'Mar 8, 2026', amount: '$2,350.00' },
+  { id: 'inv-003', category: 'invoice', title: 'Invoice #1036', subtitle: 'Summit Roofing LLC', date: 'Feb 28, 2026', amount: '$11,200.00' },
+  { id: 'q-001', category: 'quote', title: 'Quote #Q-214', subtitle: 'Riverside Renovation', date: 'Mar 10, 2026', amount: '$8,500.00' },
+  { id: 'q-002', category: 'quote', title: 'Quote #Q-211', subtitle: 'Pacific Landscaping', date: 'Mar 2, 2026', amount: '$3,100.00' },
+  { id: 'c-001', category: 'contract', title: 'HVAC Service Agreement', subtitle: 'Meridian HVAC', date: 'Jan 15, 2026', thumbnail: '/templates/HVAC_Proposal_Template_1773625890200.png' },
+  { id: 'c-002', category: 'contract', title: 'Roofing Proposal', subtitle: 'Summit Roofing LLC', date: 'Feb 1, 2026', thumbnail: '/templates/Roofing_Proposal_Template_1773625895695.png' },
+  { id: 'c-003', category: 'contract', title: 'NDA Agreement', subtitle: 'General Use', date: 'Dec 10, 2025', thumbnail: '/templates/Non_Disclosure_Agreement_Template_1773625901864.png' },
+  { id: 'c-004', category: 'contract', title: 'Construction Proposal', subtitle: 'Northside Build Co.', date: 'Nov 20, 2025', thumbnail: '/templates/Construction_Proposal_Template_1773625915308.png' },
+  { id: 'c-005', category: 'contract', title: 'Contractor SOW', subtitle: 'Pacific Contractor Group', date: 'Oct 5, 2025', thumbnail: '/templates/Contractor_Scope_of_Work_Template_1773625920697.png' },
+  { id: 'w9-001', category: 'w9', title: 'W-9 Form (2024)', subtitle: 'Business Tax ID', date: 'Jan 1, 2025', thumbnail: '/templates/W9_Form_2024_1773625929021.png' },
+];
 
-function formatMoney(cents: number | null, currency?: string | null): string {
-  if (cents === null || cents === undefined) return '-';
-  const value = cents / 100;
-  const code = (currency || 'usd').toUpperCase();
-  try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(value);
-  } catch {
-    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const CATEGORIES: { key: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'all', label: 'All', icon: 'grid-outline' },
+  { key: 'invoice', label: 'Invoices', icon: 'document-text-outline' },
+  { key: 'quote', label: 'Quotes', icon: 'pricetag-outline' },
+  { key: 'contract', label: 'Contracts', icon: 'briefcase-outline' },
+  { key: 'w9', label: 'Tax Forms', icon: 'shield-checkmark-outline' },
+];
+
+function InvoiceThumbnail({ category }: { category: DocumentCategory }) {
+  if (Platform.OS !== 'web') return null;
+  const isQuote = category === 'quote';
+  const accent = isQuote ? '#818CF8' : '#3B82F6';
+  const label = isQuote ? 'QUOTE' : 'INVOICE';
+  return (
+    <div style={{
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#ffffff',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        height: 40,
+        background: `linear-gradient(135deg, ${accent} 0%, ${isQuote ? '#6366F1' : '#2563EB'} 100%)`,
+        display: 'flex',
+        alignItems: 'center',
+        paddingLeft: 12,
+        paddingRight: 12,
+        justifyContent: 'space-between',
+      }}>
+        <span style={{ color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: 1.5 }}>{label}</span>
+        <div style={{ width: 24, height: 24, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ color: '#fff', fontSize: 8, fontWeight: 700 }}>A</span>
+        </div>
+      </div>
+      <div style={{ padding: '10px 12px', flex: 1 }}>
+        <div style={{ height: 6, width: '80%', backgroundColor: '#E5E7EB', borderRadius: 3, marginBottom: 6 }} />
+        <div style={{ height: 4, width: '55%', backgroundColor: '#F3F4F6', borderRadius: 2, marginBottom: 12 }} />
+        <div style={{ height: 1, backgroundColor: '#E5E7EB', marginBottom: 8 }} />
+        {[1, 2, 3].map(i => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+            <div style={{ height: 4, width: '50%', backgroundColor: '#F3F4F6', borderRadius: 2 }} />
+            <div style={{ height: 4, width: '20%', backgroundColor: '#E5E7EB', borderRadius: 2 }} />
+          </div>
+        ))}
+        <div style={{ height: 1, backgroundColor: '#E5E7EB', marginTop: 8, marginBottom: 6 }} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ height: 5, width: '30%', backgroundColor: accent, borderRadius: 2, opacity: 0.7 }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocCard({ doc, onOpen }: { doc: DocItem; onOpen?: (doc: DocItem) => void }) {
+  const [hovered, setHovered] = useState(false);
+  const hasImage = !!doc.thumbnail;
+  const categoryColor = doc.category === 'invoice' ? '#3B82F6'
+    : doc.category === 'quote' ? '#818CF8'
+    : doc.category === 'contract' ? '#10B981'
+    : doc.category === 'w9' ? '#F59E0B'
+    : '#888';
+
+  if (Platform.OS !== 'web') {
+    return (
+      <Pressable onPress={() => onOpen?.(doc)}>
+        <View style={{ backgroundColor: '#1C1C1E', borderRadius: 12, padding: 16, marginBottom: 12 }}>
+          <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>{doc.title}</Text>
+          <Text style={{ color: '#888', fontSize: 12, marginTop: 4 }}>{doc.subtitle}</Text>
+        </View>
+      </Pressable>
+    );
   }
+
+  return (
+    <div
+      onClick={() => onOpen?.(doc)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        borderRadius: 14,
+        border: `1px solid ${hovered ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.07)'}`,
+        backgroundColor: hovered ? '#1F1F25' : '#161618',
+        overflow: 'hidden',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        transform: hovered ? 'translateY(-2px)' : 'none',
+        boxShadow: hovered ? '0 8px 24px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.2)',
+      }}
+    >
+      <div style={{
+        height: 148,
+        overflow: 'hidden',
+        backgroundColor: '#0A0A0F',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative' as const,
+      }}>
+        {hasImage ? (
+          <img
+            src={doc.thumbnail}
+            alt={doc.title}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        ) : (
+          <InvoiceThumbnail category={doc.category} />
+        )}
+        <div style={{
+          position: 'absolute' as const,
+          top: 8,
+          left: 8,
+          padding: '3px 8px',
+          borderRadius: 6,
+          backgroundColor: `${categoryColor}22`,
+          border: `1px solid ${categoryColor}40`,
+          fontSize: 9,
+          fontWeight: 700,
+          color: categoryColor,
+          letterSpacing: 0.8,
+          textTransform: 'uppercase' as const,
+        }}>
+          {doc.category === 'w9' ? 'Tax Form' : doc.category}
+        </div>
+      </div>
+      <div style={{ padding: '12px 14px 14px' }}>
+        <div style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: '#ffffff',
+          marginBottom: 3,
+          whiteSpace: 'nowrap' as const,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>{doc.title}</div>
+        <div style={{
+          fontSize: 11,
+          color: 'rgba(255,255,255,0.38)',
+          marginBottom: 8,
+          whiteSpace: 'nowrap' as const,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>{doc.subtitle}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', fontWeight: 400 }}>{doc.date}</span>
+          {doc.amount && (
+            <span style={{ fontSize: 12, fontWeight: 700, color: categoryColor }}>{doc.amount}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function relativeTime(ts: string): string {
-  const ms = Date.now() - new Date(ts).getTime();
-  if (Number.isNaN(ms)) return ts;
-  const minutes = Math.floor(ms / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function mapEventToCategory(eventType: string): string {
-  if (eventType.includes('proposal')) return 'Proposals';
-  if (eventType.includes('approval') || eventType.includes('approved') || eventType.includes('denied')) return 'Approvals';
-  if (eventType.includes('transfer') || eventType.includes('payout')) return 'Transfers';
-  return 'Payments';
-}
-
-function mapEventToReceipt(evt: TimelineEvent): ReceiptItem {
-  const statusRaw = (evt.status || '').toLowerCase();
-  const category = mapEventToCategory((evt.eventType || '').toLowerCase());
-  const isSuccess = statusRaw === 'posted' || statusRaw === 'succeeded' || statusRaw === 'approved' || statusRaw === 'paid';
-  const isPending = statusRaw === 'pending' || statusRaw === 'open';
-
-  const icon = isSuccess ? 'checkmark-circle' : isPending ? 'alert-circle' : 'close-circle';
-  const accentColor = isSuccess ? Colors.semantic.success : isPending ? Colors.accent.amber : Colors.semantic.error;
-  const badge = isSuccess ? 'Success' : isPending ? 'Pending' : 'Failed';
-  const badgeBg = isSuccess ? Colors.semantic.successLight : isPending ? Colors.accent.amberLight : Colors.semantic.errorLight;
-
-  const metaTitle = typeof evt.metadata?.title === 'string' ? evt.metadata.title : null;
-  const eventName = evt.eventType.replace(/_/g, ' ');
-  const title = metaTitle || `${evt.provider.toUpperCase()} ${eventName}`.replace(/\b\w/g, m => m.toUpperCase());
-  const summary = typeof evt.metadata?.summary === 'string'
-    ? evt.metadata.summary
-    : `${evt.provider} ${evt.eventType}`.replace(/_/g, ' ');
-
-  return {
-    id: evt.eventId,
-    icon,
-    iconColor: accentColor,
-    accentColor,
-    title,
-    description: summary,
-    amount: formatMoney(evt.amount, evt.currency),
-    time: relativeTime(evt.occurredAt),
-    badge,
-    badgeColor: accentColor,
-    badgeBg,
-    category,
-    successLike: isSuccess,
-  };
-}
-
-export default function ReceiptsScreen() {
-  const [activeFilter, setActiveFilter] = useState('All');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<ReceiptItem[]>([]);
-
-  const loadTimeline = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/finance/timeline?range=30d&limit=200');
-      if (!res.ok) throw new Error(`Timeline fetch failed (${res.status})`);
-      const data = await res.json();
-      const events: TimelineEvent[] = Array.isArray(data.events) ? data.events : [];
-      setItems(events.map(mapEventToReceipt));
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load receipts timeline');
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+export default function FinanceMemoryPage() {
+  const [view, setView] = useState<ViewMode>('engine');
+  const [query, setQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState('all');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    loadTimeline();
-  }, [loadTimeline]);
+    if (Platform.OS !== 'web') return;
 
-  const filtered = useMemo(
-    () => (activeFilter === 'All' ? items : items.filter((r) => r.category === activeFilter)),
-    [activeFilter, items],
-  );
+    const styleId = 'finance-memory-styles';
+    if (!document.getElementById(styleId)) {
+      const el = document.createElement('style');
+      el.id = styleId;
+      el.textContent = `
+        @keyframes memoryBorderRotate {
+          0%   { background-position: 0% 50%; }
+          50%  { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        .memory-search-wrapper {
+          position: relative;
+          max-width: 520px;
+          width: 100%;
+        }
+        .memory-search-wrapper::before {
+          content: '';
+          position: absolute;
+          inset: -1.5px;
+          border-radius: 9999px;
+          padding: 1.5px;
+          background: linear-gradient(90deg, #ffaa40, #9c40ff, #ffaa40);
+          background-size: 200% 200%;
+          animation: memoryBorderRotate 3s linear infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+        }
+        .memory-search-input {
+          width: 100%;
+          height: 52px;
+          background: #111116;
+          border: none;
+          border-radius: 9999px;
+          padding: 0 22px;
+          font-size: 15px;
+          color: #ffffff;
+          outline: none;
+          box-sizing: border-box;
+          letter-spacing: -0.1px;
+        }
+        .memory-search-input::placeholder {
+          color: rgba(255,255,255,0.3);
+        }
+        .memory-search-input:focus {
+          box-shadow: 0 0 0 1px rgba(156,64,255,0.3);
+        }
+        .memory-category-pill {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          padding: 6px 14px;
+          border-radius: 20px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: transparent;
+          color: rgba(255,255,255,0.45);
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          white-space: nowrap;
+        }
+        .memory-category-pill:hover {
+          background: rgba(255,255,255,0.06);
+          color: rgba(255,255,255,0.7);
+        }
+        .memory-category-pill.active {
+          background: rgba(255,255,255,0.10);
+          border-color: rgba(255,255,255,0.18);
+          color: #ffffff;
+          font-weight: 600;
+        }
+        .memory-doc-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+          gap: 14px;
+        }
+      `;
+      document.head.appendChild(el);
+    }
 
-  const stats = useMemo(() => {
-    const total = items.length;
-    const successful = items.filter(i => i.successLike).length;
-    const failed = items.filter(i => i.badge === 'Failed').length;
-    const pending = items.filter(i => i.badge === 'Pending').length;
-    return [
-      { label: `${total} total receipts`, color: Colors.text.secondary },
-      { label: `${successful} successful`, color: Colors.semantic.success },
-      { label: `${pending} pending`, color: Colors.accent.amber },
-      { label: `${failed} failed`, color: Colors.semantic.error },
-    ];
-  }, [items]);
+    const scriptId = 'finn-anam-convai';
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://elevenlabs.io/convai-widget/index.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+
+    return () => {
+      const el = document.getElementById(styleId);
+      if (el) el.remove();
+    };
+  }, []);
+
+  const handleSearch = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    if (query.trim()) {
+      setView('results');
+    }
+  }, [query]);
+
+  const filteredDocs = SAMPLE_DOCS.filter(doc => {
+    const matchCat = activeCategory === 'all' || doc.category === activeCategory;
+    const matchQuery = !query.trim() || doc.title.toLowerCase().includes(query.toLowerCase()) || doc.subtitle.toLowerCase().includes(query.toLowerCase());
+    return matchCat && matchQuery;
+  });
+
+  if (Platform.OS !== 'web') {
+    return (
+      <FinanceHubShell>
+        <View style={{ padding: 20 }}>
+          <Text style={{ color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 8 }}>Finance Memory</Text>
+          <Text style={{ color: '#888', fontSize: 14 }}>Search your financial documents</Text>
+        </View>
+      </FinanceHubShell>
+    );
+  }
 
   return (
     <FinanceHubShell>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={[Typography.display, { color: Colors.text.primary, marginBottom: 4 }]}>Finance Receipts</Text>
-          <Text style={[Typography.body, { color: Colors.text.tertiary }]}>Live audit trail for financial actions</Text>
-        </View>
-        <Pressable
-          onPress={loadTimeline}
-          style={({ hovered }: any) => [
-            styles.filterDropdown,
-            { backgroundColor: CARD_BG, borderColor: CARD_BORDER },
-            hovered && { borderColor: Colors.border.strong },
-          ]}
-        >
-          <Ionicons name="refresh" size={16} color={Colors.text.tertiary} />
-          <Text style={styles.filterDropdownText}>Refresh</Text>
-        </Pressable>
-      </View>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0 4px', minHeight: 0 }}>
+        {/* ── TOP BAR ── */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: view === 'engine' ? 0 : 20,
+          paddingBottom: view === 'engine' ? 0 : 16,
+          borderBottom: view === 'results' ? '1px solid rgba(255,255,255,0.06)' : 'none',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {view === 'results' && (
+              <button
+                onClick={() => { setView('engine'); setQuery(''); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 10,
+                  padding: '6px 12px',
+                  color: 'rgba(255,255,255,0.6)',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+              >
+                <Ionicons name="arrow-back" size={13} color="currentColor" />
+                Back
+              </button>
+            )}
+            <div>
+              <span style={{
+                fontSize: 22,
+                fontWeight: 800,
+                color: '#ffffff',
+                letterSpacing: '-0.4px',
+              }}>Finance Memory</span>
+            </div>
+          </div>
 
-      <View style={styles.filtersRow}>
-        {filters.map((f) => (
-          <Pressable
-            key={f}
-            onPress={() => setActiveFilter(f)}
-            style={({ hovered }: any) => [
-              styles.filterPill,
-              activeFilter === f && styles.filterPillActive,
-              hovered && activeFilter !== f && styles.filterPillHover,
-            ]}
-          >
-            <Text style={[styles.filterPillText, activeFilter === f && styles.filterPillTextActive]}>{f}</Text>
-          </Pressable>
-        ))}
-      </View>
+          {view === 'results' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>
+                {filteredDocs.length} document{filteredDocs.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+        </div>
 
-      {loading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.emptyTitle}>Loading live finance receipts...</Text>
-        </View>
-      ) : error ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="alert-circle" size={22} color={Colors.semantic.error} />
-          <Text style={styles.emptyTitle}>Could not load receipts timeline</Text>
-          <Text style={styles.emptySub}>{error}</Text>
-        </View>
-      ) : filtered.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="document-text-outline" size={22} color={Colors.text.muted} />
-          <Text style={styles.emptyTitle}>No live receipts for this filter</Text>
-          <Text style={styles.emptySub}>New provider events will appear here automatically.</Text>
-        </View>
-      ) : (
-        <View style={styles.receiptsList}>
-          {filtered.map((r) => (
-            <Pressable
-              key={r.id}
-              style={({ hovered }: any) => [
-                styles.receiptCard,
-                premiumCardStyle as any,
-                hovered && styles.receiptCardHover,
-              ]}
+        {/* ── ENGINE VIEW ── */}
+        {view === 'engine' && (
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 32,
+            paddingTop: 20,
+            paddingBottom: 40,
+          }}>
+            {/* Finn orb video */}
+            <div style={{
+              width: 160,
+              height: 160,
+              borderRadius: '50%',
+              overflow: 'hidden',
+              border: '1px solid rgba(167,139,250,0.25)',
+              boxShadow: '0 0 40px rgba(167,139,250,0.15), 0 0 80px rgba(139,92,246,0.08)',
+              position: 'relative' as const,
+            }}>
+              <video
+                src="/finn-orb.mp4"
+                autoPlay
+                loop
+                muted
+                playsInline
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+
+            <div style={{ textAlign: 'center' as const }}>
+              <div style={{
+                fontSize: 30,
+                fontWeight: 800,
+                color: '#ffffff',
+                letterSpacing: '-0.6px',
+                marginBottom: 8,
+                lineHeight: 1.1,
+              }}>
+                What would you like to find?
+              </div>
+              <div style={{
+                fontSize: 14,
+                color: 'rgba(255,255,255,0.38)',
+                fontWeight: 400,
+                lineHeight: 1.5,
+              }}>
+                Search invoices, contracts, tax forms, and more — Finn remembers everything.
+              </div>
+            </div>
+
+            {/* Gradient pill search bar */}
+            <form
+              onSubmit={handleSearch}
+              style={{ width: '100%', display: 'flex', justifyContent: 'center' }}
             >
-              {Platform.OS === 'web' && (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', backgroundImage: svgPatterns.invoice(), backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '15% auto', opacity: 0.5 } as any} />
-              )}
-              <View style={[styles.accentBorder, { backgroundColor: r.accentColor }]} />
-              <View style={[styles.receiptIcon, { backgroundColor: `${r.accentColor}15` }]}>
-                <Ionicons name={r.icon} size={22} color={r.iconColor} />
-              </View>
-              <View style={styles.receiptContent}>
-                <Text style={styles.receiptTitle}>{r.title}</Text>
-                <Text style={styles.receiptDesc}>{r.description}</Text>
-              </View>
-              <Text style={styles.receiptAmount}>{r.amount}</Text>
-              <Text style={styles.receiptTime}>{r.time}</Text>
-              <View style={[styles.badge, { backgroundColor: r.badgeBg }, Platform.OS === 'web' && { boxShadow: `0 0 8px ${r.badgeColor}30` } as any]}>
-                <Text style={[styles.badgeText, { color: r.badgeColor }]}>{r.badge}</Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
-      )}
+              <div className="memory-search-wrapper">
+                <input
+                  ref={inputRef}
+                  className="memory-search-input"
+                  placeholder="Search by name, type, date, amount..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(e); }}
+                />
+              </div>
+            </form>
 
-      <View style={[styles.statsBar, premiumCardStyle as any]}>
-        {Platform.OS === 'web' && (
-          <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none', backgroundImage: svgPatterns.barChart(), backgroundRepeat: 'no-repeat', backgroundPosition: 'center center', backgroundSize: '60% auto', opacity: 0.4 } as any} />
+            {/* Quick category pills */}
+            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, justifyContent: 'center', maxWidth: 560 }}>
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat.key}
+                  className={`memory-category-pill${activeCategory === cat.key ? ' active' : ''}`}
+                  onClick={() => {
+                    setActiveCategory(cat.key);
+                    setView('results');
+                  }}
+                >
+                  <Ionicons name={cat.icon} size={12} color="currentColor" />
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Finn Anam floating widget */}
+            {/* @ts-ignore */}
+            <elevenlabs-convai agent-id="e98e22fb-9c6e-4f83-ae75-09556815a6bf" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 200 }} />
+          </div>
         )}
-        {stats.map((s, i) => (
-          <View key={s.label} style={styles.statItem}>
-            {i > 0 && <View style={styles.statDivider} />}
-            <View style={[styles.statDot, { backgroundColor: s.color }]} />
-            <Text style={[styles.statLabel, { color: s.color }]}>{s.label}</Text>
-          </View>
-        ))}
-      </View>
+
+        {/* ── RESULTS VIEW ── */}
+        {view === 'results' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
+            {/* Search bar + category filter row */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              alignItems: 'flex-start',
+            }}>
+              <form onSubmit={handleSearch} style={{ width: '100%' }}>
+                <div className="memory-search-wrapper" style={{ maxWidth: '100%' }}>
+                  <input
+                    className="memory-search-input"
+                    placeholder="Search by name, type, date, amount..."
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                </div>
+              </form>
+              <div style={{ display: 'flex', gap: 6, overflowX: 'auto' as const, paddingBottom: 4, width: '100%' }}>
+                {CATEGORIES.map(cat => (
+                  <button
+                    key={cat.key}
+                    className={`memory-category-pill${activeCategory === cat.key ? ' active' : ''}`}
+                    onClick={() => setActiveCategory(cat.key)}
+                  >
+                    <Ionicons name={cat.icon} size={11} color="currentColor" />
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Document grid */}
+            <div style={{ flex: 1, overflow: 'auto' as const }}>
+              {filteredDocs.length === 0 ? (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 12,
+                  paddingTop: 60,
+                }}>
+                  <Ionicons name="search-outline" size={36} color="rgba(255,255,255,0.2)" />
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 15, fontWeight: 600 }}>No documents found</div>
+                  <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13 }}>Try a different search or category</div>
+                </div>
+              ) : (
+                <div className="memory-doc-grid">
+                  {filteredDocs.map(doc => (
+                    <DocCard key={doc.id} doc={doc} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </FinanceHubShell>
   );
 }
-
-const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 24,
-  },
-  filterDropdown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'border-color 0.15s ease' } : {}),
-  },
-  filterDropdownText: {
-    color: Colors.text.tertiary,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  filtersRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 20,
-  },
-  filterPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s ease' } : {}),
-  },
-  filterPillActive: {
-    backgroundColor: Colors.accent.cyan,
-    borderColor: Colors.accent.cyan,
-  },
-  filterPillHover: {
-    backgroundColor: '#1a1f2e',
-  },
-  filterPillText: {
-    color: Colors.text.secondary,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  filterPillTextActive: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 36,
-    gap: 8,
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    borderRadius: 16,
-    marginBottom: 12,
-  },
-  emptyTitle: {
-    color: Colors.text.secondary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  emptySub: {
-    color: Colors.text.muted,
-    fontSize: 12,
-  },
-  receiptsList: {
-    gap: 8,
-  },
-  receiptCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    padding: 16,
-    gap: 12,
-    overflow: 'hidden',
-    position: 'relative',
-    ...(Platform.OS === 'web' ? {
-      cursor: 'pointer',
-      transition: 'background-color 0.15s ease',
-    } as any : {}),
-  },
-  receiptCardHover: {
-    backgroundColor: '#1a1f2e',
-  },
-  accentBorder: {
-    width: 4,
-    borderRadius: 2,
-    alignSelf: 'stretch',
-    marginLeft: -16,
-    marginRight: 4,
-  },
-  receiptIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  receiptContent: {
-    flex: 1,
-  },
-  receiptTitle: {
-    color: Colors.text.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  receiptDesc: {
-    color: Colors.text.tertiary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  receiptAmount: {
-    color: Colors.text.primary,
-    fontSize: 14,
-    fontWeight: '700',
-    minWidth: 90,
-    textAlign: 'right',
-  },
-  receiptTime: {
-    color: Colors.text.muted,
-    fontSize: 12,
-    minWidth: 70,
-    textAlign: 'right',
-  },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 999,
-    minWidth: 70,
-    alignItems: 'center',
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  statsBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    padding: 16,
-    marginTop: 20,
-    gap: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 8,
-  },
-  statDivider: {
-    width: 1,
-    height: 16,
-    backgroundColor: CARD_BORDER,
-    marginRight: 8,
-  },
-  statDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-});

@@ -27,7 +27,7 @@ export function FinanceRightRail({
   if (Platform.OS !== 'web') return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <GreetingCard ownerName={ownerName} />
       <HealthScoreRing
         connectedCount={connectedCount}

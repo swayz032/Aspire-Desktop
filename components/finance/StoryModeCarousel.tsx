@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -80,6 +80,8 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
   const [centerIndex, setCenterIndex] = useState(
     activeMode ? STORY_MODES.findIndex(m => m.id === activeMode) : 0
   );
+  const [isHovered, setIsHovered] = useState(false);
+  const autoRotateRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const goLeft = useCallback(() => {
     setCenterIndex(prev => {
@@ -97,6 +99,23 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
     });
   }, [onSelectMode]);
 
+  useEffect(() => {
+    if (isHovered) {
+      if (autoRotateRef.current) clearInterval(autoRotateRef.current);
+      return;
+    }
+    autoRotateRef.current = setInterval(() => {
+      setCenterIndex(prev => {
+        const next = (prev + 1) % STORY_MODES.length;
+        if (onSelectMode) onSelectMode(STORY_MODES[next]);
+        return next;
+      });
+    }, 3500);
+    return () => {
+      if (autoRotateRef.current) clearInterval(autoRotateRef.current);
+    };
+  }, [isHovered, onSelectMode]);
+
   if (Platform.OS !== 'web') {
     return (
       <View style={nativeStyles.container}>
@@ -105,40 +124,48 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
     );
   }
 
+  const CARD_WIDTH = 210;
+  const SIDE_OFFSET = 240;
+
   const getCardStyle = (offset: number): React.CSSProperties => {
     const absOffset = Math.abs(offset);
     if (absOffset > 1) return { display: 'none' };
 
-    const translateX = offset * 200;
-    const scale = 1 - absOffset * 0.1;
-    const zIndex = 10 - absOffset;
-    const opacity = absOffset === 0 ? 1 : 0.55;
-    const rotateY = offset * -10;
+    const translateX = offset * SIDE_OFFSET;
+    const scale = absOffset === 0 ? 1 : 0.95;
+    const zIndex = absOffset === 0 ? 20 : 10;
+    const opacity = absOffset === 0 ? 1 : 0.60;
+    const rotateY = offset * -8;
 
     return {
       position: 'absolute' as const,
       left: '50%',
       top: 0,
-      transform: `translateX(calc(-50% + ${translateX}px)) scale(${scale}) perspective(800px) rotateY(${rotateY}deg)`,
+      transform: `translateX(calc(-50% + ${translateX}px)) scale(${scale}) perspective(900px) rotateY(${rotateY}deg)`,
       zIndex,
       opacity,
-      transition: 'all 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+      transition: 'all 0.42s cubic-bezier(0.22, 1, 0.36, 1)',
       pointerEvents: 'auto' as const,
     };
   };
 
   return (
-    <div style={{
-      width: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: 16,
-    }}>
+    <div
+      style={{
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 14,
+        height: '100%',
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <div style={{
         width: '100%',
         position: 'relative' as const,
-        height: 220,
+        height: 320,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -149,12 +176,12 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
           style={{
             position: 'absolute' as const,
             left: 8,
-            zIndex: 20,
+            zIndex: 30,
             width: 32,
             height: 32,
             borderRadius: 16,
             border: '1px solid rgba(255,255,255,0.1)',
-            background: 'rgba(0,0,0,0.6)',
+            background: 'rgba(0,0,0,0.65)',
             backdropFilter: 'blur(8px)',
             cursor: 'pointer',
             display: 'flex',
@@ -196,20 +223,20 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
               }}
             >
               <div style={{
-                width: 200,
-                borderRadius: 14,
+                width: CARD_WIDTH,
+                borderRadius: 16,
                 overflow: 'hidden',
                 border: isCenter
-                  ? `1px solid ${mode.accent}33`
-                  : '1px solid rgba(255,255,255,0.07)',
+                  ? `1px solid ${mode.accent}40`
+                  : '1px solid rgba(255,255,255,0.08)',
                 boxShadow: isCenter
-                  ? `0 8px 32px rgba(0,0,0,0.5), 0 0 20px ${mode.accent}15`
-                  : '0 4px 16px rgba(0,0,0,0.3)',
+                  ? `0 12px 40px rgba(0,0,0,0.55), 0 0 24px ${mode.accent}18`
+                  : '0 4px 18px rgba(0,0,0,0.35)',
                 cursor: 'pointer',
                 transition: 'all 0.3s ease',
               }}>
                 <div style={{
-                  height: 130,
+                  height: 178,
                   background: mode.gradient,
                   position: 'relative' as const,
                   overflow: 'hidden',
@@ -217,41 +244,55 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
                   <div style={{
                     position: 'absolute' as const,
                     inset: 0,
-                    background: `radial-gradient(circle at 50% 50%, ${mode.accent}10 0%, transparent 70%)`,
+                    background: `radial-gradient(circle at 50% 50%, ${mode.accent}12 0%, transparent 65%)`,
                   }} />
+                  {isCenter && (
+                    <div style={{
+                      position: 'absolute' as const,
+                      top: 12,
+                      right: 12,
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      background: mode.accent,
+                      boxShadow: `0 0 10px ${mode.accent}80`,
+                    }} />
+                  )}
                 </div>
                 <div style={{
-                  padding: '12px 14px 14px',
-                  background: '#0A0A0F',
+                  padding: '14px 16px 16px',
+                  background: '#111116',
+                  borderTop: `1px solid ${isCenter ? `${mode.accent}20` : 'rgba(255,255,255,0.05)'}`,
                 }}>
                   <div style={{
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: 700,
                     color: '#ffffff',
-                    marginBottom: 3,
+                    marginBottom: 4,
                     letterSpacing: '-0.2px',
                   }}>{mode.name}</div>
                   <div style={{
                     fontSize: 11,
-                    fontWeight: 300,
-                    color: 'rgba(255,255,255,0.4)',
-                    marginBottom: 10,
-                    lineHeight: '1.3',
+                    fontWeight: 400,
+                    color: 'rgba(255,255,255,0.42)',
+                    marginBottom: 12,
+                    lineHeight: '1.4',
                   }}>{mode.tagline}</div>
                   <div style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 4,
-                    padding: '4px 10px',
-                    borderRadius: 12,
-                    background: `${mode.accent}15`,
-                    border: `1px solid ${mode.accent}25`,
+                    gap: 5,
+                    padding: '5px 12px',
+                    borderRadius: 20,
+                    background: `${mode.accent}18`,
+                    border: `1px solid ${mode.accent}30`,
                     fontSize: 10,
-                    fontWeight: 500,
+                    fontWeight: 600,
                     color: mode.accent,
-                    letterSpacing: '0.3px',
+                    letterSpacing: '0.5px',
                     textTransform: 'uppercase' as const,
                   }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 3, background: mode.accent, display: 'inline-block' }} />
                     Explore
                   </div>
                 </div>
@@ -265,12 +306,12 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
           style={{
             position: 'absolute' as const,
             right: 8,
-            zIndex: 20,
+            zIndex: 30,
             width: 32,
             height: 32,
             borderRadius: 16,
             border: '1px solid rgba(255,255,255,0.1)',
-            background: 'rgba(0,0,0,0.6)',
+            background: 'rgba(0,0,0,0.65)',
             backdropFilter: 'blur(8px)',
             cursor: 'pointer',
             display: 'flex',
@@ -297,6 +338,7 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
         display: 'flex',
         alignItems: 'center',
         gap: 6,
+        paddingBottom: 4,
       }}>
         {STORY_MODES.map((mode, i) => (
           <button
@@ -306,7 +348,7 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
               if (onSelectMode) onSelectMode(STORY_MODES[i]);
             }}
             style={{
-              width: i === centerIndex ? 16 : 6,
+              width: i === centerIndex ? 18 : 6,
               height: 6,
               borderRadius: 3,
               border: 'none',
@@ -315,7 +357,7 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
               background: i === centerIndex ? mode.accent : 'rgba(255,255,255,0.15)',
               transition: 'all 0.3s ease',
               padding: 0,
-              boxShadow: i === centerIndex ? `0 0 8px ${mode.accent}50` : 'none',
+              boxShadow: i === centerIndex ? `0 0 8px ${mode.accent}60` : 'none',
             }}
           />
         ))}

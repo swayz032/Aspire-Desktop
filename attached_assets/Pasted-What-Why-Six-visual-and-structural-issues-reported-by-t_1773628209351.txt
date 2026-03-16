@@ -1,0 +1,54 @@
+What & Why
+
+Six visual and structural issues reported by the user from live screenshots of the Finance Hub Overview page. All fixes are in the Finance Hub page layer (index.tsx, StoryModeCarousel, FinanceTopNav, FinanceHubShell, FinanceRightRail, GreetingCard). Plus a GitHub push at the end.
+
+Done looks like
+
+The 4 bottom dashboard cards are all the same height (equal-height flex row, cards stretch to fill the tallest).
+The Details collapsible section and Authority Queue are fully removed from the page.
+No large empty gap between the selector row and dashboard zone — the carousel and Finn panel are tall enough to fill vertical space; Finn's context paragraph is expanded and his orb stays centered.
+The story mode carousel visually matches the Lightswind 3D Carousel style: three cards visible at once (center full-size, adjacent at ±40% offset with scale+opacity falloff), card bottoms are a dark-gray content panel with mode name, tagline, tags and an EXPLORE button, backgrounds use the existing per-mode CSS gradients.
+The Finance Hub page has a single unified top bar — no second bar. Left side: large "Finance Hub" title (26-28px bold). Center: the pill nav (Home, Overview, Cash…). Right side: the existing business name, Canvas button, bell, and avatar (moved from DesktopHeader). The DesktopHeader is suppressed/removed from FinanceHubShell and replaced by this one bar.
+The right rail has a clearly visible left-border divider. All three blocks (Greeting, Health Ring, Finn Brief) are equal height and more visually balanced — the GreetingCard is taller to match the other two. Gap between blocks increased slightly.
+All changes are pushed to GitHub.
+Quality Bar (applies to every item above)
+
+Enterprise-grade polish: consistent 16-24px padding on all cards, no layout jank, smooth 300-500ms transitions, no clipped or overflowing content.
+Readable at a glance: all label text minimum 11px with sufficient contrast (white/60 on dark), all value/heading text minimum 15px in white or bright accent. No gray-on-gray text anywhere.
+Charts legible: chart axis labels at least 10px and visible (not clipped), trend lines use the mode accent color at full opacity, data points or bars clearly differentiated, no overlapping text.
+Premium card treatment: every card uses #1C1C1E or #0A0A0F background, 1px border at rgba(255,255,255,0.07), 14-16px border-radius. No glow effects whatsoever — no box-shadow with accent colors, no neon border halos, no radial glow bleed around card edges. Cards are clean, sharp, and professional. The only visual depth comes from the dark border and the card background contrast against the page.
+Typographic hierarchy: section labels uppercase 10-11px/muted, sub-labels 12-13px/muted, primary values 24-40px/bold/white, body text 13px/white-60. No font sizes outside these ranges.
+Spacing consistency: 12px gap between cards in the same row, 20px gap between rows, 16-24px internal card padding — uniform throughout the page.
+Out of scope
+
+Any change to the dashboard card data or chart logic.
+Carousel auto-rotate speed changes.
+Mobile/native layout changes.
+Any other Finance Hub sub-pages (Cash, Books, Payroll, etc.).
+Tasks
+
+Equal-height dashboard cards — In index.tsx, set alignItems: 'stretch' on the 3-card support row container and ensure each card's outer wrapper passes height: '100%' down so all three fill to the same height.
+Remove Details section + Authority Queue — Delete the entire Details collapsible section from index.tsx including all ReconcileCard, LifecycleChain, and AuthorityQueue references. Remove any now-unused imports those components relied on.
+Expand selector row height / fix gap — Increase the StoryModeCarousel container height from 220px to ~340px and the Finn panel minHeight from 280 to ~340px. In the Finn panel, expand the finnFocus text block to 2-3 sentences and ensure the Finn orb video is centered vertically within its container.
+Rebuild StoryModeCarousel to Lightswind 3D style — Rewrite StoryModeCarousel.tsx so:
+Three cards visible: center (scale 1, opacity 1, z-index 20), left (translateX -40%, scale 0.95, opacity 0.60, z-index 10), right (translateX +40%, scale 0.95, opacity 0.60, z-index 10), others hidden.
+Each card is a tall card (~300-320px height) with a gradient image section (top ~60%) using the mode's existing gradient string as background, and a dark gray content section (bottom ~40%) containing the mode name in bold, tagline, tags row, and an EXPLORE pill button styled with the mode accent color.
+Arrow nav buttons and dot indicator row remain. Auto-rotate when not hovered (pause on hover).
+Clicking a side card advances to it and fires onSelectMode.
+Unified single top bar — In FinanceHubShell.tsx, remove the <DesktopHeader> render and instead pass the right-side account controls (business name, Canvas button, bell, avatar) as a slot or inline into FinanceTopNav. In FinanceTopNav.tsx, restructure the bar so it has three zones in one height: 56px row with no separate background color distinct from the page:
+Left: "Finance Hub" as a large bold title (26-28px, white).
+Center: the existing pill nav container.
+Right: the business name / subtitle, Canvas button, bell icon, and user avatar (replicated or imported from DesktopHeader's right-side content). The bar background should be transparent or match the page's primary background (#0A0A0F) without a border-bottom that creates a visible second bar. The DesktopHeader component is no longer rendered inside FinanceHubShell.
+Right rail equal blocks and divider — In FinanceHubShell.tsx, increase the borderLeftColor opacity from 0.04 to 0.12 so the divider is visible. In FinanceRightRail.tsx, change the gap between blocks from 14 to 20px. In GreetingCard.tsx, increase padding from 16 to 22px and the greeting font from 20px to 24px so it is visually equal in size to the HealthScoreRing and FinnDailyBrief blocks.
+Push all changes to GitHub — After all fixes are built and validated, run git push to sync the branch to the remote.
+Relevant files
+
+app/finance-hub/index.tsx
+components/finance/StoryModeCarousel.tsx
+components/finance/FinanceTopNav.tsx
+components/finance/FinanceHubShell.tsx
+components/finance/FinanceRightRail.tsx
+components/finance/GreetingCard.tsx
+components/finance/HealthScoreRing.tsx
+components/finance/FinnDailyBrief.tsx
+components/desktop/DesktopHeader.tsx

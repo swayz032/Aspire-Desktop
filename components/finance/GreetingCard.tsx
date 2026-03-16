@@ -42,7 +42,7 @@ export function GreetingCard({ ownerName = 'Mr. Scott' }: Props) {
       borderRadius: 14,
       border: '1px solid rgba(255,255,255,0.07)',
       background: `radial-gradient(ellipse at 30% 20%, ${gradientColors[0]} 0%, transparent 60%), radial-gradient(ellipse at 80% 80%, ${gradientColors[1]} 0%, transparent 50%), linear-gradient(135deg, #0A0A0F 0%, #111116 100%)`,
-      padding: 16,
+      padding: 22,
       overflow: 'hidden',
     }}>
       <div style={{
@@ -58,9 +58,9 @@ export function GreetingCard({ ownerName = 'Mr. Scott' }: Props) {
       }} />
       <div style={{
         color: '#fff',
-        fontSize: 20,
+        fontSize: 24,
         fontWeight: 700,
-        lineHeight: '26px',
+        lineHeight: '30px',
         position: 'relative',
         zIndex: 1,
       }}>
@@ -68,9 +68,9 @@ export function GreetingCard({ ownerName = 'Mr. Scott' }: Props) {
       </div>
       <div style={{
         color: '#fff',
-        fontSize: 20,
+        fontSize: 24,
         fontWeight: 700,
-        lineHeight: '26px',
+        lineHeight: '30px',
         position: 'relative',
         zIndex: 1,
       }}>

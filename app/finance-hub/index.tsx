@@ -6,17 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
-import { AuthorityQueueCard } from '@/components/AuthorityQueueCard';
-import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
-import { getAuthorityQueue } from '@/lib/api';
-import type { AuthorityItem } from '@/types';
-import ExplainDrawer from '@/components/finance/ExplainDrawer';
 import { FinnDeskOverlay } from '@/components/finance/FinnDeskOverlay';
 import { FinnChatModal } from '@/components/finance/FinnChatModal';
-
-import ReconcileCard from '@/components/finance/ReconcileCard';
-import LifecycleChain from '@/components/finance/LifecycleChain';
 import { StoryModeCarousel, STORY_MODES } from '@/components/finance/StoryModeCarousel';
 import type { StoryModeId } from '@/components/finance/StoryModeCarousel';
 import { GlowTrendCard } from '@/components/finance/GlowTrendCard';
@@ -25,7 +16,6 @@ import { QueueInstrumentCard } from '@/components/finance/QueueInstrumentCard';
 import { InsightOverlayCard } from '@/components/finance/InsightOverlayCard';
 import { FinanceRightRail } from '@/components/finance/FinanceRightRail';
 import { getStoryDashboardConfig } from '@/components/finance/storyModeConfigs';
-import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 
 interface FlowItem {
@@ -480,16 +470,12 @@ function FinanceHubContent() {
   const [, setHoveredButton] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
-  const [timeline, setTimeline] = useState<{ date: string; description: string; amount?: number }[]>([]);
-  const [lifecycleSteps, setLifecycleSteps] = useState<{ label: string; status: 'completed' | 'current' | 'pending' | 'error'; provider?: string; timestamp?: string | null; eventId?: string; amount?: number }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [explainMetric, setExplainMetric] = useState<string | null>(null);
   const [showFinnOverlay, setShowFinnOverlay] = useState(false);
   const [finnOverlayTab, setFinnOverlayTab] = useState<'voice' | 'video'>('voice');
   const [showFinnChat, setShowFinnChat] = useState(false);
   const [activeStoryMode, setActiveStoryMode] = useState<StoryModeId>('cash-truth');
   const [dashTransition, setDashTransition] = useState<'idle' | 'fading' | 'entering'>('idle');
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
 
   const activeModeCfg = STORY_MODES.find(m => m.id === activeStoryMode) ?? STORY_MODES[0];
 
@@ -524,11 +510,6 @@ function FinanceHubContent() {
     return () => { if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current); };
   }, []);
 
-  // Authority Queue state
-  const dynamicItems = useDynamicAuthorityQueue();
-  const [supabaseAuthority, setSupabaseAuthority] = useState<AuthorityItem[]>([]);
-  const [reviewPreview, setReviewPreview] = useState<{ visible: boolean; type: 'invoice' | 'contract' | 'document'; documentName: string; pandadocDocumentId?: string }>({ visible: false, type: 'document', documentName: '' });
-
   // Finn voice — ElevenLabs TTS output, STT degrades gracefully if unavailable
   const { suiteId, session } = useSupabase();
   const { tenant } = useTenant();
@@ -553,22 +534,14 @@ function FinanceHubContent() {
     }
   }, [finnVoice]);
 
-  const isConnected = connections?.summary?.connected ? connections.summary.connected > 0 : false;
-  const hasSnapshot = snapshot?.connected && snapshot?.generatedAt;
-
-
   const fetchData = useCallback(async () => {
     try {
-      const [snapRes, connRes, timeRes, lcRes] = await Promise.all([
+      const [snapRes, connRes] = await Promise.all([
         fetch('/api/finance/snapshot').then(r => r.json()).catch(() => null),
         fetch('/api/connections/status').then(r => r.json()).catch(() => null),
-        fetch('/api/finance/timeline?limit=10').then(r => r.json()).catch(() => null),
-        fetch('/api/finance/lifecycle').then(r => r.json()).catch(() => null),
       ]);
       if (snapRes) setSnapshot(snapRes);
       if (connRes) setConnections(connRes);
-      if (timeRes?.events) setTimeline(timeRes.events);
-      if (lcRes?.steps) setLifecycleSteps(lcRes.steps);
     } catch (e) {
       console.warn('Failed to fetch finance data:', e);
     } finally {
@@ -577,30 +550,6 @@ function FinanceHubContent() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  // Fetch authority queue from Supabase
-  useEffect(() => {
-    async function fetchAuthorityQueue() {
-      try {
-        const items = await getAuthorityQueue();
-        setSupabaseAuthority(items as AuthorityItem[]);
-      } catch {
-        // Silently fail — authority queue is non-critical
-      }
-    }
-    fetchAuthorityQueue();
-    const interval = setInterval(fetchAuthorityQueue, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const allAuthorityItems = useMemo(() => {
-    const financeAgents = ['finn', 'quinn', 'teressa'];
-    const merged = [...dynamicItems, ...supabaseAuthority];
-    return merged.filter(item =>
-      financeAgents.includes(item.assignedAgent?.toLowerCase() || '') ||
-      financeAgents.includes(item.staffRole?.toLowerCase() || '')
-    );
-  }, [dynamicItems, supabaseAuthority]);
 
   const webHover = (key: string) => Platform.OS === 'web' ? {
     onMouseEnter: () => setHoveredButton(key),
@@ -706,10 +655,6 @@ function FinanceHubContent() {
         .dash-card-entering-1 { animation: dashSlideUp 300ms ease-out 80ms both; }
         .dash-card-entering-2 { animation: dashSlideUp 300ms ease-out 160ms both; }
         .dash-card-entering-3 { animation: dashSlideUp 300ms ease-out 240ms both; }
-        .details-collapsible {
-          overflow: hidden;
-          transition: max-height 0.3s ease, opacity 0.3s ease;
-        }
       `;
       document.head.appendChild(styleEl);
     }
@@ -739,7 +684,7 @@ function FinanceHubContent() {
             />
           </div>
           <div style={{ flex: '1 1 40%', minWidth: 0 }}>
-            <View style={[s.finnCardOuter, { minHeight: 280 }]}>
+            <View style={[s.finnCardOuter, { minHeight: 340 }]}>
               <View style={s.finnFloatingPanel}>
                 <View style={s.finnPanelInner}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -847,6 +792,7 @@ function FinanceHubContent() {
             flexWrap: isCompact ? 'wrap' : 'nowrap' as const,
             position: 'relative',
             zIndex: 1,
+            alignItems: 'stretch',
           }}>
             <div className={dashCardClass(1)} style={{ flex: 1, minWidth: isCompact ? '100%' : 0 }}>
               <SegmentRingCard
@@ -893,182 +839,6 @@ function FinanceHubContent() {
         </View>
       )}
 
-      {/* ═══ DETAILS SECTION (collapsible legacy) ═══ */}
-      {Platform.OS === 'web' ? (
-        <div style={{ marginBottom: 16 }}>
-          <div
-            onClick={() => setDetailsExpanded(!detailsExpanded)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              cursor: 'pointer',
-              padding: '8px 0',
-              userSelect: 'none',
-            }}
-          >
-            <div style={{
-              width: 20,
-              height: 20,
-              borderRadius: 6,
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'transform 0.2s ease',
-              transform: detailsExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-            }}>
-              <Ionicons name="chevron-forward" size={12} color="rgba(255,255,255,0.4)" />
-            </div>
-            <span style={{
-              color: 'rgba(255,255,255,0.45)',
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: 1.5,
-              textTransform: 'uppercase' as const,
-            }}>
-              DETAILS
-            </span>
-            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)', marginLeft: 8 }} />
-          </div>
-          <div
-            className="details-collapsible"
-            style={{
-              maxHeight: detailsExpanded ? 2000 : 0,
-              opacity: detailsExpanded ? 1 : 0,
-            }}
-          >
-            {hasSnapshot && snapshot.chapters.reconcile.mismatchCount > 0 && (
-              <>
-                <SectionLabel icon="git-compare" label="RECONCILIATION" color="#999" ledDelay={1} />
-                <View style={{ gap: 10, marginBottom: 4 }}>
-                  <View style={s.sectionHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-                        <Ionicons name="git-compare" size={14} color="#F59E0B" />
-                      </View>
-                      <Text style={s.sectionTitle}>Items to Reconcile</Text>
-                    </View>
-                    <View style={[s.proposalCount, { backgroundColor: 'rgba(245,158,11,0.2)' }]}>
-                      <Text style={[s.proposalCountText, { color: '#F59E0B' }]}>{snapshot.chapters.reconcile.mismatchCount}</Text>
-                    </View>
-                  </View>
-                  {snapshot.chapters.reconcile.mismatches.map((m: MismatchItem) => (
-                    <ReconcileCard key={m.id} mismatch={m} onAction={() => {}} onDismiss={() => {}} />
-                  ))}
-                </View>
-              </>
-            )}
-
-            {isConnected && lifecycleSteps.length > 0 && lifecycleSteps.some((st) => st.status !== 'pending') && (
-              <>
-                <SectionLabel icon="git-branch" label="MONEY LIFECYCLE" color="#999" ledDelay={2} />
-                <LifecycleChain
-                  steps={lifecycleSteps}
-                  title="Revenue Flow"
-                  onExplainStep={(step) => {
-                    const stageToMetric: Record<string, string> = {
-                      'Booked': 'expected_inflows',
-                      'Invoiced': 'expected_inflows',
-                      'Paid': 'monthly_revenue',
-                      'Deposited': 'cash_available',
-                      'Posted': 'net_income',
-                    };
-                    const metricId = stageToMetric[step.label];
-                    if (metricId) setExplainMetric(metricId);
-                  }}
-                />
-              </>
-            )}
-
-            <SectionLabel icon="shield" label="FINANCE AUTHORITY QUEUE" color="#999" ledDelay={3} />
-            <View style={s.authoritySection}>
-              {allAuthorityItems.length > 0 ? (
-                <View style={s.authorityScrollRow}>
-                  {allAuthorityItems.map((item) => (
-                    <View key={item.id} style={s.authorityCardWrap}>
-                      <AuthorityQueueCard
-                        item={item}
-                        onAction={async (action) => {
-                          if (action === 'approve') {
-                            try {
-                              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                              if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                              const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
-                              if (res.ok) setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
-                            } catch { /* silent */ }
-                          } else if (action === 'deny') {
-                            try {
-                              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                              if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                              await fetch(`/api/authority-queue/${item.id}/deny`, { method: 'POST', headers });
-                              setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
-                            } catch { /* silent */ }
-                          } else if (action === 'review') {
-                            const docType = item.type === 'invoice' ? 'invoice' as const
-                              : item.type === 'contract' ? 'contract' as const
-                              : 'document' as const;
-                            setReviewPreview({
-                              visible: true,
-                              type: docType,
-                              documentName: item.title,
-                              pandadocDocumentId: item.pandadocDocumentId,
-                            });
-                          }
-                        }}
-                      />
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <GlassCard style={{ padding: 32, alignItems: 'center' }}>
-                  <Ionicons name="shield-checkmark-outline" size={32} color={Colors.accent.cyan} style={{ marginBottom: 12 }} />
-                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 6 }}>No pending financial approvals</Text>
-                  <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>
-                    When Finn, Quinn, or Teressa need your sign-off, their requests appear here.
-                  </Text>
-                </GlassCard>
-              )}
-            </View>
-          </div>
-        </div>
-      ) : (
-        <View style={{ marginBottom: 16 }}>
-          <SectionLabel icon="shield" label="FINANCE AUTHORITY QUEUE" color="#999" ledDelay={3} />
-          <View style={s.authoritySection}>
-            {allAuthorityItems.length > 0 ? (
-              <View style={s.authorityScrollRow}>
-                {allAuthorityItems.map((item) => (
-                  <View key={item.id} style={s.authorityCardWrap}>
-                    <AuthorityQueueCard
-                      item={item}
-                      onAction={async (action) => {
-                        if (action === 'approve') {
-                          try {
-                            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                            if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                            const res = await fetch(`/api/authority-queue/${item.id}/approve`, { method: 'POST', headers });
-                            if (res.ok) setSupabaseAuthority(prev => prev.filter(a => a.id !== item.id));
-                          } catch { /* silent */ }
-                        }
-                      }}
-                    />
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <GlassCard style={{ padding: 32, alignItems: 'center' }}>
-                <Ionicons name="shield-checkmark-outline" size={32} color={Colors.accent.cyan} style={{ marginBottom: 12 }} />
-                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 6 }}>No pending financial approvals</Text>
-                <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>
-                  When Finn, Quinn, or Teressa need your sign-off, their requests appear here.
-                </Text>
-              </GlassCard>
-            )}
-          </View>
-        </View>
-      )}
 
     </FinanceHubShell>
     {/* Finn Chat Modal — outside shell so position:absolute floats above scroll */}
@@ -1081,18 +851,6 @@ function FinanceHubContent() {
         initialTab={finnOverlayTab}
       />
     )}
-    <ExplainDrawer
-      visible={!!explainMetric}
-      onClose={() => setExplainMetric(null)}
-      metricId={explainMetric || ''}
-    />
-    <DocumentPreviewModal
-      visible={reviewPreview.visible}
-      onClose={() => setReviewPreview(prev => ({ ...prev, visible: false }))}
-      type={reviewPreview.type}
-      documentName={reviewPreview.documentName}
-      pandadocDocumentId={reviewPreview.pandadocDocumentId}
-    />
     </>
   );
 }
@@ -1557,24 +1315,4 @@ const s = StyleSheet.create({
     fontWeight: '700',
   },
 
-  authoritySection: {
-    marginBottom: 16,
-  },
-  authorityScrollRow: {
-    flexDirection: 'row',
-    gap: 12,
-    ...Platform.select({ web: {
-      overflowX: 'auto',
-      overflowY: 'hidden',
-      scrollbarWidth: 'thin',
-      scrollbarColor: '#3B3B3D transparent',
-    } as WebStyle }),
-    paddingVertical: 4,
-    alignItems: 'stretch',
-  } as WebStyle,
-  authorityCardWrap: {
-    width: 300,
-    flexShrink: 0,
-    display: 'flex',
-  } as WebStyle,
 });

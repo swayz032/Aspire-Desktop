@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
-import { DesktopHeader } from '@/components/desktop/DesktopHeader';
 import { FinanceTopNav } from './FinanceTopNav';
 import { Colors } from '@/constants/tokens';
 
@@ -17,7 +16,6 @@ export function FinanceHubShell({ children, rightRail }: Props) {
 
   return (
     <View style={styles.container}>
-      <DesktopHeader hideSearch />
       <FinanceTopNav />
       <View style={[styles.content, !showRailColumn && styles.contentStacked]}>
         <View style={styles.mainArea}>
@@ -69,7 +67,7 @@ const styles = StyleSheet.create({
   rightRail: {
     width: 260,
     borderLeftWidth: 1,
-    borderLeftColor: 'rgba(255,255,255,0.04)',
+    borderLeftColor: 'rgba(255,255,255,0.12)',
     paddingHorizontal: 16,
     paddingVertical: 16,
   },

@@ -369,7 +369,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.plaid.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.plaid.com", "https://elevenlabs.io"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [
