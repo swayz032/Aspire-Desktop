@@ -143,15 +143,16 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
     const absOffset = Math.abs(offset);
     if (absOffset > 1) return {
       position: 'absolute' as const,
-      left: '50%',
       top: 0,
-      transform: `translateX(calc(-50% + ${offset > 0 ? 80 : -80}%)) scale(0.9)`,
+      left: 0,
+      width: '100%',
+      display: 'flex',
+      justifyContent: 'center',
+      transform: `translateX(${offset > 0 ? 80 : -80}%) scale(0.9)`,
       opacity: 0,
       pointerEvents: 'none' as const,
       zIndex: 0,
       transition: 'transform 400ms ease, opacity 400ms ease',
-      width: '70%',
-      maxWidth: 320,
     };
 
     const translateXPercent = offset * 40;
@@ -161,16 +162,17 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
 
     return {
       position: 'absolute' as const,
-      left: '50%',
       top: 0,
-      transform: `translateX(calc(-50% + ${translateXPercent}%)) scale(${scale})`,
+      left: 0,
+      width: '100%',
+      display: 'flex',
+      justifyContent: 'center',
+      transform: `translateX(${translateXPercent}%) scale(${scale})`,
       zIndex,
       opacity,
       transition: 'transform 400ms ease, opacity 400ms ease',
       pointerEvents: 'auto' as const,
       cursor: absOffset === 0 ? 'default' : 'pointer',
-      width: '70%',
-      maxWidth: 320,
     };
   };
 
@@ -250,6 +252,8 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
               }}
             >
               <div style={{
+                width: '70%',
+                maxWidth: 320,
                 height: 310,
                 borderRadius: 14,
                 overflow: 'hidden',

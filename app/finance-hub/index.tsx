@@ -673,7 +673,7 @@ function FinanceHubContent() {
   );
 
   const finnPanelNode = (
-    <View style={[s.finnCardOuter, { minHeight: 340 }]}>
+    <View style={[s.finnCardOuter]}>
       <View style={s.finnFloatingPanel}>
         <View style={s.finnPanelInner}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -710,8 +710,8 @@ function FinanceHubContent() {
             <Text style={s.finnPanelBtnText}>Chat with Finn</Text>
           </Pressable>
           <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 10 }} />
-          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, lineHeight: 16 }}>
-            Finn&apos;s focus: {dashConfig.finnFocus} Finn is analyzing your latest transactions and reconciliation status to surface what matters most right now.
+          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, lineHeight: 18 }}>
+            Finn analyzes your connected accounts in real time, surfaces cash flow patterns, and flags anomalies before they become problems. Ask Finn anything about your numbers. He's not a CPA and doesn't give tax or legal advice — but he knows your books better than anyone.
           </Text>
         </View>
       </View>
@@ -799,13 +799,13 @@ function FinanceHubContent() {
           <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-                <div style={{ flex: '1 1 0', minWidth: 0, minHeight: 340 }}>
+                <div style={{ flex: '1 1 0', minWidth: 0, minHeight: 480 }}>
                   <StoryModeCarousel
                     activeMode={activeStoryMode}
                     onSelectMode={(mode) => handleModeSwitch(mode.id)}
                   />
                 </div>
-                <div style={{ flex: '1 1 0', minWidth: 0 }}>
+                <div style={{ flex: '1 1 0', minWidth: 0, minHeight: 480, display: 'flex', flexDirection: 'column' }}>
                   {finnPanelNode}
                 </div>
               </div>
@@ -1021,7 +1021,7 @@ const s = StyleSheet.create({
     backgroundColor: '#000',
     borderRadius: 16,
     overflow: 'hidden',
-    minHeight: 320,
+    minHeight: 440,
     borderWidth: 1,
     borderColor: 'rgba(139,92,246,0.15)',
   } as WebStyle,

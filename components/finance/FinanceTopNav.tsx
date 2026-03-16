@@ -133,36 +133,29 @@ export function FinanceTopNav({ isTablet }: FinanceTopNavProps) {
       height: 52,
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: 'flex-start',
       paddingLeft: 24,
       paddingRight: 24,
-      backgroundColor: '#1A1A24',
-      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      gap: 20,
+      backgroundColor: 'transparent',
       position: 'relative' as const,
       zIndex: 100,
       flexShrink: 0,
     }}>
-      <div style={{
-        position: 'absolute' as const,
-        left: 24,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-      }}>
-        <span style={{
-          fontSize: 27,
-          fontWeight: 800,
-          color: '#ffffff',
-          letterSpacing: '-0.5px',
-          lineHeight: '1',
-        }}>Finance Hub</span>
-      </div>
+      <span style={{
+        fontSize: 27,
+        fontWeight: 800,
+        color: '#ffffff',
+        letterSpacing: '-0.5px',
+        lineHeight: '1',
+        flexShrink: 0,
+      }}>Finance Hub</span>
 
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(0,0,0,0.35)',
+        background: '#1C1C1E',
         borderRadius: 26,
         padding: '3px 4px',
         border: '1px solid rgba(255,255,255,0.04)',
