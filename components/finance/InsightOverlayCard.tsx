@@ -143,7 +143,7 @@ export function InsightOverlayCard({ quote, sparkData, accentColor, loading }: I
           <span style={{
             fontSize: 11,
             fontWeight: 400,
-            color: 'rgba(255,255,255,0.35)',
+            color: 'rgba(255,255,255,0.65)',
           }}>Finn's insight</span>
         </div>
       </div>

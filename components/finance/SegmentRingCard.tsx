@@ -71,7 +71,7 @@ export function SegmentRingCard({ title, centerValue, centerLabel, segments, acc
         <div style={{
           fontSize: 11,
           fontWeight: 400,
-          color: 'rgba(255,255,255,0.45)',
+          color: 'rgba(255,255,255,0.70)',
           letterSpacing: '0.5px',
           textTransform: 'uppercase' as const,
           marginBottom: 14,
@@ -130,7 +130,7 @@ export function SegmentRingCard({ title, centerValue, centerLabel, segments, acc
               <div style={{
                 fontSize: 10,
                 fontWeight: 400,
-                color: 'rgba(255,255,255,0.4)',
+                color: 'rgba(255,255,255,0.70)',
                 marginTop: 3,
               }}>{centerLabel}</div>
             </div>
@@ -202,7 +202,7 @@ const nativeStyles = StyleSheet.create({
   title: {
     fontSize: 11,
     fontWeight: '400',
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(255,255,255,0.70)',
     marginBottom: 8,
   },
   value: {

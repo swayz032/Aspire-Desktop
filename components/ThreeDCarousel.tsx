@@ -339,7 +339,7 @@ const ThreeDCarousel = ({
                           transition: "all 0.2s ease",
                         }}
                       >
-                        Activate
+                        Activate Dashboard
                       </button>
                     </div>
                   </div>

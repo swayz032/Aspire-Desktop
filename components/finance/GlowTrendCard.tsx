@@ -62,7 +62,7 @@ export function GlowTrendCard({ title, value, delta, deltaDirection = 'up', data
         <div style={{
           fontSize: 11,
           fontWeight: 400,
-          color: 'rgba(255,255,255,0.45)',
+          color: 'rgba(255,255,255,0.70)',
           letterSpacing: '0.5px',
           textTransform: 'uppercase' as const,
           marginBottom: 8,
@@ -83,7 +83,7 @@ export function GlowTrendCard({ title, value, delta, deltaDirection = 'up', data
               gap: 3,
               fontSize: 13,
               fontWeight: 400,
-              color: deltaDirection === 'up' ? '#34c759' : deltaDirection === 'down' ? '#ff3b30' : 'rgba(255,255,255,0.45)',
+              color: deltaDirection === 'up' ? '#34c759' : deltaDirection === 'down' ? '#ff3b30' : 'rgba(255,255,255,0.70)',
             }}>
               {deltaDirection === 'up' && <Ionicons name="arrow-up" size={11} color="#34c759" />}
               {deltaDirection === 'down' && <Ionicons name="arrow-down" size={11} color="#ff3b30" />}
@@ -153,7 +153,7 @@ const nativeStyles = StyleSheet.create({
   title: {
     fontSize: 11,
     fontWeight: '400',
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(255,255,255,0.70)',
     marginBottom: 8,
   },
   value: {

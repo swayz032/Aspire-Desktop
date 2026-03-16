@@ -25,7 +25,7 @@ const statusColors: Record<QueueItem['status'], string> = {
   active: '#34c759',
   warning: '#F59E0B',
   overdue: '#ff3b30',
-  pending: 'rgba(255,255,255,0.3)',
+  pending: 'rgba(255,255,255,0.60)',
 };
 
 function ShimmerLine({ width, height = 12 }: { width: string | number; height?: number }) {
@@ -74,7 +74,7 @@ export function QueueInstrumentCard({ title, items, accentColor, mode, loading }
         <div style={{
           fontSize: 11,
           fontWeight: 400,
-          color: 'rgba(255,255,255,0.45)',
+          color: 'rgba(255,255,255,0.70)',
           letterSpacing: '0.5px',
           textTransform: 'uppercase' as const,
           marginBottom: 14,
@@ -139,7 +139,7 @@ export function QueueInstrumentCard({ title, items, accentColor, mode, loading }
                       <span style={{
                         fontSize: 10,
                         fontWeight: 500,
-                        color: 'rgba(255,255,255,0.35)',
+                        color: 'rgba(255,255,255,0.65)',
                         background: 'rgba(255,255,255,0.04)',
                         padding: '2px 6px',
                         borderRadius: 4,
@@ -192,7 +192,7 @@ const nativeStyles = StyleSheet.create({
   title: {
     fontSize: 11,
     fontWeight: '400',
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(255,255,255,0.70)',
     marginBottom: 8,
   },
   count: {
