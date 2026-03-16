@@ -4,6 +4,7 @@ import { FinanceTopNav } from './FinanceTopNav';
 import { Colors } from '@/constants/tokens';
 
 const RIGHT_RAIL_BREAKPOINT = 1100;
+const BREAKPOINT_LAPTOP = 960;
 
 type Props = {
   children: React.ReactNode;
@@ -13,10 +14,11 @@ type Props = {
 export function FinanceHubShell({ children, rightRail }: Props) {
   const { width } = useWindowDimensions();
   const showRailColumn = width >= RIGHT_RAIL_BREAKPOINT;
+  const isTablet = width < BREAKPOINT_LAPTOP;
 
   return (
     <View style={styles.container}>
-      <FinanceTopNav />
+      <FinanceTopNav isTablet={isTablet} />
       <View style={[styles.content, !showRailColumn && styles.contentStacked]}>
         <View style={styles.mainArea}>
           <ScrollView

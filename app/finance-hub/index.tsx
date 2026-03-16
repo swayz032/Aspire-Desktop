@@ -100,31 +100,31 @@ function injectFinnCss() {
       100% { color: #A78BFA; }
     }
     @keyframes finnLedBorder {
-      0%   { border-color: rgba(167,139,250,0.35); box-shadow: 0 0 8px rgba(167,139,250,0.15); }
-      16%  { border-color: rgba(96,165,250,0.4); box-shadow: 0 0 8px rgba(96,165,250,0.18); }
-      33%  { border-color: rgba(52,211,153,0.4); box-shadow: 0 0 8px rgba(52,211,153,0.18); }
-      50%  { border-color: rgba(129,140,248,0.4); box-shadow: 0 0 8px rgba(129,140,248,0.18); }
-      66%  { border-color: rgba(244,114,182,0.4); box-shadow: 0 0 8px rgba(244,114,182,0.18); }
-      83%  { border-color: rgba(192,132,252,0.4); box-shadow: 0 0 8px rgba(192,132,252,0.18); }
-      100% { border-color: rgba(167,139,250,0.35); box-shadow: 0 0 8px rgba(167,139,250,0.15); }
+      0%   { border-color: rgba(167,139,250,0.35); }
+      16%  { border-color: rgba(96,165,250,0.4); }
+      33%  { border-color: rgba(52,211,153,0.4); }
+      50%  { border-color: rgba(129,140,248,0.4); }
+      66%  { border-color: rgba(244,114,182,0.4); }
+      83%  { border-color: rgba(192,132,252,0.4); }
+      100% { border-color: rgba(167,139,250,0.35); }
     }
     @keyframes finnLedBg {
-      0%   { background: rgba(167,139,250,0.18); border-color: rgba(167,139,250,0.3); box-shadow: 0 0 12px rgba(167,139,250,0.12); }
-      16%  { background: rgba(96,165,250,0.18); border-color: rgba(96,165,250,0.35); box-shadow: 0 0 12px rgba(96,165,250,0.15); }
-      33%  { background: rgba(52,211,153,0.18); border-color: rgba(52,211,153,0.35); box-shadow: 0 0 12px rgba(52,211,153,0.15); }
-      50%  { background: rgba(129,140,248,0.18); border-color: rgba(129,140,248,0.35); box-shadow: 0 0 12px rgba(129,140,248,0.15); }
-      66%  { background: rgba(244,114,182,0.18); border-color: rgba(244,114,182,0.35); box-shadow: 0 0 12px rgba(244,114,182,0.15); }
-      83%  { background: rgba(192,132,252,0.18); border-color: rgba(192,132,252,0.35); box-shadow: 0 0 12px rgba(192,132,252,0.15); }
-      100% { background: rgba(167,139,250,0.18); border-color: rgba(167,139,250,0.3); box-shadow: 0 0 12px rgba(167,139,250,0.12); }
+      0%   { background: rgba(167,139,250,0.18); border-color: rgba(167,139,250,0.3); }
+      16%  { background: rgba(96,165,250,0.18); border-color: rgba(96,165,250,0.35); }
+      33%  { background: rgba(52,211,153,0.18); border-color: rgba(52,211,153,0.35); }
+      50%  { background: rgba(129,140,248,0.18); border-color: rgba(129,140,248,0.35); }
+      66%  { background: rgba(244,114,182,0.18); border-color: rgba(244,114,182,0.35); }
+      83%  { background: rgba(192,132,252,0.18); border-color: rgba(192,132,252,0.35); }
+      100% { background: rgba(167,139,250,0.18); border-color: rgba(167,139,250,0.3); }
     }
     @keyframes finnLedIcon {
-      0%   { color: #A78BFA; filter: drop-shadow(0 0 4px rgba(167,139,250,0.3)); }
-      16%  { color: #60A5FA; filter: drop-shadow(0 0 4px rgba(96,165,250,0.3)); }
-      33%  { color: #34D399; filter: drop-shadow(0 0 4px rgba(52,211,153,0.3)); }
-      50%  { color: #818CF8; filter: drop-shadow(0 0 4px rgba(129,140,248,0.3)); }
-      66%  { color: #F472B6; filter: drop-shadow(0 0 4px rgba(244,114,182,0.3)); }
-      83%  { color: #C084FC; filter: drop-shadow(0 0 4px rgba(192,132,252,0.3)); }
-      100% { color: #A78BFA; filter: drop-shadow(0 0 4px rgba(167,139,250,0.3)); }
+      0%   { color: #A78BFA; }
+      16%  { color: #60A5FA; }
+      33%  { color: #34D399; }
+      50%  { color: #818CF8; }
+      66%  { color: #F472B6; }
+      83%  { color: #C084FC; }
+      100% { color: #A78BFA; }
     }
     .hero-led-icon {
       animation: finnLedIcon 3s ease-in-out infinite;
@@ -156,14 +156,13 @@ function injectFinnCss() {
       animation-delay: -1s;
     }
     .finn-session-btn {
-      animation: finnLedBg 3s ease-in-out infinite !important;
-      animation-delay: -1.5s;
-      border: 1px solid rgba(167,139,250,0.3) !important;
-      transition: transform 0.15s ease, filter 0.15s ease;
+      background: rgba(139,92,246,0.25);
+      border: 1px solid rgba(167,139,250,0.3);
+      transition: transform 0.15s ease;
     }
     .finn-session-btn:hover {
       transform: scale(1.04);
-      filter: brightness(1.2);
+      background: rgba(139,92,246,0.35);
     }
     .led-icon {
       animation: finnLedIcon 3s ease-in-out infinite;
@@ -182,13 +181,13 @@ function injectFinnCss() {
     .led-icon-d5 { animation-delay: -2.0s; }
     .led-icon-d6 { animation-delay: -2.4s; }
     @keyframes finnPillGlow {
-      0%   { border-color: rgba(167,139,250,0.4); box-shadow: 0 0 6px rgba(167,139,250,0.15); }
-      16%  { border-color: rgba(96,165,250,0.45); box-shadow: 0 0 6px rgba(96,165,250,0.18); }
-      33%  { border-color: rgba(52,211,153,0.45); box-shadow: 0 0 6px rgba(52,211,153,0.18); }
-      50%  { border-color: rgba(129,140,248,0.45); box-shadow: 0 0 6px rgba(129,140,248,0.18); }
-      66%  { border-color: rgba(244,114,182,0.45); box-shadow: 0 0 6px rgba(244,114,182,0.18); }
-      83%  { border-color: rgba(192,132,252,0.45); box-shadow: 0 0 6px rgba(192,132,252,0.18); }
-      100% { border-color: rgba(167,139,250,0.4); box-shadow: 0 0 6px rgba(167,139,250,0.15); }
+      0%   { border-color: rgba(167,139,250,0.4); }
+      16%  { border-color: rgba(96,165,250,0.45); }
+      33%  { border-color: rgba(52,211,153,0.45); }
+      50%  { border-color: rgba(129,140,248,0.45); }
+      66%  { border-color: rgba(244,114,182,0.45); }
+      83%  { border-color: rgba(192,132,252,0.45); }
+      100% { border-color: rgba(167,139,250,0.4); }
     }
     .finn-pill {
       animation: finnPillGlow 3s ease-in-out infinite;
@@ -257,19 +256,15 @@ interface GlassCardProps {
   tint?: { color: string; position?: string };
   [key: string]: unknown;
 }
-function GlassCard({ children, style, onPress, hovered, tint, ...rest }: GlassCardProps) {
+function GlassCard({ children, style, onPress, hovered, tint: _tint, ...rest }: GlassCardProps) {
   if (Platform.OS !== 'web') {
     const Comp = onPress ? Pressable : View;
     return <Comp style={[s.card, style]} onPress={onPress} {...rest}>{children}</Comp>;
   }
   const Comp = onPress ? Pressable : View;
-  const gradPos = tint ? (tintPositionMap[tint.position || 'top-right'] || 'top right') : null;
-  const bg = tint
-    ? `radial-gradient(ellipse at ${gradPos}, ${tint.color}10 0%, transparent 45%), ${CARD_BG}`
-    : CARD_BG;
   return (
     <Comp
-      style={[s.card, style, hovered && s.cardHover, Platform.OS === 'web' ? { background: bg, border: `1px solid ${CARD_BORDER}` } as WebStyle : undefined]}
+      style={[s.card, style, hovered && s.cardHover, Platform.OS === 'web' ? { background: CARD_BG, border: `1px solid ${CARD_BORDER}` } as WebStyle : undefined]}
       onPress={onPress}
       {...rest}
     >
@@ -621,15 +616,6 @@ function FinanceHubContent() {
           filter: brightness(1.25);
           transform: scale(1.04);
         }
-        .finn-session-btn {
-          background: linear-gradient(135deg, rgba(139,92,246,0.35) 0%, rgba(99,102,241,0.3) 50%, rgba(139,92,246,0.35) 100%);
-          border: 1px solid rgba(139,92,246,0.4);
-          transition: all 0.2s ease;
-        }
-        .finn-session-btn:hover {
-          background: linear-gradient(135deg, rgba(139,92,246,0.5) 0%, rgba(99,102,241,0.45) 50%, rgba(139,92,246,0.5) 100%);
-          border-color: rgba(139,92,246,0.6);
-        }
         @keyframes finnChatSlideIn {
           0% { opacity: 0; transform: translateY(12px); }
           100% { opacity: 1; transform: translateY(0); }
@@ -761,7 +747,7 @@ function FinanceHubContent() {
         zIndex: 1,
         alignItems: 'stretch',
       }}>
-        <div className={dashCardClass(1)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0 }}>
+        <div className={dashCardClass(1)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0, display: 'flex' }}>
           <SegmentRingCard
             title={dashConfig.ring.title}
             centerValue={dashConfig.ring.centerValue}
@@ -772,7 +758,7 @@ function FinanceHubContent() {
             loading={loading}
           />
         </div>
-        <div className={dashCardClass(2)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0 }}>
+        <div className={dashCardClass(2)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0, display: 'flex' }}>
           <QueueInstrumentCard
             title={dashConfig.queue.title}
             items={dashConfig.queue.items}
@@ -781,7 +767,7 @@ function FinanceHubContent() {
             loading={loading}
           />
         </div>
-        <div className={dashCardClass(3)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0 }}>
+        <div className={dashCardClass(3)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0, display: 'flex' }}>
           <InsightOverlayCard
             quote={dashConfig.insight.quote}
             sparkData={sparkData}
@@ -805,26 +791,26 @@ function FinanceHubContent() {
               onSelectMode={(mode) => handleModeSwitch(mode.id)}
             />
             {finnPanelNode}
-            {rightRailNode}
             {dashboardNode}
+            {rightRailNode}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-                <div style={{ flex: isDesktop ? '0 0 35%' : '0 0 40%', minWidth: 0 }}>
+                <div style={{ flex: '1 1 0', minWidth: 0 }}>
                   <StoryModeCarousel
                     activeMode={activeStoryMode}
                     onSelectMode={(mode) => handleModeSwitch(mode.id)}
                   />
                 </div>
-                <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+                <div style={{ flex: '1 1 0', minWidth: 0 }}>
                   {finnPanelNode}
                 </div>
               </div>
               {dashboardNode}
             </div>
-            <div style={{ flex: '0 0 260px', minWidth: 0 }}>
+            <div style={{ flex: `0 0 ${isDesktop ? 260 : 220}px`, minWidth: 0 }}>
               {rightRailNode}
             </div>
           </div>
