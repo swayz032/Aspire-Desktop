@@ -6,7 +6,7 @@ import React, {
   useState,
   TouchEvent,
 } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 
 export interface ThreeDCarouselItem {
   id: number | string;
@@ -28,7 +28,7 @@ const ThreeDCarousel = ({
   items,
   autoRotate = true,
   rotateInterval = 4000,
-  cardHeight = 420,
+  cardHeight = 460,
 }: ThreeDCarouselProps) => {
   const [active, setActive] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
@@ -52,7 +52,7 @@ const ThreeDCarousel = ({
     if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => setIsInView(entry.isIntersecting),
-      { threshold: 0.2 }
+      { threshold: 0.1 }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -85,17 +85,16 @@ const ThreeDCarousel = ({
     const base: React.CSSProperties = {
       position: 'absolute',
       top: 0,
-      left: 0,
       width: '100%',
-      display: 'flex',
-      justifyContent: 'center',
-      transition: 'transform 400ms ease, opacity 400ms ease',
+      maxWidth: 400,
+      transition: 'transform 500ms cubic-bezier(0.4,0,0.2,1), opacity 500ms ease',
     };
 
     if (isCenter) {
       return {
         ...base,
-        transform: 'scale(1) translateX(0)',
+        transform: 'translateX(-50%) scale(1)',
+        left: '50%',
         opacity: 1,
         zIndex: 20,
         pointerEvents: 'auto',
@@ -104,8 +103,9 @@ const ThreeDCarousel = ({
     if (isNext) {
       return {
         ...base,
-        transform: 'translateX(40%) scale(0.95)',
-        opacity: 0.60,
+        transform: 'translateX(calc(-50% + 60%)) scale(0.88)',
+        left: '50%',
+        opacity: 0.6,
         zIndex: 10,
         pointerEvents: 'auto',
         cursor: 'pointer',
@@ -114,8 +114,9 @@ const ThreeDCarousel = ({
     if (isPrev) {
       return {
         ...base,
-        transform: 'translateX(-40%) scale(0.95)',
-        opacity: 0.60,
+        transform: 'translateX(calc(-50% - 60%)) scale(0.88)',
+        left: '50%',
+        opacity: 0.6,
         zIndex: 10,
         pointerEvents: 'auto',
         cursor: 'pointer',
@@ -123,7 +124,10 @@ const ThreeDCarousel = ({
     }
     return {
       ...base,
-      transform: `translateX(${index > active ? 80 : -80}%) scale(0.9)`,
+      transform: index > active
+        ? 'translateX(calc(-50% + 120%)) scale(0.8)'
+        : 'translateX(calc(-50% - 120%)) scale(0.8)',
+      left: '50%',
       opacity: 0,
       zIndex: 0,
       pointerEvents: 'none',
@@ -140,18 +144,12 @@ const ThreeDCarousel = ({
         justifyContent: 'center',
       }}
     >
-      <div
-        style={{
-          width: '100%',
-          padding: '0 24px',
-          maxWidth: 1280,
-        }}
-      >
+      <div style={{ width: '100%' }}>
         <div
           style={{
             position: 'relative',
             overflow: 'hidden',
-            height: cardHeight + 80,
+            height: cardHeight + 56,
           }}
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
@@ -160,144 +158,166 @@ const ThreeDCarousel = ({
           onTouchEnd={onTouchEnd}
           ref={carouselRef}
         >
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {items.map((item, index) => {
-              const accent = item.accent || '#38BDF8';
-              return (
+          {items.map((item, index) => {
+            const accent = item.accent || '#38BDF8';
+            const isCenter = index === active;
+
+            return (
+              <div
+                key={item.id}
+                style={getCardStyle(index)}
+                onClick={() => {
+                  if (index !== active) setActive(index);
+                }}
+              >
                 <div
-                  key={item.id}
-                  style={getCardStyle(index)}
-                  onClick={() => {
-                    if (index !== active) setActive(index);
+                  style={{
+                    overflow: 'hidden',
+                    backgroundColor: '#0D0D12',
+                    height: cardHeight,
+                    border: `1px solid ${isCenter ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'}`,
+                    borderRadius: 16,
+                    boxShadow: isCenter
+                      ? '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)'
+                      : '0 4px 20px rgba(0,0,0,0.4)',
+                    display: 'flex',
+                    flexDirection: 'column',
                   }}
                 >
                   <div
                     style={{
-                      width: '70%',
-                      maxWidth: 320,
-                      overflow: 'hidden',
-                      backgroundColor: '#111116',
-                      height: cardHeight,
-                      border: '1px solid rgba(255,255,255,0.07)',
-                      borderRadius: 14,
-                      boxShadow: index === active
-                        ? '0 12px 40px rgba(0,0,0,0.55)'
-                        : '0 4px 18px rgba(0,0,0,0.35)',
+                      position: 'relative',
+                      height: 200,
+                      backgroundImage: `url(${item.imageUrl})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
                       display: 'flex',
-                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
                     }}
                   >
                     <div
                       style={{
-                        position: 'relative',
-                        backgroundColor: '#0A0A0F',
-                        height: '60%',
-                        overflow: 'hidden',
+                        position: 'absolute',
+                        inset: 0,
+                        background: `linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.72) 100%)`,
+                        pointerEvents: 'none',
                       }}
-                    >
-                      <img
-                        src={item.imageUrl}
-                        alt={item.title}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'contain',
-                          objectPosition: 'center',
-                          display: 'block',
-                        }}
-                      />
-                      <div
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          backgroundColor: accent,
-                          opacity: 0.25,
-                          pointerEvents: 'none',
-                        }}
-                      />
-                    </div>
-
+                    />
                     <div
                       style={{
-                        height: '40%',
-                        padding: '12px 14px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 6,
+                        position: 'relative',
+                        zIndex: 1,
+                        textAlign: 'center',
+                        color: '#ffffff',
+                        padding: '0 20px',
                       }}
                     >
                       <h3
                         style={{
-                          fontSize: 15,
-                          fontWeight: 700,
-                          color: '#ffffff',
+                          fontSize: 22,
+                          fontWeight: 800,
+                          letterSpacing: '0.04em',
+                          textTransform: 'uppercase',
                           margin: 0,
+                          marginBottom: 8,
+                          textShadow: '0 2px 12px rgba(0,0,0,0.6)',
                         }}
                       >
                         {item.title}
                       </h3>
+                      <div
+                        style={{
+                          width: 48,
+                          height: 3,
+                          backgroundColor: accent,
+                          borderRadius: 2,
+                          margin: '0 auto 8px',
+                        }}
+                      />
                       <p
                         style={{
-                          fontSize: 11,
-                          color: 'rgba(255,255,255,0.5)',
+                          fontSize: 12,
+                          color: 'rgba(255,255,255,0.75)',
                           margin: 0,
+                          textShadow: '0 1px 6px rgba(0,0,0,0.5)',
                         }}
                       >
                         {item.description}
                       </p>
+                    </div>
+                  </div>
 
-                      {item.tags && item.tags.length > 0 && (
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                          {item.tags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              style={{
-                                fontSize: 10,
-                                backgroundColor: 'rgba(255,255,255,0.06)',
-                                color: 'rgba(255,255,255,0.35)',
-                                borderRadius: 10,
-                                padding: '2px 8px',
-                              }}
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                  <div
+                    style={{
+                      flex: 1,
+                      padding: '16px 18px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                    }}
+                  >
+                    <h3
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: '#ffffff',
+                        margin: 0,
+                      }}
+                    >
+                      {item.title}
+                    </h3>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: 'rgba(255,255,255,0.45)',
+                        margin: 0,
+                      }}
+                    >
+                      {item.description}
+                    </p>
 
-                      <div
+                    {item.tags && item.tags.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                        {item.tags.map((tag, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              fontSize: 10,
+                              backgroundColor: 'rgba(255,255,255,0.06)',
+                              color: 'rgba(255,255,255,0.35)',
+                              borderRadius: 20,
+                              padding: '3px 9px',
+                              border: '1px solid rgba(255,255,255,0.08)',
+                            }}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 'auto' }}>
+                      <span
                         style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          color: accent,
-                          backgroundColor: accent + '26',
-                          borderRadius: 20,
-                          padding: '4px 10px',
-                          alignSelf: 'flex-start',
-                          marginTop: 'auto',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
+                          fontSize: 12,
+                          color: 'rgba(255,255,255,0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          cursor: 'pointer',
                         }}
                       >
-                        EXPLORE
-                      </div>
+                        Learn more
+                        <ArrowRight size={12} />
+                      </span>
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
 
           <button
             onClick={() =>
@@ -307,25 +327,25 @@ const ThreeDCarousel = ({
             style={{
               position: 'absolute',
               left: 8,
-              top: '50%',
+              top: '45%',
               transform: 'translateY(-50%)',
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(0,0,0,0.65)',
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(10,10,15,0.8)',
               backdropFilter: 'blur(8px)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'rgba(255,255,255,0.6)',
+              color: 'rgba(255,255,255,0.7)',
               zIndex: 30,
               transition: 'all 0.15s ease',
               padding: 0,
             }}
           >
-            <ChevronLeft size={14} color="currentColor" />
+            <ChevronLeft size={16} />
           </button>
           <button
             onClick={() => setActive((prev) => (prev + 1) % items.length)}
@@ -333,31 +353,31 @@ const ThreeDCarousel = ({
             style={{
               position: 'absolute',
               right: 8,
-              top: '50%',
+              top: '45%',
               transform: 'translateY(-50%)',
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(0,0,0,0.65)',
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(10,10,15,0.8)',
               backdropFilter: 'blur(8px)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'rgba(255,255,255,0.6)',
+              color: 'rgba(255,255,255,0.7)',
               zIndex: 30,
               transition: 'all 0.15s ease',
               padding: 0,
             }}
           >
-            <ChevronRight size={14} color="currentColor" />
+            <ChevronRight size={16} />
           </button>
 
           <div
             style={{
               position: 'absolute',
-              bottom: 6,
+              bottom: 8,
               left: 0,
               right: 0,
               display: 'flex',
@@ -373,7 +393,7 @@ const ThreeDCarousel = ({
                 onClick={() => setActive(idx)}
                 aria-label={`Go to item ${idx + 1}`}
                 style={{
-                  width: active === idx ? 18 : 6,
+                  width: active === idx ? 20 : 6,
                   height: 6,
                   borderRadius: 3,
                   border: 'none',
@@ -381,7 +401,7 @@ const ThreeDCarousel = ({
                   cursor: 'pointer',
                   background: active === idx
                     ? (item.accent || '#38BDF8')
-                    : 'rgba(255,255,255,0.15)',
+                    : 'rgba(255,255,255,0.2)',
                   transition: 'all 0.3s ease',
                   padding: 0,
                 }}
