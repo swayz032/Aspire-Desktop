@@ -1,0 +1,28 @@
+Equal-height dashboard cards — In index.tsx, set alignItems: 'stretch' on the 3-card support row container and ensure each card's outer wrapper passes height: '100%' down so all three fill to the same height.
+
+Remove Details section + Authority Queue — Delete the entire Details collapsible section from index.tsx including all ReconcileCard, LifecycleChain, and AuthorityQueue references. Remove any now-unused imports those components relied on.
+
+Expand selector row height / fix gap — Increase the StoryModeCarousel container height from 220px to ~340px and the Finn panel minHeight from 280 to ~340px. In the Finn panel, expand the finnFocus text block to 2-3 sentences and ensure the Finn orb video is centered vertically within its container.
+
+Rebuild StoryModeCarousel to Lightswind 3D style with photo backgrounds — Rewrite StoryModeCarousel.tsx so:
+
+Three cards visible: center (scale 1, opacity 1, z-index 20), left (translateX -40%, scale 0.95, opacity 0.60, z-index 10), right (translateX +40%, scale 0.95, opacity 0.60, z-index 10), others hidden.
+Each card is a tall card (~300-320px height). The top ~60% is an image background using the mode's assigned photo (imported via @assets/), with a subtle color overlay using the mode accent color at ~25% opacity so the photo shows clearly. The bottom ~40% is a dark gray content panel containing the mode name in bold, tagline, tags row, and an EXPLORE pill button styled with the mode accent color.
+Arrow nav buttons and dot indicator row remain. Auto-rotate when not hovered (pause on hover).
+Clicking a side card advances to it and fires onSelectMode.
+Photo + accent color assignments per mode (copy images from attached_assets/ into client/public/images/ or use @assets alias):
+Mode	Photo file	Accent color
+Cash Truth	IMG_2602_1773628066846.jpeg (icy aerial Alps mountains)	Ice blue #38BDF8
+What Changed	IMG_2600_1773628066846.jpeg (purple galaxy night sky)	Violet #A78BFA
+Invoice Pressure	IMG_2606_1773628066846.jpeg (bright burnt orange canyon)	Burnt orange #EA580C
+Tax Review	IMG_2598_1773628066846.jpeg (dark emerald forest lake)	Emerald #10B981
+Cleanup Sprint	IMG_2596_1773628066846.jpeg (dark deep red canyon)	Coral #F87171
+Books vs Bank	IMG_2599_1773628066846.jpeg (golden amber sunset trees)	Amber yellow #F59E0B
+Money Memory	IMG_2603_1773628066846.jpeg (pink/magenta palm sunset)	Magenta #E879F9
+The old blue ocean marble image (IMG_2594) is removed entirely. Do not use it for any mode.
+Unified single top bar — In FinanceHubShell.tsx, remove the <DesktopHeader> render and instead pass the right-side account controls (business name, Canvas button, bell, avatar) as a slot or inline into FinanceTopNav. In FinanceTopNav.tsx, restructure the bar so it has three zones in one height: 56px row:
+
+Left: "Finance Hub" as a large bold title (26-28px, white).
+Center: the existing pill nav container.
+Right: the business name / subtitle, Canvas button, bell icon, and user avatar (replicated or imported from DesktopHeader's right-side content). The bar background should be transparent or match #0A0A0F without a border-bottom that creates a visible second bar. DesktopHeader is no longer rendered inside FinanceHubShell.
+Right rail equal blocks and divider — In FinanceHubShell.tsx, increase the borderLeftColor opacity from 0.04 to 0.12 so the divider is visible. In FinanceRightRail.tsx, change the gap between blocks from 14 to 20px. In GreetingCard.tsx, increase padding from 16 to 22px and the greeting font from 20px to 24px so it is visually equal in size to the HealthScoreRing and FinnDailyBrief blocks.
