@@ -105,12 +105,18 @@ export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouse
     accent: m.accent,
   }));
 
+  const handleActivate = (item: ThreeDCarouselItem) => {
+    const mode = STORY_MODES.find(m => m.id === item.id);
+    if (mode && onSelectMode) onSelectMode(mode);
+  };
+
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <ThreeDCarousel
         items={items}
         autoRotate={true}
         rotateInterval={4000}
+        onActivate={handleActivate}
       />
     </div>
   );

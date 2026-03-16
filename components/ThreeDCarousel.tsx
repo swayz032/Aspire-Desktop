@@ -6,7 +6,7 @@ import React, {
   useState,
   TouchEvent,
 } from "react";
-import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export interface ThreeDCarouselItem {
   id: number | string;
@@ -25,6 +25,7 @@ interface ThreeDCarouselProps {
   rotateInterval?: number;
   cardHeight?: number;
   isMobileSwipe?: boolean;
+  onActivate?: (item: ThreeDCarouselItem) => void;
 }
 
 function useIsMobile(breakpoint = 1024) {
@@ -47,6 +48,7 @@ const ThreeDCarousel = ({
   rotateInterval = 4000,
   cardHeight = 440,
   isMobileSwipe = true,
+  onActivate,
 }: ThreeDCarouselProps) => {
   const [active, setActive] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
@@ -311,48 +313,34 @@ const ThreeDCarousel = ({
                         </div>
                       )}
 
-                      {/* Colored EXPLORE accent button */}
-                      <div
+                      {/* Big premium ACTIVATE button — only clickable on center card */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isCenter && onActivate) onActivate(item);
+                        }}
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          marginTop: 4,
+                          marginTop: 12,
+                          width: "100%",
+                          padding: "13px 0",
+                          borderRadius: 10,
+                          border: "none",
+                          outline: "none",
+                          cursor: isCenter ? "pointer" : "default",
+                          backgroundColor: isCenter ? accent : "rgba(255,255,255,0.06)",
+                          color: isCenter ? "#ffffff" : "rgba(255,255,255,0.25)",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          letterSpacing: "1.2px",
+                          textTransform: "uppercase",
+                          boxShadow: isCenter
+                            ? `0 0 20px ${accent}55, 0 4px 12px rgba(0,0,0,0.4)`
+                            : "none",
+                          transition: "all 0.2s ease",
                         }}
                       >
-                        <div
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: accent,
-                            backgroundColor: accent + "26",
-                            borderRadius: 20,
-                            padding: "4px 12px",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.6px",
-                          }}
-                        >
-                          EXPLORE
-                        </div>
-                        <a
-                          href={item.link || "#"}
-                          style={{
-                            color: "rgba(255,255,255,0.35)",
-                            display: "flex",
-                            alignItems: "center",
-                            textDecoration: "none",
-                            gap: 4,
-                            fontSize: 12,
-                          }}
-                          onClick={(e) => {
-                            if (!item.link || item.link === "#") e.preventDefault();
-                            else if (item.link.startsWith("/")) window.scrollTo(0, 0);
-                          }}
-                        >
-                          Learn more
-                          <ArrowRight style={{ width: 14, height: 14 }} />
-                        </a>
-                      </div>
+                        Activate
+                      </button>
                     </div>
                   </div>
                 </div>
