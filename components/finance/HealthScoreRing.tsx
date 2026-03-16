@@ -31,7 +31,7 @@ function deriveReasons(connectedCount: number, mismatchCount: number, cashRunway
   const reasons: { label: string; pts: string; color: string }[] = [];
 
   if (connectedCount >= 3) reasons.push({ label: '3+ accounts connected', pts: '+20', color: '#10B981' });
-  else if (connectedCount >= 1) reasons.push({ label: `${connectedCount} account${connectedCount > 1 ? 's' : ''} connected`, pts: '+10', color: '#F59E0B' });
+  else if (connectedCount >= 1) reasons.push({ label: '1\u20132 accounts connected', pts: '+10', color: '#F59E0B' });
   else reasons.push({ label: 'No accounts connected', pts: '+0', color: 'rgba(255,255,255,0.35)' });
 
   if (mismatchCount === 0) reasons.push({ label: 'No mismatches found', pts: '+20', color: '#10B981' });

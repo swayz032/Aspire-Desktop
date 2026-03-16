@@ -463,7 +463,8 @@ function FinanceHubContent() {
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = windowWidth >= BREAKPOINT_DESKTOP;
   const isLaptop = windowWidth >= BREAKPOINT_LAPTOP && windowWidth < BREAKPOINT_DESKTOP;
-  const isTablet = windowWidth < BREAKPOINT_LAPTOP;
+  const isTablet = windowWidth >= 768 && windowWidth < BREAKPOINT_LAPTOP;
+  const isMobile = windowWidth < 768;
   const [, setHoveredButton] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus | null>(null);
@@ -710,7 +711,7 @@ function FinanceHubContent() {
           </Pressable>
           <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 10 }} />
           <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, lineHeight: 16 }}>
-            Finn&apos;s focus: {dashConfig.finnFocus}
+            Finn&apos;s focus: {dashConfig.finnFocus} Finn is analyzing your latest transactions and reconciliation status to surface what matters most right now.
           </Text>
         </View>
       </View>
@@ -742,12 +743,12 @@ function FinanceHubContent() {
       <div style={{
         display: 'flex',
         gap: 12,
-        flexWrap: isTablet ? 'wrap' : 'nowrap' as const,
+        flexWrap: (isTablet || isMobile) ? 'wrap' : 'nowrap' as const,
         position: 'relative',
         zIndex: 1,
         alignItems: 'stretch',
       }}>
-        <div className={dashCardClass(1)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0, display: 'flex' }}>
+        <div className={dashCardClass(1)} style={{ flex: 1, minWidth: (isTablet || isMobile) ? '100%' : 0, display: 'flex' }}>
           <SegmentRingCard
             title={dashConfig.ring.title}
             centerValue={dashConfig.ring.centerValue}
@@ -758,7 +759,7 @@ function FinanceHubContent() {
             loading={loading}
           />
         </div>
-        <div className={dashCardClass(2)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0, display: 'flex' }}>
+        <div className={dashCardClass(2)} style={{ flex: 1, minWidth: (isTablet || isMobile) ? '100%' : 0, display: 'flex' }}>
           <QueueInstrumentCard
             title={dashConfig.queue.title}
             items={dashConfig.queue.items}
@@ -767,7 +768,7 @@ function FinanceHubContent() {
             loading={loading}
           />
         </div>
-        <div className={dashCardClass(3)} style={{ flex: 1, minWidth: isTablet ? '100%' : 0, display: 'flex' }}>
+        <div className={dashCardClass(3)} style={{ flex: 1, minWidth: (isTablet || isMobile) ? '100%' : 0, display: 'flex' }}>
           <InsightOverlayCard
             quote={dashConfig.insight.quote}
             sparkData={sparkData}
@@ -784,7 +785,7 @@ function FinanceHubContent() {
     <>
     <FinanceHubShell>
       {Platform.OS === 'web' ? (
-        isTablet ? (
+        (isTablet || isMobile) ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
             <StoryModeCarousel
               activeMode={activeStoryMode}
