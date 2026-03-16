@@ -61,7 +61,7 @@ const navPills: NavPill[] = [
     ],
   },
   { id: 'connections', label: 'Connections', route: '/finance-hub/connections' },
-  { id: 'receipts', label: 'Receipts', route: '/finance-hub/receipts' },
+  { id: 'receipts', label: 'Memory', route: '/finance-hub/receipts' },
 ];
 
 export function FinanceTopNav() {
