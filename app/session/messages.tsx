@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useSmsThreads, useSmsMessages } from '@/hooks/useSmsThreads';
@@ -458,7 +459,15 @@ const complianceStyles = StyleSheet.create({
 // Main Page Component
 // ---------------------------------------------------------------------------
 
-export default function MessagesPage() {
+export default function WrappedMessagesPage() {
+  return (
+    <PageErrorBoundary pageName="messages">
+      <MessagesPage />
+    </PageErrorBoundary>
+  );
+}
+
+function MessagesPage() {
   // -- Data hooks -----------------------------------------------------------
   const { threads, loading: threadsLoading, error: threadsError } = useSmsThreads();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);

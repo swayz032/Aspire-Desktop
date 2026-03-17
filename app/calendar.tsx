@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { getCalendarEvents } from '@/lib/api';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -26,7 +27,15 @@ interface CalendarEvent {
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function CalendarScreen() {
+export default function WrappedCalendarScreen() {
+  return (
+    <PageErrorBoundary pageName="calendar">
+      <CalendarScreen />
+    </PageErrorBoundary>
+  );
+}
+
+function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isWideScreen = width > 768;

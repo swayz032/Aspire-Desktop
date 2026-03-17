@@ -20,6 +20,7 @@ import { useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { AgentWidget } from '@/components/canvas/widgets/AgentWidget';
 import type { AgentActivityEvent } from '@/components/chat';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
 const finnAvatar = require('@/assets/avatars/finn.png');
@@ -992,7 +993,15 @@ function ContactPreview({ item }: { item: Contact }) {
   );
 }
 
-export default function InboxScreen() {
+export default function WrappedInboxScreen() {
+  return (
+    <PageErrorBoundary pageName="inbox">
+      <InboxScreen />
+    </PageErrorBoundary>
+  );
+}
+
+function InboxScreen() {
   const insets = useSafeAreaInsets();
   const isDesktop = useDesktop();
   const router = useRouter();
