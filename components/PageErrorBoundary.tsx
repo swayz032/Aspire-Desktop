@@ -10,6 +10,7 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import * as Sentry from '@sentry/react-native';
 import { reportError } from '@/lib/errorReporter';
 import { Colors } from '@/constants/tokens';
 
@@ -34,6 +35,17 @@ export class PageErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
+    try {
+      Sentry.captureException(error, {
+        extra: {
+          pageName: this.props.pageName,
+          componentStack: info.componentStack,
+        },
+      });
+    } catch {
+      // Sentry may not be initialized (no DSN) — safe to ignore
+    }
+
     reportError({
       title: `Page crash: ${this.props.pageName}`,
       severity: 'sev2',
