@@ -6,7 +6,7 @@ import React, {
   useState,
   TouchEvent,
 } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Feather } from "@expo/vector-icons";
 
 export interface ThreeDCarouselItem {
   id: number | string;
@@ -378,7 +378,7 @@ const ThreeDCarousel = ({
                 }
                 aria-label="Previous"
               >
-                <ChevronLeft style={{ width: 18, height: 18 }} />
+                <Feather name="chevron-left" size={18} color="currentColor" />
               </button>
               <button
                 style={{
@@ -403,7 +403,7 @@ const ThreeDCarousel = ({
                 onClick={() => setActive((prev) => (prev + 1) % items.length)}
                 aria-label="Next"
               >
-                <ChevronRight style={{ width: 18, height: 18 }} />
+                <Feather name="chevron-right" size={18} color="currentColor" />
               </button>
             </>
           )}
