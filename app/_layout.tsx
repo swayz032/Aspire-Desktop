@@ -16,6 +16,7 @@ import { IncomingCallOverlay } from '@/components/calls/IncomingCallOverlay';
 import { IncomingVideoCallOverlay } from '@/components/calls/IncomingVideoCallOverlay';
 import { useRealtimeConferenceInvitations } from '@/hooks/useRealtimeConferenceInvitations';
 import { useRealtimeApprovalRequests } from '@/hooks/useRealtimeApprovalRequests';
+import { useBackendConnectivity } from '@/hooks/useBackendConnectivity';
 import { useDesktop } from '@/lib/useDesktop';
 import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
@@ -198,6 +199,7 @@ function AppNavigator() {
   useAuthGate();
   useRealtimeConferenceInvitations();
   useRealtimeApprovalRequests();
+  useBackendConnectivity();
   const { showWarning, secondsLeft, extendSession } = useIdleTimeout();
 
   return (

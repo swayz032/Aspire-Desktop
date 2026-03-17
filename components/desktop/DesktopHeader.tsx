@@ -14,6 +14,7 @@ import {
   type VideoCallInvitation,
 } from '@/lib/incomingVideoCallStore';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
+import { useBackendConnected } from '@/lib/connectivityStore';
 
 interface Notification {
   id: string;
@@ -133,6 +134,9 @@ export function DesktopHeader({
     const officePart = officeDisplayId ? `Office ${officeDisplayId}` : 'Office Pending';
     return `${suitePart} \u00b7 ${officePart}`;
   }, [suiteDisplayId, officeDisplayId]);
+
+  // S3-M8: Backend connectivity status
+  const backendConnected = useBackendConnected();
 
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
@@ -477,7 +481,7 @@ export function DesktopHeader({
           >
             <View style={s.companyInfo}>
               <View style={s.statusRow}>
-                <View style={s.statusDot} />
+                <View style={[s.statusDot, !backendConnected && s.statusDotOffline]} />
                 <Text style={s.businessName} testID="desktop-header-business-name">{businessName}</Text>
               </View>
               <Text style={s.roleText}>{suiteIdentity}</Text>
@@ -651,7 +655,8 @@ const s = StyleSheet.create({
   suiteToggleActive: { backgroundColor: '#141416', borderColor: '#3C3C3E' },
   companyInfo: { alignItems: 'flex-end' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#4facfe' },
+  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#34d399' },
+  statusDotOffline: { backgroundColor: '#ef4444' },
   businessName: { fontSize: 14, fontWeight: '600', color: Colors.text.primary },
   roleText: { fontSize: 12, color: Colors.text.tertiary, marginTop: 2 },
 

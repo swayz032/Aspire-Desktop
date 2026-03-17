@@ -19,6 +19,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { devLog, devWarn, devError } from '@/lib/devLog';
 import { type AgentName, streamSpeak, getVoiceId, getVoiceConfig } from '../lib/elevenlabs';
 import { TtsWebSocket } from '../lib/tts-websocket';
 import { useDeepgramSTT } from './useDeepgramSTT';
@@ -151,6 +152,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Delay auth-loss shutdown to avoid false offline flips during token refresh.
   const authLossTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // SSE abort controller for cleanup on unmount/session-end (S3-H3)
+  const sseAbortRef = useRef<AbortController | null>(null);
   const currentTraceIdRef = useRef<string | null>(null);
   const audioUnlockedRef = useRef(false);
 
@@ -215,11 +218,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
     const url = URL.createObjectURL(audioBlob);
     const audio = new Audio(url);
-    (audio as any).playsInline = true;
+    audio.setAttribute('playsinline', '');
     audioRef.current = audio;
 
     audio.onerror = () => {
-      console.error('[useAgentVoice] Audio playback error for context', contextId);
+      devError('[useAgentVoice] Audio playback error for context', contextId);
       onError?.(new Error('Audio playback failed — response shown in chat.'));
       emitDiagnostic({
         traceId: currentTraceIdRef.current || nextTraceId(),
@@ -239,8 +242,9 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       if (activeRef.current) updateStatus('listening');
     };
 
-    audio.play().catch((playError: any) => {
-      console.error('[useAgentVoice] Autoplay blocked:', playError?.message);
+    audio.play().catch((playError: unknown) => {
+      const errorMsg = playError instanceof Error ? playError.message : String(playError);
+      devError('[useAgentVoice] Autoplay blocked:', errorMsg);
       lastAudioUrlRef.current = url;
       onError?.(new Error('Audio blocked by browser — tap to retry.'));
       emitDiagnostic({
@@ -248,7 +252,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         stage: 'autoplay',
         code: 'AUTOPLAY_BLOCKED',
         message: 'Browser blocked audio playback until user interaction.',
-        raw: playError?.message ? String(playError.message).slice(0, 220) : undefined,
+        raw: errorMsg ? errorMsg.slice(0, 220) : undefined,
         recoverable: true,
       });
       processingRef.current = false;
@@ -264,7 +268,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     if (typeof window === 'undefined') return true;
     if (audioUnlockedRef.current) return true;
     try {
-      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         const ctx = new AudioCtx();
         if (ctx.state === 'suspended') {
@@ -283,7 +287,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       const probe = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAABCxAgAEABAAZGF0YQAAAAA=');
       probe.muted = false;
       probe.volume = 0.00001;
-      (probe as any).playsInline = true;
+      probe.setAttribute('playsinline', '');
       await probe.play();
       probe.pause();
       probe.currentTime = 0;
@@ -330,7 +334,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
       const url = URL.createObjectURL(audioBlob);
       const audio = new Audio(url);
-      (audio as any).playsInline = true;
+      audio.setAttribute('playsinline', '');
       audioRef.current = audio;
 
       audio.onerror = () => {
@@ -355,7 +359,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
       try {
         await audio.play();
-      } catch (playError: any) {
+      } catch (playError: unknown) {
+        const errorMsg = playError instanceof Error ? playError.message : String(playError);
         lastAudioUrlRef.current = url;
         onError?.(new Error('Audio blocked by browser — tap to retry.'));
       emitDiagnostic({
@@ -363,7 +368,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         stage: 'autoplay',
         code: 'AUTOPLAY_BLOCKED',
         message: 'Browser blocked audio playback until user interaction.',
-        raw: playError?.message ? String(playError.message).slice(0, 220) : undefined,
+        raw: errorMsg ? errorMsg.slice(0, 220) : undefined,
         recoverable: true,
       });
         processingRef.current = false;
@@ -371,7 +376,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       }
     } else {
       if (!stream) {
-        console.error('[useAgentVoice] HTTP TTS stream returned null. Check ELEVENLABS_API_KEY.');
+        devError('[useAgentVoice] HTTP TTS stream returned null. Check ELEVENLABS_API_KEY.');
         onError?.(new Error('Voice synthesis unavailable — response shown in chat.'));
         emitDiagnostic({
           traceId: currentTraceIdRef.current || nextTraceId(),
@@ -487,53 +492,80 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       };
 
       // Wave 6: If onActivityEvent callback is provided, use SSE streaming.
+      // Uses fetch+ReadableStream instead of EventSource to support Authorization headers (S3-C2).
       if (options.onActivityEvent) {
-        const query = new URLSearchParams({
-          stream: 'true',
-          agent,
-          text,
-          channel: 'voice',
-          correlation_id: traceId,
-        });
-        if (suiteId) query.set('suiteId', suiteId);
+        const sseAbort = new AbortController();
+        // Store abort controller for cleanup on unmount (S3-H3)
+        sseAbortRef.current = sseAbort;
 
         try {
-          await new Promise<void>((resolve, reject) => {
-            const eventSource = new EventSource(`/api/orchestrator/intent?${query.toString()}`);
-            let completed = false;
+          const sseResp = await fetch('/api/orchestrator/intent', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'text/event-stream',
+              ...buildTraceHeaders(traceId),
+              ...(suiteId ? { 'X-Suite-Id': suiteId } : {}),
+              ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+            },
+            body: JSON.stringify({
+              stream: true,
+              agent,
+              text,
+              channel: 'voice',
+              correlation_id: traceId,
+              ...(options.userProfile ? { userProfile: options.userProfile } : {}),
+            }),
+            signal: sseAbort.signal,
+          });
 
-            eventSource.onmessage = (msg) => {
+          if (!sseResp.ok || !sseResp.body) {
+            throw new Error(`SSE request failed: ${sseResp.status}`);
+          }
+
+          const reader = sseResp.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let sseCompleted = false;
+
+          while (!sseCompleted) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
               try {
-                const event = JSON.parse(msg.data);
+                const event = JSON.parse(line.slice(6));
                 if (event.type === 'response') {
                   const payload = event.data || event;
                   responseText = payload.response || payload.text || responseText;
                   receiptId = payload.receipt_id || null;
-                  completed = true;
-                  eventSource.close();
-                  resolve();
-                  return;
+                  sseCompleted = true;
+                  break;
                 }
                 options.onActivityEvent?.(event);
               } catch (e) {
-                console.error('[useAgentVoice] Failed to parse SSE event:', e);
+                devError('[useAgentVoice] Failed to parse SSE event:', e);
               }
-            };
+            }
+          }
 
-            eventSource.onerror = () => {
-              if (completed) return;
-              eventSource.close();
-              emitDiagnostic({
-                traceId,
-                stage: 'orchestrator',
-                code: 'SSE_STREAM_DISCONNECTED',
-                message: 'Orchestrator SSE stream disconnected before response.',
-                recoverable: true,
-              });
-              reject(new Error('SSE stream failed'));
-            };
-          });
-        } catch {
+          reader.cancel().catch(() => {});
+          sseAbortRef.current = null;
+
+          if (!sseCompleted) {
+            throw new Error('SSE stream ended without response');
+          }
+        } catch (err) {
+          sseAbortRef.current = null;
+          if (sseAbort.signal.aborted) {
+            // Component unmounted or session ended — don't fallback
+            return;
+          }
           emitDiagnostic({
             traceId,
             stage: 'orchestrator',
@@ -568,7 +600,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         // Playback triggered by onContextDone callback â†’ playContextAudio()
       } else {
         // Fallback: HTTP streaming TTS
-        console.warn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
+        devWarn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
         await speakViaHttpStream(responseText, traceId);
       }
     } catch (error) {
@@ -764,14 +796,14 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         playContextAudio(contextId);
       },
       onConnected: () => {
-        console.log(`[useAgentVoice] WebSocket TTS connected for ${agent}`);
+        devLog(`[useAgentVoice] WebSocket TTS connected for ${agent}`);
       },
       onError: (err) => {
-        console.error('[useAgentVoice] WebSocket TTS error:', err.message);
+        devError('[useAgentVoice] WebSocket TTS error:', err.message);
         // Don't surface WS errors as user-facing â€” HTTP fallback handles it
       },
       onClose: () => {
-        console.warn('[useAgentVoice] WebSocket TTS disconnected â€” HTTP fallback active');
+        devWarn('[useAgentVoice] WebSocket TTS disconnected â€” HTTP fallback active');
         ttsWsRef.current = null;
       },
     });
@@ -790,7 +822,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       }, 30_000);
     } catch (wsErr) {
       // WebSocket TTS unavailable â€” HTTP streaming fallback will be used
-      console.warn(`[useAgentVoice] WebSocket TTS unavailable for ${agent} â€” using HTTP fallback:`, wsErr);
+      devWarn(`[useAgentVoice] WebSocket TTS unavailable for ${agent} â€” using HTTP fallback:`, wsErr);
       const msg = wsErr instanceof Error ? wsErr.message : String(wsErr);
       emitDiagnostic({
         traceId: currentTraceIdRef.current || nextTraceId(),
@@ -822,7 +854,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       setTimeout(() => {
         if (activeRef.current) updateStatus('listening');
       }, 2000);
-      console.warn(`STT unavailable for ${agent} â€” text input + TTS mode`);
+      devWarn(`STT unavailable for ${agent} â€” text input + TTS mode`);
     }
   }, [agent, updateStatus, stt, playContextAudio, emitDiagnostic, nextTraceId, unlockAudioPlayback, buildTraceHeaders, suiteId]);
 
@@ -835,6 +867,12 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     processingRef.current = false;
     currentContextRef.current = null;
     audioChunksRef.current.clear();
+
+    // Abort any in-flight SSE stream (S3-H3)
+    if (sseAbortRef.current) {
+      sseAbortRef.current.abort();
+      sseAbortRef.current = null;
+    }
 
     // Stop keep-alive timer
     if (keepAliveRef.current) {
@@ -885,7 +923,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     }, 10_000);
   }, [accessToken, endSession]);
 
-  // Cleanup keep-alive timer on unmount
+  // Cleanup keep-alive timer and SSE stream on unmount
   useEffect(() => {
     return () => {
       if (keepAliveRef.current) {
@@ -895,6 +933,10 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       if (authLossTimerRef.current) {
         clearTimeout(authLossTimerRef.current);
         authLossTimerRef.current = null;
+      }
+      if (sseAbortRef.current) {
+        sseAbortRef.current.abort();
+        sseAbortRef.current = null;
       }
     };
   }, []);
