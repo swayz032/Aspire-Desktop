@@ -19,6 +19,7 @@ import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useParticipants, useTracks, useRoomContext } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 import { LiveKitConferenceProvider, useKrisp } from '@/components/session/LiveKitConferenceProvider';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
 
@@ -347,7 +348,15 @@ function VideoTile({
   );
 }
 
-export default function ConferenceLive() {
+export default function ConferenceLivePage() {
+  return (
+    <PageErrorBoundary pageName="conference-live">
+      <ConferenceLive />
+    </PageErrorBoundary>
+  );
+}
+
+function ConferenceLive() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const isDesktop = useDesktop();

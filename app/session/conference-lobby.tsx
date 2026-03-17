@@ -35,6 +35,7 @@ import {
   type VideoCallInvitation,
 } from '@/lib/incomingVideoCallStore';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ─── Pulsing dot for pending/invited participants ────────────────────────────
 function PulsingDot({ color }: { color: string }) {
@@ -205,7 +206,15 @@ const getRiskConfig = (risk: AuthorityItem['risk']) => {
   }
 };
 
-export default function ConferenceLobby() {
+export default function ConferenceLobbyPage() {
+  return (
+    <PageErrorBoundary pageName="conference-lobby">
+      <ConferenceLobby />
+    </PageErrorBoundary>
+  );
+}
+
+function ConferenceLobby() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { session, suiteId } = useSupabase();

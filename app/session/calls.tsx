@@ -18,6 +18,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
@@ -262,7 +263,15 @@ function formatCallDuration(seconds: number): string {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function CallsScreen() {
+export default function CallsScreenPage() {
+  return (
+    <PageErrorBoundary pageName="calls">
+      <CallsScreen />
+    </PageErrorBoundary>
+  );
+}
+
+function CallsScreen() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { calls: rawCalls, loading: callsLoading, error: callsError, refresh } = useFrontdeskCalls({ pollInterval: 5000 });

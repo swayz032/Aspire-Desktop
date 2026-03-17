@@ -27,6 +27,7 @@
  */
 
 import { createClient, AnamEvent } from '@anam-ai/js-sdk';
+import { reportProviderError } from '@/lib/providerErrorReporter';
 
 export type AnamClientInstance = ReturnType<typeof createClient>;
 
@@ -80,7 +81,9 @@ export async function fetchAnamSessionToken(accessToken?: string): Promise<strin
   const resp = await fetch('/api/anam/session', { method: 'POST', headers });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ message: `HTTP ${resp.status}` }));
-    throw new Error(err.message || `Anam session failed: ${resp.status}`);
+    const error = new Error(err.message || `Anam session failed: ${resp.status}`);
+    reportProviderError({ provider: 'anam', action: 'session_token', error, component: 'fetchAnamSessionToken' });
+    throw error;
   }
   const data = await resp.json();
   if (!data.sessionToken) {
@@ -183,6 +186,7 @@ async function bindAnamSession(
     }
   } catch (error) {
     console.warn(`[Anam ${persona}] Failed to bind session context`, error);
+    reportProviderError({ provider: 'anam', action: `bind_session_${persona}`, error, component: 'bindAnamSession' });
   }
 }
 
@@ -241,6 +245,7 @@ export async function streamResponseToAvatar(
     }
   } catch (err) {
     console.warn('[Anam] Talk stream error, falling back:', err);
+    reportProviderError({ provider: 'anam', action: 'stream_response', error: err, component: 'streamResponseToAvatar' });
     if (typeof (client as any).talk === 'function') {
       (client as any).talk(responseText);
     }
@@ -377,6 +382,7 @@ export async function connectAnamAvatar(
     await bindIfNeeded(getActiveAnamSessionId(client));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    reportProviderError({ provider: 'anam', action: 'connect_avatar', error: err, component: 'connectAnamAvatar' });
     throw new Error(`Anam stream failed for #${videoElementId}: ${msg}`);
   }
   return client;
@@ -422,7 +428,9 @@ export async function fetchFinnSessionToken(accessToken?: string): Promise<strin
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ message: `HTTP ${resp.status}` }));
-    throw new Error(err.message || `Finn Anam session failed: ${resp.status}`);
+    const error = new Error(err.message || `Finn Anam session failed: ${resp.status}`);
+    reportProviderError({ provider: 'anam', action: 'finn_session_token', error, component: 'fetchFinnSessionToken' });
+    throw error;
   }
   const data = await resp.json();
   if (!data.sessionToken) {
@@ -471,6 +479,7 @@ export async function connectFinnAvatar(
     await bindIfNeeded(getActiveAnamSessionId(client));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    reportProviderError({ provider: 'anam', action: 'connect_finn_avatar', error: err, component: 'connectFinnAvatar' });
     throw new Error(`Anam stream failed for #${videoElementId}: ${msg}`);
   }
   return client;

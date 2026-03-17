@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions, ViewStyle } from 'react-native';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type WebStyle = ViewStyle & Record<string, unknown>;
 import { Ionicons } from '@expo/vector-icons';
@@ -438,22 +439,7 @@ function SectionLabel({ icon, label, color = '#555', ledDelay }: { icon: string;
 }
 
 
-class FinanceHubErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean; error: Error | null}> {
-  constructor(props: {children: React.ReactNode}) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
-  componentDidCatch(error: Error, info: React.ErrorInfo) { console.error('FinanceHub crash:', error, info); }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <View style={{ flex: 1, backgroundColor: '#0A0A0F', padding: 40, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: '#ef4444', fontSize: 18, fontWeight: '700', marginBottom: 12 }}>Finance Hub Error</Text>
-          <Text style={{ color: '#ccc', fontSize: 14 }}>{String(this.state.error)}</Text>
-        </View>
-      );
-    }
-    return this.props.children;
-  }
-}
+// FinanceHubErrorBoundary replaced by PageErrorBoundary with incident reporting.
 
 const BREAKPOINT_DESKTOP = 1280;
 const BREAKPOINT_LAPTOP = 960;
@@ -845,9 +831,9 @@ function FinanceHubContent() {
 
 export default function FinanceHubIndex() {
   return (
-    <FinanceHubErrorBoundary>
+    <PageErrorBoundary pageName="finance-hub">
       <FinanceHubContent />
-    </FinanceHubErrorBoundary>
+    </PageErrorBoundary>
   );
 }
 

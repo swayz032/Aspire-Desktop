@@ -1,0 +1,73 @@
+/**
+ * errorReporter — rate-limited incident reporter for the admin portal.
+ *
+ * Sends error reports to POST /admin/ops/incidents/report on the backend.
+ * Rate-limited to 5 reports per 60 seconds to avoid flooding.
+ * Best-effort: never crashes the app for reporting failures.
+ *
+ * Law #2: Receipt for All — errors are recorded as incidents.
+ * Law #3: Fail Closed — reporting failure is silently ignored (best-effort telemetry).
+ */
+
+import { buildTraceHeaders } from '@/lib/traceHeaders';
+
+const RATE_LIMIT = 5;
+const RATE_WINDOW_MS = 60_000;
+let _timestamps: number[] = [];
+
+export interface ErrorReportOptions {
+  title: string;
+  severity?: 'sev1' | 'sev2' | 'sev3' | 'sev4';
+  source?: string;
+  component?: string;
+  stackTrace?: string;
+  errorCode?: string;
+  message?: string;
+  suiteId?: string;
+  fingerprint?: string;
+}
+
+/**
+ * Report an error to the backend incident table.
+ * Rate-limited to RATE_LIMIT reports per RATE_WINDOW_MS.
+ * Returns silently on failure — never throws.
+ */
+export async function reportError(opts: ErrorReportOptions): Promise<void> {
+  const now = Date.now();
+  _timestamps = _timestamps.filter((t) => now - t < RATE_WINDOW_MS);
+  if (_timestamps.length >= RATE_LIMIT) return;
+  _timestamps.push(now);
+
+  try {
+    const trace = buildTraceHeaders();
+
+    await fetch('/admin/ops/incidents/report', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Correlation-Id': trace.correlationId,
+        'X-Trace-Id': trace.traceId,
+      },
+      body: JSON.stringify({
+        title: opts.title,
+        severity: opts.severity || 'sev3',
+        source: opts.source || 'desktop',
+        component: opts.component,
+        stack_trace: opts.stackTrace?.substring(0, 4000),
+        error_code: opts.errorCode,
+        message: opts.message?.substring(0, 1000),
+        suite_id: opts.suiteId,
+        fingerprint: opts.fingerprint,
+      }),
+    });
+  } catch {
+    // Best-effort — never crash the app for reporting
+  }
+}
+
+/**
+ * Reset rate limiter timestamps (for testing).
+ */
+export function _resetRateLimiter(): void {
+  _timestamps = [];
+}

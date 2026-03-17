@@ -13,6 +13,7 @@ import { Toast } from '@/components/session/Toast';
 import { BottomSheet } from '@/components/session/BottomSheet';
 import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /** Map staff participant IDs from the session wizard to AgentName for useAgentVoice. */
 const STAFF_TO_AGENT: Record<string, AgentName> = {
@@ -48,7 +49,15 @@ const MENU_OPTIONS = [
   { id: 'end', label: 'End Session', icon: 'stop-circle' as const, destructive: true },
 ];
 
-export default function VoiceSession() {
+export default function VoiceSessionPage() {
+  return (
+    <PageErrorBoundary pageName="voice-session">
+      <VoiceSession />
+    </PageErrorBoundary>
+  );
+}
+
+function VoiceSession() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { session: authSession, suiteId } = useSupabase();

@@ -5,6 +5,7 @@
  * Returns live transcription text from a MediaStream (microphone).
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { reportProviderError } from '@/lib/providerErrorReporter';
 
 interface UseDeepgramSTTOptions {
   /** Whether to start listening immediately */
@@ -111,12 +112,14 @@ export function useDeepgramSTT(
 
       ws.onerror = () => {
         setError('Voice connection interrupted');
+        reportProviderError({ provider: 'deepgram', action: 'stt_reconnect_ws_error', error: new Error('WebSocket error during reconnect'), component: 'useDeepgramSTT' });
         stop();
       };
 
       ws.onclose = () => setIsListening(false);
     } catch (err: any) {
       setError(err.message);
+      reportProviderError({ provider: 'deepgram', action: 'stt_reconnect', error: err, component: 'useDeepgramSTT' });
       stop();
     }
   }, [stop]);
@@ -181,6 +184,7 @@ export function useDeepgramSTT(
       };
 
       ws.onerror = () => {
+        reportProviderError({ provider: 'deepgram', action: 'stt_ws_error', error: new Error('WebSocket error'), component: 'useDeepgramSTT' });
         // H17: Retry on error with exponential backoff (up to MAX_STT_RETRIES)
         if (mediaRecorderRef.current) {
           mediaRecorderRef.current.stop();
@@ -217,6 +221,7 @@ export function useDeepgramSTT(
       };
     } catch (err: any) {
       setError(err.message);
+      reportProviderError({ provider: 'deepgram', action: 'stt_start', error: err, component: 'useDeepgramSTT' });
       stop();
     }
   }, [stop, reconnectWs]);

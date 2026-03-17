@@ -93,6 +93,8 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
   },
 };
 
+import { reportProviderError } from '@/lib/providerErrorReporter';
+
 export type AgentName = keyof typeof AGENT_VOICES;
 
 /**
@@ -148,16 +150,19 @@ export async function speakText(
     });
     if (!resp.ok) {
       console.error(`[TTS] ElevenLabs returned ${resp.status} for agent "${agent}"`);
+      reportProviderError({ provider: 'elevenlabs', action: 'tts', error: new Error(`HTTP ${resp.status} for agent "${agent}"`), component: 'speakText' });
       return null;
     }
     const contentType = resp.headers.get('content-type') || '';
     if (!contentType.includes('audio/')) {
       console.error('[TTS] Server returned non-audio content-type:', contentType);
+      reportProviderError({ provider: 'elevenlabs', action: 'tts_content_type', error: new Error(`Non-audio content-type: ${contentType}`), component: 'speakText' });
       return null;
     }
     return await resp.blob();
   } catch (err) {
     console.error('[TTS] ElevenLabs request failed:', err instanceof Error ? err.message : err);
+    reportProviderError({ provider: 'elevenlabs', action: 'tts', error: err, component: 'speakText' });
     return null;
   }
 }
@@ -193,9 +198,13 @@ export async function streamSpeak(
         voiceSettings: config.voiceSettings,
       }),
     });
-    if (!resp.ok || !resp.body) return null;
+    if (!resp.ok || !resp.body) {
+      reportProviderError({ provider: 'elevenlabs', action: 'tts_stream', error: new Error(`HTTP ${resp.status}`), component: 'streamSpeak' });
+      return null;
+    }
     return resp.body;
-  } catch {
+  } catch (err) {
+    reportProviderError({ provider: 'elevenlabs', action: 'tts_stream', error: err, component: 'streamSpeak' });
     return null;
   }
 }

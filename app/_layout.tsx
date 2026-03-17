@@ -21,6 +21,7 @@ import { useDesktop } from '@/lib/useDesktop';
 import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
+import { reportError } from '@/lib/errorReporter';
 
 /**
  * Global Error Boundary — prevents white screen on uncaught errors.
@@ -42,6 +43,15 @@ class GlobalErrorBoundary extends React.Component<
       source: 'global_error_boundary',
       message: error.message.slice(0, 180),
       has_stack: !!info.componentStack,
+    });
+    reportError({
+      title: 'Global app crash',
+      severity: 'sev1',
+      component: 'GlobalErrorBoundary',
+      stackTrace: (info.componentStack || error.stack || '').substring(0, 4000),
+      errorCode: 'GLOBAL_CRASH',
+      message: error.message,
+      fingerprint: `desktop:global_crash:${error.message?.substring(0, 50)}`,
     });
   }
 
