@@ -58,6 +58,13 @@ export async function reportError(opts: ErrorReportOptions): Promise<void> {
         message: opts.message?.substring(0, 1000),
         suite_id: opts.suiteId,
         fingerprint: opts.fingerprint,
+        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        evidence_pack: {
+          source: opts.source || 'desktop',
+          component: opts.component,
+          user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+          stack_trace: opts.stackTrace?.substring(0, 4000),
+        },
       }),
     });
   } catch {
