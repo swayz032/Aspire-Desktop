@@ -77,7 +77,7 @@ function VoiceTestContent() {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         if (blob.size < 500) {
-          setDiag({ error: 'Recording too short. Hold the mic button and speak.', errorStage: 'stt' });
+          setDiag({ error: 'Recording too short. Tap mic, speak, then tap again to stop.', errorStage: 'stt' });
           setStage('error');
           return;
         }
@@ -105,6 +105,15 @@ function VoiceTestContent() {
       setStage('thinking');
     }
   }, []);
+
+  // Toggle mic — tap to start, tap to stop (real voice session pattern)
+  const toggleMic = useCallback(() => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  }, [isRecording, startRecording, stopRecording]);
 
   // --- STT: send audio blob to ElevenLabs STT via our server ---
   const processAudioBlob = useCallback(
@@ -400,7 +409,7 @@ function VoiceTestContent() {
             </Pressable>
           </View>
 
-          {/* Mic button */}
+          {/* Mic button — tap to start, tap to stop */}
           <View style={styles.micSection}>
             <Pressable
               style={[
@@ -408,15 +417,14 @@ function VoiceTestContent() {
                 isRecording && styles.micBtnRecording,
                 (stage === 'thinking' || stage === 'speaking') && styles.micBtnDisabled,
               ]}
-              onPressIn={startRecording}
-              onPressOut={stopRecording}
+              onPress={toggleMic}
               disabled={stage === 'thinking' || stage === 'speaking'}
             >
               {stage === 'thinking' || stage === 'speaking' ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Ionicons
-                  name={isRecording ? 'radio' : 'mic'}
+                  name={isRecording ? 'stop' : 'mic'}
                   size={32}
                   color="#fff"
                 />
@@ -424,12 +432,12 @@ function VoiceTestContent() {
             </Pressable>
             <Text style={styles.micHint}>
               {isRecording
-                ? 'Release to send'
+                ? 'Tap to stop recording'
                 : stage === 'thinking'
                   ? 'Generating response...'
                   : stage === 'speaking'
                     ? 'Playing audio...'
-                    : 'Hold to speak'}
+                    : 'Tap to start speaking'}
             </Text>
           </View>
         </View>
