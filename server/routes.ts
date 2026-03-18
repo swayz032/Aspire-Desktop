@@ -6210,4 +6210,105 @@ router.get('/api/signing/:token', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Voice Pipeline Bypass Test ─────────────────────────────────────────────
+// Skips orchestrator/LangGraph entirely: OpenAI direct → ElevenLabs TTS direct
+// Used to isolate whether voice issues are in the orchestrator or the audio pipeline
+router.post('/api/voice-test/bypass', async (req: Request, res: Response) => {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const { text, agent = 'ava' } = req.body || {};
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ error: 'text field required' });
+  }
+
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.ASPIRE_OPENAI_API_KEY;
+  const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+
+  if (!OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY not configured', stage: 'llm' });
+  }
+  if (!ELEVENLABS_API_KEY) {
+    return res.status(500).json({ error: 'ELEVENLABS_API_KEY not configured', stage: 'tts' });
+  }
+
+  const voiceId = VOICE_IDS[agent] || VOICE_IDS.ava;
+  const voiceModel = VOICE_MODELS[agent] || 'eleven_flash_v2_5';
+  const voiceSettings = VOICE_SETTINGS[agent] || VOICE_SETTINGS.ava;
+
+  try {
+    // Step 1: OpenAI direct (no orchestrator, no LangGraph, no routing)
+    const llmStart = Date.now();
+    const llmResp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are Ava, a friendly executive AI assistant. Keep responses under 2 sentences.' },
+          { role: 'user', content: text },
+        ],
+        max_completion_tokens: 256,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!llmResp.ok) {
+      const err = await llmResp.text();
+      return res.status(502).json({ error: `OpenAI error: ${llmResp.status}`, detail: err.substring(0, 300), stage: 'llm' });
+    }
+
+    const llmData = await llmResp.json() as { choices?: { message?: { content?: string } }[] };
+    const responseText = llmData.choices?.[0]?.message?.content || 'I could not generate a response.';
+    const llmMs = Date.now() - llmStart;
+
+    // Step 2: ElevenLabs TTS direct (no WebSocket, simple HTTP stream)
+    const ttsStart = Date.now();
+    const ttsResp = await fetchWithTimeoutAndRetry(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=${encodeURIComponent(DEFAULT_TTS_OUTPUT_FORMAT)}`,
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
+        },
+        body: JSON.stringify({
+          text: responseText.trim(),
+          model_id: voiceModel,
+          voice_settings: voiceSettings,
+        }),
+      },
+      { timeoutMs: 20_000, retries: 1, retryOnStatuses: [429, 500, 502, 503, 504] },
+    );
+
+    if (!ttsResp.ok || !ttsResp.body) {
+      const err = await ttsResp.text();
+      return res.status(502).json({ error: `ElevenLabs error: ${ttsResp.status}`, detail: err.substring(0, 300), stage: 'tts', responseText });
+    }
+
+    const ttsMs = Date.now() - ttsStart;
+
+    // Stream audio back to client
+    res.set('Content-Type', 'audio/mpeg');
+    res.set('Transfer-Encoding', 'chunked');
+    res.set('X-LLM-Response', Buffer.from(responseText).toString('base64'));
+    res.set('X-LLM-Latency-Ms', String(llmMs));
+    res.set('X-TTS-Latency-Ms', String(ttsMs));
+
+    const reader = ttsResp.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) { res.end(); break; }
+      res.write(value);
+    }
+  } catch (error: unknown) {
+    logger.error('Voice bypass test error', { error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown', stage: 'unknown' });
+  }
+});
+
 export default router;

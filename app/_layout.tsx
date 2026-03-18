@@ -338,6 +338,13 @@ function AppNavigator() {
             presentation: 'card'
           }}
         />
+        <Stack.Screen
+          name="voice-test"
+          options={{
+            headerShown: false,
+            presentation: isDesktop ? 'card' : 'modal'
+          }}
+        />
         <Stack.Screen name="+not-found" />
       </Stack>
       <IncomingCallOverlay />

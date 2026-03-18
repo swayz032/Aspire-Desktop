@@ -131,6 +131,18 @@ function MoreContent() {
           />
         </View>
 
+        <SectionDivider title="Developer Tools" />
+
+        <View style={styles.menuSection}>
+          <MenuItem
+            icon="pulse"
+            title="Voice Pipeline Test"
+            subtitle="Bypass orchestrator — test OpenAI → ElevenLabs → audio"
+            onPress={() => router.push('/voice-test')}
+            isHighlighted={true}
+          />
+        </View>
+
         <SectionDivider title="Support" />
 
         <View style={styles.menuSection}>
