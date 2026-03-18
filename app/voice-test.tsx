@@ -48,6 +48,10 @@ function VoiceTestContent() {
   const chunksRef = useRef<Blob[]>([]);
   const scrollRef = useRef<ScrollView>(null);
   const activeRef = useRef(false); // whether voice session is active
+  const vadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const silenceStartRef = useRef<number>(0);
 
   const agentInfo = AGENTS.find((a) => a.id === selectedAgent) || AGENTS[0];
 
@@ -61,6 +65,67 @@ function VoiceTestContent() {
     setTurns((prev) => [...prev, turn]);
     setTimeout(() => scrollRef.current?.scrollToEnd?.({ animated: true }), 100);
   }, []);
+
+  // --- VAD: stop recording after silence ---
+  const stopVAD = useCallback(() => {
+    if (vadIntervalRef.current) {
+      clearInterval(vadIntervalRef.current);
+      vadIntervalRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+  }, []);
+
+  const startVAD = useCallback((stream: MediaStream) => {
+    try {
+      const ctx = new AudioContext();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.3;
+      source.connect(analyser);
+
+      audioContextRef.current = ctx;
+      analyserRef.current = analyser;
+      silenceStartRef.current = 0;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let hasSpoken = false;
+
+      vadIntervalRef.current = setInterval(() => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+
+        // RMS energy
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+        const rms = Math.sqrt(sum / dataArray.length);
+
+        const SPEECH_THRESHOLD = 25;
+        const SILENCE_DURATION_MS = 1500;
+
+        if (rms > SPEECH_THRESHOLD) {
+          hasSpoken = true;
+          silenceStartRef.current = 0;
+        } else if (hasSpoken) {
+          if (silenceStartRef.current === 0) {
+            silenceStartRef.current = Date.now();
+          } else if (Date.now() - silenceStartRef.current > SILENCE_DURATION_MS) {
+            // User stopped speaking — auto-stop recording
+            stopVAD();
+            if (mediaRecorderRef.current?.state === 'recording') {
+              mediaRecorderRef.current.stop();
+            }
+          }
+        }
+      }, 100);
+    } catch {
+      // VAD failed — user will need to tap mic to stop
+    }
+  }, [stopVAD]);
 
   // --- Start listening ---
   const startListening = useCallback(async () => {
@@ -81,12 +146,16 @@ function VoiceTestContent() {
       };
 
       recorder.onstop = async () => {
+        stopVAD();
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         if (blob.size < 500) {
-          setError('Too short — speak a bit longer');
-          setState(activeRef.current ? 'listening' : 'idle');
-          if (activeRef.current) startListening();
+          // Too short — just go back to listening silently
+          if (activeRef.current && autoListen) {
+            startListening();
+          } else {
+            setState('idle');
+          }
           return;
         }
         await processVoice(blob);
@@ -94,11 +163,14 @@ function VoiceTestContent() {
 
       mediaRecorderRef.current = recorder;
       recorder.start();
+
+      // Start VAD for auto-stop on silence
+      startVAD(stream);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Mic access denied');
       setState('idle');
     }
-  }, [session]);
+  }, [session, autoListen, startVAD, stopVAD]);
 
   // --- Stop listening ---
   const stopListening = useCallback(() => {
@@ -223,6 +295,7 @@ function VoiceTestContent() {
     if (activeRef.current) {
       // End session
       activeRef.current = false;
+      stopVAD();
       stopListening();
       if (audioRef.current) {
         audioRef.current.pause();
@@ -235,19 +308,20 @@ function VoiceTestContent() {
       setError(null);
       startListening();
     }
-  }, [startListening, stopListening]);
+  }, [startListening, stopListening, stopVAD]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       activeRef.current = false;
+      stopVAD();
       mediaRecorderRef.current?.stop?.();
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = '';
       }
     };
-  }, []);
+  }, [stopVAD]);
 
   const stateColors: Record<SessionState, string> = {
     idle: Colors.text.muted,

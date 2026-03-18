@@ -6237,9 +6237,9 @@ router.post('/api/voice-test/bypass', async (req: Request, res: Response) => {
   const voiceSettings = VOICE_SETTINGS[agent] || VOICE_SETTINGS.ava;
 
   try {
-    // Step 1: OpenAI direct (no orchestrator, no LangGraph, no routing)
+    // Step 1: OpenAI Responses API direct (no orchestrator, no LangGraph, no routing)
     const llmStart = Date.now();
-    const llmResp = await fetch('https://api.openai.com/v1/chat/completions', {
+    const llmResp = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
@@ -6247,11 +6247,9 @@ router.post('/api/voice-test/bypass', async (req: Request, res: Response) => {
       },
       body: JSON.stringify({
         model: 'gpt-5-mini',
-        messages: [
-          { role: 'system', content: 'You are Ava, a friendly executive AI assistant. Keep responses under 2 sentences.' },
-          { role: 'user', content: text },
-        ],
-        max_completion_tokens: 256,
+        instructions: 'You are Ava, a friendly executive AI assistant. Keep responses under 2 sentences.',
+        input: text,
+        max_output_tokens: 256,
         temperature: 0.7,
       }),
     });
@@ -6261,8 +6259,8 @@ router.post('/api/voice-test/bypass', async (req: Request, res: Response) => {
       return res.status(502).json({ error: `OpenAI error: ${llmResp.status}`, detail: err.substring(0, 300), stage: 'llm' });
     }
 
-    const llmData = await llmResp.json() as { choices?: { message?: { content?: string } }[] };
-    const responseText = llmData.choices?.[0]?.message?.content || 'I could not generate a response.';
+    const llmData = await llmResp.json() as { output?: { content?: string }[]; output_text?: string };
+    const responseText = llmData.output_text || llmData.output?.[0]?.content || 'I could not generate a response.';
     const llmMs = Date.now() - llmStart;
 
     // Step 2: ElevenLabs TTS direct (no WebSocket, simple HTTP stream)
