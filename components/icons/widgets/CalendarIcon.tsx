@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Rect, Path, Text as SvgText } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CalendarIconProps {
   size?: number;
   color?: string;
 }
 
-export function CalendarIcon({ size = 28, color = '#FFFFFF' }: CalendarIconProps) {
+function CalendarIconInner({ size = 28, color = '#FFFFFF' }: CalendarIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -31,5 +32,13 @@ export function CalendarIcon({ size = 28, color = '#FFFFFF' }: CalendarIconProps
         31
       </SvgText>
     </Svg>
+  );
+}
+
+export function CalendarIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="calendar-icon">
+      <CalendarIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

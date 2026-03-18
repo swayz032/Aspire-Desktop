@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -67,7 +68,7 @@ const EMPTY_FORM = {
   country: '',
 };
 
-export default function ClientsPage() {
+function ClientsContent() {
   const [customers, setCustomers] = useState<StripeCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1159,3 +1160,12 @@ const s = StyleSheet.create({
     fontSize: 14,
   },
 });
+
+
+export default function ClientsPage() {
+  return (
+    <PageErrorBoundary pageName="finance-clients">
+      <ClientsContent />
+    </PageErrorBoundary>
+  );
+}

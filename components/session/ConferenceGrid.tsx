@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Dimensions, Pressable } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { ParticipantTile, ConferenceParticipant } from './ParticipantTile';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ConferenceGridProps {
   participants: ConferenceParticipant[];
@@ -13,7 +14,7 @@ interface ConferenceGridProps {
   onLayoutToggle?: () => void;
 }
 
-export function ConferenceGrid({ 
+function ConferenceGridInner({ 
   participants,
   layout = 'gallery',
   activeSpeakerId,
@@ -206,3 +207,11 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
 });
+
+export function ConferenceGrid(props: any) {
+  return (
+    <PageErrorBoundary pageName="conference-grid">
+      <ConferenceGridInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export interface AuthorityItem {
   id: string;
@@ -56,7 +57,7 @@ const TYPE_CONFIG = {
   },
 };
 
-export function InCallAuthorityCard({
+function InCallAuthorityCardInner({
   item,
   onApprove,
   onDeny,
@@ -448,3 +449,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+export function InCallAuthorityCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="in-call-authority-card">
+      <InCallAuthorityCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

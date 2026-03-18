@@ -7,8 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { CashPositionContent } from '@/components/finance/CashPositionContent';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function CashPositionScreen() {
+function CashPositionPageContent() {
   const insets = useSafeAreaInsets();
   const isDesktop = useDesktop();
 
@@ -47,6 +48,14 @@ export default function CashPositionScreen() {
   );
 }
 
+
+export default function CashPositionScreen() {
+  return (
+    <PageErrorBoundary pageName="cash-position">
+      <CashPositionPageContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

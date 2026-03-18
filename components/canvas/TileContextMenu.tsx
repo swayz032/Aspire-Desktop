@@ -19,6 +19,7 @@ import {
   Canvas,
 } from '@/constants/tokens';
 import { getTile, type TileVerb } from '@/lib/tileManifest';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -90,7 +91,7 @@ function getAdjustedPosition(
 // Component
 // ---------------------------------------------------------------------------
 
-export function TileContextMenu({
+function TileContextMenuInner({
   tileId,
   position,
   onClose,
@@ -304,3 +305,11 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
 });
+
+export function TileContextMenu(props: any) {
+  return (
+    <PageErrorBoundary pageName="tile-context-menu">
+      <TileContextMenuInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type ViewMode = 'engine' | 'results';
 
@@ -186,7 +187,7 @@ function DocCard({ doc, onOpen }: { doc: DocItem; onOpen?: (doc: DocItem) => voi
   );
 }
 
-export default function FinanceMemoryPage() {
+function FinanceMemoryContent() {
   const [view, setView] = useState<ViewMode>('engine');
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
@@ -526,5 +527,14 @@ export default function FinanceMemoryPage() {
         )}
       </div>
     </FinanceHubShell>
+  );
+}
+
+
+export default function FinanceMemoryPage() {
+  return (
+    <PageErrorBoundary pageName="finance-receipts">
+      <FinanceMemoryContent />
+    </PageErrorBoundary>
   );
 }

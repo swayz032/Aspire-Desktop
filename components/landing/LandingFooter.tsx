@@ -1,4 +1,5 @@
 import React from 'react';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const footerLinks = {
   Product: ['Features', 'Canvas', 'AI Staff', 'Finance Hub', 'Authority Queue'],
@@ -6,7 +7,7 @@ const footerLinks = {
   Legal: ['Privacy Policy', 'Terms of Service', 'Security', 'Cookie Policy'],
 };
 
-export default function LandingFooter() {
+function LandingFooterInner() {
   return (
     <footer style={{
       background: '#050508',
@@ -96,5 +97,13 @@ export default function LandingFooter() {
         </div>
       </div>
     </footer>
+  );
+}
+
+export default function LandingFooter(props: any) {
+  return (
+    <PageErrorBoundary pageName="landing-footer">
+      <LandingFooterInner {...props} />
+    </PageErrorBoundary>
   );
 }

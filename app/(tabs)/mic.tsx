@@ -4,8 +4,9 @@ import { Colors, Typography, Spacing } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { useDesktop } from '@/lib/useDesktop';
 import { useRouter } from 'expo-router';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function MicScreen() {
+function MicContent() {
   const isDesktop = useDesktop();
   const router = useRouter();
 
@@ -34,6 +35,14 @@ export default function MicScreen() {
   );
 }
 
+
+export default function MicScreen() {
+  return (
+    <PageErrorBoundary pageName="mic">
+      <MicContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

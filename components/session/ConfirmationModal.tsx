@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ConfirmationModalProps {
   visible: boolean;
@@ -15,7 +16,7 @@ interface ConfirmationModalProps {
   icon?: keyof typeof Ionicons.glyphMap;
 }
 
-export function ConfirmationModal({ 
+function ConfirmationModalInner({ 
   visible, 
   onClose, 
   onConfirm, 
@@ -153,3 +154,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+
+export function ConfirmationModal(props: any) {
+  return (
+    <PageErrorBoundary pageName="confirmation-modal">
+      <ConfirmationModalInner {...props} />
+    </PageErrorBoundary>
+  );
+}

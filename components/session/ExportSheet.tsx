@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ExportSheetProps {
   visible: boolean;
@@ -16,7 +17,7 @@ const EXPORT_OPTIONS = [
   { id: 'json' as const, label: 'Export as JSON', icon: 'code' as keyof typeof Ionicons.glyphMap, description: 'Structured data format' },
 ];
 
-export function ExportSheet({ visible, onClose, transcriptLength, onExport }: ExportSheetProps) {
+function ExportSheetInner({ visible, onClose, transcriptLength, onExport }: ExportSheetProps) {
   return (
     <Modal
       visible={visible}
@@ -170,3 +171,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export function ExportSheet(props: any) {
+  return (
+    <PageErrorBoundary pageName="export-sheet">
+      <ExportSheetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -8,6 +8,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ViewStyle } from 'react-na
 import { Ionicons } from '@expo/vector-icons';
 import { SectionHeader, TextField, SelectField, Divider } from '../SettingsField';
 import { SettingsColors, TRANSITION_SMOOTH } from '../settingsConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const CATEGORY_OPTIONS = [
   { value: 'bug', label: 'Bug Report' },
@@ -28,7 +29,7 @@ const RATING_ICONS: (keyof typeof Ionicons.glyphMap)[] = [
 ];
 const RATING_COLORS = ['#ef4444', '#f59e0b', '#6e6e73', '#10B981', '#3B82F6'];
 
-export default function FeedbackSection() {
+function FeedbackSectionInner() {
   const [category, setCategory] = useState('improvement');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
@@ -244,3 +245,11 @@ const styles = StyleSheet.create({
     color: '#a1a1a6',
   },
 });
+
+export default function FeedbackSection(props: any) {
+  return (
+    <PageErrorBoundary pageName="feedback-section">
+      <FeedbackSectionInner {...props} />
+    </PageErrorBoundary>
+  );
+}

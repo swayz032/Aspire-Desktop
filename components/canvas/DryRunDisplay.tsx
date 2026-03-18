@@ -19,6 +19,7 @@ import {
 import { getTile } from '@/lib/tileManifest';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { Badge } from '@/components/ui/Badge';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Web keyframes (injected once)
@@ -125,7 +126,7 @@ function formatTimestamp(): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export function DryRunDisplay({
+function DryRunDisplayInner({
   tileId,
   verbId,
   riskTier,
@@ -440,3 +441,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 });
+
+export function DryRunDisplay(props: any) {
+  return (
+    <PageErrorBoundary pageName="dry-run-display">
+      <DryRunDisplayInner {...props} />
+    </PageErrorBoundary>
+  );
+}

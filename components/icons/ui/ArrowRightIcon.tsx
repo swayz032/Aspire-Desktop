@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ArrowRightIconProps {
   size?: number;
   color?: string;
 }
 
-export function ArrowRightIcon({
+function ArrowRightIconInner({
   size = 24,
   color = 'rgba(255,255,255,0.3)'
 }: ArrowRightIconProps) {
@@ -20,5 +21,13 @@ export function ArrowRightIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function ArrowRightIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="arrow-right-icon">
+      <ArrowRightIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

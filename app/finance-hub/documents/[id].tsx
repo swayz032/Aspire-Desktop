@@ -34,6 +34,7 @@ import {
   type TemplateLane,
   type SignerData,
 } from '@/components/finance/documents';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const webOnly = (s: Record<string, unknown>) => Platform.OS === 'web' ? s : {};
 
@@ -52,7 +53,7 @@ interface ContractDetail {
   metadata?: Record<string, unknown>;
 }
 
-export default function ContractDetailPage() {
+function ContractDetailContent() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { authenticatedFetch } = useAuthFetch();
@@ -398,6 +399,14 @@ const DetailRow = React.memo(function DetailRowInner({ label, value }: DetailRow
 
 // ---- Styles ----
 
+
+export default function ContractDetailPage() {
+  return (
+    <PageErrorBoundary pageName="document-view">
+      <ContractDetailContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   page: {
     flex: 1,

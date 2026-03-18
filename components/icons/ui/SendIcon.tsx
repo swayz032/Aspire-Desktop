@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface SendIconProps {
   size?: number;
   color?: string;
 }
 
-export function SendIcon({
+function SendIconInner({
   size = 24,
   color = '#3B82F6'
 }: SendIconProps) {
@@ -27,5 +28,13 @@ export function SendIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function SendIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="send-icon">
+      <SendIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

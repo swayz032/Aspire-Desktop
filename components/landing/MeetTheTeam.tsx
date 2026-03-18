@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { teamMembers } from './TeamData';
 import VideoModal from './VideoModal';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function MeetTheTeam() {
+function MeetTheTeamInner() {
   const [modalMember, setModalMember] = useState<{ name: string; videoPath: string } | null>(null);
 
   return (
@@ -202,5 +203,13 @@ export default function MeetTheTeam() {
         />
       )}
     </section>
+  );
+}
+
+export default function MeetTheTeam(props: any) {
+  return (
+    <PageErrorBoundary pageName="meet-the-team">
+      <MeetTheTeamInner {...props} />
+    </PageErrorBoundary>
   );
 }

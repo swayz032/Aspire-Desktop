@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -80,7 +81,7 @@ function IncomeBar({ revenue, expenses }: { revenue: number; expenses: number })
   );
 }
 
-export default function FinancePanelContent(_props: PanelContentProps) {
+function FinancePanelContentInner(_props: PanelContentProps) {
   const { authenticatedFetch } = useAuthFetch();
   const [finance, setFinance] = useState<FinanceData>({});
   const [txns, setTxns]       = useState<Txn[]>([]);
@@ -214,3 +215,11 @@ const s = StyleSheet.create({
   txnAmount:     { fontSize: 15, fontWeight: '700', flexShrink: 0 },
   bottomSpacer:  { height: 32 },
 });
+
+export default function FinancePanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="finance-panel-content">
+      <FinancePanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

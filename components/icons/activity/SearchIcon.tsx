@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Circle, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface SearchIconProps {
   size?: number;
@@ -7,7 +8,7 @@ interface SearchIconProps {
   accentColor?: string;
 }
 
-export function SearchIcon({
+function SearchIconInner({
   size = 24,
   color = '#FFFFFF',
   accentColor = '#3B82F6'
@@ -37,5 +38,13 @@ export function SearchIcon({
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function SearchIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="search-icon">
+      <SearchIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

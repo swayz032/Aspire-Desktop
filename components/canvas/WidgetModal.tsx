@@ -14,6 +14,7 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import { playOpenSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type ModalSize = 'compact' | 'standard' | 'wide' | 'agent' | 'portrait' | 'tape' | 'note';
 
@@ -37,7 +38,7 @@ const SIZE_MAP: Record<ModalSize, { width: number; maxHeight: number }> = {
   note:     { width: 400,  maxHeight: 440  },
 };
 
-export function WidgetModal({
+function WidgetModalInner({
   visible,
   onClose,
   children,
@@ -214,3 +215,11 @@ const s = StyleSheet.create({
     flex: 1,
   },
 });
+
+export function WidgetModal(props: any) {
+  return (
+    <PageErrorBoundary pageName="widget-modal">
+      <WidgetModalInner {...props} />
+    </PageErrorBoundary>
+  );
+}

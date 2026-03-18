@@ -1,4 +1,5 @@
 ﻿import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { trackInteraction } from '@/lib/interactionTelemetry';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Linking, Alert, Image, ImageBackground } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +22,7 @@ import {
   buildActivityFromResponse,
 } from '@/components/chat';
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
@@ -89,7 +91,7 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
 
 const seedChat: AgentChatMessage[] = [];
 
-export function AvaDeskPanel() {
+function AvaDeskPanelInner() {
   const [mode, setMode] = useState<AvaMode>('voice');
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [isConversing, setIsConversing] = useState(false);
@@ -361,6 +363,7 @@ export function AvaDeskPanel() {
 
   const handleConnectToAva = useCallback(async () => {
     if (videoState !== 'idle') return;
+    trackInteraction('agent_connect', 'ava-desk-panel', { mode: 'video', agent: 'ava' });
 
     clearConnectionTimeouts();
     setVideoState('connecting');
@@ -490,6 +493,7 @@ export function AvaDeskPanel() {
   }, [videoState, clearConnectionTimeouts]);
 
   const handleEndSession = useCallback(() => {
+    trackInteraction('agent_disconnect', 'ava-desk-panel', { agent: 'ava' });
     clearConnectionTimeouts();
     if (anamClientRef.current) {
       try { anamClientRef.current.stopStreaming(); } catch (_) { /* ignore cleanup errors */ }
@@ -791,8 +795,8 @@ export function AvaDeskPanel() {
           <Text style={styles.title} testID="ava-desk-title">Ava Desk</Text>
         </View>
         <View style={styles.tabs}>
-          <TabButton label="Voice with Ava" icon="mic" active={mode === 'voice'} onPress={() => setMode('voice')} testID="ava-voice-tab" />
-          <TabButton label="Video with Ava" icon="videocam" active={mode === 'video'} onPress={() => setMode('video')} />
+          <TabButton label="Voice with Ava" icon="mic" active={mode === 'voice'} onPress={() => { trackInteraction('agent_mode_switch', 'ava-desk-panel', { mode: 'voice' }); setMode('voice'); }} testID="ava-voice-tab" />
+          <TabButton label="Video with Ava" icon="videocam" active={mode === 'video'} onPress={() => { trackInteraction('agent_mode_switch', 'ava-desk-panel', { mode: 'video' }); setMode('video'); }} />
         </View>
       </View>
 
@@ -903,7 +907,7 @@ export function AvaDeskPanel() {
                     gap: 6,
                     zIndex: 2,
                   }}
-                  onPress={handleEndSession}
+                  onPress={() => { trackInteraction('session_end', 'ava-desk-panel', { agent: 'ava' }); handleEndSession(); }}
                 >
                   <Ionicons name="close-circle" size={18} color="#fff" />
                   <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>End Session</Text>
@@ -1613,4 +1617,10 @@ const styles = StyleSheet.create({
   },
 });
 
-
+export function AvaDeskPanel() {
+  return (
+    <PageErrorBoundary pageName="ava-desk-panel">
+      <AvaDeskPanelInner />
+    </PageErrorBoundary>
+  );
+}

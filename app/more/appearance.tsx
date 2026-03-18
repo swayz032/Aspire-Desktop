@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { AppearanceSettings } from '@/types/tenant';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type Theme = 'dark' | 'light' | 'system';
 type FontSize = 'small' | 'medium' | 'large';
@@ -21,7 +22,7 @@ const FONT_SIZE_OPTIONS: { value: FontSize; label: string }[] = [
   { value: 'large', label: 'Large' },
 ];
 
-export default function AppearanceScreen() {
+function AppearanceContent() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
 
@@ -123,6 +124,14 @@ export default function AppearanceScreen() {
   );
 }
 
+
+export default function AppearanceScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-appearance">
+      <AppearanceContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

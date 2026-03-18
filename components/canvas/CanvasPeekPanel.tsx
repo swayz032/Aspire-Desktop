@@ -16,6 +16,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { playOpenSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CanvasPeekPanelProps {
   visible: boolean;
@@ -32,7 +33,7 @@ const SLIDE_IN  = { duration: 280, easing: Easing.out(Easing.cubic) };
 const SLIDE_OUT = { duration: 200, easing: Easing.in(Easing.cubic) };
 const CONTENT_IN = { duration: 260, easing: Easing.out(Easing.quad) };
 
-export function CanvasPeekPanel({
+function CanvasPeekPanelInner({
   visible,
   onClose,
   onOpenFullPage,
@@ -278,3 +279,11 @@ const s = StyleSheet.create({
   },
   content: { flex: 1 },
 });
+
+export function CanvasPeekPanel(props: any) {
+  return (
+    <PageErrorBoundary pageName="canvas-peek-panel">
+      <CanvasPeekPanelInner {...props} />
+    </PageErrorBoundary>
+  );
+}

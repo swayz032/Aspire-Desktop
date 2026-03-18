@@ -24,6 +24,7 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ const SignColors = {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export default function SigningPage() {
+function SigningContent() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const { width } = useWindowDimensions();
   const isMobile = width < MOBILE_BREAKPOINT;
@@ -856,6 +857,14 @@ function formatExpiry(isoString: string): string {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
+
+export default function SigningPage() {
+  return (
+    <PageErrorBoundary pageName="sign-document">
+      <SigningContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   fullScreen: {
     flex: 1,

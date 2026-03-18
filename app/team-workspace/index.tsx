@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '@/constants/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const teamWorkspaceHero = require('@/assets/images/team-workspace-hero.jpg');
 const avatarImages: Record<string, any> = {
@@ -1250,7 +1251,7 @@ function getActionIcon(actionType: ActionType): any {
   }
 }
 
-export default function TeamWorkspacePage() {
+function TeamWorkspaceContent() {
   const isDesktop = useDesktop();
   const { tenant: profile } = useTenant();
   const [selectedSuiteId, setSelectedSuiteId] = useState('');
@@ -1505,6 +1506,14 @@ export default function TeamWorkspacePage() {
   return content;
 }
 
+
+export default function TeamWorkspacePage() {
+  return (
+    <PageErrorBoundary pageName="team-workspace">
+      <TeamWorkspaceContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

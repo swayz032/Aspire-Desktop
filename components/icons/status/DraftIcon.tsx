@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface DraftIconProps {
   size?: number;
   color?: string;
 }
 
-export function DraftIcon({
+function DraftIconInner({
   size = 24,
   color = '#3B82F6'
 }: DraftIconProps) {
@@ -29,5 +30,13 @@ export function DraftIcon({
       {/* Dot for emphasis */}
       <Circle cx="7" cy="17" r="1" fill={color} />
     </Svg>
+  );
+}
+
+export function DraftIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="draft-icon">
+      <DraftIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

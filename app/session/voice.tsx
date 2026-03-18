@@ -14,6 +14,7 @@ import { BottomSheet } from '@/components/session/BottomSheet';
 import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { trackInteraction } from '@/lib/interactionTelemetry';
 
 /** Map staff participant IDs from the session wizard to AgentName for useAgentVoice. */
 const STAFF_TO_AGENT: Record<string, AgentName> = {
@@ -176,6 +177,7 @@ function VoiceSession() {
   });
 
   const handleEndSession = useCallback(() => {
+    trackInteraction('session_end', 'voice-session', { agent: agentName });
     voice.endSession();
     showToast('Session ended.', 'success');
     setTimeout(() => router.replace('/(tabs)'), 500);
@@ -184,11 +186,13 @@ function VoiceSession() {
   const handleToggleMute = useCallback(() => {
     const willMute = !isMuted;
     setIsMuted(willMute);
+    trackInteraction(willMute ? 'mic_mute' : 'mic_unmute', 'voice-session', { agent: agentName });
     voice.setMuted(willMute);
     showToast(willMute ? 'Microphone muted' : 'Microphone on', 'info');
   }, [isMuted, voice]);
 
   const handleMenuSelect = (optionId: string) => {
+    trackInteraction('session_menu_select', 'voice-session', { option: optionId });
     switch (optionId) {
       case 'mute':
         handleToggleMute();
@@ -222,14 +226,19 @@ function VoiceSession() {
           <Ionicons name="close" size={24} color={Colors.text.secondary} />
         </Pressable>
         
-        <View style={styles.identityPill}>
-          <View style={styles.liveDot} />
+        <Pressable
+          style={styles.identityPill}
+          onPress={() => { trackInteraction('mic_toggle', 'ava-voice-pill', { agent: agentName }); handleToggleMute(); }}
+          accessibilityLabel={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+          accessibilityRole="button"
+        >
+          <View style={[styles.liveDot, isMuted && { backgroundColor: Colors.semantic.error }]} />
           <Text style={styles.identityText}>
             {tenant?.businessName ?? 'Aspire Business'}
           </Text>
-        </View>
+        </Pressable>
 
-        <Pressable onPress={() => setMenuVisible(true)} style={styles.menuButton}>
+        <Pressable onPress={() => { trackInteraction('session_menu_open', 'voice-session'); setMenuVisible(true); }} style={styles.menuButton}>
           <Ionicons name="ellipsis-vertical" size={20} color={Colors.text.secondary} />
         </Pressable>
       </View>
@@ -264,7 +273,7 @@ function VoiceSession() {
 
           <Pressable 
             style={styles.endButton}
-            onPress={() => setEndSessionVisible(true)}
+            onPress={() => { trackInteraction('session_end', 'voice-session', { trigger: 'end-button' }); setEndSessionVisible(true); }}
           >
             <View style={styles.endButtonInner}>
               <Ionicons name="call" size={24} color="#ffffff" style={{ transform: [{ rotate: '135deg' }] }} />
@@ -273,7 +282,7 @@ function VoiceSession() {
 
           <Pressable 
             style={styles.controlButton}
-            onPress={() => showToast('Speaker mode toggled', 'info')}
+            onPress={() => { trackInteraction('speaker_toggle', 'voice-session'); showToast('Speaker mode toggled', 'info'); }}
           >
             <Ionicons name="volume-high" size={22} color={Colors.text.primary} />
           </Pressable>

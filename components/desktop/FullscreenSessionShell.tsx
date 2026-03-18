@@ -2,6 +2,7 @@ import React, { ReactNode } from 'react';
 import { View, StyleSheet, Pressable, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface FullscreenSessionShellProps {
   children: ReactNode;
@@ -9,7 +10,7 @@ interface FullscreenSessionShellProps {
   backLabel?: string;
 }
 
-export function FullscreenSessionShell({ 
+function FullscreenSessionShellInner({ 
   children, 
   showBackButton = true,
   backLabel = 'Exit'
@@ -75,3 +76,11 @@ const styles = StyleSheet.create({
     height: '100%',
   },
 });
+
+export function FullscreenSessionShell(props: any) {
+  return (
+    <PageErrorBoundary pageName="fullscreen-session-shell">
+      <FullscreenSessionShellInner {...props} />
+    </PageErrorBoundary>
+  );
+}

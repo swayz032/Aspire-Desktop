@@ -7,6 +7,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ViewStyle, Linking } from 
 import { Ionicons } from '@expo/vector-icons';
 import { SectionHeader, Divider } from '../SettingsField';
 import { SettingsColors, TRANSITION_SMOOTH } from '../settingsConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface HelpLink {
   icon: keyof typeof Ionicons.glyphMap;
@@ -71,7 +72,7 @@ const FAQ_ITEMS = [
   },
 ];
 
-export default function HelpSection() {
+function HelpSectionInner() {
   const handleOpenLink = (url: string) => {
     if (Platform.OS === 'web') {
       window.open(url, '_blank', 'noopener,noreferrer');
@@ -301,3 +302,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#2C2C2E',
   },
 });
+
+export default function HelpSection(props: any) {
+  return (
+    <PageErrorBoundary pageName="help-section">
+      <HelpSectionInner {...props} />
+    </PageErrorBoundary>
+  );
+}

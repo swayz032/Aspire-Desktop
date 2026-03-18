@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PhoneIconProps {
   size?: number;
   color?: string;
 }
 
-export function PhoneIcon({ size = 28, color = '#FFFFFF' }: PhoneIconProps) {
+function PhoneIconInner({ size = 28, color = '#FFFFFF' }: PhoneIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -19,5 +20,13 @@ export function PhoneIcon({ size = 28, color = '#FFFFFF' }: PhoneIconProps) {
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function PhoneIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="phone-icon">
+      <PhoneIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { playTaskCompleteSound, playClickSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type Priority = 'high' | 'medium' | 'low';
 type FilterMode = 'All' | 'Today' | 'Upcoming';
@@ -44,7 +45,7 @@ const DEMO_TASKS: Task[] = [
   { id: '4', title: 'Approve vendor invoice', description: 'Office supplies order', priority: 'medium', timeEstimate: '15m', completed: false },
 ];
 
-export function TodaysPlanWidget({ suiteId, officeId }: TodaysPlanWidgetProps) {
+function TodaysPlanWidgetInner({ suiteId, officeId }: TodaysPlanWidgetProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<FilterMode>('All');
@@ -458,3 +459,11 @@ const s = StyleSheet.create({
     color: '#FFF',
   } as any,
 });
+
+export function TodaysPlanWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="todays-plan-widget">
+      <TodaysPlanWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

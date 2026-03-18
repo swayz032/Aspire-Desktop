@@ -31,6 +31,7 @@ import {
   playMicActivateSound,
   playMessageSentSound,
 } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type ViewMode = 'voice' | 'chat';
 
@@ -316,7 +317,7 @@ function MiniOrbThumb({
 // Main component
 // ---------------------------------------------------------------------------
 
-export function AgentWidget({
+function AgentWidgetInner({
   agentId,
   voiceStatus = 'idle',
   onPrimaryAction,
@@ -902,3 +903,11 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
 });
+
+export function AgentWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="agent-widget">
+      <AgentWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface FinanceIconProps {
   size?: number;
   color?: string;
 }
 
-export function FinanceIcon({ size = 28, color = '#FFFFFF' }: FinanceIconProps) {
+function FinanceIconInner({ size = 28, color = '#FFFFFF' }: FinanceIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -22,5 +23,13 @@ export function FinanceIcon({ size = 28, color = '#FFFFFF' }: FinanceIconProps) 
       <Circle cx="17" cy="7" r="1.5" fill={color} />
       <Circle cx="21" cy="12" r="1.5" fill={color} />
     </Svg>
+  );
+}
+
+export function FinanceIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="finance-icon">
+      <FinanceIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -38,8 +38,10 @@ import {
 import type { LocalUserChoices } from '@livekit/components-core';
 import { DisconnectReason, MediaDeviceFailure, Track } from 'livekit-client';
 import { Image } from 'expo-image';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { injectLiveKitStyles } from '@/lib/livekit-styles';
 import { buildRoomOptionsWithDevices } from '@/lib/livekit-config';
+import { reportProviderError } from '@/lib/providerErrorReporter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -895,7 +897,7 @@ function GuestVideoConference() {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export default function GuestJoinPage() {
+function GuestJoinContent() {
   const { code } = useLocalSearchParams<{ code: string }>();
   const [pageState, setPageState] = useState<PageState>('loading');
   const [joinData, setJoinData] = useState<JoinResponse | null>(null);
@@ -1013,6 +1015,7 @@ export default function GuestJoinPage() {
     // Don't crash — PreJoin will still render with camera-off placeholder.
     // Only transition to error if the error message indicates a hard failure.
     console.warn('[GuestJoin] Device error:', error.message);
+    reportProviderError({ provider: 'livekit', action: 'guest_device_error', error, component: 'GuestJoinPage' });
   }, []);
 
   // LiveKit room event handlers
@@ -1036,6 +1039,7 @@ export default function GuestJoinPage() {
   }, []);
 
   const handleRoomError = useCallback((error: Error) => {
+    reportProviderError({ provider: 'livekit', action: 'guest_room_error', error, component: 'GuestJoinPage' });
     setErrorMessage(error.message || 'A connection error occurred.');
     setPageState('error');
   }, []);
@@ -1046,6 +1050,7 @@ export default function GuestJoinPage() {
     // Only log a warning; do not kick them out of the conference.
     const msg = failure ? `Device failure: ${failure}` : 'Unknown device failure';
     console.warn('[GuestJoin] Media device failure:', msg);
+    reportProviderError({ provider: 'livekit', action: 'guest_media_device_failure', error: new Error(msg), component: 'GuestJoinPage' });
   }, []);
 
   // Retry handler — reload the page to re-validate join code and start fresh
@@ -1105,6 +1110,14 @@ export default function GuestJoinPage() {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
+
+export default function GuestJoinPage() {
+  return (
+    <PageErrorBoundary pageName="join-conference">
+      <GuestJoinContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   page: {
     flex: 1,

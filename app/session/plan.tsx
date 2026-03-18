@@ -10,8 +10,9 @@ import { DocumentThumbnail } from '@/components/DocumentThumbnail';
 import { Toast } from '@/components/session/Toast';
 import { getOutboxJobs, getAuthorityQueue } from '@/lib/api';
 import { useDesktop } from '@/lib/useDesktop';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function FullPlanScreen() {
+function FullPlanContent() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const [todaysPlan, setTodaysPlan] = useState<any[]>([]);
@@ -178,6 +179,14 @@ export default function FullPlanScreen() {
   );
 }
 
+
+export default function FullPlanScreen() {
+  return (
+    <PageErrorBoundary pageName="session-plan">
+      <FullPlanContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

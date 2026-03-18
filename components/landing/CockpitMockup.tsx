@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { DesktopHome } from '@/components/desktop/DesktopHome';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const NATURAL_WIDTH = 1440;
 const NATURAL_HEIGHT = 980;
@@ -8,7 +9,7 @@ const SCALE = 0.72;
 const SCALED_WIDTH = NATURAL_WIDTH * SCALE;
 const CLIP_HEIGHT = 620;
 
-export default function CockpitMockup() {
+function CockpitMockupInner() {
   return (
     <div style={{
       width: SCALED_WIDTH,
@@ -89,5 +90,13 @@ export default function CockpitMockup() {
         }} />
       </div>
     </div>
+  );
+}
+
+export default function CockpitMockup(props: any) {
+  return (
+    <PageErrorBoundary pageName="cockpit-mockup">
+      <CockpitMockupInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -28,6 +28,7 @@ import { playSound } from '@/lib/soundManager';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { getCalendarEvents } from '@/lib/api';
 import { useDynamicAuthorityQueue, removeAuthorityItem } from '@/lib/authorityQueueStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useTenant, useSupabase } from '@/providers';
 import type { CashPosition } from '@/types';
 
@@ -74,7 +75,7 @@ function isBannerDismissed(): boolean {
   } catch { return false; }
 }
 
-export function DesktopHome() {
+function DesktopHomeInner() {
   const router = useRouter();
   const { mode, stageOpen, runwayState } = useImmersion();
   const { isTablet, isLaptop, width, mounted: bpMounted } = useBreakpoint();
@@ -709,3 +710,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export function DesktopHome() {
+  return (
+    <PageErrorBoundary pageName="desktop-home">
+      <DesktopHomeInner />
+    </PageErrorBoundary>
+  );
+}

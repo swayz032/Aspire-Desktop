@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, TextInput, ScrollView, Act
 import { Ionicons } from '@expo/vector-icons';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 import { WizardScenario } from './types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const ACCOUNT_NAME_MAP: Record<string, string[]> = {
   'Accounts Payable': ['Accounts Payable', 'A/P', 'AP'],
@@ -153,7 +154,7 @@ interface StoryWizardProps {
   onSubmit: (journalEntry: { date: string; memo: string; lines: { accountId: string; accountName: string; type: 'Debit' | 'Credit'; amount: string; description: string }[] }) => Promise<void>;
 }
 
-export function StoryWizard({ accounts, onSubmit }: StoryWizardProps) {
+function StoryWizardInner({ accounts, onSubmit }: StoryWizardProps) {
   const [selectedScenario, setSelectedScenario] = useState<WizardScenario | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [step, setStep] = useState<'choose' | 'fill' | 'review' | 'done'>('choose');
@@ -554,3 +555,11 @@ const styles = StyleSheet.create({
   doneTitle: { color: '#f2f2f2', fontSize: 20, fontWeight: '700', marginBottom: 6 },
   doneSubtitle: { color: '#8e8e93', fontSize: 14, textAlign: 'center' },
 });
+
+export function StoryWizard(props: any) {
+  return (
+    <PageErrorBoundary pageName="story-wizard">
+      <StoryWizardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

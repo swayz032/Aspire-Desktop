@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { playClickSound, playApproveSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface LineItem {
   name: string;
@@ -72,7 +73,7 @@ const DEMO_QUOTE: Quote = {
   ],
 };
 
-export function QuoteWidget({ suiteId, officeId, quoteId, onSendClick }: QuoteWidgetProps) {
+function QuoteWidgetInner({ suiteId, officeId, quoteId, onSendClick }: QuoteWidgetProps) {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -383,3 +384,11 @@ const s = StyleSheet.create({
     letterSpacing: 0.3,
   } as any,
 });
+
+export function QuoteWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="quote-widget">
+      <QuoteWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

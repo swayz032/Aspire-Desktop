@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { FAQArticle } from '@/types/support';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function FAQItem({ article, isExpanded, onToggle }: { article: FAQArticle; isExpanded: boolean; onToggle: () => void }) {
   return (
@@ -43,7 +44,7 @@ function FAQItem({ article, isExpanded, onToggle }: { article: FAQArticle; isExp
   );
 }
 
-export default function HelpScreen() {
+function HelpContent() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
 
@@ -117,6 +118,14 @@ export default function HelpScreen() {
   );
 }
 
+
+export default function HelpScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-help">
+      <HelpContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

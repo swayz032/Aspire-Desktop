@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Colors, Spacing, Typography } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface SectionHeaderProps {
   title: string;
@@ -10,7 +11,7 @@ interface SectionHeaderProps {
   onAction?: () => void;
 }
 
-export function SectionHeader({ title, subtitle, actionLabel, onAction }: SectionHeaderProps) {
+function SectionHeaderInner({ title, subtitle, actionLabel, onAction }: SectionHeaderProps) {
   return (
     <View style={styles.container}>
       <View style={styles.titleContainer}>
@@ -59,3 +60,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+export function SectionHeader(props: any) {
+  return (
+    <PageErrorBoundary pageName="section-header">
+      <SectionHeaderInner {...props} />
+    </PageErrorBoundary>
+  );
+}

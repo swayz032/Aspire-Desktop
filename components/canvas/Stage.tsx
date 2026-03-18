@@ -28,6 +28,7 @@ import {
 } from '@/lib/runwayMachine';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { playSound } from '@/lib/soundManager';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { Badge } from '@/components/ui/Badge';
 
 // ---------------------------------------------------------------------------
@@ -267,7 +268,7 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
 // Main component
 // ---------------------------------------------------------------------------
 
-export function Stage(): React.ReactElement | null {
+function StageInner(): React.ReactElement | null {
   const { stageOpen, stagedTileId, runwayState, mode } = useImmersion();
 
   // Animation values
@@ -750,3 +751,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+export function Stage() {
+  return (
+    <PageErrorBoundary pageName="stage">
+      <StageInner />
+    </PageErrorBoundary>
+  );
+}

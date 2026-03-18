@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BRIGHT_BG = '#0a0a0c';
 
@@ -75,7 +76,7 @@ const getRiskTierColor = (tier: string) => {
   }
 };
 
-export default function FocusScreen() {
+function FocusContent() {
   const router = useRouter();
   const { area } = useLocalSearchParams<{ area: string }>();
   const { tenant, isLoading: tenantLoading } = useTenant();
@@ -335,6 +336,14 @@ export default function FocusScreen() {
   );
 }
 
+
+export default function FocusScreen() {
+  return (
+    <PageErrorBoundary pageName="focus">
+      <FocusContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

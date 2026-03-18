@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Rect } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ArchivedIconProps {
   size?: number;
   color?: string;
 }
 
-export function ArchivedIcon({
+function ArchivedIconInner({
   size = 24,
   color = '#6B7280'
 }: ArchivedIconProps) {
@@ -38,5 +39,13 @@ export function ArchivedIcon({
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function ArchivedIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="archived-icon">
+      <ArchivedIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

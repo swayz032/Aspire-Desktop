@@ -26,6 +26,7 @@ import ReactMarkdown from 'react-markdown';
 import { Ionicons } from '@expo/vector-icons';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Type definitions (backward compatible)
@@ -365,7 +366,7 @@ export interface ActivityFeedProps {
   onUrlClick?: (url: string) => void;
 }
 
-export function ActivityFeed({ activityEvents, onUrlClick }: ActivityFeedProps) {
+function ActivityFeedInner({ activityEvents, onUrlClick }: ActivityFeedProps) {
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -879,3 +880,10 @@ const s = StyleSheet.create({
   },
 });
 
+export function ActivityFeed(props: any) {
+  return (
+    <PageErrorBoundary pageName="web-preview">
+      <ActivityFeedInner {...props} />
+    </PageErrorBoundary>
+  );
+}

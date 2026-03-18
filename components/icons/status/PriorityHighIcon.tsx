@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PriorityHighIconProps {
   size?: number;
   color?: string;
 }
 
-export function PriorityHighIcon({
+function PriorityHighIconInner({
   size = 24,
   color = '#EF4444'
 }: PriorityHighIconProps) {
@@ -28,5 +29,13 @@ export function PriorityHighIcon({
       {/* Exclamation dot */}
       <Circle cx="12" cy="18" r="1.5" fill={color} />
     </Svg>
+  );
+}
+
+export function PriorityHighIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="priority-high-icon">
+      <PriorityHighIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

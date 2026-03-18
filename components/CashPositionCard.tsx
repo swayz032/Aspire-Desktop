@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Card } from './ui/Card';
 import { CashPosition } from '@/types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CashPositionCardProps {
   data: CashPosition;
@@ -19,7 +20,7 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export function CashPositionCard({ data, onPress }: CashPositionCardProps) {
+function CashPositionCardInner({ data, onPress }: CashPositionCardProps) {
   const netChange = data.expectedInflows7d - data.upcomingOutflows7d;
   const isPositive = netChange >= 0;
 
@@ -168,3 +169,11 @@ const styles = StyleSheet.create({
     fontSize: Typography.small.fontSize,
   },
 });
+
+export function CashPositionCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="cash-position-card">
+      <CashPositionCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

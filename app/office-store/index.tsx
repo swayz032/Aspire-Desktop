@@ -8,6 +8,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { OfficeStoreCard, OfficeStoreStaff } from '@/components/OfficeStoreCard';
 import { useDesktop } from '@/lib/useDesktop';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const officeStoreStaff: OfficeStoreStaff[] = [
   {
@@ -331,7 +332,7 @@ function StaffProfileModal({
   );
 }
 
-export default function OfficeStoreScreen() {
+function OfficeStoreContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isDesktop = useDesktop();
@@ -493,6 +494,14 @@ export default function OfficeStoreScreen() {
   return content;
 }
 
+
+export default function OfficeStoreScreen() {
+  return (
+    <PageErrorBoundary pageName="office-store">
+      <OfficeStoreContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

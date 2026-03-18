@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge } from './Badge';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ListItemProps {
   icon?: React.ReactNode;
@@ -15,7 +16,7 @@ interface ListItemProps {
   onPress?: () => void;
 }
 
-export function ListItem({
+function ListItemInner({
   icon,
   title,
   subtitle,
@@ -104,3 +105,11 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
   },
 });
+
+export function ListItem(props: any) {
+  return (
+    <PageErrorBoundary pageName="list-item">
+      <ListItemInner {...props} />
+    </PageErrorBoundary>
+  );
+}

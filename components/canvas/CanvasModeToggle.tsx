@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { subscribe, getMode, setMode, type CanvasMode } from '@/lib/chatCanvasStore';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Tab config
@@ -44,7 +45,7 @@ const TABS: TabConfig[] = [
 // Component
 // ---------------------------------------------------------------------------
 
-export function CanvasModeToggle(): React.ReactElement {
+function CanvasModeToggleInner(): React.ReactElement {
   const [currentMode, setCurrentMode] = useState<CanvasMode>(getMode());
 
   useEffect(() => {
@@ -161,3 +162,11 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
 });
+
+export function CanvasModeToggle() {
+  return (
+    <PageErrorBoundary pageName="canvas-mode-toggle">
+      <CanvasModeToggleInner />
+    </PageErrorBoundary>
+  );
+}

@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Path, Rect } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface LockIconProps {
   size?: number;
@@ -11,7 +12,7 @@ interface LockIconProps {
  * Used optionally in RED tier authority modals.
  * Canvas Wave 17 — Risk Tier Modals.
  */
-export function LockIcon({
+function LockIconInner({
   size = 20,
   color = '#FFFFFF',
 }: LockIconProps) {
@@ -35,5 +36,13 @@ export function LockIcon({
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function LockIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="lock-icon">
+      <LockIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

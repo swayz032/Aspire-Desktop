@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { injectCardKeyframes } from './cardAnimations';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 injectCardKeyframes();
 
@@ -35,7 +36,7 @@ function ShimmerLine({ width, height = 12 }: { width: string | number; height?: 
   );
 }
 
-export function SegmentRingCard({ title, centerValue, centerLabel, segments, accentColor, mode, loading }: SegmentRingCardProps) {
+function SegmentRingCardInner({ title, centerValue, centerLabel, segments, accentColor, mode, loading }: SegmentRingCardProps) {
   if (Platform.OS !== 'web') {
     return (
       <View style={nativeStyles.card}>
@@ -211,3 +212,11 @@ const nativeStyles = StyleSheet.create({
     color: '#ffffff',
   },
 });
+
+export function SegmentRingCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="segment-ring-card">
+      <SegmentRingCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

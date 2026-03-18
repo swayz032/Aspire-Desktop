@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const steps = [
   {
@@ -61,7 +62,7 @@ const steps = [
 
 const NODE_POSITIONS = ['12.5%', '37.5%', '62.5%', '87.5%'];
 
-export default function HowItWorks() {
+function HowItWorksInner() {
   const [hoveredStep, setHoveredStep] = useState<number | null>(null);
 
   useEffect(() => {
@@ -274,5 +275,13 @@ export default function HowItWorks() {
         </div>
       </div>
     </section>
+  );
+}
+
+export default function HowItWorks(props: any) {
+  return (
+    <PageErrorBoundary pageName="how-it-works">
+      <HowItWorksInner {...props} />
+    </PageErrorBoundary>
   );
 }

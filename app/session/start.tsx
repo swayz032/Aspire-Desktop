@@ -6,6 +6,8 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { SessionPurpose, SessionMode } from '@/types/session';
 import { AVAILABLE_STAFF, createSession } from '@/data/session';
 import { useTenant } from '@/providers/TenantProvider';
+import { trackInteraction } from '@/lib/interactionTelemetry';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const PURPOSES: { id: SessionPurpose; label: string; icon: keyof typeof Ionicons.glyphMap; description: string }[] = [
   { id: 'Internal', label: 'Internal', icon: 'business', description: 'Team sync or planning session' },
@@ -21,7 +23,7 @@ const MODES: { id: SessionMode; label: string; icon: keyof typeof Ionicons.glyph
   { id: 'conference', label: 'Conference', icon: 'people-circle', description: 'Full conference room' },
 ];
 
-export default function StartSessionScreen() {
+function StartSessionContent() {
   const router = useRouter();
   const { tenant } = useTenant();
   const [step, setStep] = useState(1);
@@ -118,7 +120,7 @@ export default function StartSessionScreen() {
                     styles.optionCard,
                     purpose === p.id && styles.optionCardSelected
                   ]}
-                  onPress={() => setPurpose(p.id)}
+                  onPress={() => { trackInteraction('session_purpose_select', 'session-wizard', { purpose: p.id }); setPurpose(p.id); }}
                 >
                   <View style={[styles.optionIcon, purpose === p.id && styles.optionIconSelected]}>
                     <Ionicons 
@@ -167,7 +169,7 @@ export default function StartSessionScreen() {
                     styles.staffCard,
                     selectedStaff.includes(staff.id) && styles.staffCardSelected
                   ]}
-                  onPress={() => toggleStaff(staff.id)}
+                  onPress={() => { trackInteraction('session_staff_toggle', 'session-wizard', { staffId: staff.id, selected: !selectedStaff.includes(staff.id) }); toggleStaff(staff.id); }}
                 >
                   <View style={[styles.staffAvatar, { backgroundColor: staff.avatarColor + '20' }]}>
                     <Text style={[styles.staffInitial, { color: staff.avatarColor }]}>
@@ -205,7 +207,7 @@ export default function StartSessionScreen() {
                     styles.modeCard,
                     mode === m.id && styles.modeCardSelected
                   ]}
-                  onPress={() => setMode(m.id)}
+                  onPress={() => { trackInteraction('session_mode_select', 'session-wizard', { mode: m.id }); setMode(m.id); }}
                 >
                   <View style={[styles.modeIcon, mode === m.id && styles.modeIconSelected]}>
                     <Ionicons 
@@ -243,13 +245,14 @@ export default function StartSessionScreen() {
 
       <View style={styles.footer}>
         {step > 1 && (
-          <Pressable style={styles.backStepButton} onPress={() => setStep(step - 1)}>
+          <Pressable style={styles.backStepButton} onPress={() => { trackInteraction('session_wizard_navigate', 'session-wizard', { from: step, to: step - 1, action: 'back' }); setStep(step - 1); }}>
             <Text style={styles.backStepText}>Back</Text>
           </Pressable>
         )}
         <Pressable 
           style={[styles.nextButton, !canProceed() && styles.nextButtonDisabled]}
           onPress={() => {
+            trackInteraction(step === 3 ? 'session_start' : 'session_wizard_navigate', 'session-wizard', { step, action: step === 3 ? 'start' : 'next' });
             if (step < 3) {
               setStep(step + 1);
             } else {
@@ -269,6 +272,14 @@ export default function StartSessionScreen() {
         </Pressable>
       </View>
     </SafeAreaView>
+  );
+}
+
+export default function StartSessionScreen() {
+  return (
+    <PageErrorBoundary pageName="session-start">
+      <StartSessionContent />
+    </PageErrorBoundary>
   );
 }
 

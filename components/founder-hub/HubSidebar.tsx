@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import { Colors, Typography } from '@/constants/tokens';
 import { useSidebarState } from '@/lib/uiStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const logoSource = require('../../assets/images/aspire-logo-new.png');
 const iconSource = require('../../assets/images/aspire-icon-square.png');
@@ -30,7 +31,7 @@ const navItems: NavItem[] = [
 const SIDEBAR_EXPANDED = 240;
 const SIDEBAR_COLLAPSED = 64;
 
-export function HubSidebar() {
+function HubSidebarInner() {
   const router = useRouter();
   const pathname = usePathname();
   const { sidebarExpanded, toggleSidebar } = useSidebarState();
@@ -433,3 +434,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
+
+export function HubSidebar() {
+  return (
+    <PageErrorBoundary pageName="hub-sidebar">
+      <HubSidebarInner />
+    </PageErrorBoundary>
+  );
+}

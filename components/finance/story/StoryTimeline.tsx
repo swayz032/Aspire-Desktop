@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 import { TimelineGroup, FinanceEvent, EventProvider } from './types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const PROVIDER_CONFIG: Record<EventProvider, { icon: keyof typeof Ionicons.glyphMap; color: string; label: string }> = {
   plaid: { icon: 'business-outline', color: '#10B981', label: 'Plaid' },
@@ -66,7 +67,7 @@ interface StoryTimelineProps {
   emptyMessage?: string;
 }
 
-export function StoryTimeline({ groups, onExplain, emptyMessage }: StoryTimelineProps) {
+function StoryTimelineInner({ groups, onExplain, emptyMessage }: StoryTimelineProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(groups.slice(0, 2).map(g => g.label)));
 
   const toggleGroup = (label: string) => {
@@ -173,3 +174,11 @@ const styles = StyleSheet.create({
   eventAmount: { fontSize: 14, fontWeight: '700' },
   eventTime: { color: '#6e6e73', fontSize: 11 },
 });
+
+export function StoryTimeline(props: any) {
+  return (
+    <PageErrorBoundary pageName="story-timeline">
+      <StoryTimelineInner {...props} />
+    </PageErrorBoundary>
+  );
+}

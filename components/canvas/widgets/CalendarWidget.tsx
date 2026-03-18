@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-n
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { playClickSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CalendarEvent {
   id: string;
@@ -70,7 +71,7 @@ const DEMO_EVENTS: CalendarEvent[] = [
   { id: '3', title: 'Investor Call', start_time: new Date(Date.now() + 2 * 86400000).toISOString(), end_time: new Date(Date.now() + 2 * 86400000 + 3600000).toISOString() },
 ];
 
-export function CalendarWidget({ suiteId, officeId }: CalendarWidgetProps) {
+function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
   const today = useMemo(() => new Date(), []);
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -399,3 +400,11 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
 });
+
+export function CalendarWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="calendar-widget">
+      <CalendarWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

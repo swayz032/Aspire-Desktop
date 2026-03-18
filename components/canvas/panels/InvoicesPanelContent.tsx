@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -96,7 +97,7 @@ const InvCard = memo(function InvCard({ inv, isOpen, onToggle, onSend, onMarkPai
   );
 });
 
-export default function InvoicesPanelContent(_props: PanelContentProps) {
+function InvoicesPanelContentInner(_props: PanelContentProps) {
   const { authenticatedFetch } = useAuthFetch();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -217,3 +218,11 @@ const s = StyleSheet.create({
   dangerBtnText:{ fontSize: 12, fontWeight: '600', color: C_RED },
   bottomSpacer: { height: 32 },
 });
+
+export default function InvoicesPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="invoices-panel-content">
+      <InvoicesPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

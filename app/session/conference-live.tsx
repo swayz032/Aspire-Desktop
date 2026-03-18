@@ -20,6 +20,7 @@ import { useParticipants, useTracks, useRoomContext } from '@livekit/components-
 import { Track } from 'livekit-client';
 import { LiveKitConferenceProvider, useKrisp } from '@/components/session/LiveKitConferenceProvider';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { trackInteraction } from '@/lib/interactionTelemetry';
 import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
 
@@ -580,6 +581,7 @@ function ConferenceLive() {
 
   const handleToggleMute = () => {
     const newMuted = !isMuted;
+    trackInteraction(newMuted ? 'mic_mute' : 'mic_unmute', 'conference-live', { agent: 'nora' });
     setIsMuted(newMuted);
     if (lkRoom) {
       lkRoom.localParticipant?.setMicrophoneEnabled(!newMuted).catch(() => {});
@@ -597,6 +599,7 @@ function ConferenceLive() {
   };
 
   const handleEndCall = () => {
+    trackInteraction('session_end', 'conference-live', { agent: 'nora' });
     setShowEndModal(false);
     // Disconnect from LiveKit room (handled by LiveKitConferenceProvider unmount)
     if (lkRoom) {

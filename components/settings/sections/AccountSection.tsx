@@ -10,6 +10,7 @@ import { useTenant, useSupabase } from '@/providers';
 import { getInitials, getAvatarColor } from '@/utils/avatar';
 import { SectionHeader, TextField, SelectField, Divider } from '../SettingsField';
 import { SettingsColors, TRANSITION_SMOOTH } from '../settingsConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const ENTITY_OPTIONS = [
   { value: 'sole_proprietorship', label: 'Sole Proprietorship' },
@@ -29,7 +30,7 @@ const TEAM_SIZE_OPTIONS = [
   { value: '51+', label: '51+ people' },
 ];
 
-export default function AccountSection() {
+function AccountSectionInner() {
   const { session } = useSupabase();
   const { tenant } = useTenant();
 
@@ -267,3 +268,11 @@ const styles = StyleSheet.create({
     color: '#48484a',
   },
 });
+
+export default function AccountSection(props: any) {
+  return (
+    <PageErrorBoundary pageName="account-section">
+      <AccountSectionInner {...props} />
+    </PageErrorBoundary>
+  );
+}

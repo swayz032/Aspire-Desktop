@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Path, Line } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface TrashIconProps {
   size?: number;
@@ -8,7 +9,7 @@ interface TrashIconProps {
   isActive?: boolean;
 }
 
-export function TrashIcon({
+function TrashIconInner({
   size = 24,
   color = '#6B7280',
   activeColor = '#EF4444',
@@ -43,5 +44,13 @@ export function TrashIcon({
       <Line x1="10" y1="10" x2="10" y2="16" stroke={currentColor} strokeWidth="2" strokeLinecap="round" />
       <Line x1="14" y1="10" x2="14" y2="16" stroke={currentColor} strokeWidth="2" strokeLinecap="round" />
     </Svg>
+  );
+}
+
+export function TrashIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="trash-icon">
+      <TrashIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

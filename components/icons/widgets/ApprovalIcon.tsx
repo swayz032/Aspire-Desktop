@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ApprovalIconProps {
   size?: number;
   color?: string;
 }
 
-export function ApprovalIcon({ size = 28, color = '#FFFFFF' }: ApprovalIconProps) {
+function ApprovalIconInner({ size = 28, color = '#FFFFFF' }: ApprovalIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -22,5 +23,13 @@ export function ApprovalIcon({ size = 28, color = '#FFFFFF' }: ApprovalIconProps
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function ApprovalIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="approval-icon">
+      <ApprovalIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

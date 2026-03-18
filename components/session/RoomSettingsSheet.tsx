@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Modal, Pressable, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface RoomSettingsSheetProps {
   visible: boolean;
@@ -11,7 +12,7 @@ interface RoomSettingsSheetProps {
   onSaveSettings: () => void;
 }
 
-export function RoomSettingsSheet({ 
+function RoomSettingsSheetInner({ 
   visible, 
   onClose, 
   isRecording, 
@@ -211,3 +212,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+
+export function RoomSettingsSheet(props: any) {
+  return (
+    <PageErrorBoundary pageName="room-settings-sheet">
+      <RoomSettingsSheetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

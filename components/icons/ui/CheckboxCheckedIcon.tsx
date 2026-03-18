@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Rect, Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CheckboxCheckedIconProps {
   size?: number;
   color?: string;
 }
 
-export function CheckboxCheckedIcon({
+function CheckboxCheckedIconInner({
   size = 24,
   color = '#3B82F6'
 }: CheckboxCheckedIconProps) {
@@ -30,5 +31,13 @@ export function CheckboxCheckedIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function CheckboxCheckedIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="checkbox-checked-icon">
+      <CheckboxCheckedIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

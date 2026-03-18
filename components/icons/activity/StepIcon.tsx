@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface StepIconProps {
   size?: number;
   color?: string;
 }
 
-export function StepIcon({
+function StepIconInner({
   size = 24,
   color = '#3B82F6'
 }: StepIconProps) {
@@ -34,5 +35,13 @@ export function StepIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function StepIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="step-icon">
+      <StepIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform } from 'react-native';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface Props {
   score?: number;
@@ -46,7 +47,7 @@ function deriveReasons(connectedCount: number, mismatchCount: number, cashRunway
   return reasons;
 }
 
-export function HealthScoreRing({
+function HealthScoreRingInner({
   score,
   connectedCount = 0,
   mismatchCount = 0,
@@ -197,5 +198,13 @@ export function HealthScoreRing({
         ))}
       </div>
     </div>
+  );
+}
+
+export function HealthScoreRing(props: any) {
+  return (
+    <PageErrorBoundary pageName="health-score-ring">
+      <HealthScoreRingInner {...props} />
+    </PageErrorBoundary>
   );
 }

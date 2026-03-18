@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { getSuiteProfile } from '@/lib/api';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { Tenant } from '@/types/tenant';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function EditableField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
@@ -34,7 +35,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function OfficeIdentityScreen() {
+function OfficeIdentityContent() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
   const { authenticatedFetch } = useAuthFetch();
@@ -208,6 +209,14 @@ export default function OfficeIdentityScreen() {
   );
 }
 
+
+export default function OfficeIdentityScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-identity">
+      <OfficeIdentityContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

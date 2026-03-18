@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { PayrollTimeOff } from '@/components/finance/payroll/PayrollTimeOff';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function TimeOffPage() {
+function TimeOffContent() {
   const [gustoCompany, setGustoCompany] = useState<any>(null);
   const [gustoEmployees, setGustoEmployees] = useState<any[]>([]);
   const [gustoLoading, setGustoLoading] = useState(true);
@@ -63,6 +64,14 @@ export default function TimeOffPage() {
   );
 }
 
+
+export default function TimeOffPage() {
+  return (
+    <PageErrorBoundary pageName="payroll-time-off">
+      <TimeOffContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   pageHeader: {
     flexDirection: 'row',

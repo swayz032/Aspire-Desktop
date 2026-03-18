@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRealtimeReceipts } from '@/hooks/useRealtimeReceipts';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -81,7 +82,7 @@ const ReceiptCard = memo(function ReceiptCard({ receipt, isOpen, onToggle }: Rec
   );
 });
 
-export default function ReceiptsPanelContent(_props: PanelContentProps) {
+function ReceiptsPanelContentInner(_props: PanelContentProps) {
   const { receipts: rawReceipts } = useRealtimeReceipts(80) as any;
   const receipts                  = (rawReceipts || []) as Receipt[];
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -167,3 +168,11 @@ const s = StyleSheet.create({
   insetVal:        { fontSize: 13, color: TS, lineHeight: 19 },
   bottomSpacer:    { height: 32 },
 });
+
+export default function ReceiptsPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="receipts-panel-content">
+      <ReceiptsPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

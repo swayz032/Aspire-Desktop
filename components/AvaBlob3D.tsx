@@ -4,6 +4,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { MeshDistortMaterial, Sphere, Environment } from '@react-three/drei';
 import * as THREE from 'three';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type BlobState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -131,7 +132,7 @@ function FallbackBlob({ state, size }: { state: BlobState; size: number }) {
   );
 }
 
-export function AvaBlob3D({ state = 'idle', size = 300 }: AvaBlobProps) {
+function AvaBlob3DInner({ state = 'idle', size = 300 }: AvaBlobProps) {
   if (Platform.OS !== 'web') {
     return <FallbackBlob state={state} size={size} />;
   }
@@ -170,3 +171,11 @@ const styles = StyleSheet.create({
 });
 
 export default AvaBlob3D;
+
+export function AvaBlob3D(props: any) {
+  return (
+    <PageErrorBoundary pageName="ava-blob3-d">
+      <AvaBlob3DInner {...props} />
+    </PageErrorBoundary>
+  );
+}

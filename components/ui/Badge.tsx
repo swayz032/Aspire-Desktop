@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors, BorderRadius, Spacing, Typography } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info' | 'live' | 'pending' | 'muted' | 'primary';
 type BadgeSize = 'sm' | 'md';
@@ -51,7 +52,7 @@ const variantStyles = {
   },
 };
 
-export function Badge({ label, variant = 'default', size = 'sm', icon }: BadgeProps) {
+function BadgeInner({ label, variant = 'default', size = 'sm', icon }: BadgeProps) {
   const colors = variantStyles[variant];
   
   return (
@@ -114,3 +115,11 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 });
+
+export function Badge(props: any) {
+  return (
+    <PageErrorBoundary pageName="badge">
+      <BadgeInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PaidIconProps {
   size?: number;
   color?: string;
 }
 
-export function PaidIcon({
+function PaidIconInner({
   size = 24,
   color = '#10B981'
 }: PaidIconProps) {
@@ -24,5 +25,13 @@ export function PaidIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function PaidIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="paid-icon">
+      <PaidIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

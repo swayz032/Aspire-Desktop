@@ -6,6 +6,7 @@ import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PulseItem {
   id: string;
@@ -56,7 +57,7 @@ const quickFilters = [
   { id: 'market', label: 'Market', icon: 'analytics-outline' as const },
 ];
 
-export default function PulseScreen() {
+function PulseContent() {
   const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -325,6 +326,14 @@ export default function PulseScreen() {
   );
 }
 
+
+export default function PulseScreen() {
+  return (
+    <PageErrorBoundary pageName="pulse">
+      <PulseContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   header: {
     marginBottom: 24,

@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius, Shadows, Spacing, Animation } from '@/constants/tokens';
 import { ShinyText } from '@/components/ShinyText';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const ASPIRE_LOGO = require('@/assets/aspire-a-logo.png');
 
@@ -634,7 +635,7 @@ function CelebrationNative({
 // Main Export
 // ---------------------------------------------------------------------------
 
-export function CelebrationModal(props: CelebrationModalProps) {
+function CelebrationModalInner(props: CelebrationModalProps) {
   const ownerName = props.ownerName ?? '';
 
   if (Platform.OS === 'web') {
@@ -756,3 +757,11 @@ const nativeStyles = StyleSheet.create({
 });
 
 export default CelebrationModal;
+
+export function CelebrationModal(props: any) {
+  return (
+    <PageErrorBoundary pageName="celebration-modal">
+      <CelebrationModalInner {...props} />
+    </PageErrorBoundary>
+  );
+}

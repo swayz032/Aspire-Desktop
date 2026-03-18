@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PlusIconProps {
   size?: number;
   color?: string;
 }
 
-export function PlusIcon({
+function PlusIconInner({
   size = 24,
   color = '#3B82F6'
 }: PlusIconProps) {
@@ -20,5 +21,13 @@ export function PlusIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function PlusIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="plus-icon">
+      <PlusIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

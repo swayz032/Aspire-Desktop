@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Modal, Activit
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { useSupabase, useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface DocumentPreviewModalProps {
   visible: boolean;
@@ -368,7 +369,7 @@ function GenericDocContent({ businessName }: IdentityProps) {
   );
 }
 
-export function DocumentPreviewModal({ visible, onClose, type, documentName, pandadocDocumentId, amount, customerName, currency, draftSummary }: DocumentPreviewModalProps) {
+function DocumentPreviewModalInner({ visible, onClose, type, documentName, pandadocDocumentId, amount, customerName, currency, draftSummary }: DocumentPreviewModalProps) {
   const meta = TYPE_META[type] || TYPE_META.document;
   const { session } = useSupabase();
   const { tenant } = useTenant();
@@ -1090,3 +1091,11 @@ const p = StyleSheet.create({
     lineHeight: 20,
   },
 });
+
+export function DocumentPreviewModal(props: any) {
+  return (
+    <PageErrorBoundary pageName="document-preview-modal">
+      <DocumentPreviewModalInner {...props} />
+    </PageErrorBoundary>
+  );
+}

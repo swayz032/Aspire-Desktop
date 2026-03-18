@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface FilterIconProps {
   size?: number;
   color?: string;
 }
 
-export function FilterIcon({
+function FilterIconInner({
   size = 24,
   color = '#3B82F6'
 }: FilterIconProps) {
@@ -21,5 +22,13 @@ export function FilterIcon({
         fill="none"
       />
     </Svg>
+  );
+}
+
+export function FilterIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="filter-icon">
+      <FilterIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { injectCardKeyframes } from './cardAnimations';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 injectCardKeyframes();
 
@@ -27,7 +28,7 @@ function ShimmerLine({ width, height = 12 }: { width: string | number; height?: 
   );
 }
 
-export function InsightOverlayCard({ quote, sparkData, accentColor, loading }: InsightOverlayCardProps) {
+function InsightOverlayCardInner({ quote, sparkData, accentColor, loading }: InsightOverlayCardProps) {
   if (Platform.OS !== 'web') {
     return (
       <View style={nativeStyles.card}>
@@ -179,3 +180,11 @@ const nativeStyles = StyleSheet.create({
     lineHeight: 24,
   },
 });
+
+export function InsightOverlayCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="insight-overlay-card">
+      <InsightOverlayCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

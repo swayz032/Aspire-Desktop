@@ -28,6 +28,7 @@ import { InviteSheet } from '@/components/session/InviteSheet';
 import { StaffCommandSheet } from '@/components/session/StaffCommandSheet';
 import { ChatDrawer } from '@/components/session/ChatDrawer';
 import { ConfirmationModal } from '@/components/session/ConfirmationModal';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { Toast } from '@/components/session/Toast';
 import { AddStaffSheet } from '@/components/session/AddStaffSheet';
 import { RoomSettingsSheet } from '@/components/session/RoomSettingsSheet';
@@ -74,7 +75,7 @@ const PURPOSE_OPTIONS: { id: SessionPurpose; label: string; icon: keyof typeof I
   { id: 'Deal Review', label: 'Deal Review', icon: 'briefcase' },
 ];
 
-export default function ConferenceSession() {
+function ConferenceContent() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { tenant } = useTenant();
@@ -643,6 +644,14 @@ export default function ConferenceSession() {
   return conferenceContent;
 }
 
+
+export default function ConferenceSession() {
+  return (
+    <PageErrorBoundary pageName="conference">
+      <ConferenceContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

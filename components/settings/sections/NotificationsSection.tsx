@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SectionHeader, ToggleField, Divider } from '../SettingsField';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface NotifGroup {
   title: string;
@@ -73,7 +74,7 @@ const DEFAULT_STATE: NotifState = {
   systemUpdate: false,
 };
 
-export default function NotificationsSection() {
+function NotificationsSectionInner() {
   const [notifState, setNotifState] = useState<NotifState>(DEFAULT_STATE);
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(true);
@@ -173,3 +174,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
+
+export default function NotificationsSection(props: any) {
+  return (
+    <PageErrorBoundary pageName="notifications-section">
+      <NotificationsSectionInner {...props} />
+    </PageErrorBoundary>
+  );
+}

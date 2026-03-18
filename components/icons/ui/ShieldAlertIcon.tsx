@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ShieldAlertIconProps {
   size?: number;
@@ -11,7 +12,7 @@ interface ShieldAlertIconProps {
  * Used in RED tier authority modal action titles.
  * Canvas Wave 17 — Risk Tier Modals.
  */
-export function ShieldAlertIcon({
+function ShieldAlertIconInner({
   size = 24,
   color = '#EF4444',
 }: ShieldAlertIconProps) {
@@ -37,5 +38,13 @@ export function ShieldAlertIcon({
         fill={color}
       />
     </Svg>
+  );
+}
+
+export function ShieldAlertIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="shield-alert-icon">
+      <ShieldAlertIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

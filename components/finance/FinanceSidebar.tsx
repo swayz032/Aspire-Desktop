@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import { Colors, Typography } from '@/constants/tokens';
 import { useSidebarState } from '@/lib/uiStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const logoSource = require('../../assets/images/aspire-logo-new.png');
 const iconSource = require('../../assets/images/aspire-icon-new.png');
@@ -77,7 +78,7 @@ const navItems: NavItem[] = [
 const SIDEBAR_EXPANDED = 240;
 const SIDEBAR_COLLAPSED = 64;
 
-export function FinanceSidebar() {
+function FinanceSidebarInner() {
   const router = useRouter();
   const pathname = usePathname();
   const { sidebarExpanded, toggleSidebar } = useSidebarState();
@@ -598,3 +599,11 @@ const styles = StyleSheet.create({
     borderRadius: 1,
   },
 });
+
+export function FinanceSidebar() {
+  return (
+    <PageErrorBoundary pageName="finance-sidebar">
+      <FinanceSidebarInner />
+    </PageErrorBoundary>
+  );
+}

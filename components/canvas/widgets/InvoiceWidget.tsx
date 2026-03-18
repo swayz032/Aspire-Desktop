@@ -28,6 +28,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { PaidIcon } from '@/components/icons/status/PaidIcon';
 import { PendingIcon } from '@/components/icons/status/PendingIcon';
@@ -207,7 +208,7 @@ const InvoiceRow = React.memo(({ invoice, onPress }: { invoice: Invoice; onPress
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function InvoiceWidget({
+function InvoiceWidgetInner({
   suiteId,
   officeId,
   actorId,
@@ -582,3 +583,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
+
+export function InvoiceWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="invoice-widget">
+      <InvoiceWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

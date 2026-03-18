@@ -24,6 +24,7 @@ import { TemplateCard, TemplatePreviewModal, type TemplateData, LANE_META, type 
 import { getPandaDocTemplates, type PandaDocTemplate } from '@/lib/api';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { FinnDeskOverlay } from '@/components/finance/FinnDeskOverlay';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const webOnly = (s: Record<string, unknown>) => Platform.OS === 'web' ? s : {};
 
@@ -68,7 +69,7 @@ type LaneTab = 'all' | TemplateLane;
 
 const NUM_COLUMNS = 3;
 
-export default function TemplatesPage() {
+function TemplatesContent() {
   const [activeLane, setActiveLane] = useState<LaneTab>('all');
   const [liveTemplates, setLiveTemplates] = useState<TemplateData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -291,6 +292,14 @@ export default function TemplatesPage() {
   );
 }
 
+
+export default function TemplatesPage() {
+  return (
+    <PageErrorBoundary pageName="finance-documents-templates">
+      <TemplatesContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   page: {
     flex: 1,

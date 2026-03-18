@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ResizeIconProps {
   size?: number;
   color?: string;
 }
 
-export function ResizeIcon({
+function ResizeIconInner({
   size = 24,
   color = '#3B82F6'
 }: ResizeIconProps) {
@@ -36,5 +37,13 @@ export function ResizeIcon({
         opacity="0.4"
       />
     </Svg>
+  );
+}
+
+export function ResizeIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="resize-icon">
+      <ResizeIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

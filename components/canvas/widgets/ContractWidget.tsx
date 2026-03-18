@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { playClickSound, playApproveSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface Party {
   name: string;
@@ -80,7 +81,7 @@ const KEY_DATES = [
   { label: 'Renewal', value: 'Auto-renews annually' },
 ];
 
-export function ContractWidget({ suiteId, officeId, contractId, onViewClick, onSendReminderClick }: ContractWidgetProps) {
+function ContractWidgetInner({ suiteId, officeId, contractId, onViewClick, onSendReminderClick }: ContractWidgetProps) {
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
   const [reminderSent, setReminderSent] = useState(false);
@@ -447,3 +448,11 @@ const s = StyleSheet.create({
     color: '#FFF',
   } as any,
 });
+
+export function ContractWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="contract-widget">
+      <ContractWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

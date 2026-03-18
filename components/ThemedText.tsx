@@ -1,6 +1,7 @@
 import { StyleSheet, Text, type TextProps } from 'react-native';
 
 import { useThemeColor } from '@/hooks/useThemeColor';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type ThemedTextProps = TextProps & {
   lightColor?: string;
@@ -8,7 +9,7 @@ export type ThemedTextProps = TextProps & {
   type?: 'default' | 'title' | 'defaultSemiBold' | 'subtitle' | 'link';
 };
 
-export function ThemedText({
+function ThemedTextInner({
   style,
   lightColor,
   darkColor,
@@ -58,3 +59,11 @@ const styles = StyleSheet.create({
     color: '#0a7ea4',
   },
 });
+
+export function ThemedText(props: any) {
+  return (
+    <PageErrorBoundary pageName="themed-text">
+      <ThemedTextInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ShieldXIconProps {
   size?: number;
   color?: string;
 }
 
-export function ShieldXIcon({
+function ShieldXIconInner({
   size = 24,
   color = '#EF4444',
 }: ShieldXIconProps) {
@@ -33,5 +34,13 @@ export function ShieldXIcon({
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function ShieldXIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="shield-x-icon">
+      <ShieldXIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

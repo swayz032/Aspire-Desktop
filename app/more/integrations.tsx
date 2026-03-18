@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { formatRelativeTime } from '@/lib/formatters';
 import { supabase } from '@/lib/supabase';
 import { Integration, IntegrationStatus } from '@/types/integrations';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const STATUS_COLORS: Record<IntegrationStatus, { bg: string; text: string }> = {
   'Connected': { bg: 'rgba(34, 197, 94, 0.2)', text: '#4ADE80' },
@@ -83,7 +84,7 @@ function IntegrationCard({ integration, onPress }: { integration: Integration; o
   );
 }
 
-export default function IntegrationsScreen() {
+function IntegrationsContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
@@ -180,6 +181,14 @@ export default function IntegrationsScreen() {
   );
 }
 
+
+export default function IntegrationsScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-integrations">
+      <IntegrationsContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

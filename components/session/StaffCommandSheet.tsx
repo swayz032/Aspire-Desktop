@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { STAFF_COMMANDS } from '@/data/session';
 import { SessionStaffMember, StaffTaskState } from '@/types/session';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface StaffCommandSheetProps {
   visible: boolean;
@@ -18,7 +19,7 @@ const STATE_COLORS: Record<StaffTaskState, { bg: string; text: string }> = {
   done: { bg: 'rgba(34, 197, 94, 0.2)', text: Colors.semantic.success },
 };
 
-export function StaffCommandSheet({ visible, onClose, staff, onCommand }: StaffCommandSheetProps) {
+function StaffCommandSheetInner({ visible, onClose, staff, onCommand }: StaffCommandSheetProps) {
   if (!staff) return null;
 
   const stateColor = STATE_COLORS[staff.state];
@@ -244,3 +245,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+
+export function StaffCommandSheet(props: any) {
+  return (
+    <PageErrorBoundary pageName="staff-command-sheet">
+      <StaffCommandSheetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

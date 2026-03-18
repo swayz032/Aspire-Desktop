@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import type { LineMode, TeamMember } from '@/types/frontdesk';
 import { triggerTestIncomingCall } from '@/lib/incomingCallOverlayStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Hero image
@@ -114,7 +115,7 @@ const getDefaultBusinessHours = (): BusinessHours => {
 // ===========================================================================
 // Component
 // ===========================================================================
-export default function FrontDeskSetupScreen() {
+function FrontDeskSetupContent() {
   // --- loading / saving --------------------------------------------------
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1107,6 +1108,14 @@ export default function FrontDeskSetupScreen() {
 // ===========================================================================
 // Styles
 // ===========================================================================
+
+export default function FrontDeskSetupScreen() {
+  return (
+    <PageErrorBoundary pageName="calls-setup">
+      <FrontDeskSetupContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   // --- Layout -------------------------------------------------------------
   container: {

@@ -29,6 +29,7 @@ import {
   HelpSection,
   FeedbackSection,
 } from './sections';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /* ------------------------------------------------------------------ */
 /*  Section definition                                                 */
@@ -113,7 +114,7 @@ interface SettingsPanelProps {
   initialSection?: SettingsSectionId;
 }
 
-export function SettingsPanel({ visible, onClose, initialSection = 'account' }: SettingsPanelProps) {
+function SettingsPanelInner({ visible, onClose, initialSection = 'account' }: SettingsPanelProps) {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(initialSection);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -467,3 +468,11 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
+
+export function SettingsPanel(props: any) {
+  return (
+    <PageErrorBoundary pageName="settings-panel">
+      <SettingsPanelInner {...props} />
+    </PageErrorBoundary>
+  );
+}

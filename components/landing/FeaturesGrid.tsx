@@ -1,8 +1,9 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { features } from './FeaturesData';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function FeaturesGrid() {
+function FeaturesGridInner() {
   return (
     <section id="product" style={{
       background: '#050508',
@@ -139,5 +140,13 @@ export default function FeaturesGrid() {
         </div>
       </div>
     </section>
+  );
+}
+
+export default function FeaturesGrid(props: any) {
+  return (
+    <PageErrorBoundary pageName="features-grid">
+      <FeaturesGridInner {...props} />
+    </PageErrorBoundary>
   );
 }

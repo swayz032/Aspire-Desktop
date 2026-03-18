@@ -15,6 +15,7 @@ import {
   type ImmersionMode,
 } from '@/lib/immersionStore';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Mode config — order matters for index-based indicator positioning
@@ -71,7 +72,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 // Component
 // ---------------------------------------------------------------------------
 
-export function CanvasToggle(): React.ReactElement {
+function CanvasToggleInner(): React.ReactElement {
   const { mode } = useImmersion();
   const indicatorX = useRef(new Animated.Value(getModeOffset(mode))).current;
 
@@ -232,3 +233,11 @@ const styles = StyleSheet.create({
     lineHeight: Typography.small.lineHeight,
   },
 });
+
+export function CanvasToggle() {
+  return (
+    <PageErrorBoundary pageName="canvas-toggle">
+      <CanvasToggleInner />
+    </PageErrorBoundary>
+  );
+}

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ThinkingIconProps {
   size?: number;
   color?: string;
 }
 
-export function ThinkingIcon({
+function ThinkingIconInner({
   size = 24,
   color = '#3B82F6'
 }: ThinkingIconProps) {
@@ -35,5 +36,13 @@ export function ThinkingIcon({
         opacity="0.6"
       />
     </Svg>
+  );
+}
+
+export function ThinkingIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="thinking-icon">
+      <ThinkingIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

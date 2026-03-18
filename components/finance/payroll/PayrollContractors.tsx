@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndica
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PayrollSubTabProps {
   gustoCompany: any;
@@ -24,7 +25,7 @@ function formatDate(dateStr: string): string {
   }
 }
 
-export function PayrollContractors({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
+function PayrollContractorsInner({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
   const [contractors, setContractors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -768,3 +769,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export function PayrollContractors(props: any) {
+  return (
+    <PageErrorBoundary pageName="payroll-contractors">
+      <PayrollContractorsInner {...props} />
+    </PageErrorBoundary>
+  );
+}

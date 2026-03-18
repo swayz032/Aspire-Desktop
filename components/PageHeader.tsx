@@ -4,13 +4,14 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PageHeaderProps {
   title: string;
   showBackButton?: boolean;
 }
 
-export function PageHeader({ title, showBackButton = false }: PageHeaderProps) {
+function PageHeaderInner({ title, showBackButton = false }: PageHeaderProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -73,3 +74,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+export function PageHeader(props: any) {
+  return (
+    <PageErrorBoundary pageName="page-header">
+      <PageHeaderInner {...props} />
+    </PageErrorBoundary>
+  );
+}

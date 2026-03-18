@@ -23,6 +23,7 @@ import {
   type AgentChatMessage,
   type AgentActivityEvent,
 } from '@/components/chat';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /* ── Types ─────────────────────────────────────── */
 
@@ -184,7 +185,7 @@ function removeWebStyles(): void {
 
 /* ── Component ─────────────────────────────────── */
 
-export function FinnVideoChatOverlay({
+function FinnVideoChatOverlayInner({
   visible,
   onClose,
   chat,
@@ -707,3 +708,11 @@ const styles = StyleSheet.create({
       : {}),
   } as Record<string, unknown>,
 });
+
+export function FinnVideoChatOverlay(props: any) {
+  return (
+    <PageErrorBoundary pageName="finn-video-chat-overlay">
+      <FinnVideoChatOverlayInner {...props} />
+    </PageErrorBoundary>
+  );
+}

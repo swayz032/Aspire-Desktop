@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle, Rect } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface MediumPriorityIconProps {
   size?: number;
   color?: string;
 }
 
-export function MediumPriorityIcon({
+function MediumPriorityIconInner({
   size = 24,
   color = '#FBB924',
 }: MediumPriorityIconProps) {
@@ -30,5 +31,13 @@ export function MediumPriorityIcon({
         fill={color}
       />
     </Svg>
+  );
+}
+
+export function MediumPriorityIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="medium-priority-icon">
+      <MediumPriorityIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

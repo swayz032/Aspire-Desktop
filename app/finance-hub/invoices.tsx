@@ -5,6 +5,7 @@ import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -75,7 +76,7 @@ function isOverdue(inv: StripeInvoice): boolean {
   return inv.due_date * 1000 < Date.now();
 }
 
-export default function InvoicesPage() {
+function InvoicesContent() {
   const [invoices, setInvoices] = useState<StripeInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -988,3 +989,12 @@ const s = StyleSheet.create({
     fontSize: 14,
   },
 });
+
+
+export default function InvoicesPage() {
+  return (
+    <PageErrorBoundary pageName="finance-invoices">
+      <InvoicesContent />
+    </PageErrorBoundary>
+  );
+}

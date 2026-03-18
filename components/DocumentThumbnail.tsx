@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius } from '@/constants/tokens';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface DocumentThumbnailProps {
   type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording';
@@ -176,7 +177,7 @@ function DocLine({ spec, lineGap }: { spec: LineSpec; lineGap: number }) {
   );
 }
 
-export function DocumentThumbnail({
+function DocumentThumbnailInner({
   type,
   size = 'md',
   variant = 0,
@@ -383,3 +384,11 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.96 }],
   },
 });
+
+export function DocumentThumbnail(props: any) {
+  return (
+    <PageErrorBoundary pageName="document-thumbnail">
+      <DocumentThumbnailInner {...props} />
+    </PageErrorBoundary>
+  );
+}

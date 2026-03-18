@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -95,7 +96,7 @@ const QuoteCard = memo(function QuoteCard({ quote, isOpen, onToggle, onConvert, 
   );
 });
 
-export default function QuotesPanelContent(_props: PanelContentProps) {
+function QuotesPanelContentInner(_props: PanelContentProps) {
   const { authenticatedFetch } = useAuthFetch();
   const [quotes, setQuotes]     = useState<Quote[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -213,3 +214,11 @@ const s = StyleSheet.create({
   dangerBtnText:{ fontSize: 12, fontWeight: '600', color: C_RED },
   bottomSpacer: { height: 32 },
 });
+
+export default function QuotesPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="quotes-panel-content">
+      <QuotesPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

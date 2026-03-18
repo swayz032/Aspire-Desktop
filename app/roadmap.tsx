@@ -8,6 +8,7 @@ import { getSuiteProfile } from '@/lib/api';
 import { useRouter } from 'expo-router';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // AI workforce — static config, not DB rows (these are governed skill pack workers)
 const STAFF_ROSTER = [
@@ -24,7 +25,7 @@ const STAFF_ROSTER = [
   { id: 'staff-sarah', name: 'Sarah', role: 'Front Desk', avatar: '', status: 'active' },
 ];
 
-export default function RoadmapScreen() {
+function RoadmapContent() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const [score, setScore] = useState<any>({
@@ -486,6 +487,14 @@ export default function RoadmapScreen() {
   return content;
 }
 
+
+export default function RoadmapScreen() {
+  return (
+    <PageErrorBoundary pageName="roadmap">
+      <RoadmapContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

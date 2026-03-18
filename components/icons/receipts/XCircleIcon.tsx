@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface XCircleIconProps {
   size?: number;
   color?: string;
 }
 
-export function XCircleIcon({
+function XCircleIconInner({
   size = 24,
   color = '#EF4444',
 }: XCircleIconProps) {
@@ -26,5 +27,13 @@ export function XCircleIcon({
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function XCircleIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="x-circle-icon">
+      <XCircleIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -6,6 +6,7 @@ import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -38,7 +39,7 @@ type DailyBriefData = {
 type PastBrief = { id: string; date: string; title: string; read: boolean };
 type AiInsight = { id: string; icon: string; title: string; desc: string };
 
-export default function DailyBriefScreen() {
+function DailyBriefContent() {
   const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [dailyBrief, setDailyBrief] = useState<DailyBriefData>({
@@ -394,6 +395,14 @@ export default function DailyBriefScreen() {
   );
 }
 
+
+export default function DailyBriefScreen() {
+  return (
+    <PageErrorBoundary pageName="daily-brief">
+      <DailyBriefContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   skeletonTitle: {
     width: 220,

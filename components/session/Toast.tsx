@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -20,7 +21,7 @@ const TYPE_CONFIG: Record<ToastType, { bg: string; icon: keyof typeof Ionicons.g
   warning: { bg: Colors.semantic.warningDark, icon: 'warning', color: Colors.semantic.warning },
 };
 
-export function Toast({ visible, message, type = 'success', onHide, duration = 3000 }: ToastProps) {
+function ToastInner({ visible, message, type = 'success', onHide, duration = 3000 }: ToastProps) {
   const opacity = React.useRef(new Animated.Value(0)).current;
   const translateY = React.useRef(new Animated.Value(-50)).current;
 
@@ -102,3 +103,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+export function Toast(props: any) {
+  return (
+    <PageErrorBoundary pageName="toast">
+      <ToastInner {...props} />
+    </PageErrorBoundary>
+  );
+}

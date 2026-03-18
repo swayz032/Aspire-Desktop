@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname, type Href } from 'expo-router';
 import { useSupabase, useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -68,7 +69,7 @@ interface FinanceTopNavProps {
   isTablet?: boolean;
 }
 
-export function FinanceTopNav({ isTablet }: FinanceTopNavProps) {
+function FinanceTopNavInner({ isTablet }: FinanceTopNavProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -292,3 +293,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 });
+
+export function FinanceTopNav(props: any) {
+  return (
+    <PageErrorBoundary pageName="finance-top-nav">
+      <FinanceTopNavInner {...props} />
+    </PageErrorBoundary>
+  );
+}

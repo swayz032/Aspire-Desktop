@@ -9,6 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { useSmsThreads, useSmsMessages } from '@/hooks/useSmsThreads';
 import type { SmsMessage, SmsThread } from '@/types/frontdesk';
 import { playClickSound, playMessageSentSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface TextMessageWidgetProps {
   suiteId: string;
@@ -58,7 +59,7 @@ function phoneInitial(phone: string): string {
   return c.slice(-2, -1) || '#';
 }
 
-export function TextMessageWidget({ suiteId, officeId }: TextMessageWidgetProps) {
+function TextMessageWidgetInner({ suiteId, officeId }: TextMessageWidgetProps) {
   const { threads, loading: threadsLoading } = useSmsThreads();
   const [selectedThread, setSelectedThread] = useState<SmsThread | null>(null);
   const { messages, loading: msgsLoading } = useSmsMessages(
@@ -564,3 +565,11 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
 });
+
+export function TextMessageWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="text-message-widget">
+      <TextMessageWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

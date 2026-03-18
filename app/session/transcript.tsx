@@ -6,12 +6,13 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { getDefaultSession, bookmarkTranscript, createActionItem } from '@/data/session';
 import { TranscriptEntry } from '@/types/session';
 import { Toast } from '@/components/session/Toast';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-export default function TranscriptScreen() {
+function TranscriptContent() {
   const router = useRouter();
   const session = getDefaultSession();
   const [searchQuery, setSearchQuery] = useState('');
@@ -165,6 +166,14 @@ function TranscriptEntryCard({
   );
 }
 
+
+export default function TranscriptScreen() {
+  return (
+    <PageErrorBoundary pageName="transcript">
+      <TranscriptContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

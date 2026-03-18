@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PendingIconProps {
   size?: number;
   color?: string;
 }
 
-export function PendingIcon({
+function PendingIconInner({
   size = 24,
   color = '#F59E0B'
 }: PendingIconProps) {
@@ -24,5 +25,13 @@ export function PendingIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function PendingIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="pending-icon">
+      <PendingIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface DragHandleIconProps {
   size?: number;
   color?: string;
 }
 
-export function DragHandleIcon({
+function DragHandleIconInner({
   size = 24,
   color = '#6B7280'
 }: DragHandleIconProps) {
@@ -20,5 +21,13 @@ export function DragHandleIcon({
       <Circle cx="12" cy="15" r="1.5" fill={color} />
       <Circle cx="16" cy="15" r="1.5" fill={color} />
     </Svg>
+  );
+}
+
+export function DragHandleIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="drag-handle-icon">
+      <DragHandleIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

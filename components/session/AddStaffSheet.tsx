@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Modal, Pressable, ScrollView } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { AVAILABLE_STAFF } from '@/data/session';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface AddStaffSheetProps {
   visible: boolean;
@@ -11,7 +12,7 @@ interface AddStaffSheetProps {
   onAddStaff: (staffId: string, staffName: string) => void;
 }
 
-export function AddStaffSheet({ visible, onClose, currentStaffIds, onAddStaff }: AddStaffSheetProps) {
+function AddStaffSheetInner({ visible, onClose, currentStaffIds, onAddStaff }: AddStaffSheetProps) {
   const availableToAdd = AVAILABLE_STAFF.filter(s => !currentStaffIds.includes(s.id));
 
   return (
@@ -168,3 +169,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+
+export function AddStaffSheet(props: any) {
+  return (
+    <PageErrorBoundary pageName="add-staff-sheet">
+      <AddStaffSheetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

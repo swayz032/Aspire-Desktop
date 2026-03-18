@@ -38,6 +38,7 @@ import { CanvasTokens } from '@/constants/canvas.tokens';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { WarningTriangleIcon } from '@/components/icons/ui/WarningTriangleIcon';
 import { ShieldAlertIcon } from '@/components/icons/ui/ShieldAlertIcon';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { CloseIcon } from '@/components/icons/ui/CloseIcon';
 
 // ---------------------------------------------------------------------------
@@ -179,7 +180,7 @@ const reducedMotion =
 // Component
 // ---------------------------------------------------------------------------
 
-export function RiskTierModal(props: RiskTierModalProps): React.ReactElement | null {
+function RiskTierModalInner(props: RiskTierModalProps): React.ReactElement | null {
   const { visible, tier, actionTitle, description, onCancel, onApprove, loading = false, details, previewContent, previewLabel } = props;
 
   // RED-only props
@@ -1005,3 +1006,11 @@ const styles = StyleSheet.create({
     display: 'none',
   },
 });
+
+export function RiskTierModal(props: any) {
+  return (
+    <PageErrorBoundary pageName="risk-tier-modal">
+      <RiskTierModalInner {...props} />
+    </PageErrorBoundary>
+  );
+}

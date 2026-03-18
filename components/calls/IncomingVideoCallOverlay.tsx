@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import {
   Animated,
   ImageBackground,
@@ -180,7 +181,7 @@ function CallerDetailRow({
 }
 
 /* ─── Component ─── */
-export function IncomingVideoCallOverlay(): React.ReactElement | null {
+function IncomingVideoCallOverlayInner(): React.ReactElement | null {
   const router = useRouter();
   const { session, suiteId } = useSupabase();
   const [overlayState, setOverlayState] = useState(getIncomingVideoCallState());
@@ -659,3 +660,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+export function IncomingVideoCallOverlay() {
+  return (
+    <PageErrorBoundary pageName="incoming-video-call-overlay">
+      <IncomingVideoCallOverlayInner />
+    </PageErrorBoundary>
+  );
+}

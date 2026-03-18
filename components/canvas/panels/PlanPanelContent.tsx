@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -149,7 +150,7 @@ function RingHero({ pct, completed, total }: { pct: number; completed: number; t
   );
 }
 
-export default function PlanPanelContent(_props: PanelContentProps) {
+function PlanPanelContentInner(_props: PanelContentProps) {
   const { authenticatedFetch: authFetch } = useAuthFetch();
   const [jobs, setJobs]         = useState<Job[]>([]);
   const [atRisk, setAtRisk]     = useState<AtRiskItem[]>([]);
@@ -289,3 +290,11 @@ const s = StyleSheet.create({
   ghostBtnText: { fontSize: 12, fontWeight: '600', color: BLUE },
   bottomSpacer: { height: 32 },
 });
+
+export default function PlanPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="plan-panel-content">
+      <PlanPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -3,6 +3,7 @@ import { StyleSheet, View, ScrollView, Text } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -47,7 +48,7 @@ function ProviderCard({ name, purpose, data, location, controls }: {
   );
 }
 
-export default function PrivacyPolicyScreen() {
+function PrivacyPolicyContent() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
 
@@ -266,3 +267,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+export default function PrivacyPolicyScreen() {
+  return (
+    <PageErrorBoundary pageName="privacy-policy">
+      <PrivacyPolicyContent />
+    </PageErrorBoundary>
+  );
+}

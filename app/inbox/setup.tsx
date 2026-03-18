@@ -7,12 +7,13 @@ import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { mailApi, initMailApi, DomainSearchResult } from '@/lib/mailApi';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { MailProvider, MailOnboardingState, OnboardingCheck, DnsPlanRecord, MailSetupReceipt, DomainMode, EliConfig, DnsCheckResult } from '@/types/mailbox';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const STEPS = ['Choose Provider', 'Configure', 'Verify', 'Enable Eli'];
 
 const IS_OPERATOR = true;
 
-export default function MailboxSetupScreen() {
+function MailboxSetupContent() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { authenticatedFetch } = useAuthFetch();
@@ -2452,3 +2453,12 @@ const s = StyleSheet.create({
     gap: 10,
   },
 });
+
+
+export default function MailboxSetupScreen() {
+  return (
+    <PageErrorBoundary pageName="inbox-setup">
+      <MailboxSetupContent />
+    </PageErrorBoundary>
+  );
+}

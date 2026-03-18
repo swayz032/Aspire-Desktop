@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Platform, ScrollView, ActivityIndicator, Pressa
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PayrollSubTabProps {
   gustoCompany: any;
@@ -31,7 +32,7 @@ function maskEin(ein: string | undefined): string {
   return `••-•••${digits.slice(-4)}`;
 }
 
-export function PayrollSettings({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
+function PayrollSettingsInner({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
   const [paySchedules, setPaySchedules] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
@@ -936,3 +937,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
+
+export function PayrollSettings(props: any) {
+  return (
+    <PageErrorBoundary pageName="payroll-settings">
+      <PayrollSettingsInner {...props} />
+    </PageErrorBoundary>
+  );
+}

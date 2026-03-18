@@ -6,12 +6,14 @@ import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { InteractionModeOption } from '@/types';
 import { useRouter } from 'expo-router';
+import { trackInteraction } from '@/lib/interactionTelemetry';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface InteractionModePanelProps {
   options: InteractionModeOption[];
 }
 
-export function InteractionModePanel({ options }: InteractionModePanelProps) {
+function InteractionModePanelInner({ options }: InteractionModePanelProps) {
   const router = useRouter();
 
   return (
@@ -24,7 +26,7 @@ export function InteractionModePanel({ options }: InteractionModePanelProps) {
             pressed && styles.rowPressed,
             index === options.length - 1 && styles.lastRow,
           ]}
-          onPress={() => router.push(option.route as any)}
+          onPress={() => { trackInteraction('button_press', 'interaction-mode-panel', { mode: option.id, route: option.route }); router.push(option.route as any); }}
         >
           <View style={styles.iconContainer}>
             <Ionicons 
@@ -105,3 +107,11 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 });
+
+export function InteractionModePanel(props: any) {
+  return (
+    <PageErrorBoundary pageName="interaction-mode-panel">
+      <InteractionModePanelInner {...props} />
+    </PageErrorBoundary>
+  );
+}

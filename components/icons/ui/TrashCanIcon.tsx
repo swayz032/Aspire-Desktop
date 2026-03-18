@@ -12,6 +12,7 @@
 
 import React from 'react';
 import Svg, { Path, Line, G, Rect } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface TrashCanIconProps {
   /** Icon width and height in px (default 24) */
@@ -24,7 +25,7 @@ interface TrashCanIconProps {
   strokeWidth?: number;
 }
 
-export function TrashCanIcon({
+function TrashCanIconInner({
   size = 24,
   color = '#FFFFFF',
   lidOpen = 0,
@@ -102,5 +103,13 @@ export function TrashCanIcon({
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function TrashCanIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="trash-can-icon">
+      <TrashCanIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

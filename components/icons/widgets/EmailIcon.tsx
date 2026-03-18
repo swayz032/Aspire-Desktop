@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Rect } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface EmailIconProps {
   size?: number;
   color?: string;
 }
 
-export function EmailIcon({ size = 28, color = '#FFFFFF' }: EmailIconProps) {
+function EmailIconInner({ size = 28, color = '#FFFFFF' }: EmailIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -18,5 +19,13 @@ export function EmailIcon({ size = 28, color = '#FFFFFF' }: EmailIconProps) {
         fill={color}
       />
     </Svg>
+  );
+}
+
+export function EmailIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="email-icon">
+      <EmailIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

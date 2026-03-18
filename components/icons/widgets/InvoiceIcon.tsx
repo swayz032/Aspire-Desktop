@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface InvoiceIconProps {
   size?: number;
   color?: string;
 }
 
-export function InvoiceIcon({ size = 28, color = '#FFFFFF' }: InvoiceIconProps) {
+function InvoiceIconInner({ size = 28, color = '#FFFFFF' }: InvoiceIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -23,5 +24,13 @@ export function InvoiceIcon({ size = 28, color = '#FFFFFF' }: InvoiceIconProps) 
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function InvoiceIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="invoice-icon">
+      <InvoiceIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

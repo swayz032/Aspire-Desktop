@@ -39,6 +39,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Animation, Canvas } from '@/constants/tokens';
 import { SessionPurpose } from '@/data/session';
 import { InviteTabContent, PressableScale } from '@/components/session/InviteTabContent';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ─── Web-only hover styles ────────────────────────────────────────────────────
 
@@ -145,7 +146,7 @@ type Step = 1 | 2;
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function UnifiedSessionModal({
+function UnifiedSessionModalInner({
   visible,
   onClose,
   onStartSession,
@@ -925,3 +926,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+
+export function UnifiedSessionModal(props: any) {
+  return (
+    <PageErrorBoundary pageName="unified-session-modal">
+      <UnifiedSessionModalInner {...props} />
+    </PageErrorBoundary>
+  );
+}

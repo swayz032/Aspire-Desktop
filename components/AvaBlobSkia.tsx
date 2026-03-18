@@ -22,6 +22,7 @@ import Animated, {
   useDerivedValue,
   interpolate,
 } from 'react-native-reanimated';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type BlobState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -232,7 +233,7 @@ function HighlightLayer({ size, config }: { size: number; config: typeof stateCo
   );
 }
 
-export function AvaBlobSkia({ state = 'idle', size = 300 }: AvaBlobSkiaProps) {
+function AvaBlobSkiaInner({ state = 'idle', size = 300 }: AvaBlobSkiaProps) {
   const config = stateConfig[state];
 
   return (
@@ -266,3 +267,11 @@ const styles = StyleSheet.create({
 });
 
 export default AvaBlobSkia;
+
+export function AvaBlobSkia(props: any) {
+  return (
+    <PageErrorBoundary pageName="ava-blob-skia">
+      <AvaBlobSkiaInner {...props} />
+    </PageErrorBoundary>
+  );
+}

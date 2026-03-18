@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type PolicyLink = {
   id: string;
@@ -70,7 +71,7 @@ function LinkCard({ item, onPress }: { item: PolicyLink; onPress: () => void }) 
   );
 }
 
-export default function PoliciesScreen() {
+function PoliciesContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
@@ -179,3 +180,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
+
+export default function PoliciesScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-policies">
+      <PoliciesContent />
+    </PageErrorBoundary>
+  );
+}

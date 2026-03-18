@@ -8,6 +8,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ViewStyle } from 'react-na
 import { Ionicons } from '@expo/vector-icons';
 import { SectionHeader, Divider } from '../SettingsField';
 import { SettingsColors, TRANSITION_SMOOTH } from '../settingsConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const PLAN_FEATURES = [
   { icon: 'people-outline' as const, label: 'Unlimited team members' },
@@ -18,7 +19,7 @@ const PLAN_FEATURES = [
   { icon: 'cloud-outline' as const, label: 'Unlimited document storage' },
 ];
 
-export default function BillingSection() {
+function BillingSectionInner() {
   // TODO: Fetch from Stripe subscription API
   const plan = 'Professional';
   const billingCycle = 'Monthly';
@@ -360,3 +361,11 @@ const styles = StyleSheet.create({
     color: '#a1a1a6',
   },
 });
+
+export default function BillingSection(props: any) {
+  return (
+    <PageErrorBoundary pageName="billing-section">
+      <BillingSectionInner {...props} />
+    </PageErrorBoundary>
+  );
+}

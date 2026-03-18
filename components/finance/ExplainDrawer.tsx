@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Animation } from '@/constants/tokens';
 import SourceBadge from './SourceBadge';
 import TimelineRow from './TimelineRow';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ExplainDrawerProps {
   visible: boolean;
@@ -48,7 +49,7 @@ const FALLBACK_DATA: ExplainData = {
   relatedEvents: [],
 };
 
-export default function ExplainDrawer({ visible, onClose, metricId, suiteId, officeId }: ExplainDrawerProps) {
+function ExplainDrawerInner({ visible, onClose, metricId, suiteId, officeId }: ExplainDrawerProps) {
   const [data, setData] = useState<ExplainData | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
@@ -279,3 +280,11 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 });
+
+export default function ExplainDrawer(props: any) {
+  return (
+    <PageErrorBoundary pageName="explain-drawer">
+      <ExplainDrawerInner {...props} />
+    </PageErrorBoundary>
+  );
+}

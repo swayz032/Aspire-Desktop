@@ -28,6 +28,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { Colors } from '@/constants/tokens';
 import { WebPreview, WebPreviewProps } from '@/components/ai-elements/WebPreview';
@@ -78,7 +79,7 @@ export interface ChatCanvasProps {
  * - Activity events are routed to chatCanvasStore for global state
  * - WebPreview receives events via props for rendering
  */
-export function ChatCanvas({
+function ChatCanvasInner({
   webPreviewProps,
   personaElement,
   streamEnabled = false,
@@ -335,3 +336,11 @@ const styles = StyleSheet.create({
     pointerEvents: 'none',
   },
 });
+
+export function ChatCanvas(props: any) {
+  return (
+    <PageErrorBoundary pageName="chat-canvas">
+      <ChatCanvasInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
 import SourceBadge from './SourceBadge';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ReconcileCardProps {
   mismatch: {
@@ -44,7 +45,7 @@ function formatCurrency(amount: number | null | undefined): string {
   return `$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function ReconcileCard({ mismatch, onAction, onDismiss }: ReconcileCardProps) {
+function ReconcileCardInner({ mismatch, onAction, onDismiss }: ReconcileCardProps) {
   const severityColor = SEVERITY_COLORS[mismatch.severity];
   const severityBg = SEVERITY_BG[mismatch.severity];
   const diffColor = mismatch.amounts.difference >= 0 ? Colors.semantic.success : Colors.semantic.error;
@@ -256,3 +257,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 });
+
+export default function ReconcileCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="reconcile-card">
+      <ReconcileCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

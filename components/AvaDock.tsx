@@ -14,12 +14,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing } from '@/constants/tokens';
 import { useAvaDock } from '@/providers';
 import { useSession } from '@/providers';
+import { trackInteraction } from '@/lib/interactionTelemetry';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINIMIZED_HEIGHT = 80;
 const EXPANDED_HEIGHT = SCREEN_HEIGHT * 0.75;
 
-export function AvaDock() {
+function AvaDockInner() {
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const { dockState, sessionMode, closeDock, minimizeDock, expandDock } = useAvaDock();
   const { session, startSession, endSession, isActive } = useSession();
@@ -91,6 +93,7 @@ export function AvaDock() {
   ).current;
 
   const handleEndSession = () => {
+    trackInteraction('dock_close', 'ava-dock', { mode: sessionMode || 'voice' });
     endSession();
     closeDock();
   };
@@ -141,7 +144,7 @@ export function AvaDock() {
       </View>
 
       {dockState === 'minimized' ? (
-        <Pressable style={styles.minimizedContainer} onPress={expandDock}>
+        <Pressable style={styles.minimizedContainer} onPress={() => { trackInteraction('dock_expand', 'ava-dock'); expandDock(); }}>
           <View style={styles.minimizedLeft}>
             <View style={styles.pulseRing}>
               <Ionicons name={getModeIcon()} size={20} color={Colors.text.primary} />
@@ -162,7 +165,7 @@ export function AvaDock() {
               <View style={styles.statusDot} />
               <Text style={styles.headerTitle}>{getModeLabel()}</Text>
             </View>
-            <TouchableOpacity onPress={minimizeDock} style={styles.minimizeButton}>
+            <TouchableOpacity onPress={() => { trackInteraction('dock_minimize', 'ava-dock'); minimizeDock(); }} style={styles.minimizeButton}>
               <Ionicons name="chevron-down" size={24} color={Colors.text.secondary} />
             </TouchableOpacity>
           </View>
@@ -373,3 +376,11 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
   },
 });
+
+export function AvaDock() {
+  return (
+    <PageErrorBoundary pageName="ava-dock">
+      <AvaDockInner />
+    </PageErrorBoundary>
+  );
+}

@@ -4,6 +4,7 @@ import { GreetingCard } from './GreetingCard';
 import { HealthScoreRing } from './HealthScoreRing';
 import { FinnDailyBrief } from './FinnDailyBrief';
 import type { StoryModeId } from './StoryModeCarousel';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface FinanceRightRailProps {
   ownerName: string;
@@ -16,7 +17,7 @@ interface FinanceRightRailProps {
   onAskFinn: () => void;
 }
 
-export function FinanceRightRail({
+function FinanceRightRailInner({
   ownerName,
   connectedCount,
   mismatchCount,
@@ -47,5 +48,13 @@ export function FinanceRightRail({
         onAskFinn={onAskFinn}
       />
     </div>
+  );
+}
+
+export function FinanceRightRail(props: any) {
+  return (
+    <PageErrorBoundary pageName="finance-right-rail">
+      <FinanceRightRailInner {...props} />
+    </PageErrorBoundary>
   );
 }

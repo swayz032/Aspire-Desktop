@@ -10,12 +10,13 @@ import React, { useEffect, useRef } from 'react';
 import { View, Platform, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface AvaOrbProps {
   size?: number;
 }
 
-export function AvaOrb({ size = 320 }: AvaOrbProps) {
+function AvaOrbInner({ size = 320 }: AvaOrbProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -88,3 +89,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(59,130,246,0.08)',
   },
 });
+
+export function AvaOrb(props: any) {
+  return (
+    <PageErrorBoundary pageName="ava-orb">
+      <AvaOrbInner {...props} />
+    </PageErrorBoundary>
+  );
+}

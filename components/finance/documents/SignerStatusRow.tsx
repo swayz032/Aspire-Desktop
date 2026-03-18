@@ -5,6 +5,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type SignerStatus = 'pending' | 'viewed' | 'signed' | 'declined';
 
@@ -66,8 +67,6 @@ function SignerStatusRowInner({ signer }: SignerStatusRowProps) {
   );
 }
 
-export const SignerStatusRow = React.memo(SignerStatusRowInner);
-
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
@@ -121,3 +120,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export function SignerStatusRow(props: any) {
+  return (
+    <PageErrorBoundary pageName="signer-status-row">
+      <SignerStatusRowInner {...props} />
+    </PageErrorBoundary>
+  );
+}

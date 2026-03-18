@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, TextInput, ScrollView, Platform } fr
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import type { PanelContentProps } from './types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const SURFACE = 'rgba(6,6,10,0.98)';
 const BORDER  = 'rgba(255,255,255,0.11)';
@@ -51,7 +52,7 @@ function PaperBackground({ height, accentColor }: { height: number; accentColor:
   );
 }
 
-export default function NotesPanelContent(_props: PanelContentProps) {
+function NotesPanelContentInner(_props: PanelContentProps) {
   const [notes, setNotes]           = useState<Note[]>([]);
   const [activeNote, setActiveNote] = useState<Note | null>(null);
   const [colorId, setColorId]       = useState('navy');
@@ -257,3 +258,11 @@ const s = StyleSheet.create({
   thumb:        { width: 80, height: 60, borderRadius: 8, padding: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
   thumbText:    { fontSize: 10, color: 'rgba(255,255,255,0.7)', lineHeight: 14 },
 });
+
+export default function NotesPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="notes-panel-content">
+      <NotesPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

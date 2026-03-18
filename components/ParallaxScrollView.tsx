@@ -10,6 +10,7 @@ import Animated, {
 import { ThemedView } from '@/components/ThemedView';
 import { useBottomTabOverflow } from '@/components/ui/TabBarBackground';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const HEADER_HEIGHT = 250;
 
@@ -18,7 +19,7 @@ type Props = PropsWithChildren<{
   headerBackgroundColor: { dark: string; light: string };
 }>;
 
-export default function ParallaxScrollView({
+function ParallaxScrollViewInner({
   children,
   headerImage,
   headerBackgroundColor,
@@ -80,3 +81,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 });
+
+export default function ParallaxScrollView(props: any) {
+  return (
+    <PageErrorBoundary pageName="parallax-scroll-view">
+      <ParallaxScrollViewInner {...props} />
+    </PageErrorBoundary>
+  );
+}

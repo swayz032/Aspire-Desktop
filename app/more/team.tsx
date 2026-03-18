@@ -7,6 +7,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { supabase } from '@/lib/supabase';
 import { TeamMember } from '@/types/team';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function SkeletonCard() {
   return (
@@ -65,7 +66,7 @@ function TeamMemberCard({ member, onToggle, onPress }: { member: TeamMember; onT
   );
 }
 
-export default function TeamScreen() {
+function TeamContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
@@ -173,6 +174,14 @@ export default function TeamScreen() {
   );
 }
 
+
+export default function TeamScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-team">
+      <TeamContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

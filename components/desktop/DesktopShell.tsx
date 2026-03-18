@@ -4,6 +4,7 @@ import { DesktopHeader } from './DesktopHeader';
 import { DesktopSidebar } from './DesktopSidebar';
 import { Colors } from '@/constants/tokens';
 import { useSidebarState } from '@/lib/uiStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface DesktopShellProps {
   children: ReactNode;
@@ -11,7 +12,7 @@ interface DesktopShellProps {
   fullBleed?: boolean;
 }
 
-export function DesktopShell({ children, hideSidebar = false, fullBleed = false }: DesktopShellProps) {
+function DesktopShellInner({ children, hideSidebar = false, fullBleed = false }: DesktopShellProps) {
   const { sidebarExpanded } = useSidebarState();
 
   return (
@@ -61,3 +62,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 });
+
+export function DesktopShell(props: any) {
+  return (
+    <PageErrorBoundary pageName="desktop-shell">
+      <DesktopShellInner {...props} />
+    </PageErrorBoundary>
+  );
+}

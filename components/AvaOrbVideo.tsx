@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -37,7 +38,7 @@ function injectVideoCss() {
   document.head.appendChild(style);
 }
 
-export function AvaOrbVideo({ state, size = 300 }: AvaOrbVideoProps) {
+function AvaOrbVideoInner({ state, size = 300 }: AvaOrbVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const config = stateConfig[state];
 
@@ -123,3 +124,11 @@ const styles = StyleSheet.create({
 });
 
 export default AvaOrbVideo;
+
+export function AvaOrbVideo(props: any) {
+  return (
+    <PageErrorBoundary pageName="ava-orb-video">
+      <AvaOrbVideoInner {...props} />
+    </PageErrorBoundary>
+  );
+}

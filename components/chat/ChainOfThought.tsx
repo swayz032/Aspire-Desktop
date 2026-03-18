@@ -38,6 +38,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/tokens';
 import type { AgentId } from './types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { AGENT_COLORS } from './types';
 
 // ---------------------------------------------------------------------------
@@ -86,7 +87,7 @@ interface ChainOfThoughtProps {
   children?: React.ReactNode;
 }
 
-export const ChainOfThought = React.memo(function ChainOfThought({
+const ChainOfThoughtInnerWrapped = React.memo(function ChainOfThoughtInner({
   open: controlledOpen,
   defaultOpen = false,
   onOpenChange,
@@ -657,4 +658,12 @@ const s = StyleSheet.create({
     borderColor: '#2C2C2E',
     borderTopWidth: 2,
   },
+});
+
+export const ChainOfThought = React.memo(function ChainOfThought(props: any) {
+  return (
+    <PageErrorBoundary pageName="chain-of-thought">
+      <ChainOfThoughtInnerWrapped {...props} />
+    </PageErrorBoundary>
+  );
 });

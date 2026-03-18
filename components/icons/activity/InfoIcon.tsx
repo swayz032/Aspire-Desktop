@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface InfoIconProps {
   size?: number;
   color?: string;
 }
 
-export function InfoIcon({
+function InfoIconInner({
   size = 24,
   color = '#3B82F6'
 }: InfoIconProps) {
@@ -38,5 +39,13 @@ export function InfoIcon({
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function InfoIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="info-icon">
+      <InfoIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

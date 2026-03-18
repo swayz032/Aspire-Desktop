@@ -14,6 +14,7 @@ import {
   type AgentActivityEvent,
   type AgentChatMessage,
 } from '@/components/chat';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type ChatMsg = {
   id: string;
@@ -27,7 +28,7 @@ type Props = {
   onClose: () => void;
 };
 
-export function FinnChatModal({ visible, onClose }: Props) {
+function FinnChatModalInner({ visible, onClose }: Props) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [activeRuns, setActiveRuns] = useState<Record<string, { events: AgentActivityEvent[]; status: 'running' | 'completed' }>>({});
   const [input, setInput] = useState('');
@@ -350,3 +351,11 @@ const modalStyles = StyleSheet.create({
     backgroundColor: 'rgba(139,92,246,0.5)',
   },
 });
+
+export function FinnChatModal(props: any) {
+  return (
+    <PageErrorBoundary pageName="finn-chat-modal">
+      <FinnChatModalInner {...props} />
+    </PageErrorBoundary>
+  );
+}

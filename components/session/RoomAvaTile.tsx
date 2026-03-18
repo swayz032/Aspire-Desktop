@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { Image } from 'expo-image';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const avaLogo = require('../../assets/images/ava-logo.png');
 
@@ -15,7 +16,7 @@ interface RoomAvaTileProps {
   height?: number;
 }
 
-export function RoomAvaTile({
+function RoomAvaTileInner({
   state,
   listeningTo,
   onPress,
@@ -128,3 +129,11 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 });
+
+export function RoomAvaTile(props: any) {
+  return (
+    <PageErrorBoundary pageName="room-ava-tile">
+      <RoomAvaTileInner {...props} />
+    </PageErrorBoundary>
+  );
+}

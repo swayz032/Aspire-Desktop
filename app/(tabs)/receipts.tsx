@@ -13,6 +13,7 @@ import { Receipt, ReceiptType, ReceiptStatus } from '@/types/receipts';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { PageHeader } from '@/components/PageHeader';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /** Map a Supabase receipt row (snake_case) to the UI Receipt type. */
 function mapSupabaseReceipt(row: any): Receipt {
@@ -297,7 +298,7 @@ function ReceiptDetailView({ receipt, onBack }: { receipt: Receipt; onBack: () =
   );
 }
 
-export default function ReceiptsScreen() {
+function ReceiptsContent() {
   const insets = useSafeAreaInsets();
   const isDesktop = useDesktop();
   const headerHeight = isDesktop ? 0 : insets.top + 60;
@@ -493,6 +494,14 @@ export default function ReceiptsScreen() {
   return content;
 }
 
+
+export default function ReceiptsScreen() {
+  return (
+    <PageErrorBoundary pageName="receipts">
+      <ReceiptsContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

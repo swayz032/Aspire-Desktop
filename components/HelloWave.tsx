@@ -9,8 +9,9 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/ThemedText';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export function HelloWave() {
+function HelloWaveInner() {
   const rotationAnimation = useSharedValue(0);
 
   useEffect(() => {
@@ -38,3 +39,11 @@ const styles = StyleSheet.create({
     marginTop: -6,
   },
 });
+
+export function HelloWave() {
+  return (
+    <PageErrorBoundary pageName="hello-wave">
+      <HelloWaveInner />
+    </PageErrorBoundary>
+  );
+}

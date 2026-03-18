@@ -35,6 +35,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Animation } from '@/constants/tokens';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ─── Web-only CSS polish ─────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ function injectInviteKeyframes() {
 // ─── Shared sub-components ──────────────────────────────────────────────────
 
 /** Animated shimmer bar for skeleton loading — LinearGradient sweep from left to right, 1.5s cycle */
-export function ShimmerBar({ width, height, borderRadius: br }: { width: number | string; height: number; borderRadius: number }) {
+function ShimmerBarInner({ width, height, borderRadius: br }: { width: number | string; height: number; borderRadius: number }) {
   const shimmerTranslate = useSharedValue(-1);
 
   useEffect(() => {
@@ -1254,3 +1255,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+export function ShimmerBar(props: any) {
+  return (
+    <PageErrorBoundary pageName="invite-tab-content">
+      <ShimmerBarInner {...props} />
+    </PageErrorBoundary>
+  );
+}

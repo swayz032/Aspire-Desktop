@@ -14,6 +14,7 @@ import React from 'react';
 import { View, StyleSheet, Platform, type ViewStyle } from 'react-native';
 import { Canvas } from '@/constants/tokens';
 import Svg, { Defs, Pattern, Rect, Circle } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CanvasGridProps {
   /** Grid dot spacing in pixels — overrides responsive defaults */
@@ -28,7 +29,7 @@ interface CanvasGridProps {
  * Premium dot grid background — creates the illusion of a physical surface.
  * Grid is fixed to viewport, content scrolls over it.
  */
-export function CanvasGrid({
+function CanvasGridInner({
   spacing,
   dotColor = `rgba(255, 255, 255, ${Canvas.workspace.dotGridOpacity})`,
   dotSize = 2,
@@ -92,3 +93,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
 });
+
+export function CanvasGrid(props: any) {
+  return (
+    <PageErrorBoundary pageName="canvas-grid">
+      <CanvasGridInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Line } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PriorityLowIconProps {
   size?: number;
   color?: string;
 }
 
-export function PriorityLowIcon({
+function PriorityLowIconInner({
   size = 24,
   color = '#6B7280'
 }: PriorityLowIconProps) {
@@ -23,5 +24,13 @@ export function PriorityLowIcon({
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function PriorityLowIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="priority-low-icon">
+      <PriorityLowIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

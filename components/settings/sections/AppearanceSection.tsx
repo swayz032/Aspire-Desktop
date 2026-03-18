@@ -8,6 +8,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ViewStyle } from 'react-na
 import { Ionicons } from '@expo/vector-icons';
 import { SectionHeader, PillGroup, SelectField, ToggleField, Divider } from '../SettingsField';
 import { SettingsColors, TRANSITION_SMOOTH } from '../settingsConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const ACCENT_COLORS = [
   { value: 'blue', label: 'Sapphire', color: '#3B82F6' },
@@ -30,7 +31,7 @@ const FONT_SIZE_OPTIONS = [
   { value: 'large', label: 'Large' },
 ];
 
-export default function AppearanceSection() {
+function AppearanceSectionInner() {
   const [accentColor, setAccentColor] = useState('blue');
   const [density, setDensity] = useState('comfortable');
   const [fontSize, setFontSize] = useState('medium');
@@ -300,3 +301,11 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
 });
+
+export default function AppearanceSection(props: any) {
+  return (
+    <PageErrorBoundary pageName="appearance-section">
+      <AppearanceSectionInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const STEP = 360 / 7;
 const RADIUS = 260;
@@ -26,7 +27,7 @@ function getBrightness(dist: number): number {
   return 0.35;
 }
 
-export default function AIStaffPhotoCarousel() {
+function AIStaffPhotoCarouselInner() {
   const [rotationAngle, setRotationAngle] = useState(0);
   const pauseRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -210,5 +211,13 @@ export default function AIStaffPhotoCarousel() {
         </AnimatePresence>
       </div>
     </div>
+  );
+}
+
+export default function AIStaffPhotoCarousel(props: any) {
+  return (
+    <PageErrorBoundary pageName="a-i-staff-photo-carousel">
+      <AIStaffPhotoCarouselInner {...props} />
+    </PageErrorBoundary>
   );
 }

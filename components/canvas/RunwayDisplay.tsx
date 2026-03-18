@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Canvas, Colors, Typography, Shadows } from '@/constants/tokens';
 import { getStepIndex, type RunwayState } from '@/lib/runwayMachine';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -184,7 +185,7 @@ function Connector({ filled, staggerDelay }: { filled: boolean; staggerDelay: nu
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function RunwayDisplay({ currentState }: RunwayDisplayProps): React.ReactElement {
+function RunwayDisplayInner({ currentState }: RunwayDisplayProps): React.ReactElement {
   return (
     <View
       style={styles.container}
@@ -269,3 +270,11 @@ const styles = StyleSheet.create({
     borderRadius: 1,
   },
 });
+
+export function RunwayDisplay(props: any) {
+  return (
+    <PageErrorBoundary pageName="runway-display">
+      <RunwayDisplayInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -10,8 +10,9 @@ import MeetTheTeam from '@/components/landing/MeetTheTeam';
 import PricingCTA from '@/components/landing/PricingCTA';
 import LandingFooter from '@/components/landing/LandingFooter';
 import { features } from '@/components/landing/FeaturesData';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function LandingPage() {
+function LandingContent() {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const body = document.body;
@@ -79,5 +80,14 @@ export default function LandingPage() {
         <LandingFooter />
       </div>
     </>
+  );
+}
+
+
+export default function LandingPage() {
+  return (
+    <PageErrorBoundary pageName="landing">
+      <LandingContent />
+    </PageErrorBoundary>
   );
 }

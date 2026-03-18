@@ -6,6 +6,7 @@ import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { Colors, Typography, BorderRadius, Spacing } from '@/constants/tokens';
 import { CARD_BG } from '@/constants/cardPatterns';
 import { useRouter } from 'expo-router';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
 const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -75,7 +76,7 @@ const DEFAULT_AVAILABILITY: AvailabilitySlot[] = DAYS.map((_, i) => ({
   isActive: i >= 1 && i <= 5,
 }));
 
-export default function BookingsPage() {
+function BookingsContent() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'all' | 'services' | 'settings'>('upcoming');
@@ -792,6 +793,14 @@ export default function BookingsPage() {
   );
 }
 
+
+export default function BookingsPage() {
+  return (
+    <PageErrorBoundary pageName="bookings">
+      <BookingsContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },

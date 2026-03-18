@@ -1,6 +1,7 @@
 import React from 'react';
 import { Platform } from 'react-native';
 import type { StoryModeId } from './StoryModeCarousel';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const FINN_INSIGHTS: Record<StoryModeId, { quote: string; context: string }> = {
   'cash-truth': {
@@ -39,7 +40,7 @@ interface Props {
   onAskFinn?: () => void;
 }
 
-export function FinnDailyBrief({ activeMode, accentColor, onAskFinn }: Props) {
+function FinnDailyBriefInner({ activeMode, accentColor, onAskFinn }: Props) {
   if (Platform.OS !== 'web') return null;
 
   const insight = FINN_INSIGHTS[activeMode] ?? FINN_INSIGHTS['cash-truth'];
@@ -123,5 +124,13 @@ export function FinnDailyBrief({ activeMode, accentColor, onAskFinn }: Props) {
         Ask Finn →
       </div>
     </div>
+  );
+}
+
+export function FinnDailyBrief(props: any) {
+  return (
+    <PageErrorBoundary pageName="finn-daily-brief">
+      <FinnDailyBriefInner {...props} />
+    </PageErrorBoundary>
   );
 }

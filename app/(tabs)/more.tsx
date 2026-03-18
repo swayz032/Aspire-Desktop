@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -55,7 +56,7 @@ function SectionDivider({ title }: { title: string }) {
   );
 }
 
-export default function MoreScreen() {
+function MoreContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isDesktop = useDesktop();
@@ -171,6 +172,14 @@ export default function MoreScreen() {
   return content;
 }
 
+
+export default function MoreScreen() {
+  return (
+    <PageErrorBoundary pageName="more">
+      <MoreContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

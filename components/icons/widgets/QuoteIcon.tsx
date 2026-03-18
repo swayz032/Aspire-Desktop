@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface QuoteIconProps {
   size?: number;
   color?: string;
 }
 
-export function QuoteIcon({ size = 28, color = '#FFFFFF' }: QuoteIconProps) {
+function QuoteIconInner({ size = 28, color = '#FFFFFF' }: QuoteIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -27,5 +28,13 @@ export function QuoteIcon({ size = 28, color = '#FFFFFF' }: QuoteIconProps) {
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function QuoteIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="quote-icon">
+      <QuoteIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

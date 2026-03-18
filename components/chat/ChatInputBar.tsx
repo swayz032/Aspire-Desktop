@@ -28,10 +28,12 @@ import {
   type NativeSyntheticEvent,
   type TextInputKeyPressEventData,
 } from 'react-native';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import type { AgentId } from './types';
 import { AGENT_COLORS } from './types';
+import { trackInteraction } from '@/lib/interactionTelemetry';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -62,7 +64,7 @@ interface ChatInputBarProps {
 // Main Component
 // ---------------------------------------------------------------------------
 
-export const ChatInputBar = React.memo(function ChatInputBar({
+const ChatInputBarInnerWrapped = React.memo(function ChatInputBarInner({
   value,
   onChangeText,
   onSend,
@@ -82,6 +84,7 @@ export const ChatInputBar = React.memo(function ChatInputBar({
 
   const handleSend = useCallback(() => {
     if (!hasText || isLoading) return;
+    trackInteraction('chat_send', 'chat-input-bar', { agent: agent || 'unknown' });
     onSend();
   }, [hasText, isLoading, onSend]);
 
@@ -116,7 +119,8 @@ export const ChatInputBar = React.memo(function ChatInputBar({
       }),
     ]).start();
     onMicToggle();
-  }, [onMicToggle, pulseAnim]);
+    trackInteraction('chat_mic_toggle', 'chat-input-bar', { agent: agent || 'unknown' });
+  }, [onMicToggle, pulseAnim, agent]);
 
   // Dynamic focus border style
   const focusBorderStyle: ViewStyle = isFocused
@@ -253,4 +257,12 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+});
+
+export const ChatInputBar = React.memo(function ChatInputBar(props: any) {
+  return (
+    <PageErrorBoundary pageName="chat-input-bar">
+      <ChatInputBarInnerWrapped {...props} />
+    </PageErrorBoundary>
+  );
 });

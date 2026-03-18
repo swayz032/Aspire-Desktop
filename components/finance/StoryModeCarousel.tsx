@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import ThreeDCarousel from '@/components/ThreeDCarousel';
 import type { ThreeDCarouselItem } from '@/components/ThreeDCarousel';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type StoryModeId =
   | 'cash-truth'
@@ -85,7 +86,7 @@ interface StoryModeCarouselProps {
   onSelectMode?: (mode: StoryModeConfig) => void;
 }
 
-export function StoryModeCarousel({ activeMode, onSelectMode }: StoryModeCarouselProps) {
+function StoryModeCarouselInner({ activeMode, onSelectMode }: StoryModeCarouselProps) {
   if (Platform.OS !== 'web') {
     return (
       <View style={nativeStyles.container}>
@@ -133,3 +134,11 @@ const nativeStyles = StyleSheet.create({
     color: '#ffffff',
   },
 });
+
+export function StoryModeCarousel(props: any) {
+  return (
+    <PageErrorBoundary pageName="story-mode-carousel">
+      <StoryModeCarouselInner {...props} />
+    </PageErrorBoundary>
+  );
+}

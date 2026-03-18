@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card } from './ui/Card';
 import { CashPosition, PipelineStage, BusinessScore, FounderHubData } from '@/types';
 import { useRouter } from 'expo-router';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface OpsSnapshotTabsProps {
   cashData: CashPosition;
@@ -26,7 +27,7 @@ const defaultFounderHubData: FounderHubData = {
   preparedCount: 0,
 };
 
-export function OpsSnapshotTabs({ cashData, pipelineStages, businessScore, founderHubData }: OpsSnapshotTabsProps) {
+function OpsSnapshotTabsInner({ cashData, pipelineStages, businessScore, founderHubData }: OpsSnapshotTabsProps) {
   const [activeTab, setActiveTab] = useState<'cash' | 'hub'>('cash');
   const hubData = founderHubData || defaultFounderHubData;
 
@@ -853,3 +854,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+export function OpsSnapshotTabs(props: any) {
+  return (
+    <PageErrorBoundary pageName="ops-snapshot-tabs">
+      <OpsSnapshotTabsInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -3,6 +3,7 @@ import { View, Pressable, StyleSheet, Platform } from 'react-native';
 import type { ImmersionMode } from '@/lib/immersionStore';
 import { Canvas } from '@/constants/tokens';
 import { getTile } from '@/lib/tileManifest';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // CSS halo — premium glass glow per desk color, injected once on web
@@ -102,7 +103,7 @@ export interface CanvasTileWrapperProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export function CanvasTileWrapper({
+function CanvasTileWrapperInner({
   tileId,
   mode,
   children,
@@ -231,3 +232,11 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 });
+
+export function CanvasTileWrapper(props: any) {
+  return (
+    <PageErrorBoundary pageName="canvas-tile-wrapper">
+      <CanvasTileWrapperInner {...props} />
+    </PageErrorBoundary>
+  );
+}

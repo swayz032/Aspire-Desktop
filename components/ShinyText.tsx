@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { motion } from 'motion/react';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const STYLE_ID = '__aspire_shiny_text_styles__';
 
@@ -125,7 +126,7 @@ function ShinyTextNative({
   );
 }
 
-export function ShinyText(props: ShinyTextProps) {
+function ShinyTextInner(props: ShinyTextProps) {
   if (Platform.OS === 'web') {
     return <ShinyTextWeb {...props} />;
   }
@@ -133,3 +134,11 @@ export function ShinyText(props: ShinyTextProps) {
 }
 
 export default ShinyText;
+
+export function ShinyText(props: any) {
+  return (
+    <PageErrorBoundary pageName="shiny-text">
+      <ShinyTextInner {...props} />
+    </PageErrorBoundary>
+  );
+}

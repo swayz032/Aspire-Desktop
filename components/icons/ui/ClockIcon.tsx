@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ClockIconProps {
   size?: number;
   color?: string;
 }
 
-export function ClockIcon({
+function ClockIconInner({
   size = 24,
   color = '#FBB924'
 }: ClockIconProps) {
@@ -27,5 +28,13 @@ export function ClockIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function ClockIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="clock-icon">
+      <ClockIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

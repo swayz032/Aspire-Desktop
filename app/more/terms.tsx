@@ -3,6 +3,7 @@ import { StyleSheet, View, ScrollView, Text, Linking } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -24,7 +25,7 @@ function Link({ url, label }: { url: string; label: string }) {
   );
 }
 
-export default function TermsScreen() {
+function TermsContent() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
 
@@ -247,3 +248,11 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
 });
+
+export default function TermsScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-terms">
+      <TermsContent />
+    </PageErrorBoundary>
+  );
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, Text, StyleSheet, ViewStyle, ActivityIndicator } from 'react-native';
 import { Colors, BorderRadius, Spacing, Typography } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -50,7 +51,7 @@ const variantStyles = {
   },
 };
 
-export function Button({ 
+function ButtonInner({ 
   label, 
   onPress, 
   variant = 'secondary', 
@@ -137,3 +138,11 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
+
+export function Button(props: any) {
+  return (
+    <PageErrorBoundary pageName="button">
+      <ButtonInner {...props} />
+    </PageErrorBoundary>
+  );
+}

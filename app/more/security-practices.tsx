@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function Practice({ icon, title, description }: { icon: string; title: string; description: string }) {
   return (
@@ -19,7 +20,7 @@ function Practice({ icon, title, description }: { icon: string; title: string; d
   );
 }
 
-export default function SecurityPracticesScreen() {
+function SecurityPracticesContent() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
 
@@ -197,3 +198,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
+
+export default function SecurityPracticesScreen() {
+  return (
+    <PageErrorBoundary pageName="security-practices">
+      <SecurityPracticesContent />
+    </PageErrorBoundary>
+  );
+}

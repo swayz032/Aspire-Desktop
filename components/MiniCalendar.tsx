@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CalendarEvent {
   id: string;
@@ -26,7 +27,7 @@ interface MiniCalendarProps {
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export function MiniCalendar({ 
+function MiniCalendarInner({ 
   events, 
   onDateSelect, 
   onMonthChange,
@@ -309,3 +310,11 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 });
+
+export function MiniCalendar(props: any) {
+  return (
+    <PageErrorBoundary pageName="mini-calendar">
+      <MiniCalendarInner {...props} />
+    </PageErrorBoundary>
+  );
+}

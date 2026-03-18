@@ -24,6 +24,7 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface WidgetIconTileProps {
   title: string;
@@ -45,7 +46,7 @@ function snapToGrid(value: number): number {
   return Math.round(value / GRID_SIZE) * GRID_SIZE;
 }
 
-export function WidgetIconTile({
+function WidgetIconTileInner({
   title,
   accent,
   icon,
@@ -240,3 +241,11 @@ const s = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
 });
+
+export function WidgetIconTile(props: any) {
+  return (
+    <PageErrorBoundary pageName="widget-icon-tile">
+      <WidgetIconTileInner {...props} />
+    </PageErrorBoundary>
+  );
+}

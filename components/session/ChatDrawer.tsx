@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Modal, Pressable, TextInput, ScrollView, Keyboa
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { ChatMessage } from '@/types/session';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ChatDrawerProps {
   visible: boolean;
@@ -15,7 +16,7 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function ChatDrawer({ visible, onClose, messages, onSend }: ChatDrawerProps) {
+function ChatDrawerInner({ visible, onClose, messages, onSend }: ChatDrawerProps) {
   const [inputText, setInputText] = useState('');
 
   const handleSend = () => {
@@ -204,3 +205,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+
+export function ChatDrawer(props: any) {
+  return (
+    <PageErrorBoundary pageName="chat-drawer">
+      <ChatDrawerInner {...props} />
+    </PageErrorBoundary>
+  );
+}

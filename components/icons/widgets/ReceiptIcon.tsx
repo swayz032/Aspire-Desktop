@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ReceiptIconProps {
   size?: number;
   color?: string;
 }
 
-export function ReceiptIcon({ size = 28, color = '#FFFFFF' }: ReceiptIconProps) {
+function ReceiptIconInner({ size = 28, color = '#FFFFFF' }: ReceiptIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -18,5 +19,13 @@ export function ReceiptIcon({ size = 28, color = '#FFFFFF' }: ReceiptIconProps) 
       <Path d="M8 7h8M8 10.5h8M8 14h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       <Path d="M14 14h2" stroke={color} strokeWidth="2" strokeLinecap="round" />
     </Svg>
+  );
+}
+
+export function ReceiptIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="receipt-icon">
+      <ReceiptIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

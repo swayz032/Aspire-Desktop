@@ -1,8 +1,9 @@
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { StyleSheet } from 'react-native';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function BlurTabBarBackground() {
+function BlurTabBarBackgroundInner() {
   return (
     <BlurView
       // System chrome material automatically adapts to the system's theme
@@ -16,4 +17,12 @@ export default function BlurTabBarBackground() {
 
 export function useBottomTabOverflow() {
   return useBottomTabBarHeight();
+}
+
+export default function BlurTabBarBackground(props: any) {
+  return (
+    <PageErrorBoundary pageName="tab-bar-background.ios">
+      <BlurTabBarBackgroundInner {...props} />
+    </PageErrorBoundary>
+  );
 }

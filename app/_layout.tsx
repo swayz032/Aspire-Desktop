@@ -22,6 +22,10 @@ import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
 import { reportError } from '@/lib/errorReporter';
+import { configureSentry, Sentry } from '@/lib/sentry';
+
+// Initialize Sentry before any component renders
+configureSentry();
 
 /**
  * Global Error Boundary — prevents white screen on uncaught errors.
@@ -38,6 +42,17 @@ class GlobalErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    try {
+      Sentry.captureException(error, {
+        extra: {
+          pageName: 'GlobalErrorBoundary',
+          componentStack: info.componentStack,
+        },
+      });
+    } catch {
+      // Sentry may not be initialized — safe to ignore
+    }
+
     console.error('[Aspire] Fatal render error:', error.message, info.componentStack);
     emitCanvasEvent('error', {
       source: 'global_error_boundary',
@@ -340,7 +355,7 @@ function AppNavigator() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   useWebDesktopSetup();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -379,3 +394,6 @@ const styles = StyleSheet.create({
     height: '100%' as any,
   },
 });
+
+// Wrap with Sentry error tracking (graceful — works even without DSN)
+export default Sentry.wrap(RootLayout);

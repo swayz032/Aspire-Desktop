@@ -28,6 +28,7 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,7 +76,7 @@ function clamp(value: number, min: number, max: number): number {
 // Component
 // ---------------------------------------------------------------------------
 
-export function WidgetContainer({
+function WidgetContainerInner({
   title,
   children,
   position,
@@ -318,3 +319,11 @@ const s = StyleSheet.create({
     borderRadius: 1.5,
   },
 });
+
+export function WidgetContainer(props: any) {
+  return (
+    <PageErrorBoundary pageName="widget-container">
+      <WidgetContainerInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -3,6 +3,7 @@ import { StyleSheet, View, ScrollView, Text } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -44,7 +45,7 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
-export default function DataRetentionScreen() {
+function DataRetentionContent() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
 
@@ -244,3 +245,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+export default function DataRetentionScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-data-retention">
+      <DataRetentionContent />
+    </PageErrorBoundary>
+  );
+}

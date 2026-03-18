@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Animated } fro
 import { Ionicons } from '@expo/vector-icons';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 import { ExplainItem, EventProvider } from './types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const PROVIDER_COLORS: Record<EventProvider, string> = {
   plaid: '#10B981',
@@ -29,7 +30,7 @@ interface StoryExplainDrawerProps {
   sourceLabel?: string;
 }
 
-export function StoryExplainDrawer({ visible, title, subtitle, total, items, onClose, sourceLabel }: StoryExplainDrawerProps) {
+function StoryExplainDrawerInner({ visible, title, subtitle, total, items, onClose, sourceLabel }: StoryExplainDrawerProps) {
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -160,3 +161,11 @@ const styles = StyleSheet.create({
   itemAmount: { color: '#f2f2f2', fontSize: 13, fontWeight: '600' },
   itemPct: { fontSize: 11, fontWeight: '700' },
 });
+
+export function StoryExplainDrawer(props: any) {
+  return (
+    <PageErrorBoundary pageName="story-explain-drawer">
+      <StoryExplainDrawerInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ShareSheetProps {
   visible: boolean;
@@ -17,7 +18,7 @@ const SHARE_OPTIONS = [
   { id: 'link' as const, label: 'Copy Room Link', icon: 'link' as keyof typeof Ionicons.glyphMap, description: 'Share link to join this session' },
 ];
 
-export function ShareSheet({ visible, onClose, roomId, onShare }: ShareSheetProps) {
+function ShareSheetInner({ visible, onClose, roomId, onShare }: ShareSheetProps) {
   return (
     <Modal
       visible={visible}
@@ -167,3 +168,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export function ShareSheet(props: any) {
+  return (
+    <PageErrorBoundary pageName="share-sheet">
+      <ShareSheetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

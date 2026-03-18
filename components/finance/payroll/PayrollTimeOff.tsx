@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndica
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PayrollSubTabProps {
   gustoCompany: any;
@@ -15,7 +16,7 @@ function formatStatusLabel(status: string): string {
   return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-export function PayrollTimeOff({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
+function PayrollTimeOffInner({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
   const [policies, setPolicies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1132,3 +1133,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
+
+export function PayrollTimeOff(props: any) {
+  return (
+    <PageErrorBoundary pageName="payroll-time-off">
+      <PayrollTimeOffInner {...props} />
+    </PageErrorBoundary>
+  );
+}

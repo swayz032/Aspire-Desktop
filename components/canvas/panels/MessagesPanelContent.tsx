@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSmsThreads, useSmsMessages } from '@/hooks/useSmsThreads';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -137,7 +138,7 @@ function Conversation({ thread, onBack, onSend }: ConversationProps) {
   );
 }
 
-export default function MessagesPanelContent(_props: PanelContentProps) {
+function MessagesPanelContentInner(_props: PanelContentProps) {
   const { threads: rawThreads }  = useSmsThreads();
   const threads                  = (rawThreads || []) as unknown as Thread[];
   const [active, setActive]    = useState<Thread | null>(null);
@@ -271,3 +272,11 @@ const s = StyleSheet.create({
   sendBtn:           { width: 40, height: 40, borderRadius: 20, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   bottomSpacer:      { height: 32 },
 });
+
+export default function MessagesPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="messages-panel-content">
+      <MessagesPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ToolCallIconProps {
   size?: number;
   color?: string;
 }
 
-export function ToolCallIcon({
+function ToolCallIconInner({
   size = 24,
   color = '#3B82F6'
 }: ToolCallIconProps) {
@@ -36,5 +37,13 @@ export function ToolCallIcon({
         opacity="0.6"
       />
     </Svg>
+  );
+}
+
+export function ToolCallIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="tool-call-icon">
+      <ToolCallIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

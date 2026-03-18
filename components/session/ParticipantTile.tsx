@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { AvaVoiceStrip } from './AvaVoiceStrip';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /**
  * Renders a LiveKit HTMLVideoElement inside a React Native View (web only).
@@ -62,7 +63,7 @@ interface ParticipantTileProps {
   videoTrack?: HTMLVideoElement | null;
 }
 
-export function ParticipantTile({
+function ParticipantTileInner({
   participant,
   size = 'medium',
   isActiveSpeaker = false,
@@ -491,3 +492,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent.cyan,
   },
 });
+
+export function ParticipantTile(props: any) {
+  return (
+    <PageErrorBoundary pageName="participant-tile">
+      <ParticipantTileInner {...props} />
+    </PageErrorBoundary>
+  );
+}

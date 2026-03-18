@@ -28,6 +28,7 @@ import {
   type TileEntry,
   type TileVerb,
 } from '@/lib/tileManifest';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { playSound } from '@/lib/soundManager';
 import { Badge } from '@/components/ui/Badge';
@@ -108,7 +109,7 @@ function wc(cls: string): ViewStyle {
 // Component
 // ---------------------------------------------------------------------------
 
-export function CommandPalette(): React.ReactElement | null {
+function CommandPaletteInner(): React.ReactElement | null {
   const { commandPaletteOpen, mode } = useImmersion();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -578,3 +579,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+export function CommandPalette() {
+  return (
+    <PageErrorBoundary pageName="command-palette">
+      <CommandPaletteInner />
+    </PageErrorBoundary>
+  );
+}

@@ -9,6 +9,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ViewStyle } from 'react-na
 import { Ionicons } from '@expo/vector-icons';
 import { SectionHeader, TextField, ToggleField, Divider } from '../SettingsField';
 import { SettingsColors, TRANSITION_SMOOTH } from '../settingsConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /** Mock active sessions -- TODO: Replace with real session data from API */
 const MOCK_SESSIONS = [
@@ -38,7 +39,7 @@ const MOCK_SESSIONS = [
   },
 ];
 
-export default function SecuritySection() {
+function SecuritySectionInner() {
   const [twoFactor, setTwoFactor] = useState(false);
   const [biometric, setBiometric] = useState(false);
   const [autoLock, setAutoLock] = useState(true);
@@ -353,3 +354,11 @@ const styles = StyleSheet.create({
     backgroundColor: SettingsColors.destructiveBg,
   },
 });
+
+export default function SecuritySection(props: any) {
+  return (
+    <PageErrorBoundary pageName="security-section">
+      <SecuritySectionInner {...props} />
+    </PageErrorBoundary>
+  );
+}

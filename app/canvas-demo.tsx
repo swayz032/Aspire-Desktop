@@ -13,8 +13,9 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { WidgetContainer } from '@/components/canvas/WidgetContainer';
 import { CanvasTokens } from '@/constants/canvas.tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function CanvasDemoScreen() {
+function CanvasDemoContent() {
   const [widgets, setWidgets] = useState([
     {
       id: 'widget-1',
@@ -169,3 +170,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
+
+export default function CanvasDemoScreen() {
+  return (
+    <PageErrorBoundary pageName="canvas-demo-root">
+      <CanvasDemoContent />
+    </PageErrorBoundary>
+  );
+}

@@ -2,6 +2,7 @@ import React, { ReactNode } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { DesktopShell } from './DesktopShell';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface DesktopPageWrapperProps {
   children: ReactNode;
@@ -10,7 +11,7 @@ interface DesktopPageWrapperProps {
   fullBleed?: boolean;
 }
 
-export function DesktopPageWrapper({ 
+function DesktopPageWrapperInner({ 
   children, 
   scrollable = true,
   fullWidth = false,
@@ -51,3 +52,11 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 });
+
+export function DesktopPageWrapper(props: any) {
+  return (
+    <PageErrorBoundary pageName="desktop-page-wrapper">
+      <DesktopPageWrapperInner {...props} />
+    </PageErrorBoundary>
+  );
+}

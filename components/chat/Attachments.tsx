@@ -28,6 +28,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/tokens';
 import type { AgentId, FileAttachment } from './types';
+
 import { AGENT_COLORS } from './types';
 
 // ---------------------------------------------------------------------------
@@ -754,3 +755,4 @@ const s = StyleSheet.create({
     color: Colors.text.disabled,
   },
 });
+

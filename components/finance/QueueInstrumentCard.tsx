@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 
 import { injectCardKeyframes } from './cardAnimations';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 injectCardKeyframes();
 
@@ -42,7 +43,7 @@ function ShimmerLine({ width, height = 12 }: { width: string | number; height?: 
   );
 }
 
-export function QueueInstrumentCard({ title, items, accentColor, mode, loading }: QueueInstrumentCardProps) {
+function QueueInstrumentCardInner({ title, items, accentColor, mode, loading }: QueueInstrumentCardProps) {
   if (Platform.OS !== 'web') {
     return (
       <View style={nativeStyles.card}>
@@ -201,3 +202,11 @@ const nativeStyles = StyleSheet.create({
     color: '#ffffff',
   },
 });
+
+export function QueueInstrumentCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="queue-instrument-card">
+      <QueueInstrumentCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

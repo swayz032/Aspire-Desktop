@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/tokens';
 import type { AgentActivityEvent, AgentId } from './types';
 import { AGENT_COLORS } from './types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -191,7 +192,7 @@ function ActiveSpinner({ color, size }: { color: string; size: number }) {
 // Main Component
 // ---------------------------------------------------------------------------
 
-export const ActivityTimeline = React.memo(function ActivityTimeline({
+const ActivityTimelineInnerWrapped = React.memo(function ActivityTimelineInner({
   events,
   collapsed: collapsedProp,
   agent,
@@ -451,4 +452,12 @@ const s = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+});
+
+export const ActivityTimeline = React.memo(function ActivityTimeline(props: any) {
+  return (
+    <PageErrorBoundary pageName="activity-timeline">
+      <ActivityTimelineInnerWrapped {...props} />
+    </PageErrorBoundary>
+  );
 });

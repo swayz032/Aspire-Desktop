@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -841,7 +842,7 @@ function NativeLoginScreen() {
 }
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
-export default function LoginScreen() {
+function LoginContent() {
   if (Platform.OS === 'web') return <WebLoginScreen />;
   return <NativeLoginScreen />;
 }
@@ -872,3 +873,11 @@ const nStyles = StyleSheet.create({
   successText: { color: '#4ADE80', fontSize: 14 },
   footer: { color: '#555', fontSize: 12, marginTop: 48 },
 });
+
+export default function LoginScreen() {
+  return (
+    <PageErrorBoundary pageName="login">
+      <LoginContent />
+    </PageErrorBoundary>
+  );
+}

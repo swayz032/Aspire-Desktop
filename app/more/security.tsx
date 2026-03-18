@@ -6,6 +6,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { formatRelativeTime } from '@/lib/formatters';
 import { SecuritySettings, TrustedDevice } from '@/types/tenant';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const AUTO_LOCK_OPTIONS = [
   { value: 1, label: '1 minute' },
@@ -47,7 +48,7 @@ function DeviceCard({ device }: { device: TrustedDevice }) {
   );
 }
 
-export default function SecurityScreen() {
+function SecurityContent() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
 
@@ -144,6 +145,14 @@ export default function SecurityScreen() {
   );
 }
 
+
+export default function SecurityScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-security">
+      <SecurityContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

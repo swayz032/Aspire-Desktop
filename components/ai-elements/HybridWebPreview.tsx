@@ -37,6 +37,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { ActivityFeed, type AgentActivityEvent } from './WebPreview';
 import { BrowserPanel } from './BrowserPanel';
 import type { BrowserScreenshotEvent } from '@/hooks/useBrowserStream';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // CSS Keyframes -- injected once on web
@@ -151,7 +152,7 @@ function saveSplitRatio(ratio: number): void {
 // Component
 // ---------------------------------------------------------------------------
 
-export function HybridWebPreview({
+function HybridWebPreviewInner({
   activityEvents,
   browserEvents,
   isBrowserLoading = false,
@@ -641,3 +642,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
 });
+
+export function HybridWebPreview(props: any) {
+  return (
+    <PageErrorBoundary pageName="hybrid-web-preview">
+      <HybridWebPreviewInner {...props} />
+    </PageErrorBoundary>
+  );
+}

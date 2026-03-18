@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface StoryCardProps {
   title: string;
@@ -48,7 +49,7 @@ function MiniSparkline({ data, color, width = 60, height = 24 }: { data: number[
   );
 }
 
-export function StoryCard({ title, subtitle, value, valueColor, icon, iconColor, iconBg, trend, trendColor, onPress, children, badge, badgeColor }: StoryCardProps) {
+function StoryCardInner({ title, subtitle, value, valueColor, icon, iconColor, iconBg, trend, trendColor, onPress, children, badge, badgeColor }: StoryCardProps) {
   const content = (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -140,3 +141,11 @@ const styles = StyleSheet.create({
     borderTopColor: CARD_BORDER,
   },
 });
+
+export function StoryCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="story-card">
+      <StoryCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

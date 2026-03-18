@@ -1,8 +1,9 @@
 import React from 'react';
 import { useMicState } from '@/providers';
 import { AnimatedMicButton } from './AnimatedMicButton';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export function MicTabIcon() {
+function MicTabIconInner() {
   const { isListening, isAvaSpeaking } = useMicState();
   
   return (
@@ -10,5 +11,13 @@ export function MicTabIcon() {
       isListening={isListening} 
       isAvaSpeaking={isAvaSpeaking} 
     />
+  );
+}
+
+export function MicTabIcon() {
+  return (
+    <PageErrorBoundary pageName="mic-tab-icon">
+      <MicTabIconInner />
+    </PageErrorBoundary>
   );
 }

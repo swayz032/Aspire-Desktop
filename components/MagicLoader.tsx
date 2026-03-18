@@ -7,6 +7,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface Particle {
   radius: number;
@@ -226,7 +227,7 @@ function MagicLoaderNative({ size }: { size: number }) {
   );
 }
 
-export function MagicLoader({ size = 280, particleCount = 3, speed = 1 }: MagicLoaderProps) {
+function MagicLoaderInner({ size = 280, particleCount = 3, speed = 1 }: MagicLoaderProps) {
   if (Platform.OS === 'web') {
     return <MagicLoaderWeb size={size} particleCount={particleCount} speed={speed} />;
   }
@@ -234,3 +235,11 @@ export function MagicLoader({ size = 280, particleCount = 3, speed = 1 }: MagicL
 }
 
 export default MagicLoader;
+
+export function MagicLoader(props: any) {
+  return (
+    <PageErrorBoundary pageName="magic-loader">
+      <MagicLoaderInner {...props} />
+    </PageErrorBoundary>
+  );
+}

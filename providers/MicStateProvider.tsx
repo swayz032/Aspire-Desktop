@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { trackInteraction } from '@/lib/interactionTelemetry';
 
 interface MicState {
   isListening: boolean;
@@ -14,6 +15,8 @@ export function MicStateProvider({ children }: { children: ReactNode }) {
   const [isAvaSpeaking, setIsAvaSpeaking] = useState(false);
 
   const toggleListening = useCallback(() => {
+    const willListen = !isListening;
+    trackInteraction('mic_toggle', 'mic-state-provider', { listening: willListen });
     setIsListening(prev => !prev);
     if (isListening) {
       setIsAvaSpeaking(false);

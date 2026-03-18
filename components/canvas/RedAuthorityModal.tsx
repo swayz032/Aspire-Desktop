@@ -44,6 +44,7 @@ import {
   denyAction,
   type CanvasAction,
 } from '@/lib/canvasActionBus';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -82,7 +83,7 @@ function formatPayloadForDisplay(payload: Record<string, unknown>): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export function RedAuthorityModal() {
+function RedAuthorityModalInner() {
   const [visible, setVisible] = useState(false);
   const [action, setAction] = useState<CanvasAction | null>(null);
   const [loading, setLoading] = useState(false);
@@ -670,3 +671,11 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 });
+
+export function RedAuthorityModal() {
+  return (
+    <PageErrorBoundary pageName="red-authority-modal">
+      <RedAuthorityModalInner />
+    </PageErrorBoundary>
+  );
+}

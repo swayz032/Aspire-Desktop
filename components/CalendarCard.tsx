@@ -4,6 +4,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from './ui/Card';
 import { useRouter } from 'expo-router';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CalendarEvent {
   id: string;
@@ -22,7 +23,7 @@ interface CalendarCardProps {
   events: CalendarEvent[];
 }
 
-export function CalendarCard({ events }: CalendarCardProps) {
+function CalendarCardInner({ events }: CalendarCardProps) {
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const today = new Date();
@@ -316,3 +317,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+export function CalendarCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="calendar-card">
+      <CalendarCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BRIGHT_BG = '#0a0a0c';
 
@@ -45,7 +46,7 @@ interface SavedItem {
   date: string;
 }
 
-export default function EducationScreen() {
+function EducationContent() {
   const router = useRouter();
   const { tenant, isLoading: tenantLoading } = useTenant();
   const [activeTrack, setActiveTrack] = useState('');
@@ -440,6 +441,14 @@ export default function EducationScreen() {
   );
 }
 
+
+export default function EducationScreen() {
+  return (
+    <PageErrorBoundary pageName="education">
+      <EducationContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

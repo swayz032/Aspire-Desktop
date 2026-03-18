@@ -18,6 +18,7 @@ import Reanimated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,7 +44,7 @@ const INVALID_COLOR = 'rgba(239, 68, 68, 0.4)'; // Red
 // Component
 // ---------------------------------------------------------------------------
 
-export function SnapGhost({ position, size, isValid }: SnapGhostProps) {
+function SnapGhostInner({ position, size, isValid }: SnapGhostProps) {
   // Shared values
   const opacity = useSharedValue(0);
   const scale = useSharedValue(0.95);
@@ -174,3 +175,11 @@ const styles = StyleSheet.create({
     zIndex: -1,
   },
 });
+
+export function SnapGhost(props: any) {
+  return (
+    <PageErrorBoundary pageName="snap-ghost">
+      <SnapGhostInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -75,7 +76,7 @@ const RecentCallRow = memo(function RecentCallRow({ call, onCallBack }: RecentCa
 
 type Tab = 'dialpad' | 'recent';
 
-export default function CallsPanelContent(_props: PanelContentProps) {
+function CallsPanelContentInner(_props: PanelContentProps) {
   const { calls: rawCalls }      = useFrontdeskCalls();
   const calls                    = (rawCalls || []) as unknown as Call[];
   const [tab, setTab]            = useState<Tab>('dialpad');
@@ -221,3 +222,11 @@ const s = StyleSheet.create({
   callBackText:     { fontSize: 11, fontWeight: '600', color: BLUE },
   bottomSpacer:     { height: 32 },
 });
+
+export default function CallsPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="calls-panel-content">
+      <CallsPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

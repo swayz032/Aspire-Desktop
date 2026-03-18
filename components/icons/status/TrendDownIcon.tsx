@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface TrendDownIconProps {
   size?: number;
   color?: string;
 }
 
-export function TrendDownIcon({
+function TrendDownIconInner({
   size = 24,
   color = '#EF4444'
 }: TrendDownIconProps) {
@@ -29,5 +30,13 @@ export function TrendDownIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function TrendDownIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="trend-down-icon">
+      <TrendDownIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { View, Text, StyleSheet, Pressable, Platform, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -63,7 +64,7 @@ interface DesktopHeaderProps {
   hideSearch?: boolean;
 }
 
-export function DesktopHeader({
+function DesktopHeaderInner({
   businessName: businessNameProp,
   role: roleProp,
   suiteId: suiteIdProp,
@@ -1081,3 +1082,11 @@ const s = StyleSheet.create({
     color: '#3B82F6',
   },
 });
+
+export function DesktopHeader(props: any) {
+  return (
+    <PageErrorBoundary pageName="desktop-header">
+      <DesktopHeaderInner {...props} />
+    </PageErrorBoundary>
+  );
+}

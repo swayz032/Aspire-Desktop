@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Rect } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CheckboxIconProps {
   size?: number;
   color?: string;
 }
 
-export function CheckboxIcon({
+function CheckboxIconInner({
   size = 24,
   color = 'rgba(255,255,255,0.3)'
 }: CheckboxIconProps) {
@@ -23,5 +24,13 @@ export function CheckboxIcon({
         strokeWidth="2"
       />
     </Svg>
+  );
+}
+
+export function CheckboxIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="checkbox-icon">
+      <CheckboxIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

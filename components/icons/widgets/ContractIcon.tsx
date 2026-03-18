@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ContractIconProps {
   size?: number;
   color?: string;
 }
 
-export function ContractIcon({ size = 28, color = '#FFFFFF' }: ContractIconProps) {
+function ContractIconInner({ size = 28, color = '#FFFFFF' }: ContractIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -24,5 +25,13 @@ export function ContractIcon({ size = 28, color = '#FFFFFF' }: ContractIconProps
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function ContractIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="contract-icon">
+      <ContractIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

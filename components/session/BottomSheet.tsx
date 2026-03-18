@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Modal, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface BottomSheetOption {
   id: string;
@@ -19,7 +20,7 @@ interface BottomSheetProps {
   onSelect: (optionId: string) => void;
 }
 
-export function BottomSheet({ visible, onClose, title, options, onSelect }: BottomSheetProps) {
+function BottomSheetInner({ visible, onClose, title, options, onSelect }: BottomSheetProps) {
   return (
     <Modal
       visible={visible}
@@ -165,3 +166,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+
+export function BottomSheet(props: any) {
+  return (
+    <PageErrorBoundary pageName="bottom-sheet">
+      <BottomSheetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

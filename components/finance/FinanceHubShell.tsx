@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { FinanceTopNav } from './FinanceTopNav';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const RIGHT_RAIL_BREAKPOINT = 1100;
 const BREAKPOINT_LAPTOP = 960;
@@ -12,7 +13,7 @@ type Props = {
   rightRail?: React.ReactNode;
 };
 
-export function FinanceHubShell({ children, rightRail }: Props) {
+function FinanceHubShellInner({ children, rightRail }: Props) {
   const { width } = useWindowDimensions();
   const showRailColumn = width >= RIGHT_RAIL_BREAKPOINT;
   const isTabletOrSmaller = width < BREAKPOINT_LAPTOP;
@@ -88,3 +89,11 @@ const styles = StyleSheet.create({
     paddingBottom: 64,
   },
 });
+
+export function FinanceHubShell(props: any) {
+  return (
+    <PageErrorBoundary pageName="finance-hub-shell">
+      <FinanceHubShellInner {...props} />
+    </PageErrorBoundary>
+  );
+}

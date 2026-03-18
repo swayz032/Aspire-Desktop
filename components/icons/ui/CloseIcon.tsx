@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CloseIconProps {
   size?: number;
   color?: string;
 }
 
-export function CloseIcon({
+function CloseIconInner({
   size = 24,
   color = '#FFFFFF'
 }: CloseIconProps) {
@@ -20,5 +21,13 @@ export function CloseIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function CloseIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="close-icon">
+      <CloseIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

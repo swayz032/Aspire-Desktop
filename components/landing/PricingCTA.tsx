@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const addOns = [
   { label: 'Team Member Seat', price: '$299', period: '/mo' },
@@ -16,7 +17,7 @@ const included = [
   'Priority onboarding & dedicated support',
 ];
 
-export default function PricingCTA() {
+function PricingCTAInner() {
   return (
     <section id="pricing" style={{
       background: '#050508',
@@ -183,5 +184,13 @@ export default function PricingCTA() {
         </motion.div>
       </div>
     </section>
+  );
+}
+
+export default function PricingCTA(props: any) {
+  return (
+    <PageErrorBoundary pageName="pricing-c-t-a">
+      <PricingCTAInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ErrorIconProps {
   size?: number;
   color?: string;
 }
 
-export function ErrorIcon({
+function ErrorIconInner({
   size = 24,
   color = '#EF4444'
 }: ErrorIconProps) {
@@ -27,5 +28,13 @@ export function ErrorIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function ErrorIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="error-icon">
+      <ErrorIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

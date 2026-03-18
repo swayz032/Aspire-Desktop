@@ -3,13 +3,14 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { DesktopHeader } from '@/components/desktop/DesktopHeader';
 import { HubSidebar } from './HubSidebar';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type Props = {
   children: React.ReactNode;
   rightRail?: React.ReactNode;
 };
 
-export function HubPageShell({ children, rightRail }: Props) {
+function HubPageShellInner({ children, rightRail }: Props) {
   return (
     <View style={styles.container}>
       <HubSidebar />
@@ -73,3 +74,11 @@ const styles = StyleSheet.create({
     padding: 24,
   },
 });
+
+export function HubPageShell(props: any) {
+  return (
+    <PageErrorBoundary pageName="hub-page-shell">
+      <HubPageShellInner {...props} />
+    </PageErrorBoundary>
+  );
+}

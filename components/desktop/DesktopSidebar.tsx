@@ -6,6 +6,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { useSidebarState } from '@/lib/uiStore';
 import { canAccessTeamWorkspace } from '@/lib/permissions';
 import { useTenant } from '@/providers/TenantProvider';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const logoSource = require('../../assets/images/aspire-logo-new.png');
 const iconSource = require('../../assets/images/aspire-icon-new.png');
@@ -61,7 +62,7 @@ interface DesktopSidebarProps {
   expanded?: boolean;
 }
 
-export function DesktopSidebar({ expanded = true }: DesktopSidebarProps) {
+function DesktopSidebarInner({ expanded = true }: DesktopSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toggleSidebar } = useSidebarState();
@@ -616,3 +617,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+export function DesktopSidebar(props: any) {
+  return (
+    <PageErrorBoundary pageName="desktop-sidebar">
+      <DesktopSidebarInner {...props} />
+    </PageErrorBoundary>
+  );
+}

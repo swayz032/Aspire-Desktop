@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface SessionTimeoutWarningProps {
   secondsLeft: number;
@@ -8,7 +9,7 @@ interface SessionTimeoutWarningProps {
   onSignOut: () => void;
 }
 
-export function SessionTimeoutWarning({ secondsLeft, onExtend, onSignOut }: SessionTimeoutWarningProps) {
+function SessionTimeoutWarningInner({ secondsLeft, onExtend, onSignOut }: SessionTimeoutWarningProps) {
   return (
     <View style={styles.overlay}>
       <View style={styles.modal}>
@@ -123,3 +124,11 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
   },
 });
+
+export function SessionTimeoutWarning(props: any) {
+  return (
+    <PageErrorBoundary pageName="session-timeout-warning">
+      <SessionTimeoutWarningInner {...props} />
+    </PageErrorBoundary>
+  );
+}

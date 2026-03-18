@@ -9,6 +9,7 @@ import {
   showIncomingCallOverlay,
   subscribeIncomingCallOverlay,
 } from '@/lib/incomingCallOverlayStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function formatDisplayNumber(number: string | null): string {
   if (!number) return 'Unknown number';
@@ -53,7 +54,7 @@ function playRingTone(): void {
   }
 }
 
-export function IncomingCallOverlay(): React.ReactElement | null {
+function IncomingCallOverlayInner(): React.ReactElement | null {
   const router = useRouter();
   const { calls } = useFrontdeskCalls({ pollInterval: 2500, limit: 30 });
   const [overlayState, setOverlayState] = useState(getIncomingCallOverlayState());
@@ -262,3 +263,10 @@ const styles = StyleSheet.create({
   },
 });
 
+export function IncomingCallOverlay() {
+  return (
+    <PageErrorBoundary pageName="incoming-call-overlay">
+      <IncomingCallOverlayInner />
+    </PageErrorBoundary>
+  );
+}

@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { motion, useScroll, useMotionValueEvent } from 'framer-motion';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const navLinks = ['Product', 'Features', 'AI Staff', 'Pricing'];
 
-export default function LandingNav() {
+function LandingNavInner() {
   const [scrolled, setScrolled] = useState(false);
   const [hidden, setHidden] = useState(false);
   const lastScrollY = useRef(0);
@@ -131,5 +132,13 @@ export default function LandingNav() {
         </a>
       </div>
     </motion.nav>
+  );
+}
+
+export default function LandingNav(props: any) {
+  return (
+    <PageErrorBoundary pageName="landing-nav">
+      <LandingNavInner {...props} />
+    </PageErrorBoundary>
   );
 }

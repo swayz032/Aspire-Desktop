@@ -38,6 +38,7 @@ import { playSound } from '@/lib/soundManager';
 import { CanvasGrid } from './CanvasGrid';
 import { VignetteOverlay } from './VignetteOverlay';
 import { Stage } from './Stage';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { CommandPalette } from './CommandPalette';
 import { SnapGhost } from './SnapGhost';
 import { DragPreview } from './DragPreview';
@@ -151,7 +152,7 @@ function getDefaultWidgetSize(screenWidth: number) {
 // CanvasWorkspace
 // ---------------------------------------------------------------------------
 
-export function CanvasWorkspace(): React.ReactElement {
+function CanvasWorkspaceInner(): React.ReactElement {
   const { suiteId } = useSupabase();
   const { tenant } = useTenant();
   const router = useRouter();
@@ -1179,3 +1180,11 @@ const ws = StyleSheet.create({
     lineHeight: 20,
   },
 });
+
+export function CanvasWorkspace() {
+  return (
+    <PageErrorBoundary pageName="canvas-workspace">
+      <CanvasWorkspaceInner />
+    </PageErrorBoundary>
+  );
+}

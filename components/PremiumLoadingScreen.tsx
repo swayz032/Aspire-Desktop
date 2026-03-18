@@ -10,6 +10,7 @@ import Animated, {
 import { Colors, Typography, Spacing } from '@/constants/tokens';
 import { MagicLoader } from '@/components/MagicLoader';
 import { ShinyText } from '@/components/ShinyText';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -83,7 +84,7 @@ function StatusText() {
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function PremiumLoadingScreen({
+function PremiumLoadingScreenInner({
   isComplete,
   onFadeComplete,
 }: PremiumLoadingScreenProps) {
@@ -163,3 +164,11 @@ const styles = StyleSheet.create({
 });
 
 export default PremiumLoadingScreen;
+
+export function PremiumLoadingScreen(props: any) {
+  return (
+    <PageErrorBoundary pageName="premium-loading-screen">
+      <PremiumLoadingScreenInner {...props} />
+    </PageErrorBoundary>
+  );
+}

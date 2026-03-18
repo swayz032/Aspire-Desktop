@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -30,7 +31,7 @@ interface Note {
   updated_at: string;
 }
 
-export default function NotesScreen() {
+function NotesContent() {
   const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'pinned'>('all');
@@ -518,6 +519,14 @@ export default function NotesScreen() {
   );
 }
 
+
+export default function NotesScreen() {
+  return (
+    <PageErrorBoundary pageName="notes">
+      <NotesContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   header: {
     marginBottom: 24,

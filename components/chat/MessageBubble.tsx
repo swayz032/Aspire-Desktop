@@ -37,6 +37,7 @@ import { Colors, Spacing, BorderRadius, Typography } from '@/constants/tokens';
 import type { AgentChatMessage, AgentActivityEvent, AgentId } from './types';
 import { AGENT_COLORS } from './types';
 import { ActivityTimeline } from './ActivityTimeline';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Avatar Registry
@@ -138,7 +139,7 @@ const AttachmentChip = React.memo(function AttachmentChip({
 // Main Component
 // ---------------------------------------------------------------------------
 
-export const MessageBubble = React.memo(function MessageBubble({
+const MessageBubbleInnerWrapped = React.memo(function MessageBubbleInner({
   message,
   agent,
   showAvatar = true,
@@ -522,4 +523,12 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+});
+
+export const MessageBubble = React.memo(function MessageBubble(props: any) {
+  return (
+    <PageErrorBoundary pageName="message-bubble">
+      <MessageBubbleInnerWrapped {...props} />
+    </PageErrorBoundary>
+  );
 });

@@ -28,6 +28,7 @@ import { Image } from 'expo-image';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { MessageBubble, ThinkingIndicator } from '@/components/chat';
 import type { AgentChatMessage } from '@/components/chat';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const avaLogo = require('../../assets/images/ava-logo.png');
 
@@ -102,7 +103,7 @@ function toAvaChatMessage(msg: ChatMessage, currentUserId: string): AgentChatMes
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function ConferenceChatDrawer({
+function ConferenceChatDrawerInner({
   visible,
   onClose,
   messages,
@@ -825,3 +826,11 @@ const styles = StyleSheet.create({
     color: '#4ade80',
   },
 });
+
+export function ConferenceChatDrawer(props: any) {
+  return (
+    <PageErrorBoundary pageName="conference-chat-drawer">
+      <ConferenceChatDrawerInner {...props} />
+    </PageErrorBoundary>
+  );
+}

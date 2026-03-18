@@ -3,6 +3,7 @@ import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '@/constants/tokens';
 import { FinnDeskPanel } from './FinnDeskPanel';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type Props = {
   visible: boolean;
@@ -11,7 +12,7 @@ type Props = {
   templateContext?: { key: string; description: string } | null;
 };
 
-export function FinnDeskOverlay({ visible, onClose, initialTab, templateContext }: Props) {
+function FinnDeskOverlayInner({ visible, onClose, initialTab, templateContext }: Props) {
   const isVideoOnly = initialTab === 'video';
 
   useEffect(() => {
@@ -123,3 +124,11 @@ const styles = StyleSheet.create({
     } : {}),
   } as Record<string, unknown>,
 });
+
+export function FinnDeskOverlay(props: any) {
+  return (
+    <PageErrorBoundary pageName="finn-desk-overlay">
+      <FinnDeskOverlayInner {...props} />
+    </PageErrorBoundary>
+  );
+}

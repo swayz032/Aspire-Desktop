@@ -5,6 +5,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const formatCurrency = (amount: number) => {
   const absAmount = Math.abs(amount);
@@ -82,7 +83,7 @@ function PlaidLinkButton({ onSuccess: onLinkSuccess, label, compact, authenticat
   );
 }
 
-export function CashPositionContent() {
+function CashPositionContentInner() {
   const { authenticatedFetch } = useAuthFetch();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -614,3 +615,11 @@ const styles = StyleSheet.create({
     color: '#3B82F6',
   },
 });
+
+export function CashPositionContent() {
+  return (
+    <PageErrorBoundary pageName="cash-position-content">
+      <CashPositionContentInner />
+    </PageErrorBoundary>
+  );
+}

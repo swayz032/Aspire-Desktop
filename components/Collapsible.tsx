@@ -6,8 +6,9 @@ import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export function Collapsible({ children, title }: PropsWithChildren & { title: string }) {
+function CollapsibleInner({ children, title }: PropsWithChildren & { title: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const theme = useColorScheme() ?? 'light';
 
@@ -43,3 +44,11 @@ const styles = StyleSheet.create({
     marginLeft: 24,
   },
 });
+
+export function Collapsible(props: any) {
+  return (
+    <PageErrorBoundary pageName="collapsible">
+      <CollapsibleInner {...props} />
+    </PageErrorBoundary>
+  );
+}

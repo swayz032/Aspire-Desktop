@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { motion, useInView } from 'motion/react';
 import type { CSSProperties } from 'react';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /**
  * ShimmeringText — a living status indicator for AI processing states.
@@ -44,7 +45,7 @@ interface ShimmeringTextProps {
   style?: CSSProperties;
 }
 
-export function ShimmeringText({
+function ShimmeringTextInner({
   text,
   duration = 2,
   delay = 0,
@@ -113,5 +114,13 @@ export function ShimmeringText({
     >
       {text}
     </motion.span>
+  );
+}
+
+export function ShimmeringText(props: any) {
+  return (
+    <PageErrorBoundary pageName="shimmering-text">
+      <ShimmeringTextInner {...props} />
+    </PageErrorBoundary>
   );
 }

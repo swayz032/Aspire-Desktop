@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, Animated, Easing } from 'r
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/tokens';
 import SourceBadge from './SourceBadge';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export interface LifecycleStep {
   label: string;
@@ -170,7 +171,7 @@ function ConnectorLine({ fromStatus, toStatus }: { fromStatus: string; toStatus:
   );
 }
 
-export default function LifecycleChain({ steps, title, onExplainStep }: LifecycleChainProps) {
+function LifecycleChainInner({ steps, title, onExplainStep }: LifecycleChainProps) {
   return (
     <View style={styles.card}>
       {title && (
@@ -329,3 +330,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+export default function LifecycleChain(props: any) {
+  return (
+    <PageErrorBoundary pageName="lifecycle-chain">
+      <LifecycleChainInner {...props} />
+    </PageErrorBoundary>
+  );
+}

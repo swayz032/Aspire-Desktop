@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { supabase } from '@/lib/supabase';
 import { playClickSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface Transaction {
   id: string;
@@ -78,7 +79,7 @@ function formatMoney(n: number): string {
   return `$${n.toLocaleString()}`;
 }
 
-export function FinanceHubWidget({ suiteId, officeId }: FinanceHubWidgetProps) {
+function FinanceHubWidgetInner({ suiteId, officeId }: FinanceHubWidgetProps) {
   const [data, setData] = useState<FinanceData>(DEMO_DATA);
   const [loading, setLoading] = useState(true);
 
@@ -346,3 +347,11 @@ const s = StyleSheet.create({
     paddingBottom: 4,
   } as any,
 });
+
+export function FinanceHubWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="finance-hub-widget">
+      <FinanceHubWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

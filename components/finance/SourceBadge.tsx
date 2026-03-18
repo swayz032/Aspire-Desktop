@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface SourceBadgeProps {
   source: 'plaid' | 'stripe' | 'qbo' | 'gusto' | 'computed';
@@ -46,7 +47,7 @@ function getRelativeTime(dateStr: string | null): string {
   return `${diffDay}d ago`;
 }
 
-export default function SourceBadge({ source, lastSyncAt, confidence, compact = false }: SourceBadgeProps) {
+function SourceBadgeInner({ source, lastSyncAt, confidence, compact = false }: SourceBadgeProps) {
   const dotColor = CONFIDENCE_COLORS[confidence];
   const bgColor = CONFIDENCE_BG[confidence];
   const borderColor = dotColor + '33';
@@ -92,3 +93,11 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 });
+
+export default function SourceBadge(props: any) {
+  return (
+    <PageErrorBoundary pageName="source-badge">
+      <SourceBadgeInner {...props} />
+    </PageErrorBoundary>
+  );
+}

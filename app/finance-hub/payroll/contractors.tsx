@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { PayrollContractors } from '@/components/finance/payroll/PayrollContractors';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function ContractorsPage() {
+function ContractorsContent() {
   const [gustoCompany, setGustoCompany] = useState<any>(null);
   const [gustoEmployees, setGustoEmployees] = useState<any[]>([]);
   const [gustoLoading, setGustoLoading] = useState(true);
@@ -63,6 +64,14 @@ export default function ContractorsPage() {
   );
 }
 
+
+export default function ContractorsPage() {
+  return (
+    <PageErrorBoundary pageName="payroll-contractors">
+      <ContractorsContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   pageHeader: {
     flexDirection: 'row',

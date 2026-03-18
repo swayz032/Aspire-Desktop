@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { playApproveSound, playDenySound } from '@/lib/sounds';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type RiskTier = 'red' | 'yellow' | 'green';
 
@@ -68,7 +69,7 @@ const DEMO_REQUESTS: ApprovalRequest[] = [
   { id: '4', actionType: 'EMAIL', description: 'Send pricing proposal to prospect', requester: 'Nora', amount: undefined, riskTier: 'green', timestamp: new Date(Date.now() - 2 * 3600000).toISOString(), correlationId: 'corr-004' },
 ];
 
-export function AuthorityQueueWidget({ suiteId, officeId, onApprove, onDeny }: AuthorityQueueWidgetProps) {
+function AuthorityQueueWidgetInner({ suiteId, officeId, onApprove, onDeny }: AuthorityQueueWidgetProps) {
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<Record<string, 'approving' | 'denying'>>({});
@@ -406,3 +407,11 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.25)',
   },
 });
+
+export function AuthorityQueueWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="authority-queue-widget">
+      <AuthorityQueueWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

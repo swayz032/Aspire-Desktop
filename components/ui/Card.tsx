@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle, Pressable, Platform } from 'react-native';
 import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CardProps {
   children: React.ReactNode;
@@ -10,7 +11,7 @@ interface CardProps {
   style?: ViewStyle;
 }
 
-export function Card({ 
+function CardInner({ 
   children, 
   variant = 'default', 
   padding = 'md',
@@ -82,3 +83,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface.cardHover,
   },
 });
+
+export function Card(props: any) {
+  return (
+    <PageErrorBoundary pageName="card">
+      <CardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

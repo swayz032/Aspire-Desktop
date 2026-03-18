@@ -19,6 +19,7 @@ import {
   ParticipantEvent,
 } from 'livekit-client';
 import { createRoom, connectToRoom, disconnectRoom } from '@/lib/livekit';
+import { reportProviderError } from '@/lib/providerErrorReporter';
 import type { ConferenceParticipant } from '@/components/session/ParticipantTile';
 
 interface UseLiveKitRoomOptions {
@@ -115,14 +116,23 @@ export function useLiveKitRoom({
     room.on(RoomEvent.ActiveSpeakersChanged, refreshParticipants);
     room.on(RoomEvent.LocalTrackPublished, refreshParticipants);
 
-    await connectToRoom(room, token, url);
+    try {
+      await connectToRoom(room, token, url);
+    } catch (err) {
+      reportProviderError({ provider: 'livekit', action: 'room_connect', error: err, component: 'useLiveKitRoom' });
+      throw err;
+    }
     refreshParticipants();
   }, [token, url, refreshParticipants]);
 
   // Disconnect
   const disconnect = useCallback(async () => {
     if (roomRef.current) {
-      await disconnectRoom(roomRef.current);
+      try {
+        await disconnectRoom(roomRef.current);
+      } catch (err) {
+        reportProviderError({ provider: 'livekit', action: 'room_disconnect', error: err, component: 'useLiveKitRoom' });
+      }
       roomRef.current = null;
       setParticipants([]);
       setConnectionState(ConnectionState.Disconnected);

@@ -6,6 +6,7 @@ import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { DocumentThumbnail } from './DocumentThumbnail';
 import { useRouter } from 'expo-router';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface TodayPlanItem {
   id: string;
@@ -19,7 +20,7 @@ interface TodayPlanItem {
 }
 
 
-export function TodayPlanTabs({ planItems }: { planItems: TodayPlanItem[] }) {
+function TodayPlanTabsInner({ planItems }: { planItems: TodayPlanItem[] }) {
   const router = useRouter();
   const displayedPlan = planItems.slice(0, 4);
   const [isInboxSetup, setIsInboxSetup] = useState<boolean | null>(null);
@@ -263,3 +264,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export function TodayPlanTabs(props: any) {
+  return (
+    <PageErrorBoundary pageName="today-plan-tabs">
+      <TodayPlanTabsInner {...props} />
+    </PageErrorBoundary>
+  );
+}

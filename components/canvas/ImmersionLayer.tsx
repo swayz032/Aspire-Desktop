@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Canvas, Shadows } from '@/constants/tokens';
 import { useImmersion } from '@/lib/immersionStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,7 +49,7 @@ const SPRING = Canvas.motion.spring;
 // Component
 // ---------------------------------------------------------------------------
 
-export function ImmersionLayer({
+function ImmersionLayerInner({
   children,
   depth = 1,
 }: ImmersionLayerProps): React.ReactElement {
@@ -191,3 +192,11 @@ const styles = StyleSheet.create({
     // No flex: 1 — wrapper must not alter layout sizing inside ScrollView
   },
 });
+
+export function ImmersionLayer(props: any) {
+  return (
+    <PageErrorBoundary pageName="immersion-layer">
+      <ImmersionLayerInner {...props} />
+    </PageErrorBoundary>
+  );
+}

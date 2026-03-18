@@ -7,8 +7,9 @@ import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function TabTwoScreen() {
+function TabTwoContent() {
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
@@ -96,6 +97,14 @@ export default function TabTwoScreen() {
   );
 }
 
+
+export default function TabTwoScreen() {
+  return (
+    <PageErrorBoundary pageName="explore">
+      <TabTwoContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   headerImage: {
     color: '#808080',

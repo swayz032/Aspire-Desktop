@@ -5,6 +5,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type StaffState = 'active' | 'available' | 'coming_soon';
 
@@ -58,7 +59,7 @@ const getStatusConfig = (state: StaffState) => {
   }
 };
 
-export function OfficeStoreCard({ staff, onPrimaryAction, onSecondaryAction }: OfficeStoreCardProps) {
+function OfficeStoreCardInner({ staff, onPrimaryAction, onSecondaryAction }: OfficeStoreCardProps) {
   const statusConfig = getStatusConfig(staff.state);
 
   return (
@@ -279,3 +280,11 @@ const styles = StyleSheet.create({
 });
 
 export default OfficeStoreCard;
+
+export function OfficeStoreCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="office-store-card">
+      <OfficeStoreCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

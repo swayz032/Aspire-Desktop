@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTenant } from '@/providers';
 import { SectionHeader, SelectField, ToggleField, Divider } from '../SettingsField';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English (US)' },
@@ -55,7 +56,7 @@ const WEEK_START_OPTIONS = [
   { value: 'saturday', label: 'Saturday' },
 ];
 
-export default function PreferencesSection() {
+function PreferencesSectionInner() {
   const { tenant } = useTenant();
 
   const [language, setLanguage] = useState('en');
@@ -156,3 +157,11 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
   },
 });
+
+export default function PreferencesSection(props: any) {
+  return (
+    <PageErrorBoundary pageName="preferences-section">
+      <PreferencesSectionInner {...props} />
+    </PageErrorBoundary>
+  );
+}

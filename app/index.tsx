@@ -10,8 +10,9 @@ import MeetTheTeam from '@/components/landing/MeetTheTeam';
 import PricingCTA from '@/components/landing/PricingCTA';
 import LandingFooter from '@/components/landing/LandingFooter';
 import { features } from '@/components/landing/FeaturesData';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function Index() {
+function IndexContent() {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const body = document.body;
@@ -79,5 +80,13 @@ export default function Index() {
         <LandingFooter />
       </div>
     </>
+  );
+}
+
+export default function Index() {
+  return (
+    <PageErrorBoundary pageName="root-index">
+      <IndexContent />
+    </PageErrorBoundary>
   );
 }

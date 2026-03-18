@@ -18,6 +18,8 @@ import { LiveKitRoom, RoomAudioRenderer } from '@livekit/components-react';
 import { useKrispNoiseFilter } from '@livekit/components-react/krisp';
 import { ENTERPRISE_ROOM_OPTIONS } from '@/lib/livekit-config';
 import { injectLiveKitStyles } from '@/lib/livekit-styles';
+import { reportProviderError } from '@/lib/providerErrorReporter';
+
 
 // ── Krisp context — expose toggle to conference UI ──────────────────────────
 
@@ -61,9 +63,10 @@ function KrispBridge({ children }: { children: React.ReactNode }) {
         await krisp.setNoiseFilterEnabled(!krisp.isNoiseFilterEnabled);
       },
     };
-  } catch {
+  } catch (err) {
     // Krisp not supported (e.g. not on LiveKit Cloud, or browser unsupported)
     // Degrade gracefully — baseline WebRTC noise suppression still active
+    reportProviderError({ provider: 'livekit', action: 'krisp_init', error: err, component: 'LiveKitConferenceProvider' });
   }
 
   return (
@@ -109,6 +112,14 @@ export function LiveKitConferenceProvider({
       data-lk-theme="default"
       style={{ height: '100%', width: '100%', background: '#0a0a0c' }}
       options={ENTERPRISE_ROOM_OPTIONS}
+      onError={(err) => {
+        reportProviderError({ provider: 'livekit', action: 'room_error', error: err, component: 'LiveKitConferenceProvider' });
+      }}
+      onDisconnected={(reason) => {
+        if (reason !== undefined) {
+          reportProviderError({ provider: 'livekit', action: 'room_disconnected', error: new Error(`Disconnected: reason=${reason}`), component: 'LiveKitConferenceProvider' });
+        }
+      }}
     >
       <RoomAudioRenderer />
       <KrispBridge>
@@ -117,3 +128,4 @@ export function LiveKitConferenceProvider({
     </LiveKitRoom>
   );
 }
+

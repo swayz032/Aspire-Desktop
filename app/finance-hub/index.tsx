@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions, ViewStyle } from 'react-native';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { trackInteraction } from '@/lib/interactionTelemetry';
 
 type WebStyle = ViewStyle & Record<string, unknown>;
 import { Ionicons } from '@expo/vector-icons';
@@ -677,7 +678,7 @@ function FinanceHubContent() {
           </View>
           <Pressable
             style={[s.finnPanelBtn, finnVoice.isActive && { borderColor: 'rgba(139,92,246,0.5)', backgroundColor: 'rgba(139,92,246,0.15)' }]}
-            onPress={handleFinnVoiceToggle}
+            onPress={() => { trackInteraction('mic_toggle', 'finn-voice-pill', { agent: 'finn', active: !finnVoice.isActive }); handleFinnVoiceToggle(); }}
             {...webHover('finn-voice')}
           >
             <Ionicons name={finnVoice.isActive ? 'mic' : 'mic-outline'} size={16} color={finnVoice.isActive ? '#C4B5FD' : '#A78BFA'} />
@@ -685,7 +686,7 @@ function FinanceHubContent() {
           </Pressable>
           <Pressable
             style={s.finnPanelBtn}
-            onPress={() => { setFinnOverlayTab('video'); setShowFinnOverlay(true); }}
+            onPress={() => { trackInteraction('agent_connect', 'finn-video-pill', { agent: 'finn', mode: 'video' }); setFinnOverlayTab('video'); setShowFinnOverlay(true); }}
             {...webHover('finn-video')}
           >
             <Ionicons name="videocam-outline" size={16} color="#A78BFA" />
@@ -693,7 +694,7 @@ function FinanceHubContent() {
           </Pressable>
           <Pressable
             style={s.finnPanelBtn}
-            onPress={() => setShowFinnChat(true)}
+            onPress={() => { trackInteraction('agent_connect', 'finn-chat-pill', { agent: 'finn', mode: 'chat' }); setShowFinnChat(true); }}
             {...webHover('finn-chat')}
           >
             <Ionicons name="chatbubble-ellipses-outline" size={16} color="#A78BFA" />

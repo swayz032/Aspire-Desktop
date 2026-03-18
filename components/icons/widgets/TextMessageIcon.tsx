@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Rect } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface TextMessageIconProps {
   size?: number;
   color?: string;
 }
 
-export function TextMessageIcon({ size = 28, color = '#FFFFFF' }: TextMessageIconProps) {
+function TextMessageIconInner({ size = 28, color = '#FFFFFF' }: TextMessageIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -21,5 +22,13 @@ export function TextMessageIcon({ size = 28, color = '#FFFFFF' }: TextMessageIco
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function TextMessageIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="text-message-icon">
+      <TextMessageIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

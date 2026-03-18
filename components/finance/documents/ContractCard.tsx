@@ -11,6 +11,7 @@ import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 import { ContractStatusBadge } from './ContractStatusBadge';
 import { LANE_META, type ContractStatus, type TemplateLane } from './contractConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export interface ContractCardData {
   id: string;
@@ -107,8 +108,6 @@ function ContractCardInner({ contract, index = 0 }: ContractCardProps) {
   );
 }
 
-export const ContractCard = React.memo(ContractCardInner);
-
 function formatRelativeDate(isoStr: string): string {
   try {
     const date = new Date(isoStr);
@@ -199,3 +198,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+export function ContractCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="contract-card">
+      <ContractCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

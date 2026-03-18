@@ -3,8 +3,9 @@ import { StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function NotFoundScreen() {
+function NotFoundContent() {
   return (
     <>
       <Stack.Screen options={{ title: 'Oops!' }} />
@@ -30,3 +31,11 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
 });
+
+export default function NotFoundScreen() {
+  return (
+    <PageErrorBoundary pageName="not-found">
+      <NotFoundContent />
+    </PageErrorBoundary>
+  );
+}

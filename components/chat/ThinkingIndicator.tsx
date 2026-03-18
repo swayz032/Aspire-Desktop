@@ -23,6 +23,7 @@ import { Colors, Spacing, Typography } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import type { AgentId } from './types';
 import { AGENT_COLORS } from './types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -88,7 +89,7 @@ function AnimatedDots({ color }: { color: string }) {
 // Main Component
 // ---------------------------------------------------------------------------
 
-export const ThinkingIndicator = React.memo(function ThinkingIndicator({
+const ThinkingIndicatorInnerWrapped = React.memo(function ThinkingIndicatorInner({
   agent,
   text = 'Thinking...',
   style,
@@ -147,4 +148,12 @@ const styles = StyleSheet.create({
     color: Colors.text.muted,
     fontStyle: 'italic',
   },
+});
+
+export const ThinkingIndicator = React.memo(function ThinkingIndicator(props: any) {
+  return (
+    <PageErrorBoundary pageName="thinking-indicator">
+      <ThinkingIndicatorInnerWrapped {...props} />
+    </PageErrorBoundary>
+  );
 });

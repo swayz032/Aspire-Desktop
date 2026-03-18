@@ -10,6 +10,7 @@ import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import type { AuthorityItem } from '@/types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const PANDADOC_SESSION_BASE = 'https://app.pandadoc.com/s/';
 
@@ -80,7 +81,7 @@ function mapStoreItemToSession(item: AuthorityItem): SessionAuthorityItem {
   };
 }
 
-export default function AuthorityScreen() {
+function AuthorityContent() {
   const router = useRouter();
   const { authenticatedFetch } = useAuthFetch();
   const storeItems = useDynamicAuthorityQueue();
@@ -803,3 +804,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export default function AuthorityScreen() {
+  return (
+    <PageErrorBoundary pageName="session-authority">
+      <AuthorityContent />
+    </PageErrorBoundary>
+  );
+}

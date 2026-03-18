@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface LoadingIconProps {
   size?: number;
   color?: string;
 }
 
-export function LoadingIcon({
+function LoadingIconInner({
   size = 24,
   color = '#3B82F6'
 }: LoadingIconProps) {
@@ -36,5 +37,13 @@ export function LoadingIcon({
         opacity="0.3"
       />
     </Svg>
+  );
+}
+
+export function LoadingIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="loading-icon">
+      <LoadingIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

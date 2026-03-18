@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import type { BrowserScreenshotEvent } from '@/hooks/useBrowserStream';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // CSS Keyframes -- injected once on web for premium animations
@@ -87,7 +88,7 @@ const FADE_DURATION_REDUCED_MS = 10;
 // Component
 // ---------------------------------------------------------------------------
 
-export function BrowserPanel({
+function BrowserPanelInner({
   screenshot,
   isLoading = false,
   error = null,
@@ -578,3 +579,11 @@ const styles = StyleSheet.create({
     maxWidth: 280,
   },
 });
+
+export function BrowserPanel(props: any) {
+  return (
+    <PageErrorBoundary pageName="browser-panel">
+      <BrowserPanelInner {...props} />
+    </PageErrorBoundary>
+  );
+}

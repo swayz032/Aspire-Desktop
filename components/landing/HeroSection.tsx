@@ -1,8 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import CockpitMockup from './CockpitMockup';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function HeroSection() {
+function HeroSectionInner() {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -256,5 +257,13 @@ export default function HeroSection() {
         </motion.div>
       </div>
     </section>
+  );
+}
+
+export default function HeroSection(props: any) {
+  return (
+    <PageErrorBoundary pageName="hero-section">
+      <HeroSectionInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { getPlaidConsent, setPlaidConsent } from '@/lib/security/plaidConsent';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function InfoBlock({ title, body }: { title: string; body: string }) {
   return (
@@ -16,7 +17,7 @@ function InfoBlock({ title, body }: { title: string; body: string }) {
   );
 }
 
-export default function PlaidConsentScreen() {
+function PlaidConsentContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
@@ -167,3 +168,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+export default function PlaidConsentScreen() {
+  return (
+    <PageErrorBoundary pageName="plaid-consent">
+      <PlaidConsentContent />
+    </PageErrorBoundary>
+  );
+}

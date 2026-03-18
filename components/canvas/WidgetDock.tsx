@@ -28,6 +28,7 @@ import { EmailIcon } from '@/components/icons/widgets/EmailIcon';
 import { InvoiceIcon } from '@/components/icons/widgets/InvoiceIcon';
 import { QuoteIcon } from '@/components/icons/widgets/QuoteIcon';
 import { ContractIcon } from '@/components/icons/widgets/ContractIcon';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { CalendarIcon } from '@/components/icons/widgets/CalendarIcon';
 import { FinanceIcon } from '@/components/icons/widgets/FinanceIcon';
 import { TaskIcon } from '@/components/icons/widgets/TaskIcon';
@@ -366,7 +367,7 @@ function DockDivider() {
   return <View style={styles.divider} />;
 }
 
-export function WidgetDock({
+function WidgetDockInner({
   widgets = DEFAULT_WIDGETS,
   onWidgetSelect,
   onWidgetDrop,
@@ -696,3 +697,11 @@ const styles = StyleSheet.create({
     } as any),
   },
 });
+
+export function WidgetDock(props: any) {
+  return (
+    <PageErrorBoundary pageName="widget-dock">
+      <WidgetDockInner {...props} />
+    </PageErrorBoundary>
+  );
+}

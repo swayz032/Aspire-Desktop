@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { trackInteraction } from '@/lib/interactionTelemetry';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, ActivityIndicator, type ViewStyle } from 'react-native';
 import { ImageBackground } from 'react-native';
 const financeConnectHero = require('@/assets/images/finance-connect-hero.jpg');
@@ -22,6 +23,7 @@ import {
   type OrchestratorResponse,
 } from '@/components/chat';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /* ── Web-only keyframe animations for immersive mode ─────── */
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -227,7 +229,7 @@ type FinnDeskPanelProps = {
   onEndCall?: () => void;
 };
 
-export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoOnly, onEndCall }: FinnDeskPanelProps = {}) {
+function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnly, onEndCall }: FinnDeskPanelProps = {}) {
   const [activeTab, setActiveTab] = useState<'voice' | 'video'>(videoOnly ? 'video' : (initialTab || 'voice'));
   const [showChatOverlay, setShowChatOverlay] = useState(false);
   const [videoState, setVideoState] = useState<'idle' | 'connecting' | 'connected'>('idle');
@@ -394,6 +396,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
 
   const handleConnectToFinn = useCallback(async () => {
     if (videoState !== 'idle') return;
+    trackInteraction('agent_connect', 'finn-desk-panel', { agent: 'finn' });
 
     clearConnectionTimeouts();
     setVideoState('connecting');
@@ -520,6 +523,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
   }, [videoState, videoOnly, clearConnectionTimeouts, session?.access_token]);
 
   const handleEndFinnSession = useCallback(() => {
+    trackInteraction('agent_disconnect', 'finn-desk-panel', { agent: 'finn' });
     clearConnectionTimeouts();
     if (anamClientRef.current) {
       try { anamClientRef.current.stopStreaming(); } catch (_e) { /* noop */ }
@@ -926,7 +930,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                         immersiveStyles.retryBtn,
                         Platform.OS === 'web' ? { className: 'finn-retry-btn' } as unknown as ViewStyle : {},
                       ]}
-                      onPress={() => { setVideoError(null); handleConnectToFinn(); }}
+                      onPress={() => { trackInteraction('agent_connect_retry', 'finn-desk-panel', { agent: 'finn' }); setVideoError(null); handleConnectToFinn(); }}
                       accessibilityLabel="Retry video connection"
                       accessibilityRole="button"
                     >
@@ -971,7 +975,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                         boxShadow: '0 6px 24px rgba(59,130,246,0.35), 0 0 48px rgba(59,130,246,0.12)',
                       } as unknown as ViewStyle : {},
                     ]}
-                    onPress={handleConnectToFinn}
+                    onPress={() => { trackInteraction('agent_connect', 'finn-desk-panel', { agent: 'finn', trigger: 'button' }); handleConnectToFinn(); }}
                     accessibilityLabel="Connect to Finn video"
                     accessibilityRole="button"
                   >
@@ -1056,7 +1060,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                     boxShadow: '0 4px 16px rgba(239,68,68,0.3), 0 0 32px rgba(239,68,68,0.1)',
                   } as unknown as ViewStyle : {},
                 ]}
-                onPress={handleEndCallImmersive}
+                onPress={() => { trackInteraction('session_end', 'finn-desk-panel', { agent: 'finn' }); handleEndCallImmersive(); }}
                 accessibilityLabel="End video call"
                 accessibilityRole="button"
               >
@@ -1216,7 +1220,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                     gap: 6,
                     zIndex: 2,
                   }}
-                  onPress={handleEndFinnSession}
+                  onPress={() => { trackInteraction('session_end', 'finn-desk-panel', { agent: 'finn' }); handleEndFinnSession(); }}
                 >
                   <Ionicons name="close-circle" size={18} color="#fff" />
                   <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>End Session</Text>
@@ -1265,7 +1269,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                     <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
                       <Pressable
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.06)' }}
-                        onPress={() => { setVideoError(null); handleConnectToFinn(); }}
+                        onPress={() => { trackInteraction('agent_connect_retry', 'finn-desk-panel', { agent: 'finn' }); setVideoError(null); handleConnectToFinn(); }}
                       >
                         <Ionicons name="refresh" size={14} color={Colors.text.secondary} />
                         <Text style={{ color: Colors.text.secondary, fontSize: 13, fontWeight: '500' }}>Retry</Text>
@@ -1288,7 +1292,7 @@ export function FinnDeskPanel({ initialTab, templateContext, isInOverlay, videoO
                     <Text style={{ color: Colors.text.tertiary, fontSize: 13 }}>Start a face-to-face financial session</Text>
                     <Pressable
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.accent.cyan, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 }}
-                      onPress={handleConnectToFinn}
+                      onPress={() => { trackInteraction('agent_connect', 'finn-desk-panel', { agent: 'finn', trigger: 'button' }); handleConnectToFinn(); }}
                     >
                       <Ionicons name="videocam" size={18} color="#fff" />
                       <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Connect to Finn</Text>
@@ -2013,3 +2017,11 @@ const immersiveStyles = StyleSheet.create({
     width: 88,
   },
 });
+
+export function FinnDeskPanel(props: any) {
+  return (
+    <PageErrorBoundary pageName="finn-desk-panel">
+      <FinnDeskPanelInner {...props} />
+    </PageErrorBoundary>
+  );
+}

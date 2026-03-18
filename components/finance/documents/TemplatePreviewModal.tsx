@@ -22,6 +22,7 @@ import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
 import { RISK_COLORS } from './TemplateCard';
 import type { TemplateData } from './TemplateCard';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const PANDADOC_SESSION_BASE = 'https://app.pandadoc.com/s/';
 
@@ -54,7 +55,7 @@ interface TemplatePreviewModalProps {
 
 type PreviewState = 'loading' | 'embedded' | 'fallback';
 
-export function TemplatePreviewModal({
+function TemplatePreviewModalInner({
   visible,
   onClose,
   template,
@@ -635,3 +636,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+export function TemplatePreviewModal(props: any) {
+  return (
+    <PageErrorBoundary pageName="template-preview-modal">
+      <TemplatePreviewModalInner {...props} />
+    </PageErrorBoundary>
+  );
+}

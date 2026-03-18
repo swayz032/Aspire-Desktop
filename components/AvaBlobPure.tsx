@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated, Easing, Platform } from 'react-native';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type BlobState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -436,7 +437,7 @@ function Highlight({ size }: { size: number }) {
   );
 }
 
-export function AvaBlobPure({ state = 'idle', size = 280 }: AvaBlobPureProps) {
+function AvaBlobPureInner({ state = 'idle', size = 280 }: AvaBlobPureProps) {
   const config = stateConfig[state];
 
   return (
@@ -510,3 +511,11 @@ const styles = StyleSheet.create({
 });
 
 export default AvaBlobPure;
+
+export function AvaBlobPure(props: any) {
+  return (
+    <PageErrorBoundary pageName="ava-blob-pure">
+      <AvaBlobPureInner {...props} />
+    </PageErrorBoundary>
+  );
+}

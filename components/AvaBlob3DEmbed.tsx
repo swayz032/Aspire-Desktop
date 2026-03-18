@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type BlobState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -11,7 +12,7 @@ interface AvaBlob3DEmbedProps {
 
 const BLOB_HTML_URL = '/ava-blob.html';
 
-export function AvaBlob3DEmbed({ state = 'idle', size = 280 }: AvaBlob3DEmbedProps) {
+function AvaBlob3DEmbedInner({ state = 'idle', size = 280 }: AvaBlob3DEmbedProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const webViewRef = useRef<WebView>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -87,3 +88,11 @@ const styles = StyleSheet.create({
 });
 
 export default AvaBlob3DEmbed;
+
+export function AvaBlob3DEmbed(props: any) {
+  return (
+    <PageErrorBoundary pageName="ava-blob3-d-embed">
+      <AvaBlob3DEmbedInner {...props} />
+    </PageErrorBoundary>
+  );
+}

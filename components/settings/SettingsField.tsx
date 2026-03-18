@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, Platform, ViewStyle, TextStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SettingsColors, TRANSITION_SMOOTH } from './settingsConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /* ------------------------------------------------------------------ */
 /*  Section Header                                                     */
@@ -19,7 +20,7 @@ interface SectionHeaderProps {
   badgeColor?: string;
 }
 
-export function SectionHeader({ title, subtitle, icon, badge, badgeColor }: SectionHeaderProps) {
+function SectionHeaderInner({ title, subtitle, icon, badge, badgeColor }: SectionHeaderProps) {
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionHeaderLeft}>
@@ -540,3 +541,11 @@ const styles = StyleSheet.create({
     marginVertical: 24,
   },
 });
+
+export function SectionHeader(props: any) {
+  return (
+    <PageErrorBoundary pageName="settings-field">
+      <SectionHeaderInner {...props} />
+    </PageErrorBoundary>
+  );
+}

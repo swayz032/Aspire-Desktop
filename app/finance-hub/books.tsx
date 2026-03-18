@@ -9,6 +9,7 @@ import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern } from '@/constants/
 import { StoryCard, StoryExplainDrawer, StoryTimeline, StoryWizard, categorizeToDepartments, groupEventsByTimeline } from '@/components/finance/story';
 import type { FinanceEvent, ExplainItem, DepartmentShelf } from '@/components/finance/story';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type TabKey = 'overview' | 'reports' | 'accounts' | 'journal' | 'ledger';
 
@@ -1362,7 +1363,7 @@ function MoneyTrailOwner({ ledgerData }: { ledgerData: any }) {
   );
 }
 
-export default function BooksScreen() {
+function BooksContent() {
   const { authenticatedFetch } = useAuthFetch();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
@@ -1669,6 +1670,14 @@ export default function BooksScreen() {
   );
 }
 
+
+export default function BooksScreen() {
+  return (
+    <PageErrorBoundary pageName="finance-books">
+      <BooksContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',

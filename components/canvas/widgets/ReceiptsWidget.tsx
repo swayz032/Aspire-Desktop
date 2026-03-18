@@ -3,6 +3,7 @@ import { View, Text, Pressable, FlatList, StyleSheet, Platform, TextInput } from
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { playClickSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface Receipt {
   id: string;
@@ -39,7 +40,7 @@ const DEMO_RECEIPTS: Receipt[] = [
   { id: '8', merchant: 'Amazon', category: 'Office', amount: 89.99, date: 'Feb 26', status: 'flagged' },
 ];
 
-export function ReceiptsWidget({ suiteId, officeId }: ReceiptsWidgetProps) {
+function ReceiptsWidgetInner({ suiteId, officeId }: ReceiptsWidgetProps) {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('All');
@@ -339,3 +340,11 @@ const s = StyleSheet.create({
     fontWeight: '600',
   } as any,
 });
+
+export function ReceiptsWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="receipts-widget">
+      <ReceiptsWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

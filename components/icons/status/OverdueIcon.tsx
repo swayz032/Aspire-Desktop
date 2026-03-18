@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface OverdueIconProps {
   size?: number;
   color?: string;
 }
 
-export function OverdueIcon({
+function OverdueIconInner({
   size = 24,
   color = '#EF4444'
 }: OverdueIconProps) {
@@ -33,5 +34,13 @@ export function OverdueIcon({
       />
       <Circle cx="12" cy="16" r="1" fill={color} />
     </Svg>
+  );
+}
+
+export function OverdueIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="overdue-icon">
+      <OverdueIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

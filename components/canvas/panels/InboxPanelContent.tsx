@@ -6,6 +6,7 @@ import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -74,7 +75,7 @@ const Avatar = memo(function Avatar({ name, size = 44 }: { name: string; size?: 
   );
 });
 
-export default function InboxPanelContent(_props: PanelContentProps) {
+function InboxPanelContentInner(_props: PanelContentProps) {
   const { authenticatedFetch }  = useAuthFetch();
   const { calls: rawCalls }     = useFrontdeskCalls();
   const calls                   = (rawCalls || []) as unknown as Call[];
@@ -313,3 +314,11 @@ const s = StyleSheet.create({
   iconBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(14,165,233,0.12)', borderWidth: 1, borderColor: 'rgba(14,165,233,0.3)', alignItems: 'center', justifyContent: 'center' },
   bottomSpacer:   { height: 32 },
 });
+
+export default function InboxPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="inbox-panel-content">
+      <InboxPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, TextInput, ScrollView, Act
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PayrollSubTabProps {
   gustoCompany: any;
@@ -43,7 +44,7 @@ function formatStatusLabel(status: string): string {
   return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-export function PayrollPeople({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
+function PayrollPeopleInner({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -1317,3 +1318,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export function PayrollPeople(props: any) {
+  return (
+    <PageErrorBoundary pageName="payroll-people">
+      <PayrollPeopleInner {...props} />
+    </PageErrorBoundary>
+  );
+}

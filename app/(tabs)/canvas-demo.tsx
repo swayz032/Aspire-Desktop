@@ -3,6 +3,7 @@ import { View, StyleSheet, Text, ScrollView } from 'react-native';
 import { WidgetDock, DEFAULT_WIDGETS } from '@/components/canvas';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { Colors, Typography } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /**
  * Canvas Demo Page - Showcases WidgetDock component
@@ -13,7 +14,7 @@ import { Colors, Typography } from '@/constants/tokens';
  * - Custom SVG icons (no emojis)
  * - Blue glow on hover
  */
-export default function CanvasDemoScreen() {
+function CanvasDemoContent() {
   const [selectedWidget, setSelectedWidget] = useState<string | null>(null);
   const [activityLog, setActivityLog] = useState<string[]>([]);
 
@@ -194,3 +195,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
+
+export default function CanvasDemoScreen() {
+  return (
+    <PageErrorBoundary pageName="canvas-demo">
+      <CanvasDemoContent />
+    </PageErrorBoundary>
+  );
+}

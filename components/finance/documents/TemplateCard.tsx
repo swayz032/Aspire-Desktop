@@ -8,6 +8,7 @@ import { View, Text, Image, StyleSheet, Pressable, Platform } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, CARD_BORDER_HOVER } from '@/constants/cardPatterns';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // Inject keyframes for card shimmer animation (web only, idempotent)
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -259,8 +260,6 @@ function TemplateCardInner({ template, index = 0, onUseTemplate, onPreview }: Te
   );
 }
 
-export const TemplateCard = React.memo(TemplateCardInner);
-
 const styles = StyleSheet.create({
   card: {
     backgroundColor: CARD_BG,
@@ -477,3 +476,11 @@ const styles = StyleSheet.create({
     color: Colors.accent.cyan,
   },
 });
+
+export function TemplateCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="template-card">
+      <TemplateCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

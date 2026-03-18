@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const CATEGORIES = [
   'Technical Issue',
@@ -22,7 +23,7 @@ const PRIORITIES = [
   { value: 'Urgent', color: Colors.semantic.error },
 ];
 
-export default function ContactSupportScreen() {
+function ContactSupportContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
@@ -145,6 +146,14 @@ export default function ContactSupportScreen() {
   );
 }
 
+
+export default function ContactSupportScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-support">
+      <ContactSupportContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

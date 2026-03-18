@@ -31,6 +31,7 @@ import {
   AccessibilityInfo,
   type ViewStyle,
 } from 'react-native';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -256,7 +257,7 @@ const particleStyles = StyleSheet.create({
 // CanvasTrashCan Component
 // ---------------------------------------------------------------------------
 
-export function CanvasTrashCan({
+function CanvasTrashCanInner({
   state,
   onDelete,
   draggedWidgetId,
@@ -599,3 +600,11 @@ const styles = StyleSheet.create({
     zIndex: -1,
   },
 });
+
+export function CanvasTrashCan(props: any) {
+  return (
+    <PageErrorBoundary pageName="canvas-trash-can">
+      <CanvasTrashCanInner {...props} />
+    </PageErrorBoundary>
+  );
+}

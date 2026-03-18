@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { PayrollTaxCompliance } from '@/components/finance/payroll/PayrollTaxCompliance';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function TaxCompliancePage() {
+function TaxComplianceContent() {
   const [gustoCompany, setGustoCompany] = useState<any>(null);
   const [gustoEmployees, setGustoEmployees] = useState<any[]>([]);
   const [gustoLoading, setGustoLoading] = useState(true);
@@ -63,6 +64,14 @@ export default function TaxCompliancePage() {
   );
 }
 
+
+export default function TaxCompliancePage() {
+  return (
+    <PageErrorBoundary pageName="payroll-tax">
+      <TaxComplianceContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   pageHeader: {
     flexDirection: 'row',

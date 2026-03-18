@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle, Path, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface DoneIconProps {
   size?: number;
   color?: string;
 }
 
-export function DoneIcon({
+function DoneIconInner({
   size = 24,
   color = '#10B981'
 }: DoneIconProps) {
@@ -38,5 +39,13 @@ export function DoneIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function DoneIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="done-icon">
+      <DoneIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

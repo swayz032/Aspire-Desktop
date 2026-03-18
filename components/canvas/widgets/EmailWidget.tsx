@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { playClickSound, playTabSwitchSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface EmailItem {
   id: string;
@@ -64,7 +65,7 @@ const DEMO_EMAILS: EmailItem[] = [
   { id: '5', sender_name: 'Priya Sharma', sender_email: 'priya@finance.com', subject: 'Invoice #1042 Due', preview_text: 'Invoice #1042 for $12,400 is due March 10th. Please confirm receipt...', body: b5, timestamp: new Date(Date.now() - 2 * 24 * 3600000).toISOString(), is_read: true },
 ];
 
-export function EmailWidget({ suiteId, officeId }: EmailWidgetProps) {
+function EmailWidgetInner({ suiteId, officeId }: EmailWidgetProps) {
   const { authenticatedFetch } = useAuthFetch();
   const [items, setItems] = useState<EmailItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -458,3 +459,11 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.2)',
   },
 });
+
+export function EmailWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="email-widget">
+      <EmailWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

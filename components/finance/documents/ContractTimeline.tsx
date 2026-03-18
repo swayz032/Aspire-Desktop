@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Colors, Shadows } from '@/constants/tokens';
 import { CONTRACT_LIFECYCLE, CONTRACT_STATUS, type ContractStatus } from './contractConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ContractTimelineProps {
   currentStatus: ContractStatus;
@@ -70,8 +71,6 @@ function ContractTimelineInner({ currentStatus }: ContractTimelineProps) {
   );
 }
 
-export const ContractTimeline = React.memo(ContractTimelineInner);
-
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
@@ -118,3 +117,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 });
+
+export function ContractTimeline(props: any) {
+  return (
+    <PageErrorBoundary pageName="contract-timeline">
+      <ContractTimelineInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { InviteTabContent, PressableScale } from '@/components/session/InviteTabContent';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ interface InviteSheetProps {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function InviteSheet({
+function InviteSheetInner({
   visible,
   onClose,
   roomName,
@@ -151,3 +152,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export function InviteSheet(props: any) {
+  return (
+    <PageErrorBoundary pageName="invite-sheet">
+      <InviteSheetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

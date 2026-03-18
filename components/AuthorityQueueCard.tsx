@@ -8,6 +8,7 @@ import { Button } from './ui/Button';
 import { DocumentThumbnail } from './DocumentThumbnail';
 import { AuthorityItem } from '@/types';
 import { LinearGradient } from 'expo-linear-gradient';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface AuthorityQueueCardProps {
   item: AuthorityItem;
@@ -53,7 +54,7 @@ function useExpiryCountdown(expiresAt?: string): string | null {
   return label;
 }
 
-export function AuthorityQueueCard({ item, onAction }: AuthorityQueueCardProps) {
+function AuthorityQueueCardInner({ item, onAction }: AuthorityQueueCardProps) {
   const statusVariant = {
     live: 'live',
     pending: 'pending',
@@ -513,3 +514,11 @@ const styles = StyleSheet.create({
     fontSize: Typography.micro.fontSize,
   },
 });
+
+export function AuthorityQueueCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="authority-queue-card">
+      <AuthorityQueueCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

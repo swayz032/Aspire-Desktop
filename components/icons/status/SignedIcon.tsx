@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface SignedIconProps {
   size?: number;
   color?: string;
 }
 
-export function SignedIcon({
+function SignedIconInner({
   size = 24,
   color = '#10B981'
 }: SignedIconProps) {
@@ -30,5 +31,13 @@ export function SignedIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function SignedIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="signed-icon">
+      <SignedIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

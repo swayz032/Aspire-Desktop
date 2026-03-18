@@ -17,8 +17,9 @@ import { ContractWidget } from '@/components/canvas/widgets/ContractWidget';
 import { CalendarWidget } from '@/components/canvas/widgets/CalendarWidget';
 import { CanvasTokens } from '@/constants/canvas.tokens';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function CanvasWidgetsDemo() {
+function CanvasWidgetsDemoContent() {
   // Widget positions and sizes (stored in state for drag/resize)
   const [quotePosition, setQuotePosition] = useState({ x: 100, y: 100 });
   const [quoteSize, setQuoteSize] = useState({ width: 400, height: 500 });
@@ -207,3 +208,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 });
+
+export default function CanvasWidgetsDemo() {
+  return (
+    <PageErrorBoundary pageName="canvas-widgets-demo">
+      <CanvasWidgetsDemoContent />
+    </PageErrorBoundary>
+  );
+}

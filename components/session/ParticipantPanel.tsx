@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { ConferenceParticipant } from './ParticipantTile';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ParticipantPanelProps {
   visible: boolean;
@@ -14,7 +15,7 @@ interface ParticipantPanelProps {
   onInvite?: () => void;
 }
 
-export function ParticipantPanel({ 
+function ParticipantPanelInner({ 
   visible, 
   onClose, 
   participants,
@@ -309,3 +310,11 @@ const styles = StyleSheet.create({
     color: Colors.accent.cyan,
   },
 });
+
+export function ParticipantPanel(props: any) {
+  return (
+    <PageErrorBoundary pageName="participant-panel">
+      <ParticipantPanelInner {...props} />
+    </PageErrorBoundary>
+  );
+}

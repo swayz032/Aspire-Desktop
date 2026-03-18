@@ -5,6 +5,7 @@ import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -51,7 +52,7 @@ const collections = [
   { id: '3', name: 'Operations', count: 4, color: '#a78bfa' },
 ];
 
-export default function SavedScreen() {
+function SavedContent() {
   const { tenant } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -285,6 +286,14 @@ export default function SavedScreen() {
   );
 }
 
+
+export default function SavedScreen() {
+  return (
+    <PageErrorBoundary pageName="saved">
+      <SavedContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   header: {
     marginBottom: 24,

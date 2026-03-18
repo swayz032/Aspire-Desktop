@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Path, Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CheckmarkIconProps {
   size?: number;
   color?: string;
 }
 
-export function CheckmarkIcon({
+function CheckmarkIconInner({
   size = 24,
   color = '#3B82F6'
 }: CheckmarkIconProps) {
@@ -28,5 +29,13 @@ export function CheckmarkIcon({
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+export function CheckmarkIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="checkmark-icon">
+      <CheckmarkIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

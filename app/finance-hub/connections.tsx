@@ -8,6 +8,8 @@ import { CARD_BG, CARD_BORDER, svgPatterns, cardWithPattern } from '@/constants/
 import { getPlaidConsent, setPlaidConsent } from '@/lib/security/plaidConsent';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { getMfaStatus, isMfaVerifiedRecently, verifyMfaCode, generateMfaSecret, storeMfaSecret, updateMfaStatus, getQrCodeDataUrl } from '@/lib/security/mfa';
+import { trackInteraction } from '@/lib/interactionTelemetry';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -35,7 +37,7 @@ const providerPatternMap: Record<string, any> = Platform.OS === 'web' ? {
 
 const getProviderCardStyle = (key: string) => providerPatternMap[key] || {};
 
-export default function ConnectionsScreen() {
+function ConnectionsContent() {
   const [providers, setProviders] = useState<ProviderState>({
     plaid: { status: 'disconnected', detail: 'Banking & transactions', lastSync: null },
     quickbooks: { status: 'disconnected', detail: 'Accounting & bookkeeping', lastSync: null, realmId: null },
@@ -293,6 +295,7 @@ export default function ConnectionsScreen() {
   };
 
   const connectPlaid = async () => {
+    trackInteraction('provider_connect', 'finance-connections', { provider: 'plaid' });
     setActionLoading('plaid');
     try {
       const hasConsent = await getPlaidConsent();
@@ -377,6 +380,7 @@ export default function ConnectionsScreen() {
   }, [pendingPlaidConnect]);
 
   const connectQuickBooks = async () => {
+    trackInteraction('provider_connect', 'finance-connections', { provider: 'quickbooks' });
     setActionLoading('quickbooks');
     try {
       const res = await authenticatedFetch('/api/quickbooks/authorize');
@@ -460,6 +464,7 @@ export default function ConnectionsScreen() {
   };
 
   const connectStripe = async () => {
+    trackInteraction('provider_connect', 'finance-connections', { provider: 'stripe' });
     setActionLoading('stripe');
     try {
       const res = await authenticatedFetch('/api/stripe-connect/authorize');
@@ -474,6 +479,7 @@ export default function ConnectionsScreen() {
   };
 
   const disconnectProvider = async (provider: string) => {
+    trackInteraction('provider_disconnect', 'finance-connections', { provider });
     setActionLoading(provider);
     try {
       const endpoints: Record<string, string> = {
@@ -870,7 +876,7 @@ export default function ConnectionsScreen() {
                   </View>
                   {config.key === 'plaid' && (
                     <Pressable
-                      onPress={connectPlaid}
+                      onPress={() => { trackInteraction('provider_add_bank', 'finance-connections'); connectPlaid(); }}
                       disabled={isCardLoading}
                       style={({ hovered }: any) => [
                         {
@@ -1764,3 +1770,12 @@ const s = StyleSheet.create({
   },
 });
 
+
+
+export default function ConnectionsScreen() {
+  return (
+    <PageErrorBoundary pageName="finance-connections">
+      <ConnectionsContent />
+    </PageErrorBoundary>
+  );
+}

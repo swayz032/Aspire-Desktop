@@ -1,5 +1,14 @@
 # Expo App Engineer Memory
 
+## Observability
+- Error reporter: `lib/errorReporter.ts` — standalone POST to `/admin/ops/incidents/report`, rate-limited 5/60s
+- Provider error reporter: `lib/providerErrorReporter.ts` — dual rate limit (3/provider + 10 total per 60s)
+- Page error boundary: `components/PageErrorBoundary.tsx` — per-page React error boundary with incident reporting
+- Global error boundary: `app/_layout.tsx` GlobalErrorBoundary — reports sev1 via reportError
+- Pages wrapped: voice, conference-lobby, conference-live, calls, finance-hub
+- Providers instrumented: ElevenLabs (speakText, streamSpeak), Deepgram STT (start, ws_error, reconnect), Anam (session, connect, bind, stream)
+- authenticatedFetch is a HOOK (useAuthFetch) — standalone code uses plain fetch with relative URLs (same-origin)
+
 ## Project Structure
 - Design tokens: `constants/tokens.ts` (Colors, Spacing, BorderRadius, Typography, Shadows, Canvas)
 - Card patterns: `constants/cardPatterns.ts` (CARD_BG=#1C1C1E, CARD_BORDER, SVG patterns)

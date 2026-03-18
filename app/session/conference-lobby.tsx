@@ -35,6 +35,7 @@ import {
   type VideoCallInvitation,
 } from '@/lib/incomingVideoCallStore';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
+import { trackInteraction } from '@/lib/interactionTelemetry';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ─── Pulsing dot for pending/invited participants ────────────────────────────
@@ -448,6 +449,7 @@ function ConferenceLobby() {
   }, []);
 
   const handleStartNewSession = () => {
+    trackInteraction('session_start', 'conference-lobby', { trigger: 'start-button' });
     setShowStartSessionModal(true);
   };
 
@@ -781,6 +783,7 @@ function ConferenceLobby() {
                     <Pressable
                       style={[styles.joinButton, isJoining && { opacity: 0.6 }]}
                       onPress={async () => {
+                        trackInteraction('agent_connect', 'conference-lobby', { agent: 'nora', trigger: 'join-button' });
                         if (pendingInvitation && session?.access_token) {
                           try {
                             setIsJoining(true);

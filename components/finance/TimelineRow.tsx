@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface TimelineRowProps {
   event: {
@@ -103,7 +104,7 @@ function getEventLabel(eventType: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export default function TimelineRow({ event, onPress, expanded = false }: TimelineRowProps) {
+function TimelineRowInner({ event, onPress, expanded = false }: TimelineRowProps) {
   const providerColor = PROVIDER_COLORS[event.provider] || Colors.text.muted;
   const providerLabel = PROVIDER_LABELS[event.provider] || event.provider;
   const statusColor = STATUS_COLORS[event.status] || Colors.text.muted;
@@ -258,3 +259,11 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 });
+
+export default function TimelineRow(props: any) {
+  return (
+    <PageErrorBoundary pageName="timeline-row">
+      <TimelineRowInner {...props} />
+    </PageErrorBoundary>
+  );
+}

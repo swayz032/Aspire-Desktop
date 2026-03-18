@@ -2,10 +2,11 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { hashSeed, getInitials } from '@/utils/avatar';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type AvatarTileSize = 'small' | 'normal' | 'spotlight';
 
-export function AvatarTileSurface({
+function AvatarTileSurfaceInner({
   name,
   seed,
   accentColor,
@@ -86,3 +87,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
 });
+
+export function AvatarTileSurface(props: any) {
+  return (
+    <PageErrorBoundary pageName="avatar-tile-surface">
+      <AvatarTileSurfaceInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Platform, ScrollView, ActivityIndica
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER } from '@/constants/cardPatterns';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PayrollSubTabProps {
   gustoCompany: any;
@@ -25,7 +26,7 @@ function formatCurrency(amount: string | number): string {
   return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function PayrollPayHistory({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
+function PayrollPayHistoryInner({ gustoCompany, gustoEmployees, gustoConnected }: PayrollSubTabProps) {
   const [payrolls, setPayrolls] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -456,3 +457,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+export function PayrollPayHistory(props: any) {
+  return (
+    <PageErrorBoundary pageName="payroll-pay-history">
+      <PayrollPayHistoryInner {...props} />
+    </PageErrorBoundary>
+  );
+}

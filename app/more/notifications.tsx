@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageHeader } from '@/components/PageHeader';
 import { NotificationSettings } from '@/types/tenant';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function SettingRow({ icon, title, subtitle, value, onChange }: { 
   icon: string; 
@@ -32,7 +33,7 @@ function SettingRow({ icon, title, subtitle, value, onChange }: {
   );
 }
 
-export default function NotificationsScreen() {
+function NotificationsContent() {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 60;
 
@@ -114,6 +115,14 @@ export default function NotificationsScreen() {
   );
 }
 
+
+export default function NotificationsScreen() {
+  return (
+    <PageErrorBoundary pageName="settings-notifications">
+      <NotificationsContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

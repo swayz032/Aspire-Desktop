@@ -23,6 +23,7 @@ import {
   ContractStatusBadge,
   type ContractStatus,
 } from '@/components/finance/documents';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const webOnly = (s: Record<string, unknown>) => Platform.OS === 'web' ? s : {};
 
@@ -36,7 +37,7 @@ interface PendingContract {
   signers?: Array<{ name: string; email: string; status: string }>;
 }
 
-export default function PendingSignaturesPage() {
+function PendingSignaturesContent() {
   const router = useRouter();
   const { authenticatedFetch } = useAuthFetch();
 
@@ -250,6 +251,14 @@ export default function PendingSignaturesPage() {
   );
 }
 
+
+export default function PendingSignaturesPage() {
+  return (
+    <PageErrorBoundary pageName="finance-documents-pending">
+      <PendingSignaturesContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   page: {
     flex: 1,

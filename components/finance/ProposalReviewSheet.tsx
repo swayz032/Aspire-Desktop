@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, Modal, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type Proposal = {
   id: string;
@@ -54,7 +55,7 @@ function getAmountColor(amount: number): string {
 
 export type { Proposal };
 
-export function ProposalReviewSheet({ visible, proposal, onClose, onSendToQueue }: Props) {
+function ProposalReviewSheetInner({ visible, proposal, onClose, onSendToQueue }: Props) {
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -412,3 +413,11 @@ const styles = StyleSheet.create({
     color: Colors.text.tertiary,
   },
 });
+
+export function ProposalReviewSheet(props: any) {
+  return (
+    <PageErrorBoundary pageName="proposal-review-sheet">
+      <ProposalReviewSheetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

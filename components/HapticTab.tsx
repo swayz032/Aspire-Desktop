@@ -2,12 +2,13 @@ import { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import { PlatformPressable } from '@react-navigation/elements';
 import * as Haptics from 'expo-haptics';
 import { useMicState } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface HapticTabProps extends BottomTabBarButtonProps {
   isMicTab?: boolean;
 }
 
-export function HapticTab(props: HapticTabProps) {
+function HapticTabInner(props: HapticTabProps) {
   const { isMicTab, ...restProps } = props;
   const { toggleListening } = useMicState();
 
@@ -31,5 +32,13 @@ export function HapticTab(props: HapticTabProps) {
         }
       }}
     />
+  );
+}
+
+export function HapticTab(props: any) {
+  return (
+    <PageErrorBoundary pageName="haptic-tab">
+      <HapticTabInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -10,6 +10,7 @@ import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers/TenantProvider';
 import { DraftArtifact, RecommendedTool } from '@/types/advisory';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // Advisory data comes from Adam (research agent) + n8n workflows → Supabase receipts
 type BusinessProfile = { industry: string; stage: string; connectedTools: string[]; companyName: string; employeeCount: number };
@@ -19,7 +20,7 @@ type MarketAngle = { id: string; title: string; description: string; opportunity
 type AdvisoryPack = { id: string; title: string; description: string; category: string; price: string; features: string[]; name?: string; includes?: string[]; templates?: string[]; agentConfigs?: string[]; requiredTools?: string[] };
 type RecommendedAgent = { id: string; name: string; role: string; description: string; status: string; avatarColor?: string; riskTier?: string; capabilities?: string[] };
 
-export default function AdvisorScreen() {
+function AdvisorContent() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { tenant } = useTenant();
@@ -555,6 +556,14 @@ export default function AdvisorScreen() {
   return content;
 }
 
+
+export default function AdvisorScreen() {
+  return (
+    <PageErrorBoundary pageName="advisor">
+      <AdvisorContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

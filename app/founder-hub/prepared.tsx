@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BRIGHT_BG = '#0a0a0c';
 
@@ -86,7 +87,7 @@ const getRiskTierColor = (tier: string) => {
   }
 };
 
-export default function PreparedScreen() {
+function PreparedContent() {
   const router = useRouter();
   const [artifacts, setArtifacts] = useState<PreparedArtifact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -215,6 +216,14 @@ export default function PreparedScreen() {
   );
 }
 
+
+export default function PreparedScreen() {
+  return (
+    <PageErrorBoundary pageName="prepared">
+      <PreparedContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

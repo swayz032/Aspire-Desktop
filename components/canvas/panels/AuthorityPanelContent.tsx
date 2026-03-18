@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -102,7 +103,7 @@ const AuthCard = memo(function AuthCard({ item, isOpen, onToggle, onApprove, onD
   );
 });
 
-export default function AuthorityPanelContent(_props: PanelContentProps) {
+function AuthorityPanelContentInner(_props: PanelContentProps) {
   const { authenticatedFetch } = useAuthFetch();
   const [items, setItems]       = useState<AuthItem[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -222,3 +223,11 @@ const s = StyleSheet.create({
   reviewBtnText:   { fontSize: 13, fontWeight: '600', color: BLUE },
   bottomSpacer:    { height: 32 },
 });
+
+export default function AuthorityPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="authority-panel-content">
+      <AuthorityPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

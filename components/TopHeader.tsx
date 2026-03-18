@@ -3,13 +3,14 @@ import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 import { Colors, Spacing, Typography } from '@/constants/tokens';
 import { StatusDot } from './ui/Badge';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface TopHeaderProps {
   pageTitle?: string;
   showStatus?: boolean;
 }
 
-export function TopHeader({ pageTitle, showStatus = true }: TopHeaderProps) {
+function TopHeaderInner({ pageTitle, showStatus = true }: TopHeaderProps) {
   const { tenant } = useTenant();
 
   return (
@@ -68,3 +69,11 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg,
   },
 });
+
+export function TopHeader(props: any) {
+  return (
+    <PageErrorBoundary pageName="top-header">
+      <TopHeaderInner {...props} />
+    </PageErrorBoundary>
+  );
+}

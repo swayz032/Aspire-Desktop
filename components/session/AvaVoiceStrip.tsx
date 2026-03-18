@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface AvaVoiceStripProps {
   participantName: string;
@@ -10,7 +11,7 @@ interface AvaVoiceStripProps {
   taskCount?: number;
 }
 
-export function AvaVoiceStrip({ 
+function AvaVoiceStripInner({ 
   participantName, 
   isActive = true, 
   isSpeaking = false,
@@ -186,3 +187,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.text.muted,
   },
 });
+
+export function AvaVoiceStrip(props: any) {
+  return (
+    <PageErrorBoundary pageName="ava-voice-strip">
+      <AvaVoiceStripInner {...props} />
+    </PageErrorBoundary>
+  );
+}

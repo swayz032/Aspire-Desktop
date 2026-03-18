@@ -5,6 +5,7 @@ import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography, BorderRadius } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { addAuthorityItem } from '@/lib/authorityQueueStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const STEPS = [
   { key: 'create', label: 'Create Payroll', icon: 'add-circle-outline' as const },
@@ -44,7 +45,7 @@ function fmt(n: number): string {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function RunPayrollScreen() {
+function RunPayrollContent() {
   const [currentStep, setCurrentStep] = useState(0);
   const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
   const [calculating, setCalculating] = useState(false);
@@ -1421,6 +1422,14 @@ ${bonus > 0 ? `<tr><td>Bonus</td><td class="amount">â€”</td><td class="amount">â
   );
 }
 
+
+export default function RunPayrollScreen() {
+  return (
+    <PageErrorBoundary pageName="payroll">
+      <RunPayrollContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   aspireHeader: {
     backgroundColor: CARD_BG,

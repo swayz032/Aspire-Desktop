@@ -21,6 +21,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { playNoteSaveSound, playClickSound } from '@/lib/sounds';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Premium color palette
@@ -114,7 +115,7 @@ const pc = StyleSheet.create({
 // Component
 // ---------------------------------------------------------------------------
 
-export function StickyNoteWidget({
+function StickyNoteWidgetInner({
   suiteId,
   officeId,
   onNoteColorChange,
@@ -409,3 +410,11 @@ const s = StyleSheet.create({
     zIndex: 10,
   },
 });
+
+export function StickyNoteWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="sticky-note-widget">
+      <StickyNoteWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

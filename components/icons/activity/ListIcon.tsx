@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Line, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ListIconProps {
   size?: number;
@@ -7,7 +8,7 @@ interface ListIconProps {
   glowColor?: string;
 }
 
-export function ListIcon({
+function ListIconInner({
   size = 24,
   color = '#FFFFFF',
   glowColor = '#3B82F6'
@@ -24,5 +25,13 @@ export function ListIcon({
       <Line x1="4" y1="12" x2="20" y2="12" stroke={color} strokeWidth="2" strokeLinecap="round" />
       <Line x1="4" y1="18" x2="20" y2="18" stroke={color} strokeWidth="2" strokeLinecap="round" />
     </Svg>
+  );
+}
+
+export function ListIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="list-icon">
+      <ListIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

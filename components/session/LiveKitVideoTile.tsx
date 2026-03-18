@@ -42,6 +42,7 @@ import type { Participant } from 'livekit-client';
 import { Track, ConnectionQuality } from 'livekit-client';
 import { Colors, Spacing, Animation } from '@/constants/tokens';
 import { AvatarTileSurface } from '@/components/session/AvatarTileSurface';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface LiveKitVideoTileProps {
   /** LiveKit track reference. Null before room connects — shows avatar. */
@@ -486,7 +487,7 @@ function LiveKitVideoTileConnected({
 /*  No LiveKit hooks are called at this level.                                */
 /* -------------------------------------------------------------------------- */
 
-export function LiveKitVideoTile({
+function LiveKitVideoTileInner({
   trackRef,
   name: nameProp,
   isActiveSpeaker = false,
@@ -658,3 +659,11 @@ const fallbackStyles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 });
+
+export function LiveKitVideoTile(props: any) {
+  return (
+    <PageErrorBoundary pageName="live-kit-video-tile">
+      <LiveKitVideoTileInner {...props} />
+    </PageErrorBoundary>
+  );
+}

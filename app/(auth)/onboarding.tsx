@@ -18,6 +18,7 @@ import { useSupabase } from '@/providers';
 import { supabase } from '@/lib/supabase';
 import { CelebrationModal } from '@/components/CelebrationModal';
 import { PremiumLoadingScreen } from '@/components/PremiumLoadingScreen';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -348,7 +349,7 @@ function clearDraft(): void {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function OnboardingScreen() {
+function OnboardingContent() {
   const router = useRouter();
   const { suiteId, session } = useSupabase();
   const [step, setStep] = useState(1);
@@ -2067,3 +2068,11 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
 });
+
+export default function OnboardingScreen() {
+  return (
+    <PageErrorBoundary pageName="onboarding">
+      <OnboardingContent />
+    </PageErrorBoundary>
+  );
+}

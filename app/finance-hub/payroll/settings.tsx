@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { PayrollSettings } from '@/components/finance/payroll/PayrollSettings';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export default function SettingsPage() {
+function SettingsContent() {
   const [gustoCompany, setGustoCompany] = useState<any>(null);
   const [gustoEmployees, setGustoEmployees] = useState<any[]>([]);
   const [gustoLoading, setGustoLoading] = useState(true);
@@ -63,6 +64,14 @@ export default function SettingsPage() {
   );
 }
 
+
+export default function SettingsPage() {
+  return (
+    <PageErrorBoundary pageName="payroll-settings">
+      <SettingsContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   pageHeader: {
     flexDirection: 'row',

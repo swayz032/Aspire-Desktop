@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AreaChart, Area, ResponsiveContainer, YAxis } from 'recharts';
 import { injectCardKeyframes } from './cardAnimations';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 injectCardKeyframes();
 
@@ -31,7 +32,7 @@ function ShimmerLine({ width, height = 12 }: { width: string | number; height?: 
   );
 }
 
-export function GlowTrendCard({ title, value, delta, deltaDirection = 'up', data, accentColor, loading }: GlowTrendCardProps) {
+function GlowTrendCardInner({ title, value, delta, deltaDirection = 'up', data, accentColor, loading }: GlowTrendCardProps) {
   if (Platform.OS !== 'web') {
     return (
       <View style={nativeStyles.card}>
@@ -162,3 +163,11 @@ const nativeStyles = StyleSheet.create({
     color: '#ffffff',
   },
 });
+
+export function GlowTrendCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="glow-trend-card">
+      <GlowTrendCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

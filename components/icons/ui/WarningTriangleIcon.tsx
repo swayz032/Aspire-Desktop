@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface WarningTriangleIconProps {
   size?: number;
@@ -11,7 +12,7 @@ interface WarningTriangleIconProps {
  * Used in YELLOW tier confirmation modal headers.
  * Canvas Wave 17 — Risk Tier Modals.
  */
-export function WarningTriangleIcon({
+function WarningTriangleIconInner({
   size = 24,
   color = '#F59E0B',
 }: WarningTriangleIconProps) {
@@ -37,5 +38,13 @@ export function WarningTriangleIcon({
         fill={color}
       />
     </Svg>
+  );
+}
+
+export function WarningTriangleIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="warning-triangle-icon">
+      <WarningTriangleIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

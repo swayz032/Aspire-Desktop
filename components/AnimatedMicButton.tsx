@@ -2,13 +2,14 @@ import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface AnimatedMicButtonProps {
   isAvaSpeaking?: boolean;
   isListening?: boolean;
 }
 
-export function AnimatedMicButton({ isAvaSpeaking = false, isListening = false }: AnimatedMicButtonProps) {
+function AnimatedMicButtonInner({ isAvaSpeaking = false, isListening = false }: AnimatedMicButtonProps) {
   const glowAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -130,3 +131,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.border.default,
   },
 });
+
+export function AnimatedMicButton(props: any) {
+  return (
+    <PageErrorBoundary pageName="animated-mic-button">
+      <AnimatedMicButtonInner {...props} />
+    </PageErrorBoundary>
+  );
+}

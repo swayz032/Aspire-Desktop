@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { useAvaDock } from '@/providers';
 import { useSession } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export function AvaMiniPlayer() {
+function AvaMiniPlayerInner() {
   const { dockState, closeDock, sessionMode, minimizeDock, expandDock } = useAvaDock();
   const { session, endSession, isActive } = useSession();
 
@@ -160,3 +161,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+export function AvaMiniPlayer() {
+  return (
+    <PageErrorBoundary pageName="ava-mini-player">
+      <AvaMiniPlayerInner />
+    </PageErrorBoundary>
+  );
+}

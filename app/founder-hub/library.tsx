@@ -5,6 +5,7 @@ import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { getIndustryImageUrl, resolveHubImage } from '@/data/founderHub/imageHelper';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -51,7 +52,7 @@ const IMAGE_KEYS_BY_CATEGORY: Record<string, string> = {
   Strategy: 'lumber-yard',
 };
 
-export default function LibraryScreen() {
+function LibraryContent() {
   const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState('all');
@@ -349,6 +350,14 @@ export default function LibraryScreen() {
   );
 }
 
+
+export default function LibraryScreen() {
+  return (
+    <PageErrorBoundary pageName="library">
+      <LibraryContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   header: {
     marginBottom: 24,

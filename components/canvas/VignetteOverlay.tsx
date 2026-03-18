@@ -8,6 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Canvas } from '@/constants/tokens';
 import { useImmersion } from '@/lib/immersionStore';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Reduced-motion detection (web only, singleton)
@@ -42,7 +43,7 @@ const WEB_VIGNETTE_CANVAS = `radial-gradient(ellipse at center, transparent 45%,
 // Component
 // ---------------------------------------------------------------------------
 
-export function VignetteOverlay(): React.ReactElement | null {
+function VignetteOverlayInner(): React.ReactElement | null {
   const { mode } = useImmersion();
   const opacity = useRef(new Animated.Value(0)).current;
   const isVisible = mode === 'depth' || mode === 'canvas';
@@ -136,3 +137,11 @@ const webOverlayStyle = Platform.OS === 'web'
 
 // Web gradient is now applied inline per mode (depth vs canvas variant).
 // No static webStyles needed — gradient string is dynamic.
+
+export function VignetteOverlay() {
+  return (
+    <PageErrorBoundary pageName="vignette-overlay">
+      <VignetteOverlayInner />
+    </PageErrorBoundary>
+  );
+}

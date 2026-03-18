@@ -16,6 +16,7 @@ import { ChatDrawer } from '@/components/session/ChatDrawer';
 import { BottomSheet } from '@/components/session/BottomSheet';
 import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const MENU_OPTIONS = [
   { id: 'flip', label: 'Flip Camera', icon: 'camera-reverse' as const },
@@ -25,7 +26,7 @@ const MENU_OPTIONS = [
   { id: 'end', label: 'End Session', icon: 'stop-circle' as const, destructive: true },
 ];
 
-export default function VideoSession() {
+function VideoContent() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { tenant } = useTenant();
@@ -1258,6 +1259,14 @@ const desktopStyles = StyleSheet.create({
   },
 });
 
+
+export default function VideoSession() {
+  return (
+    <PageErrorBoundary pageName="session-video">
+      <VideoContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

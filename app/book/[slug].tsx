@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Platform, TextInput, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
 
@@ -36,7 +37,7 @@ type Step = 'services' | 'datetime' | 'details' | 'confirmation';
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function PublicBookingPage() {
+function PublicBookingContent() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -948,3 +949,12 @@ const s = StyleSheet.create({
     marginBottom: 20,
   },
 });
+
+
+export default function PublicBookingPage() {
+  return (
+    <PageErrorBoundary pageName="book-meeting">
+      <PublicBookingContent />
+    </PageErrorBoundary>
+  );
+}

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { PanelContentProps } from './types';
 import { timeAgo } from './utils';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -92,7 +93,7 @@ const ContractCard = memo(function ContractCard({ contract, isOpen, onToggle, on
   );
 });
 
-export default function ContractsPanelContent(_props: PanelContentProps) {
+function ContractsPanelContentInner(_props: PanelContentProps) {
   const { authenticatedFetch } = useAuthFetch();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -204,3 +205,11 @@ const s = StyleSheet.create({
   ghostBtnText: { fontSize: 13, fontWeight: '600', color: BLUE },
   bottomSpacer: { height: 32 },
 });
+
+export default function ContractsPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="contracts-panel-content">
+      <ContractsPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

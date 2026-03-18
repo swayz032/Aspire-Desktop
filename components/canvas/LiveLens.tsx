@@ -19,6 +19,7 @@ import {
 } from '@/constants/tokens';
 import { useImmersion } from '@/lib/immersionStore';
 import { getTile, type TileLensField, type TileVerb } from '@/lib/tileManifest';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,7 +69,7 @@ function getRiskBg(tier: TileVerb['riskTier']): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export function LiveLens({
+function LiveLensInner({
   tileId,
   anchorPosition,
   onClose,
@@ -321,3 +322,11 @@ const styles = StyleSheet.create({
     color: Colors.text.muted,
   },
 });
+
+export function LiveLens(props: any) {
+  return (
+    <PageErrorBoundary pageName="live-lens">
+      <LiveLensInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -1,7 +1,8 @@
 import { SymbolView, SymbolViewProps, SymbolWeight } from 'expo-symbols';
 import { StyleProp, ViewStyle } from 'react-native';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-export function IconSymbol({
+function IconSymbolInner({
   name,
   size = 24,
   color,
@@ -28,5 +29,13 @@ export function IconSymbol({
         style,
       ]}
     />
+  );
+}
+
+export function IconSymbol(props: any) {
+  return (
+    <PageErrorBoundary pageName="icon-symbol.ios">
+      <IconSymbolInner {...props} />
+    </PageErrorBoundary>
   );
 }

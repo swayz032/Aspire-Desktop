@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const videos = [
   {
@@ -25,7 +26,7 @@ const videos = [
   },
 ];
 
-export default function AIStaffVideoCarousel() {
+function AIStaffVideoCarouselInner() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [direction, setDirection] = useState(0);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([null, null, null]);
@@ -208,5 +209,13 @@ export default function AIStaffVideoCarousel() {
         ))}
       </div>
     </div>
+  );
+}
+
+export default function AIStaffVideoCarousel(props: any) {
+  return (
+    <PageErrorBoundary pageName="a-i-staff-video-carousel">
+      <AIStaffVideoCarouselInner {...props} />
+    </PageErrorBoundary>
   );
 }

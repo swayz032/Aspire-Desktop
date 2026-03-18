@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Platform } from 'react-native';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const WMO: Record<number, [string, string]> = {
   0: ['Clear sky', '☀️'],
@@ -89,7 +90,7 @@ interface Props {
   imageUrl?: string;
 }
 
-export function GreetingCard({
+function GreetingCardInner({
   ownerName = 'Mr. Scott',
   accentColor = '#38BDF8',
   imageUrl,
@@ -209,5 +210,13 @@ export function GreetingCard({
         </div>
       </div>
     </div>
+  );
+}
+
+export function GreetingCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="greeting-card">
+      <GreetingCardInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -26,6 +26,7 @@ import {
   CONTRACT_STATUS,
   type ContractStatus,
 } from '@/components/finance/documents';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const webOnly = (styles: Record<string, unknown>) => Platform.OS === 'web' ? styles : {};
 
@@ -106,7 +107,7 @@ const PREMIUM_FEATURES = [
   { icon: 'folder-outline' as const, label: 'Template library' },
 ] as const;
 
-export default function DocumentLibraryPage() {
+function DocumentLibraryContent() {
   const router = useRouter();
   const { authenticatedFetch } = useAuthFetch();
 
@@ -614,6 +615,14 @@ export default function DocumentLibraryPage() {
   );
 }
 
+
+export default function DocumentLibraryPage() {
+  return (
+    <PageErrorBoundary pageName="finance-documents">
+      <DocumentLibraryContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   page: {
     flex: 1,

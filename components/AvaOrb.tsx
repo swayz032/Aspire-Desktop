@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -44,7 +45,7 @@ const stateConfig = {
   },
 };
 
-export function AvaOrb({ state = 'idle', size = 300 }: AvaOrbProps) {
+function AvaOrbInner({ state = 'idle', size = 300 }: AvaOrbProps) {
   const config = stateConfig[state];
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
@@ -351,3 +352,11 @@ const styles = StyleSheet.create({
 });
 
 export default AvaOrb;
+
+export function AvaOrb(props: any) {
+  return (
+    <PageErrorBoundary pageName="ava-orb">
+      <AvaOrbInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle, Line } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface SearchBarIconProps {
   size?: number;
   color?: string;
 }
 
-export function SearchBarIcon({
+function SearchBarIconInner({
   size = 24,
   color = '#6B7280'
 }: SearchBarIconProps) {
@@ -29,5 +30,13 @@ export function SearchBarIcon({
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+export function SearchBarIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="search-bar-icon">
+      <SearchBarIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

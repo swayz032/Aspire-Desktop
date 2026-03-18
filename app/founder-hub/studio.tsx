@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const THEME = {
   bg: '#000000',
@@ -42,7 +43,7 @@ interface RecentSession {
   status: string;
 }
 
-export default function StudioScreen() {
+function StudioContent() {
   const { tenant, isLoading: tenantLoading } = useTenant();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
@@ -300,6 +301,14 @@ export default function StudioScreen() {
   );
 }
 
+
+export default function StudioScreen() {
+  return (
+    <PageErrorBoundary pageName="studio">
+      <StudioContent />
+    </PageErrorBoundary>
+  );
+}
 const styles = StyleSheet.create({
   header: {
     marginBottom: 24,

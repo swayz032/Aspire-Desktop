@@ -5,6 +5,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { CONTRACT_STATUS, type ContractStatus } from './contractConstants';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface ContractStatusBadgeProps {
   status: ContractStatus;
@@ -37,8 +38,6 @@ function ContractStatusBadgeInner({ status, size = 'sm' }: ContractStatusBadgePr
   );
 }
 
-export const ContractStatusBadge = React.memo(ContractStatusBadgeInner);
-
 const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
@@ -69,3 +68,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
+
+export function ContractStatusBadge(props: any) {
+  return (
+    <PageErrorBoundary pageName="contract-status-badge">
+      <ContractStatusBadgeInner {...props} />
+    </PageErrorBoundary>
+  );
+}

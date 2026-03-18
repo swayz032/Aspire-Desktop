@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
 import { playClickSound, playMicActivateSound } from '@/lib/sounds';
 import type { CallSession } from '@/types/frontdesk';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PhoneWidgetProps {
   suiteId: string;
@@ -55,7 +56,7 @@ function callIcon(call: CallSession): { name: string; color: string } {
   return { name: 'arrow-down', color: '#10B981' };
 }
 
-export function PhoneWidget({ suiteId, officeId }: PhoneWidgetProps) {
+function PhoneWidgetInner({ suiteId, officeId }: PhoneWidgetProps) {
   const [tab, setTab] = useState<PhoneTab>('keypad');
   const [dialNumber, setDialNumber] = useState('');
   const { calls, loading } = useFrontdeskCalls();
@@ -381,3 +382,11 @@ const s = StyleSheet.create({
     fontSize: 14,
   },
 });
+
+export function PhoneWidget(props: any) {
+  return (
+    <PageErrorBoundary pageName="phone-widget">
+      <PhoneWidgetInner {...props} />
+    </PageErrorBoundary>
+  );
+}

@@ -1,12 +1,13 @@
 import React from 'react';
 import Svg, { Circle } from 'react-native-svg';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface CircleIconProps {
   size?: number;
   color?: string;
 }
 
-export function CircleIcon({
+function CircleIconInner({
   size = 24,
   color = 'rgba(255,255,255,0.3)'
 }: CircleIconProps) {
@@ -20,5 +21,13 @@ export function CircleIcon({
         strokeWidth="2"
       />
     </Svg>
+  );
+}
+
+export function CircleIcon(props: any) {
+  return (
+    <PageErrorBoundary pageName="circle-icon">
+      <CircleIconInner {...props} />
+    </PageErrorBoundary>
   );
 }

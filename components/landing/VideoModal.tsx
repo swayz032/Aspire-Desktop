@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface VideoModalProps {
   isOpen: boolean;
@@ -8,7 +9,7 @@ interface VideoModalProps {
   memberName: string;
 }
 
-export default function VideoModal({ isOpen, onClose, videoPath, memberName }: VideoModalProps) {
+function VideoModalInner({ isOpen, onClose, videoPath, memberName }: VideoModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -119,5 +120,13 @@ export default function VideoModal({ isOpen, onClose, videoPath, memberName }: V
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+export default function VideoModal(props: any) {
+  return (
+    <PageErrorBoundary pageName="video-modal">
+      <VideoModalInner {...props} />
+    </PageErrorBoundary>
   );
 }

@@ -40,6 +40,7 @@ import {
   denyAction,
   type CanvasAction,
 } from '@/lib/canvasActionBus';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,7 +79,7 @@ function formatPayloadForDisplay(payload: Record<string, unknown>): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export function YellowConfirmationModal() {
+function YellowConfirmationModalInner() {
   const [visible, setVisible] = useState(false);
   const [action, setAction] = useState<CanvasAction | null>(null);
   const [loading, setLoading] = useState(false);
@@ -505,3 +506,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 });
+
+export function YellowConfirmationModal() {
+  return (
+    <PageErrorBoundary pageName="yellow-confirmation-modal">
+      <YellowConfirmationModalInner />
+    </PageErrorBoundary>
+  );
+}

@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView, Platform } from 'react-n
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { PanelContentProps } from './types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const BLUE    = '#0ea5e9';
 const SURFACE = 'rgba(6,6,10,0.98)';
@@ -60,7 +61,7 @@ const AgendaRow = memo(function AgendaRow({ event, onPress }: AgendaRowProps) {
   );
 });
 
-export default function CalendarPanelContent(_props: PanelContentProps) {
+function CalendarPanelContentInner(_props: PanelContentProps) {
   const { authenticatedFetch } = useAuthFetch();
   const today                   = useMemo(() => new Date(), []);
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -238,3 +239,11 @@ const s = StyleSheet.create({
   agendaTypeText:   { fontSize: 10, color: BLUE, fontWeight: '600' },
   bottomSpacer:     { height: 32 },
 });
+
+export default function CalendarPanelContent(props: any) {
+  return (
+    <PageErrorBoundary pageName="calendar-panel-content">
+      <CalendarPanelContentInner {...props} />
+    </PageErrorBoundary>
+  );
+}

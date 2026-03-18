@@ -3,13 +3,14 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Colors, Spacing, Typography } from '@/constants/tokens';
 import { StatusDot } from './ui/Badge';
 import { Tenant } from '@/types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface OfficeIdentityBarProps {
   tenant: Tenant;
   showStatus?: boolean;
 }
 
-export function OfficeIdentityBar({ tenant, showStatus = true }: OfficeIdentityBarProps) {
+function OfficeIdentityBarInner({ tenant, showStatus = true }: OfficeIdentityBarProps) {
   return (
     <View style={styles.container}>
       <View style={styles.titleRow}>
@@ -44,3 +45,11 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.lg + Spacing.xs,
   },
 });
+
+export function OfficeIdentityBar(props: any) {
+  return (
+    <PageErrorBoundary pageName="office-identity-bar">
+      <OfficeIdentityBarInner {...props} />
+    </PageErrorBoundary>
+  );
+}

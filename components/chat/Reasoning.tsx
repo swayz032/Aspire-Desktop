@@ -38,6 +38,7 @@ import { Colors, Spacing, BorderRadius, Typography } from '@/constants/tokens';
 import type { AgentId } from './types';
 import { AGENT_COLORS } from './types';
 
+
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
@@ -360,3 +361,4 @@ const s = StyleSheet.create({
     borderRadius: 4,
   },
 });
+

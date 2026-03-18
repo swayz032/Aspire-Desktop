@@ -19,6 +19,7 @@ import { View, StyleSheet, Platform, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -288,7 +289,7 @@ function PersonaNative({ state, style }: PersonaProps) {
 // Export: Platform-aware Persona
 // ---------------------------------------------------------------------------
 
-export const Persona = memo(function Persona(props: PersonaProps) {
+const PersonaInner = memo(function Persona(props: PersonaProps) {
   if (Platform.OS === 'web') {
     return <PersonaWeb {...props} />;
   }
@@ -326,3 +327,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
 });
+
+export function Persona() {
+  return (
+    <PageErrorBoundary pageName="persona">
+      <PersonaInner />
+    </PageErrorBoundary>
+  );
+}

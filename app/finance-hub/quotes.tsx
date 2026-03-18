@@ -5,6 +5,7 @@ import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -62,7 +63,7 @@ function isExpired(q: StripeQuote): boolean {
   return q.expires_at * 1000 < Date.now();
 }
 
-export default function QuotesPage() {
+function QuotesContent() {
   const [quotes, setQuotes] = useState<StripeQuote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -928,3 +929,12 @@ const s = StyleSheet.create({
     fontSize: 14,
   },
 });
+
+
+export default function QuotesPage() {
+  return (
+    <PageErrorBoundary pageName="finance-quotes">
+      <QuotesContent />
+    </PageErrorBoundary>
+  );
+}

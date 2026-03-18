@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 export type ActionStatus = 'in_progress' | 'complete' | 'pending' | 'failed';
 export type ActionType = 'search' | 'read' | 'generate' | 'analyze' | 'send' | 'approve' | 'thinking';
@@ -83,7 +84,7 @@ function ActionItem({ action, onDownload }: { action: ContextAction; onDownload?
   );
 }
 
-export function ContextFeed({ actions, onDownload }: ContextFeedProps) {
+function ContextFeedInner({ actions, onDownload }: ContextFeedProps) {
   if (actions.length === 0) {
     return (
       <View style={styles.emptyContainer}>
@@ -228,3 +229,11 @@ const styles = StyleSheet.create({
 });
 
 export default ContextFeed;
+
+export function ContextFeed(props: any) {
+  return (
+    <PageErrorBoundary pageName="context-feed">
+      <ContextFeedInner {...props} />
+    </PageErrorBoundary>
+  );
+}

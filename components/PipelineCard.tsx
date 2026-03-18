@@ -4,13 +4,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Card } from './ui/Card';
 import { PipelineStage } from '@/types';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface PipelineCardProps {
   stages: PipelineStage[];
   onPress?: () => void;
 }
 
-export function PipelineCard({ stages, onPress }: PipelineCardProps) {
+function PipelineCardInner({ stages, onPress }: PipelineCardProps) {
   return (
     <Card variant="elevated" onPress={onPress}>
       <View style={styles.header}>
@@ -140,3 +141,11 @@ const styles = StyleSheet.create({
     opacity: 0.3,
   },
 });
+
+export function PipelineCard(props: any) {
+  return (
+    <PageErrorBoundary pageName="pipeline-card">
+      <PipelineCardInner {...props} />
+    </PageErrorBoundary>
+  );
+}

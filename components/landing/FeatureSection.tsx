@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Feature } from './FeaturesData';
 import AIStaffVideoCarousel from './AIStaffVideoCarousel';
 import AIStaffPhotoCarousel from './AIStaffPhotoCarousel';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface FeatureSectionProps {
   feature: Feature;
@@ -117,7 +118,7 @@ function FeatureVisual({ feature }: { feature: Feature }) {
   );
 }
 
-export default function FeatureSection({ feature, index }: FeatureSectionProps) {
+function FeatureSectionInner({ feature, index }: FeatureSectionProps) {
   const isEven = index % 2 === 0;
 
   return (
@@ -210,5 +211,13 @@ export default function FeatureSection({ feature, index }: FeatureSectionProps) 
         </motion.div>
       </div>
     </section>
+  );
+}
+
+export default function FeatureSection(props: any) {
+  return (
+    <PageErrorBoundary pageName="feature-section">
+      <FeatureSectionInner {...props} />
+    </PageErrorBoundary>
   );
 }

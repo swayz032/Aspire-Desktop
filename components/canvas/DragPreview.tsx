@@ -24,6 +24,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { WidgetContainer } from './WidgetContainer';
 import { SPRING_CONFIG } from '@/lib/canvasDragDrop';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,7 +51,7 @@ const VELOCITY_ROTATION_SCALE = 0.1;
 // Component
 // ---------------------------------------------------------------------------
 
-export function DragPreview({
+function DragPreviewInner({
   widgetId,
   isDragging,
   velocity = { x: 0, y: 0 },
@@ -231,3 +232,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
 });
+
+export function DragPreview(props: any) {
+  return (
+    <PageErrorBoundary pageName="drag-preview">
+      <DragPreviewInner {...props} />
+    </PageErrorBoundary>
+  );
+}
