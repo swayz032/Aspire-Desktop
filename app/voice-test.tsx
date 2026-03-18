@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,26 +6,22 @@ import {
   Pressable,
   ScrollView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useSupabase } from '@/providers';
 
-type Stage = 'idle' | 'recording' | 'thinking' | 'speaking' | 'error' | 'done';
+type SessionState = 'idle' | 'listening' | 'processing' | 'speaking';
 
-interface DiagnosticInfo {
-  llmResponse?: string;
-  llmLatencyMs?: number;
-  ttsLatencyMs?: number;
-  audioSizeBytes?: number;
-  audioDurationMs?: number;
-  error?: string;
-  errorStage?: string;
+interface Turn {
+  id: string;
+  role: 'user' | 'ava';
+  text: string;
+  latency?: { llm: number; tts: number };
 }
 
 const AGENTS = [
@@ -41,14 +37,19 @@ function VoiceTestContent() {
   const isDesktop = useDesktop();
   const { session } = useSupabase();
 
-  const [stage, setStage] = useState<Stage>('idle');
+  const [state, setState] = useState<SessionState>('idle');
   const [selectedAgent, setSelectedAgent] = useState('ava');
-  const [textInput, setTextInput] = useState('');
-  const [diag, setDiag] = useState<DiagnosticInfo>({});
-  const [isRecording, setIsRecording] = useState(false);
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [autoListen, setAutoListen] = useState(true);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const scrollRef = useRef<ScrollView>(null);
+  const activeRef = useRef(false); // whether voice session is active
+
+  const agentInfo = AGENTS.find((a) => a.id === selectedAgent) || AGENTS[0];
 
   const getAuthHeaders = useCallback(() => {
     const token = session?.access_token;
@@ -56,13 +57,19 @@ function VoiceTestContent() {
     return { Authorization: `Bearer ${token}` };
   }, [session]);
 
-  // --- STT via browser MediaRecorder → backend ---
-  const startRecording = useCallback(async () => {
+  const addTurn = useCallback((turn: Turn) => {
+    setTurns((prev) => [...prev, turn]);
+    setTimeout(() => scrollRef.current?.scrollToEnd?.({ animated: true }), 100);
+  }, []);
+
+  // --- Start listening ---
+  const startListening = useCallback(async () => {
     if (!session?.access_token) {
-      setDiag({ error: 'Not authenticated. Please sign in.', errorStage: 'auth' });
-      setStage('error');
+      setError('Not authenticated');
       return;
     }
+    setError(null);
+    setState('listening');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -77,442 +84,317 @@ function VoiceTestContent() {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         if (blob.size < 500) {
-          setDiag({ error: 'Recording too short. Tap mic, speak, then tap again to stop.', errorStage: 'stt' });
-          setStage('error');
+          setError('Too short — speak a bit longer');
+          setState(activeRef.current ? 'listening' : 'idle');
+          if (activeRef.current) startListening();
           return;
         }
-        await processAudioBlob(blob);
+        await processVoice(blob);
       };
 
       mediaRecorderRef.current = recorder;
       recorder.start();
-      setIsRecording(true);
-      setStage('recording');
-      setDiag({});
     } catch (err) {
-      setDiag({
-        error: err instanceof Error ? err.message : 'Microphone access denied',
-        errorStage: 'mic',
-      });
-      setStage('error');
+      setError(err instanceof Error ? err.message : 'Mic access denied');
+      setState('idle');
     }
   }, [session]);
 
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+  // --- Stop listening ---
+  const stopListening = useCallback(() => {
+    if (mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setStage('thinking');
     }
   }, []);
 
-  // Toggle mic — tap to start, tap to stop (real voice session pattern)
-  const toggleMic = useCallback(() => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  }, [isRecording, startRecording, stopRecording]);
-
-  // --- STT: send audio blob to ElevenLabs STT via our server ---
-  const processAudioBlob = useCallback(
+  // --- Full voice pipeline: STT → LLM → TTS → playback ---
+  const processVoice = useCallback(
     async (blob: Blob) => {
-      setStage('thinking');
+      setState('processing');
       const headers = getAuthHeaders();
       if (!headers) return;
 
       try {
-        // Send raw audio binary — the STT endpoint expects raw body, not multipart
+        // 1) STT
         const arrayBuffer = await blob.arrayBuffer();
-
         const sttResp = await fetch('/api/elevenlabs/stt', {
           method: 'POST',
-          headers: {
-            ...headers,
-            'Content-Type': 'audio/webm',
-          },
+          headers: { ...headers, 'Content-Type': 'audio/webm' },
           body: arrayBuffer,
         });
 
         if (!sttResp.ok) {
-          const errText = await sttResp.text();
-          setDiag({ error: `STT failed (${sttResp.status}): ${errText.substring(0, 200)}`, errorStage: 'stt' });
-          setStage('error');
+          setError(`STT error ${sttResp.status}`);
+          if (activeRef.current && autoListen) {
+            setState('listening');
+            startListening();
+          } else {
+            setState('idle');
+          }
           return;
         }
 
         const sttData = await sttResp.json();
-        const transcript = sttData.text || sttData.transcript || '';
+        const transcript = (sttData.text || sttData.transcript || '').trim();
 
-        if (!transcript.trim()) {
-          setDiag({ error: 'No speech detected. Try speaking louder or closer to the mic.', errorStage: 'stt' });
-          setStage('error');
+        if (!transcript) {
+          // No speech detected — go back to listening silently
+          if (activeRef.current && autoListen) {
+            setState('listening');
+            startListening();
+          } else {
+            setState('idle');
+          }
           return;
         }
 
-        await runBypass(transcript);
-      } catch (err) {
-        setDiag({
-          error: err instanceof Error ? err.message : 'STT request failed',
-          errorStage: 'stt',
-        });
-        setStage('error');
-      }
-    },
-    [getAuthHeaders],
-  );
+        // Add user turn
+        addTurn({ id: `u-${Date.now()}`, role: 'user', text: transcript });
 
-  // --- Core bypass: text → OpenAI → ElevenLabs → audio playback ---
-  const runBypass = useCallback(
-    async (text: string) => {
-      setStage('thinking');
-      setDiag({});
-      const headers = getAuthHeaders();
-      if (!headers) {
-        setDiag({ error: 'Not authenticated', errorStage: 'auth' });
-        setStage('error');
-        return;
-      }
-
-      try {
+        // 2) LLM + TTS bypass
         const resp = await fetch('/api/voice-test/bypass', {
           method: 'POST',
-          headers: {
-            ...headers,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ text, agent: selectedAgent }),
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: transcript, agent: selectedAgent }),
         });
 
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({ error: resp.statusText }));
-          setDiag({
-            error: `${errData.error || resp.statusText}`,
-            errorStage: errData.stage || 'unknown',
-            llmResponse: errData.responseText,
-          });
-          setStage('error');
+          setError(errData.error || `Error ${resp.status}`);
+          if (activeRef.current && autoListen) {
+            setState('listening');
+            startListening();
+          } else {
+            setState('idle');
+          }
           return;
         }
 
-        // Parse diagnostic headers
+        // Parse response
         const llmResponseB64 = resp.headers.get('X-LLM-Response') || '';
-        const llmLatency = parseInt(resp.headers.get('X-LLM-Latency-Ms') || '0', 10);
-        const ttsLatency = parseInt(resp.headers.get('X-TTS-Latency-Ms') || '0', 10);
-        let llmResponse = '';
-        try {
-          llmResponse = atob(llmResponseB64);
-        } catch {
-          llmResponse = '(could not decode)';
-        }
+        const llmMs = parseInt(resp.headers.get('X-LLM-Latency-Ms') || '0', 10);
+        const ttsMs = parseInt(resp.headers.get('X-TTS-Latency-Ms') || '0', 10);
+        let llmText = '';
+        try { llmText = atob(llmResponseB64); } catch { llmText = ''; }
 
-        // Get audio blob
         const audioBlob = await resp.blob();
+        addTurn({ id: `a-${Date.now()}`, role: 'ava', text: llmText, latency: { llm: llmMs, tts: ttsMs } });
 
-        setDiag({
-          llmResponse,
-          llmLatencyMs: llmLatency,
-          ttsLatencyMs: ttsLatency,
-          audioSizeBytes: audioBlob.size,
-        });
-
-        // Play audio
-        setStage('speaking');
+        // 3) Play audio
+        setState('speaking');
         const audioUrl = URL.createObjectURL(audioBlob);
 
-        if (Platform.OS === 'web') {
-          // Stop any previous playback
-          if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.src = '';
-          }
-
-          const audio = new Audio(audioUrl);
-          audioRef.current = audio;
-
-          audio.onended = () => {
-            setStage('done');
-            URL.revokeObjectURL(audioUrl);
-          };
-
-          audio.onerror = (e) => {
-            setDiag((prev) => ({
-              ...prev,
-              error: `Audio playback failed: ${audio.error?.message || 'unknown'}`,
-              errorStage: 'playback',
-            }));
-            setStage('error');
-            URL.revokeObjectURL(audioUrl);
-          };
-
-          // Measure audio duration once metadata loads
-          audio.onloadedmetadata = () => {
-            setDiag((prev) => ({
-              ...prev,
-              audioDurationMs: Math.round(audio.duration * 1000),
-            }));
-          };
-
-          await audio.play();
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.src = '';
         }
+
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          // Auto-listen again if session is active
+          if (activeRef.current && autoListen) {
+            setState('listening');
+            startListening();
+          } else {
+            setState('idle');
+          }
+        };
+
+        audio.onerror = () => {
+          URL.revokeObjectURL(audioUrl);
+          setError('Audio playback failed');
+          setState('idle');
+        };
+
+        await audio.play();
       } catch (err) {
-        setDiag({
-          error: err instanceof Error ? err.message : 'Bypass request failed',
-          errorStage: 'network',
-        });
-        setStage('error');
+        setError(err instanceof Error ? err.message : 'Voice pipeline failed');
+        setState('idle');
       }
     },
-    [getAuthHeaders, selectedAgent],
+    [getAuthHeaders, selectedAgent, autoListen, addTurn, startListening],
   );
 
-  // --- Text input submit ---
-  const handleTextSubmit = useCallback(() => {
-    const trimmed = textInput.trim();
-    if (!trimmed) return;
-    runBypass(trimmed);
-  }, [textInput, runBypass]);
-
-  const handleReset = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
+  // --- Toggle voice session ---
+  const toggleSession = useCallback(() => {
+    if (activeRef.current) {
+      // End session
+      activeRef.current = false;
+      stopListening();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+      setState('idle');
+    } else {
+      // Start session
+      activeRef.current = true;
+      setError(null);
+      startListening();
     }
-    setStage('idle');
-    setDiag({});
-    setTextInput('');
+  }, [startListening, stopListening]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      activeRef.current = false;
+      mediaRecorderRef.current?.stop?.();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+    };
   }, []);
 
-  const stageLabel: Record<Stage, string> = {
-    idle: 'Ready',
-    recording: 'Listening...',
-    thinking: 'Processing...',
-    speaking: 'Playing audio...',
-    error: 'Error',
-    done: 'Complete',
-  };
-
-  const stageColor: Record<Stage, string> = {
+  const stateColors: Record<SessionState, string> = {
     idle: Colors.text.muted,
-    recording: '#EF4444',
-    thinking: '#F59E0B',
+    listening: '#EF4444',
+    processing: '#F59E0B',
     speaking: '#10B981',
-    error: '#EF4444',
-    done: '#10B981',
   };
 
-  const agentColor = AGENTS.find((a) => a.id === selectedAgent)?.color || '#3B82F6';
+  const stateLabels: Record<SessionState, string> = {
+    idle: 'Tap mic to start',
+    listening: 'Listening...',
+    processing: 'Thinking...',
+    speaking: 'Ava is speaking...',
+  };
 
   const content = (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={() => { activeRef.current = false; router.back(); }} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={Colors.text.primary} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Voice Pipeline Test</Text>
-          <Text style={styles.headerSubtitle}>Bypass: OpenAI → ElevenLabs → Audio</Text>
-        </View>
-        <View style={styles.headerBadge}>
-          <View style={[styles.statusDot, { backgroundColor: stageColor[stage] }]} />
-          <Text style={[styles.statusText, { color: stageColor[stage] }]}>{stageLabel[stage]}</Text>
+          <Text style={styles.headerTitle}>Voice Test — Bypass</Text>
+          <Text style={styles.headerSub}>Direct: Mic → OpenAI → ElevenLabs → Speaker</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Pipeline diagram */}
-        <View style={styles.pipelineCard}>
-          <Text style={styles.cardLabel}>BYPASS PIPELINE</Text>
-          <View style={styles.pipeline}>
-            <View style={[styles.pipelineNode, stage === 'recording' && styles.pipelineActive]}>
-              <Ionicons name="mic" size={16} color={stage === 'recording' ? '#fff' : Colors.text.muted} />
-              <Text style={[styles.pipelineText, stage === 'recording' && styles.pipelineTextActive]}>Mic/Text</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={14} color={Colors.text.muted} />
-            <View style={[styles.pipelineNode, stage === 'thinking' && styles.pipelineActive]}>
-              <Ionicons name="flash" size={16} color={stage === 'thinking' ? '#fff' : Colors.text.muted} />
-              <Text style={[styles.pipelineText, stage === 'thinking' && styles.pipelineTextActive]}>OpenAI</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={14} color={Colors.text.muted} />
-            <View style={[styles.pipelineNode, stage === 'speaking' && styles.pipelineActive]}>
-              <Ionicons name="volume-high" size={16} color={stage === 'speaking' ? '#fff' : Colors.text.muted} />
-              <Text style={[styles.pipelineText, stage === 'speaking' && styles.pipelineTextActive]}>ElevenLabs</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={14} color={Colors.text.muted} />
-            <View style={[styles.pipelineNode, stage === 'done' && styles.pipelineActive]}>
-              <Ionicons name="headset" size={16} color={stage === 'done' ? '#fff' : Colors.text.muted} />
-              <Text style={[styles.pipelineText, stage === 'done' && styles.pipelineTextActive]}>Speaker</Text>
-            </View>
-          </View>
-          <Text style={styles.pipelineNote}>No orchestrator, no LangGraph — direct API calls only</Text>
-        </View>
-
-        {/* Agent selector */}
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>AGENT VOICE</Text>
-          <View style={styles.agentRow}>
-            {AGENTS.map((agent) => (
-              <Pressable
-                key={agent.id}
-                style={[
-                  styles.agentChip,
-                  selectedAgent === agent.id && { backgroundColor: agent.color + '22', borderColor: agent.color },
-                ]}
-                onPress={() => setSelectedAgent(agent.id)}
-              >
-                <View style={[styles.agentDot, { backgroundColor: agent.color }]} />
-                <Text
-                  style={[
-                    styles.agentChipText,
-                    selectedAgent === agent.id && { color: agent.color, fontWeight: '600' },
-                  ]}
-                >
-                  {agent.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        {/* Input section */}
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>INPUT</Text>
-
-          {/* Text input */}
-          <View style={styles.textInputRow}>
-            {Platform.OS === 'web' && (
-              <input
-                type="text"
-                placeholder="Type a message (or use mic below)..."
-                value={textInput}
-                onChange={(e: any) => setTextInput(e.target.value)}
-                onKeyDown={(e: any) => e.key === 'Enter' && handleTextSubmit()}
-                disabled={stage === 'thinking' || stage === 'speaking'}
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: `1px solid ${Colors.border.subtle}`,
-                  borderRadius: 10,
-                  padding: '12px 16px',
-                  color: Colors.text.primary,
-                  fontSize: 15,
-                  outline: 'none',
-                  fontFamily: 'inherit',
-                }}
-              />
-            )}
-            <Pressable
-              style={[styles.sendBtn, !textInput.trim() && styles.sendBtnDisabled]}
-              onPress={handleTextSubmit}
-              disabled={!textInput.trim() || stage === 'thinking' || stage === 'speaking'}
-            >
-              <Ionicons name="send" size={18} color={textInput.trim() ? '#fff' : Colors.text.muted} />
-            </Pressable>
-          </View>
-
-          {/* Mic button — tap to start, tap to stop */}
-          <View style={styles.micSection}>
-            <Pressable
-              style={[
-                styles.micBtn,
-                isRecording && styles.micBtnRecording,
-                (stage === 'thinking' || stage === 'speaking') && styles.micBtnDisabled,
-              ]}
-              onPress={toggleMic}
-              disabled={stage === 'thinking' || stage === 'speaking'}
-            >
-              {stage === 'thinking' || stage === 'speaking' ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons
-                  name={isRecording ? 'stop' : 'mic'}
-                  size={32}
-                  color="#fff"
-                />
-              )}
-            </Pressable>
-            <Text style={styles.micHint}>
-              {isRecording
-                ? 'Tap to stop recording'
-                : stage === 'thinking'
-                  ? 'Generating response...'
-                  : stage === 'speaking'
-                    ? 'Playing audio...'
-                    : 'Tap to start speaking'}
+      {/* Agent selector */}
+      <View style={styles.agentBar}>
+        {AGENTS.map((agent) => (
+          <Pressable
+            key={agent.id}
+            style={[
+              styles.agentChip,
+              selectedAgent === agent.id && { backgroundColor: agent.color + '22', borderColor: agent.color },
+            ]}
+            onPress={() => !activeRef.current && setSelectedAgent(agent.id)}
+          >
+            <View style={[styles.agentDot, { backgroundColor: agent.color }]} />
+            <Text style={[styles.agentText, selectedAgent === agent.id && { color: agent.color }]}>
+              {agent.label}
             </Text>
-          </View>
-        </View>
-
-        {/* Diagnostics */}
-        {(diag.llmResponse || diag.error) && (
-          <View style={[styles.card, diag.error ? styles.cardError : styles.cardSuccess]}>
-            <Text style={styles.cardLabel}>DIAGNOSTICS</Text>
-
-            {diag.error && (
-              <View style={styles.diagRow}>
-                <Ionicons name="alert-circle" size={16} color="#EF4444" />
-                <Text style={styles.diagError}>
-                  {diag.errorStage ? `[${diag.errorStage.toUpperCase()}] ` : ''}
-                  {diag.error}
-                </Text>
-              </View>
-            )}
-
-            {diag.llmResponse && (
-              <View style={styles.diagBlock}>
-                <Text style={styles.diagLabel}>LLM Response:</Text>
-                <Text style={styles.diagValue}>{diag.llmResponse}</Text>
-              </View>
-            )}
-
-            {diag.llmLatencyMs !== undefined && (
-              <View style={styles.diagMetrics}>
-                <View style={styles.metricBox}>
-                  <Text style={styles.metricValue}>{diag.llmLatencyMs}ms</Text>
-                  <Text style={styles.metricLabel}>LLM</Text>
-                </View>
-                <View style={styles.metricBox}>
-                  <Text style={styles.metricValue}>{diag.ttsLatencyMs}ms</Text>
-                  <Text style={styles.metricLabel}>TTS</Text>
-                </View>
-                <View style={styles.metricBox}>
-                  <Text style={styles.metricValue}>
-                    {diag.audioSizeBytes ? `${(diag.audioSizeBytes / 1024).toFixed(1)}KB` : '—'}
-                  </Text>
-                  <Text style={styles.metricLabel}>Audio</Text>
-                </View>
-                <View style={styles.metricBox}>
-                  <Text style={styles.metricValue}>
-                    {diag.audioDurationMs ? `${(diag.audioDurationMs / 1000).toFixed(1)}s` : '—'}
-                  </Text>
-                  <Text style={styles.metricLabel}>Duration</Text>
-                </View>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Reset button */}
-        {stage !== 'idle' && (
-          <Pressable style={styles.resetBtn} onPress={handleReset}>
-            <Ionicons name="refresh" size={18} color={Colors.text.primary} />
-            <Text style={styles.resetBtnText}>Reset</Text>
           </Pressable>
+        ))}
+      </View>
+
+      {/* Conversation */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.transcript}
+        contentContainerStyle={styles.transcriptContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {turns.length === 0 && state === 'idle' && (
+          <View style={styles.emptyState}>
+            <Ionicons name="chatbubbles-outline" size={48} color={Colors.text.muted} />
+            <Text style={styles.emptyText}>Tap the mic to start a voice conversation with {agentInfo.label}</Text>
+            <Text style={styles.emptySubtext}>No orchestrator — direct OpenAI + ElevenLabs</Text>
+          </View>
         )}
 
-        {/* Explanation */}
-        <View style={[styles.card, { marginTop: Spacing.lg }]}>
-          <Text style={styles.cardLabel}>WHAT THIS TESTS</Text>
-          <Text style={styles.explainText}>
-            This page bypasses the entire Aspire orchestrator (LangGraph, Brain, intent routing) and calls
-            OpenAI + ElevenLabs directly from the server. If audio plays here but not in the main app,
-            the issue is in the orchestrator pipeline. If audio does NOT play here, the issue is in
-            OpenAI/ElevenLabs/browser audio playback.
-          </Text>
-        </View>
+        {turns.map((turn) => (
+          <View key={turn.id} style={[styles.turnRow, turn.role === 'user' ? styles.turnUser : styles.turnAva]}>
+            <View style={[
+              styles.turnBubble,
+              turn.role === 'user' ? styles.bubbleUser : styles.bubbleAva,
+            ]}>
+              <Text style={[styles.turnText, turn.role === 'user' && styles.turnTextUser]}>
+                {turn.text}
+              </Text>
+            </View>
+            {turn.latency && (
+              <Text style={styles.latencyText}>
+                LLM {turn.latency.llm}ms · TTS {turn.latency.tts}ms
+              </Text>
+            )}
+          </View>
+        ))}
+
+        {state === 'listening' && (
+          <View style={styles.listeningIndicator}>
+            <View style={styles.pulsingDot} />
+            <Text style={styles.listeningText}>Listening...</Text>
+          </View>
+        )}
+
+        {state === 'processing' && (
+          <View style={styles.listeningIndicator}>
+            <Ionicons name="flash" size={14} color="#F59E0B" />
+            <Text style={[styles.listeningText, { color: '#F59E0B' }]}>Thinking...</Text>
+          </View>
+        )}
       </ScrollView>
+
+      {/* Error */}
+      {error && (
+        <View style={styles.errorBar}>
+          <Ionicons name="alert-circle" size={14} color="#EF4444" />
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable onPress={() => setError(null)}>
+            <Ionicons name="close" size={14} color={Colors.text.muted} />
+          </Pressable>
+        </View>
+      )}
+
+      {/* Bottom controls */}
+      <View style={styles.controls}>
+        <View style={styles.controlsInner}>
+          {/* Auto-listen toggle */}
+          <Pressable
+            style={[styles.toggleBtn, autoListen && styles.toggleBtnActive]}
+            onPress={() => setAutoListen(!autoListen)}
+          >
+            <Ionicons name="repeat" size={18} color={autoListen ? '#3B82F6' : Colors.text.muted} />
+          </Pressable>
+
+          {/* Main mic button */}
+          <Pressable
+            style={[
+              styles.micBtn,
+              activeRef.current && state === 'listening' && styles.micBtnListening,
+              activeRef.current && state === 'speaking' && styles.micBtnSpeaking,
+              activeRef.current && state === 'processing' && styles.micBtnProcessing,
+            ]}
+            onPress={toggleSession}
+          >
+            <Ionicons
+              name={activeRef.current ? (state === 'listening' ? 'mic' : 'stop') : 'mic'}
+              size={36}
+              color="#fff"
+            />
+          </Pressable>
+
+          {/* End / clear */}
+          <Pressable
+            style={styles.toggleBtn}
+            onPress={() => { setTurns([]); setError(null); }}
+          >
+            <Ionicons name="trash-outline" size={18} color={Colors.text.muted} />
+          </Pressable>
+        </View>
+
+        <Text style={[styles.stateLabel, { color: stateColors[state] }]}>
+          {stateLabels[state]}
+        </Text>
+      </View>
     </View>
   );
 
@@ -542,7 +424,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border.subtle,
-    backgroundColor: Colors.background.secondary,
   },
   backBtn: {
     width: 40,
@@ -557,243 +438,201 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: Colors.text.primary,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
   },
-  headerSubtitle: {
+  headerSub: {
     color: Colors.text.muted,
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
-    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
   },
-  headerBadge: {
+  // Agent bar
+  agentBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.background.tertiary,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
     gap: 6,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  scrollContent: {
-    padding: Spacing.lg,
-    paddingBottom: 100,
-  },
-  // Pipeline card
-  pipelineCard: {
-    backgroundColor: Colors.background.secondary,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  pipeline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginVertical: Spacing.md,
-  },
-  pipelineNode: {
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: Colors.background.tertiary,
-    minWidth: 70,
-  },
-  pipelineActive: {
-    backgroundColor: '#3B82F6',
-  },
-  pipelineText: {
-    color: Colors.text.muted,
-    fontSize: 11,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  pipelineTextActive: {
-    color: '#fff',
-  },
-  pipelineNote: {
-    color: Colors.text.muted,
-    fontSize: 11,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  // Cards
-  card: {
-    backgroundColor: Colors.background.secondary,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  cardError: {
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-  },
-  cardSuccess: {
-    borderColor: 'rgba(16, 185, 129, 0.2)',
-  },
-  cardLabel: {
-    color: Colors.text.muted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: Spacing.sm,
-  },
-  // Agent selector
-  agentRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
   },
   agentChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border.subtle,
-    gap: 6,
+    gap: 5,
   },
   agentDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  agentChipText: {
+  agentText: {
     color: Colors.text.secondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // Transcript
+  transcript: {
+    flex: 1,
+  },
+  transcriptContent: {
+    padding: Spacing.lg,
+    paddingBottom: 20,
+    gap: 12,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+    gap: 12,
+  },
+  emptyText: {
+    color: Colors.text.secondary,
+    fontSize: 15,
+    textAlign: 'center',
+    maxWidth: 280,
+  },
+  emptySubtext: {
+    color: Colors.text.muted,
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  // Turns
+  turnRow: {
+    gap: 4,
+  },
+  turnUser: {
+    alignItems: 'flex-end',
+  },
+  turnAva: {
+    alignItems: 'flex-start',
+  },
+  turnBubble: {
+    maxWidth: '80%' as any,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+  },
+  bubbleUser: {
+    backgroundColor: '#3B82F6',
+    borderBottomRightRadius: 4,
+  },
+  bubbleAva: {
+    backgroundColor: Colors.background.secondary,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+  },
+  turnText: {
+    color: Colors.text.primary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  turnTextUser: {
+    color: '#fff',
+  },
+  latencyText: {
+    color: Colors.text.muted,
+    fontSize: 10,
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
+    marginTop: 2,
+  },
+  // Listening indicator
+  listeningIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  pulsingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#EF4444',
+  },
+  listeningText: {
+    color: '#EF4444',
     fontSize: 13,
     fontWeight: '500',
   },
-  // Text input
-  textInputRow: {
+  // Error
+  errorBar: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginBottom: Spacing.lg,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.2)',
   },
-  sendBtn: {
+  errorText: {
+    color: '#EF4444',
+    fontSize: 12,
+    flex: 1,
+  },
+  // Controls
+  controls: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    paddingBottom: 32,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border.subtle,
+    backgroundColor: Colors.background.secondary,
+  },
+  controlsInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 24,
+  },
+  toggleBtn: {
     width: 44,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: '#3B82F6',
+    borderRadius: 22,
+    backgroundColor: Colors.background.tertiary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnDisabled: {
-    backgroundColor: Colors.background.tertiary,
-  },
-  // Mic
-  micSection: {
-    alignItems: 'center',
-    gap: 10,
+  toggleBtnActive: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
   },
   micBtn: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#3B82F6',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#3B82F6',
     shadowOpacity: 0.3,
-    shadowRadius: 12,
+    shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },
   },
-  micBtnRecording: {
+  micBtnListening: {
     backgroundColor: '#EF4444',
     shadowColor: '#EF4444',
     shadowOpacity: 0.5,
-    shadowRadius: 20,
+    shadowRadius: 24,
   },
-  micBtnDisabled: {
-    backgroundColor: Colors.background.tertiary,
-    shadowOpacity: 0,
+  micBtnSpeaking: {
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
   },
-  micHint: {
-    color: Colors.text.muted,
+  micBtnProcessing: {
+    backgroundColor: '#F59E0B',
+    shadowColor: '#F59E0B',
+  },
+  stateLabel: {
     fontSize: 13,
-  },
-  // Diagnostics
-  diagRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginBottom: Spacing.sm,
-  },
-  diagError: {
-    color: '#EF4444',
-    fontSize: 13,
-    flex: 1,
-    lineHeight: 18,
-  },
-  diagBlock: {
-    marginBottom: Spacing.sm,
-  },
-  diagLabel: {
-    color: Colors.text.muted,
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  diagValue: {
-    color: Colors.text.primary,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  diagMetrics: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: Spacing.sm,
-  },
-  metricBox: {
-    flex: 1,
-    backgroundColor: Colors.background.tertiary,
-    borderRadius: 8,
-    padding: 10,
-    alignItems: 'center',
-  },
-  metricValue: {
-    color: Colors.text.primary,
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
-  },
-  metricLabel: {
-    color: Colors.text.muted,
-    fontSize: 11,
-    marginTop: 2,
-  },
-  // Reset
-  resetBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    marginBottom: Spacing.md,
-  },
-  resetBtnText: {
-    color: Colors.text.primary,
-    fontSize: 14,
     fontWeight: '500',
-  },
-  // Explain
-  explainText: {
-    color: Colors.text.secondary,
-    fontSize: 13,
-    lineHeight: 20,
+    marginTop: 10,
   },
 });
