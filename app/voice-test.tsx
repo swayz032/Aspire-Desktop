@@ -123,13 +123,16 @@ function VoiceTestContent() {
       if (!headers) return;
 
       try {
-        const formData = new FormData();
-        formData.append('file', blob, 'recording.webm');
+        // Send raw audio binary — the STT endpoint expects raw body, not multipart
+        const arrayBuffer = await blob.arrayBuffer();
 
         const sttResp = await fetch('/api/elevenlabs/stt', {
           method: 'POST',
-          headers,
-          body: formData,
+          headers: {
+            ...headers,
+            'Content-Type': 'audio/webm',
+          },
+          body: arrayBuffer,
         });
 
         if (!sttResp.ok) {

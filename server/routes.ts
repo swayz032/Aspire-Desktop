@@ -6222,7 +6222,7 @@ router.post('/api/voice-test/bypass', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'text field required' });
   }
 
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.ASPIRE_OPENAI_API_KEY;
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.ASPIRE_OPENAI_API_KEY || process.env.ASPIRE_OPENAI_KEY;
   const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 
   if (!OPENAI_API_KEY) {
