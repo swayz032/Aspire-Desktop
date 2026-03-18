@@ -6250,7 +6250,6 @@ router.post('/api/voice-test/bypass', async (req: Request, res: Response) => {
         instructions: 'You are Ava, a friendly executive AI assistant. Keep responses under 2 sentences.',
         input: text,
         max_output_tokens: 256,
-        temperature: 0.7,
         store: false,
       }),
     });
