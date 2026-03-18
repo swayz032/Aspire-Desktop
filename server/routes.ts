@@ -6248,19 +6248,25 @@ router.post('/api/voice-test/bypass', async (req: Request, res: Response) => {
       body: JSON.stringify({
         model: 'gpt-5-mini',
         instructions: 'You are Ava, a friendly executive AI assistant. Keep responses under 2 sentences.',
-        input: text,
+        input: [
+          { role: 'user', content: text },
+        ],
         max_output_tokens: 256,
         temperature: 0.7,
+        store: false,
       }),
     });
 
     if (!llmResp.ok) {
       const err = await llmResp.text();
+      logger.error('OpenAI Responses API error', { status: llmResp.status, detail: err.substring(0, 500) });
       return res.status(502).json({ error: `OpenAI error: ${llmResp.status}`, detail: err.substring(0, 300), stage: 'llm' });
     }
 
-    const llmData = await llmResp.json() as { output?: { content?: string }[]; output_text?: string };
-    const responseText = llmData.output_text || llmData.output?.[0]?.content || 'I could not generate a response.';
+    const llmData = await llmResp.json() as { output_text?: string; output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> };
+    const responseText = llmData.output_text
+      || llmData.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
+      || 'I could not generate a response.';
     const llmMs = Date.now() - llmStart;
 
     // Step 2: ElevenLabs TTS direct (no WebSocket, simple HTTP stream)
