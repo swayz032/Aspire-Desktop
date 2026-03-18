@@ -196,7 +196,9 @@ function VoiceTestContent() {
         });
 
         if (!sttResp.ok) {
-          setError(`STT error ${sttResp.status}`);
+          const sttErr = await sttResp.json().catch(() => ({ error: sttResp.statusText }));
+          const sttDetail = sttErr.detail ? ` — ${sttErr.detail}` : '';
+          setError(`STT error ${sttResp.status}: ${sttErr.error || sttResp.statusText}${sttDetail}`);
           if (activeRef.current && autoListen) {
             setState('listening');
             startListening();
@@ -232,7 +234,8 @@ function VoiceTestContent() {
 
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({ error: resp.statusText }));
-          setError(errData.error || `Error ${resp.status}`);
+          const detail = errData.detail ? ` — ${errData.detail}` : '';
+          setError((errData.error || `Error ${resp.status}`) + detail);
           if (activeRef.current && autoListen) {
             setState('listening');
             startListening();

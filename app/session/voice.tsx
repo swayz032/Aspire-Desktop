@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
@@ -72,6 +72,8 @@ function VoiceSession() {
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
+  const [diagnostics, setDiagnostics] = useState<VoiceDiagnosticEvent[]>([]);
+  const [diagPanelOpen, setDiagPanelOpen] = useState(false);
 
   const shimmerAnim = useRef(new Animated.Value(0)).current;
 
@@ -121,6 +123,27 @@ function VoiceSession() {
     },
     onError: (error) => {
       const msg = error.message || String(error);
+      // Push to diagnostics panel if not already captured by onDiagnostic
+      setDiagnostics(prev => {
+        // Avoid duplication — skip if last entry has same message within 1s
+        if (prev.length > 0 && prev[0].message === msg && Date.now() - prev[0].timestamp < 1000) return prev;
+        const fallbackDiag: VoiceDiagnosticEvent = {
+          traceId: `err-${Date.now()}`,
+          agent: agentName,
+          stage: /auth/i.test(msg) ? 'orchestrator'
+            : /autoplay|play\(\)/i.test(msg) ? 'autoplay'
+            : /mic|permission|denied/i.test(msg) ? 'mic'
+            : /tts|voice|synthesis/i.test(msg) ? 'tts'
+            : /stt|transcri/i.test(msg) ? 'stt'
+            : 'orchestrator',
+          code: msg.split(':')[0] || 'UNKNOWN',
+          message: msg,
+          timestamp: Date.now(),
+          recoverable: !/auth_required|permission|denied/i.test(msg),
+        };
+        return [fallbackDiag, ...prev].slice(0, 50);
+      });
+      if (!diagPanelOpen) setDiagPanelOpen(true);
       if (/auth_required/i.test(msg)) {
         showToast('Session expired. Please sign in again.', 'error');
       } else if (/autoplay|not allowed|play\(\)/i.test(msg)) {
@@ -134,6 +157,8 @@ function VoiceSession() {
       }
     },
     onDiagnostic: (diag: VoiceDiagnosticEvent) => {
+      setDiagnostics(prev => [diag, ...prev].slice(0, 50));
+      if (!diagPanelOpen) setDiagPanelOpen(true);
       if (diag.stage === 'autoplay') {
         showToast('Audio blocked by browser. Tap the mic button to retry.', 'error');
       }
@@ -257,6 +282,67 @@ function VoiceSession() {
         </View>
 
       </View>
+
+      {/* Diagnostic Error Panel */}
+      {diagnostics.length > 0 && (
+        <View style={styles.diagPanel}>
+          <Pressable style={styles.diagHeader} onPress={() => setDiagPanelOpen(!diagPanelOpen)}>
+            <View style={styles.diagHeaderLeft}>
+              <View style={styles.diagDot} />
+              <Text style={styles.diagHeaderText}>
+                {diagnostics.length} error{diagnostics.length !== 1 ? 's' : ''} — why agent isn't talking
+              </Text>
+            </View>
+            <View style={styles.diagHeaderRight}>
+              <Pressable onPress={() => setDiagnostics([])} hitSlop={8}>
+                <Ionicons name="trash-outline" size={14} color="#666" />
+              </Pressable>
+              <Ionicons name={diagPanelOpen ? 'chevron-down' : 'chevron-up'} size={16} color="#888" />
+            </View>
+          </Pressable>
+          {diagPanelOpen && (
+            <ScrollView style={styles.diagList} nestedScrollEnabled>
+              {diagnostics.map((d, i) => {
+                const stageColors: Record<string, string> = {
+                  mic: '#F59E0B',
+                  stt: '#8B5CF6',
+                  orchestrator: '#EF4444',
+                  tts: '#3B82F6',
+                  autoplay: '#F97316',
+                };
+                const stageLabels: Record<string, string> = {
+                  mic: 'MIC',
+                  stt: 'STT (Speech-to-Text)',
+                  orchestrator: 'ORCHESTRATOR (LangGraph)',
+                  tts: 'TTS (ElevenLabs)',
+                  autoplay: 'BROWSER AUTOPLAY',
+                };
+                const color = stageColors[d.stage] || '#EF4444';
+                const time = new Date(d.timestamp).toLocaleTimeString();
+                return (
+                  <View key={`${d.traceId}-${i}`} style={styles.diagItem}>
+                    <View style={styles.diagItemHeader}>
+                      <View style={[styles.diagStagePill, { backgroundColor: color + '22', borderColor: color }]}>
+                        <Text style={[styles.diagStageText, { color }]}>{stageLabels[d.stage] || d.stage.toUpperCase()}</Text>
+                      </View>
+                      <Text style={styles.diagTime}>{time}</Text>
+                    </View>
+                    <Text style={styles.diagCode}>{d.code}</Text>
+                    <Text style={styles.diagMessage}>{d.message}</Text>
+                    {d.httpStatus ? <Text style={styles.diagDetail}>HTTP {d.httpStatus}</Text> : null}
+                    {d.raw && d.raw !== d.message ? <Text style={styles.diagRaw}>{d.raw}</Text> : null}
+                    {d.recoverable ? (
+                      <Text style={styles.diagRecoverable}>Auto-recoverable — will retry</Text>
+                    ) : (
+                      <Text style={styles.diagFatal}>Not recoverable — needs attention</Text>
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      )}
 
       <View style={styles.footer}>
         <View style={styles.controlsRow}>
@@ -424,5 +510,104 @@ const styles = StyleSheet.create({
     backgroundColor: '#ff3b30',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Diagnostic panel
+  diagPanel: {
+    backgroundColor: '#111113',
+    borderTopWidth: 1,
+    borderTopColor: '#2a2a2c',
+    maxHeight: 260,
+  },
+  diagHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e1e20',
+  },
+  diagHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  diagHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  diagDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
+  diagHeaderText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  diagList: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  diagItem: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1c',
+    gap: 3,
+  },
+  diagItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  diagStagePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  diagStageText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  diagTime: {
+    color: '#555',
+    fontSize: 10,
+    fontFamily: 'monospace',
+  },
+  diagCode: {
+    color: '#ccc',
+    fontSize: 11,
+    fontWeight: '600',
+    fontFamily: 'monospace',
+  },
+  diagMessage: {
+    color: '#999',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  diagDetail: {
+    color: '#F59E0B',
+    fontSize: 10,
+    fontFamily: 'monospace',
+  },
+  diagRaw: {
+    color: '#666',
+    fontSize: 10,
+    fontFamily: 'monospace',
+    fontStyle: 'italic',
+  },
+  diagRecoverable: {
+    color: '#10B981',
+    fontSize: 10,
+  },
+  diagFatal: {
+    color: '#EF4444',
+    fontSize: 10,
+    fontWeight: '600',
   },
 });

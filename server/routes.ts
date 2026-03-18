@@ -6248,9 +6248,7 @@ router.post('/api/voice-test/bypass', async (req: Request, res: Response) => {
       body: JSON.stringify({
         model: 'gpt-5-mini',
         instructions: 'You are Ava, a friendly executive AI assistant. Keep responses under 2 sentences.',
-        input: [
-          { role: 'user', content: text },
-        ],
+        input: text,
         max_output_tokens: 256,
         temperature: 0.7,
         store: false,
