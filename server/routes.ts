@@ -2582,6 +2582,23 @@ router.post('/api/telemetry/canvas', async (req: Request, res: Response) => {
       },
     });
 
+    // Also write to client_events table for admin portal visibility
+    if (supabaseAdmin) {
+      void supabaseAdmin.from('client_events').insert({
+        tenant_id: suiteId,
+        session_id: sessionId,
+        correlation_id: correlationId,
+        event_type: `canvas.${eventName}`,
+        source: 'desktop',
+        severity: eventName === 'error' ? 'error' : eventName === 'slo_violation' ? 'warning' : 'info',
+        component: 'canvas',
+        page_route: '/canvas',
+        data: { event: eventName, payload: eventData, actor_id: actorId, trace_id: traceId },
+      }).then(({ error: ceErr }) => {
+        if (ceErr) console.error('[canvas-telemetry] client_events insert failed:', ceErr.message);
+      });
+    }
+
     if (eventName === 'error' || eventName === 'slo_violation') {
       incidentReports += 1;
       const eventMessage = typeof eventData.message === 'string' ? eventData.message.slice(0, 180) : `Canvas ${eventName}`;
