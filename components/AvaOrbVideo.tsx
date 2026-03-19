@@ -52,7 +52,9 @@ function AvaOrbVideoInner({ state, size = 300 }: AvaOrbVideoProps) {
         vid.playsInline = true;
         try {
           vid.playbackRate = config.playbackRate;
-        } catch (e) {}
+        } catch (_e) {
+          console.error('[AvaOrbVideo] Failed to set playbackRate:', _e);
+        }
         vid.play().catch(() => {});
       }
     }

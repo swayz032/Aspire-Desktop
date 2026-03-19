@@ -86,7 +86,9 @@ function TextMessageWidgetInner({ suiteId, officeId }: TextMessageWidgetProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ thread_id: selectedThread.thread_id, body: text }),
       });
-    } catch {}
+    } catch (_e) {
+      console.error('[TextMessageWidget] Send message failed:', _e);
+    }
   }, [inputText, selectedThread]);
 
   if (selectedThread) {

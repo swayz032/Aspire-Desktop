@@ -58,7 +58,7 @@ function CanvasPeekPanelInner({
   useEffect(() => {
     if (visible) {
       if (!soundPlayed.current) {
-        try { playOpenSound(); } catch {}
+        try { playOpenSound(); } catch (_e) { console.error('[CanvasPeekPanel] Sound play failed:', _e); }
         soundPlayed.current = true;
       }
       overlayOpacity.value    = withTiming(1, { duration: 240, easing: Easing.out(Easing.ease) });

@@ -22,6 +22,7 @@ import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
 import { reportError } from '@/lib/errorReporter';
+import { trackInteraction, flushInteractionTelemetry } from '@/lib/interactionTelemetry';
 import { configureSentry, Sentry } from '@/lib/sentry';
 
 // Initialize Sentry before any component renders
@@ -90,6 +91,10 @@ class GlobalErrorBoundary extends React.Component<
       // Sentry may not be initialized — safe to ignore
     }
 
+    trackInteraction('page_error', 'GlobalErrorBoundary', {
+      action: 'component_crash',
+      message: error.message?.substring(0, 200),
+    });
     console.error('[Aspire] Fatal render error:', error.message, info.componentStack);
     emitCanvasEvent('error', {
       source: 'global_error_boundary',
@@ -263,6 +268,13 @@ function AppNavigator() {
   useRealtimeApprovalRequests();
   useBackendConnectivity();
   const { showWarning, secondsLeft, extendSession } = useIdleTimeout();
+
+  useEffect(() => {
+    trackInteraction('page_view', '_layout', { action: 'app_start' });
+    return () => {
+      flushInteractionTelemetry();
+    };
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

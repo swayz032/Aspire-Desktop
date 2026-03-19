@@ -8,6 +8,7 @@
  * API key stays server-side — client never touches secrets (Law #9).
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { reportProviderError } from '@/lib/providerErrorReporter';
 
 interface UseElevenLabsSTTOptions {
   /** Called each time a complete utterance is transcribed */
@@ -115,6 +116,7 @@ export function useElevenLabsSTT(
       }
     } catch (err) {
       console.warn('[ElevenLabsSTT] Transcription failed:', err instanceof Error ? err.message : err);
+      reportProviderError({ provider: 'elevenlabs', action: 'stt_transcription', error: err, component: 'useElevenLabsSTT' });
       // Don't set error state for transient failures — keep listening
     } finally {
       sendingRef.current = false;
@@ -182,8 +184,9 @@ export function useElevenLabsSTT(
         }
       };
 
-      mediaRecorder.onerror = () => {
+      mediaRecorder.onerror = (ev) => {
         setError('Microphone recording failed');
+        reportProviderError({ provider: 'elevenlabs', action: 'stt_media_recorder', error: new Error('MediaRecorder error'), component: 'useElevenLabsSTT' });
         stop();
       };
 
@@ -198,6 +201,7 @@ export function useElevenLabsSTT(
         ? 'Microphone access denied'
         : err.message || 'Failed to start voice input';
       setError(message);
+      reportProviderError({ provider: 'elevenlabs', action: 'stt_start', error: err, component: 'useElevenLabsSTT' });
       activeRef.current = false;
       stop();
     }
