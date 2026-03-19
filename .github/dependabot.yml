@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "07:00"
+    target-branch: main
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    groups:
+      runtime:
+        patterns: ["expo", "expo-*", "react", "react-native", "@supabase/*", "@livekit/*"]
+      tooling:
+        patterns: ["eslint*", "jest*", "typescript", "@types/*"]
