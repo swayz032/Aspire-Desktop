@@ -41,6 +41,43 @@ class GlobalErrorBoundary extends React.Component<
     return { hasError: true, error };
   }
 
+  componentDidMount() {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.addEventListener('error', this.handleWindowError);
+      window.addEventListener('unhandledrejection', this.handleUnhandledRejection);
+    }
+  }
+
+  componentWillUnmount() {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.removeEventListener('error', this.handleWindowError);
+      window.removeEventListener('unhandledrejection', this.handleUnhandledRejection);
+    }
+  }
+
+  private handleWindowError = (event: ErrorEvent) => {
+    reportError({
+      title: event.message || 'Unhandled error',
+      severity: 'sev2',
+      component: 'window_error',
+      stackTrace: event.error?.stack,
+      errorCode: 'UNHANDLED_ERROR',
+      fingerprint: `desktop:window_error:${(event.message || '').substring(0, 50)}`,
+    });
+  };
+
+  private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+    const reason = event.reason;
+    reportError({
+      title: reason?.message || 'Unhandled promise rejection',
+      severity: 'sev2',
+      component: 'unhandled_rejection',
+      stackTrace: reason?.stack,
+      errorCode: 'UNHANDLED_REJECTION',
+      fingerprint: `desktop:rejection:${(reason?.message || '').substring(0, 50)}`,
+    });
+  };
+
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     try {
       Sentry.captureException(error, {

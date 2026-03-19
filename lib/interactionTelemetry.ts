@@ -11,6 +11,7 @@
 
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
+import { buildTraceHeaders } from './traceHeaders';
 
 // ---------------------------------------------------------------------------
 // Event Types — exhaustive list of tracked interactions
@@ -135,26 +136,35 @@ async function flushQueue(): Promise<void> {
     flushTimer = null;
   }
 
-  // In dev mode, just log
+  // Dev mode: log to console (but still flush to Supabase below)
   try {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       for (const evt of batch) {
         // eslint-disable-next-line no-console
         console.debug('[interaction-telemetry]', evt.event_type, evt.component, evt.data);
       }
-      return;
     }
   } catch {
     // __DEV__ not available, assume production
   }
 
-  // Production: insert into Supabase client_events
+  // Insert into Supabase client_events (dev + production)
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return; // No auth = can't write (RLS)
+    let { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      // Auth may not be hydrated yet — retry once after short delay
+      await new Promise(r => setTimeout(r, 2000));
+      const retry = await supabase.auth.getSession();
+      session = retry.data.session;
+      if (!session) {
+        console.warn('[telemetry] No auth session after retry — dropping', batch.length, 'events');
+        return;
+      }
+    }
 
     const tenantId = session.user?.user_metadata?.suite_id || session.user?.id || 'unknown';
 
+    const { correlationId } = buildTraceHeaders();
     const rows = batch.map((evt) => ({
       tenant_id: tenantId,
       session_id: getSessionId(),
@@ -163,12 +173,13 @@ async function flushQueue(): Promise<void> {
       severity: evt.severity,
       component: evt.component,
       page_route: evt.page_route,
+      correlation_id: correlationId,
       data: { ...evt.data, session_id: getSessionId() },
     }));
 
     await supabase.from('client_events').insert(rows);
-  } catch {
-    // Silent — telemetry must never break the app
+  } catch (err) {
+    console.error('[telemetry] client_events flush failed:', err);
   }
 }
 

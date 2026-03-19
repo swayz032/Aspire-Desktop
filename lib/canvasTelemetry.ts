@@ -147,16 +147,17 @@ export async function flushTelemetry(): Promise<void> {
   }
 
   if (isDev) {
-    // Development: log to console, don't POST
+    // Development: log to console (but still POST below for admin portal visibility)
     for (const payload of batch) {
       // eslint-disable-next-line no-console
       console.debug('[canvas-telemetry]', payload.event, payload.data);
     }
-    return;
   }
 
-  // Production: fire-and-forget POST — no retry on failure
-  if (Platform.OS !== 'web') return;
+  // Fire-and-forget POST — no retry on failure
+  // Note: Desktop app runs as 'web' in Expo. For native platforms,
+  // fetch may not reach relative URLs — skip gracefully.
+  if (Platform.OS !== 'web' && typeof fetch === 'undefined') return;
 
   try {
     const trace = buildTraceHeaders();
@@ -177,8 +178,8 @@ export async function flushTelemetry(): Promise<void> {
       headers,
       body: JSON.stringify({ events: batch }),
     });
-  } catch {
-    // silent — telemetry must never break the app
+  } catch (err) {
+    console.error('[canvas-telemetry] flush failed:', err);
   }
 }
 
