@@ -197,5 +197,5 @@ export function useRealtimeApprovalRequests(): void {
       clearInterval(pollTimer);
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
-  }, [session?.user?.id, session?.access_token, suiteId]);
+  }, [session?.user?.id, suiteId]);
 }
