@@ -26,7 +26,7 @@ import { setupTtsWebSocket } from './wsTts';
 import { applyTenantContext } from './tenantContext';
 import { getBreakerStates } from './circuitBreaker';
 import { getIdempotencyStats } from './webhookIdempotency';
-import { initSentry, sentryRequestHandler, sentryErrorHandler } from './sentry';
+import { initSentry, sentryRequestHandler, setupSentryExpressErrorHandler } from './sentry';
 
 // Initialize Sentry early — before app setup so it captures startup errors.
 // No-op if SENTRY_DSN is not set (Law #9: PII stripped in beforeSend hook).
@@ -882,7 +882,7 @@ app.use((req, res, next) => {
 });
 
 // Sentry error handler — MUST be last error middleware (reports unhandled errors)
-app.use(sentryErrorHandler());
+setupSentryExpressErrorHandler(app);
 
 async function loadOAuthTokens() {
   try {
@@ -940,6 +940,9 @@ async function start() {
     }
     // Dev mode: continue (may use .env.local values)
   }
+
+  // Retry after secrets load so AWS-provided DSNs are honored.
+  initSentry();
 
   try {
     // Bootstrap default suite context — resilient to schema differences
