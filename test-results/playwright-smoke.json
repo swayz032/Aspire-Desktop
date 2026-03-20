@@ -1,0 +1,358 @@
+{
+  "config": {
+    "configFile": "C:\\Users\\tonio\\Projects\\myapp\\Aspire-desktop\\playwright.config.ts",
+    "rootDir": "C:/Users/tonio/Projects/myapp/Aspire-desktop/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/tonio/Projects/myapp/Aspire-desktop/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/Users/tonio/Projects/myapp/Aspire-desktop/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 120000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "html",
+        {
+          "open": "never",
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/playwright-smoke.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": {
+      "command": "node scripts/start-e2e-server.mjs",
+      "url": "http://127.0.0.1:4173",
+      "reuseExistingServer": true,
+      "timeout": 900000
+    }
+  },
+  "suites": [
+    {
+      "title": "auth-smoke.spec.ts",
+      "file": "auth-smoke.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Aspire desktop authenticated smoke",
+          "file": "auth-smoke.spec.ts",
+          "line": 11,
+          "column": 6,
+          "specs": [
+            {
+              "title": "home-shell | Authenticated home shell renders",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5031,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-20T21:04:29.031Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "console-errors",
+                          "contentType": "text/plain",
+                          "body": "Q29ubmVjdGluZyB0byAnaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS93b3JsZC1hdGxhc0AyL2xhbmQtMTEwbS5qc29uJyB2aW9sYXRlcyB0aGUgZm9sbG93aW5nIENvbnRlbnQgU2VjdXJpdHkgUG9saWN5IGRpcmVjdGl2ZTogImNvbm5lY3Qtc3JjICdzZWxmJyBodHRwczovLyouc3VwYWJhc2UuY28gd3NzOi8vKi5zdXBhYmFzZS5jbyBodHRwczovLyouZWxldmVubGFicy5pbyB3c3M6Ly8qLmVsZXZlbmxhYnMuaW8gaHR0cHM6Ly8qLmxpdmVraXQuY2xvdWQgd3NzOi8vKi5saXZla2l0LmNsb3VkIGh0dHBzOi8vKi5hbmFtLmFpIHdzczovLyouYW5hbS5haSBodHRwczovLyoucGFuZGFkb2MuY29tIGh0dHBzOi8vKi5zdHJpcGUuY29tIGh0dHBzOi8vKi5wbGFpZC5jb20gaHR0cHM6Ly9tYXBzLmdvb2dsZWFwaXMuY29tIi4gVGhlIGFjdGlvbiBoYXMgYmVlbiBibG9ja2VkLgoKRmV0Y2ggQVBJIGNhbm5vdCBsb2FkIGh0dHBzOi8vY2RuLmpzZGVsaXZyLm5ldC9ucG0vd29ybGQtYXRsYXNAMi9sYW5kLTExMG0uanNvbi4gUmVmdXNlZCB0byBjb25uZWN0IGJlY2F1c2UgaXQgdmlvbGF0ZXMgdGhlIGRvY3VtZW50J3MgQ29udGVudCBTZWN1cml0eSBQb2xpY3kuCgpGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogbmV0OjpFUlJfTkFNRV9OT1RfUkVTT0xWRUQ="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "81a7ae6f69a4ebf209d7-cab4d56612e7ec8f5b0d",
+              "file": "auth-smoke.spec.ts",
+              "line": 13,
+              "column": 9
+            },
+            {
+              "title": "finance-hub-shell | Finance hub renders Finn controls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2315,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-20T21:04:35.714Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "console-errors",
+                          "contentType": "text/plain",
+                          "body": "Q29ubmVjdGluZyB0byAnaHR0cHM6Ly9pcGFwaS5jby9qc29uLycgdmlvbGF0ZXMgdGhlIGZvbGxvd2luZyBDb250ZW50IFNlY3VyaXR5IFBvbGljeSBkaXJlY3RpdmU6ICJjb25uZWN0LXNyYyAnc2VsZicgaHR0cHM6Ly8qLnN1cGFiYXNlLmNvIHdzczovLyouc3VwYWJhc2UuY28gaHR0cHM6Ly8qLmVsZXZlbmxhYnMuaW8gd3NzOi8vKi5lbGV2ZW5sYWJzLmlvIGh0dHBzOi8vKi5saXZla2l0LmNsb3VkIHdzczovLyoubGl2ZWtpdC5jbG91ZCBodHRwczovLyouYW5hbS5haSB3c3M6Ly8qLmFuYW0uYWkgaHR0cHM6Ly8qLnBhbmRhZG9jLmNvbSBodHRwczovLyouc3RyaXBlLmNvbSBodHRwczovLyoucGxhaWQuY29tIGh0dHBzOi8vbWFwcy5nb29nbGVhcGlzLmNvbSIuIFRoZSBhY3Rpb24gaGFzIGJlZW4gYmxvY2tlZC4KCkZldGNoIEFQSSBjYW5ub3QgbG9hZCBodHRwczovL2lwYXBpLmNvL2pzb24vLiBSZWZ1c2VkIHRvIGNvbm5lY3QgYmVjYXVzZSBpdCB2aW9sYXRlcyB0aGUgZG9jdW1lbnQncyBDb250ZW50IFNlY3VyaXR5IFBvbGljeS4KCkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiBuZXQ6OkVSUl9OQU1FX05PVF9SRVNPTFZFRA=="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "81a7ae6f69a4ebf209d7-69f2247755147ff20eca",
+              "file": "auth-smoke.spec.ts",
+              "line": 13,
+              "column": 9
+            },
+            {
+              "title": "finance-connections-shell | Finance connections renders provider workspace",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2161,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-20T21:04:38.039Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "console-errors",
+                          "contentType": "text/plain",
+                          "body": "RmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IG5ldDo6RVJSX05BTUVfTk9UX1JFU09MVkVE"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "81a7ae6f69a4ebf209d7-39e3831545a81cb4be5d",
+              "file": "auth-smoke.spec.ts",
+              "line": 13,
+              "column": 9
+            },
+            {
+              "title": "voice-test-shell | Voice test renders agent controls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2138,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-20T21:04:40.207Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "console-errors",
+                          "contentType": "text/plain",
+                          "body": "RmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IG5ldDo6RVJSX05BTUVfTk9UX1JFU09MVkVE"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "81a7ae6f69a4ebf209d7-ad731460eb3966a44e1d",
+              "file": "auth-smoke.spec.ts",
+              "line": 13,
+              "column": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "public-smoke.spec.ts",
+      "file": "public-smoke.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Aspire desktop public smoke",
+          "file": "public-smoke.spec.ts",
+          "line": 11,
+          "column": 6,
+          "specs": [
+            {
+              "title": "landing-root | Landing shell renders",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2746,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-20T21:04:42.356Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "console-errors",
+                          "contentType": "text/plain",
+                          "body": "RmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IG5ldDo6RVJSX05BTUVfTk9UX1JFU09MVkVE"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9069cf5df66af74e1237-e72b7084e9ec0c485560",
+              "file": "public-smoke.spec.ts",
+              "line": 13,
+              "column": 9
+            },
+            {
+              "title": "login-shell | Login shell renders",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2310,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-20T21:04:45.111Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "console-errors",
+                          "contentType": "text/plain",
+                          "body": "Q29ubmVjdGluZyB0byAnaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS93b3JsZC1hdGxhc0AyL2xhbmQtMTEwbS5qc29uJyB2aW9sYXRlcyB0aGUgZm9sbG93aW5nIENvbnRlbnQgU2VjdXJpdHkgUG9saWN5IGRpcmVjdGl2ZTogImNvbm5lY3Qtc3JjICdzZWxmJyBodHRwczovLyouc3VwYWJhc2UuY28gd3NzOi8vKi5zdXBhYmFzZS5jbyBodHRwczovLyouZWxldmVubGFicy5pbyB3c3M6Ly8qLmVsZXZlbmxhYnMuaW8gaHR0cHM6Ly8qLmxpdmVraXQuY2xvdWQgd3NzOi8vKi5saXZla2l0LmNsb3VkIGh0dHBzOi8vKi5hbmFtLmFpIHdzczovLyouYW5hbS5haSBodHRwczovLyoucGFuZGFkb2MuY29tIGh0dHBzOi8vKi5zdHJpcGUuY29tIGh0dHBzOi8vKi5wbGFpZC5jb20gaHR0cHM6Ly9tYXBzLmdvb2dsZWFwaXMuY29tIi4gVGhlIGFjdGlvbiBoYXMgYmVlbiBibG9ja2VkLgoKRmV0Y2ggQVBJIGNhbm5vdCBsb2FkIGh0dHBzOi8vY2RuLmpzZGVsaXZyLm5ldC9ucG0vd29ybGQtYXRsYXNAMi9sYW5kLTExMG0uanNvbi4gUmVmdXNlZCB0byBjb25uZWN0IGJlY2F1c2UgaXQgdmlvbGF0ZXMgdGhlIGRvY3VtZW50J3MgQ29udGVudCBTZWN1cml0eSBQb2xpY3kuCgpGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogbmV0OjpFUlJfTkFNRV9OT1RfUkVTT0xWRUQ="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9069cf5df66af74e1237-5dd7be9fc5b6784d855b",
+              "file": "public-smoke.spec.ts",
+              "line": 13,
+              "column": 9
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-03-20T21:03:58.196Z",
+    "duration": 49435.529,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

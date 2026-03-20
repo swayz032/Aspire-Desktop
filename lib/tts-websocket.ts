@@ -69,7 +69,29 @@ export class TtsWebSocket {
    */
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      // Determine the base WebSocket URL. 
+      // Prefer explicit environment variable (Law #9), fallback to window.location for web.
+      let host = "";
+      let protocol = "ws:";
+
+      const envUrl = process.env.EXPO_PUBLIC_ORCHESTRATOR_URL || process.env.ORCHESTRATOR_URL;
+      
+      if (envUrl) {
+        try {
+          const parsed = new URL(envUrl);
+          host = parsed.host;
+          protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+        } catch (e) {
+          host = typeof window !== "undefined" ? window.location.host : "localhost:5000";
+          protocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
+        }
+      } else if (typeof window !== "undefined") {
+        host = window.location.host;
+        protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      } else {
+        host = "localhost:5000";
+      }
+
       const qs = new URLSearchParams({
         voice_id: this.voiceId,
         model: this.model,
@@ -84,7 +106,7 @@ export class TtsWebSocket {
       if (typeof this.voiceSettings?.speed === 'number') qs.set('speed', String(this.voiceSettings.speed));
       if (typeof this.voiceSettings?.use_speaker_boost === 'boolean') qs.set('use_speaker_boost', this.voiceSettings.use_speaker_boost ? 'true' : 'false');
 
-      const url = `${protocol}//${window.location.host}/ws/tts?${qs.toString()}`;
+      const url = `${protocol}//${host}/ws/tts?${qs.toString()}`;
 
       this.ws = new WebSocket(url);
 

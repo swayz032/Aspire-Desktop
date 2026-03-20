@@ -134,7 +134,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const [transcript, setTranscript] = useState('');
   const [lastResponse, setLastResponse] = useState('');
   const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // AudioContext refs (Law #8: Warm voice interaction)
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const currentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  
   const activeRef = useRef(false);
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
@@ -192,9 +196,9 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
   /**
    * Play accumulated audio chunks for a completed TTS context.
-   * Creates a single blob from all chunks and plays via Audio element.
+   * Decodes chunks using Web Audio API and plays through AudioContext destination.
    */
-  const playContextAudio = useCallback((contextId: string) => {
+  const playContextAudio = useCallback(async (contextId: string) => {
     const chunks = audioChunksRef.current.get(contextId);
     audioChunksRef.current.delete(contextId);
 
@@ -207,57 +211,63 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       return;
     }
 
-    // Merge chunks into a single audio blob
+    // Merge chunks into a single ArrayBuffer
     const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
-    if (totalLength === 0) {
-      processingRef.current = false;
-      if (activeRef.current) updateStatus('listening');
-      return;
+    const audioData = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      audioData.set(chunk, offset);
+      offset += chunk.length;
     }
 
-    const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
-    const url = URL.createObjectURL(audioBlob);
-    const audio = new Audio(url);
-    audio.setAttribute('playsinline', '');
-    audioRef.current = audio;
+    try {
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        audioContextRef.current = new AudioCtx();
+      }
+      const ctx = audioContextRef.current;
 
-    audio.onerror = () => {
-      devError('[useAgentVoice] Audio playback error for context', contextId);
-      onError?.(new Error('Audio playback failed — response shown in chat.'));
+      // Resume if suspended (Law #8: Warm interaction requires active audio path)
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+
+      // Decode the accumulated audio data
+      const audioBuffer = await ctx.decodeAudioData(audioData.buffer);
+      
+      // Stop any current source to avoid overlapping speech (Barge-in support)
+      if (currentAudioSourceRef.current) {
+        try { currentAudioSourceRef.current.stop(); } catch { /* already stopped */ }
+      }
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      currentAudioSourceRef.current = source;
+
+      source.onended = () => {
+        if (currentAudioSourceRef.current === source) {
+          currentAudioSourceRef.current = null;
+          processingRef.current = false;
+          if (activeRef.current) updateStatus('listening');
+        }
+      };
+
+      source.start(0);
+    } catch (err) {
+      devError('[useAgentVoice] Web Audio playback error for context', contextId, err);
+      onError?.(new Error('Audio playback failed â€” response shown in chat.'));
       emitDiagnostic({
         traceId: currentTraceIdRef.current || nextTraceId(),
         stage: 'tts',
         code: 'TTS_PLAYBACK_FAILED',
-        message: 'Audio playback failed after synthesis.',
-        recoverable: true,
-      });
-      URL.revokeObjectURL(url);
-      processingRef.current = false;
-      if (activeRef.current) updateStatus('listening');
-    };
-
-    audio.onended = () => {
-      URL.revokeObjectURL(url);
-      processingRef.current = false;
-      if (activeRef.current) updateStatus('listening');
-    };
-
-    audio.play().catch((playError: unknown) => {
-      const errorMsg = playError instanceof Error ? playError.message : String(playError);
-      devError('[useAgentVoice] Autoplay blocked:', errorMsg);
-      lastAudioUrlRef.current = url;
-      onError?.(new Error('Audio blocked by browser — tap to retry.'));
-      emitDiagnostic({
-        traceId: currentTraceIdRef.current || nextTraceId(),
-        stage: 'autoplay',
-        code: 'AUTOPLAY_BLOCKED',
-        message: 'Browser blocked audio playback until user interaction.',
-        raw: errorMsg ? errorMsg.slice(0, 220) : undefined,
+        message: 'Web Audio playback failed after synthesis.',
+        raw: err instanceof Error ? err.message : String(err),
         recoverable: true,
       });
       processingRef.current = false;
       if (activeRef.current) updateStatus('listening');
-    });
+    }
   }, [updateStatus, onError, emitDiagnostic, nextTraceId]);
 
   /**
@@ -331,53 +341,63 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         return;
       }
 
-      const audioBlob = new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
-      const url = URL.createObjectURL(audioBlob);
-      const audio = new Audio(url);
-      audio.setAttribute('playsinline', '');
-      audioRef.current = audio;
-
-      audio.onerror = () => {
-        onError?.(new Error('Audio playback failed — response shown in chat.'));
-      emitDiagnostic({
-        traceId: currentTraceIdRef.current || nextTraceId(),
-        stage: 'tts',
-        code: 'TTS_PLAYBACK_FAILED',
-        message: 'Audio playback failed after synthesis.',
-        recoverable: true,
-      });
-        URL.revokeObjectURL(url);
-        processingRef.current = false;
-        if (activeRef.current) updateStatus('listening');
-      };
-
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        processingRef.current = false;
-        if (activeRef.current) updateStatus('listening');
-      };
+      // Merge chunks into a single ArrayBuffer for AudioContext decoding
+      const audioData = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        audioData.set(chunk, offset);
+        offset += chunk.length;
+      }
 
       try {
-        await audio.play();
-      } catch (playError: unknown) {
-        const errorMsg = playError instanceof Error ? playError.message : String(playError);
-        lastAudioUrlRef.current = url;
-        onError?.(new Error('Audio blocked by browser — tap to retry.'));
-      emitDiagnostic({
-        traceId: currentTraceIdRef.current || nextTraceId(),
-        stage: 'autoplay',
-        code: 'AUTOPLAY_BLOCKED',
-        message: 'Browser blocked audio playback until user interaction.',
-        raw: errorMsg ? errorMsg.slice(0, 220) : undefined,
-        recoverable: true,
-      });
+        if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+          audioContextRef.current = new AudioCtx();
+        }
+        const ctx = audioContextRef.current;
+
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+
+        const audioBuffer = await ctx.decodeAudioData(audioData.buffer);
+        
+        if (currentAudioSourceRef.current) {
+          try { currentAudioSourceRef.current.stop(); } catch { /* already stopped */ }
+        }
+
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        currentAudioSourceRef.current = source;
+
+        source.onended = () => {
+          if (currentAudioSourceRef.current === source) {
+            currentAudioSourceRef.current = null;
+            processingRef.current = false;
+            if (activeRef.current) updateStatus('listening');
+          }
+        };
+
+        source.start(0);
+      } catch (err) {
+        devError('[useAgentVoice] HTTP Fallback Web Audio error', err);
+        onError?.(new Error('Audio playback failed â€” response shown in chat.'));
+        emitDiagnostic({
+          traceId: currentTraceIdRef.current || nextTraceId(),
+          stage: 'tts',
+          code: 'TTS_PLAYBACK_FAILED',
+          message: 'Web Audio playback failed after synthesis.',
+          raw: err instanceof Error ? err.message : String(err),
+          recoverable: true,
+        });
         processingRef.current = false;
         if (activeRef.current) updateStatus('listening');
       }
     } else {
       if (!stream) {
         devError('[useAgentVoice] HTTP TTS stream returned null. Check ELEVENLABS_API_KEY.');
-        onError?.(new Error('Voice synthesis unavailable — response shown in chat.'));
+        onError?.(new Error('Voice synthesis unavailable â€” response shown in chat.'));
         emitDiagnostic({
           traceId: currentTraceIdRef.current || nextTraceId(),
           stage: 'tts',
@@ -405,11 +425,12 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
     // Barge-in: if already processing, stop current audio and close context
     if (processingRef.current) {
-      // Stop current playback
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
+      // Stop current playback (Web Audio API)
+      if (currentAudioSourceRef.current) {
+        try { currentAudioSourceRef.current.stop(); } catch { /* already stopped */ }
+        currentAudioSourceRef.current = null;
       }
+      
       // Close current TTS context
       if (currentContextRef.current && ttsWsRef.current?.isConnected) {
         ttsWsRef.current.closeContext(currentContextRef.current);
@@ -669,196 +690,6 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const stt = useDeepgram ? deepgramStt : elevenLabsStt;
 
   /**
-   * Replay the last TTS audio that was blocked by browser autoplay policy.
-   * Must be called from a user gesture handler (click/tap) to satisfy autoplay.
-   * Returns true if replay succeeded, false if no audio was stored.
-   */
-  const replayLastAudio = useCallback(async (): Promise<boolean> => {
-    const url = lastAudioUrlRef.current;
-    if (!url) return false;
-
-    try {
-      updateStatus('speaking');
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        lastAudioUrlRef.current = null;
-        processingRef.current = false;
-        if (activeRef.current) updateStatus('listening');
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        lastAudioUrlRef.current = null;
-        processingRef.current = false;
-        if (activeRef.current) updateStatus('listening');
-      };
-      await audio.play();
-      return true;
-    } catch {
-      emitDiagnostic({
-        traceId: currentTraceIdRef.current || nextTraceId(),
-        stage: 'autoplay',
-        code: 'AUTOPLAY_REPLAY_FAILED',
-        message: 'Audio replay failed after user gesture.',
-        recoverable: true,
-      });
-      URL.revokeObjectURL(url);
-      lastAudioUrlRef.current = null;
-      processingRef.current = false;
-      if (activeRef.current) updateStatus('listening');
-      return false;
-    }
-  }, [updateStatus, emitDiagnostic, nextTraceId]);
-
-  /**
-   * Start a voice session. Establishes WebSocket TTS connection and
-   * begins STT listening. Degrades gracefully if either is unavailable.
-   */
-  const startSession = useCallback(async () => {
-    if (!accessTokenRef.current || !suiteId) {
-      const msg = 'AUTH_REQUIRED: Voice requires authenticated suite context.';
-      emitDiagnostic({
-        traceId: currentTraceIdRef.current || nextTraceId(),
-        stage: 'orchestrator',
-        code: 'AUTH_REQUIRED',
-        message: msg,
-        recoverable: false,
-      });
-      throw new Error(msg);
-    }
-
-    try {
-      const query = new URLSearchParams({
-        stream: 'true',
-        passive: 'true',
-        agent,
-        channel: 'voice',
-        suiteId,
-      });
-      const sessionTraceId = currentTraceIdRef.current || nextTraceId();
-      currentTraceIdRef.current = sessionTraceId;
-      const preflight = await fetch(`/api/orchestrator/intent?${query.toString()}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${accessTokenRef.current}`,
-          ...buildTraceHeaders(sessionTraceId),
-        },
-      });
-      if (!preflight.ok) {
-        let reason = `Service returned ${preflight.status}`;
-        try {
-          const parsed = parseVoiceErrorPayload(await preflight.json());
-          reason = parsed.message || parsed.error || reason;
-        } catch {
-          // keep default reason
-        }
-        throw new Error(`ORCH_PREFLIGHT_FAILED: ${reason}`);
-      }
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      emitDiagnostic({
-        traceId: currentTraceIdRef.current || nextTraceId(),
-        stage: 'orchestrator',
-        code: /timeout/.test(raw.toLowerCase()) ? 'ORCH_TIMEOUT' : 'ORCH_UNAVAILABLE',
-        message: raw,
-        raw: raw.slice(0, 220),
-        recoverable: true,
-      });
-      throw err instanceof Error ? err : new Error(raw);
-    }
-
-    await unlockAudioPlayback();
-
-    activeRef.current = true;
-    processingRef.current = false;
-    updateStatus('listening');
-
-    // Connect WebSocket TTS (persistent for session)
-    const voiceConfig = getVoiceConfig(agent);
-    const ttsWs = new TtsWebSocket({
-      voiceId: voiceConfig.voiceId,
-      model: voiceConfig.model,
-      outputFormat: 'mp3_44100_128',
-      accessToken: accessTokenRef.current,
-      suiteId,
-      traceId: currentTraceIdRef.current || nextTraceId(),
-      voiceSettings: voiceConfig.voiceSettings,
-      onAudio: (contextId, chunk) => {
-        // Accumulate audio chunks for the context
-        const existing = audioChunksRef.current.get(contextId);
-        if (existing) {
-          existing.push(chunk);
-        }
-      },
-      onContextDone: (contextId) => {
-        // Context finished generating â€” play accumulated audio
-        playContextAudio(contextId);
-      },
-      onConnected: () => {
-        devLog(`[useAgentVoice] WebSocket TTS connected for ${agent}`);
-      },
-      onError: (err) => {
-        devError('[useAgentVoice] WebSocket TTS error:', err.message);
-        // Don't surface WS errors as user-facing â€” HTTP fallback handles it
-      },
-      onClose: () => {
-        devWarn('[useAgentVoice] WebSocket TTS disconnected â€” HTTP fallback active');
-        ttsWsRef.current = null;
-      },
-    });
-
-    try {
-      await ttsWs.connect();
-      ttsWsRef.current = ttsWs;
-
-      // Start keep-alive pings to prevent idle WebSocket disconnect.
-      // Only send when an active context exists â€” sending to a non-existent
-      // context ID causes ElevenLabs to reject the message or close the socket.
-      keepAliveRef.current = setInterval(() => {
-        if (ttsWsRef.current?.isConnected && currentContextRef.current) {
-          ttsWsRef.current.keepAlive(currentContextRef.current);
-        }
-      }, 30_000);
-    } catch (wsErr) {
-      // WebSocket TTS unavailable â€” HTTP streaming fallback will be used
-      devWarn(`[useAgentVoice] WebSocket TTS unavailable for ${agent} â€” using HTTP fallback:`, wsErr);
-      const msg = wsErr instanceof Error ? wsErr.message : String(wsErr);
-      emitDiagnostic({
-        traceId: currentTraceIdRef.current || nextTraceId(),
-        stage: 'tts',
-        code: 'TTS_WS_CONNECT_FAILED',
-        message: 'Realtime TTS socket unavailable; using fallback stream.',
-        raw: msg.slice(0, 220),
-        recoverable: true,
-      });
-    }
-
-    // Attempt STT â€” if unavailable (no API key, no mic), session
-    // stays active for text input with TTS output
-    try {
-      await stt.start();
-    } catch (sttErr) {
-      const msg = sttErr instanceof Error ? sttErr.message : String(sttErr || stt.error || '');
-      const isMicPerm = /notallowed|permission|denied|microphone/i.test(msg);
-      emitDiagnostic({
-        traceId: currentTraceIdRef.current || nextTraceId(),
-        stage: 'mic',
-        code: isMicPerm ? 'MIC_PERMISSION_DENIED' : 'MIC_INIT_FAILED',
-        message: msg || 'Unable to access microphone.',
-        raw: msg ? msg.slice(0, 220) : undefined,
-        recoverable: true,
-      });
-      onErrorRef.current?.(new Error(msg || 'Unable to access microphone.'));
-      updateStatus('error');
-      setTimeout(() => {
-        if (activeRef.current) updateStatus('listening');
-      }, 2000);
-      devWarn(`STT unavailable for ${agent} â€” text input + TTS mode`);
-    }
-  }, [agent, updateStatus, stt, playContextAudio, emitDiagnostic, nextTraceId, unlockAudioPlayback, buildTraceHeaders, suiteId]);
-
-  /**
    * End the voice session. Closes WebSocket TTS, stops STT, and
    * stops any in-progress audio playback.
    */
@@ -888,19 +719,74 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
     stt.stop();
 
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
+    // Stop and clear Web Audio source
+    if (currentAudioSourceRef.current) {
+      try { currentAudioSourceRef.current.stop(); } catch { /* ignore */ }
+      currentAudioSourceRef.current = null;
     }
-    // Clean up any stored autoplay-blocked audio
-    if (lastAudioUrlRef.current) {
-      URL.revokeObjectURL(lastAudioUrlRef.current);
-      lastAudioUrlRef.current = null;
-    }
+
     setTranscript('');
     setLastReceiptId(null);
     updateStatus('idle');
   }, [updateStatus, stt]);
+
+  // Auto-end session on logout (session removed, not just missing suiteId)
+  useEffect(() => {
+    if (!activeRef.current) return;
+
+    if (accessTokenRef.current) {
+      if (authLossTimerRef.current) {
+        clearTimeout(authLossTimerRef.current);
+        authLossTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (authLossTimerRef.current) return;
+    authLossTimerRef.current = setTimeout(() => {
+      authLossTimerRef.current = null;
+      if (!accessTokenRef.current && activeRef.current) {
+        endSession();
+      }
+    }, 10_000);
+  }, [accessToken, endSession]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (keepAliveRef.current) {
+        clearInterval(keepAliveRef.current);
+        keepAliveRef.current = null;
+      }
+      if (authLossTimerRef.current) {
+        clearTimeout(authLossTimerRef.current);
+        authLossTimerRef.current = null;
+      }
+      if (sseAbortRef.current) {
+        sseAbortRef.current.abort();
+        sseAbortRef.current = null;
+      }
+      // Close AudioContext to release hardware resources
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(() => {});
+      }
+    };
+  }, []);
+
+  return {
+    status,
+    isActive: activeRef.current,
+    transcript,
+    interimTranscript: stt.transcript,
+    lastResponse,
+    lastReceiptId,
+    startSession,
+    endSession,
+    sendText,
+    setMuted: stt.setMuted,
+    replayLastAudio: async () => false, // No longer needed with AudioContext
+  };
+}
 
   // Auto-end session on logout (session removed, not just missing suiteId)
   useEffect(() => {
