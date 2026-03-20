@@ -10,6 +10,9 @@ on:
       - 'hooks/**'
       - 'types/**'
       - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci.yml'
+      - 'scripts/**'
   push:
     branches: [main]
     paths:
@@ -17,6 +20,10 @@ on:
       - 'components/**'
       - 'lib/**'
       - 'server/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci.yml'
+      - 'scripts/**'
 
 jobs:
   lint-typecheck:
@@ -59,6 +66,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: [lint-typecheck]
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://qtuehjqlcmfcascqjjhc.supabase.co
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: placeholder-for-ci
+      EXPO_PUBLIC_ASPIRE_RELEASE: ${{ github.sha }}
+      EXPO_PUBLIC_SENTRY_ENVIRONMENT: production
+      ASPIRE_RELEASE: ${{ github.sha }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+      SENTRY_PROJECT_DESKTOP_CLIENT: ${{ vars.SENTRY_PROJECT_DESKTOP_CLIENT || vars.SENTRY_PROJECT_ASPIRE_DESKTOP_CLIENT || vars.SENTRY_PROJECT }}
+      SENTRY_URL: ${{ vars.SENTRY_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -72,10 +89,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npx expo export -p web --clear 2>&1 | tail -10
-        env:
-          EXPO_PUBLIC_SUPABASE_URL: https://qtuehjqlcmfcascqjjhc.supabase.co
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: placeholder-for-ci
+        run: npm run web:build 2>&1 | tail -20
 
   type-drift:
     runs-on: ubuntu-latest
@@ -95,7 +109,7 @@ jobs:
       - name: Check type drift
         run: |
           if [ -f "types/supabase.generated.ts" ]; then
-            echo "Supabase types present — checking for uncommitted drift..."
+            echo "Supabase types present - checking for uncommitted drift..."
             if ! git diff --quiet types/supabase.generated.ts 2>/dev/null; then
               echo "DRIFT: supabase.generated.ts has uncommitted changes"
               exit 1

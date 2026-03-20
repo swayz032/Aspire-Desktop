@@ -115,7 +115,9 @@ function QuoteWidgetInner({ suiteId, officeId, quoteId, onSendClick }: QuoteWidg
       await supabase.from('quotes').update({ status: 'sent' }).eq('id', quote.id);
       setQuote(q => q ? { ...q, status: 'sent' } : q);
       onSendClick?.(quote.id);
-    } catch {}
+    } catch (_e) {
+      console.error('[QuoteWidget] Send quote failed:', _e);
+    }
     setSending(false);
   }, [quote, sending, onSendClick]);
 

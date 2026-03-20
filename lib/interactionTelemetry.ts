@@ -162,7 +162,7 @@ async function flushQueue(): Promise<void> {
       }
     }
 
-    const tenantId = session.user?.user_metadata?.suite_id || session.user?.id || 'unknown';
+    const tenantId = session.user?.app_metadata?.suite_id || session.user?.user_metadata?.suite_id || session.user?.id || 'unknown';
 
     const { correlationId } = buildTraceHeaders();
     const rows = batch.map((evt) => ({

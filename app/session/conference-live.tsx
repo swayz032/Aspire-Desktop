@@ -661,7 +661,9 @@ function ConferenceLive() {
         document.exitFullscreen();
         setIsFullscreen(false);
       }
-    } catch (e) {}
+    } catch (_e) {
+      console.error('[ConferenceLive] Fullscreen toggle failed:', _e);
+    }
   }, []);
 
   useEffect(() => {

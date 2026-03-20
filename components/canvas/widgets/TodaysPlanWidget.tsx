@@ -90,7 +90,9 @@ function TodaysPlanWidgetInner({ suiteId, officeId }: TodaysPlanWidgetProps) {
     }
     try {
       await supabase.from('tasks').update({ is_completed: newCompleted }).eq('id', task.id);
-    } catch {}
+    } catch (_e) {
+      console.error('[TodaysPlanWidget] Task toggle failed:', _e);
+    }
   }, []);
 
   const filtered = useMemo(() => {

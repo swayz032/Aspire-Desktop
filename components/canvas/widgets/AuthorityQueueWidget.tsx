@@ -128,7 +128,9 @@ function AuthorityQueueWidgetInner({ suiteId, officeId, onApprove, onDeny }: Aut
     try {
       await supabase.from('authority_queue').update({ status: 'APPROVED' }).eq('id', req.id);
       onApprove?.(req.id);
-    } catch {}
+    } catch (_e) {
+      console.error('[AuthorityQueueWidget] Approve failed:', _e);
+    }
     setProcessing(p => { const n = { ...p }; delete n[req.id]; return n; });
   }, [processing, onApprove]);
 
@@ -141,7 +143,9 @@ function AuthorityQueueWidgetInner({ suiteId, officeId, onApprove, onDeny }: Aut
     try {
       await supabase.from('authority_queue').update({ status: 'DENIED' }).eq('id', req.id);
       onDeny?.(req.id);
-    } catch {}
+    } catch (_e) {
+      console.error('[AuthorityQueueWidget] Deny failed:', _e);
+    }
     setProcessing(p => { const n = { ...p }; delete n[req.id]; return n; });
   }, [processing, onDeny]);
 

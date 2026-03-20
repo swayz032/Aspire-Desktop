@@ -133,7 +133,9 @@ function ConnectionsContent() {
       const res = await authenticatedFetch('/api/plaid/linked-accounts');
       const data = await res.json();
       if (data.accounts) setLinkedAccounts(data.accounts);
-    } catch (e) {}
+    } catch (_e) {
+      console.error('[Connections] Failed to fetch linked accounts:', _e);
+    }
   }, [authenticatedFetch]);
 
   useEffect(() => {
@@ -319,7 +321,9 @@ function ConnectionsContent() {
         try {
           const qr = await getQrCodeDataUrl({ issuer: 'Aspire Desktop', accountName: 'finance@aspire', secret });
           setMfaQrUrl(qr);
-        } catch {}
+        } catch (_e) {
+          console.error('[Connections] Failed to generate MFA QR code:', _e);
+        }
         setMfaModalVisible(true);
         return;
       }

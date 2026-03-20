@@ -515,7 +515,7 @@ function FinanceHubContent() {
     if (finnVoice.isActive) {
       finnVoice.endSession();
     } else {
-      try { await finnVoice.startSession(); } catch {}
+      try { await finnVoice.startSession(); } catch (_e) { console.error('[FinanceHub] Finn voice session start failed:', _e); }
     }
   }, [finnVoice]);
 

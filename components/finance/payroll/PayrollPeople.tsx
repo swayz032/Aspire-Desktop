@@ -126,7 +126,9 @@ function PayrollPeopleInner({ gustoCompany, gustoEmployees, gustoConnected }: Pa
               locationId = locations[0].id || locations[0].uuid;
             }
           }
-        } catch (_) {}
+        } catch (_e) {
+          console.error('[PayrollPeople] Failed to fetch Gusto locations:', _e);
+        }
 
         const todayISO = new Date().toISOString().split('T')[0];
 
