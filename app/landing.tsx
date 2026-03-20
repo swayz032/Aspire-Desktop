@@ -62,7 +62,7 @@ function LandingContent() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <div style={{
+      <div data-testid="smoke-landing-root" style={{
         minHeight: '100vh',
         background: '#050508',
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',

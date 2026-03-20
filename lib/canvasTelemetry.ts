@@ -1,6 +1,12 @@
 import { Platform } from 'react-native';
 import { buildTraceHeaders } from './traceHeaders';
 import { supabase } from './supabase';
+import {
+  buildFrontendTelemetryContext,
+  getFrontendFlightRecorder,
+  recordFrontendFlightEvent,
+  shouldAttachFlightRecorder,
+} from './frontendTelemetryContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,7 +36,7 @@ export interface TelemetryPayload {
   timestamp: number;
   sessionId: string;
   cohort: string;
-  data: Record<string, string | number | boolean>;
+  data: Record<string, unknown>;
 }
 
 export interface SessionMetrics {
@@ -189,14 +195,43 @@ export async function flushTelemetry(): Promise<void> {
 
 export function emitCanvasEvent(
   event: CanvasTelemetryEvent,
-  data: Record<string, string | number | boolean> = {},
+  data: Record<string, unknown> = {},
 ): void {
+  const eventType = `canvas.${event}`;
+  const context = buildFrontendTelemetryContext({
+    source: 'canvas',
+    eventType,
+    component: 'canvas',
+    data,
+  });
+  const enrichedData: Record<string, unknown> = {
+    ...data,
+    release: context.release,
+    runtime: context.runtime,
+    contract_id: context.contractId,
+    flow_id: context.flowId,
+    user_agent: context.userAgent,
+    page_route: context.pageRoute,
+    component: 'canvas',
+  };
+  if (shouldAttachFlightRecorder(eventType)) {
+    enrichedData.flight_recorder = getFrontendFlightRecorder();
+  }
+
+  recordFrontendFlightEvent({
+    source: 'canvas',
+    eventType,
+    component: 'canvas',
+    pageRoute: context.pageRoute,
+    data: enrichedData,
+  });
+
   const payload: TelemetryPayload = {
     event,
     timestamp: Date.now(),
     sessionId,
     cohort,
-    data,
+    data: enrichedData,
   };
 
   queue.push(payload);

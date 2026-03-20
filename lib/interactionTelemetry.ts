@@ -12,6 +12,12 @@
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import { buildTraceHeaders } from './traceHeaders';
+import {
+  buildFrontendTelemetryContext,
+  getFrontendFlightRecorder,
+  recordFrontendFlightEvent,
+  shouldAttachFlightRecorder,
+} from './frontendTelemetryContext';
 
 // ---------------------------------------------------------------------------
 // Event Types — exhaustive list of tracked interactions
@@ -121,6 +127,12 @@ function getCurrentRoute(): string {
   return '/unknown';
 }
 
+function deriveInteractionSeverity(event: InteractionEvent): string {
+  if (event === 'page_error') return 'error';
+  if (event === 'agent_connect_retry') return 'warning';
+  return 'info';
+}
+
 // ---------------------------------------------------------------------------
 // Flush — batch insert to Supabase client_events
 // ---------------------------------------------------------------------------
@@ -210,13 +222,42 @@ export function trackInteraction(
   if (isRateLimited()) return;
   eventCountInWindow++;
 
+  const pageRoute = getCurrentRoute();
+  const context = buildFrontendTelemetryContext({
+    source: 'interaction',
+    eventType: event,
+    component,
+    pageRoute,
+    data: data as Record<string, unknown>,
+  });
+  const enrichedData: Record<string, unknown> = {
+    ...data,
+    release: context.release,
+    runtime: context.runtime,
+    contract_id: context.contractId,
+    flow_id: context.flowId,
+    user_agent: context.userAgent,
+    page_route: context.pageRoute,
+  };
+  if (shouldAttachFlightRecorder(event)) {
+    enrichedData.flight_recorder = getFrontendFlightRecorder();
+  }
+
+  recordFrontendFlightEvent({
+    source: 'interaction',
+    eventType: event,
+    component,
+    pageRoute,
+    data: enrichedData,
+  });
+
   const entry: QueuedEvent = {
     event_type: event,
     source: 'desktop',
-    severity: 'info',
+    severity: deriveInteractionSeverity(event),
     component,
-    page_route: getCurrentRoute(),
-    data: data as Record<string, unknown>,
+    page_route: context.pageRoute,
+    data: enrichedData,
     timestamp: new Date().toISOString(),
   };
 

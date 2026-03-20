@@ -16,3 +16,11 @@ export function allowDevSupabaseBypass(): boolean {
   // Expo web always sets NODE_ENV=production at build time, so we cannot use it to gate this.
   return !hasSupabaseWebConfig() && explicitBypass;
 }
+
+export function getSyntheticRuntime(): string {
+  return process.env.EXPO_PUBLIC_ASPIRE_SYNTHETIC_ENV || '';
+}
+
+export function isLocalSyntheticAuthBypass(): boolean {
+  return allowDevSupabaseBypass() && getSyntheticRuntime() === 'local-smoke';
+}

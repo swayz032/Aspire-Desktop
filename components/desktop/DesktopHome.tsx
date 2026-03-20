@@ -28,6 +28,7 @@ import { playSound } from '@/lib/soundManager';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { getCalendarEvents } from '@/lib/api';
 import { useDynamicAuthorityQueue, removeAuthorityItem } from '@/lib/authorityQueueStore';
+import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useTenant, useSupabase } from '@/providers';
 import type { CashPosition } from '@/types';
@@ -162,6 +163,8 @@ function DesktopHomeInner() {
   };
 
   useEffect(() => {
+    if (isLocalSyntheticAuthBypass()) return;
+
     const headers: Record<string, string> = {};
     if (session?.access_token) {
       headers.Authorization = `Bearer ${session.access_token}`;
@@ -269,10 +272,11 @@ function DesktopHomeInner() {
   // ── Conditional render: CanvasWorkspace (canvas mode) vs dashboard (chat mode) ──
   return (
     <DesktopShell>
-      {mode === 'canvas' ? (
-        <CanvasWorkspace />
-      ) : (
-        <>
+      <View testID="smoke-home-root" style={styles.smokeRoot}>
+        {mode === 'canvas' ? (
+          <CanvasWorkspace />
+        ) : (
+          <>
           <VignetteOverlay />
           <ScrollView
             style={styles.scroll}
@@ -536,13 +540,17 @@ function DesktopHomeInner() {
             customerName={reviewPreview.customerName}
             currency={reviewPreview.currency}
           />
-        </>
-      )}
+          </>
+        )}
+      </View>
     </DesktopShell>
   );
 }
 
 const styles = StyleSheet.create({
+  smokeRoot: {
+    flex: 1,
+  },
   scroll: { 
     flex: 1,
   },

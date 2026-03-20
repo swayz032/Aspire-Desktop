@@ -341,7 +341,7 @@ function VoiceTestContent() {
   };
 
   const content = (
-    <View style={styles.container}>
+    <View style={styles.container} testID="smoke-voice-test-root">
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => { activeRef.current = false; router.back(); }} style={styles.backBtn}>
@@ -354,7 +354,7 @@ function VoiceTestContent() {
       </View>
 
       {/* Agent selector */}
-      <View style={styles.agentBar}>
+      <View style={styles.agentBar} testID="smoke-voice-test-agent-bar">
         {AGENTS.map((agent) => (
           <Pressable
             key={agent.id}

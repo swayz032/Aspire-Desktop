@@ -524,6 +524,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
             )}
 
             <button
+              data-testid={isActive ? 'smoke-login-submit' : undefined}
               onClick={mode === 'signin' ? handleSignIn : handleSignUp}
               disabled={loading}
               style={{
@@ -625,11 +626,14 @@ function WebLoginScreen() {
         ::placeholder { color: rgba(255,255,255,0.24) !important; }
       `}</style>
 
-      <div style={{
+      <div
+        data-testid="smoke-login-root"
+        style={{
         width: '100vw', height: '100vh', background: '#000000', overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif',
-      }}>
+      }}
+      >
         {/* CAROUSEL STAGE — full viewport, no header */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           {/* Floating logo */}
@@ -796,7 +800,11 @@ function NativeLoginScreen() {
   const tabUnderlineLeft = slideAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '50%'] });
 
   return (
-    <KeyboardAvoidingView style={nStyles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView
+      style={nStyles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      testID="smoke-login-root"
+    >
       <View style={nStyles.inner}>
         <View style={nStyles.logoSection}>
           <View style={nStyles.logoCircle}><Text style={nStyles.logoText}>A</Text></View>
@@ -831,7 +839,13 @@ function NativeLoginScreen() {
               <TextInput style={nStyles.input} placeholder="Re-enter your password" placeholderTextColor="#555" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} editable={!loading} onSubmitEditing={handleSignUp} />
             </>
           )}
-          <TouchableOpacity style={[nStyles.actionButton, loading && nStyles.actionButtonDisabled]} onPress={mode === 'signin' ? handleSignIn : handleSignUp} disabled={loading} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={[nStyles.actionButton, loading && nStyles.actionButtonDisabled]}
+            onPress={mode === 'signin' ? handleSignIn : handleSignUp}
+            disabled={loading}
+            activeOpacity={0.8}
+            testID="smoke-login-submit"
+          >
             {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={nStyles.actionButtonText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>}
           </TouchableOpacity>
         </View>

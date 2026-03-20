@@ -185,6 +185,12 @@ function useWebDesktopSetup() {
 
 const DEV_BYPASS_AUTH = allowDevSupabaseBypass();
 
+function isSyntheticPublicLoginRequest(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  const search = new URLSearchParams(window.location.search);
+  return search.get('e2eRoute') === 'login';
+}
+
 function useAuthGate() {
   const { session, isLoading, suiteId } = useSupabase();
   const segments = useSegments();
@@ -238,6 +244,9 @@ function useAuthGate() {
     const onOnboarding = segments[1] === ('onboarding' as any);
 
     if (DEV_BYPASS_AUTH) {
+      if (isSyntheticPublicLoginRequest()) {
+        return;
+      }
       if (inAuthGroup) {
         router.replace('/(tabs)');
       }

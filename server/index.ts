@@ -53,6 +53,8 @@ try {
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '5000', 10);
+const ASPIRE_SYNTHETIC_ENV = (process.env.ASPIRE_SYNTHETIC_ENV || '').trim();
+const IS_LOCAL_SYNTHETIC_SMOKE = ASPIRE_SYNTHETIC_ENV === 'local-smoke';
 
 // Sentry request handler — MUST be first middleware (captures request context)
 app.use(sentryRequestHandler());
@@ -117,6 +119,9 @@ const DEV_USER_ID = 'dev-user-00000000-0000-0000-0000-000000000000';
 if (DEV_BYPASS_AUTH) {
   logger.info('DEV_BYPASS_AUTH enabled — all requests will skip JWT verification');
 }
+if (IS_LOCAL_SYNTHETIC_SMOKE) {
+  logger.info('Local synthetic smoke mode enabled — suppressing backend bootstrap and tenant-context writes');
+}
 
 app.use((req, res, next) => {
   const headerCorrelationId = typeof req.headers['x-correlation-id'] === 'string'
@@ -146,7 +151,9 @@ app.use(async (req, res, next) => {
     if (DEV_BYPASS_AUTH) {
       (req as any).authenticatedUserId = DEV_USER_ID;
       (req as any).authenticatedSuiteId = DEV_SUITE_ID;
-      await applyTenantContext(DEV_SUITE_ID);
+      if (!IS_LOCAL_SYNTHETIC_SMOKE) {
+        await applyTenantContext(DEV_SUITE_ID);
+      }
       return next();
     }
 
@@ -254,6 +261,11 @@ app.use(async (req, res, next) => {
 });
 
 async function initStripe() {
+  if (IS_LOCAL_SYNTHETIC_SMOKE) {
+    logger.info('Skipping Stripe init in local synthetic smoke mode');
+    return;
+  }
+
   if (!runMigrations || !getStripeSync) {
     logger.warn('Stripe modules not loaded, skipping Stripe sync setup');
     return;
@@ -538,8 +550,13 @@ try {
   const telephonyEnterpriseRoutes = require('./telephonyEnterpriseRoutes').default;
   const { startOutboxWorker } = require('./telephonyEnterpriseRoutes');
   app.use(telephonyEnterpriseRoutes);
-  startOutboxWorker();
-  logger.info('Telephony enterprise routes registered', { endpoints: 15, outbox_worker: true });
+  if (!IS_LOCAL_SYNTHETIC_SMOKE) {
+    startOutboxWorker();
+  }
+  logger.info('Telephony enterprise routes registered', {
+    endpoints: 15,
+    outbox_worker: !IS_LOCAL_SYNTHETIC_SMOKE,
+  });
 } catch (e) {
   logger.warn('Telephony enterprise routes not available, skipping');
 }
@@ -885,6 +902,11 @@ app.use((req, res, next) => {
 setupSentryExpressErrorHandler(app);
 
 async function loadOAuthTokens() {
+  if (IS_LOCAL_SYNTHETIC_SMOKE) {
+    logger.info('Skipping OAuth token bootstrap and initial sync in local synthetic smoke mode');
+    return;
+  }
+
   try {
     const { loadGustoTokens } = require('./gustoRoutes');
     await loadGustoTokens();

@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
+import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { FinnDeskOverlay } from '@/components/finance/FinnDeskOverlay';
 import { FinnChatModal } from '@/components/finance/FinnChatModal';
 import { StoryModeCarousel, STORY_MODES } from '@/components/finance/StoryModeCarousel';
@@ -520,6 +521,11 @@ function FinanceHubContent() {
   }, [finnVoice]);
 
   const fetchData = useCallback(async () => {
+    if (isLocalSyntheticAuthBypass()) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const [snapRes, connRes] = await Promise.all([
         fetch('/api/finance/snapshot').then(r => r.json()).catch(() => null),
@@ -768,6 +774,7 @@ function FinanceHubContent() {
   return (
     <>
     <FinanceHubShell>
+      <View testID="smoke-finance-hub-root" style={{ flex: 1 }}>
       {Platform.OS === 'web' ? (
         (isTablet || isMobile) ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
@@ -817,6 +824,7 @@ function FinanceHubContent() {
           />
         </View>
       )}
+      </View>
     </FinanceHubShell>
     <FinnChatModal visible={showFinnChat} onClose={() => setShowFinnChat(false)} />
     {showFinnOverlay && (

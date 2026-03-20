@@ -2564,6 +2564,8 @@ router.post('/api/telemetry/canvas', async (req: Request, res: Response) => {
     const eventTimestamp = typeof rawEvent?.timestamp === 'number'
       ? new Date(rawEvent.timestamp).toISOString()
       : new Date().toISOString();
+    const pageRoute = typeof eventData.page_route === 'string' ? eventData.page_route : '/canvas';
+    const component = typeof eventData.component === 'string' ? eventData.component : 'canvas';
 
     emitTraceEvent({
       traceId,
@@ -2591,8 +2593,8 @@ router.post('/api/telemetry/canvas', async (req: Request, res: Response) => {
         event_type: `canvas.${eventName}`,
         source: 'desktop',
         severity: eventName === 'error' ? 'error' : eventName === 'slo_violation' ? 'warning' : 'info',
-        component: 'canvas',
-        page_route: '/canvas',
+        component,
+        page_route: pageRoute,
         data: { event: eventName, payload: eventData, actor_id: actorId, trace_id: traceId },
       }).then(({ error: ceErr }) => {
         if (ceErr) console.error('[canvas-telemetry] client_events insert failed:', ceErr.message);

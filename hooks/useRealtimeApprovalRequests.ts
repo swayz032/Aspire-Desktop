@@ -18,6 +18,7 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/providers';
+import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import {
   addAuthorityItem,
   removeAuthorityItem,
@@ -83,6 +84,7 @@ export function useRealtimeApprovalRequests(): void {
   const RETRY_BASE_MS = 3000;
 
   useEffect(() => {
+    if (isLocalSyntheticAuthBypass()) return;
     if (!session?.user?.id) return;
     // Law #6: Tenant isolation — require suiteId before subscribing
     if (!suiteId) return;

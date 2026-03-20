@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CallSession } from '@/types/frontdesk';
 import { useSupabase } from '@/providers';
+import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 
 interface UseFrontdeskCallsOptions {
   pollInterval?: number;
@@ -64,6 +65,14 @@ export function useFrontdeskCalls(options: UseFrontdeskCallsOptions = {}) {
   const nextDelayRef = useRef(normalizedPollInterval);
 
   const fetchCalls = useCallback(async () => {
+    if (isLocalSyntheticAuthBypass()) {
+      setCalls([]);
+      setError(null);
+      setLoading(false);
+      nextDelayRef.current = MAX_POLL_INTERVAL_MS;
+      return;
+    }
+
     try {
       const token = session?.access_token;
       if (!token) {
@@ -94,6 +103,15 @@ export function useFrontdeskCalls(options: UseFrontdeskCallsOptions = {}) {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (isLocalSyntheticAuthBypass()) {
+      setCalls([]);
+      setError(null);
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const schedule = (delay: number) => {
       if (cancelled) return;

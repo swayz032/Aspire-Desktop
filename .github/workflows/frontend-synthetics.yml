@@ -1,0 +1,62 @@
+name: Desktop Frontend Synthetics
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: Aspire OS / production
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: public
+            port: '4173'
+            spec: e2e/public-smoke.spec.ts
+          - mode: auth
+            port: '4174'
+            spec: e2e/auth-smoke.spec.ts
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke robots
+        env:
+          ASPIRE_E2E_MODE: ${{ matrix.mode }}
+          ASPIRE_SYNTHETIC_ENV: github-actions
+          E2E_PORT: ${{ matrix.port }}
+        run: npx playwright test ${{ matrix.spec }}
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-smoke-${{ matrix.mode }}
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
+      - name: Export smoke incidents
+        if: always()
+        env:
+          ASPIRE_E2E_MODE: ${{ matrix.mode }}
+          ASPIRE_SYNTHETIC_ENV: github-actions
+          N8N_FRONTEND_INCIDENT_WEBHOOK_URL: ${{ secrets.N8N_FRONTEND_INCIDENT_WEBHOOK_URL }}
+          N8N_FRONTEND_INCIDENT_WEBHOOK_SECRET: ${{ secrets.N8N_FRONTEND_INCIDENT_WEBHOOK_SECRET }}
+        run: node scripts/export-frontend-incidents.mjs --report test-results/playwright-smoke.json --output test-results/frontend-incident-payload.${{ matrix.mode }}.json

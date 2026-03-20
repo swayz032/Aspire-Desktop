@@ -23,6 +23,7 @@ import {
 } from '@/components/chat';
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
@@ -150,6 +151,7 @@ function AvaDeskPanelInner() {
 
   // Fetch a dynamic greeting from the orchestrator on mount (replaces hardcoded seedChat)
   useEffect(() => {
+    if (isLocalSyntheticAuthBypass()) return;
     if (!suiteId || !session?.access_token) return;
     const fetchGreeting = async () => {
       try {
@@ -178,6 +180,7 @@ function AvaDeskPanelInner() {
   }, [suiteId, session?.access_token]);
 
   useEffect(() => {
+    if (isLocalSyntheticAuthBypass()) return;
     const fetchApprovals = async () => {
       try {
         const res = await fetch('/api/authority-queue', {

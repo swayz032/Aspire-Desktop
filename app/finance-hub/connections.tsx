@@ -9,6 +9,7 @@ import { getPlaidConsent, setPlaidConsent } from '@/lib/security/plaidConsent';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { getMfaStatus, isMfaVerifiedRecently, verifyMfaCode, generateMfaSecret, storeMfaSecret, updateMfaStatus, getQrCodeDataUrl } from '@/lib/security/mfa';
 import { trackInteraction } from '@/lib/interactionTelemetry';
+import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
@@ -68,6 +69,17 @@ function ConnectionsContent() {
   const [pendingPlaidConnect, setPendingPlaidConnect] = useState(false);
 
   const checkAllStatuses = useCallback(async () => {
+    if (isLocalSyntheticAuthBypass()) {
+      setProviders({
+        plaid: { status: 'disconnected', detail: 'Banking & transactions', lastSync: null },
+        quickbooks: { status: 'disconnected', detail: 'Accounting & bookkeeping', lastSync: null, realmId: null },
+        gusto: { status: 'disconnected', detail: 'Payroll & HR', lastSync: null },
+        stripe: { status: 'disconnected', detail: 'Payments & invoicing', lastSync: null, accountId: null },
+      });
+      setLoading(false);
+      return;
+    }
+
     try {
       const safeFetchStatus = async (url: string, label: string) => {
         try {
@@ -129,6 +141,11 @@ function ConnectionsContent() {
   }, [authenticatedFetch]);
 
   const fetchLinkedAccounts = useCallback(async () => {
+    if (isLocalSyntheticAuthBypass()) {
+      setLinkedAccounts([]);
+      return;
+    }
+
     try {
       const res = await authenticatedFetch('/api/plaid/linked-accounts');
       const data = await res.json();
@@ -542,7 +559,7 @@ function ConnectionsContent() {
   if (loading) {
     return (
       <FinanceHubShell>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
+        <View testID="smoke-finance-connections-root" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
           <ActivityIndicator size="large" color="#3B82F6" />
           <Text style={{ color: Colors.text.tertiary, marginTop: 16, fontSize: 14 }}>Checking provider connections...</Text>
         </View>
@@ -610,6 +627,7 @@ function ConnectionsContent() {
 
   return (
     <FinanceHubShell>
+      <View testID="smoke-finance-connections-root" style={s.smokeRoot}>
       <View style={[s.heroBanner, premiumCardBase as any, Platform.OS === 'web' && { background: `radial-gradient(ellipse at top right, rgba(59,130,246,0.08) 0%, transparent 50%), ${CARD_BG}` } as any]}>
         <View style={s.heroContent}>
           <View style={s.heroLeft}>
@@ -1225,11 +1243,15 @@ function ConnectionsContent() {
           </View>
         </View>
       </Modal>
+      </View>
     </FinanceHubShell>
   );
 }
 
 const s = StyleSheet.create({
+  smokeRoot: {
+    flex: 1,
+  },
   heroBanner: {
     backgroundColor: 'rgba(28, 28, 30, 0.92)',
     borderRadius: 20,
