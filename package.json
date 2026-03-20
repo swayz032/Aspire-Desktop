@@ -3,20 +3,23 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "npm run build && tsx server/index.ts",
+    "start": "tsx server/index.ts",
     "serve": "tsx server/index.ts",
     "dev": "expo start",
-    "build": "expo export -p web --clear && node scripts/fix-viewport.js",
+    "build": "npm run build:static",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "npm run build && npm run start",
-    "web:build": "npm run build",
+    "web": "npm run build && node scripts/sentry-release.mjs web && npm run start",
+    "web:build": "npm run build && node scripts/sentry-release.mjs web",
     "web:serve": "npm run start",
     "test": "jest --watchAll",
     "lint": "expo lint",
     "gen-types": "bash scripts/gen-types.sh",
-    "check-types": "bash scripts/gen-types.sh --check"
+    "check-types": "bash scripts/gen-types.sh --check",
+    "sentry:upload:sourcemaps": "node scripts/sentry-release.mjs web",
+    "build:static": "expo export -p web --clear && node scripts/fix-viewport.js",
+    "sentry:release:web": "node scripts/sentry-release.mjs web"
   },
   "jest": {
     "preset": "jest-expo"
@@ -42,6 +45,7 @@
     "@react-three/fiber": "^9.5.0",
     "@replit/connectors-sdk": "^0.2.0",
     "@rive-app/react-webgl2": "^4.27.0",
+    "@sentry/node": "^10.45.0",
     "@sentry/react-native": "^8.4.0",
     "@shopify/flash-list": "^2.3.0",
     "@shopify/react-native-skia": "^2.4.14",
@@ -130,7 +134,8 @@
     "jest-expo": "~54.0.12",
     "openapi-typescript": "^7.13.0",
     "serve": "^14.2.5",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "@sentry/cli": "^3.3.3"
   },
   "private": true
 }

@@ -13,6 +13,12 @@ import { reportError } from '@/lib/errorReporter';
 
 let _initialized = false;
 
+function parseRate(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseFloat(value ?? '');
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
 /**
  * Initialize Sentry SDK. Safe to call multiple times — subsequent calls are no-ops.
  */
@@ -21,12 +27,29 @@ export function configureSentry(): void {
   _initialized = true;
 
   const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN || '';
+  const tracesSampleRate = parseRate(process.env.EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE, 0.2);
+  const profilesSampleRate = parseRate(process.env.EXPO_PUBLIC_SENTRY_PROFILES_SAMPLE_RATE, 0.0);
+  const environment = process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT || (__DEV__ ? 'development' : 'production');
+  const release =
+    process.env.EXPO_PUBLIC_ASPIRE_RELEASE ||
+    process.env.ASPIRE_RELEASE ||
+    process.env.EXPO_PUBLIC_APP_VERSION ||
+    'aspire-desktop@1.0.0';
 
   Sentry.init({
     dsn,
     enabled: !!dsn,
-    tracesSampleRate: 0.2,
-    environment: __DEV__ ? 'development' : 'production',
+    tracesSampleRate,
+    profilesSampleRate,
+    environment,
+    release,
+    attachStacktrace: true,
+    initialScope: {
+      tags: {
+        service: 'aspire-desktop-client',
+        runtime: 'react-native',
+      },
+    },
     beforeSend(event) {
       // Fire-and-forget backend incident report alongside Sentry
       try {
