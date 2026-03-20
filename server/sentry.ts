@@ -85,6 +85,22 @@ type ManualSentryConfig = {
 
 let _manualConfig: ManualSentryConfig | null = null;
 
+function resolveDsn(): string {
+  const candidates = [
+    process.env.SENTRY_DSN,
+    process.env.SENTRY_DESKTOP_SERVER_DSN,
+  ];
+
+  for (const candidate of candidates) {
+    const value = (candidate ?? '').trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return '';
+}
+
 function _parseDsn(dsn: string): { storeUrl: string; publicKey: string } | null {
   try {
     const u = new URL(dsn);
@@ -163,9 +179,9 @@ export function initSentry(): void {
     return;
   }
 
-  const dsn = (process.env.SENTRY_DSN ?? '').trim();
+  const dsn = resolveDsn();
   if (!dsn) {
-    console.log('[sentry] SENTRY_DSN not set — Sentry error tracking disabled (no-op)');
+    console.log('[sentry] SENTRY_DSN/SENTRY_DESKTOP_SERVER_DSN not set — Sentry error tracking disabled (no-op)');
     return;
   }
 
