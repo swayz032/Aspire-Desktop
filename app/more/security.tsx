@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, Text, Switch, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, ScrollView, Text, Switch, TouchableOpacity, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
@@ -7,6 +7,13 @@ import { PageHeader } from '@/components/PageHeader';
 import { formatRelativeTime } from '@/lib/formatters';
 import { SecuritySettings, TrustedDevice } from '@/types/tenant';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import {
+  isBiometricAvailable,
+  getBiometricPreference,
+  setBiometricPreference,
+  authenticateWithBiometrics,
+  getSupportedBiometricTypes,
+} from '@/lib/biometrics';
 
 const AUTO_LOCK_OPTIONS = [
   { value: 1, label: '1 minute' },
@@ -53,21 +60,43 @@ function SecurityContent() {
   const headerHeight = insets.top + 60;
 
   const [loading, setLoading] = useState(true);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricTypes, setBiometricTypes] = useState<string[]>([]);
   const [settings, setSettings] = useState<SecuritySettings>({
     twoFactorEnabled: true,
     trustedDevices: [],
     autoLockTimeout: 5,
-    biometricEnabled: true,
+    biometricEnabled: false,
   });
 
   useEffect(() => {
-    // Settings are local-only (no Supabase table); use defaults
-    setLoading(false);
+    async function init() {
+      const available = await isBiometricAvailable();
+      setBiometricAvailable(available);
+      if (available) {
+        const types = await getSupportedBiometricTypes();
+        setBiometricTypes(types);
+        const pref = await getBiometricPreference();
+        setSettings(prev => ({ ...prev, biometricEnabled: pref }));
+      }
+      setLoading(false);
+    }
+    init();
   }, []);
 
   const handleUpdate = (key: keyof SecuritySettings, value: any) => {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
+  };
+
+  const handleBiometricToggle = async (enabled: boolean) => {
+    if (enabled) {
+      // Verify biometric before enabling
+      const verified = await authenticateWithBiometrics('Confirm to enable biometric login');
+      if (!verified) return; // User cancelled or failed
+    }
+    handleUpdate('biometricEnabled', enabled);
+    await setBiometricPreference(enabled);
   };
 
   return (
@@ -92,21 +121,26 @@ function SecurityContent() {
               thumbColor={settings.twoFactorEnabled ? Colors.accent.cyan : Colors.text.muted}
             />
           </View>
-          <View style={styles.settingRow}>
-            <View style={styles.settingIcon}>
-              <Ionicons name="finger-print" size={20} color={Colors.accent.cyan} />
+          {/* Biometric toggle — hidden on web (not available), shown on native with real auth */}
+          {Platform.OS !== 'web' && biometricAvailable && (
+            <View style={styles.settingRow}>
+              <View style={styles.settingIcon}>
+                <Ionicons name="finger-print" size={20} color={Colors.accent.cyan} />
+              </View>
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingTitle}>Biometric Login</Text>
+                <Text style={styles.settingSubtitle}>
+                  {biometricTypes.length > 0 ? `Use ${biometricTypes.join(' / ')}` : 'Use Face ID or fingerprint'}
+                </Text>
+              </View>
+              <Switch
+                value={settings.biometricEnabled}
+                onValueChange={handleBiometricToggle}
+                trackColor={{ false: Colors.background.tertiary, true: Colors.accent.cyanDark }}
+                thumbColor={settings.biometricEnabled ? Colors.accent.cyan : Colors.text.muted}
+              />
             </View>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingTitle}>Biometric Login</Text>
-              <Text style={styles.settingSubtitle}>Use Face ID or fingerprint</Text>
-            </View>
-            <Switch
-              value={settings.biometricEnabled}
-              onValueChange={(v) => handleUpdate('biometricEnabled', v)}
-              trackColor={{ false: Colors.background.tertiary, true: Colors.accent.cyanDark }}
-              thumbColor={settings.biometricEnabled ? Colors.accent.cyan : Colors.text.muted}
-            />
-          </View>
+          )}
         </View>
 
         <View style={styles.section}>

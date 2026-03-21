@@ -11,6 +11,7 @@ import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import type { AuthorityItem } from '@/types';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { authenticateWithBiometrics, getBiometricPreference } from '@/lib/biometrics';
 
 const PANDADOC_SESSION_BASE = 'https://app.pandadoc.com/s/';
 
@@ -152,6 +153,23 @@ function AuthorityContent() {
 
     const itemId = confirmModal.item.id;
     const itemTitle = confirmModal.item.title;
+
+    // RED-tier biometric gate — require biometric confirmation for High risk approvals (native only)
+    if (confirmModal.action === 'approve' && confirmModal.item.risk === 'High') {
+      const biometricEnabled = await getBiometricPreference();
+      if (biometricEnabled) {
+        const verified = await authenticateWithBiometrics(
+          `Confirm approval: ${itemTitle}`
+        );
+        if (!verified) {
+          setToastMessage('Biometric verification required for RED-tier approval');
+          setToastType('error');
+          setToastVisible(true);
+          setConfirmModal({ visible: false, action: 'approve', item: null });
+          return;
+        }
+      }
+    }
 
     try {
       const action = confirmModal.action;

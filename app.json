@@ -9,14 +9,23 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aspireos.desktop",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.aspireos.desktop",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0a0a0c"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -41,10 +50,31 @@
           "backgroundColor": "#0a0a0c"
         }
       ],
-      "@sentry/react-native/expo"
+      "@sentry/react-native/expo",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Aspire to use Face ID for biometric login"
+        }
+      ],
+      "expo-secure-store",
+      "expo-updates"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/c647c66f-9118-4202-b3df-b9e503f74c47"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c647c66f-9118-4202-b3df-b9e503f74c47"
+      }
+    },
+    "owner": "swayz042"
   }
 }

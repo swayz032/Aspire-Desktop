@@ -23,6 +23,7 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
+import { useKeepAwake } from '@/hooks/useKeepAwake';
 
 /**
  * KrispToggle — renders inside LiveKitConferenceProvider to access Krisp context.
@@ -358,6 +359,7 @@ export default function ConferenceLivePage() {
 }
 
 function ConferenceLive() {
+  useKeepAwake(); // Prevent screen dimming during video conference
   const router = useRouter();
   const params = useLocalSearchParams();
   const isDesktop = useDesktop();

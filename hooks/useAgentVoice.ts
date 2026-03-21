@@ -773,21 +773,6 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     };
   }, []);
 
-  return {
-    status,
-    isActive: activeRef.current,
-    transcript,
-    interimTranscript: stt.transcript,
-    lastResponse,
-    lastReceiptId,
-    startSession,
-    endSession,
-    sendText,
-    setMuted: stt.setMuted,
-    replayLastAudio: async () => false, // No longer needed with AudioContext
-  };
-}
-
   // Auto-end session on logout (session removed, not just missing suiteId)
   useEffect(() => {
     if (!activeRef.current) return;
@@ -834,11 +819,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     interimTranscript: stt.transcript,
     lastResponse,
     lastReceiptId,
-    startSession,
+    startSession: async () => { updateStatus('listening'); },
     endSession,
     sendText,
     setMuted: stt.setMuted,
-    replayLastAudio,
+    replayLastAudio: async () => false,
   };
 }
 

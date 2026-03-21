@@ -3,12 +3,13 @@ import { View, Text, StyleSheet, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { pickDocument } from '@/lib/documentPicker';
 
 interface ShareSheetProps {
   visible: boolean;
   onClose: () => void;
   roomId: string;
-  onShare: (type: 'screen' | 'file' | 'link' | 'whiteboard') => void;
+  onShare: (type: 'screen' | 'file' | 'link' | 'whiteboard', fileUri?: string) => void;
 }
 
 const SHARE_OPTIONS = [
@@ -44,7 +45,15 @@ function ShareSheetInner({ visible, onClose, roomId, onShare }: ShareSheetProps)
               <Pressable
                 key={option.id}
                 style={({ pressed }) => [styles.shareOption, pressed && styles.pressed]}
-                onPress={() => {
+                onPress={async () => {
+                  if (option.id === 'file') {
+                    const doc = await pickDocument();
+                    if (doc) {
+                      onShare('file', doc.uri);
+                      onClose();
+                    }
+                    return;
+                  }
                   onShare(option.id);
                   onClose();
                 }}

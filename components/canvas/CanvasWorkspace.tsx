@@ -62,6 +62,7 @@ import type { CanvasMode } from '@/lib/chatCanvasStore';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { useCanvasVoice } from '@/hooks/useCanvasVoice';
 import { useSupabase, useTenant } from '@/providers';
+import { copyToClipboard } from '@/lib/clipboard';
 
 // Widget content imports
 import { AgentWidget } from './widgets/AgentWidget';
@@ -430,9 +431,8 @@ function CanvasWorkspaceInner(): React.ReactElement {
     if (!avaVoice.latestDiagnostic) return;
     const payload = JSON.stringify(avaVoice.latestDiagnostic, null, 2);
     try {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
-        await navigator.clipboard.writeText(payload);
-      } else {
+      const ok = await copyToClipboard(payload);
+      if (!ok) {
         Alert.alert('Diagnostic', payload);
       }
     } catch {

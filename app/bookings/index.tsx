@@ -7,6 +7,7 @@ import { Colors, Typography, BorderRadius, Spacing } from '@/constants/tokens';
 import { CARD_BG } from '@/constants/cardPatterns';
 import { useRouter } from 'expo-router';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { copyToClipboard } from '@/lib/clipboard';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
 const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -169,8 +170,8 @@ function BookingsContent() {
   };
 
   const copyBookingLink = async () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(bookingLink);
+    const ok = await copyToClipboard(bookingLink);
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }

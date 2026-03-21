@@ -15,7 +15,7 @@ import {
   type VideoCallInvitation,
 } from '@/lib/incomingVideoCallStore';
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
-import { useBackendConnected } from '@/lib/connectivityStore';
+import { useBackendConnected, useDeviceOnline } from '@/lib/connectivityStore';
 
 interface Notification {
   id: string;
@@ -136,8 +136,9 @@ function DesktopHeaderInner({
     return `${suitePart} \u00b7 ${officePart}`;
   }, [suiteDisplayId, officeDisplayId]);
 
-  // S3-M8: Backend connectivity status
+  // S3-M8: Backend connectivity status + device network state (Wave 2C)
   const backendConnected = useBackendConnected();
+  const deviceOnline = useDeviceOnline();
 
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
@@ -482,8 +483,14 @@ function DesktopHeaderInner({
           >
             <View style={s.companyInfo}>
               <View style={s.statusRow}>
-                <View style={[s.statusDot, !backendConnected && s.statusDotOffline]} />
+                <View style={[s.statusDot, !deviceOnline ? s.statusDotOffline : !backendConnected ? s.statusDotDegraded : undefined]} />
                 <Text style={s.businessName} testID="desktop-header-business-name">{businessName}</Text>
+                {!deviceOnline && (
+                  <Text style={s.connectivityLabel}>Offline</Text>
+                )}
+                {deviceOnline && !backendConnected && (
+                  <Text style={s.connectivityLabel}>Server unavailable</Text>
+                )}
               </View>
               <Text style={s.roleText}>{suiteIdentity}</Text>
             </View>
@@ -658,6 +665,8 @@ const s = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#34d399' },
   statusDotOffline: { backgroundColor: '#ef4444' },
+  statusDotDegraded: { backgroundColor: '#f59e0b' },
+  connectivityLabel: { fontSize: 10, color: '#ef4444', fontWeight: '500', marginLeft: 4 },
   businessName: { fontSize: 14, fontWeight: '600', color: Colors.text.primary },
   roleText: { fontSize: 12, color: Colors.text.tertiary, marginTop: 2 },
 

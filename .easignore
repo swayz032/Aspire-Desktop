@@ -1,0 +1,20 @@
+# Dependencies — EAS installs fresh from package.json
+node_modules
+
+# Build outputs
+dist
+
+# Git history — not needed for builds
+.git
+
+# Expo cache
+.expo
+
+# Dev files
+docs
+.claude
+__tests__
+coverage
+.vscode
+*.log
+*.md

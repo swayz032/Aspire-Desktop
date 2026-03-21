@@ -36,6 +36,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Animation } from '@/constants/tokens';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { copyToClipboard } from '@/lib/clipboard';
 
 // ─── Web-only CSS polish ─────────────────────────────────────────────────────
 
@@ -166,18 +167,7 @@ function StaggeredMemberRow({
   );
 }
 
-// Web clipboard helper
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
+// copyToClipboard imported from @/lib/clipboard (cross-platform)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

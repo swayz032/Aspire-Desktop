@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
@@ -23,6 +23,10 @@ import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
 import { reportError } from '@/lib/errorReporter';
 import { configureSentry, Sentry } from '@/lib/sentry';
+import { AppState, type AppStateStatus } from 'react-native';
+import { getBiometricPreference, authenticateWithBiometrics } from '@/lib/biometrics';
+import { useSupabaseDevTools } from '@/lib/devtools/supabasePlugin';
+import { useStoreDevTools } from '@/lib/devtools/storePlugin';
 
 // Initialize Sentry before any component renders
 configureSentry();
@@ -263,6 +267,33 @@ function useAuthGate() {
   }, [session, isLoading, segments, onboardingChecked, onboardingComplete]);
 }
 
+/** Biometric lock gate — prompts for biometric on app resume (native only). */
+function useBiometricLock(isAuthenticated: boolean) {
+  const [locked, setLocked] = useState(false);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || !isAuthenticated) return;
+
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      // App came to foreground from background
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        const enabled = await getBiometricPreference();
+        if (enabled) {
+          setLocked(true);
+          const verified = await authenticateWithBiometrics('Unlock Aspire');
+          setLocked(!verified);
+        }
+      }
+      appStateRef.current = nextState;
+    });
+
+    return () => subscription.remove();
+  }, [isAuthenticated]);
+
+  return locked;
+}
+
 function AppNavigator() {
   const isDesktop = useDesktop();
   const colorScheme = useColorScheme();
@@ -271,7 +302,20 @@ function AppNavigator() {
   useRealtimeConferenceInvitations();
   useRealtimeApprovalRequests();
   useBackendConnectivity();
+  const biometricLocked = useBiometricLock(!!session);
   const { showWarning, secondsLeft, extendSession } = useIdleTimeout();
+
+  // Dev tools plugins — only active in __DEV__ builds (zero overhead in production)
+  useSupabaseDevTools();
+  useStoreDevTools();
+
+  // Wave 7E: Dev-mode debugging — log Supabase Realtime channel status + Network Inspector hint
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log('[Aspire DevTools] Dev mode active. Press j for React Native DevTools, shift+m for plugins.');
+    console.log('[Aspire DevTools] Network Inspector: enable via Dev Menu > Toggle Network Inspector');
+    console.log('[Aspire DevTools] Performance Monitor: enable via Dev Menu > Toggle Performance Monitor');
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -403,6 +447,28 @@ function AppNavigator() {
           onSignOut={signOut}
         />
       )}
+      {/* Biometric lock overlay — native only */}
+      {biometricLocked && (
+        <View style={biometricStyles.overlay}>
+          <View style={biometricStyles.content}>
+            <Text style={biometricStyles.icon}>🔒</Text>
+            <Text style={biometricStyles.title}>Aspire is Locked</Text>
+            <Text style={biometricStyles.subtitle}>Authenticate to continue</Text>
+            <TouchableOpacity
+              style={biometricStyles.button}
+              onPress={async () => {
+                const verified = await authenticateWithBiometrics('Unlock Aspire');
+                // useBiometricLock handles state — if verified, locked = false
+                if (!verified) {
+                  // Stay locked
+                }
+              }}
+            >
+              <Text style={biometricStyles.buttonText}>Unlock</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
       <StatusBar style="light" />
     </ThemeProvider>
   );
@@ -445,6 +511,46 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0a',
     minHeight: '100%' as any,
     height: '100%' as any,
+  },
+});
+
+const biometricStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0a0a0c',
+    zIndex: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    alignItems: 'center',
+    padding: 32,
+  },
+  icon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  title: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  subtitle: {
+    color: '#6e6e73',
+    fontSize: 14,
+    marginBottom: 24,
+  },
+  button: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 10,
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

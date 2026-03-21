@@ -6,6 +6,7 @@ import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { printInvoice, shareInvoice } from '@/lib/printDocument';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -389,6 +390,36 @@ function InvoicesContent() {
                         <Ionicons name="open-outline" size={14} color="#3B82F6" />
                       </Pressable>
                     )}
+                    <Pressable
+                      style={[s.actionBtn, webOnly({ cursor: 'pointer' })]}
+                      onPress={() => printInvoice({
+                        invoiceNumber: inv.number || inv.id,
+                        customerName: inv.customer_name || 'Unknown',
+                        customerEmail: inv.customer_email || undefined,
+                        amount: `$${(inv.amount_due / 100).toFixed(2)}`,
+                        status: inv.status,
+                        dueDate: inv.due_date ? new Date(inv.due_date * 1000).toLocaleDateString() : undefined,
+                        createdDate: new Date(inv.created * 1000).toLocaleDateString(),
+                        lines: inv.lines?.data?.map(l => ({ description: l.description, amount: `$${(l.amount / 100).toFixed(2)}` })),
+                      })}
+                    >
+                      <Ionicons name="print-outline" size={14} color="#8B5CF6" />
+                    </Pressable>
+                    <Pressable
+                      style={[s.actionBtn, webOnly({ cursor: 'pointer' })]}
+                      onPress={() => shareInvoice({
+                        invoiceNumber: inv.number || inv.id,
+                        customerName: inv.customer_name || 'Unknown',
+                        customerEmail: inv.customer_email || undefined,
+                        amount: `$${(inv.amount_due / 100).toFixed(2)}`,
+                        status: inv.status,
+                        dueDate: inv.due_date ? new Date(inv.due_date * 1000).toLocaleDateString() : undefined,
+                        createdDate: new Date(inv.created * 1000).toLocaleDateString(),
+                        lines: inv.lines?.data?.map(l => ({ description: l.description, amount: `$${(l.amount / 100).toFixed(2)}` })),
+                      })}
+                    >
+                      <Ionicons name="share-outline" size={14} color="#06B6D4" />
+                    </Pressable>
                     {inv.status === 'draft' && (
                       <>
                         <Pressable

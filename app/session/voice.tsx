@@ -15,6 +15,7 @@ import { useDesktop } from '@/lib/useDesktop';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { trackInteraction } from '@/lib/interactionTelemetry';
+import { useKeepAwake } from '@/hooks/useKeepAwake';
 
 /** Map staff participant IDs from the session wizard to AgentName for useAgentVoice. */
 const STAFF_TO_AGENT: Record<string, AgentName> = {
@@ -59,6 +60,7 @@ export default function VoiceSessionPage() {
 }
 
 function VoiceSession() {
+  useKeepAwake(); // Prevent screen dimming during voice session
   const router = useRouter();
   const isDesktop = useDesktop();
   const { session: authSession, suiteId } = useSupabase();

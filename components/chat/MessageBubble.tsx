@@ -38,6 +38,7 @@ import type { AgentChatMessage, AgentActivityEvent, AgentId } from './types';
 import { AGENT_COLORS } from './types';
 import { ActivityTimeline } from './ActivityTimeline';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { copyToClipboard } from '@/lib/clipboard';
 
 // ---------------------------------------------------------------------------
 // Avatar Registry
@@ -61,18 +62,7 @@ const AGENT_AVATARS: Partial<Record<AgentId, ImageSourcePropType>> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Copy text to clipboard (web only). */
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Silent fail -- clipboard may not be available
-  }
-  return false;
-}
+// copyToClipboard imported from @/lib/clipboard (cross-platform)
 
 /** Format epoch timestamp to HH:MM. */
 function formatTime(ts: number): string {
