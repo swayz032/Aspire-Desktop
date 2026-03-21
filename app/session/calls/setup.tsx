@@ -144,6 +144,18 @@ function FrontDeskSetupContent() {
   const [questionMenuOpen, setQuestionMenuOpen] = useState<{ reason: string; index: number } | null>(null);
   const [expandedReason, setExpandedReason] = useState<string | null>(null);
 
+  // --- Phone number search/purchase (ASPIRE_FULL_DUPLEX) ---
+  const [areaCode, setAreaCode] = useState('');
+  const [vanityContains, setVanityContains] = useState('');
+  const [numberType, setNumberType] = useState<'local' | 'tollfree'>('local');
+  const [searchingNumbers, setSearchingNumbers] = useState(false);
+  const [availableNumbers, setAvailableNumbers] = useState<Array<{ e164: string; locality: string; region: string; capabilities?: Record<string, boolean> }>>([]);
+  const [selectedNumber, setSelectedNumber] = useState<string | null>(null);
+  const [purchasingNumber, setPurchasingNumber] = useState(false);
+  const [provisionedNumber, setProvisionedNumber] = useState<string | null>(null);
+  const [provisionedStatus, setProvisionedStatus] = useState<'provisioning' | 'active' | 'failed' | null>(null);
+  const provisionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // --- effects ------------------------------------------------------------
   useEffect(() => {
     loadSetup();
@@ -188,6 +200,12 @@ function FrontDeskSetupContent() {
             };
           });
           setReasonConfigs(configs);
+
+          // Hydrate provisioned number if already purchased
+          if (data.businessNumber) {
+            setProvisionedNumber(data.businessNumber);
+            setProvisionedStatus(data.provisionedStatus === 'active' ? 'active' : data.provisionedStatus || null);
+          }
         }
       }
     } catch (_e) {
@@ -196,6 +214,84 @@ function FrontDeskSetupContent() {
       setLoading(false);
     }
   };
+
+  // --- Phone number search -------------------------------------------------
+  const searchNumbers = async () => {
+    if (areaCode.length < 3) return;
+    setSearchingNumbers(true);
+    setAvailableNumbers([]);
+    setSelectedNumber(null);
+    try {
+      const res = await fetch('/api/frontdesk/numbers/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          areaCode,
+          numberType,
+          ...(vanityContains ? { contains: vanityContains } : {}),
+          limit: 10,
+        }),
+      });
+      if (res.ok) {
+        const numbers = await res.json();
+        setAvailableNumbers(Array.isArray(numbers) ? numbers : numbers.numbers || []);
+      }
+    } catch (err) {
+      console.error('Number search failed:', err);
+    } finally {
+      setSearchingNumbers(false);
+    }
+  };
+
+  // --- Phone number purchase ------------------------------------------------
+  const purchaseNumber = async () => {
+    if (!selectedNumber) return;
+    setPurchasingNumber(true);
+    try {
+      const res = await fetch('/api/frontdesk/numbers/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ e164: selectedNumber }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setProvisionedNumber(result.businessNumber || selectedNumber);
+        setProvisionedStatus('provisioning');
+        setAvailableNumbers([]);
+        setSelectedNumber(null);
+
+        // Poll for provisioning completion
+        provisionPollRef.current = setInterval(async () => {
+          try {
+            const statusRes = await fetch('/api/frontdesk/setup');
+            if (statusRes.ok) {
+              const statusData = await statusRes.json();
+              if (statusData.provisionedStatus === 'active' || statusData.provisionedStatus === 'failed') {
+                setProvisionedStatus(statusData.provisionedStatus);
+                if (provisionPollRef.current) {
+                  clearInterval(provisionPollRef.current);
+                  provisionPollRef.current = null;
+                }
+              }
+            }
+          } catch { /* ignore poll errors */ }
+        }, 3000);
+      }
+    } catch (err) {
+      console.error('Number purchase failed:', err);
+    } finally {
+      setPurchasingNumber(false);
+    }
+  };
+
+  // Clean up provision polling on unmount
+  useEffect(() => {
+    return () => {
+      if (provisionPollRef.current) {
+        clearInterval(provisionPollRef.current);
+      }
+    };
+  }, []);
 
   // --- reason management --------------------------------------------------
   const toggleReason = (id: string) => {
@@ -573,6 +669,167 @@ function FrontDeskSetupContent() {
                         ? 'Forwarding verified'
                         : 'Forwarding required. No calls received yet.'}
                     </Text>
+                  </View>
+                )}
+
+                {lineMode === 'ASPIRE_FULL_DUPLEX' && (
+                  <View style={styles.existingNumberSection}>
+                    {/* Already provisioned */}
+                    {provisionedNumber && provisionedStatus === 'active' && (
+                      <View style={styles.provisionedBadge}>
+                        <Ionicons name="checkmark-circle" size={20} color="#34d399" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.provisionedLabel}>Your Aspire business number</Text>
+                          <Text style={styles.provisionedNumber}>{provisionedNumber}</Text>
+                        </View>
+                        <Badge label="Active" variant="success" size="sm" />
+                      </View>
+                    )}
+
+                    {/* Provisioning in progress */}
+                    {provisionedNumber && provisionedStatus === 'provisioning' && (
+                      <View style={styles.provisionedBadge}>
+                        <Ionicons name="hourglass-outline" size={20} color={Colors.accent.cyan} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.provisionedLabel}>Provisioning your number...</Text>
+                          <Text style={styles.provisionedNumber}>{provisionedNumber}</Text>
+                        </View>
+                        <Badge label="Provisioning" variant="info" size="sm" />
+                      </View>
+                    )}
+
+                    {/* Failed provisioning */}
+                    {provisionedNumber && provisionedStatus === 'failed' && (
+                      <View style={styles.provisionedBadge}>
+                        <Ionicons name="alert-circle" size={20} color="#ef4444" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.provisionedLabel}>Provisioning failed</Text>
+                          <Text style={[styles.provisionedNumber, { color: '#ef4444' }]}>{provisionedNumber}</Text>
+                        </View>
+                        <Badge label="Failed" variant="muted" size="sm" />
+                      </View>
+                    )}
+
+                    {/* Search UI — only show if no number provisioned yet */}
+                    {!provisionedNumber && (
+                      <>
+                        <Text style={styles.inputLabel}>Search for a phone number</Text>
+
+                        {/* Area code + vanity input row */}
+                        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.helperText, { marginBottom: 4 }]}>Area code</Text>
+                            <TextInput
+                              style={styles.input}
+                              value={areaCode}
+                              onChangeText={(v) => setAreaCode(v.replace(/\D/g, '').slice(0, 3))}
+                              placeholder="212"
+                              placeholderTextColor={Colors.text.muted}
+                              maxLength={3}
+                              keyboardType="number-pad"
+                              accessibilityLabel="Area code"
+                            />
+                          </View>
+                          <View style={{ flex: 2 }}>
+                            <Text style={[styles.helperText, { marginBottom: 4 }]}>Contains (optional)</Text>
+                            <TextInput
+                              style={styles.input}
+                              value={vanityContains}
+                              onChangeText={setVanityContains}
+                              placeholder="PAINT"
+                              placeholderTextColor={Colors.text.muted}
+                              accessibilityLabel="Vanity number contains"
+                            />
+                          </View>
+                        </View>
+
+                        {/* Number type toggle */}
+                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                          <Pressable
+                            style={[styles.filterBtn, numberType === 'local' && styles.filterBtnActive]}
+                            onPress={() => setNumberType('local')}
+                          >
+                            <Text style={[styles.filterBtnText, numberType === 'local' && styles.filterBtnTextActive]}>Local</Text>
+                          </Pressable>
+                          <Pressable
+                            style={[styles.filterBtn, numberType === 'tollfree' && styles.filterBtnActive]}
+                            onPress={() => setNumberType('tollfree')}
+                          >
+                            <Text style={[styles.filterBtnText, numberType === 'tollfree' && styles.filterBtnTextActive]}>Toll-Free</Text>
+                          </Pressable>
+                        </View>
+
+                        {/* Search button */}
+                        <Pressable
+                          style={[styles.saveButton, areaCode.length < 3 && { opacity: 0.5 }]}
+                          onPress={searchNumbers}
+                          disabled={areaCode.length < 3 || searchingNumbers}
+                          accessibilityLabel="Search available numbers"
+                        >
+                          {searchingNumbers ? (
+                            <Text style={styles.saveButtonText}>Searching...</Text>
+                          ) : (
+                            <>
+                              <Ionicons name="search" size={16} color="#fff" />
+                              <Text style={styles.saveButtonText}>Search Numbers</Text>
+                            </>
+                          )}
+                        </Pressable>
+
+                        {/* Results list */}
+                        {availableNumbers.length > 0 && (
+                          <View style={{ marginTop: 16, gap: 6 }}>
+                            <Text style={styles.inputLabel}>Available numbers</Text>
+                            {availableNumbers.map((num) => (
+                              <Pressable
+                                key={num.e164}
+                                style={[
+                                  styles.numberResult,
+                                  selectedNumber === num.e164 && styles.numberResultSelected,
+                                ]}
+                                onPress={() => setSelectedNumber(num.e164)}
+                                accessibilityLabel={`Select ${num.e164}`}
+                                accessibilityRole="radio"
+                              >
+                                <View style={styles.radioCircle}>
+                                  {selectedNumber === num.e164 && <View style={styles.radioCircleFilled} />}
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.numberE164}>{num.e164}</Text>
+                                  <Text style={styles.helperText}>
+                                    {[num.locality, num.region].filter(Boolean).join(', ')}
+                                  </Text>
+                                </View>
+                              </Pressable>
+                            ))}
+
+                            {/* Purchase button */}
+                            <Pressable
+                              style={[styles.saveButton, !selectedNumber && { opacity: 0.5 }, { marginTop: 8 }]}
+                              onPress={purchaseNumber}
+                              disabled={!selectedNumber || purchasingNumber}
+                              accessibilityLabel="Purchase selected number"
+                            >
+                              {purchasingNumber ? (
+                                <Text style={styles.saveButtonText}>Purchasing...</Text>
+                              ) : (
+                                <>
+                                  <Ionicons name="cart-outline" size={16} color="#fff" />
+                                  <Text style={styles.saveButtonText}>Get This Number</Text>
+                                </>
+                              )}
+                            </Pressable>
+                          </View>
+                        )}
+
+                        {/* No results */}
+                        {!searchingNumbers && availableNumbers.length === 0 && areaCode.length >= 3 && (
+                          <Text style={[styles.helperText, { marginTop: 8 }]}>
+                            No numbers found. Try a different area code or remove the vanity filter.
+                          </Text>
+                        )}
+                      </>
+                    )}
                   </View>
                 )}
               </Card>
@@ -1845,5 +2102,69 @@ const styles = StyleSheet.create({
   voiceInfoDesc: {
     ...Typography.small,
     color: Colors.text.muted,
+  },
+
+  // --- Phone number search/purchase styles --------------------------------
+  filterBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    backgroundColor: Colors.surface.input,
+  },
+  filterBtnActive: {
+    backgroundColor: Colors.accent.cyan,
+    borderColor: Colors.accent.cyan,
+  },
+  filterBtnText: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    fontWeight: '500' as const,
+  },
+  filterBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600' as const,
+  },
+  numberResult: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    padding: 12,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    backgroundColor: Colors.surface.input,
+  },
+  numberResultSelected: {
+    borderColor: Colors.accent.cyan,
+    backgroundColor: 'rgba(34, 211, 238, 0.06)',
+  },
+  numberE164: {
+    ...Typography.body,
+    color: Colors.text.primary,
+    fontWeight: '600' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  provisionedBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    padding: 16,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    backgroundColor: Colors.surface.input,
+  },
+  provisionedLabel: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    marginBottom: 2,
+  },
+  provisionedNumber: {
+    ...Typography.body,
+    color: Colors.text.primary,
+    fontWeight: '600' as const,
+    fontVariant: ['tabular-nums' as const],
   },
 });

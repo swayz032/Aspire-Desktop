@@ -69,12 +69,25 @@ function PulseContent() {
     (async () => {
       try {
         // Query Adam's research receipts for pulse/insight content
-        const { data } = await supabase
+        // NOTE: `receipts` table has `action jsonb` not `action_type` column.
+        // PostgREST `.or('action_type.like...')` silently returns 0 rows.
+        // Fetch recent receipts and filter client-side on action.action_type.
+        const { data: rawData } = await supabase
           .from('receipts')
           .select('*')
-          .or('action_type.like.research.%,action_type.like.founder_hub.pulse%,action_type.like.adam.%')
           .order('created_at', { ascending: false })
-          .limit(20);
+          .limit(100);
+
+        const isPulseReceipt = (row: any): boolean => {
+          const actionType = String(row?.action?.action_type || row?.action_type || '').toLowerCase();
+          return actionType.includes('adam.pulse')
+            || actionType.includes('adam.scan')
+            || actionType.includes('research.')
+            || actionType.includes('founder_hub.pulse')
+            || actionType.includes('adam.library')
+            || actionType.includes('adam.education');
+        };
+        const data = (rawData || []).filter(isPulseReceipt).slice(0, 20);
 
         if (!mounted) return;
 

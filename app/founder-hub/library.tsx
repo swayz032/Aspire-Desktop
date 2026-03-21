@@ -81,12 +81,24 @@ function LibraryContent() {
     let mounted = true;
     (async () => {
       try {
-        const { data } = await supabase
+        // NOTE: `receipts` table has `action jsonb` not `action_type` column.
+        // PostgREST `.or('action_type.like...')` silently returns 0 rows.
+        // Fetch recent receipts and filter client-side on action.action_type.
+        const { data: rawData } = await supabase
           .from('receipts')
           .select('*')
-          .or('action_type.like.adam.library%,action_type.like.research.%,action_type.like.founder_hub.library%')
           .order('created_at', { ascending: false })
-          .limit(20);
+          .limit(100);
+
+        const isLibraryReceipt = (row: any): boolean => {
+          const actionType = String(row?.action?.action_type || row?.action_type || '').toLowerCase();
+          return actionType.includes('adam.library')
+            || actionType.includes('adam.education')
+            || actionType.includes('adam.curate')
+            || actionType.includes('research.')
+            || actionType.includes('founder_hub.library');
+        };
+        const data = (rawData || []).filter(isLibraryReceipt).slice(0, 20);
 
         if (!mounted) return;
         if (data && data.length > 0) {

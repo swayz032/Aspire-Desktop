@@ -64,15 +64,15 @@ function DailyBriefContent() {
     };
     const isBriefReceipt = (row: any): boolean => {
       const actionType = getActionType(row);
-      return actionType.startsWith('adam.daily_brief')
-        || actionType.startsWith('research.daily_brief')
-        || actionType.startsWith('founder_hub.brief');
+      return actionType.includes('adam.daily_brief')
+        || actionType.includes('research.daily_brief')
+        || actionType.includes('founder_hub.brief');
     };
     const isInsightReceipt = (row: any): boolean => {
       const actionType = getActionType(row);
-      return actionType.startsWith('adam.pulse')
-        || actionType.startsWith('research.insight')
-        || actionType.startsWith('founder_hub.insight');
+      return actionType.includes('adam.pulse')
+        || actionType.includes('research.insight')
+        || actionType.includes('founder_hub.insight');
     };
 
     // Fetch latest daily brief from Adam's research receipts.
