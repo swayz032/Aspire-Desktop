@@ -2649,7 +2649,7 @@ router.post('/api/telemetry/canvas', async (req: Request, res: Response) => {
  * - Circuit breaker (3 failures → open 60s) — Gate 3: Reliability
  * - Correlation ID forwarding — Gate 2: Observability
  */
-const ORCHESTRATOR_TIMEOUT_MS = 45_000;
+const ORCHESTRATOR_TIMEOUT_MS = 90_000;
 const CIRCUIT_BREAKER_THRESHOLD = 3;
 const CIRCUIT_BREAKER_RESET_MS = 60_000;
 let orchestratorConsecutiveFailures = 0;

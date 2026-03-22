@@ -466,7 +466,7 @@ app.use((req, res, next) => {
 
   // Orchestrator + TTS routes need longer timeout (LLM inference + synthesis)
   const isLongRoute = req.path.startsWith('/api/orchestrator/') || req.path.startsWith('/api/elevenlabs/tts');
-  const timeoutMs = isLongRoute ? 60_000 : 30_000;
+  const timeoutMs = isLongRoute ? 120_000 : 30_000;
 
   const timeout = setTimeout(() => {
     if (!res.headersSent) {
