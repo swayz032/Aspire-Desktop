@@ -553,6 +553,17 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           const decoder = new TextDecoder();
           let buffer = '';
           let sseCompleted = false;
+          let ackSpoken = false;
+          const ackTimer = setTimeout(() => {
+            if (!sseCompleted && !ackSpoken && ttsWsRef.current?.isConnected && activeRef.current) {
+              ackSpoken = true;
+              const ackCtx = ttsWsRef.current.nextContextId();
+              // Don't set currentContextRef — the real response will use its own context
+              ttsWsRef.current.speak("Let me look into that for you. ", ackCtx);
+              ttsWsRef.current.flush(ackCtx);
+              updateStatus('speaking');
+            }
+          }, 3000);
 
           while (!sseCompleted) {
             const { done, value } = await reader.read();
@@ -624,6 +635,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           }
 
           reader.cancel().catch(() => {});
+          clearTimeout(ackTimer);
           sseAbortRef.current = null;
           usedStreaming = !!streamingContextRef.current;
 
@@ -631,6 +643,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
             throw new Error('SSE stream ended without response');
           }
         } catch (err) {
+          clearTimeout(ackTimer);
           sseAbortRef.current = null;
           if (sseAbort.signal.aborted) {
             // Component unmounted or session ended — don't fallback
