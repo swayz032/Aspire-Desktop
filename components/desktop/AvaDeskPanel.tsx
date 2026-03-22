@@ -884,38 +884,17 @@ function AvaDeskPanelInner() {
                   borderRadius: 0,
                   opacity: videoState === 'connected' ? 1 : 0,
                   pointerEvents: videoState === 'connected' ? 'auto' : 'none',
-                  backgroundColor: videoState === 'connected' ? '#000' : 'transparent',
+                  backgroundColor: '#000',
                   position: 'absolute',
                   top: 0,
                   left: 0,
-                  zIndex: videoState === 'connected' ? 1 : -1,
+                  zIndex: videoState === 'connected' ? 2 : -1,
+                  transition: 'opacity 0.6s ease-in-out',
                 }}
               />
             )}
-            {videoState === 'connected' ? (
-              <View style={styles.anamContainer}>
-                {/* End session overlay button */}
-                <Pressable
-                  style={{
-                    position: 'absolute',
-                    bottom: 16,
-                    right: 16,
-                    backgroundColor: 'rgba(239,68,68,0.9)',
-                    borderRadius: 24,
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    zIndex: 2,
-                  }}
-                  onPress={() => { trackInteraction('session_end', 'ava-desk-panel', { agent: 'ava' }); handleEndSession(); }}
-                >
-                  <Ionicons name="close-circle" size={18} color="#fff" />
-                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>End Session</Text>
-                </Pressable>
-              </View>
-            ) : (
+            {/* Background layer: connecting animation + idle state (stays mounted during fade) */}
+            {videoState !== 'connected' && (
               <ImageBackground
                 source={{ uri: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=800' }}
                 style={styles.videoIdleContainer}
@@ -973,6 +952,28 @@ function AvaDeskPanelInner() {
                   )}
                 </View>
               </ImageBackground>
+            )}
+            {/* End session overlay — floats above video when connected */}
+            {videoState === 'connected' && (
+              <Pressable
+                style={{
+                  position: 'absolute',
+                  bottom: 16,
+                  right: 16,
+                  backgroundColor: 'rgba(239,68,68,0.9)',
+                  borderRadius: 24,
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  zIndex: 3,
+                }}
+                onPress={() => { trackInteraction('session_end', 'ava-desk-panel', { agent: 'ava' }); handleEndSession(); }}
+              >
+                <Ionicons name="close-circle" size={18} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>End Session</Text>
+              </Pressable>
             )}
           </View>
         )}

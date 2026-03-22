@@ -290,10 +290,35 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
       const timer = setTimeout(() => {
         setVideoState('connecting');
         setConnectionStatus('Connecting to Finn...');
-        connectFinnAvatar(elementId, session?.access_token)
+        playConnectionSound();
+        connectFinnAvatar(elementId, session?.access_token, {
+          onVideoStarted: () => {
+            playSuccessSound();
+            setVideoState('connected');
+            setConnectionStatus('');
+            // Greeting after video is visible
+            setTimeout(() => {
+              if (anamClientRef.current) {
+                const ownerName = tenant?.ownerName;
+                const lastName = ownerName?.trim().split(' ').pop();
+                const hour = new Date().getHours();
+                const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+                const greeting = lastName
+                  ? `${timeGreeting}, Mr. ${lastName}. I'm Finn — let's get this document ready.`
+                  : `${timeGreeting}! I'm Finn — let's get this document ready.`;
+                finnTalk(anamClientRef.current, greeting);
+              }
+            }, 300);
+          },
+          onConnectionClosed: () => {
+            setVideoState('idle');
+            setConnectionStatus('');
+            anamClientRef.current = null;
+          },
+        })
           .then((client) => {
             anamClientRef.current = client;
-            setVideoState('connected');
+            // Video state set by onVideoStarted — don't override here
           })
           .catch((e) => {
             setVideoState('idle');
@@ -430,7 +455,25 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
         },
         onVideoStarted: () => {
           console.log('[Anam/Finn] Video stream playing');
+          clearConnectionTimeouts();
+          playSuccessSound();
           setVideoState('connected');
+          setVideoError(null);
+          setConnectionStatus('');
+
+          // Greeting fires ONLY after video is visible — no more talking to a blank screen
+          setTimeout(() => {
+            if (anamClientRef.current) {
+              const ownerName = tenant?.ownerName;
+              const lastName = ownerName?.trim().split(' ').pop();
+              const hour = new Date().getHours();
+              const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+              const greeting = lastName
+                ? `${timeGreeting}, Mr. ${lastName}. I'm Finn, your finance manager. How can I help with your finances?`
+                : `${timeGreeting}! I'm Finn, your finance manager. How can I help with your finances?`;
+              finnTalk(anamClientRef.current, greeting);
+            }
+          }, 300);
         },
         onConnectionClosed: (reason, details) => {
           console.log('[Anam/Finn] Connection closed', reason ? { reason, details } : undefined);
@@ -474,25 +517,8 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
       const client = await connectFinnAvatar(elementId, session?.access_token, connectOptions);
       anamClientRef.current = client;
 
-      clearConnectionTimeouts();
-      playSuccessSound();
-      setVideoState('connected');
-      setVideoError(null);
-      setConnectionStatus('');
-
-      // Send personalized greeting — Finn knows who he works for (Law #9: no raw PII)
-      setTimeout(() => {
-        if (anamClientRef.current) {
-          const ownerName = tenant?.ownerName;
-          const lastName = ownerName?.trim().split(' ').pop();
-          const hour = new Date().getHours();
-          const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-          const greeting = lastName
-            ? `${timeGreeting}, Mr. ${lastName}. I'm Finn, your finance manager. How can I help with your finances?`
-            : `${timeGreeting}! I'm Finn, your finance manager. How can I help with your finances?`;
-          finnTalk(anamClientRef.current, greeting);
-        }
-      }, 1500);
+      // Video state + greeting triggered by onVideoStarted callback above —
+      // keeps spinner visible until Finn avatar is actually rendering on screen.
     } catch (e) {
       clearConnectionTimeouts();
       anamClientRef.current = null;
