@@ -367,7 +367,7 @@ router.post(
 
       if (connectionId) {
         try {
-          await updateConnectionSyncTime(connectionId, 'last_webhook_at');
+          await updateConnectionSyncTime(connectionId, getDefaultSuiteId(), 'last_webhook_at');
         } catch (syncErr: unknown) {
           logger.error('Failed to update connection webhook time', { error: syncErr instanceof Error ? syncErr.message : 'unknown' });
         }

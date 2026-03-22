@@ -86,12 +86,12 @@ export async function createConnection(params: {
   }
 }
 
-export async function getConnection(connectionId: string): Promise<ConnectionRecord | null> {
+export async function getConnection(connectionId: string, suiteId: string): Promise<ConnectionRecord | null> {
   try {
     const result = await db.execute(sql`
       SELECT id, suite_id, office_id, provider, external_account_id, status, scopes, last_sync_at, last_webhook_at
       FROM finance_connections
-      WHERE id = ${connectionId}
+      WHERE id = ${connectionId} AND suite_id = ${suiteId}
     `);
     const rows = result.rows || result;
     if (rows && (rows as any[]).length > 0) {
@@ -139,12 +139,12 @@ export async function getConnectionByProvider(suiteId: string, officeId: string,
   }
 }
 
-export async function updateConnectionStatus(connectionId: string, status: string): Promise<void> {
+export async function updateConnectionStatus(connectionId: string, suiteId: string, status: string): Promise<void> {
   try {
     await db.execute(sql`
       UPDATE finance_connections
       SET status = ${status}, updated_at = NOW()
-      WHERE id = ${connectionId}
+      WHERE id = ${connectionId} AND suite_id = ${suiteId}
     `);
     logger.info('Connection status updated', { connectionId, status });
   } catch (error: unknown) {
@@ -154,19 +154,19 @@ export async function updateConnectionStatus(connectionId: string, status: strin
   }
 }
 
-export async function updateConnectionSyncTime(connectionId: string, field: 'last_sync_at' | 'last_webhook_at'): Promise<void> {
+export async function updateConnectionSyncTime(connectionId: string, suiteId: string, field: 'last_sync_at' | 'last_webhook_at'): Promise<void> {
   try {
     if (field === 'last_sync_at') {
       await db.execute(sql`
         UPDATE finance_connections
         SET last_sync_at = NOW(), updated_at = NOW()
-        WHERE id = ${connectionId}
+        WHERE id = ${connectionId} AND suite_id = ${suiteId}
       `);
     } else {
       await db.execute(sql`
         UPDATE finance_connections
         SET last_webhook_at = NOW(), updated_at = NOW()
-        WHERE id = ${connectionId}
+        WHERE id = ${connectionId} AND suite_id = ${suiteId}
       `);
     }
     logger.info('Connection sync time updated', { connectionId, field });
@@ -210,13 +210,14 @@ export async function saveConnectionToken(connectionId: string, accessToken: str
   }
 }
 
-export async function loadConnectionToken(connectionId: string): Promise<{ accessToken: string; refreshToken: string | null; expiresAt: Date | null; rotationVersion: number } | null> {
+export async function loadConnectionToken(connectionId: string, suiteId: string): Promise<{ accessToken: string; refreshToken: string | null; expiresAt: Date | null; rotationVersion: number } | null> {
   try {
     const result = await db.execute(sql`
-      SELECT access_token_enc, refresh_token_enc, expires_at, rotation_version
-      FROM finance_tokens
-      WHERE connection_id = ${connectionId}
-      ORDER BY updated_at DESC
+      SELECT ft.access_token_enc, ft.refresh_token_enc, ft.expires_at, ft.rotation_version
+      FROM finance_tokens ft
+      INNER JOIN finance_connections fc ON fc.id = ft.connection_id
+      WHERE ft.connection_id = ${connectionId} AND fc.suite_id = ${suiteId}
+      ORDER BY ft.updated_at DESC
       LIMIT 1
     `);
     const rows = result.rows || result;
@@ -258,13 +259,16 @@ export async function rotateConnectionToken(connectionId: string, newAccessToken
   }
 }
 
-export async function deleteConnection(connectionId: string): Promise<void> {
+export async function deleteConnection(connectionId: string, suiteId: string): Promise<void> {
   try {
+    // Law #6: Tenant isolation — verify ownership before deletion
     await db.execute(sql`
-      DELETE FROM finance_tokens WHERE connection_id = ${connectionId}
+      DELETE FROM finance_tokens WHERE connection_id IN (
+        SELECT id FROM finance_connections WHERE id = ${connectionId} AND suite_id = ${suiteId}
+      )
     `);
     await db.execute(sql`
-      DELETE FROM finance_connections WHERE id = ${connectionId}
+      DELETE FROM finance_connections WHERE id = ${connectionId} AND suite_id = ${suiteId}
     `);
     logger.info('Connection and associated tokens deleted', { connectionId });
   } catch (error: unknown) {

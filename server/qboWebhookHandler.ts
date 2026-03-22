@@ -295,7 +295,7 @@ export async function pollQuickBooksCDC(suiteId?: string, officeId?: string): Pr
 
     if (connectionId) {
       try {
-        await updateConnectionSyncTime(connectionId, 'last_sync_at');
+        await updateConnectionSyncTime(connectionId, sId, 'last_sync_at');
       } catch (e: unknown) {
         logger.error('Failed to update QBO connection sync time', { error: e instanceof Error ? e.message : 'unknown' });
       }
@@ -504,7 +504,7 @@ router.post('/api/qbo/finance-webhook', async (req: Request, res: Response) => {
 
       if (connectionId) {
         try {
-          await updateConnectionSyncTime(connectionId, 'last_webhook_at');
+          await updateConnectionSyncTime(connectionId, sId, 'last_webhook_at');
         } catch (e: unknown) {
           logger.error('Failed to update QBO connection webhook time', { error: e instanceof Error ? e.message : 'unknown' });
         }

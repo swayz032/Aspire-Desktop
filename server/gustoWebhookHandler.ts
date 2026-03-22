@@ -264,7 +264,7 @@ export async function fetchGustoPayrolls(suiteId?: string, officeId?: string): P
 
     if (connectionId) {
       try {
-        await updateConnectionSyncTime(connectionId, 'last_sync_at');
+        await updateConnectionSyncTime(connectionId, sId, 'last_sync_at');
       } catch (e: unknown) {
         logger.error('Failed to update Gusto connection sync time', { error: e instanceof Error ? e.message : 'unknown' });
       }
@@ -480,7 +480,7 @@ router.post('/api/gusto/finance-webhook', async (req: Request, res: Response) =>
 
     if (connectionId) {
       try {
-        await updateConnectionSyncTime(connectionId, 'last_webhook_at');
+        await updateConnectionSyncTime(connectionId, sId, 'last_webhook_at');
       } catch (e: unknown) {
         logger.error('Failed to update Gusto connection webhook time', { error: e instanceof Error ? e.message : 'unknown' });
       }

@@ -331,7 +331,7 @@ export async function pullPlaidTransactionsSync(accessToken: string, connectionI
       metadata: { provider: 'plaid', connectionId },
     });
 
-    await updateConnectionSyncTime(connectionId, 'last_sync_at');
+    await updateConnectionSyncTime(connectionId, suiteId, 'last_sync_at');
 
     logger.info('Plaid transactions sync complete', { added, modified, removed });
     return { added, modified, removed };
@@ -483,7 +483,7 @@ router.post('/api/plaid/finance-webhook', async (req: Request, res: Response) =>
 
     if (connectionId) {
       try {
-        await updateConnectionSyncTime(connectionId, 'last_webhook_at');
+        await updateConnectionSyncTime(connectionId, suiteId, 'last_webhook_at');
       } catch (e: unknown) {
         logger.error('Failed to update connection webhook time', { error: e instanceof Error ? e.message : 'unknown' });
       }

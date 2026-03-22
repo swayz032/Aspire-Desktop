@@ -542,7 +542,7 @@ router.post('/api/auth/signup', async (req: Request, res: Response) => {
       return res.status(400).json({ error: error.message });
     }
 
-    logger.info('Beta signup: user created', { userId: data.user?.id, email: email.trim() });
+    logger.info('Beta signup: user created', { userId: data.user?.id });
     return res.json({ success: true, userId: data.user?.id });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'unknown';
@@ -1368,7 +1368,13 @@ router.get('/api/users/:userId/services/active', async (req: Request, res: Respo
 });
 
 router.post('/api/users/:userId/services', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   const suiteId = getParam(req.params.userId);
+  // Law #6: Tenant isolation — only allow service creation for own suite
+  if (authSuiteId !== suiteId) {
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot create services for another tenant.' });
+  }
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-create-service-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
