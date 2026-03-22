@@ -820,14 +820,35 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     lastResponse,
     lastReceiptId,
     startSession: async () => {
-      activeRef.current = true;
       processingRef.current = false;
-      updateStatus('listening');
 
-      // Unlock audio for autoplay (browsers require user gesture)
+      // Step 1: Unlock audio output (must happen in user gesture context)
       await unlockAudioPlayback();
 
-      // Initialize TTS WebSocket (preferred transport)
+      // Step 2: Start STT first — this triggers the mic permission prompt.
+      // If mic access fails, we bail BEFORE setting activeRef or opening TTS.
+      try {
+        await stt.start();
+      } catch (err) {
+        devError('[useAgentVoice] STT start failed:', err);
+        emitDiagnostic({
+          traceId: nextTraceId(),
+          stage: 'mic',
+          code: 'STT_START_FAILED',
+          message: 'Failed to start speech recognition.',
+          raw: err instanceof Error ? err.message : String(err),
+          recoverable: false,
+        });
+        // Do NOT throw — caller handles via onError + toast
+        updateStatus('idle');
+        return;
+      }
+
+      // Step 3: Mic access succeeded — now activate the session
+      activeRef.current = true;
+      updateStatus('listening');
+
+      // Step 4: Initialize TTS WebSocket (non-critical — HTTP fallback exists)
       try {
         const voiceId = getVoiceId(agent);
         const voiceConfig = getVoiceConfig(agent);
@@ -858,7 +879,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         });
         await ttsWsRef.current.connect();
 
-        // Keep-alive check every 30s — reconnect if dropped
+        // Keep-alive check every 30s
         keepAliveRef.current = setInterval(() => {
           if (ttsWsRef.current && !ttsWsRef.current.isConnected) {
             devWarn('[useAgentVoice] TTS WebSocket disconnected, will use HTTP fallback');
@@ -867,23 +888,6 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         }, 30_000);
       } catch (err) {
         devWarn('[useAgentVoice] TTS WebSocket init failed, HTTP fallback active:', err);
-        // HTTP streaming fallback will be used automatically by sendText
-      }
-
-      // Start STT (speech-to-text)
-      try {
-        await stt.start();
-      } catch (err) {
-        devError('[useAgentVoice] STT start failed:', err);
-        emitDiagnostic({
-          traceId: nextTraceId(),
-          stage: 'mic',
-          code: 'STT_START_FAILED',
-          message: 'Failed to start speech recognition.',
-          raw: err instanceof Error ? err.message : String(err),
-          recoverable: false,
-        });
-        throw err;
       }
     },
     endSession,
