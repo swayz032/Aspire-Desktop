@@ -453,7 +453,12 @@ router.post('/api/auth/validate-invite-code', (req: Request, res: Response) => {
     return res.status(500).json({ valid: false, error: 'Invite system not configured.' });
   }
 
-  const valid = code.trim().toLowerCase() === expectedCode.trim().toLowerCase();
+  const normalizedCode = code.trim().toLowerCase();
+  const normalizedExpected = expectedCode.trim().toLowerCase();
+  // Timing-safe comparison to prevent timing side-channel attacks (Law #9)
+  const codeBuffer = Buffer.from(normalizedCode.padEnd(256, '\0'));
+  const expectedBuffer = Buffer.from(normalizedExpected.padEnd(256, '\0'));
+  const valid = normalizedCode.length === normalizedExpected.length && crypto.timingSafeEqual(codeBuffer, expectedBuffer);
   if (!valid) {
     return res.status(403).json({ valid: false, error: 'Invalid invite code.' });
   }
@@ -504,9 +509,16 @@ router.post('/api/auth/signup', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   }
 
-  // Validate invite code
+  // Validate invite code (timing-safe comparison — Law #9)
   const expectedCode = process.env.ASPIRE_INVITE_CODE;
-  if (!expectedCode || inviteCode.trim().toLowerCase() !== expectedCode.trim().toLowerCase()) {
+  if (!expectedCode) {
+    return res.status(403).json({ error: 'Invalid invite code.' });
+  }
+  const normInvite = inviteCode.trim().toLowerCase();
+  const normExpected = expectedCode.trim().toLowerCase();
+  const invBuf = Buffer.from(normInvite.padEnd(256, '\0'));
+  const expBuf = Buffer.from(normExpected.padEnd(256, '\0'));
+  if (normInvite.length !== normExpected.length || !crypto.timingSafeEqual(invBuf, expBuf)) {
     return res.status(403).json({ error: 'Invalid invite code.' });
   }
 
@@ -1623,6 +1635,8 @@ router.get('/api/users/:userId/bookings/stats', async (req: Request, res: Respon
 });
 
 router.get('/api/bookings/:bookingId', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const booking = await storage.getBooking(getParam(req.params.bookingId));
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
@@ -1780,7 +1794,8 @@ router.post('/api/book/:slug/checkout', async (req: Request, res: Response) => {
 
     if (service.price > 0 && service.stripePriceId) {
       const stripe = await getUncachableStripeClient();
-      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      const domain = process.env.REPLIT_DOMAINS?.split(',')[0];
+      const baseUrl = process.env.PUBLIC_BASE_URL?.trim() || (domain ? `https://${domain}` : 'https://www.aspireos.app');
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
@@ -5761,8 +5776,8 @@ router.post('/api/contracts/templates/:id/preview-session', async (req: Request,
 // GET /api/contracts — List contracts (paginated, filterable)
 router.get('/api/contracts', async (req: Request, res: Response) => {
   try {
-    const suiteId = req.headers['x-suite-id'] as string;
-    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    const suiteId = (req as any).authenticatedSuiteId as string;
+    if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required (Law #6)' });
 
     const status = req.query.status as string || '';
     const templateKey = req.query.template_key as string || '';
@@ -5815,8 +5830,8 @@ router.get('/api/contracts', async (req: Request, res: Response) => {
 // GET /api/contracts/:id — Contract detail + history
 router.get('/api/contracts/:id', async (req: Request, res: Response) => {
   try {
-    const suiteId = req.headers['x-suite-id'] as string;
-    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    const suiteId = (req as any).authenticatedSuiteId as string;
+    if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required (Law #6)' });
     if (!db) return res.status(503).json({ error: 'Database not available' });
 
     const contractId = req.params.id;
@@ -5854,8 +5869,8 @@ router.get('/api/contracts/:id', async (req: Request, res: Response) => {
 // POST /api/contracts/:id/send — Send document for signature
 router.post('/api/contracts/:id/send', async (req: Request, res: Response) => {
   try {
-    const suiteId = req.headers['x-suite-id'] as string;
-    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    const suiteId = (req as any).authenticatedSuiteId as string;
+    if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required (Law #6)' });
     if (!db) return res.status(503).json({ error: 'Database not available' });
 
     const contractId = req.params.id;
@@ -5922,7 +5937,7 @@ router.post('/api/contracts/:id/send', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : 'unknown';
     logger.error('Contract send error', { error: errorMsg });
-    const sid = req.headers['x-suite-id'] as string;
+    const sid = (req as any).authenticatedSuiteId as string;
     if (sid) {
       await createTrustSpineReceipt({
         suiteId: sid,
@@ -5939,8 +5954,8 @@ router.post('/api/contracts/:id/send', async (req: Request, res: Response) => {
 // POST /api/contracts/:id/session — Create embedded signing session
 router.post('/api/contracts/:id/session', async (req: Request, res: Response) => {
   try {
-    const suiteId = req.headers['x-suite-id'] as string;
-    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    const suiteId = (req as any).authenticatedSuiteId as string;
+    if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required (Law #6)' });
     if (!db) return res.status(503).json({ error: 'Database not available' });
 
     const contractId = req.params.id;
@@ -6025,7 +6040,7 @@ router.post('/api/contracts/:id/session', async (req: Request, res: Response) =>
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : 'unknown';
     logger.error('Contract session create error', { error: errorMsg });
-    const sid = req.headers['x-suite-id'] as string;
+    const sid = (req as any).authenticatedSuiteId as string;
     if (sid) {
       await createTrustSpineReceipt({
         suiteId: sid,
@@ -6106,8 +6121,8 @@ router.post('/api/pandadoc/:documentId/preview', async (req: Request, res: Respo
 // POST /api/contracts/:id/void — Void/cancel a document
 router.post('/api/contracts/:id/void', async (req: Request, res: Response) => {
   try {
-    const suiteId = req.headers['x-suite-id'] as string;
-    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    const suiteId = (req as any).authenticatedSuiteId as string;
+    if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required (Law #6)' });
     if (!db) return res.status(503).json({ error: 'Database not available' });
 
     const contractId = req.params.id;
@@ -6148,7 +6163,7 @@ router.post('/api/contracts/:id/void', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : 'unknown';
     logger.error('Contract void error', { error: errorMsg });
-    const sid = req.headers['x-suite-id'] as string;
+    const sid = (req as any).authenticatedSuiteId as string;
     if (sid) {
       await createTrustSpineReceipt({
         suiteId: sid,
@@ -6165,8 +6180,8 @@ router.post('/api/contracts/:id/void', async (req: Request, res: Response) => {
 // GET /api/contracts/:id/download — Get PandaDoc download URL
 router.get('/api/contracts/:id/download', async (req: Request, res: Response) => {
   try {
-    const suiteId = req.headers['x-suite-id'] as string;
-    if (!suiteId) return res.status(400).json({ error: 'Missing x-suite-id header' });
+    const suiteId = (req as any).authenticatedSuiteId as string;
+    if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required (Law #6)' });
     if (!db) return res.status(503).json({ error: 'Database not available' });
 
     const contractId = req.params.id;
