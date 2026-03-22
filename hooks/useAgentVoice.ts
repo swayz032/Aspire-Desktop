@@ -1,19 +1,19 @@
 ﻿/**
- * useAgentVoice â€” Orchestrator-Routed Voice Hook
+ * useAgentVoice â€" Orchestrator-Routed Voice Hook
  *
- * Full voice pipeline: Mic â†’ STT â†’ Orchestrator (LangGraph) â†’ Skill Pack â†’ ElevenLabs TTS â†’ Speaker
+ * Full voice pipeline: Mic â†' STT â†' Orchestrator (LangGraph) â†' Skill Pack â†' ElevenLabs TTS â†' Speaker
  *
  * TTS Transport (ordered by preference):
- *   1. WebSocket multi-context â€” persistent connection, barge-in, ~75ms Flash v2.5
- *   2. HTTP streaming fallback â€” /api/elevenlabs/tts/stream (if WS unavailable)
+ *   1. WebSocket multi-context â€" persistent connection, barge-in, ~75ms Flash v2.5
+ *   2. HTTP streaming fallback â€" /api/elevenlabs/tts/stream (if WS unavailable)
  *
  * STT Provider Routing:
  *   - Finn, Ava, Eli, Sarah: ElevenLabs STT (Scribe via /api/elevenlabs/stt)
  *   - Nora: Deepgram STT (conference transcription via LiveKit)
  *
- * Law #1: Single Brain â€” LangGraph orchestrator decides, not any provider.
- * Law #3: Fail Closed â€” orchestrator errors return 503, not 200.
- * Law #6: Tenant Isolation â€” X-Suite-Id header required on all requests.
+ * Law #1: Single Brain â€" LangGraph orchestrator decides, not any provider.
+ * Law #3: Fail Closed â€" orchestrator errors return 503, not 200.
+ * Law #6: Tenant Isolation â€" X-Suite-Id header required on all requests.
  *
  * Voice is the PRIMARY interaction mode. Chat is a fallback option.
  */
@@ -125,7 +125,7 @@ function parseVoiceErrorPayload(raw: unknown): VoiceErrorPayload {
  * Barge-in: if user speaks while agent is talking, the current TTS context
  * is closed and a new one starts for the interruption response.
  *
- * The loop: Listen â†’ Transcribe â†’ Think â†’ Speak â†’ Listen again.
+ * The loop: Listen â†' Transcribe â†' Think â†' Speak â†' Listen again.
  */
 export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceReturn {
   const { agent, suiteId, accessToken, onTranscript, onResponse, onStatusChange, onError, onDiagnostic } = options;
@@ -259,7 +259,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       source.start(0);
     } catch (err) {
       devError('[useAgentVoice] Web Audio playback error for context', contextId, err);
-      onError?.(new Error('Audio playback failed â€” response shown in chat.'));
+      onError?.(new Error('Audio playback failed â€" response shown in chat.'));
       emitDiagnostic({
         traceId: currentTraceIdRef.current || nextTraceId(),
         stage: 'tts',
@@ -385,7 +385,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         source.start(0);
       } catch (err) {
         devError('[useAgentVoice] HTTP Fallback Web Audio error', err);
-        onError?.(new Error('Audio playback failed â€” response shown in chat.'));
+        onError?.(new Error('Audio playback failed â€" response shown in chat.'));
         emitDiagnostic({
           traceId: currentTraceIdRef.current || nextTraceId(),
           stage: 'tts',
@@ -400,7 +400,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     } else {
       if (!stream) {
         devError('[useAgentVoice] HTTP TTS stream returned null. Check ELEVENLABS_API_KEY.');
-        onError?.(new Error('Voice synthesis unavailable â€” response shown in chat.'));
+        onError?.(new Error('Voice synthesis unavailable â€" response shown in chat.'));
         emitDiagnostic({
           traceId: currentTraceIdRef.current || nextTraceId(),
           stage: 'tts',
@@ -419,7 +419,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
   /**
    * Send text to the orchestrator and speak the response.
-   * Core pipeline: text â†’ orchestrator â†’ TTS (WebSocket preferred, HTTP fallback).
+   * Core pipeline: text â†' orchestrator â†' TTS (WebSocket preferred, HTTP fallback).
    */
   const sendText = useCallback(async (text: string) => {
     if (!text.trim()) return;
@@ -451,7 +451,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     updateStatus('thinking');
 
     try {
-      // Route through orchestrator â€” the Single Brain (Law #1)
+      // Route through orchestrator â€" the Single Brain (Law #1)
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...buildTraceHeaders(traceId),
@@ -667,10 +667,10 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
       if (usedStreaming) {
         // Already spoke via streaming TTS — audio will finish via onContextDone callback
-        // Don’t speak again
+        // Don't speak again
       } else {
         // Non-streaming path — speak the full response now
-        updateStatus(‘speaking’);
+        updateStatus('speaking');
         if (ttsWsRef.current?.isConnected) {
           const ctxId = ttsWsRef.current.nextContextId();
           currentContextRef.current = ctxId;
@@ -679,7 +679,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           ttsWsRef.current.flush(ctxId);
         } else {
           // Fallback: HTTP streaming TTS
-          devWarn(‘[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback’);
+          devWarn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
           await speakViaHttpStream(responseText, traceId);
         }
       }
@@ -726,7 +726,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const sendTextRef = useRef(sendText);
   sendTextRef.current = sendText;
 
-  // STT utterance handler â€” shared between both providers
+  // STT utterance handler â€" shared between both providers
   const handleUtterance = useCallback((text: string) => {
     if (activeRef.current) {
       // Allow barge-in: sendText handles stopping current playback
@@ -734,12 +734,13 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     }
   }, []);
 
-  // Deepgram STT â€” for Nora (conference transcription via LiveKit)
+  // Deepgram STT â€" for Nora (conference transcription via LiveKit)
   const deepgramStt = useDeepgramSTT({
     onUtterance: useDeepgram ? handleUtterance : undefined,
+    accessToken,
   });
 
-  // ElevenLabs STT â€” for Finn, Ava, Eli, Sarah (voice-first agents)
+  // ElevenLabs STT â€" for Finn, Ava, Eli, Sarah (voice-first agents)
   const elevenLabsStt = useElevenLabsSTT({
     onUtterance: useDeepgram ? undefined : handleUtterance,
     accessToken,

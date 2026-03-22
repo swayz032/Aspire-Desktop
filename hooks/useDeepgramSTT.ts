@@ -12,6 +12,8 @@ interface UseDeepgramSTTOptions {
   autoStart?: boolean;
   /** Called each time a complete utterance is finalized by the STT engine */
   onUtterance?: (text: string) => void;
+  /** JWT access token for authenticated token fetch */
+  accessToken?: string;
 }
 
 interface UseDeepgramSTTResult {
@@ -36,6 +38,8 @@ export function useDeepgramSTT(
 ): UseDeepgramSTTResult {
   const onUtteranceRef = useRef(options.onUtterance);
   onUtteranceRef.current = options.onUtterance;
+  const accessTokenRef = useRef(options.accessToken);
+  accessTokenRef.current = options.accessToken;
   const [transcript, setTranscript] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -73,7 +77,11 @@ export function useDeepgramSTT(
   const reconnectWs = useCallback(async (stream: MediaStream) => {
     try {
       setError(null);
-      const resp = await fetch('/api/deepgram/token');
+      const fetchHeaders: Record<string, string> = {};
+      if (accessTokenRef.current) {
+        fetchHeaders['Authorization'] = `Bearer ${accessTokenRef.current}`;
+      }
+      const resp = await fetch('/api/deepgram/token', { headers: fetchHeaders });
       if (!resp.ok) throw new Error('Voice service unavailable');
       const { token } = await resp.json();
 
@@ -128,8 +136,12 @@ export function useDeepgramSTT(
     try {
       setError(null);
 
-      // Fetch token from server
-      const resp = await fetch('/api/deepgram/token');
+      // Fetch token from server (authenticated)
+      const fetchHeaders: Record<string, string> = {};
+      if (accessTokenRef.current) {
+        fetchHeaders['Authorization'] = `Bearer ${accessTokenRef.current}`;
+      }
+      const resp = await fetch('/api/deepgram/token', { headers: fetchHeaders });
       if (!resp.ok) {
         throw new Error('Voice service unavailable');
       }
