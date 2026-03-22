@@ -159,6 +159,9 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   // SSE abort controller for cleanup on unmount/session-end (S3-H3)
   const sseAbortRef = useRef<AbortController | null>(null);
   const currentTraceIdRef = useRef<string | null>(null);
+  // Streaming TTS refs — track context for sentence-level speaking
+  const streamingContextRef = useRef<string | null>(null);
+  const accumulatedResponseRef = useRef('');
   const audioUnlockedRef = useRef(false);
 
   const useDeepgram = DEEPGRAM_STT_AGENTS.includes(agent);
@@ -440,6 +443,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     }
 
     processingRef.current = true;
+    streamingContextRef.current = null;
+    accumulatedResponseRef.current = '';
 
     setTranscript(text);
     onTranscript?.(text);
@@ -512,11 +517,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         receiptId = data.receipt_id || null;
       };
 
-      // Wave 6: If onActivityEvent callback is provided, use SSE streaming.
-      // Uses fetch+ReadableStream instead of EventSource to support Authorization headers (S3-C2).
-      if (options.onActivityEvent) {
+      // Always try SSE for voice — enables sentence-level streaming TTS.
+      // Falls back to standard JSON if SSE fails.
+      let usedStreaming = false;
+      {
         const sseAbort = new AbortController();
-        // Store abort controller for cleanup on unmount (S3-H3)
         sseAbortRef.current = sseAbort;
 
         try {
@@ -561,14 +566,57 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
               if (!line.startsWith('data: ')) continue;
               try {
                 const event = JSON.parse(line.slice(6));
-                if (event.type === 'response') {
+
+                if (event.type === 'partial_response' && ttsWsRef.current?.isConnected) {
+                  // Speak each sentence immediately as it arrives
+                  const sentence = event.text;
+                  if (!sentence?.trim()) continue;
+
+                  // Create TTS context on first partial_response
+                  if (!streamingContextRef.current) {
+                    streamingContextRef.current = ttsWsRef.current.nextContextId();
+                    currentContextRef.current = streamingContextRef.current;
+                    audioChunksRef.current.set(streamingContextRef.current, []);
+                    updateStatus('speaking');
+                  }
+
+                  // Send sentence to TTS WebSocket (it queues and streams audio)
+                  ttsWsRef.current.speak(sentence + ' ', streamingContextRef.current);
+
+                  // Accumulate full response text
+                  accumulatedResponseRef.current += (accumulatedResponseRef.current ? ' ' : '') + sentence;
+
+                  if (event.is_last) {
+                    // Flush the TTS context — signals end of input
+                    ttsWsRef.current.flush(streamingContextRef.current);
+                    responseText = accumulatedResponseRef.current;
+                    sseCompleted = true;
+                    break;
+                  }
+                } else if (event.type === 'response') {
+                  // Backwards compatible: brain sent full response (non-streaming brain or fallback)
                   const payload = event.data || event;
                   responseText = payload.response || payload.text || responseText;
                   receiptId = payload.receipt_id || null;
+
+                  // If we didn't get any partial_response events, speak the full text now
+                  if (!streamingContextRef.current && ttsWsRef.current?.isConnected) {
+                    streamingContextRef.current = ttsWsRef.current.nextContextId();
+                    currentContextRef.current = streamingContextRef.current;
+                    audioChunksRef.current.set(streamingContextRef.current, []);
+                    updateStatus('speaking');
+                    ttsWsRef.current.speak(responseText, streamingContextRef.current);
+                    ttsWsRef.current.flush(streamingContextRef.current);
+                  }
+
                   sseCompleted = true;
                   break;
                 }
-                options.onActivityEvent?.(event);
+
+                // Forward activity events to callback if provided
+                if (event.type !== 'partial_response' && event.type !== 'response') {
+                  options.onActivityEvent?.(event);
+                }
               } catch (e) {
                 devError('[useAgentVoice] Failed to parse SSE event:', e);
               }
@@ -577,6 +625,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
           reader.cancel().catch(() => {});
           sseAbortRef.current = null;
+          usedStreaming = !!streamingContextRef.current;
 
           if (!sseCompleted) {
             throw new Error('SSE stream ended without response');
@@ -587,6 +636,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
             // Component unmounted or session ended — don't fallback
             return;
           }
+          devWarn('[useAgentVoice] SSE failed, falling back to JSON:', err);
           emitDiagnostic({
             traceId,
             stage: 'orchestrator',
@@ -596,33 +646,29 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           });
           await requestStandardResponse();
         }
-      } else {
-        await requestStandardResponse();
       }
 
       setLastResponse(responseText);
       setLastReceiptId(receiptId);
       onResponse?.(responseText, receiptId ?? undefined);
 
-      // Speak the response
-      updateStatus('speaking');
-
-      // Prefer WebSocket TTS (persistent connection, barge-in ready)
-      if (ttsWsRef.current?.isConnected) {
-        const ctxId = ttsWsRef.current.nextContextId();
-        currentContextRef.current = ctxId;
-        audioChunksRef.current.set(ctxId, []);
-
-        // Send text and flush for immediate generation
-        ttsWsRef.current.speak(responseText, ctxId);
-        ttsWsRef.current.flush(ctxId);
-
-        // Audio arrives via onAudio callback â†’ accumulated in audioChunksRef
-        // Playback triggered by onContextDone callback â†’ playContextAudio()
+      if (usedStreaming) {
+        // Already spoke via streaming TTS — audio will finish via onContextDone callback
+        // Don’t speak again
       } else {
-        // Fallback: HTTP streaming TTS
-        devWarn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
-        await speakViaHttpStream(responseText, traceId);
+        // Non-streaming path — speak the full response now
+        updateStatus(‘speaking’);
+        if (ttsWsRef.current?.isConnected) {
+          const ctxId = ttsWsRef.current.nextContextId();
+          currentContextRef.current = ctxId;
+          audioChunksRef.current.set(ctxId, []);
+          ttsWsRef.current.speak(responseText, ctxId);
+          ttsWsRef.current.flush(ctxId);
+        } else {
+          // Fallback: HTTP streaming TTS
+          devWarn(‘[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback’);
+          await speakViaHttpStream(responseText, traceId);
+        }
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
