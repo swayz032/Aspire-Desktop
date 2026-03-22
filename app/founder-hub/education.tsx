@@ -83,12 +83,20 @@ function EducationContent() {
     let mounted = true;
     (async () => {
       try {
-        const { data } = await supabase
+        // NOTE: `receipts` table has `action jsonb` not `action_type` column.
+        // PostgREST `.like('action_type', ...)` silently returns 0 rows.
+        // Fetch recent receipts and filter client-side on action.action_type.
+        const { data: rawData } = await supabase
           .from('receipts')
           .select('*')
-          .like('action_type', 'adam.education%')
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(100);
+
+        const isEducationReceipt = (row: any): boolean => {
+          const actionType = String(row?.action?.action_type || row?.action_type || '').toLowerCase();
+          return actionType.includes('adam.education') || actionType.includes('founder_hub.education');
+        };
+        const data = (rawData || []).filter(isEducationReceipt).slice(0, 10);
 
         if (!mounted) return;
         if (data && data.length > 0) {

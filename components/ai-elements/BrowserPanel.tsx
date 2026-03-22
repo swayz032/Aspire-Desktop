@@ -17,6 +17,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   Platform,
   Animated,
@@ -246,20 +247,15 @@ function BrowserPanelInner({
               accessibilityRole="image"
               accessibilityLabel={`Screenshot of ${screenshot.page_title}`}
             >
-              {/* Web: render img tag directly for best performance */}
-              <View
-                style={StyleSheet.absoluteFill}
-                {...({
-                  dangerouslySetInnerHTML: {
-                    __html: `<img
-                      src="${escapeHtml(screenshot.screenshot_url)}"
-                      alt="${escapeHtml(screenshot.page_title || 'Browser screenshot')}"
-                      style="width:100%;height:100%;object-fit:contain;border-radius:0 0 11px 11px;"
-                      onerror="this.style.display='none'"
-                    />`,
-                  },
-                } as unknown as Record<string, unknown>)}
+              {/* Web: render img via React state — no dangerouslySetInnerHTML (XSS fix) */}
+              <Image
+                source={{ uri: screenshot.screenshot_url }}
+                style={[StyleSheet.absoluteFill, { borderBottomLeftRadius: 11, borderBottomRightRadius: 11 }]}
+                resizeMode="contain"
+                onError={() => setImageError(true)}
+                accessibilityLabel={screenshot.page_title || 'Browser screenshot'}
               />
+              {imageError && <View style={StyleSheet.absoluteFill} />}
             </View>
           ) : (
             // Native: use Image component
@@ -285,15 +281,6 @@ function BrowserPanelInner({
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
 
 // ---------------------------------------------------------------------------
 // Web-only premium styles (box-shadow, backdrop-filter)

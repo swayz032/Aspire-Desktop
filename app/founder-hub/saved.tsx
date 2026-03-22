@@ -63,13 +63,22 @@ function SavedContent() {
     let mounted = true;
     (async () => {
       try {
-        // Saved items are bookmarked receipts/content — query from a saved_items table or tagged receipts
-        const { data } = await supabase
+        // NOTE: `receipts` table has `action jsonb` not `action_type` column.
+        // PostgREST `.or('action_type.like...')` silently returns 0 rows.
+        // Fetch recent receipts and filter client-side on action.action_type.
+        const { data: rawData } = await supabase
           .from('receipts')
           .select('*')
-          .or('action_type.like.founder_hub.saved%,action_type.like.adam.%,action_type.like.research.%')
           .order('created_at', { ascending: false })
-          .limit(20);
+          .limit(100);
+
+        const isSavedReceipt = (row: any): boolean => {
+          const actionType = String(row?.action?.action_type || row?.action_type || '').toLowerCase();
+          return actionType.includes('founder_hub.saved')
+            || actionType.includes('adam.')
+            || actionType.includes('research.');
+        };
+        const data = (rawData || []).filter(isSavedReceipt).slice(0, 20);
 
         if (!mounted) return;
         if (data && data.length > 0) {
@@ -88,7 +97,7 @@ function SavedContent() {
             return {
               id: r.id ?? `saved-${idx}`,
               type,
-              title: p.title ?? r.action_type ?? 'Saved item',
+              title: p.title ?? r.action?.action_type ?? 'Saved item',
               source: p.source ?? 'Adam Research',
               date: formatAge(r.created_at ?? new Date().toISOString()),
               starred: p.starred ?? false,

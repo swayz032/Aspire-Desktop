@@ -89,12 +89,19 @@ function FocusContent() {
     let mounted = true;
     (async () => {
       try {
-        const { data } = await supabase
+        // NOTE: `receipts` table has `action jsonb` not `action_type` column.
+        // Fetch recent receipts and filter client-side on action.action_type.
+        const { data: rawData } = await supabase
           .from('receipts')
           .select('*')
-          .like('action_type', 'adam.focus%')
           .order('created_at', { ascending: false })
-          .limit(5);
+          .limit(100);
+
+        const isFocusReceipt = (row: any): boolean => {
+          const actionType = String(row?.action?.action_type || row?.action_type || '').toLowerCase();
+          return actionType.includes('adam.focus') || actionType.includes('founder_hub.focus');
+        };
+        const data = (rawData || []).filter(isFocusReceipt).slice(0, 5);
 
         if (!mounted) return;
         if (data && data.length > 0) {

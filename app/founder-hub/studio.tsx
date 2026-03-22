@@ -54,12 +54,19 @@ function StudioContent() {
     let mounted = true;
     (async () => {
       try {
-        const { data } = await supabase
+        // NOTE: `receipts` table has `action jsonb` not `action_type` column.
+        // Fetch recent receipts and filter client-side on action.action_type.
+        const { data: rawData } = await supabase
           .from('receipts')
           .select('*')
-          .like('action_type', 'founder_hub.studio%')
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(100);
+
+        const isStudioReceipt = (row: any): boolean => {
+          const actionType = String(row?.action?.action_type || row?.action_type || '').toLowerCase();
+          return actionType.includes('founder_hub.studio') || actionType.includes('studio.');
+        };
+        const data = (rawData || []).filter(isStudioReceipt).slice(0, 10);
 
         if (!mounted) return;
         if (data && data.length > 0) {
