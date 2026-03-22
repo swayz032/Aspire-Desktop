@@ -129,7 +129,7 @@ function InboxPanelContentInner(_props: PanelContentProps) {
 
   const handleCallBack = useCallback(async (phone: string) => {
     try {
-      await fetch('/api/calls/outbound', {
+      await fetch('/api/frontdesk/outbound-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: phone }),

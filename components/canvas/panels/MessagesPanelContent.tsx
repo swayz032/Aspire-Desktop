@@ -147,7 +147,7 @@ function MessagesPanelContentInner(_props: PanelContentProps) {
     const thread = threads.find(t => t.id === threadId);
     if (!thread) return;
     try {
-      await fetch('/api/sms/send', {
+      await fetch('/api/messages/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: thread.from_number, body }),
