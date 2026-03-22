@@ -402,7 +402,7 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
     } else {
       try {
         await finnVoice.startSession();
-        await finnVoice.sendText('Confirm voice is live in one short sentence and ask what financial task to handle.');
+        await finnVoice.sendText('Confirm voice is live in one short sentence and ask what financial task to handle.', { silent: true });
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error('Failed to start Finn voice session:', msg);

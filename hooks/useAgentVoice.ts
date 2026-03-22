@@ -90,7 +90,7 @@ interface UseAgentVoiceReturn {
   lastReceiptId: string | null;
   startSession: () => Promise<void>;
   endSession: () => void;
-  sendText: (text: string) => Promise<void>;
+  sendText: (text: string, options?: { silent?: boolean }) => Promise<void>;
   /** Mute/unmute the microphone (disables audio track without stopping STT). */
   setMuted: (muted: boolean) => void;
   /** Replay last audio that was blocked by browser autoplay policy. */
@@ -421,7 +421,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
    * Send text to the orchestrator and speak the response.
    * Core pipeline: text â†' orchestrator â†' TTS (WebSocket preferred, HTTP fallback).
    */
-  const sendText = useCallback(async (text: string) => {
+  const sendText = useCallback(async (text: string, sendOpts?: { silent?: boolean }) => {
     if (!text.trim()) return;
     const traceId = nextTraceId();
     currentTraceIdRef.current = traceId;
@@ -433,7 +433,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         try { currentAudioSourceRef.current.stop(); } catch { /* already stopped */ }
         currentAudioSourceRef.current = null;
       }
-      
+
       // Close current TTS context
       if (currentContextRef.current && ttsWsRef.current?.isConnected) {
         ttsWsRef.current.closeContext(currentContextRef.current);
@@ -446,8 +446,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     streamingContextRef.current = null;
     accumulatedResponseRef.current = '';
 
-    setTranscript(text);
-    onTranscript?.(text);
+    // Silent mode: skip transcript callback (used for internal greeting prompts)
+    if (!sendOpts?.silent) {
+      setTranscript(text);
+      onTranscript?.(text);
+    }
     updateStatus('thinking');
 
     try {

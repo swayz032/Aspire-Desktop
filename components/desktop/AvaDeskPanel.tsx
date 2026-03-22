@@ -272,7 +272,7 @@ function AvaDeskPanelInner() {
     } else {
       try {
         await avaVoice.startSession();
-        await avaVoice.sendText('Confirm voice is live in one short sentence and ask how you can help.');
+        await avaVoice.sendText('Confirm voice is live in one short sentence and ask how you can help.', { silent: true });
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error('Failed to start Ava voice session:', msg);
