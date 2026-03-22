@@ -72,7 +72,7 @@ export function setupTtsWebSocket(httpServer: Server): void {
 
     // Auth is validated from the first WebSocket message, not URL params.
     // Set a 5-second deadline for the client to send the auth message.
-    let authenticated = !IS_PRODUCTION; // Dev mode skips auth
+    let authenticated = false; // Auth enforced in ALL environments (THREAT-002)
     let upstreamWs: WebSocket | null = null;
     let upstreamReady = false;
     const pendingMessages: string[] = [];

@@ -88,7 +88,7 @@ const PUBLIC_PATHS = [
   '/api/auth/validate-invite-code', // Private beta invite gate — rate-limited, no JWT needed
   '/api/auth/signup',               // Private beta signup — rate-limited, invite code validated server-side
   '/api/config/public',             // Public client config (Google Places key) — no secrets, referrer-restricted
-  '/api/places/',                    // Google Places proxy — onboarding address autocomplete (no JWT yet)
+  // Places API requires auth to prevent quota exhaustion
 ];
 
 // /v1/ paths that REQUIRE auth (Law #3: Fail Closed — default deny)
