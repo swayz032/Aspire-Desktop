@@ -202,9 +202,24 @@ function useAuthGate() {
   const [onboardingChecked, setOnboardingChecked] = useState(DEV_BYPASS_AUTH ? true : false);
   const [onboardingComplete, setOnboardingComplete] = useState(DEV_BYPASS_AUTH ? true : false);
   const navLockRef = useRef(false);
+  // Cold start guard — on page refresh, don't redirect to login until
+  // we've given Supabase time to restore the session from storage.
+  const [coldStartSettled, setColdStartSettled] = useState(DEV_BYPASS_AUTH ? true : false);
+  useEffect(() => {
+    if (DEV_BYPASS_AUTH) { setColdStartSettled(true); return; }
+    // If session arrives before timeout, we're settled
+    if (session) { setColdStartSettled(true); return; }
+    // Otherwise wait 2s for session restoration before allowing login redirect
+    const timer = setTimeout(() => setColdStartSettled(true), 2000);
+    return () => clearTimeout(timer);
+  }, [session]);
 
   useEffect(() => {
     if (DEV_BYPASS_AUTH) return;
+
+    // Don't check onboarding until session is fully loaded — avoids
+    // races where session is still resolving from storage.
+    if (isLoading) return;
 
     if (!session) {
       setOnboardingChecked(false);
@@ -236,10 +251,13 @@ function useAuthGate() {
       })
       .catch(() => {
         clearTimeout(timeoutId);
-        setOnboardingComplete(false);
+        // On failure, assume onboarding is complete — sending an existing user
+        // back to onboarding is worse than letting a new user skip it.
+        // New users will still see onboarding on their first successful check.
+        setOnboardingComplete(true);
         setOnboardingChecked(true);
       });
-  }, [session, suiteId]);
+  }, [session, suiteId, isLoading]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -274,9 +292,12 @@ function useAuthGate() {
     const inSessionGroup = segments[0] === ('session' as any);
 
     if (!session && !inAuthGroup && !inPublicGroup) {
+      // Don't redirect to login until cold start has settled — gives Supabase
+      // time to restore session from storage on page refresh.
+      if (!coldStartSettled) return;
+
       if (inSessionGroup) {
         // Delay redirect for session pages — only act after 5s of confirmed no-session.
-        // This allows token refresh races to settle without shaking the screen.
         navLockRef.current = true;
         setTimeout(() => { navLockRef.current = false; }, 5000);
         return;
@@ -287,7 +308,7 @@ function useAuthGate() {
     } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
       navigate('/(tabs)');
     }
-  }, [session, isLoading, segments, onboardingChecked, onboardingComplete]);
+  }, [session, isLoading, segments, onboardingChecked, onboardingComplete, coldStartSettled]);
 }
 
 /** Biometric lock gate — prompts for biometric on app resume (native only). */
