@@ -6,6 +6,7 @@ import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -64,6 +65,7 @@ function isExpired(q: StripeQuote): boolean {
 }
 
 function QuotesContent() {
+  const { authenticatedFetch } = useAuthFetch();
   const [quotes, setQuotes] = useState<StripeQuote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,12 +87,12 @@ function QuotesContent() {
     try {
       const statusParam = activeTab === 'all' ? '' : activeTab;
       const url = statusParam ? `/api/stripe/quotes?status=${statusParam}&limit=25` : '/api/stripe/quotes?limit=25';
-      const res = await fetch(url);
+      const res = await authenticatedFetch(url);
       if (!res.ok) throw new Error('Failed to fetch quotes');
       const data = await res.json();
       setQuotes(data.quotes || []);
-    } catch (err: any) {
-      setError(err.message || 'Something went wrong');
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : String(err)) || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -116,17 +118,17 @@ function QuotesContent() {
   const executeAction = async (id: string, action: 'finalize' | 'accept' | 'cancel') => {
     setActionLoading(id);
     try {
-      const res = await fetch(`/api/stripe/quotes/${id}/${action}`, { method: 'POST' });
+      const res = await authenticatedFetch(`/api/stripe/quotes/${id}/${action}`, { method: 'POST' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Failed to ${action} quote`);
       }
       await fetchQuotes();
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (Platform.OS === 'web') {
-        window.alert(err.message || `Failed to ${action} quote`);
+        window.alert((err instanceof Error ? err.message : String(err)) || `Failed to ${action} quote`);
       } else {
-        Alert.alert('Error', err.message || `Failed to ${action} quote`);
+        Alert.alert('Error', (err instanceof Error ? err.message : String(err)) || `Failed to ${action} quote`);
       }
     } finally {
       setActionLoading(null);
@@ -162,7 +164,7 @@ function QuotesContent() {
     setCreating(true);
     setCreateError(null);
     try {
-      const customerRes = await fetch('/api/stripe/customers', {
+      const customerRes = await authenticatedFetch('/api/stripe/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -176,7 +178,7 @@ function QuotesContent() {
         const customerData = await customerRes.json();
         customerId = customerData.id;
       } else {
-        const searchRes = await fetch(`/api/stripe/customers?email=${encodeURIComponent(customerEmail.trim())}`);
+        const searchRes = await authenticatedFetch(`/api/stripe/customers?email=${encodeURIComponent(customerEmail.trim())}`);
         if (!searchRes.ok) throw new Error('Failed to find or create customer');
         const searchData = await searchRes.json();
         if (searchData.customers && searchData.customers.length > 0) {
@@ -189,7 +191,7 @@ function QuotesContent() {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + (parseInt(expiryDays) || 30));
 
-      const res = await fetch('/api/stripe/quotes', {
+      const res = await authenticatedFetch('/api/stripe/quotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -205,8 +207,8 @@ function QuotesContent() {
       setShowCreateModal(false);
       resetForm();
       await fetchQuotes();
-    } catch (err: any) {
-      setCreateError(err.message || 'Failed to create quote');
+    } catch (err: unknown) {
+      setCreateError((err instanceof Error ? err.message : String(err)) || 'Failed to create quote');
     } finally {
       setCreating(false);
     }

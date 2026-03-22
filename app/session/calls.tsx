@@ -23,6 +23,7 @@ import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
 import type { CallSession } from '@/types/frontdesk';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 
 // ---------------------------------------------------------------------------
 // Hero image
@@ -274,6 +275,7 @@ export default function CallsScreenPage() {
 function CallsScreen() {
   const router = useRouter();
   const isDesktop = useDesktop();
+  const { authenticatedFetch } = useAuthFetch();
   const { calls: rawCalls, loading: callsLoading, error: callsError, refresh } = useFrontdeskCalls({ pollInterval: 5000 });
 
   // Formatted calls list
@@ -331,7 +333,7 @@ function CallsScreen() {
 
   const checkFrontDeskSetup = async () => {
     try {
-      const res = await fetch('/api/frontdesk/setup');
+      const res = await authenticatedFetch('/api/frontdesk/setup');
       if (res.ok) {
         const data = await res.json();
         if (!data || !data.setupComplete) {
@@ -523,7 +525,7 @@ function CallsScreen() {
       const cleaned = phoneNumber.replace(/\D/g, '');
       const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
 
-      const res = await fetch('/api/frontdesk/outbound-call', {
+      const res = await authenticatedFetch('/api/frontdesk/outbound-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toE164 }),
@@ -559,7 +561,7 @@ function CallsScreen() {
     setIsCalling(true);
 
     try {
-      const res = await fetch('/api/frontdesk/return-call', {
+      const res = await authenticatedFetch('/api/frontdesk/return-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callSessionId: call.callSessionId }),

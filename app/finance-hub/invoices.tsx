@@ -7,6 +7,7 @@ import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { DocumentThumbnail } from '@/components/DocumentThumbnail';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { printInvoice, shareInvoice } from '@/lib/printDocument';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -78,6 +79,7 @@ function isOverdue(inv: StripeInvoice): boolean {
 }
 
 function InvoicesContent() {
+  const { authenticatedFetch } = useAuthFetch();
   const [invoices, setInvoices] = useState<StripeInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +99,7 @@ function InvoicesContent() {
 
   const fetchSummary = useCallback(async () => {
     try {
-      const res = await fetch('/api/stripe/invoices/summary');
+      const res = await authenticatedFetch('/api/stripe/invoices/summary');
       if (res.ok) {
         const data = await res.json();
         setSummary({
@@ -107,8 +109,8 @@ function InvoicesContent() {
           avgPaymentDays: data.avg_payment_days ?? 0,
         });
       }
-    } catch (e) {
-      console.error('Failed to fetch invoice summary:', e);
+    } catch {
+      // Best-effort summary fetch
     }
   }, []);
 
@@ -118,7 +120,7 @@ function InvoicesContent() {
     try {
       const statusParam = activeTab === 'all' ? '' : activeTab === 'overdue' ? 'open' : activeTab;
       const url = statusParam ? `/api/stripe/invoices?status=${statusParam}&limit=25` : '/api/stripe/invoices?limit=25';
-      const res = await fetch(url);
+      const res = await authenticatedFetch(url);
       if (!res.ok) throw new Error('Failed to fetch invoices');
       const data = await res.json();
       let filtered = data.invoices || [];
@@ -126,8 +128,8 @@ function InvoicesContent() {
         filtered = filtered.filter((inv: StripeInvoice) => isOverdue(inv));
       }
       setInvoices(filtered);
-    } catch (err: any) {
-      setError(err.message || 'Something went wrong');
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : String(err)) || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -161,17 +163,17 @@ function InvoicesContent() {
     try {
       const method = action === 'delete' ? 'DELETE' : 'POST';
       const url = action === 'delete' ? `/api/stripe/invoices/${id}` : `/api/stripe/invoices/${id}/${action}`;
-      const res = await fetch(url, { method });
+      const res = await authenticatedFetch(url, { method });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Failed to ${action} invoice`);
       }
       await fetchInvoices();
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (Platform.OS === 'web') {
-        window.alert(err.message || `Failed to ${action} invoice`);
+        window.alert((err instanceof Error ? err.message : String(err)) || `Failed to ${action} invoice`);
       } else {
-        Alert.alert('Error', err.message || `Failed to ${action} invoice`);
+        Alert.alert('Error', (err instanceof Error ? err.message : String(err)) || `Failed to ${action} invoice`);
       }
     } finally {
       setActionLoading(null);
@@ -199,7 +201,7 @@ function InvoicesContent() {
     setCreating(true);
     setCreateError(null);
     try {
-      const res = await fetch('/api/stripe/invoices', {
+      const res = await authenticatedFetch('/api/stripe/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -217,8 +219,8 @@ function InvoicesContent() {
       setShowCreateModal(false);
       resetForm();
       await fetchInvoices();
-    } catch (err: any) {
-      setCreateError(err.message || 'Failed to create invoice');
+    } catch (err: unknown) {
+      setCreateError((err instanceof Error ? err.message : String(err)) || 'Failed to create invoice');
     } finally {
       setCreating(false);
     }

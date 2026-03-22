@@ -12,6 +12,7 @@
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import { buildTraceHeaders } from './traceHeaders';
+import { devWarn, devError } from '@/lib/devLog';
 import {
   buildFrontendTelemetryContext,
   getFrontendFlightRecorder,
@@ -169,7 +170,7 @@ async function flushQueue(): Promise<void> {
       const retry = await supabase.auth.getSession();
       session = retry.data.session;
       if (!session) {
-        console.warn('[telemetry] No auth session after retry — dropping', batch.length, 'events');
+        devWarn('[telemetry] No auth session after retry — dropping', batch.length, 'events');
         return;
       }
     }
@@ -191,7 +192,7 @@ async function flushQueue(): Promise<void> {
 
     await supabase.from('client_events').insert(rows);
   } catch (err) {
-    console.error('[telemetry] client_events flush failed:', err);
+    devError('[telemetry] client_events flush failed:', err);
   }
 }
 

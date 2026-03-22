@@ -3,6 +3,7 @@
  * All queries are RLS-scoped by the authenticated user's suite_id (Law #6).
  */
 import { supabase } from './supabase';
+import { devWarn } from '@/lib/devLog';
 
 // ── Receipts ────────────────────────────────────────────────────────────────
 export async function getReceipts(limit = 50) {
@@ -19,7 +20,18 @@ export async function getReceipts(limit = 50) {
 // Uses GET /api/authority-queue which maps approval_requests fields correctly:
 // approval_id AS id, tool.operation AS type, draft_summary AS title,
 // risk_tier AS risk, assigned_agent AS assignedAgent, created_at AS createdAt
-export async function getAuthorityQueue(accessToken?: string, suiteId?: string): Promise<any[]> {
+export interface AuthorityQueueItem {
+  id: string;
+  type: string;
+  title: string;
+  risk: string;
+  assignedAgent: string;
+  createdAt: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export async function getAuthorityQueue(accessToken?: string, suiteId?: string): Promise<AuthorityQueueItem[]> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (!accessToken) {
     const { data: { session } } = await supabase.auth.getSession();
@@ -31,7 +43,7 @@ export async function getAuthorityQueue(accessToken?: string, suiteId?: string):
 
   const resp = await fetch('/api/authority-queue', { headers });
   if (!resp.ok) {
-    console.warn(`[AuthorityQueue] API returned ${resp.status}`);
+    devWarn(`[AuthorityQueue] API returned ${resp.status}`);
     return [];
   }
   const data = await resp.json();

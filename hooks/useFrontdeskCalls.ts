@@ -83,9 +83,9 @@ export function useFrontdeskCalls(options: UseFrontdeskCallsOptions = {}) {
       setCalls(data || []);
       setError(null);
       nextDelayRef.current = normalizedPollInterval;
-    } catch (e: any) {
-      setError(e.message);
-      const message = String(e?.message || '');
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
       const isAuth = /AUTH_REQUIRED|HTTP 401|HTTP 403/i.test(message);
       if (isAuth) {
         nextDelayRef.current = MAX_POLL_INTERVAL_MS;

@@ -30,8 +30,8 @@ function VideoContent() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { tenant } = useTenant();
-  const [authorityItems, setAuthorityItems] = useState<any[]>([]);
-  const [sessionDocuments, setSessionDocuments] = useState<any[]>([]);
+  const [authorityItems, setAuthorityItems] = useState<AuthorityItem[]>([]);
+  const [sessionDocuments, setSessionDocuments] = useState<{ id: string; title: string }[]>([]);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [endSessionVisible, setEndSessionVisible] = useState(false);

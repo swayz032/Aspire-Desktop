@@ -20,7 +20,7 @@ const RETRY_BASE_MS = 3000;
 
 export function useRealtimeReceipts(limit = 50) {
   const { session, suiteId } = useSupabase();
-  const [receipts, setReceipts] = useState<any[]>([]);
+  const [receipts, setReceipts] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);

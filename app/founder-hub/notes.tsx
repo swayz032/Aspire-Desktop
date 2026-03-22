@@ -6,6 +6,7 @@ import { HubPageShell } from '@/components/founder-hub/HubPageShell';
 import { supabase } from '@/lib/supabase';
 import { useTenant } from '@/providers';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { devError, devWarn } from '@/lib/devLog';
 
 const THEME = {
   bg: '#000000',
@@ -51,12 +52,12 @@ function NotesContent() {
         .order('updated_at', { ascending: false });
 
       if (error) {
-        console.error('Failed to fetch notes:', error);
+        devError('Failed to fetch notes:', error);
         return;
       }
       setNotes(data ?? []);
     } catch (err) {
-      console.error('Failed to load notes:', err);
+      devError('Failed to load notes:', err);
     } finally {
       setLoading(false);
     }
@@ -81,7 +82,7 @@ function NotesContent() {
         metadata: { note_id: noteId, action },
       });
     } catch (err) {
-      console.warn(`Note ${action} receipt failed:`, err);
+      devWarn(`Note ${action} receipt failed:`, err);
     }
   };
 
@@ -96,7 +97,7 @@ function NotesContent() {
         .single();
 
       if (error) {
-        console.error('Failed to create note:', error);
+        devError('Failed to create note:', error);
         return;
       }
       if (data) {
@@ -122,7 +123,7 @@ function NotesContent() {
         .eq('suite_id', tenant!.suiteId); // Defense-in-depth: explicit tenant filter over RLS-only
 
       if (error) {
-        console.error('Failed to save note:', error);
+        devError('Failed to save note:', error);
         return;
       }
       setNotes((prev) =>
@@ -153,7 +154,7 @@ function NotesContent() {
         .eq('suite_id', tenant!.suiteId); // Defense-in-depth: explicit tenant filter over RLS-only
 
       if (error) {
-        console.error('Failed to delete note:', error);
+        devError('Failed to delete note:', error);
         return;
       }
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
@@ -162,7 +163,7 @@ function NotesContent() {
       }
       emitNoteReceipt('delete', noteId, 'yellow'); // Delete is YELLOW — irreversible
     } catch (err) {
-      console.error('Failed to delete note:', err);
+      devError('Failed to delete note:', err);
     }
   };
 
@@ -175,7 +176,7 @@ function NotesContent() {
         .eq('suite_id', tenant!.suiteId); // Defense-in-depth: explicit tenant filter over RLS-only
 
       if (error) {
-        console.error('Failed to toggle pin:', error);
+        devError('Failed to toggle pin:', error);
         return;
       }
       setNotes((prev) =>
@@ -183,7 +184,7 @@ function NotesContent() {
       );
       emitNoteReceipt('pin_toggle', note.id);
     } catch (err) {
-      console.error('Failed to toggle pin:', err);
+      devError('Failed to toggle pin:', err);
     }
   };
 

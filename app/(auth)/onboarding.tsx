@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import { CelebrationModal } from '@/components/CelebrationModal';
 import { PremiumLoadingScreen } from '@/components/PremiumLoadingScreen';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { devError } from '@/lib/devLog';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -465,18 +466,18 @@ function OnboardingContent() {
         body: JSON.stringify({ input: query }),
       });
       const data = await res.json();
-      if (data.error) { console.error('[Places] API error:', data.error); onResults([]); return; }
+      if (data.error) { devError('[Places] API error:', data.error); onResults([]); return; }
       onResults(data.suggestions || []);
-    } catch (e: any) { console.error('[Places] fetch failed:', e?.message); onResults([]); }
+    } catch (e: any) { devError('[Places] fetch failed:', e?.message); onResults([]); }
   };
 
   const getPlaceDetails = async (placeId: string): Promise<AddressFields | null> => {
     try {
       const res = await fetch(`/api/places/details/${encodeURIComponent(placeId)}`);
       const data = await res.json();
-      if (data.error) { console.error('[Places] Details error:', data.error); return null; }
+      if (data.error) { devError('[Places] Details error:', data.error); return null; }
       return parsePlaceDetails(data);
-    } catch (e: any) { console.error('[Places] details failed:', e?.message); return null; }
+    } catch (e: any) { devError('[Places] details failed:', e?.message); return null; }
   };
 
   const doValidateAddress = async (address: AddressFields, onValidated: (ok: boolean) => void) => {

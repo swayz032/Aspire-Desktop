@@ -6,7 +6,8 @@ function getAudioContext(): AudioContext | null {
   if (Platform.OS !== 'web') return null;
   if (!audioCtxRef.current) {
     try {
-      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const W = window as Window & { webkitAudioContext?: typeof AudioContext };
+      audioCtxRef.current = new (window.AudioContext || W.webkitAudioContext!)();
     } catch {
       return null;
     }

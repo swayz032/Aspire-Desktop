@@ -11,6 +11,7 @@ import { getMfaStatus, isMfaVerifiedRecently, verifyMfaCode, generateMfaSecret, 
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { devError, devWarn } from '@/lib/devLog';
 
 const DOMAIN = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -85,12 +86,12 @@ function ConnectionsContent() {
         try {
           const r = await authenticatedFetch(url);
           if (!r.ok) {
-            console.warn(`[Connections] ${label} status returned ${r.status}`);
+            devWarn(`[Connections] ${label} status returned ${r.status}`);
             return { connected: false, _unavailable: true, _error: `Server returned ${r.status}` };
           }
           return await r.json();
         } catch (e: any) {
-          console.warn(`[Connections] ${label} status check failed:`, e?.message || e);
+          devWarn(`[Connections] ${label} status check failed:`, e?.message || e);
           return { connected: false, _unavailable: true, _error: e?.message || 'Service unreachable' };
         }
       };
@@ -134,7 +135,7 @@ function ConnectionsContent() {
         },
       });
     } catch (err) {
-      console.error('Status check failed:', err);
+      devError('Status check failed:', err);
     } finally {
       setLoading(false);
     }
@@ -180,10 +181,10 @@ function ConnectionsContent() {
               if (data.success) {
                 console.log('Gusto migration completed successfully');
               } else {
-                console.warn('Gusto migration response:', data);
+                devWarn('Gusto migration response:', data);
               }
             })
-            .catch(err => console.error('Gusto migration error:', err))
+            .catch(err => devError('Gusto migration error:', err))
             .finally(() => checkAllStatuses());
         } else {
           checkAllStatuses();
@@ -205,7 +206,7 @@ function ConnectionsContent() {
         setCrossLinkSuccess(prev => ({ ...prev, stripe: true }));
       }
     } catch (e) {
-      console.error('Cross-link to Stripe failed:', e);
+      devError('Cross-link to Stripe failed:', e);
     } finally {
       setCrossLinking(null);
     }
@@ -224,7 +225,7 @@ function ConnectionsContent() {
         setCrossLinkSuccess(prev => ({ ...prev, gusto: true }));
       }
     } catch (e) {
-      console.error('Cross-link to Gusto failed:', e);
+      devError('Cross-link to Gusto failed:', e);
     } finally {
       setCrossLinking(null);
     }
@@ -266,7 +267,7 @@ function ConnectionsContent() {
       const data = await res.json();
       console.log('[Plaid] Link token response:', { ok: res.ok, status: res.status, hasToken: !!data.link_token, error: data.error });
       if (!res.ok) {
-        console.error('[Plaid] create-link-token failed:', data);
+        devError('[Plaid] create-link-token failed:', data);
         setActionLoading(null);
         return;
       }
@@ -287,7 +288,7 @@ function ConnectionsContent() {
                 body: JSON.stringify({ public_token: publicToken }),
               });
             } catch (e) {
-              console.error('[Plaid] Token exchange error:', e);
+              devError('[Plaid] Token exchange error:', e);
             }
             setActionLoading(null);
             checkAllStatuses();
@@ -302,11 +303,11 @@ function ConnectionsContent() {
         });
         console.log('[Plaid] Handler created, waiting for onLoad...');
       } else {
-        console.error('[Plaid] SDK not available after load. Plaid on window:', !!(window as any)?.Plaid, 'link_token:', !!data.link_token);
+        devError('[Plaid] SDK not available after load. Plaid on window:', !!(window as any)?.Plaid, 'link_token:', !!data.link_token);
         setActionLoading(null);
       }
     } catch (err) {
-      console.error('[Plaid] Connect error:', err);
+      devError('[Plaid] Connect error:', err);
       setActionLoading(null);
     }
   };
@@ -353,7 +354,7 @@ function ConnectionsContent() {
 
       await openPlaidLink();
     } catch (err) {
-      console.error('Plaid connect error:', err);
+      devError('Plaid connect error:', err);
       setActionLoading(null);
     }
   };
@@ -406,7 +407,7 @@ function ConnectionsContent() {
         window.location.href = data.url;
       }
     } catch (err) {
-      console.error('QuickBooks connect error:', err);
+      devError('QuickBooks connect error:', err);
       setActionLoading(null);
     }
   };
@@ -475,7 +476,7 @@ function ConnectionsContent() {
         setActionLoading(null);
       }
     } catch (err) {
-      console.error('Gusto connect error:', err);
+      devError('Gusto connect error:', err);
       setActionLoading(null);
     }
   };
@@ -490,7 +491,7 @@ function ConnectionsContent() {
         window.location.href = data.url;
       }
     } catch (err) {
-      console.error('Stripe connect error:', err);
+      devError('Stripe connect error:', err);
       setActionLoading(null);
     }
   };
@@ -509,7 +510,7 @@ function ConnectionsContent() {
         checkAllStatuses();
       }
     } catch (err) {
-      console.error('Disconnect error:', err);
+      devError('Disconnect error:', err);
     } finally {
       setActionLoading(null);
     }

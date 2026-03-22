@@ -27,10 +27,34 @@ router.get('/api/deepgram/token', async (req: Request, res: Response) => {
         .json({ error: 'Voice transcription service not configured' });
     }
 
-    // For production, use Deepgram's project key API to create short-lived keys.
-    // For now, return the API key directly (should be scoped/short-lived in prod).
+    // Create a short-lived Deepgram API key (Law #9: never expose master key to client).
+    // The temporary key has write-only usage scope and expires in 60 seconds.
+    const dgResponse = await fetch('https://api.deepgram.com/v1/keys', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        comment: `aspire-stt-${suiteId}-${Date.now()}`,
+        scopes: ['usage:write'],
+        time_to_live_in_seconds: 60,
+      }),
+    });
+
+    if (!dgResponse.ok) {
+      logger.error('Deepgram temporary key creation failed', { status: dgResponse.status });
+      return res.status(502).json({ error: 'Voice transcription token creation failed' });
+    }
+
+    const dgData = await dgResponse.json() as { key?: string; api_key_id?: string };
+    if (!dgData.key) {
+      logger.error('Deepgram temporary key response missing key field');
+      return res.status(502).json({ error: 'Voice transcription token creation failed' });
+    }
+
     res.json({
-      token: DEEPGRAM_API_KEY,
+      token: dgData.key,
       url: 'wss://api.deepgram.com/v1/listen',
     });
   } catch (error: unknown) {

@@ -20,7 +20,7 @@ const RETRY_BASE_MS = 3000;
 
 export function useRealtimeOutbox(limit = 50) {
   const { session, suiteId } = useSupabase();
-  const [jobs, setJobs] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);

@@ -186,6 +186,15 @@ app.use(async (req, res, next) => {
     const headerOfficeId = typeof req.headers['x-office-id'] === 'string' ? req.headers['x-office-id'].trim() : '';
     const isValidS2S = !!bearerToken && s2sSecrets.some((secret) => secureTokenEquals(bearerToken, secret));
 
+    // Validate suite/office ID format to prevent injection (Law #9)
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (headerSuiteId && !UUID_REGEX.test(headerSuiteId)) {
+      return res.status(400).json({ error: 'INVALID_FORMAT', message: 'Invalid suite ID format — must be UUID' });
+    }
+    if (headerOfficeId && !UUID_REGEX.test(headerOfficeId)) {
+      return res.status(400).json({ error: 'INVALID_FORMAT', message: 'Invalid office ID format — must be UUID' });
+    }
+
     if (isS2SIntentRoute && isValidS2S && headerSuiteId) {
       const applied = await applyTenantContext(headerSuiteId);
       if (!applied) {

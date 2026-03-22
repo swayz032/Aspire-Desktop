@@ -1,4 +1,4 @@
-﻿// Identity values come from intake form (suite_profiles via useTenant) â€” no hardcoded constants
+﻿// Identity values come from intake form (suite_profiles via useTenant) — no hardcoded constants
 
 export function formatTimestamp(date: Date): string {
   return date.toISOString();
@@ -96,7 +96,7 @@ export function formatSuiteContext(suiteId?: string | null, officeId?: string | 
 export function formatFullContext(businessName?: string | null, suiteId?: string | null, displayId?: string | null): string {
   const name = businessName || 'Your Business';
   const suite = displayId ? String(displayId).trim().toUpperCase() : '';
-  return suite ? `${name} Â· Suite ${suite}` : name;
+  return suite ? `${name} · Suite ${suite}` : name;
 }
 
 export function getRandomPastDate(maxDaysAgo: number = 30): Date {

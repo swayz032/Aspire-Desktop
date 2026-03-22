@@ -10,6 +10,7 @@
  */
 
 import { buildTraceHeaders } from '@/lib/traceHeaders';
+import { supabase } from '@/lib/supabase';
 
 const RATE_LIMIT = 5;
 const RATE_WINDOW_MS = 60_000;
@@ -40,14 +41,25 @@ export async function reportError(opts: ErrorReportOptions): Promise<void> {
 
   try {
     const trace = buildTraceHeaders();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Correlation-Id': trace.correlationId,
+      'X-Trace-Id': trace.traceId,
+    };
+
+    // Inject auth token if available (Law #3: Fail Closed)
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch {
+      // Best-effort auth — report without token if session unavailable
+    }
 
     await fetch('/admin/ops/incidents/report', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Correlation-Id': trace.correlationId,
-        'X-Trace-Id': trace.traceId,
-      },
+      headers,
       body: JSON.stringify({
         title: opts.title,
         severity: opts.severity || 'sev3',

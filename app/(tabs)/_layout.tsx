@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 
@@ -30,12 +30,7 @@ export default function TabLayout() {
         options={{
           title: 'Inbox',
           tabBarIcon: ({ color }) => (
-            <View>
-              <Ionicons name="mail-sharp" size={24} color={color} />
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>5</Text>
-              </View>
-            </View>
+            <Ionicons name="mail-sharp" size={24} color={color} />
           ),
         }}
       />

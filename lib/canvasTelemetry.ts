@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { buildTraceHeaders } from './traceHeaders';
 import { supabase } from './supabase';
+import { devLog, devError } from '@/lib/devLog';
 import {
   buildFrontendTelemetryContext,
   getFrontendFlightRecorder,
@@ -156,7 +157,7 @@ export async function flushTelemetry(): Promise<void> {
     // Development: log to console (but still POST below for admin portal visibility)
     for (const payload of batch) {
       // eslint-disable-next-line no-console
-      console.debug('[canvas-telemetry]', payload.event, payload.data);
+      devLog('[canvas-telemetry]', payload.event, payload.data);
     }
   }
 
@@ -185,7 +186,7 @@ export async function flushTelemetry(): Promise<void> {
       body: JSON.stringify({ events: batch }),
     });
   } catch (err) {
-    console.error('[canvas-telemetry] flush failed:', err);
+    devError('[canvas-telemetry] flush failed:', err);
   }
 }
 

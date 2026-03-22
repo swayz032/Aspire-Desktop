@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { SmsThread, SmsMessage } from '@/types/frontdesk';
 
 interface UseSmsThreadsOptions {
@@ -11,6 +12,7 @@ interface UseSmsThreadsOptions {
  */
 export function useSmsThreads(options: UseSmsThreadsOptions = {}) {
   const { pollInterval = 5000, limit = 50 } = options;
+  const { authenticatedFetch } = useAuthFetch();
   const [threads, setThreads] = useState<SmsThread[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,17 +20,17 @@ export function useSmsThreads(options: UseSmsThreadsOptions = {}) {
 
   const fetchThreads = useCallback(async () => {
     try {
-      const res = await fetch(`/api/messages/threads?limit=${limit}`);
+      const res = await authenticatedFetch(`/api/messages/threads?limit=${limit}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setThreads(data.threads || []);
       setError(null);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [limit]);
+  }, [limit, authenticatedFetch]);
 
   useEffect(() => {
     fetchThreads();
@@ -54,6 +56,7 @@ export function useSmsThreads(options: UseSmsThreadsOptions = {}) {
  */
 export function useSmsMessages(threadId: string | null, options: { pollInterval?: number } = {}) {
   const { pollInterval = 5000 } = options;
+  const { authenticatedFetch } = useAuthFetch();
   const [messages, setMessages] = useState<SmsMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,17 +65,17 @@ export function useSmsMessages(threadId: string | null, options: { pollInterval?
   const fetchMessages = useCallback(async () => {
     if (!threadId) return;
     try {
-      const res = await fetch(`/api/messages/threads/${threadId}/messages?limit=100`);
+      const res = await authenticatedFetch(`/api/messages/threads/${threadId}/messages?limit=100`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setMessages(data.messages || []);
       setError(null);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [threadId]);
+  }, [threadId, authenticatedFetch]);
 
   useEffect(() => {
     if (!threadId) {

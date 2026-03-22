@@ -9,6 +9,7 @@ import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { useAgentVoice } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { FinnDeskOverlay } from '@/components/finance/FinnDeskOverlay';
 import { FinnChatModal } from '@/components/finance/FinnChatModal';
 import { StoryModeCarousel, STORY_MODES } from '@/components/finance/StoryModeCarousel';
@@ -447,6 +448,7 @@ const BREAKPOINT_DESKTOP = 1280;
 const BREAKPOINT_LAPTOP = 960;
 
 function FinanceHubContent() {
+  const { authenticatedFetch } = useAuthFetch();
   React.useEffect(() => { if (Platform.OS === 'web') injectFinnCss(); }, []);
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = windowWidth >= BREAKPOINT_DESKTOP;
@@ -528,13 +530,13 @@ function FinanceHubContent() {
 
     try {
       const [snapRes, connRes] = await Promise.all([
-        fetch('/api/finance/snapshot').then(r => r.json()).catch(() => null),
-        fetch('/api/connections/status').then(r => r.json()).catch(() => null),
+        authenticatedFetch('/api/finance/snapshot').then(r => r.json()).catch(() => null),
+        authenticatedFetch('/api/connections/status').then(r => r.json()).catch(() => null),
       ]);
       if (snapRes) setSnapshot(snapRes);
       if (connRes) setConnections(connRes);
-    } catch (e) {
-      console.warn('Failed to fetch finance data:', e);
+    } catch {
+      // Best-effort finance data fetch
     } finally {
       setLoading(false);
     }

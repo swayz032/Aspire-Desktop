@@ -8,9 +8,11 @@ import { CARD_BG } from '@/constants/cardPatterns';
 import { useRouter } from 'expo-router';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { copyToClipboard } from '@/lib/clipboard';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useSupabase } from '@/providers';
+import { devError } from '@/lib/devLog';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
-const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 interface User {
   id: string;
@@ -79,6 +81,9 @@ const DEFAULT_AVAILABILITY: AvailabilitySlot[] = DAYS.map((_, i) => ({
 
 function BookingsContent() {
   const router = useRouter();
+  const { authenticatedFetch } = useAuthFetch();
+  const { session } = useSupabase();
+  const userId = session?.user?.id ?? '';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'all' | 'services' | 'settings'>('upcoming');
   const [user, setUser] = useState<User | null>(null);
@@ -108,7 +113,7 @@ function BookingsContent() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const userRes = await fetch(`${API_BASE}/api/users/${DEMO_USER_ID}`);
+      const userRes = await authenticatedFetch(`${API_BASE}/api/users/${userId}`);
       if (userRes.ok) {
         const userData = await userRes.json();
         setUser(userData);
@@ -117,11 +122,11 @@ function BookingsContent() {
       }
 
       const [bookingsRes, servicesRes, statsRes, availRes, bufferRes] = await Promise.all([
-        fetch(`${API_BASE}/api/users/${DEMO_USER_ID}/bookings`),
-        fetch(`${API_BASE}/api/users/${DEMO_USER_ID}/services`),
-        fetch(`${API_BASE}/api/users/${DEMO_USER_ID}/bookings/stats`),
-        fetch(`${API_BASE}/api/users/${DEMO_USER_ID}/availability`),
-        fetch(`${API_BASE}/api/users/${DEMO_USER_ID}/buffer-settings`),
+        authenticatedFetch(`${API_BASE}/api/users/${userId}/bookings`),
+        authenticatedFetch(`${API_BASE}/api/users/${userId}/services`),
+        authenticatedFetch(`${API_BASE}/api/users/${userId}/bookings/stats`),
+        authenticatedFetch(`${API_BASE}/api/users/${userId}/availability`),
+        authenticatedFetch(`${API_BASE}/api/users/${userId}/buffer-settings`),
       ]);
 
       if (bookingsRes.ok) setBookings(await bookingsRes.json());
@@ -139,7 +144,7 @@ function BookingsContent() {
       }
       if (bufferRes.ok) setBufferSettings(await bufferRes.json());
     } catch (error) {
-      console.error('Error loading data:', error);
+      devError('Error loading data:', error);
     }
     setLoading(false);
   };
@@ -187,14 +192,14 @@ function BookingsContent() {
 
   const handleAccentColorChange = async (color: string) => {
     try {
-      await fetch(`${API_BASE}/api/users/${DEMO_USER_ID}`, {
+      await authenticatedFetch(`${API_BASE}/api/users/${userId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accentColor: color }),
       });
       setUser(prev => prev ? { ...prev, accentColor: color } : null);
     } catch (error) {
-      console.error('Error updating accent color:', error);
+      devError('Error updating accent color:', error);
     }
   };
 
@@ -213,7 +218,7 @@ function BookingsContent() {
 
     setUploadingLogo(true);
     try {
-      const urlRes = await fetch(`${API_BASE}/api/uploads/request-url`, {
+      const urlRes = await authenticatedFetch(`${API_BASE}/api/uploads/request-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
@@ -227,7 +232,7 @@ function BookingsContent() {
       });
 
       // Save relative path - construct full URL at display time
-      await fetch(`${API_BASE}/api/users/${DEMO_USER_ID}`, {
+      await authenticatedFetch(`${API_BASE}/api/users/${userId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ logoUrl: objectPath }),
@@ -235,7 +240,7 @@ function BookingsContent() {
 
       setUser(prev => prev ? { ...prev, logoUrl: objectPath } : null);
     } catch (error) {
-      console.error('Error uploading logo:', error);
+      devError('Error uploading logo:', error);
     }
     setUploadingLogo(false);
   };
@@ -271,13 +276,13 @@ function BookingsContent() {
       };
 
       if (editingService) {
-        await fetch(`${API_BASE}/api/services/${editingService.id}`, {
+        await authenticatedFetch(`${API_BASE}/api/services/${editingService.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
-        await fetch(`${API_BASE}/api/users/${DEMO_USER_ID}/services`, {
+        await authenticatedFetch(`${API_BASE}/api/users/${userId}/services`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -286,31 +291,31 @@ function BookingsContent() {
       await loadData();
       setShowServiceModal(false);
     } catch (error) {
-      console.error('Error saving service:', error);
+      devError('Error saving service:', error);
     }
     setSaving(false);
   };
 
   const deleteService = async (serviceId: string) => {
     try {
-      await fetch(`${API_BASE}/api/services/${serviceId}`, { method: 'DELETE' });
+      await authenticatedFetch(`${API_BASE}/api/services/${serviceId}`, { method: 'DELETE' });
       await loadData();
     } catch (error) {
-      console.error('Error deleting service:', error);
+      devError('Error deleting service:', error);
     }
   };
 
   const saveAvailability = async () => {
     setSaving(true);
     try {
-      await fetch(`${API_BASE}/api/users/${DEMO_USER_ID}/availability`, {
+      await authenticatedFetch(`${API_BASE}/api/users/${userId}/availability`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slots: availability }),
       });
       setShowAvailabilityModal(false);
     } catch (error) {
-      console.error('Error saving availability:', error);
+      devError('Error saving availability:', error);
     }
     setSaving(false);
   };
@@ -318,14 +323,14 @@ function BookingsContent() {
   const saveBufferSettings = async () => {
     setSaving(true);
     try {
-      await fetch(`${API_BASE}/api/users/${DEMO_USER_ID}/buffer-settings`, {
+      await authenticatedFetch(`${API_BASE}/api/users/${userId}/buffer-settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bufferSettings),
       });
       setShowBufferModal(false);
     } catch (error) {
-      console.error('Error saving buffer settings:', error);
+      devError('Error saving buffer settings:', error);
     }
     setSaving(false);
   };

@@ -5,6 +5,7 @@
  * Replaces raw `navigator.clipboard.writeText()` calls that only work on web.
  */
 import * as Clipboard from 'expo-clipboard';
+import { devWarn } from '@/lib/devLog';
 
 /** Copy text to clipboard. Returns true on success. */
 export async function copyToClipboard(text: string): Promise<boolean> {
@@ -12,7 +13,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     await Clipboard.setStringAsync(text);
     return true;
   } catch (err) {
-    console.warn('[Clipboard] copy failed:', err);
+    devWarn('[Clipboard] copy failed:', err);
     return false;
   }
 }

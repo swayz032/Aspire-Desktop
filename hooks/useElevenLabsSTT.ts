@@ -193,10 +193,11 @@ export function useElevenLabsSTT(
 
       // Start the initial silence timer
       resetSilenceTimer();
-    } catch (err: any) {
-      const message = err.name === 'NotAllowedError'
+    } catch (err: unknown) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      const message = e.name === 'NotAllowedError'
         ? 'Microphone access denied'
-        : err.message || 'Failed to start voice input';
+        : e.message || 'Failed to start voice input';
       setError(message);
       activeRef.current = false;
       stop();

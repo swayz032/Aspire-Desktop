@@ -9,6 +9,7 @@
  * Returns picked file info or null if user cancelled.
  */
 import * as DocumentPicker from 'expo-document-picker';
+import { devWarn } from '@/lib/devLog';
 
 export interface PickedDocument {
   uri: string;
@@ -46,7 +47,7 @@ export async function pickDocuments(
       mimeType: asset.mimeType ?? undefined,
     }));
   } catch (err) {
-    console.warn('[DocumentPicker] pick failed:', err);
+    devWarn('[DocumentPicker] pick failed:', err);
     return [];
   }
 }

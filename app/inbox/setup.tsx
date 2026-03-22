@@ -8,6 +8,7 @@ import { mailApi, initMailApi, DomainSearchResult } from '@/lib/mailApi';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import type { MailProvider, MailOnboardingState, OnboardingCheck, DnsPlanRecord, MailSetupReceipt, DomainMode, EliConfig, DnsCheckResult } from '@/types/mailbox';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { devError } from '@/lib/devLog';
 
 const STEPS = ['Choose Provider', 'Configure', 'Verify', 'Enable Eli'];
 
@@ -56,7 +57,7 @@ function MailboxSetupContent() {
         setCurrentStep(3);
       }
     } catch (e) {
-      console.error('Auto-check failed:', e);
+      devError('Auto-check failed:', e);
       // Non-fatal — user can still click "Run All Checks" manually
     }
     setChecksRunning(false);
@@ -148,7 +149,7 @@ function MailboxSetupContent() {
 
       fetchReceipts(jId);
     } catch (e) {
-      console.error('Failed to resume job', e);
+      devError('Failed to resume job', e);
       sessionStorage.removeItem('mailSetupJobId');
       setJobId(null);
     }
@@ -170,7 +171,7 @@ function MailboxSetupContent() {
     try {
       const data = await mailApi.getReceipts(id);
       setReceipts(data.receipts || []);
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
   };
 
   const handleSelectProvider = async (provider: MailProvider) => {
@@ -185,7 +186,7 @@ function MailboxSetupContent() {
       }
       fetchReceipts(newJobId);
       setCurrentStep(1);
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 
@@ -205,7 +206,7 @@ function MailboxSetupContent() {
       }));
       fetchReceipts();
       setCurrentStep(2);
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 
@@ -216,7 +217,7 @@ function MailboxSetupContent() {
       const result = await mailApi.checkDns(jobId);
       setOnboarding(prev => ({ ...prev, dnsStatus: result.dnsStatus }));
       fetchReceipts();
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setDnsChecking(false);
   };
 
@@ -226,7 +227,7 @@ function MailboxSetupContent() {
     try {
       const result = await mailApi.searchDomains(domainSearchQuery.trim());
       setDomainSearchResults(result.results || []);
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setDomainSearching(false);
   };
 
@@ -258,7 +259,7 @@ function MailboxSetupContent() {
         setPurchaseStatus(result.status);
         fetchReceipts();
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 
@@ -282,7 +283,7 @@ function MailboxSetupContent() {
         fetchReceipts();
         setCurrentStep(2);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 
@@ -293,7 +294,7 @@ function MailboxSetupContent() {
       const data = await mailApi.runChecks(jobId);
       setOnboarding(prev => ({ ...prev, checks: data.checks }));
       fetchReceipts();
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setChecksRunning(false);
   };
 
@@ -309,7 +310,7 @@ function MailboxSetupContent() {
     try {
       await mailApi.applyEliPolicy(jobId, eli);
       fetchReceipts();
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
   };
 
   const handleActivate = async () => {
@@ -323,7 +324,7 @@ function MailboxSetupContent() {
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('mailSetupJobId');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { devError(e); }
     setLoading(false);
   };
 

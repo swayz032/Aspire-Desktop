@@ -8,6 +8,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
+import { devLog, devWarn } from '@/lib/devLog';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 const TAG = 'aspire-session';
@@ -24,10 +25,10 @@ export function useKeepAwake(): void {
         try {
           await activateKeepAwakeAsync(TAG);
           if (!cancelled) {
-            console.log('[KeepAwake] acquired (native)');
+            devLog('[KeepAwake] acquired (native)');
           }
         } catch (err) {
-          console.warn('[KeepAwake] native activate failed:', err);
+          devWarn('[KeepAwake] native activate failed:', err);
         }
         return;
       }
@@ -41,14 +42,14 @@ export function useKeepAwake(): void {
             return;
           }
           wakeLockRef.current = lock;
-          console.log('[KeepAwake] acquired (web Wake Lock API)');
+          devLog('[KeepAwake] acquired (web Wake Lock API)');
 
           lock.addEventListener('release', () => {
-            console.log('[KeepAwake] released (web — visibility change or manual)');
+            devLog('[KeepAwake] released (web — visibility change or manual)');
           });
         } catch (err) {
           // Fails if page is hidden or user denied — non-fatal
-          console.warn('[KeepAwake] web Wake Lock request failed:', err);
+          devWarn('[KeepAwake] web Wake Lock request failed:', err);
         }
       }
     }
@@ -71,12 +72,12 @@ export function useKeepAwake(): void {
 
       if (Platform.OS !== 'web') {
         deactivateKeepAwake(TAG);
-        console.log('[KeepAwake] deactivated (native)');
+        devLog('[KeepAwake] deactivated (native)');
       } else {
         if (wakeLockRef.current) {
           wakeLockRef.current.release().catch(() => {});
           wakeLockRef.current = null;
-          console.log('[KeepAwake] released (web)');
+          devLog('[KeepAwake] released (web)');
         }
         if (typeof document !== 'undefined') {
           document.removeEventListener('visibilitychange', handleVisibilityChange);

@@ -5,6 +5,7 @@ import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
 import { Colors, Typography } from '@/constants/tokens';
 import { CARD_BG, CARD_BORDER, svgPatterns } from '@/constants/cardPatterns';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
 
 const webOnly = (styles: any) => Platform.OS === 'web' ? styles : {};
 
@@ -69,6 +70,7 @@ const EMPTY_FORM = {
 };
 
 function ClientsContent() {
+  const { authenticatedFetch } = useAuthFetch();
   const [customers, setCustomers] = useState<StripeCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,12 +90,12 @@ function ClientsContent() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/stripe/customers?limit=100');
+      const res = await authenticatedFetch('/api/stripe/customers?limit=100');
       if (!res.ok) throw new Error('Failed to fetch clients');
       const data = await res.json();
       setCustomers(data.customers || []);
-    } catch (err: any) {
-      setError(err.message || 'Something went wrong');
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : String(err)) || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -133,7 +135,7 @@ function ClientsContent() {
     });
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/stripe/invoices?customer=${customer.id}&limit=10`);
+      const res = await authenticatedFetch(`/api/stripe/invoices?customer=${customer.id}&limit=10`);
       if (res.ok) {
         const data = await res.json();
         setDetailInvoices(data.invoices || []);
@@ -164,7 +166,7 @@ function ClientsContent() {
         country: form.country.trim() || undefined,
       } : undefined;
 
-      const res = await fetch('/api/stripe/customers', {
+      const res = await authenticatedFetch('/api/stripe/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -182,8 +184,8 @@ function ClientsContent() {
       setShowAddModal(false);
       setForm(EMPTY_FORM);
       await fetchCustomers();
-    } catch (err: any) {
-      setFormError(err.message || 'Failed to create client');
+    } catch (err: unknown) {
+      setFormError((err instanceof Error ? err.message : String(err)) || 'Failed to create client');
     } finally {
       setSaving(false);
     }
@@ -207,7 +209,7 @@ function ClientsContent() {
         country: form.country.trim() || undefined,
       } : undefined;
 
-      const res = await fetch(`/api/stripe/customers/${selectedClient.id}`, {
+      const res = await authenticatedFetch(`/api/stripe/customers/${selectedClient.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -226,8 +228,8 @@ function ClientsContent() {
       setSelectedClient(updated);
       setEditing(false);
       await fetchCustomers();
-    } catch (err: any) {
-      setFormError(err.message || 'Failed to update client');
+    } catch (err: unknown) {
+      setFormError((err instanceof Error ? err.message : String(err)) || 'Failed to update client');
     } finally {
       setSaving(false);
     }
@@ -236,7 +238,7 @@ function ClientsContent() {
   const handleDelete = async (id: string) => {
     setDeleting(true);
     try {
-      const res = await fetch(`/api/stripe/customers/${id}`, { method: 'DELETE' });
+      const res = await authenticatedFetch(`/api/stripe/customers/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to delete client');
@@ -244,11 +246,11 @@ function ClientsContent() {
       setConfirmDelete(null);
       setSelectedClient(null);
       await fetchCustomers();
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (Platform.OS === 'web') {
-        window.alert(err.message);
+        window.alert((err instanceof Error ? err.message : String(err)));
       } else {
-        Alert.alert('Error', err.message);
+        Alert.alert('Error', (err instanceof Error ? err.message : String(err)));
       }
     } finally {
       setDeleting(false);

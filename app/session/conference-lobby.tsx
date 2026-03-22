@@ -37,6 +37,7 @@ import {
 import { useDynamicAuthorityQueue } from '@/lib/authorityQueueStore';
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { devError } from '@/lib/devLog';
 
 // ─── Pulsing dot for pending/invited participants ────────────────────────────
 function PulsingDot({ color }: { color: string }) {
@@ -983,7 +984,7 @@ function ConferenceLobby() {
             if (inviteType === 'cross-suite' || inviteType === 'internal') {
               // Law #3: Fail closed — suiteId must be present
               if (!suiteIdParam) {
-                console.error('[ConferenceLobby] Missing suiteId for invite — cannot send');
+                devError('[ConferenceLobby] Missing suiteId for invite — cannot send');
                 showToast(`Cannot invite ${name}: missing suite identity`, 'error');
                 return;
               }
@@ -1001,11 +1002,11 @@ function ConferenceLobby() {
                   showToast(`${name} invited to conference`, 'success');
                 } else {
                   const body = await resp.json().catch(() => ({ error: 'Unknown error' }));
-                  console.error('[ConferenceLobby] Invite failed:', resp.status, body);
+                  devError('[ConferenceLobby] Invite failed:', resp.status, body);
                   showToast(body.detail || body.error || `Failed to invite ${name}`, 'error');
                 }
               } catch (err) {
-                console.error('[ConferenceLobby] Invite exception:', err);
+                devError('[ConferenceLobby] Invite exception:', err);
                 showToast(`Failed to send invite to ${name}`, 'error');
               }
             } else {

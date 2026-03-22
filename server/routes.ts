@@ -2934,6 +2934,54 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
   }
 });
 
+// Canvas Action Bus task proxy — forwards widget actions to orchestrator (Law #1: Single Brain)
+router.post('/api/orchestrator/task', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const traceId = resolveTraceId(req, correlationId);
+  const suiteId = (req as any).authenticatedSuiteId || '';
+  const officeId = (req as any).authenticatedOfficeId || suiteId;
+
+  const ORCHESTRATOR_URL = resolveOrchestratorUrl();
+  if (!ORCHESTRATOR_URL) {
+    return res.status(503).json({
+      error: 'ORCHESTRATOR_NOT_CONFIGURED',
+      message: 'ORCHESTRATOR_URL is required in production.',
+      correlation_id: correlationId,
+    });
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+    const response = await fetch(`${ORCHESTRATOR_URL}/v1/tasks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Suite-Id': suiteId,
+        'X-Office-Id': officeId,
+        'X-Correlation-Id': correlationId,
+        'X-Trace-Id': traceId,
+      },
+      body: JSON.stringify(req.body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const data = await response.json().catch(() => ({}));
+    res.status(response.status).json(data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Orchestrator task proxy error', { correlationId, error: message });
+    res.status(502).json({
+      error: 'ORCHESTRATOR_PROXY_ERROR',
+      message,
+      correlation_id: correlationId,
+    });
+  }
+});
+
 router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const traceId = resolveTraceId(req, correlationId);

@@ -19,6 +19,7 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/providers';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
+import { devLog, devWarn, devError } from '@/lib/devLog';
 import {
   addAuthorityItem,
   removeAuthorityItem,
@@ -94,7 +95,7 @@ export function useRealtimeApprovalRequests(): void {
     let disposed = false;
     const channels: ReturnType<typeof supabase.channel>[] = [];
 
-    console.log(`${LOG_PREFIX} Initializing for user ${userId.slice(0, 8)}...`);
+    devLog(`${LOG_PREFIX} Initializing for user ${userId.slice(0, 8)}...`);
 
     // ── 1. Supabase Realtime subscription (primary — instant) ──────────
 
@@ -117,7 +118,7 @@ export function useRealtimeApprovalRequests(): void {
           },
           (payload) => {
             const row = payload.new as Record<string, unknown>;
-            console.log(`${LOG_PREFIX} Realtime INSERT:`, { id: row.approval_id || row.id, risk_tier: row.risk_tier, status: row.status });
+            devLog(`${LOG_PREFIX} Realtime INSERT:`, { id: row.approval_id || row.id, risk_tier: row.risk_tier, status: row.status });
             if (row.status === 'pending') {
               addAuthorityItem(rowToAuthorityItem(row));
             }
@@ -133,7 +134,7 @@ export function useRealtimeApprovalRequests(): void {
           },
           (payload) => {
             const row = payload.new as Record<string, unknown>;
-            console.log(`${LOG_PREFIX} Realtime UPDATE:`, { id: row.approval_id || row.id, status: row.status });
+            devLog(`${LOG_PREFIX} Realtime UPDATE:`, { id: row.approval_id || row.id, status: row.status });
             const id = (row.approval_id as string) || (row.id as string);
             if (id && row.status !== 'pending') {
               removeAuthorityItem(id);
@@ -141,7 +142,7 @@ export function useRealtimeApprovalRequests(): void {
           },
         )
         .subscribe((status, err) => {
-          console.log(`${LOG_PREFIX} Subscription status: ${status}`, err || '');
+          devLog(`${LOG_PREFIX} Subscription status: ${status}`, err || '');
           if (status === 'SUBSCRIBED') {
             realtimeConnected.current = true;
             retryCountRef.current = 0;
@@ -151,13 +152,13 @@ export function useRealtimeApprovalRequests(): void {
             if (retryCountRef.current < MAX_RETRIES) {
               const delay = RETRY_BASE_MS * Math.pow(2, retryCountRef.current);
               retryCountRef.current++;
-              console.warn(`${LOG_PREFIX} Retry ${retryCountRef.current}/${MAX_RETRIES} in ${delay}ms...`);
+              devWarn(`${LOG_PREFIX} Retry ${retryCountRef.current}/${MAX_RETRIES} in ${delay}ms...`);
               retryTimerRef.current = setTimeout(() => {
                 supabase.removeChannel(channel);
                 createSubscription();
               }, delay);
             } else {
-              console.error(`${LOG_PREFIX} Max retries (${MAX_RETRIES}) reached. Falling back to polling only.`);
+              devError(`${LOG_PREFIX} Max retries (${MAX_RETRIES}) reached. Falling back to polling only.`);
             }
           }
         });
@@ -179,7 +180,7 @@ export function useRealtimeApprovalRequests(): void {
         const items: AuthorityItem[] = rows.map((r: Record<string, unknown>) => apiRowToAuthorityItem(r));
         setAuthorityItems(items);
       } catch (err) {
-        console.warn(`${LOG_PREFIX} Poll error:`, err);
+        devWarn(`${LOG_PREFIX} Poll error:`, err);
       }
     };
 
@@ -190,7 +191,7 @@ export function useRealtimeApprovalRequests(): void {
     // ── Cleanup ────────────────────────────────────────────────────────
 
     return () => {
-      console.log(`${LOG_PREFIX} Cleaning up subscriptions`);
+      devLog(`${LOG_PREFIX} Cleaning up subscriptions`);
       disposed = true;
       realtimeConnected.current = false;
       channels.forEach(ch => supabase.removeChannel(ch));

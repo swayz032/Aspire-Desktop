@@ -18,7 +18,7 @@ export function initMailApi(fetchFn: FetchFn): void {
   _authFetch = fetchFn;
 }
 
-async function apiFetch<T = any>(url: string, options?: RequestInit): Promise<T> {
+async function apiFetch<T = unknown>(url: string, options?: RequestInit): Promise<T> {
   const res = await _authFetch(url, {
     ...options,
     headers: {
@@ -44,7 +44,7 @@ export const mailApi = {
   getAccounts: () =>
     apiFetch(`${BASE}/inbox/accounts`),
 
-  startOnboarding: (provider: string, context?: any) =>
+  startOnboarding: (provider: string, context?: Record<string, unknown>) =>
     apiFetch(`${BASE}/mail/onboarding/start`, {
       method: 'POST',
       body: JSON.stringify({ provider, context }),
@@ -76,7 +76,7 @@ export const mailApi = {
     }),
 
   startDomainCheckout: (jobId: string, domain: string) =>
-    apiFetch<{ status: string; orderId?: string; amount?: string; currency?: string; dnsPlan?: any }>(
+    apiFetch<{ status: string; orderId?: string; amount?: string; currency?: string; dnsPlan?: Record<string, unknown> }>(
       `${BASE}/domains/checkout/start`, {
       method: 'POST',
       body: JSON.stringify({ jobId, domain }),

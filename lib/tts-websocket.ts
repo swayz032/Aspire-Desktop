@@ -97,7 +97,9 @@ export class TtsWebSocket {
         model: this.model,
         output_format: this.outputFormat,
       });
-      if (this.accessToken) qs.set('auth', this.accessToken);
+      // Security: Never send auth token as URL query parameter (Law #9).
+      // Tokens in URLs get logged by proxies, CDNs, and browser history.
+      // Instead, send auth as the first WebSocket message after connection opens.
       if (this.suiteId) qs.set('suite_id', this.suiteId);
       if (this.traceId) qs.set('trace_id', this.traceId);
       if (typeof this.voiceSettings?.stability === 'number') qs.set('stability', String(this.voiceSettings.stability));
@@ -114,6 +116,13 @@ export class TtsWebSocket {
         reject(new Error('TTS WebSocket connection timeout'));
         this.ws?.close();
       }, 10_000);
+
+      // On open, send auth token as first message (not in URL)
+      this.ws.onopen = () => {
+        if (this.accessToken && this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'auth', token: this.accessToken }));
+        }
+      };
 
       // Wait for server's "connected" signal before resolving
       const onFirstMessage = (event: MessageEvent) => {
