@@ -535,6 +535,9 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         // Declare before try so catch block can always clear it
         let ackTimer: ReturnType<typeof setTimeout> | null = null;
 
+        // SSE connection timeout — abort if backend accepts but never responds (30s)
+        const sseTimeout = setTimeout(() => sseAbort.abort(), 30_000);
+
         try {
           const sseResp = await fetch('/api/orchestrator/intent', {
             method: 'POST',
@@ -555,6 +558,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
             }),
             signal: sseAbort.signal,
           });
+          clearTimeout(sseTimeout);
 
           if (!sseResp.ok || !sseResp.body) {
             throw new Error(`SSE request failed: ${sseResp.status}`);

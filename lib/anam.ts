@@ -31,6 +31,32 @@ import { reportProviderError } from '@/lib/providerErrorReporter';
 
 export type AnamClientInstance = ReturnType<typeof createClient>;
 
+/**
+ * Extended interface for Anam SDK methods not in the public type definitions.
+ * Used to replace `as any` casts with typed access + runtime guards.
+ */
+interface AnamClientExtended {
+  interruptPersona?: () => void;
+  sendUserMessage?: (text: string) => void;
+  muteInputAudio?: () => void;
+  unmuteInputAudio?: () => void;
+  getInputAudioState?: () => boolean;
+  getActiveSessionId?: () => string | null;
+  talk?: (text: string) => void;
+  createTalkMessageStream?: () => AnamTalkStream | null;
+}
+
+interface AnamTalkStream {
+  streamMessageChunk?: (chunk: string, isFinal: boolean) => Promise<void>;
+  endMessage?: () => void;
+  isActive?: () => boolean;
+}
+
+/** Cast client to extended interface for method access with runtime guards. */
+function ext(client: AnamClientInstance): AnamClientExtended {
+  return client as unknown as AnamClientExtended;
+}
+
 /** Conversation message for multi-turn context */
 export interface AnamMessage {
   role: 'user' | 'assistant';
@@ -110,39 +136,45 @@ export function createAnamClient(sessionToken: string): AnamClientInstance {
 // ─── SDK v4.8 Wrapper Functions ─────────────────────────────
 
 export function interruptPersona(client: AnamClientInstance): void {
-  if (client && typeof (client as any).interruptPersona === 'function') {
-    (client as any).interruptPersona();
+  const c = ext(client);
+  if (client && typeof c.interruptPersona === 'function') {
+    c.interruptPersona();
   }
 }
 
 export function sendUserMessage(client: AnamClientInstance, text: string): void {
-  if (client && typeof (client as any).sendUserMessage === 'function') {
-    (client as any).sendUserMessage(text);
+  const c = ext(client);
+  if (client && typeof c.sendUserMessage === 'function') {
+    c.sendUserMessage(text);
   }
 }
 
 export function muteAnamInput(client: AnamClientInstance): void {
-  if (client && typeof (client as any).muteInputAudio === 'function') {
-    (client as any).muteInputAudio();
+  const c = ext(client);
+  if (client && typeof c.muteInputAudio === 'function') {
+    c.muteInputAudio();
   }
 }
 
 export function unmuteAnamInput(client: AnamClientInstance): void {
-  if (client && typeof (client as any).unmuteInputAudio === 'function') {
-    (client as any).unmuteInputAudio();
+  const c = ext(client);
+  if (client && typeof c.unmuteInputAudio === 'function') {
+    c.unmuteInputAudio();
   }
 }
 
 export function getAnamInputAudioState(client: AnamClientInstance): boolean {
-  if (client && typeof (client as any).getInputAudioState === 'function') {
-    return (client as any).getInputAudioState();
+  const c = ext(client);
+  if (client && typeof c.getInputAudioState === 'function') {
+    return c.getInputAudioState();
   }
   return false;
 }
 
 export function getActiveAnamSessionId(client: AnamClientInstance): string | null {
-  if (client && typeof (client as any).getActiveSessionId === 'function') {
-    return (client as any).getActiveSessionId();
+  const c = ext(client);
+  if (client && typeof c.getActiveSessionId === 'function') {
+    return c.getActiveSessionId();
   }
   return null;
 }
@@ -190,16 +222,18 @@ async function bindAnamSession(
   }
 }
 
-export function createAnamTalkStream(client: AnamClientInstance): unknown {
-  if (client && typeof (client as any).createTalkMessageStream === 'function') {
-    return (client as any).createTalkMessageStream();
+export function createAnamTalkStream(client: AnamClientInstance): AnamTalkStream | null {
+  const c = ext(client);
+  if (client && typeof c.createTalkMessageStream === 'function') {
+    return c.createTalkMessageStream() ?? null;
   }
   return null;
 }
 
 export function finnTalk(client: AnamClientInstance, text: string): void {
-  if (client && typeof (client as any).talk === 'function') {
-    (client as any).talk(text);
+  const c = ext(client);
+  if (client && typeof c.talk === 'function') {
+    c.talk(text);
   }
 }
 
@@ -214,20 +248,22 @@ export async function streamResponseToAvatar(
 ): Promise<void> {
   if (!client || !responseText?.trim()) return;
 
+  const c = ext(client);
+
   // Short responses: use simple talk()
   if (responseText.length < 200) {
-    if (typeof (client as any).talk === 'function') {
-      (client as any).talk(responseText);
+    if (typeof c.talk === 'function') {
+      c.talk(responseText);
     }
     return;
   }
 
   // Longer responses: stream for lower latency
   const talkStream = createAnamTalkStream(client);
-  if (!talkStream || typeof (talkStream as any).streamMessageChunk !== 'function') {
+  if (!talkStream || typeof talkStream.streamMessageChunk !== 'function') {
     // Fallback to talk()
-    if (typeof (client as any).talk === 'function') {
-      (client as any).talk(responseText);
+    if (typeof c.talk === 'function') {
+      c.talk(responseText);
     }
     return;
   }
@@ -236,18 +272,18 @@ export async function streamResponseToAvatar(
     // Split into sentence chunks for natural speech pacing
     const chunks = responseText.match(/[^.!?]+[.!?]+\s*/g) || [responseText];
     for (let i = 0; i < chunks.length; i++) {
-      if (typeof (talkStream as any).isActive === 'function' && (talkStream as any).isActive()) {
-        await (talkStream as any).streamMessageChunk(chunks[i], i === chunks.length - 1);
+      if (typeof talkStream.isActive === 'function' && talkStream.isActive()) {
+        await talkStream.streamMessageChunk(chunks[i], i === chunks.length - 1);
       }
     }
-    if (typeof (talkStream as any).endMessage === 'function') {
-      (talkStream as any).endMessage();
+    if (typeof talkStream.endMessage === 'function') {
+      talkStream.endMessage();
     }
   } catch (err) {
     console.warn('[Anam] Talk stream error, falling back:', err);
     reportProviderError({ provider: 'anam', action: 'stream_response', error: err, component: 'streamResponseToAvatar' });
-    if (typeof (client as any).talk === 'function') {
-      (client as any).talk(responseText);
+    if (typeof c.talk === 'function') {
+      c.talk(responseText);
     }
   }
 }
