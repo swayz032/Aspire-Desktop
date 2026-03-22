@@ -265,10 +265,22 @@ function useAuthGate() {
     const navigate = (target: string) => {
       navLockRef.current = true;
       router.replace(target as any);
-      setTimeout(() => { navLockRef.current = false; }, 800);
+      setTimeout(() => { navLockRef.current = false; }, 2000);
     };
 
+    // Session pages (conference, voice) should NEVER redirect to login on transient
+    // token refresh races — the user is mid-call. SupabaseProvider's stableSetSession
+    // already attempts refreshSession() before accepting null. Give it time.
+    const inSessionGroup = segments[0] === ('session' as any);
+
     if (!session && !inAuthGroup && !inPublicGroup) {
+      if (inSessionGroup) {
+        // Delay redirect for session pages — only act after 5s of confirmed no-session.
+        // This allows token refresh races to settle without shaking the screen.
+        navLockRef.current = true;
+        setTimeout(() => { navLockRef.current = false; }, 5000);
+        return;
+      }
       navigate('/(auth)/login');
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
       navigate('/(auth)/onboarding');
