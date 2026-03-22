@@ -503,6 +503,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
             <input type="email" placeholder="you@company.com" value={email}
               onChange={(e: any) => setEmail(e.target.value)}
               onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
+              autoComplete="off"
               disabled={loading} style={inp('email')} />
 
             <label style={lbl}>Password</label>
@@ -510,6 +511,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
               value={password} onChange={(e: any) => setPassword(e.target.value)}
               onFocus={() => setFocused('password')} onBlur={() => setFocused(null)}
               onKeyDown={(e: any) => e.key === 'Enter' && mode === 'signin' && handleSignIn()}
+              autoComplete={mode === 'signup' ? 'new-password' : 'off'}
               disabled={loading} style={inp('password')} />
 
             {mode === 'signup' && (
@@ -519,6 +521,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
                   value={confirmPassword} onChange={(e: any) => setConfirmPassword(e.target.value)}
                   onFocus={() => setFocused('confirm')} onBlur={() => setFocused(null)}
                   onKeyDown={(e: any) => e.key === 'Enter' && handleSignUp()}
+                  autoComplete="new-password"
                   disabled={loading} style={inp('confirm')} />
               </>
             )}

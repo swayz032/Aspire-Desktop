@@ -404,12 +404,8 @@ function DesktopHeaderInner({
                         console.error('Sign out error:', e);
                       }
                       setActivePanel('none');
-                      // Redirect to login — full page reload clears all state
-                      if (typeof window !== 'undefined') {
-                        window.location.href = '/(auth)/login';
-                      } else {
-                        router.replace('/(auth)/login' as any);
-                      }
+                      // Redirect to login via Expo Router (handles group path resolution)
+                      router.replace('/(auth)/login' as any);
                       return;
                     }
                     setActivePanel('none');

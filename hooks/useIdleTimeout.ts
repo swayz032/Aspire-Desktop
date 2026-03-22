@@ -39,11 +39,7 @@ export function useIdleTimeout(timeoutMs = 15 * 60_000) {
     } catch (_e) {
       // signOut already handles errors internally
     }
-    if (typeof window !== 'undefined') {
-      window.location.href = '/(auth)/login';
-    } else {
-      router.replace('/(auth)/login' as any);
-    }
+    router.replace('/(auth)/login' as any);
   }, [signOut, router, clearAllTimers]);
 
   const resetTimer = useCallback(() => {
