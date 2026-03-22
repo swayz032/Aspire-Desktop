@@ -523,6 +523,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       {
         const sseAbort = new AbortController();
         sseAbortRef.current = sseAbort;
+        // Declare before try so catch block can always clear it
+        let ackTimer: ReturnType<typeof setTimeout> | null = null;
 
         try {
           const sseResp = await fetch('/api/orchestrator/intent', {
@@ -554,7 +556,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           let buffer = '';
           let sseCompleted = false;
           let ackSpoken = false;
-          const ackTimer = setTimeout(() => {
+          ackTimer = setTimeout(() => {
             if (!sseCompleted && !ackSpoken && ttsWsRef.current?.isConnected && activeRef.current) {
               ackSpoken = true;
               const ackCtx = ttsWsRef.current.nextContextId();
@@ -635,7 +637,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           }
 
           reader.cancel().catch(() => {});
-          clearTimeout(ackTimer);
+          if (ackTimer) clearTimeout(ackTimer);
           sseAbortRef.current = null;
           usedStreaming = !!streamingContextRef.current;
 
@@ -643,7 +645,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
             throw new Error('SSE stream ended without response');
           }
         } catch (err) {
-          clearTimeout(ackTimer);
+          if (ackTimer) clearTimeout(ackTimer);
           sseAbortRef.current = null;
           if (sseAbort.signal.aborted) {
             // Component unmounted or session ended — don't fallback
