@@ -125,9 +125,10 @@ export function useDeepgramSTT(
       };
 
       ws.onclose = () => setIsListening(false);
-    } catch (err: any) {
-      setError(err.message);
-      reportProviderError({ provider: 'deepgram', action: 'stt_reconnect', error: err, component: 'useDeepgramSTT' });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      reportProviderError({ provider: 'deepgram', action: 'stt_reconnect', error: err instanceof Error ? err : new Error(msg), component: 'useDeepgramSTT' });
       stop();
     }
   }, [stop]);
@@ -231,9 +232,10 @@ export function useDeepgramSTT(
       ws.onclose = () => {
         setIsListening(false);
       };
-    } catch (err: any) {
-      setError(err.message);
-      reportProviderError({ provider: 'deepgram', action: 'stt_start', error: err, component: 'useDeepgramSTT' });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      reportProviderError({ provider: 'deepgram', action: 'stt_start', error: err instanceof Error ? err : new Error(msg), component: 'useDeepgramSTT' });
       stop();
     }
   }, [stop, reconnectWs]);

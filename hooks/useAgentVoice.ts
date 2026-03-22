@@ -176,6 +176,12 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   onErrorRef.current = onError;
   const onDiagnosticRef = useRef(onDiagnostic);
   onDiagnosticRef.current = onDiagnostic;
+  const onActivityEventRef = useRef(options.onActivityEvent);
+  onActivityEventRef.current = options.onActivityEvent;
+  const onTranscriptRef = useRef(onTranscript);
+  onTranscriptRef.current = onTranscript;
+  const onResponseRef = useRef(onResponse);
+  onResponseRef.current = onResponse;
   const updateStatusRef = useRef(updateStatus);
   updateStatusRef.current = updateStatus;
 
@@ -225,7 +231,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
     try {
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         audioContextRef.current = new AudioCtx();
       }
       const ctx = audioContextRef.current;
@@ -354,7 +360,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
       try {
         if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+          const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
           audioContextRef.current = new AudioCtx();
         }
         const ctx = audioContextRef.current;
@@ -449,7 +455,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     // Silent mode: skip transcript callback (used for internal greeting prompts)
     if (!sendOpts?.silent) {
       setTranscript(text);
-      onTranscript?.(text);
+      onTranscriptRef.current?.(text);
     }
     updateStatus('thinking');
 
@@ -631,7 +637,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
                 // Forward activity events to callback if provided
                 if (event.type !== 'partial_response' && event.type !== 'response') {
-                  options.onActivityEvent?.(event);
+                  onActivityEventRef.current?.(event);
                 }
               } catch (e) {
                 devError('[useAgentVoice] Failed to parse SSE event:', e);
@@ -668,7 +674,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
       setLastResponse(responseText);
       setLastReceiptId(receiptId);
-      onResponse?.(responseText, receiptId ?? undefined);
+      onResponseRef.current?.(responseText, receiptId ?? undefined);
 
       if (usedStreaming) {
         // Already spoke via streaming TTS — audio will finish via onContextDone callback
@@ -717,7 +723,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       });
 
       processingRef.current = false;
-      onError?.(err);
+      onErrorRef.current?.(err);
       updateStatus('error');
       setTimeout(() => {
         if (activeRef.current) {
@@ -725,7 +731,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         }
       }, 2000);
     }
-  }, [agent, suiteId, accessToken, onTranscript, onResponse, onError, updateStatus, speakViaHttpStream, playContextAudio, options.onActivityEvent, nextTraceId, emitDiagnostic, buildTraceHeaders]);
+  }, [agent, suiteId, accessToken, updateStatus, speakViaHttpStream, playContextAudio, nextTraceId, emitDiagnostic, buildTraceHeaders]);
 
   // Stable ref for sendText to avoid re-creating STT hook
   const sendTextRef = useRef(sendText);

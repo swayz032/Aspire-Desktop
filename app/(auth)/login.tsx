@@ -158,7 +158,7 @@ function GlobeCanvas({ accent, accentRgb, landColor, initAngle }: GlobeProps) {
 
   useEffect(() => {
     angleRef.current = initAngle;
-    getLandPoints().then(pts => { ptsRef.current = pts; });
+    getLandPoints().then(pts => { ptsRef.current = pts; }).catch(() => {});
   }, [initAngle]);
 
   useEffect(() => {
