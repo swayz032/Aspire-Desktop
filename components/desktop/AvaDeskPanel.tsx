@@ -398,7 +398,24 @@ function AvaDeskPanelInner() {
         },
         onVideoStarted: () => {
           console.log('[Anam] Video stream playing');
+          clearConnectionTimeouts();
+          playSuccessSound();
           setVideoState('connected');
+          setConnectionStatus('');
+
+          // Greeting fires ONLY after video is visible — no more talking to a blank screen
+          setTimeout(() => {
+            if (anamClientRef.current && typeof (anamClientRef.current as any).talk === 'function') {
+              const ownerName = tenant?.ownerName;
+              const lastName = ownerName?.trim().split(' ').pop();
+              const hour = new Date().getHours();
+              const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+              const greeting = lastName
+                ? `${timeGreeting}, Mr. ${lastName}. I'm Ava, your chief of staff. What can I help you with?`
+                : `${timeGreeting}! I'm Ava, your chief of staff. How can I help you today?`;
+              (anamClientRef.current as any).talk(greeting);
+            }
+          }, 300);
         },
         onConnectionClosed: (reason, details) => {
           console.log('[Anam] Connection closed', reason ? { reason, details } : undefined);
@@ -443,27 +460,9 @@ function AvaDeskPanelInner() {
       const client = await connectAnamAvatar('anam-video-element', session?.access_token, connectOptions);
       anamClientRef.current = client;
 
-      // Event listeners are now registered inside connectAnamAvatar via setupAllEventListeners
-
-      clearConnectionTimeouts();
-      playSuccessSound();
-      setVideoState('connected');
-      setConnectionStatus('');
-
-      // Send personalized greeting since CUSTOMER_CLIENT_V1 has no built-in LLM
-      // Ava knows who she works for — address by name (Law #9: no raw PII, just business name)
-      setTimeout(() => {
-        if (anamClientRef.current && typeof (anamClientRef.current as any).talk === 'function') {
-          const ownerName = tenant?.ownerName;
-          const lastName = ownerName?.trim().split(' ').pop();
-          const hour = new Date().getHours();
-          const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-          const greeting = lastName
-            ? `${timeGreeting}, Mr. ${lastName}. I'm Ava, your chief of staff. What can I help you with?`
-            : `${timeGreeting}! I'm Ava, your chief of staff. How can I help you today?`;
-          (anamClientRef.current as any).talk(greeting);
-        }
-      }, 1500);
+      // Event listeners registered inside connectAnamAvatar via setupAllEventListeners.
+      // Video state + greeting are triggered by onVideoStarted callback above —
+      // keeps spinner visible until avatar is actually rendering on screen.
     } catch (error: any) {
       clearConnectionTimeouts();
       anamClientRef.current = null;
@@ -885,11 +884,11 @@ function AvaDeskPanelInner() {
                   borderRadius: 0,
                   opacity: videoState === 'connected' ? 1 : 0,
                   pointerEvents: videoState === 'connected' ? 'auto' : 'none',
-                  backgroundColor: '#000',
+                  backgroundColor: videoState === 'connected' ? '#000' : 'transparent',
                   position: 'absolute',
                   top: 0,
                   left: 0,
-                  zIndex: 1,
+                  zIndex: videoState === 'connected' ? 1 : -1,
                 }}
               />
             )}
