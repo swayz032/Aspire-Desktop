@@ -880,9 +880,9 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           raw: err instanceof Error ? err.message : String(err),
           recoverable: false,
         });
-        // Do NOT throw — caller handles via onError + toast
-        updateStatus('idle');
-        return;
+        updateStatus('error');
+        // Re-throw so caller's try-catch can show visible error to user
+        throw err;
       }
 
       // Step 3: Mic access succeeded — now activate the session
