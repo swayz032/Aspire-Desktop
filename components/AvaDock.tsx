@@ -1,13 +1,12 @@
 import React, { useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  Pressable, 
-  Modal, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Pressable,
   Animated,
-  Dimensions,
+  useWindowDimensions,
   PanResponder
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,11 +16,11 @@ import { useSession } from '@/providers';
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINIMIZED_HEIGHT = 80;
-const EXPANDED_HEIGHT = SCREEN_HEIGHT * 0.75;
 
 function AvaDockInner() {
+  const { height: SCREEN_HEIGHT } = useWindowDimensions();
+  const EXPANDED_HEIGHT = SCREEN_HEIGHT * 0.75;
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const { dockState, sessionMode, closeDock, minimizeDock, expandDock } = useAvaDock();
   const { session, startSession, endSession, isActive } = useSession();
@@ -133,10 +132,10 @@ function AvaDockInner() {
   }
 
   return (
-    <Animated.View 
+    <Animated.View
       style={[
         styles.container,
-        { transform: [{ translateY }] }
+        { height: EXPANDED_HEIGHT, transform: [{ translateY }] }
       ]}
     >
       <View style={styles.handleContainer} {...panResponder.panHandlers}>
@@ -194,7 +193,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    height: EXPANDED_HEIGHT,
     backgroundColor: Colors.background.secondary,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,

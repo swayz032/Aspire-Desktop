@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export function Button(props: any) {
+export function Button(props: ButtonProps) {
   return (
     <PageErrorBoundary pageName="button">
       <ButtonInner {...props} />

@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export function Card(props: any) {
+export function Card(props: CardProps) {
   return (
     <PageErrorBoundary pageName="card">
       <CardInner {...props} />

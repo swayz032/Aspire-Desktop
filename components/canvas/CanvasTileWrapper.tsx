@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { View, Pressable, StyleSheet, Platform } from 'react-native';
 import type { ImmersionMode } from '@/lib/immersionStore';
 import { Canvas } from '@/constants/tokens';
@@ -115,40 +115,20 @@ function CanvasTileWrapperInner({
   const wrapperRef = useRef<View>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // --- Off mode: pure passthrough, zero overhead ---
-  if (mode === 'off') {
-    return <>{children}</>;
-  }
+  // Cleanup hover timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
 
-  // --- Handlers (shared between depth + canvas) ---
+  // --- Handlers (all hooks declared before any early returns) ---
 
   const handlePress = useCallback(() => {
     onPress?.(tileId);
   }, [tileId, onPress]);
-
-  // --- Depth mode: pressable wrapper with subtle elevation, no hover/context ---
-  if (mode === 'depth') {
-    return (
-      <Pressable
-        onPress={handlePress}
-        style={styles.depthWrapper}
-        accessibilityRole="button"
-        accessibilityLabel={`Open ${tileId} workspace`}
-        {...(Platform.OS === 'web'
-          ? {
-              className: 'canvas-tile-depth',
-            } as unknown as Record<string, unknown>
-          : {})}
-      >
-        {children}
-      </Pressable>
-    );
-  }
-
-  // --- Canvas mode: full interaction layer ---
-
-  // Resolve desk for per-desk accent halo
-  const deskName = getTile(tileId)?.desk ?? 'quinn';
 
   const handleMouseEnter = useCallback(() => {
     if (Platform.OS !== 'web' || !onHoverIn) return;
@@ -189,6 +169,35 @@ function CanvasTileWrapperInner({
     },
     [tileId, onContextMenu],
   );
+
+  // --- Off mode: pure passthrough, zero overhead ---
+  if (mode === 'off') {
+    return <>{children}</>;
+  }
+
+  // --- Depth mode: pressable wrapper with subtle elevation, no hover/context ---
+  if (mode === 'depth') {
+    return (
+      <Pressable
+        onPress={handlePress}
+        style={styles.depthWrapper}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${tileId} workspace`}
+        {...(Platform.OS === 'web'
+          ? {
+              className: 'canvas-tile-depth',
+            } as unknown as Record<string, unknown>
+          : {})}
+      >
+        {children}
+      </Pressable>
+    );
+  }
+
+  // --- Canvas mode: full interaction layer ---
+
+  // Resolve desk for per-desk accent halo
+  const deskName = getTile(tileId)?.desk ?? 'quinn';
 
   return (
     <View
@@ -233,7 +242,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export function CanvasTileWrapper(props: any) {
+export function CanvasTileWrapper(props: CanvasTileWrapperProps) {
   return (
     <PageErrorBoundary pageName="canvas-tile-wrapper">
       <CanvasTileWrapperInner {...props} />

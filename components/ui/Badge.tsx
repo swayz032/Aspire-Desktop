@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export function Badge(props: any) {
+export function Badge(props: BadgeProps) {
   return (
     <PageErrorBoundary pageName="badge">
       <BadgeInner {...props} />

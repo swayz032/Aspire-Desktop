@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export function SessionTimeoutWarning(props: any) {
+export function SessionTimeoutWarning(props: SessionTimeoutWarningProps) {
   return (
     <PageErrorBoundary pageName="session-timeout-warning">
       <SessionTimeoutWarningInner {...props} />

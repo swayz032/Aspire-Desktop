@@ -63,6 +63,7 @@ import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { useCanvasVoice } from '@/hooks/useCanvasVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { copyToClipboard } from '@/lib/clipboard';
+import { devError } from '@/lib/devLog';
 
 // Widget content imports
 import { AgentWidget } from './widgets/AgentWidget';
@@ -194,7 +195,7 @@ function CanvasWorkspaceInner(): React.ReactElement {
         if (id !== agentId && h.status !== 'idle') h.endSession();
       });
       hook.startSession().catch((err) => {
-        console.error('[CanvasWorkspace] Failed to start voice session:', err);
+        devError('[CanvasWorkspace] Failed to start voice session:', err);
       });
       playSound('dock_agent_start');
     } else {
@@ -576,7 +577,7 @@ function CanvasWorkspaceInner(): React.ReactElement {
                               try {
                                 await avaVoice.startSession();
                               } catch (err) {
-                                console.error('[CanvasWorkspace] Ava voice start failed:', err);
+                                devError('[CanvasWorkspace] Ava voice start failed:', err);
                               }
                             } else {
                               avaVoice.endSession();

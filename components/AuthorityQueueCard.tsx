@@ -515,7 +515,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export function AuthorityQueueCard(props: any) {
+export function AuthorityQueueCard(props: AuthorityQueueCardProps) {
   return (
     <PageErrorBoundary pageName="authority-queue-card">
       <AuthorityQueueCardInner {...props} />

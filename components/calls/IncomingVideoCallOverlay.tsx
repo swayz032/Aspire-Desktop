@@ -21,6 +21,7 @@ import {
   getIncomingVideoCallState,
   subscribeIncomingVideoCall,
 } from '@/lib/incomingVideoCallStore';
+import { devError } from '@/lib/devLog';
 
 /* ─── Conference room hero image ─── */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -317,7 +318,7 @@ function IncomingVideoCallOverlayInner(): React.ReactElement | null {
         },
       });
     } catch (err) {
-      console.error('Failed to accept video call:', err);
+      devError('Failed to accept video call:', err);
     }
   };
 

@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export function CalendarCard(props: any) {
+export function CalendarCard(props: CalendarCardProps) {
   return (
     <PageErrorBoundary pageName="calendar-card">
       <CalendarCardInner {...props} />

@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export function TopHeader(props: any) {
+export function TopHeader(props: TopHeaderProps) {
   return (
     <PageErrorBoundary pageName="top-header">
       <TopHeaderInner {...props} />
