@@ -819,7 +819,73 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     interimTranscript: stt.transcript,
     lastResponse,
     lastReceiptId,
-    startSession: async () => { updateStatus('listening'); },
+    startSession: async () => {
+      activeRef.current = true;
+      processingRef.current = false;
+      updateStatus('listening');
+
+      // Unlock audio for autoplay (browsers require user gesture)
+      await unlockAudioPlayback();
+
+      // Initialize TTS WebSocket (preferred transport)
+      try {
+        const voiceId = getVoiceId(agent);
+        const voiceConfig = getVoiceConfig(agent);
+        ttsWsRef.current = new TtsWebSocket({
+          voiceId,
+          model: voiceConfig.model,
+          outputFormat: 'mp3_44100_128',
+          accessToken,
+          suiteId,
+          onAudio: (contextId: string, chunk: Uint8Array) => {
+            if (!audioChunksRef.current.has(contextId)) {
+              audioChunksRef.current.set(contextId, []);
+            }
+            audioChunksRef.current.get(contextId)!.push(chunk);
+          },
+          onContextDone: (contextId: string) => {
+            playContextAudio(contextId);
+          },
+          onConnected: () => {
+            devLog('[useAgentVoice] TTS WebSocket connected for', agent);
+          },
+          onError: (error: Error) => {
+            devWarn('[useAgentVoice] TTS WebSocket error, will use HTTP fallback:', error.message);
+          },
+          onClose: () => {
+            ttsWsRef.current = null;
+          },
+        });
+        await ttsWsRef.current.connect();
+
+        // Keep-alive check every 30s — reconnect if dropped
+        keepAliveRef.current = setInterval(() => {
+          if (ttsWsRef.current && !ttsWsRef.current.isConnected) {
+            devWarn('[useAgentVoice] TTS WebSocket disconnected, will use HTTP fallback');
+            ttsWsRef.current = null;
+          }
+        }, 30_000);
+      } catch (err) {
+        devWarn('[useAgentVoice] TTS WebSocket init failed, HTTP fallback active:', err);
+        // HTTP streaming fallback will be used automatically by sendText
+      }
+
+      // Start STT (speech-to-text)
+      try {
+        await stt.start();
+      } catch (err) {
+        devError('[useAgentVoice] STT start failed:', err);
+        emitDiagnostic({
+          traceId: nextTraceId(),
+          stage: 'mic',
+          code: 'STT_START_FAILED',
+          message: 'Failed to start speech recognition.',
+          raw: err instanceof Error ? err.message : String(err),
+          recoverable: false,
+        });
+        throw err;
+      }
+    },
     endSession,
     sendText,
     setMuted: stt.setMuted,
