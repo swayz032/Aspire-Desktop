@@ -838,26 +838,6 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     };
   }, []);
 
-  // NOTE: Duplicate auth-loss useEffect removed — the one at line ~733 handles this.
-
-  // Cleanup keep-alive timer and SSE stream on unmount
-  useEffect(() => {
-    return () => {
-      if (keepAliveRef.current) {
-        clearInterval(keepAliveRef.current);
-        keepAliveRef.current = null;
-      }
-      if (authLossTimerRef.current) {
-        clearTimeout(authLossTimerRef.current);
-        authLossTimerRef.current = null;
-      }
-      if (sseAbortRef.current) {
-        sseAbortRef.current.abort();
-        sseAbortRef.current = null;
-      }
-    };
-  }, []);
-
   return {
     status,
     isActive: activeRef.current,

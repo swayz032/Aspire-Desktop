@@ -30,7 +30,10 @@ export async function getAuthorityQueue(accessToken?: string, suiteId?: string):
   if (suiteId) headers['X-Suite-Id'] = suiteId;
 
   const resp = await fetch('/api/authority-queue', { headers });
-  if (!resp.ok) return [];
+  if (!resp.ok) {
+    console.warn(`[AuthorityQueue] API returned ${resp.status}`);
+    return [];
+  }
   const data = await resp.json();
   return data.pendingApprovals ?? [];
 }
