@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
@@ -34,6 +34,33 @@ const SupabaseContext = createContext<SupabaseContextType | undefined>(undefined
 export function SupabaseProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(DEV_BYPASS_AUTH ? DEV_FAKE_SESSION : null);
   const [isLoading, setIsLoading] = useState(DEV_BYPASS_AUTH ? false : true);
+  // Prevent rapid session oscillation — if session was valid within the last 2s,
+  // don't set it to null (wait for a stable SIGNED_OUT event instead).
+  const lastValidSessionRef = useRef<number>(0);
+  const stableSetSession = (s: Session | null) => {
+    if (s) {
+      lastValidSessionRef.current = Date.now();
+      setSession(s);
+    } else {
+      const timeSinceValid = Date.now() - lastValidSessionRef.current;
+      if (timeSinceValid < 2000 && lastValidSessionRef.current > 0) {
+        // Session was valid very recently — likely a token refresh race, not a real signout.
+        // Attempt refresh before accepting null.
+        supabase.auth.refreshSession().then(({ data }) => {
+          if (data.session) {
+            lastValidSessionRef.current = Date.now();
+            setSession(data.session);
+          } else {
+            setSession(null);
+          }
+        }).catch(() => {
+          setSession(null);
+        });
+        return;
+      }
+      setSession(null);
+    }
+  };
 
   useEffect(() => {
     if (DEV_BYPASS_AUTH) return;
@@ -42,14 +69,14 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
+      stableSetSession(s);
       setIsLoading(false);
     });
 
     // Then restore from storage
     supabase.auth.getSession()
       .then(({ data: { session: s } }) => {
-        setSession(s);
+        stableSetSession(s);
         setIsLoading(false);
       })
       .catch(() => {
@@ -68,7 +95,7 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
         if (!data.session && session) {
           const { data: refreshed } = await supabase.auth.refreshSession();
           if (!refreshed.session) {
-            setSession(null);
+            stableSetSession(null);
           }
         }
       }

@@ -773,26 +773,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     };
   }, []);
 
-  // Auto-end session on logout (session removed, not just missing suiteId)
-  useEffect(() => {
-    if (!activeRef.current) return;
-
-    if (accessTokenRef.current) {
-      if (authLossTimerRef.current) {
-        clearTimeout(authLossTimerRef.current);
-        authLossTimerRef.current = null;
-      }
-      return;
-    }
-
-    if (authLossTimerRef.current) return;
-    authLossTimerRef.current = setTimeout(() => {
-      authLossTimerRef.current = null;
-      if (!accessTokenRef.current && activeRef.current) {
-        endSession();
-      }
-    }, 10_000);
-  }, [accessToken, endSession]);
+  // NOTE: Duplicate auth-loss useEffect removed — the one at line ~733 handles this.
 
   // Cleanup keep-alive timer and SSE stream on unmount
   useEffect(() => {

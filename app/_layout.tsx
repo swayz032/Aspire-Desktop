@@ -201,6 +201,7 @@ function useAuthGate() {
   const router = useRouter();
   const [onboardingChecked, setOnboardingChecked] = useState(DEV_BYPASS_AUTH ? true : false);
   const [onboardingComplete, setOnboardingComplete] = useState(DEV_BYPASS_AUTH ? true : false);
+  const navLockRef = useRef(false);
 
   useEffect(() => {
     if (DEV_BYPASS_AUTH) return;
@@ -257,12 +258,22 @@ function useAuthGate() {
       return;
     }
 
+    // Navigation debounce — prevents rapid redirect loops ("shaking") when
+    // session oscillates during token refresh races or voice pipeline errors.
+    if (navLockRef.current) return;
+
+    const navigate = (target: string) => {
+      navLockRef.current = true;
+      router.replace(target as any);
+      setTimeout(() => { navLockRef.current = false; }, 800);
+    };
+
     if (!session && !inAuthGroup && !inPublicGroup) {
-      router.replace('/(auth)/login' as any);
+      navigate('/(auth)/login');
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
-      router.replace('/(auth)/onboarding' as any);
+      navigate('/(auth)/onboarding');
     } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
-      router.replace('/(tabs)');
+      navigate('/(tabs)');
     }
   }, [session, isLoading, segments, onboardingChecked, onboardingComplete]);
 }
