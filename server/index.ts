@@ -459,20 +459,24 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
-// Request timeout — 30s (Law #10: timeout enforcement)
+// Request timeout — 30s default, 60s for orchestrator (Law #10: timeout enforcement)
 app.use((req, res, next) => {
   if (req.headers.upgrade === 'websocket') return next();
   if (req.headers.accept === 'text/event-stream') return next();
+
+  // Orchestrator + TTS routes need longer timeout (LLM inference + synthesis)
+  const isLongRoute = req.path.startsWith('/api/orchestrator/') || req.path.startsWith('/api/elevenlabs/tts');
+  const timeoutMs = isLongRoute ? 60_000 : 30_000;
 
   const timeout = setTimeout(() => {
     if (!res.headersSent) {
       logger.warn('Request timeout', { path: req.path, method: req.method });
       res.status(504).json({
         error: 'REQUEST_TIMEOUT',
-        message: 'Request timed out after 30 seconds',
+        message: `Request timed out after ${timeoutMs / 1000} seconds`,
       });
     }
-  }, 30_000);
+  }, timeoutMs);
 
   res.on('finish', () => clearTimeout(timeout));
   res.on('close', () => clearTimeout(timeout));

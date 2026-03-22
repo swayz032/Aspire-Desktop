@@ -3238,6 +3238,10 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         receipt_count: Array.isArray(data?.governance?.receipt_ids) ? data.governance.receipt_ids.length : 0,
       },
     });
+    if (res.headersSent) {
+      logger.warn('Orchestrator response arrived after timeout — discarding', { correlationId, latencyMs: Date.now() - startedAt });
+      return;
+    }
     res.json({
       response: data.text || data.message || "I'm ready for your next step.",
       receipt_id: data.governance?.receipt_ids?.[0] || null,
@@ -3316,15 +3320,17 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       latencyMs: Date.now() - startedAt,
     });
     // Law #3: Fail Closed — return 503, not 200
-    res.status(503).json({
-      error: 'ORCHESTRATOR_UNAVAILABLE',
-      error_code: 'ORCHESTRATOR_UNAVAILABLE',
-      error_stage: 'orchestrator',
-      message: 'The orchestrator is currently unavailable. Please try again.',
-      retry_after_ms: 3000,
-      correlation_id: correlationId,
-      trace_id: traceId,
-    });
+    if (!res.headersSent) {
+      res.status(503).json({
+        error: 'ORCHESTRATOR_UNAVAILABLE',
+        error_code: 'ORCHESTRATOR_UNAVAILABLE',
+        error_stage: 'orchestrator',
+        message: 'The orchestrator is currently unavailable. Please try again.',
+        retry_after_ms: 3000,
+        correlation_id: correlationId,
+        trace_id: traceId,
+      });
+    }
   }
 });
 
