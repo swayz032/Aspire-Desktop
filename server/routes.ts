@@ -1389,22 +1389,36 @@ router.post('/api/users/:userId/services', async (req: Request, res: Response) =
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-create-service-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
+    // Input validation — sanitize before passing to Stripe API
+    const serviceName = typeof req.body.name === 'string' ? req.body.name.trim().substring(0, 250) : '';
+    const serviceDesc = typeof req.body.description === 'string' ? req.body.description.trim().substring(0, 500) : '';
+    const unitAmount = typeof req.body.price === 'number' && Number.isInteger(req.body.price) && req.body.price > 0 ? req.body.price : null;
+    const currency = typeof req.body.currency === 'string' && /^[a-z]{3}$/i.test(req.body.currency.trim()) ? req.body.currency.trim().toLowerCase() : 'usd';
+
+    if (!serviceName) return res.status(400).json({ error: 'INVALID_INPUT', message: 'Service name is required (non-empty string).' });
+    if (unitAmount === null) return res.status(400).json({ error: 'INVALID_INPUT', message: 'Price must be a positive integer (cents).' });
+
     const stripe = await getUncachableStripeClient();
 
     const product = await stripe.products.create({
-      name: req.body.name,
-      description: req.body.description || '',
+      name: serviceName,
+      description: serviceDesc,
       metadata: { suiteId },
     });
 
     const price = await stripe.prices.create({
       product: product.id,
-      unit_amount: req.body.price,
-      currency: req.body.currency || 'usd',
+      unit_amount: unitAmount,
+      currency,
     });
 
     const service = await storage.createService({
-      ...req.body,
+      name: serviceName,
+      description: serviceDesc,
+      price: unitAmount,
+      currency,
+      duration: typeof req.body.duration === 'number' && req.body.duration > 0 ? req.body.duration : undefined,
+      category: typeof req.body.category === 'string' ? req.body.category.trim().substring(0, 100) : undefined,
       suiteId,
       stripeProductId: product.id,
       stripePriceId: price.id,
@@ -1417,7 +1431,7 @@ router.post('/api/users/:userId/services', async (req: Request, res: Response) =
         receiptId, receiptType: 'service.create', outcome: 'success',
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'red',
-        actionData: { operation: 'create_service', stripe_product_id: product.id, service_name: req.body.name?.substring(0, 50) },
+        actionData: { operation: 'create_service', stripe_product_id: product.id, service_name: serviceName.substring(0, 50) },
         resultData: { service_id: service?.id, stripe_price_id: price.id },
       });
     } catch (receiptErr: unknown) {
@@ -1452,7 +1466,15 @@ router.patch('/api/services/:serviceId', async (req: Request, res: Response) => 
     const existing = await storage.getService(serviceId);
     if (!existing) return res.status(404).json({ error: 'Service not found' });
     if (existing.suiteId && existing.suiteId !== suiteId) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot modify another tenant service.' });
-    const service = await storage.updateService(serviceId, req.body);
+    // Whitelist allowed update fields — never spread raw req.body into storage
+    const allowedFields = ['name', 'description', 'price', 'currency', 'duration', 'isActive', 'category'] as const;
+    const sanitizedUpdate: Record<string, any> = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) sanitizedUpdate[field] = req.body[field];
+    }
+    if (typeof sanitizedUpdate.name === 'string') sanitizedUpdate.name = sanitizedUpdate.name.trim().substring(0, 250);
+    if (typeof sanitizedUpdate.description === 'string') sanitizedUpdate.description = sanitizedUpdate.description.trim().substring(0, 500);
+    const service = await storage.updateService(serviceId, sanitizedUpdate);
     if (!service) return res.status(404).json({ error: 'Service not found' });
 
     // Law #2: Receipt for service update (YELLOW — state change)
@@ -1607,7 +1629,14 @@ router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-buffer-settings-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
-    const settings = await storage.upsertBufferSettings(suiteId, req.body);
+    // Whitelist buffer settings fields — numeric values only
+    const bufferUpdate: Record<string, number> = {};
+    for (const field of ['beforeBuffer', 'afterBuffer', 'minimumNotice', 'maxAdvanceBooking'] as const) {
+      if (typeof req.body[field] === 'number' && Number.isFinite(req.body[field]) && req.body[field] >= 0) {
+        bufferUpdate[field] = req.body[field];
+      }
+    }
+    const settings = await storage.upsertBufferSettings(suiteId, bufferUpdate);
 
     // Law #2: Receipt for buffer settings update (YELLOW — scheduling config change)
     try {
@@ -1615,7 +1644,7 @@ router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
         receiptId: crypto.randomUUID(), receiptType: 'buffer_settings.update', outcome: 'success',
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'yellow',
-        actionData: { operation: 'upsert_buffer_settings', fields: Object.keys(req.body) },
+        actionData: { operation: 'upsert_buffer_settings', fields: Object.keys(bufferUpdate) },
         resultData: { updated: true },
       });
     } catch (receiptErr: unknown) {
@@ -1699,7 +1728,8 @@ router.post('/api/bookings/:bookingId/cancel', async (req: Request, res: Respons
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-cancel-booking-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
-    const booking = await storage.cancelBooking(bookingId, req.body.reason);
+    const cancelReason = typeof req.body.reason === 'string' ? req.body.reason.trim().substring(0, 500) : undefined;
+    const booking = await storage.cancelBooking(bookingId, cancelReason);
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
     // Law #2: Receipt for booking cancellation (YELLOW — schedule state change, may trigger refund)
@@ -1708,7 +1738,7 @@ router.post('/api/bookings/:bookingId/cancel', async (req: Request, res: Respons
         receiptId: crypto.randomUUID(), receiptType: 'booking.cancel', outcome: 'success',
         suiteId, tenantId: suiteId, correlationId,
         actorType: 'user', actorId, riskTier: 'yellow',
-        actionData: { operation: 'cancel_booking', booking_id: bookingId, reason: req.body.reason?.substring(0, 100) },
+        actionData: { operation: 'cancel_booking', booking_id: bookingId, reason: cancelReason?.substring(0, 100) },
         resultData: { cancelled: true, booking_id: bookingId },
       });
     } catch (receiptErr: unknown) {
@@ -1816,13 +1846,24 @@ router.get('/api/book/:slug/slots', async (req: Request, res: Response) => {
 router.post('/api/book/:slug/checkout', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-checkout-${crypto.randomUUID()}`;
   try {
-    const { serviceId, scheduledAt, clientName, clientEmail, clientPhone, clientNotes } = req.body;
+    const { serviceId, scheduledAt } = req.body;
+    // Sanitize client PII inputs (public endpoint — untrusted input)
+    const clientName = typeof req.body.clientName === 'string' ? req.body.clientName.trim().substring(0, 200) : '';
+    const clientEmail = typeof req.body.clientEmail === 'string' ? req.body.clientEmail.trim().substring(0, 254) : '';
+    const clientPhone = typeof req.body.clientPhone === 'string' ? req.body.clientPhone.trim().substring(0, 30) : '';
+    const clientNotes = typeof req.body.clientNotes === 'string' ? req.body.clientNotes.trim().substring(0, 1000) : '';
+
+    if (!clientName || !clientEmail) return res.status(400).json({ error: 'INVALID_INPUT', message: 'Client name and email are required.' });
 
     const profile = await storage.getSuiteProfileBySlug(getParam(req.params.slug));
     if (!profile) return res.status(404).json({ error: 'Booking page not found' });
 
     const service = await storage.getService(serviceId);
     if (!service) return res.status(404).json({ error: 'Service not found' });
+    // Law #6: Verify service belongs to the same tenant as the booking page
+    if (service.suiteId && service.suiteId !== profile.suiteId) {
+      return res.status(400).json({ error: 'INVALID_SERVICE', message: 'Service does not belong to this provider.' });
+    }
 
     const booking = await storage.createBooking({
       suiteId: profile.suiteId,
@@ -1894,6 +1935,38 @@ router.post('/api/book/:slug/confirm/:bookingId', async (req: Request, res: Resp
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-confirm-${crypto.randomUUID()}`;
   try {
     const bookingId = getParam(req.params.bookingId);
+
+    // Law #3: Fail closed — verify payment with Stripe before confirming
+    // Check if a valid Stripe checkout session exists for this booking
+    const existingBooking = await storage.getBooking(bookingId);
+    if (!existingBooking) return res.status(404).json({ error: 'Booking not found' });
+
+    let paymentVerified = false;
+    // If service is free (amount 0), no payment verification needed
+    if ((existingBooking as any).amount === 0 || (existingBooking as any).amount === null) {
+      paymentVerified = true;
+    } else {
+      // Verify with Stripe that payment was actually completed
+      try {
+        const stripe = await getUncachableStripeClient();
+        const sessions = await stripe.checkout.sessions.list({
+          limit: 5,
+        });
+        const matchingSession = sessions.data.find(
+          (s: any) => s.metadata?.bookingId === bookingId && s.payment_status === 'paid'
+        );
+        paymentVerified = !!matchingSession;
+      } catch (stripeErr: unknown) {
+        logger.error('Stripe payment verification failed', { correlationId, bookingId, error: stripeErr instanceof Error ? stripeErr.message : 'unknown' });
+        // Law #3: Fail closed — cannot confirm without payment verification
+        return res.status(503).json({ error: 'PAYMENT_VERIFICATION_FAILED', message: 'Cannot verify payment status. Please try again.' });
+      }
+    }
+
+    if (!paymentVerified) {
+      return res.status(402).json({ error: 'PAYMENT_NOT_VERIFIED', message: 'Payment has not been completed for this booking.' });
+    }
+
     const booking = await storage.updateBooking(bookingId, {
       status: 'confirmed',
       paymentStatus: 'paid',
@@ -5963,8 +6036,8 @@ router.post('/api/contracts/:id/send', async (req: Request, res: Response) => {
     const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
 
-    const message = req.body.message || 'Please review and sign this document.';
-    const silent = req.body.silent !== undefined ? req.body.silent : true;
+    const message = typeof req.body.message === 'string' ? req.body.message.trim().substring(0, 1000) : 'Please review and sign this document.';
+    const silent = typeof req.body.silent === 'boolean' ? req.body.silent : true;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -6136,6 +6209,16 @@ router.post('/api/pandadoc/:documentId/preview', async (req: Request, res: Respo
     const documentId = req.params.documentId;
     if (!documentId || documentId.length < 10) {
       return res.status(400).json({ error: 'Invalid document ID' });
+    }
+
+    // Law #6: Verify document belongs to authenticated tenant before creating preview session
+    if (db) {
+      const ownerCheck = await db.execute(
+        sql`SELECT id FROM contracts WHERE document_id = ${documentId} AND suite_id = ${suiteId}::uuid LIMIT 1`
+      );
+      if (!ownerCheck.rows || ownerCheck.rows.length === 0) {
+        return res.status(403).json({ error: 'FORBIDDEN', message: 'Document does not belong to your tenant.' });
+      }
     }
 
     // Create a PandaDoc embedded session for the document.
