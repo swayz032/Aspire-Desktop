@@ -27,6 +27,16 @@ type Employee = {
   deductions: number;
 };
 
+/** Escape HTML entities to prevent XSS in document.write paystub popup. */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const initialEmployees: Employee[] = [];
 
 function calcRegularPay(e: Employee): number {
@@ -1353,7 +1363,15 @@ function RunPayrollContent() {
                       onPress={() => {
                         const w = window.open('', '_blank', 'width=700,height=900');
                         if (!w) return;
-                        w.document.write(`<!DOCTYPE html><html><head><title>Paystub - ${emp.name}</title><style>
+                        // XSS-safe: escape all user-controlled strings before document.write
+                        const safeName = escapeHtml(emp.name);
+                        const safeRole = escapeHtml(emp.role);
+                        const safeCompany = escapeHtml(displayCompanyName);
+                        const safePayMethod = escapeHtml(payMethod);
+                        const safePeriodStart = escapeHtml(payPeriodStart);
+                        const safePeriodEnd = escapeHtml(payPeriodEnd);
+                        const safeCheckDate = escapeHtml(stubCheckDate);
+                        w.document.write(`<!DOCTYPE html><html><head><title>Paystub - ${safeName}</title><style>
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:40px;background:#fff;color:#111}
 .header{border-bottom:2px solid #111;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between}
 .company{font-size:20px;font-weight:700}.period{font-size:13px;color:#666}
@@ -1369,8 +1387,8 @@ td{padding:10px 12px;border-bottom:1px solid #eee;font-size:14px}
 .footer{margin-top:32px;padding-top:16px;border-top:1px solid #ddd;font-size:11px;color:#999;text-align:center}
 @media print{body{padding:20px}button{display:none !important}}
 </style></head><body>
-<div class="header"><div><div class="company">${displayCompanyName}</div><div class="period">Pay Period: ${payPeriodStart} – ${payPeriodEnd}</div></div><div style="text-align:right"><div style="font-weight:600">EARNINGS STATEMENT</div><div class="period">Check Date: ${stubCheckDate}</div></div></div>
-<div class="emp"><div class="emp-name">${emp.name}</div><div class="emp-role">${emp.role} &bull; ${emp.type === 'Salary' ? 'Salaried' : 'Hourly'} &bull; Rate: $${emp.rate}/hr</div></div>
+<div class="header"><div><div class="company">${safeCompany}</div><div class="period">Pay Period: ${safePeriodStart} – ${safePeriodEnd}</div></div><div style="text-align:right"><div style="font-weight:600">EARNINGS STATEMENT</div><div class="period">Check Date: ${safeCheckDate}</div></div></div>
+<div class="emp"><div class="emp-name">${safeName}</div><div class="emp-role">${safeRole} &bull; ${emp.type === 'Salary' ? 'Salaried' : 'Hourly'} &bull; Rate: $${emp.rate}/hr</div></div>
 <table><thead><tr><th>Description</th><th class="amount">Hours</th><th class="amount">Rate</th><th class="amount">Amount</th></tr></thead><tbody>
 <tr><td>Regular Wages</td><td class="amount">${emp.hours}</td><td class="amount">$${emp.rate.toFixed(2)}</td><td class="amount">$${regular.toFixed(2)}</td></tr>
 ${overtime > 0 ? `<tr><td>Overtime (1.5x)</td><td class="amount">${emp.overtime}</td><td class="amount">$${(emp.rate * 1.5).toFixed(2)}</td><td class="amount">$${overtime.toFixed(2)}</td></tr>` : ''}
@@ -1385,7 +1403,7 @@ ${bonus > 0 ? `<tr><td>Bonus</td><td class="amount">—</td><td class="amount">�
 <tr class="total-row"><td>Total Deductions</td><td></td><td class="amount">-$${(totalTaxes + totalDed).toFixed(2)}</td></tr>
 </tbody></table>
 <div class="net-box"><div class="net-label">NET PAY</div><div class="net-value">$${netAmount.toFixed(2)}</div></div>
-<div class="footer">${displayCompanyName} &bull; Payment Method: ${payMethod} &bull; Generated ${new Date().toLocaleDateString()}</div>
+<div class="footer">${safeCompany} &bull; Payment Method: ${safePayMethod} &bull; Generated ${new Date().toLocaleDateString()}</div>
 <button onclick="window.print()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;display:block;margin-left:auto;margin-right:auto">Print / Save as PDF</button>
 </body></html>`);
                         w.document.close();
