@@ -21,6 +21,7 @@ import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { AgentWidget } from '@/components/canvas/widgets/AgentWidget';
 import type { AgentActivityEvent } from '@/components/chat';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { readSSEStream, extractResponseText, type SSEEvent } from '@/lib/sseStream';
 
 const eliAvatar = require('@/assets/avatars/eli-avatar.png');
 const finnAvatar = require('@/assets/avatars/finn.png');
@@ -1254,7 +1255,50 @@ function InboxScreen() {
       return;
     }
     try {
-      await eliVoice.sendText(text);
+      const resp = await fetch('/api/orchestrator/intent?stream=true', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(suiteId ? { 'X-Suite-Id': suiteId } : {}),
+          ...(session.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          agent: 'eli',
+          text,
+          channel: 'text',
+        }),
+      });
+
+      if (!resp.ok || !resp.body) {
+        const data = await resp.json().catch(() => ({}));
+        const errorText = data.response || data.text || data.message || `Eli returned ${resp.status}`;
+        throw new Error(errorText);
+      }
+
+      await readSSEStream(resp.body, (event: SSEEvent) => {
+        if (event.type === 'response') {
+          const responseText = extractResponseText(event, "I'm ready to help with your inbox.");
+          setEliMessages(prev => [
+            ...prev,
+            { id: String(Date.now()), from: 'eli', text: responseText, ts: Date.now() },
+          ]);
+          appendEliRunEvent({
+            type: 'done',
+            label: 'Response drafted and ready.',
+            status: 'completed',
+            icon: 'checkmark-circle',
+          });
+          setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
+        } else {
+          appendEliRunEvent({
+            type: (event.type as AgentActivityEvent['type']) || 'step',
+            label: event.message || event.label || event.type,
+            status: event.type === 'thinking' ? 'active' : (event.status || 'completed'),
+            timestamp: event.timestamp || Date.now(),
+            icon: event.icon as any || 'chevron-forward-circle',
+          });
+        }
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setEliMessages(prev => [
@@ -1269,7 +1313,7 @@ function InboxScreen() {
       });
       setEliRun(prev => (prev ? { ...prev, status: 'completed' } : prev));
     }
-  }, [eliVoice, session?.access_token, appendEliRunEvent]);
+  }, [suiteId, session?.access_token, appendEliRunEvent]);
 
   const fetchMailDetail = useCallback(async (threadId: string) => {
     setMailDetailLoading(true);
