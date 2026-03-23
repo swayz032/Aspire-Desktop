@@ -35,17 +35,8 @@ export function extractMediaItems(event: SSEEvent): any[] {
 
 /**
  * Read an SSE stream from a ReadableStream body.
- * Calls `onEvent` for each parsed event (heartbeats are filtered out).
- *
- * Usage:
- * ```ts
- * const resp = await fetch('/api/orchestrator/intent?stream=true', { ... });
- * if (!resp.ok || !resp.body) { /* handle error */ }
- * await readSSEStream(resp.body, (event) => {
- *   if (event.type === 'response') { ... }
- *   else { /* reasoning step */ }
- * });
- * ```
+ * Calls onEvent for each parsed event (heartbeats are filtered out).
+ * Returns true if a 'response' event was received.
  */
 export async function readSSEStream(
   body: ReadableStream<Uint8Array>,

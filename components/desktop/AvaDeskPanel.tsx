@@ -692,7 +692,7 @@ function AvaDeskPanelInner() {
       const handleSSEEvent = (event: SSEEvent) => {
         if (event.type === 'response') {
           streamReceivedResponse = true;
-          const responseText = extractResponseText(event, “I'm ready for your next step.”);
+          const responseText = extractResponseText(event, "I'm ready for your next step.");
           const mediaItems = extractMediaItems(event);
 
           // If video connected, pipe response to Anam avatar (Law #1: Single Brain)
@@ -719,10 +719,10 @@ function AvaDeskPanelInner() {
         } else {
           const newEvent: AgentActivityEvent = {
             id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            type: event.type,
+            type: event.type as AgentActivityEvent['type'],
             label: event.message || event.label || event.type,
-            icon: event.icon || 'sparkles',
-            status: event.type === 'done' ? 'completed' : (event.status || 'active'),
+            icon: (event.icon || 'sparkles') as AgentActivityEvent['icon'],
+            status: (event.type === 'done' ? 'completed' : (event.status || 'active')) as AgentActivityEvent['status'],
             timestamp: event.timestamp || Date.now(),
           };
           setActiveRuns((prev) => {

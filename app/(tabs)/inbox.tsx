@@ -1293,7 +1293,7 @@ function InboxScreen() {
           appendEliRunEvent({
             type: (event.type as AgentActivityEvent['type']) || 'step',
             label: event.message || event.label || event.type,
-            status: event.type === 'thinking' ? 'active' : (event.status || 'completed'),
+            status: event.type === 'thinking' ? 'active' as const : (event.status as AgentActivityEvent['status'] || 'completed' as const),
             timestamp: event.timestamp || Date.now(),
             icon: event.icon as any || 'chevron-forward-circle',
           });

@@ -733,10 +733,10 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
         } else {
           const newEvent: AgentActivityEvent = {
             id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            type: event.type === 'response' ? 'done' : event.type,
+            type: (event.type === 'response' ? 'done' : event.type) as AgentActivityEvent['type'],
             label: event.message || event.label || event.type,
-            icon: event.icon || 'chevron-forward-circle',
-            status: event.type === 'thinking' ? 'active' : (event.status || 'completed'),
+            icon: (event.icon || 'chevron-forward-circle') as AgentActivityEvent['icon'],
+            status: (event.type === 'thinking' ? 'active' : (event.status || 'completed')) as AgentActivityEvent['status'],
             timestamp: event.timestamp || Date.now(),
           };
           setActiveRuns((prev) => {
