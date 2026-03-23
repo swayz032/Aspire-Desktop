@@ -103,7 +103,7 @@ export function useOrchestratorChat({
           body: JSON.stringify({
             agent,
             text,
-            channel: 'text',
+            channel: 'chat',
           }),
           signal: controller.signal,
         });
