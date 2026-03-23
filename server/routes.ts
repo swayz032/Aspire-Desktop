@@ -1667,8 +1667,12 @@ router.get('/api/bookings/:bookingId', async (req: Request, res: Response) => {
 });
 
 router.post('/api/bookings/:bookingId/cancel', async (req: Request, res: Response) => {
+  // Law #6: Tenant isolation — require authenticated suite context
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   const bookingId = getParam(req.params.bookingId);
-  const suiteId = (req as any).authenticatedSuiteId || 'unknown';
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-cancel-booking-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
@@ -3417,12 +3421,19 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/api/inbox/items', async (_req: Request, res: Response) => {
+router.get('/api/inbox/items', async (req: Request, res: Response) => {
+  // Law #6: Tenant isolation — require authenticated suite context
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
+
   try {
     const result = await db.execute(sql`
       SELECT id, type, sender_name AS "from", subject, preview, priority,
              unread, created_at AS timestamp, tags
       FROM inbox_items
+      WHERE suite_id = ${suiteId}
       ORDER BY created_at DESC
       LIMIT 50
     `);
