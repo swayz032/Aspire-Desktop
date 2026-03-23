@@ -37,3 +37,141 @@ The production `receipts` table schema is a simplified Trust Spine subset. Missi
 - Pre-receipt failure exits (before receiptId is generated or before emitReceipt is called) are a systemic risk
 - The catch block pattern of "emit failure receipt" often only logs instead of actually calling emitReceipt()
 - This is a recurring pattern — audit all catch blocks for this mistake
+
+## Cycle 3 Audit — backend/orchestrator/src/aspire_orchestrator/routes/ (2026-03-22)
+
+### Files Audited
+- intents.py — POST /v1/intents/classify (intent classification + routing)
+- webhooks.py — POST /api/webhooks/stripe, pandadoc, twilio
+- admin.py — 30+ admin endpoints (GET/POST/PUT/SSE)
+- robots.py — POST /robots/ingest
+- providers/stripe_webhook.py — StripeWebhookHandler
+
+### Receipt Infrastructure (Backend Python)
+- `store_receipts()` in `services/receipt_store.py` — dual-write: in-memory + Supabase (append-only confirmed, no UPDATE/DELETE)
+- Receipt schema used: dict with id, correlation_id, suite_id, office_id, actor_type, actor_id, action_type, risk_tier, tool_used, outcome, reason_code, created_at, receipt_type, receipt_hash, redacted_inputs, redacted_outputs
+- Law #2 field coverage in Python routes is BETTER than the TypeScript routes.ts — most required fields are present
+- Missing from most Python receipts: capability_token_id, approval_evidence, timestamps for multi-step (approved_at, executed_at)
+
+### Critical Gaps Found
+
+#### webhooks.py — PandaDoc webhook (lines 110-175)
+- CRITICAL: Successful event processing (line 162) returns 200 with NO receipt emitted. Only logs to logger.
+- CRITICAL: JSON parse exception path (line 170) returns 500 with NO receipt.
+- CRITICAL: All 3 rejection paths (no secret, no signature, signature mismatch, lines 126-149) return 401/403 with NO receipt.
+
+#### webhooks.py — Twilio webhook (lines 183-268)
+- CRITICAL: Successful event processing (line 254) returns 200 with NO receipt emitted. Only logs to logger.
+- CRITICAL: JSON/form parse exception path (line 263) returns 500 with NO receipt.
+- CRITICAL: All rejection paths (no auth, no signature, sig mismatch, lines 200-242) return 401 with NO receipt.
+
+#### admin.py — /admin/ops/voice/tts/stream (line 4281)
+- HIGH: Auth denial path (line 4290-4294) returns 401 with NO receipt stored. _sse_auth_deny() is NOT called here; raw JSONResponse returned directly.
+- HIGH: JSON body parse failure (line 4298-4303) returns 400 with NO receipt.
+- HIGH: Validation error (text empty, line 4307-4313) returns 400 with NO receipt.
+- NOTE: Streaming failure path inside audio_generator() (line 4371) logs but does NOT emit a failure receipt.
+
+#### admin.py — /admin/ops/chat (line 4594)
+- HIGH: Auth denial (line 4608-4614) returns 401 with NO receipt. Does not call _sse_auth_deny().
+- HIGH: JSON body parse failure (line 4619-4625) returns 422 with NO receipt.
+- HIGH: Validation errors (lines 4629-4641) return 422 with NO receipt.
+
+#### admin.py — /admin/ops/health-pulse/stream (line 3857)
+- MEDIUM: stream exception path (line 3939) logs error but does NOT emit a failure receipt (unlike incidents/providers streams which do emit err_receipt).
+
+#### admin.py — /admin/ops/outbox/stream (line 3961)
+- MEDIUM: stream exception path (line 4027) logs error but does NOT emit a failure receipt.
+
+#### admin.py — /admin/ops/incidents/report (line 914)
+- MEDIUM: JSON parse failure (line 938-944) returns 400 with NO receipt (denied receipt was stored for auth failure, but subsequent validation failures do not get receipts).
+- MEDIUM: validation error for missing title (line 954-961) returns 400 with NO receipt.
+
+#### admin.py — /admin/auth/exchange (line 437)
+- MEDIUM: Several early-exit paths (lines 449-473, 501-531) return 401/503 with NO receipt. Only the success path emits a receipt (line 546-561).
+
+#### intents.py — /v1/intents/classify
+- MEDIUM: JSON body parse failure (line 191-195) returns 400 with NO receipt.
+- MEDIUM: Missing utterance (line 211-216) returns 400 with NO receipt.
+
+#### admin.py — /admin/ops/client-events (line 1052)
+- MEDIUM: Auth denial (line 1063-1072) returns 401 with NO receipt.
+- MEDIUM: JSON parse / validation failures (lines 1077-1099) return 400-500 with NO receipt.
+- MEDIUM: store failure path (lines 1134-1148) returns 500 with NO receipt.
+
+### Schema Divergence — Stripe Webhook Receipt
+- stripe_webhook.py _build_webhook_receipt() uses a DIFFERENT schema from all other Python routes
+- Uses: receipt_version, receipt_id (not "id"), ts (not "created_at"), event_type (not "action_type"), actor (not "actor_id/actor_type"), policy, inputs_hash, metadata, redactions
+- This receipt format will NOT be recognized by query_receipts() or admin facade (which look for "id", "action_type", "created_at", etc.)
+- CRITICAL: Stripe receipts are functionally orphaned from the trace chain
+
+### Immutability
+- receipt_store.py confirmed append-only — no UPDATE/DELETE found
+- admin.py _proposals dict uses direct mutation (line 2677-2680) but that is proposal state, not receipts
+
+### Risk Tier Assessment
+- All Python routes default risk_tier to "green" even for state-changing operations
+- admin.py approve_proposal overrides receipt risk_tier to match proposal (line 2697) — correct
+- intents.py hardcodes risk_tier: "green" in all receipts — MEDIUM (classification is green but the receipt should propagate intent's risk_tier for routing receipts)
+
+### capability_token_id
+- NOT present in any Python route receipt — systemic gap across all 30+ endpoints
+
+## Cycle 4 Audit — Orchestrator Core Services (2026-03-22)
+
+Full detail in `cycle4-orchestrator-core-audit.md`. Key findings:
+
+### File Location Facts
+- capability_token.py does NOT exist as standalone — token minting is in nodes/token_mint.py, validation in services/token_service.py
+- approval_store.py does NOT exist as standalone — approval state managed inline in nodes/approval_check.py + approval_service.py
+
+### Critical Gaps (graph.py + nodes)
+- CRITICAL: classify_node money-movement denial (graph.py ~line 449) sets error_code/denied outcome but emits NO receipt
+- HIGH: route_node routing denial (graph.py ~line 535) returns ROUTING_DENIED with NO receipt
+- HIGH: route_node empty-steps path (graph.py ~line 562) returns EMPTY_ROUTING_STEPS with NO receipt
+- HIGH: token_mint_node SUCCESS path (token_mint.py line 185-208) emits NO receipt — only failure path has receipt
+- HIGH: skill_router.py SkillRouter.route_multi() emits ZERO receipts for any routing outcome (allow/deny/reroute)
+- MEDIUM: classify_node emits no receipt for classification decisions
+- MEDIUM: greeting_fast_path_node receipt uses wrong schema (action/result/payload vs action_type/outcome) — will persist with mostly empty columns
+
+### Schema Gaps (ALL orchestrator node receipts)
+- inputs_hash: NOT present in any node receipt
+- redacted_outputs: NOT present in any node receipt
+- capability_token_id: only in execute.py receipts (not in earlier nodes)
+- trace_id/span_id/run_id: derived at persist time from middleware context, NOT written to receipt dicts
+
+### receipt_store.py confirmed append-only (SHA-256 hash chain confirmed correct algorithm)
+
+### Stripe Webhook Schema Incompatibility (STILL CRITICAL — same issue as Cycle 3)
+- _build_webhook_receipt() uses receipt_id/ts/event_type/actor — receipt_store _map_receipt_to_row() expects id/created_at/action_type/actor_id
+- Stripe receipts persist with empty action jsonb, wrong receipt_id (regenerated uuid4), status=PENDING always
+- This is a KNOWN OPEN issue from Cycle 3 confirmed still unresolved
+
+## Cycle 6 Audit — All Provider Files (2026-03-22)
+
+Full detail in `cycle6-provider-audit.md`. Key findings:
+
+### Systemic Issue: receipt_hash="" in base_client.py
+- `make_receipt_data()` in base_client.py line 621 ALWAYS sets `"receipt_hash": ""`
+- This affects ALL 19 providers that use BaseProviderClient (stripe, quickbooks, gusto, plaid, twilio, livekit, deepgram, elevenlabs, s3)
+- office_message_client.py and polaris_email_client.py also hardcode `"receipt_hash": ""`
+- calendar_client.py is the ONLY provider that correctly computes receipt_hash (sha256 of inputs)
+
+### PandaDoc Critical Bug
+- `_verify_document_completeness()` and `_autopatch_document()` access `client.api_key`
+- PandaDocClient has NO `.api_key` property — will raise AttributeError at runtime
+- These functions also use `_build_operation_receipt()` schema (incompatible with _map_receipt_to_row())
+
+### Provider Receipt Storage Pattern
+- Providers return receipt_data INSIDE ToolExecutionResult — they do NOT call store_receipts() directly
+- Only pandadoc_client.py (verify/autopatch), stripe_webhook.py, and pandadoc_webhook.py call store_receipts() directly
+- This means receipt persistence for all other providers depends entirely on tool_executor.py calling store_receipts()
+- store_receipts_strict() is NEVER called at provider level — even for RED-tier (payroll, transfers, contract.sign)
+
+### 6 Schema Variants (4 provider schemas + 2 webhook schemas)
+- See cycle6-provider-audit.md for complete schema divergence table
+- All webhook receipts (stripe + pandadoc) use non-standard schema → persist incorrectly to Supabase
+
+### capability_token_id
+- Accepted as parameter across all providers but NEVER validated at provider level
+- All providers allow None capability_token_id even for RED-tier operations
+- Systemic gap confirmed across all 3 audited cycles (3, 4, 6)

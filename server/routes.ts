@@ -1242,18 +1242,22 @@ router.get('/api/users/:userId', async (req: Request, res: Response) => {
 });
 
 router.get('/api/users/slug/:slug', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   try {
     const profile = await storage.getSuiteProfileBySlug(getParam(req.params.slug));
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
     res.json(profile);
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 router.post('/api/users', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-create-profile-${crypto.randomUUID()}`;
-  const suiteId = (req as any).authenticatedSuiteId || req.body?.suiteId || 'unknown';
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const suiteId = authSuiteId;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
     const profile = await storage.createSuiteProfile(req.body);
@@ -1432,7 +1436,8 @@ router.post('/api/users/:userId/services', async (req: Request, res: Response) =
 
 router.patch('/api/services/:serviceId', async (req: Request, res: Response) => {
   const serviceId = getParam(req.params.serviceId);
-  const suiteId = (req as any).authenticatedSuiteId || 'unknown';
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-update-service-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
@@ -1471,7 +1476,8 @@ router.patch('/api/services/:serviceId', async (req: Request, res: Response) => 
 
 router.delete('/api/services/:serviceId', async (req: Request, res: Response) => {
   const serviceId = getParam(req.params.serviceId);
-  const suiteId = (req as any).authenticatedSuiteId || 'unknown';
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-delete-service-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
@@ -1519,7 +1525,11 @@ router.get('/api/users/:userId/availability', async (req: Request, res: Response
 });
 
 router.put('/api/users/:userId/availability', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   const suiteId = getParam(req.params.userId);
+  // Law #6: Only allow updating own availability
+  if (authSuiteId !== suiteId) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot modify another tenant availability.' });
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-set-availability-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
@@ -1571,7 +1581,11 @@ router.get('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
 });
 
 router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Response) => {
+  const authSuiteId = (req as any).authenticatedSuiteId;
+  if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   const suiteId = getParam(req.params.userId);
+  // Law #6: Only allow updating own buffer settings
+  if (authSuiteId !== suiteId) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot modify another tenant buffer settings.' });
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-buffer-settings-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {

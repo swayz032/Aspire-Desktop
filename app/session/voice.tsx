@@ -398,6 +398,7 @@ function VoiceSession() {
     </View>
   );
 
+  // Law #8: Desktop gets FullscreenSessionShell wrapper
   if (isDesktop) {
     return (
       <FullscreenSessionShell showBackButton={true} backLabel="Exit Voice">
