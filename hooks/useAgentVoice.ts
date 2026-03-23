@@ -539,7 +539,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         const sseTimeout = setTimeout(() => sseAbort.abort(), 30_000);
 
         try {
-          const sseResp = await fetch('/api/orchestrator/intent', {
+          const sseResp = await fetch('/api/orchestrator/intent?stream=true', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -549,7 +549,6 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
               ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
             },
             body: JSON.stringify({
-              stream: true,
               agent,
               text,
               channel: 'voice',

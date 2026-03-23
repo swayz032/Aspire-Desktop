@@ -1665,7 +1665,7 @@ function ConferenceLive() {
                           id: `msg-ava-${Date.now()}`,
                           senderId: 'ava',
                           senderName: 'Ava',
-                          text: evt.text || evt.response || '',
+                          text: evt.data?.text || evt.message || evt.response || evt.text || '',
                           timestamp: new Date(),
                           isPrivate: true,
                         };
