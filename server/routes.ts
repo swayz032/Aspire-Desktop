@@ -232,6 +232,7 @@ async function fetchWithTimeoutAndRetry(
 function secureTokenEquals(left: string, right: string): boolean {
   const leftBuf = Buffer.from(left || '', 'utf8');
   const rightBuf = Buffer.from(right || '', 'utf8');
+  if (!leftBuf.length || !rightBuf.length) return false;
   if (leftBuf.length !== rightBuf.length) return false;
   return crypto.timingSafeEqual(leftBuf, rightBuf);
 }
@@ -333,7 +334,8 @@ function isAdultDate(value: string | null): boolean {
 async function allocateSuiteDisplayId(): Promise<string> {
   const result = await db.execute(sql`SELECT nextval('suite_display_id_seq')::text AS id`);
   const row = ((result.rows || result) as any[])[0];
-  return row?.id || '999'; // fallback should never hit
+  if (!row?.id) throw new Error('Failed to allocate suite display ID from sequence');
+  return row.id;
 }
 
 /**
@@ -344,7 +346,8 @@ async function allocateSuiteDisplayId(): Promise<string> {
 async function allocateOfficeDisplayId(suiteId: string): Promise<string> {
   const result = await db.execute(sql`SELECT allocate_office_display_id(${suiteId}::uuid) AS id`);
   const row = ((result.rows || result) as any[])[0];
-  return row?.id || 'A01'; // owner default
+  if (!row?.id) throw new Error('Failed to allocate office display ID');
+  return row.id;
 }
 
 async function resolveSuiteOfficeIdentity(suiteId: string): Promise<{
@@ -1219,8 +1222,9 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
 router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
   const authSuiteId = (req as any).authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  if (authSuiteId !== getParam(req.params.suiteId)) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant.' });
   try {
-    const profile = await storage.getSuiteProfile(getParam(req.params.suiteId));
+    const profile = await storage.getSuiteProfile(authSuiteId);
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
     res.json(profile);
   } catch (error: unknown) {
@@ -1232,8 +1236,9 @@ router.get('/api/suites/:suiteId', async (req: Request, res: Response) => {
 router.get('/api/users/:userId', async (req: Request, res: Response) => {
   const authSuiteId = (req as any).authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  if (authSuiteId !== getParam(req.params.userId)) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant.' });
   try {
-    const profile = await storage.getSuiteProfile(getParam(req.params.userId));
+    const profile = await storage.getSuiteProfile(authSuiteId);
     if (!profile) return res.status(404).json({ error: 'Suite profile not found' });
     res.json(profile);
   } catch (error: unknown) {
@@ -1352,8 +1357,9 @@ router.patch('/api/users/:userId', async (req: Request, res: Response) => {
 router.get('/api/users/:userId/services', async (req: Request, res: Response) => {
   const authSuiteId = (req as any).authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  if (authSuiteId !== getParam(req.params.userId)) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant.' });
   try {
-    const services = await storage.getServices(getParam(req.params.userId));
+    const services = await storage.getServices(authSuiteId);
     res.json(services);
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
@@ -1363,8 +1369,9 @@ router.get('/api/users/:userId/services', async (req: Request, res: Response) =>
 router.get('/api/users/:userId/services/active', async (req: Request, res: Response) => {
   const authSuiteId = (req as any).authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  if (authSuiteId !== getParam(req.params.userId)) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant.' });
   try {
-    const services = await storage.getActiveServices(getParam(req.params.userId));
+    const services = await storage.getActiveServices(authSuiteId);
     res.json(services);
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
@@ -1441,6 +1448,10 @@ router.patch('/api/services/:serviceId', async (req: Request, res: Response) => 
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-update-service-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
+    // Law #6: Verify service belongs to authenticated tenant before update
+    const existing = await storage.getService(serviceId);
+    if (!existing) return res.status(404).json({ error: 'Service not found' });
+    if (existing.suiteId && existing.suiteId !== suiteId) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot modify another tenant service.' });
     const service = await storage.updateService(serviceId, req.body);
     if (!service) return res.status(404).json({ error: 'Service not found' });
 
@@ -1481,6 +1492,10 @@ router.delete('/api/services/:serviceId', async (req: Request, res: Response) =>
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-delete-service-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
+    // Law #6: Verify service belongs to authenticated tenant before deletion
+    const existing = await storage.getService(serviceId);
+    if (!existing) return res.status(404).json({ error: 'Service not found' });
+    if (existing.suiteId && existing.suiteId !== suiteId) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot delete another tenant service.' });
     await storage.deleteService(serviceId);
 
     // Law #2: Receipt for service deletion (RED — irreversible state change)
@@ -1516,8 +1531,9 @@ router.delete('/api/services/:serviceId', async (req: Request, res: Response) =>
 router.get('/api/users/:userId/availability', async (req: Request, res: Response) => {
   const authSuiteId = (req as any).authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  if (authSuiteId !== getParam(req.params.userId)) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant.' });
   try {
-    const availability = await storage.getAvailability(getParam(req.params.userId));
+    const availability = await storage.getAvailability(authSuiteId);
     res.json(availability);
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
@@ -1533,6 +1549,7 @@ router.put('/api/users/:userId/availability', async (req: Request, res: Response
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-set-availability-${crypto.randomUUID()}`;
   const actorId = (req as any).authenticatedUserId || 'unknown';
   try {
+    if (!Array.isArray(req.body.slots)) return res.status(400).json({ error: 'INVALID_INPUT', message: 'slots array required' });
     const slots = req.body.slots.map((slot: any) => ({
       ...slot,
       suiteId,
@@ -1572,8 +1589,9 @@ router.put('/api/users/:userId/availability', async (req: Request, res: Response
 router.get('/api/users/:userId/buffer-settings', async (req: Request, res: Response) => {
   const authSuiteId = (req as any).authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  if (authSuiteId !== getParam(req.params.userId)) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant.' });
   try {
-    const settings = await storage.getBufferSettings(getParam(req.params.userId));
+    const settings = await storage.getBufferSettings(authSuiteId);
     res.json(settings || { beforeBuffer: 0, afterBuffer: 15, minimumNotice: 60, maxAdvanceBooking: 30 });
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
@@ -1624,8 +1642,9 @@ router.put('/api/users/:userId/buffer-settings', async (req: Request, res: Respo
 router.get('/api/users/:userId/bookings', async (req: Request, res: Response) => {
   const authSuiteId = (req as any).authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  if (authSuiteId !== getParam(req.params.userId)) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant.' });
   try {
-    const bookings = await storage.getBookings(getParam(req.params.userId));
+    const bookings = await storage.getBookings(authSuiteId);
     res.json(bookings);
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
@@ -1635,8 +1654,9 @@ router.get('/api/users/:userId/bookings', async (req: Request, res: Response) =>
 router.get('/api/users/:userId/bookings/upcoming', async (req: Request, res: Response) => {
   const authSuiteId = (req as any).authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  if (authSuiteId !== getParam(req.params.userId)) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant.' });
   try {
-    const bookings = await storage.getUpcomingBookings(getParam(req.params.userId));
+    const bookings = await storage.getUpcomingBookings(authSuiteId);
     res.json(bookings);
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
@@ -1646,8 +1666,9 @@ router.get('/api/users/:userId/bookings/upcoming', async (req: Request, res: Res
 router.get('/api/users/:userId/bookings/stats', async (req: Request, res: Response) => {
   const authSuiteId = (req as any).authenticatedSuiteId;
   if (!authSuiteId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  if (authSuiteId !== getParam(req.params.userId)) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant.' });
   try {
-    const stats = await storage.getBookingStats(getParam(req.params.userId));
+    const stats = await storage.getBookingStats(authSuiteId);
     res.json(stats);
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
@@ -1660,6 +1681,8 @@ router.get('/api/bookings/:bookingId', async (req: Request, res: Response) => {
   try {
     const booking = await storage.getBooking(getParam(req.params.bookingId));
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    // Law #6: Verify booking belongs to authenticated tenant
+    if (booking.suiteId && booking.suiteId !== authSuiteId) return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot access another tenant booking.' });
     res.json(booking);
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown' });
@@ -2977,7 +3000,10 @@ router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
 router.post('/api/orchestrator/task', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const traceId = resolveTraceId(req, correlationId);
-  const suiteId = (req as any).authenticatedSuiteId || '';
+  const suiteId = (req as any).authenticatedSuiteId;
+  if (!suiteId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+  }
   const officeId = (req as any).authenticatedOfficeId || suiteId;
 
   const ORCHESTRATOR_URL = resolveOrchestratorUrl();
@@ -3488,7 +3514,7 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
              status,
              created_at AS "completedAt"
       FROM receipts
-      WHERE status = 'SUCCEEDED'
+      WHERE status = 'SUCCEEDED' AND suite_id = ${suiteId}
       ORDER BY created_at DESC
       LIMIT 10
     `);
@@ -6099,6 +6125,11 @@ router.post('/api/contracts/:id/session', async (req: Request, res: Response) =>
 // Used by Authority Queue "Review" button so user sees the REAL document before approving
 router.post('/api/pandadoc/:documentId/preview', async (req: Request, res: Response) => {
   try {
+    const suiteId = (req as any).authenticatedSuiteId;
+    if (!suiteId) {
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+    }
+
     const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
 
