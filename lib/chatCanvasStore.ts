@@ -97,14 +97,19 @@ export function setMode(mode: CanvasMode) {
   notify();
 }
 
+const MAX_ACTIVITY_EVENTS = 200;
+
 export function addActivityEvent(event: Omit<AgentActivityEvent, 'timestamp'>) {
   const fullEvent: AgentActivityEvent = {
     ...event,
     timestamp: Date.now(),
   };
+  const updated = [...state.activityEvents, fullEvent];
   state = {
     ...state,
-    activityEvents: [...state.activityEvents, fullEvent],
+    activityEvents: updated.length > MAX_ACTIVITY_EVENTS
+      ? updated.slice(-MAX_ACTIVITY_EVENTS)
+      : updated,
   };
   notify();
 }

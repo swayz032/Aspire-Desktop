@@ -5619,6 +5619,11 @@ const TEMPLATE_THUMBNAIL_NAME_MAP: Record<string, string> = {
 
 router.get('/api/contracts/templates', async (req: Request, res: Response) => {
   try {
+    const suiteId = (req as any).authenticatedSuiteId;
+    if (!suiteId) {
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+    }
+
     const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
 
@@ -5751,6 +5756,11 @@ router.get('/api/contracts/templates', async (req: Request, res: Response) => {
 // Returns an E-Token for embedding the template editor in an iframe.
 router.post('/api/contracts/templates/:id/preview-session', async (req: Request, res: Response) => {
   try {
+    const suiteId = (req as any).authenticatedSuiteId;
+    if (!suiteId) {
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authenticated suite context required.' });
+    }
+
     const apiKey = process.env.ASPIRE_PANDADOC_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'PandaDoc API key not configured' });
 
