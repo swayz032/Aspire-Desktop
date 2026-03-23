@@ -22,6 +22,7 @@ import {
 } from '@/components/chat';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { readSSEStream, extractResponseText, type SSEEvent } from '@/lib/sseStream';
 
 /* ── Web-only keyframe animations for immersive mode ─────── */
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -703,69 +704,50 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
         return;
       }
 
-      // Read SSE stream — real-time reasoning steps + final response
-      const reader = streamResp.body.getReader();
-      const decoder = new TextDecoder();
-      let sseBuffer = '';
+      // Read SSE stream — uses shared parser (lib/sseStream.ts)
       let streamReceivedResponse = false;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const handleSSEEvent = (event: SSEEvent) => {
+        if (event.type === 'response') {
+          streamReceivedResponse = true;
+          const responseText = extractResponseText(event, "I'm ready for your next step.");
 
-        sseBuffer += decoder.decode(value, { stream: true });
-        const sseLines = sseBuffer.split('\n');
-        sseBuffer = sseLines.pop() || '';
-
-        for (const line of sseLines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            if (event.type === 'heartbeat') continue;
-
-            if (event.type === 'response') {
-              // Final response — update message text and mark run complete
-              streamReceivedResponse = true;
-              const responseText = event.data?.text || event.message || event.response || event.text || "I'm ready for your next step.";
-
-              setActiveRuns((prev) => {
-                const run = prev[runId];
-                if (!run) return prev;
-                return { ...prev, [runId]: { ...run, status: 'completed', finalText: responseText } };
-              });
-              setChat((prev) =>
-                prev.map((msg) =>
-                  msg.runId === runId ? { ...msg, text: responseText } : msg
-                )
-              );
-              setIsConversing(false);
-              // Speak response via ElevenLabs TTS when in voice tab
-              if (activeTab === 'voice' && responseText) {
-                speakText('finn', responseText, session?.access_token).catch((err) => {
-                  showVoiceError('Voice playback failed — response shown in chat.');
-                  console.error('[FinnDeskPanel] TTS error:', err);
-                });
-              }
-              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-            } else {
-              // Activity/reasoning step — add to ChainOfThought live
-              const newEvent: AgentActivityEvent = {
-                id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                type: event.type === 'response' ? 'done' : event.type,
-                label: event.message || event.label || event.type,
-                icon: event.icon || 'chevron-forward-circle',
-                status: event.type === 'thinking' ? 'active' : (event.status || 'completed'),
-                timestamp: event.timestamp || Date.now(),
-              };
-              setActiveRuns((prev) => {
-                const run = prev[runId] || { id: runId, events: [], status: 'running', finalText: '' };
-                return { ...prev, [runId]: { ...run, events: [...run.events, newEvent] } };
-              });
-              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-            }
-          } catch { /* skip malformed SSE lines */ }
+          setActiveRuns((prev) => {
+            const run = prev[runId];
+            if (!run) return prev;
+            return { ...prev, [runId]: { ...run, status: 'completed', finalText: responseText } };
+          });
+          setChat((prev) =>
+            prev.map((msg) =>
+              msg.runId === runId ? { ...msg, text: responseText } : msg
+            )
+          );
+          setIsConversing(false);
+          if (activeTab === 'voice' && responseText) {
+            speakText('finn', responseText, session?.access_token).catch((err) => {
+              showVoiceError('Voice playback failed — response shown in chat.');
+              console.error('[FinnDeskPanel] TTS error:', err);
+            });
+          }
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+        } else {
+          const newEvent: AgentActivityEvent = {
+            id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            type: event.type === 'response' ? 'done' : event.type,
+            label: event.message || event.label || event.type,
+            icon: event.icon || 'chevron-forward-circle',
+            status: event.type === 'thinking' ? 'active' : (event.status || 'completed'),
+            timestamp: event.timestamp || Date.now(),
+          };
+          setActiveRuns((prev) => {
+            const run = prev[runId] || { id: runId, events: [], status: 'running', finalText: '' };
+            return { ...prev, [runId]: { ...run, events: [...run.events, newEvent] } };
+          });
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
         }
-      }
+      };
+
+      await readSSEStream(streamResp.body, handleSSEEvent);
 
       // If stream ended without a response event, mark as completed
       if (!streamReceivedResponse) {

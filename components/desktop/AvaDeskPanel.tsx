@@ -24,6 +24,7 @@ import {
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
+import { readSSEStream, extractResponseText, extractMediaItems, type SSEEvent } from '@/lib/sseStream';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
@@ -685,71 +686,54 @@ function AvaDeskPanelInner() {
         throw new Error(errorCode ? `${errorCode}: ${detail}` : detail);
       }
 
-      const reader = streamResp.body.getReader();
-      const decoder = new TextDecoder();
-      let sseBuffer = '';
+      // Read SSE stream — uses shared parser (lib/sseStream.ts)
       let streamReceivedResponse = false;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const handleSSEEvent = (event: SSEEvent) => {
+        if (event.type === 'response') {
+          streamReceivedResponse = true;
+          const responseText = extractResponseText(event, “I'm ready for your next step.”);
+          const mediaItems = extractMediaItems(event);
 
-        sseBuffer += decoder.decode(value, { stream: true });
-        const sseLines = sseBuffer.split('\n');
-        sseBuffer = sseLines.pop() || '';
-
-        for (const line of sseLines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            if (event.type === 'heartbeat') continue;
-
-            if (event.type === 'response') {
-              // Final response — update the message text and mark run complete
-              streamReceivedResponse = true;
-              const responseText = event.data?.text || event.message || event.response || event.text || “I'm ready for your next step.”;
-              const mediaItems = Array.isArray(event.data?.media) ? event.data.media : [];
-
-              // If video connected, pipe response to Anam avatar (Law #1: Single Brain)
-              if (mode === 'video' && videoState === 'connected' && anamClientRef.current) {
-                try {
-                  anamClientRef.current.talk(responseText);
-                } catch (talkErr) {
-                  console.warn('Anam talk failed:', talkErr);
-                }
-              }
-
-              setActiveRuns((prev) => {
-                const run = prev[runId];
-                if (!run) return prev;
-                return { ...prev, [runId]: { ...run, status: 'completed', finalText: responseText } };
-              });
-              setChat((prev) =>
-                prev.map((msg) =>
-                  msg.runId === runId ? { ...msg, text: responseText, media: mediaItems } : msg
-                )
-              );
-              setIsConversing(false);
-              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-            } else {
-              // Activity/reasoning step — add to ChainOfThought live
-              const newEvent: AgentActivityEvent = {
-                id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                type: event.type,
-                label: event.message || event.label || event.type,
-                icon: event.icon || 'sparkles',
-                status: event.type === 'done' ? 'completed' : (event.status || 'active'),
-                timestamp: event.timestamp || Date.now(),
-              };
-              setActiveRuns((prev) => {
-                const run = prev[runId] || { runId, agent: 'ava', events: [], status: 'running', startedAt: Date.now(), finalText: '' };
-                return { ...prev, [runId]: { ...run, events: [...run.events, newEvent] } };
-              });
-              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+          // If video connected, pipe response to Anam avatar (Law #1: Single Brain)
+          if (mode === 'video' && videoState === 'connected' && anamClientRef.current) {
+            try {
+              anamClientRef.current.talk(responseText);
+            } catch (talkErr) {
+              console.warn('Anam talk failed:', talkErr);
             }
-          } catch { /* skip malformed SSE lines */ }
+          }
+
+          setActiveRuns((prev) => {
+            const run = prev[runId];
+            if (!run) return prev;
+            return { ...prev, [runId]: { ...run, status: 'completed', finalText: responseText } };
+          });
+          setChat((prev) =>
+            prev.map((msg) =>
+              msg.runId === runId ? { ...msg, text: responseText, media: mediaItems } : msg
+            )
+          );
+          setIsConversing(false);
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+        } else {
+          const newEvent: AgentActivityEvent = {
+            id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            type: event.type,
+            label: event.message || event.label || event.type,
+            icon: event.icon || 'sparkles',
+            status: event.type === 'done' ? 'completed' : (event.status || 'active'),
+            timestamp: event.timestamp || Date.now(),
+          };
+          setActiveRuns((prev) => {
+            const run = prev[runId] || { runId, agent: 'ava', events: [], status: 'running', startedAt: Date.now(), finalText: '' };
+            return { ...prev, [runId]: { ...run, events: [...run.events, newEvent] } };
+          });
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
         }
-      }
+      };
+
+      await readSSEStream(streamResp.body, handleSSEEvent);
 
       // If stream ended without a response event, mark as completed
       if (!streamReceivedResponse) {

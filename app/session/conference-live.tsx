@@ -24,6 +24,7 @@ import { trackInteraction } from '@/lib/interactionTelemetry';
 import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
 import { useKeepAwake } from '@/hooks/useKeepAwake';
+import { readSSEStream, extractResponseText } from '@/lib/sseStream';
 
 /**
  * KrispToggle — renders inside LiveKitConferenceProvider to access Krisp context.
@@ -1642,38 +1643,20 @@ function ConferenceLive() {
                   return;
                 }
 
-                // SSE streaming read
-                const reader = resp.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-
-                  buffer += decoder.decode(value, { stream: true });
-                  const lines = buffer.split('\n\n');
-                  buffer = lines.pop() || '';
-
-                  for (const line of lines) {
-                    const match = line.match(/^data:\s*(.+)$/m);
-                    if (!match) continue;
-                    try {
-                      const evt = JSON.parse(match[1]);
-                      if (evt.type === 'response') {
-                        const avaReply = {
-                          id: `msg-ava-${Date.now()}`,
-                          senderId: 'ava',
-                          senderName: 'Ava',
-                          text: evt.data?.text || evt.message || evt.response || evt.text || '',
-                          timestamp: new Date(),
-                          isPrivate: true,
-                        };
-                        setMessages(prev => [...prev, avaReply]);
-                      }
-                    } catch { /* skip malformed SSE events */ }
+                // SSE streaming read — uses shared parser (lib/sseStream.ts)
+                await readSSEStream(resp.body, (evt) => {
+                  if (evt.type === 'response') {
+                    const avaReply = {
+                      id: `msg-ava-${Date.now()}`,
+                      senderId: 'ava',
+                      senderName: 'Ava',
+                      text: extractResponseText(evt),
+                      timestamp: new Date(),
+                      isPrivate: true,
+                    };
+                    setMessages(prev => [...prev, avaReply]);
                   }
-                }
+                });
               } catch (_err) {
                 const avaReply = {
                   id: `msg-ava-err-${Date.now()}`,
