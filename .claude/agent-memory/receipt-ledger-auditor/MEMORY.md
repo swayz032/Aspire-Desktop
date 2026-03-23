@@ -175,3 +175,88 @@ Full detail in `cycle6-provider-audit.md`. Key findings:
 - Accepted as parameter across all providers but NEVER validated at provider level
 - All providers allow None capability_token_id even for RED-tier operations
 - Systemic gap confirmed across all 3 audited cycles (3, 4, 6)
+
+## Cycle 8 Audit — Routes + Config Focus (2026-03-23)
+
+### Files Audited
+- routes/intents.py, routes/robots.py, routes/webhooks.py, routes/admin.py
+- services/tool_executor.py, services/policy_engine.py
+- middleware/correlation.py, middleware/rate_limiter.py, middleware/exception_handler.py, middleware/chaos.py, middleware/sentry_middleware.py
+
+### NEW FINDINGS vs Cycle 3
+
+#### webhooks.py — Resolved vs Prior Findings
+- PandaDoc webhook: receipt is now constructed (lines 165-184) BUT NOT stored (no store_receipts() call) — logger.info only. STILL CRITICAL.
+- Twilio webhook: same pattern — receipt constructed but NOT stored — STILL CRITICAL.
+- Both webhooks: rejection paths (auth fail, sig fail) still emit NO receipt — STILL CRITICAL (6 missing receipts confirmed).
+- Stripe webhook: delegates to StripeWebhookHandler.process_event() — receipt stored there (Cycle 3/4 confirmed). Exception path (line 99-105) still emits NO receipt — CRITICAL.
+
+#### admin.py — RESOLVED FINDINGS (previously MEDIUM, now covered)
+- /admin/auth/exchange: ALL denial paths now emit receipts (lines 451-458, 468-475, 484-491, 527-534, 560-567). RESOLVED.
+- /admin/ops/incidents/report: auth denial covered (lines 978-985). JSON parse still NO receipt (line 996-1001) — MEDIUM open.
+- /admin/ops/client-events: auth denial still NO receipt (lines 1120-1129). MEDIUM open.
+- /admin/ops/voice/tts/stream: auth denial NOW receipted (lines 4357-4367). JSON parse STILL NO receipt (lines 4371-4378). Text empty STILL NO receipt (lines 4380-4387). Audio streaming failure STILL NO receipt (line 4445-4446 logs only). MEDIUM open.
+- /admin/ops/chat: auth denial NOW receipted (lines 4709-4716). JSON parse STILL NO receipt (lines 4726-4732). Empty message STILL NO receipt (lines 4736-4742). MEDIUM open.
+- /admin/ops/health-pulse/stream: exception path (lines 4005-4007) STILL logs only, NO err_receipt — MEDIUM open.
+- /admin/ops/outbox/stream: exception path (lines 4093-4094) STILL logs only, NO err_receipt — MEDIUM open.
+
+#### tool_executor.py — NEW CRITICAL FINDING
+- execute_tool() lines 964-981: When a LIVE executor raises an uncaught exception, the function RE-RAISES (line 981). There is NO receipt emitted for the unhandled exception path. The PCL is logged but no receipt is stored. The caller (graph.py execute node) may or may not catch and receipt this — CRITICAL for RED-tier tools.
+- _make_receipt_data() line 181: `"receipt_hash": ""` — always empty string. Confirms systemic pattern from Cycle 6.
+- execute_stub(): always returns Outcome.SUCCESS — stub tools never return DENIED or FAILED, masking policy gaps.
+
+#### policy_engine.py — NO RECEIPTS EMITTED (CONFIRMED)
+- PolicyMatrix.evaluate() is a pure function returning PolicyEvalResult. It NEVER calls store_receipts().
+- Law #2 step 9 in the module docstring says "Emit policy_decision receipt" but this is NOT implemented.
+- The policy evaluation result itself (allow/deny + risk_tier) is never receipted at the policy layer.
+- Receipt for policy denial happens upstream in graph.py classify_node (Cycle 4 confirmed gap).
+
+#### middleware/rate_limiter.py — CONFIRMED MISSING RECEIPT
+- Lines 197-214: Rate limit exceeded returns 429 JSONResponse with NO receipt stored.
+- Law #3 comment in source says "fail-closed on abuse" but there is no Law #2 receipt for the rate limit denial.
+
+#### middleware/exception_handler.py — LARGELY COMPLIANT
+- Lines 112-132: receipt IS constructed and stored via store_receipts([receipt]).
+- MEDIUM: risk_tier hardcoded to "green" for all unhandled exceptions (line 123).
+- MEDIUM: receipt_type is "exception" (non-standard, not in ReceiptType enum).
+- MEDIUM: Missing fields: tool_used="http_handler" (not a real tool_id), no capability_token_id.
+
+#### middleware/correlation.py — COMPLIANT
+- Correctly sets trace_id, span_id, parent_span_id in contextvars. No receipt needed (infrastructure layer).
+
+#### middleware/chaos.py — MISSING RECEIPT
+- Lines 127-134 (connection drop): returns 503 with NO receipt.
+- Lines 144-152 (error injection): returns 500 with NO receipt.
+- MEDIUM: chaos injections are logged but not receipted. Law #2 comment in module docstring says "Every injection is logged (receipt-level traceability)" — this is inaccurate, logs are NOT receipts.
+
+#### admin.py — /admin/ops/readiness-contract (line 1802)
+- Line 1807-1813: Auth denial returns 401 with NO receipt. _build_access_receipt not called. MEDIUM.
+
+#### admin.py — /admin/ops/voice/config (line 1858)
+- Line 1863-1869: Auth denial returns 401 with NO receipt. _build_access_receipt not called. MEDIUM.
+
+#### admin.py — /admin/ops/health-pulse (line 2961)
+- Line 2993-3007: Internal failure path (result.success == False) returns 500 with NO receipt. MEDIUM.
+
+#### admin.py — /admin/ops/triage/{incident_id} (line 3018)
+- Line 3048-3067: Internal failure / 404 paths return errors with NO receipt. MEDIUM.
+
+#### admin.py — /admin/ops/provider-analysis (line 3078)
+- Line 3104-3124: Internal failure path returns 500 with NO receipt. MEDIUM.
+
+#### admin.py — /admin/ops/voice/stt (line 4212)
+- COMPLIANT: auth denial receipted (4224-4229), success receipted (4255-4262), failure receipted (4275-4283).
+- MINOR: empty body check (lines 4239-4244) returns 400 with NO receipt.
+
+#### robots.py — COMPLIANT
+- Auth failure (lines 185-193, 197-205): NO receipt. These are pre-parse failures — MEDIUM (consistent with pattern).
+- JSON parse failure (lines 210-217): NO receipt — MEDIUM.
+- All schema validation failures, failed runs, and success paths: receipts correctly emitted.
+
+### Systemic Confirmed Gaps (All Cycles)
+1. capability_token_id missing from ALL route-level receipts (systemic)
+2. receipt_hash="" hardcoded in tool_executor._make_receipt_data() and base_client.make_receipt_data()
+3. policy_engine.py emits NO receipts for policy decisions
+4. webhook handlers (PandaDoc, Twilio) construct but never STORE receipts
+5. rate_limiter returns 429 with no receipt
+6. Pre-parse/pre-auth failure exits (across all routes) emit no receipts

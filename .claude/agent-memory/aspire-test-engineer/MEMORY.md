@@ -110,6 +110,20 @@ Key findings:
 | `tests/test_evil_security.py` | Security | varies | Injection, escalation, token |
 | `tests/test_evil_cycle4_orchestrator_core.py` | Cycle 4 | ~25 | HMAC, receipt_write strict, approval replay, token scope |
 | `tests/test_evil_cycle6_providers.py` | Cycle 6 | **26** | Datetime bug, async callback, receipt_hash, idempotency, replay, API key in body/logs, Deepgram empty body |
+| `tests/test_evil_cycle7_skillpacks.py` | Cycle 7 | **32** | Signature mismatches, LAW #2 receipt persistence, async/sync governance, dead class, dead code |
+
+## Skillpacks Scan (Cycle 7 — 2026-03-23)
+
+Files: 20 Python files in `skillpacks/`. Key findings:
+- **5 CRITICAL signature mismatches** (mail_ops_desk.py x3, teressa_books.py x1, clara_legal.py x1) — wrappers call impls with wrong param shapes; will raise TypeError or silently drop data at runtime
+- **Systematic LAW #2**: All 9 rule-based skillpack classes build receipts via `_make_receipt()`/`_emit_receipt()` but NEVER call `store_receipts()`. Receipt returned in SkillPackResult only — not persisted. Affected: AdamResearch, EliInbox, MiloPayroll, QuinnInvoicing, TeressaBooks, SarahFrontDesk, NoraConference, MailOps, ClaraLegal
+- **2 sync/no-receipt violations** on RED-tier dual approval methods: `EnhancedMiloPayroll.initiate_dual_approval` (milo_payroll.py:754) and `EnhancedClaraLegal.initiate_dual_approval` (clara_legal.py:1265) — both `def` not `async def`, return dict not AgentResult, no receipt emitted
+- `AvaUserSkillPack` (ava_user.py:13) is empty dead class — no methods
+- `books_sync` wrapper in teressa_books.py always passes `date_range={}` (line 133) — ignores caller's date_range; every call fails validation
+- `_handle_read_action` is dead code in all 4 scaffold packs (qa_evals, release_manager, security_review, sre_triage)
+- `EnhancedAvaUser`, `EnhancedAdamResearch`, `EnhancedEliInbox`, `EnhancedMiloPayroll`, `EnhancedFinnFinanceManager` all correctly persist via `execute_with_llm()` → `emit_receipt()`
+- clara_legal.py correctly masks PII with `_mask_name()` + `_mask_email()` in sign_contract receipts
+- `quinn_invoicing.py` sets `outcome="success"` pre-approval for YELLOW-tier operations — should be `outcome="pending"`
 
 ## Provider Layer Evil Tests (Cycle 6 — 2026-03-22) — 26/26 PASSING
 
@@ -119,6 +133,20 @@ Key test patterns used:
 - `ProviderResponse` constructor takes `(status_code, body, success, error_code, error_message, provider_request_id, latency_ms)` — `receipt_data` is a `@property`, NOT a constructor param
 - Stripe webhook receipt schema: uses `"status"` not `"outcome"`, reasons in `policy.reasons[]` not top-level `reason_code`
 - `get_provider_call_logger` — patch via `aspire_orchestrator.providers.base_client` (imported there), not via `twilio_client` (not imported there — that's BUG-P6-06)
+
+## Routes + Config Scan (Cycle 8 — 2026-03-23)
+
+See `backend-routes-scan-cycle8.md` for full findings.
+
+Key new bugs (not previously captured):
+- **HIGH**: `routes/admin.py:794` — `asyncio.get_event_loop().run_in_executor()` in async route on Python 3.10+ raises DeprecationWarning (use `asyncio.get_running_loop()`). Same pattern at `server.py:392`.
+- **HIGH**: `routes/admin.py:156-158` — `clear_admin_stores()` uses `_provider_health_lock` and `_provider_health` which are defined at line 3756 (end of file) — forward reference used in function defined earlier. Works at runtime but fragile module ordering.
+- **HIGH**: `routes/admin.py:ingest_client_event` (line 1109) — on the SUCCESS path, NO receipt is stored. Every other admin endpoint calls `store_receipts()` on success. This is a LAW #2 violation.
+- **HIGH**: `routes/intents.py:344` — `allow_internal_routing = bool(request.headers.get("x-admin-token"))` — presence of ANY non-empty value in `x-admin-token` grants internal routing privilege WITHOUT JWT verification. Header is NOT validated, only tested for truthiness.
+- **MEDIUM**: `webhooks.py:162-168` and `254-261` — PandaDoc and Twilio webhook receipts are built in-memory but NEVER stored (`store_receipts()` is never called). Law #2 violation (same as Cycle 3 finding — still unfixed).
+- **MEDIUM**: `config/secrets.py:140` — `verify_settings_coverage()` checks `"stripe_secret_key"` as field name but `Settings` has no `stripe_secret_key` field (only `stripe_api_key`). Verification silently checks a non-existent field.
+- **LOW**: `routes/admin.py:794` + `server.py:392` — `asyncio.get_event_loop()` is deprecated in Python 3.10+ when called in async context; use `asyncio.get_running_loop()`.
+- **INFO**: `_check_redis()` at admin.py:777 is now CORRECT — uses `run_in_executor` properly. Prior Cycle 3 report flagged line 728 incorrectly. The function at 777 is an `async def` and uses executor correctly.
 
 ## Test Commands
 

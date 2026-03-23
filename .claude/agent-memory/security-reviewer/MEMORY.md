@@ -169,3 +169,94 @@
 
 ### `bypassPermissions` Status
 - NOT FOUND in any Cycle 6 files reviewed.
+
+## Cycle 7 Findings (Skillpacks + Desktop lib/hooks + Supabase RLS) — 2026-03-23
+
+### Skillpacks (`backend/orchestrator/src/aspire_orchestrator/skillpacks/`)
+- CRITICAL: `ava_user.py` route_plan fix CONFIRMED — `allow_internal_routing` is now hardcoded `False` (Cycle 4 finding RESOLVED).
+- HIGH: `EliInboxSkillPack._execute_office_action()` (eli_inbox.py:226-276) calls `execute_tool()` for `office.create/draft/send` WITHOUT checking `approval_evidence`. Unlike milo/quinn/clara/sarah, Eli does not gate YELLOW-tier execution. Receipt shows `approval_required: True` but status is `ok`. Law #3 + Law #4 violation.
+- HIGH: `EnhancedEliInbox.triage_email()` (eli_inbox.py:585-596) injects raw `email_data.get('body', '')[:1000]` directly into LLM prompt — prompt injection surface from external email content.
+- HIGH: `MiloPayrollSkillPack._payroll_snapshots` is module-level dict (milo_payroll.py:56). Process-local, not shared across Railway replicas. Multi-process: snapshot from process A not visible to process B. Also: snapshot key `"{suite_id}:{payroll_period}"` does NOT verify that retrieved snapshot's `suite_id` matches context — potential cross-tenant bypass if key collision engineered.
+- INFO: `milo_payroll.py` RED-tier gate CORRECTLY implemented — approval_evidence AND presence_evidence required before run_payroll executes.
+- INFO: `quinn_invoicing.py`, `teressa_books.py`, `sarah_front_desk.py`, `clara_legal.py` — all correctly implement YELLOW approval gates (return pending without approval_evidence).
+- INFO: ElevenLabs Voice IDs hardcoded in eli_inbox.py:556 comment — not secrets, already known in MEMORY.md.
+
+### Desktop lib/security/
+- CRITICAL: `lib/security/storage.ts:12-13` falls back to `localStorage` when expo-secure-store unavailable. `lib/security/mfa.ts:18-20` stores TOTP secret via this path. On web: TOTP secret is in cleartext `localStorage`, readable by XSS. MFA bypass if XSS gained.
+- MEDIUM: `lib/security/mfa.ts:47-57` — `verifyMfaCode()` is entirely client-side. No server-side TOTP verification call. Attacker with stolen secret computes valid codes offline.
+- MEDIUM: `lib/security/mfa.ts:69-76` — `isMfaVerifiedRecently()` reads `lastVerifiedAt` from the same localStorage-backed store. XSS can update this timestamp to bypass recency check.
+- MEDIUM: `lib/security/plaidConsent.ts:32-39` — Plaid consent record stored in localStorage on web. XSS can set `consented=true` to bypass consent gate.
+
+### Desktop hooks/
+- INFO: `hooks/useOrchestratorChat.ts` — correctly injects Authorization + X-Suite-Id headers. No issues found.
+- INFO: `hooks/useRealtimeApprovalRequests.ts` — correctly requires `suiteId` before subscribing. Polling fallback correct. No issues.
+- INFO: `hooks/useDeepgramSTT.ts` — Deepgram token fetched from `/api/deepgram/token` with Authorization header. Token not stored client-side beyond the WebSocket subprotocol header. Correct pattern.
+
+### Desktop lib/devLog.ts
+- LOW: `devError()` is unconditional (no `isDev` gate). All other devLog functions are dev-only. Production browser console will show `devError()` calls.
+
+### Supabase Migrations (this cycle)
+- CRITICAL-RISK: `20260228000001_finance_knowledge_base.sql:126-127` — `finance_chunks_insert_service` policy has `FOR INSERT WITH CHECK (true)` with NO `TO service_role` clause. Any authenticated user can INSERT into this table, poisoning the global finance RAG knowledge base. Same for `finance_sources_insert_service` and update variants.
+- HIGH: `20260225000001_incidents_provider_calls.sql:79-80` — `pcl_auth_select` policy `FOR SELECT TO authenticated USING (true)` has NO suite_id filter. Any tenant user reads all provider call logs cross-tenant. Law #6 violation.
+- HIGH: `20260318000001_platform_admin_rls.sql:102-104` — `admin_allowlist_select_authenticated` uses `USING (true)`. Any authenticated user enumerates all admin email addresses.
+- MEDIUM: `20260228000001_finance_knowledge_base.sql:210-307` — `search_finance_knowledge()` is `SECURITY DEFINER` and accepts caller-controlled `p_suite_id UUID`. No authorization check that caller belongs to the provided suite_id. Any tenant can read another tenant's private finance knowledge chunks.
+- INFO: `20260318000001_platform_admin_rls.sql:9` — `app.is_platform_admin()` is `STABLE SECURITY DEFINER SET search_path TO 'public'` — correctly pinned search_path. No mutable search_path risk.
+- INFO: `20260210000002_desktop_tables.sql` — all `WITH CHECK (true)` / `USING (true)` patterns in this migration are gated `TO service_role` — correctly scoped. Not a vulnerability.
+- INFO: `20260225000001_incidents_provider_calls.sql` — service_role policies for `provider_call_log` and `client_events` are `TO service_role USING (true) WITH CHECK (true)` — correct for service role.
+
+### `bypassPermissions` Status
+- NOT FOUND in any Cycle 7 files reviewed.
+
+## Cycle 8 Findings (Backend Routes + Config + Desktop Gateway) — 2026-03-23
+
+### RESOLVED from Prior Cycles (Confirmed Fixed)
+- RESOLVED: `PATCH /api/services/:serviceId` — now auth-gated (line 1440 checks `authenticatedSuiteId`)
+- RESOLVED: `DELETE /api/services/:serviceId` — now auth-gated (line 1480 checks `authenticatedSuiteId`)
+- RESOLVED: `PUT /api/users/:userId/availability` — now auth-gated AND ownership-checked (line 1529-1532)
+- RESOLVED: `PUT /api/users/:userId/buffer-settings` — now auth-gated AND ownership-checked (line 1585-1588)
+- RESOLVED: `GET /api/users/slug/:slug` — now auth-gated (line 1246 checks `authenticatedSuiteId`)
+- RESOLVED: `POST /api/users` — now auth-gated via `authenticatedSuiteId` (no body fallback)
+- RESOLVED: `allow_internal_routing` from user payload (Cycle 3/4 finding) — now hardcoded False in ava_user.py
+
+### New Cycle 8 Findings
+
+#### HIGH: `allow_internal_routing` in intents.py gated on presence of x-admin-token but NO validation
+- File: `routes/intents.py:344` — `allow_internal_routing = bool(request.headers.get("x-admin-token"))`
+- Any caller who can reach port 8000 can send `X-Admin-Token: foo` to activate internal routing
+- Port 8000 is supposed to be Gateway-only but no cryptographic enforcement within the route itself
+- The `_require_admin()` function (admin.py:237-264) DOES validate the JWT — but it is NOT called here
+- Fix: call `_require_admin(request) is not None` instead of bare bool(header.get(...))
+
+#### HIGH: `admin_allowlist_select_authenticated` — any authenticated user reads all admin emails
+- File: `supabase/migrations/20260318000001_platform_admin_rls.sql:102-104`
+- `FOR SELECT TO authenticated USING (true)` — no condition, any active session reads admin_allowlist
+- Confirmed in Cycle 7, documented here for Cycle 8 reference
+- Fix: Change to `USING (app.is_platform_admin())` — only admins should read the allowlist
+
+#### HIGH: `pcl_auth_select` — any authenticated user reads all provider call logs cross-tenant
+- File: `supabase/migrations/20260225000001_incidents_provider_calls.sql:79-80`
+- `FOR SELECT TO authenticated USING (true)` — no suite_id filter
+- Confirmed in Cycle 6, still unresolved
+
+#### MEDIUM: `ingest_client_event` leaks store exception message in HTTP response
+- File: `routes/admin.py:1202` — `message=f"Client event store error: {exc}"`
+- Python exception strings may include table names, column names, SQL constraint details
+- Fix: Return generic message; log full exc server-side only
+
+#### MEDIUM: `admin/ops/health/deep` unauthenticated — reveals infrastructure topology
+- File: `routes/admin.py:828-875` — `@router.get("/admin/ops/health/deep")` with no auth check
+- Returns Redis URL status, n8n URL status, OpenAI config status, Postgres status
+- `_check_n8n()` uses N8N_URL env var — degraded/up status reveals n8n presence
+- `_check_postgres()` hits Supabase service role key — reveals DB connectivity
+
+#### MEDIUM: `settings.py` credential_strict_mode now defaults True
+- File: `config/settings.py:81` — `credential_strict_mode: bool = True`
+- This is IMPROVED vs Cycle 3 finding (was False). Now requires `ASPIRE_CREDENTIAL_STRICT_MODE=0` to disable.
+
+#### LOW: Twilio fallback (no SDK) uses SHA-1 HMAC — weaker than SDK path (SHA-1)
+- File: `routes/webhooks.py:261` — `hmac.new(..., hashlib.sha1)`
+- Twilio spec requires SHA-1, this is correct but worth noting for tracking
+- Both paths use `hmac.compare_digest` — timing-safe
+
+### `bypassPermissions` Status
+- NOT FOUND in any Cycle 8 files reviewed.
