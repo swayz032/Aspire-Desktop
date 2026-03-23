@@ -436,6 +436,7 @@ function ConferenceLive() {
   const [activeTab, setActiveTab] = useState<'chat' | 'materials' | 'authority'>('chat');
   const [isPrivateMessage, setIsPrivateMessage] = useState(true);
   const [chatVisible, setChatVisible] = useState(false);
+  const [avaThinking, setAvaThinking] = useState(false);
 
   const [viewMode, setViewMode] = useState<ViewMode>('gallery');
   const [shareMode, setShareMode] = useState<ShareMode>('none');
@@ -1596,7 +1597,8 @@ function ConferenceLive() {
             onClose={() => setChatVisible(false)}
             messages={messages as DrawerChatMessage[]}
             materials={materials as DrawerMaterialItem[]}
-            onSendMessage={(text, isPrivate) => {
+            avaThinking={avaThinking}
+            onSendMessage={async (text, isPrivate) => {
               const newMessage = {
                 id: `msg-${Date.now()}`,
                 senderId: 'you',
@@ -1606,6 +1608,85 @@ function ConferenceLive() {
                 isPrivate,
               };
               setMessages(prev => [...prev, newMessage]);
+
+              if (!isPrivate) return; // Room messages stay local
+
+              setAvaThinking(true);
+              try {
+                const resp = await fetch('/api/orchestrator/intent?stream=true', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...(suiteId ? { 'X-Suite-Id': suiteId } : {}),
+                    ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+                  },
+                  body: JSON.stringify({
+                    agent: 'ava',
+                    text,
+                    channel: 'conference_private',
+                  }),
+                });
+
+                if (!resp.ok || !resp.body) {
+                  const data = await resp.json().catch(() => ({}));
+                  const avaReply = {
+                    id: `msg-ava-${Date.now()}`,
+                    senderId: 'ava',
+                    senderName: 'Ava',
+                    text: data.response || data.text || "I'm having trouble connecting. Try again in a moment.",
+                    timestamp: new Date(),
+                    isPrivate: true,
+                  };
+                  setMessages(prev => [...prev, avaReply]);
+                  setAvaThinking(false);
+                  return;
+                }
+
+                // SSE streaming read
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n\n');
+                  buffer = lines.pop() || '';
+
+                  for (const line of lines) {
+                    const match = line.match(/^data:\s*(.+)$/m);
+                    if (!match) continue;
+                    try {
+                      const evt = JSON.parse(match[1]);
+                      if (evt.type === 'response') {
+                        const avaReply = {
+                          id: `msg-ava-${Date.now()}`,
+                          senderId: 'ava',
+                          senderName: 'Ava',
+                          text: evt.text || evt.response || '',
+                          timestamp: new Date(),
+                          isPrivate: true,
+                        };
+                        setMessages(prev => [...prev, avaReply]);
+                      }
+                    } catch { /* skip malformed SSE events */ }
+                  }
+                }
+              } catch (_err) {
+                const avaReply = {
+                  id: `msg-ava-err-${Date.now()}`,
+                  senderId: 'ava',
+                  senderName: 'Ava',
+                  text: "I'm having trouble connecting. Let me try again.",
+                  timestamp: new Date(),
+                  isPrivate: true,
+                };
+                setMessages(prev => [...prev, avaReply]);
+              } finally {
+                setAvaThinking(false);
+              }
             }}
             onSaveMaterial={(id) => {
               setMaterials(prev => prev.map(m => m.id === id ? { ...m, saved: true } : m));

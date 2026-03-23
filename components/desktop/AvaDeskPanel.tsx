@@ -649,7 +649,8 @@ function AvaDeskPanelInner() {
         preferredChannel: tenant.preferredChannel || undefined,
       } : undefined;
 
-      const resp = await fetch('/api/orchestrator/intent', {
+      // SSE streaming: receive reasoning steps + final response in real-time
+      const streamResp = await fetch('/api/orchestrator/intent?stream=true', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -665,10 +666,11 @@ function AvaDeskPanelInner() {
         }),
       });
 
-      if (!resp.ok) {
+      if (!streamResp.ok || !streamResp.body) {
+        // Try to extract structured error from non-streaming error response
         let errorBody: any = null;
         try {
-          errorBody = await resp.json();
+          errorBody = await streamResp.json();
         } catch {
           errorBody = null;
         }
@@ -677,66 +679,89 @@ function AvaDeskPanelInner() {
           errorBody?.response ||
           errorBody?.text ||
           errorBody?.message ||
-          `Orchestrator returned ${resp.status}`;
+          `Orchestrator returned ${streamResp.status}`;
         const correlation = errorBody?.correlation_id || '';
         const detail = correlation ? `${errorText} (ref: ${correlation})` : errorText;
         throw new Error(errorCode ? `${errorCode}: ${detail}` : detail);
       }
 
-      const data = await resp.json();
-      const responseText = data.response || data.text || "I'm ready for your next step.";
-      const activityEvents = buildActivityFromResponse(data, 'ava');
-      const mediaItems = Array.isArray((data as any).media) ? (data as any).media : [];
+      const reader = streamResp.body.getReader();
+      const decoder = new TextDecoder();
+      let sseBuffer = '';
+      let streamReceivedResponse = false;
 
-      // If video connected, pipe response to Anam avatar (Cara speaks with Emma voice)
-      // Anam handles voice output â€” our LLM drives what she says (Law #1: Single Brain)
-      if (mode === 'video' && videoState === 'connected' && anamClientRef.current) {
-        try {
-          anamClientRef.current.talk(responseText);
-        } catch (talkErr) {
-          console.warn('Anam talk failed:', talkErr);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        sseBuffer += decoder.decode(value, { stream: true });
+        const sseLines = sseBuffer.split('\n');
+        sseBuffer = sseLines.pop() || '';
+
+        for (const line of sseLines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === 'heartbeat') continue;
+
+            if (event.type === 'response') {
+              // Final response — update the message text and mark run complete
+              streamReceivedResponse = true;
+              const responseText = event.data?.text || event.message || event.response || event.text || “I'm ready for your next step.”;
+              const mediaItems = Array.isArray(event.data?.media) ? event.data.media : [];
+
+              // If video connected, pipe response to Anam avatar (Law #1: Single Brain)
+              if (mode === 'video' && videoState === 'connected' && anamClientRef.current) {
+                try {
+                  anamClientRef.current.talk(responseText);
+                } catch (talkErr) {
+                  console.warn('Anam talk failed:', talkErr);
+                }
+              }
+
+              setActiveRuns((prev) => {
+                const run = prev[runId];
+                if (!run) return prev;
+                return { ...prev, [runId]: { ...run, status: 'completed', finalText: responseText } };
+              });
+              setChat((prev) =>
+                prev.map((msg) =>
+                  msg.runId === runId ? { ...msg, text: responseText, media: mediaItems } : msg
+                )
+              );
+              setIsConversing(false);
+              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+            } else {
+              // Activity/reasoning step — add to ChainOfThought live
+              const newEvent: AgentActivityEvent = {
+                id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                type: event.type,
+                label: event.message || event.label || event.type,
+                icon: event.icon || 'sparkles',
+                status: event.type === 'done' ? 'completed' : (event.status || 'active'),
+                timestamp: event.timestamp || Date.now(),
+              };
+              setActiveRuns((prev) => {
+                const run = prev[runId] || { runId, agent: 'ava', events: [], status: 'running', startedAt: Date.now(), finalText: '' };
+                return { ...prev, [runId]: { ...run, events: [...run.events, newEvent] } };
+              });
+              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+            }
+          } catch { /* skip malformed SSE lines */ }
         }
       }
 
-      // Conversational response â€” no pipeline activity, show text immediately
-      if (activityEvents.length === 0) {
+      // If stream ended without a response event, mark as completed
+      if (!streamReceivedResponse) {
         setActiveRuns((prev) => {
           const run = prev[runId];
-          if (!run) return prev;
-          return { ...prev, [runId]: { ...run, events: [], status: 'completed', finalText: responseText } };
+          if (run && run.status === 'running') {
+            return { ...prev, [runId]: { ...run, status: 'completed' } };
+          }
+          return prev;
         });
         setIsConversing(false);
-        setChat((prev) =>
-          prev.map((msg) =>
-            msg.runId === runId ? { ...msg, text: responseText, media: mediaItems } : msg
-          )
-        );
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-        return;
       }
-
-      // Activity events from shared builder already have id/label/status/timestamp
-      // Display them all at once (they arrived complete from orchestrator)
-      setActiveRuns((prev) => {
-        const run = prev[runId];
-        if (!run) return prev;
-        return {
-          ...prev,
-          [runId]: {
-            ...run,
-            events: activityEvents,
-            status: 'completed',
-            finalText: responseText,
-          },
-        };
-      });
-      setIsConversing(false);
-      setChat((prev) =>
-        prev.map((msg) =>
-          msg.runId === runId ? { ...msg, text: responseText, media: mediaItems } : msg
-        )
-      );
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     } catch (error: unknown) {
       // Law #3: Fail Closed â€” show error, don't guess
       const rawMessage = error instanceof Error ? error.message : String(error || 'Unknown error');

@@ -3276,6 +3276,107 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
     }
     const requestedAgent = parsedAgent.value;
 
+    // SSE streaming branch — stream reasoning steps from Ava-Brain to client
+    const streamRequested = req.query.stream === 'true';
+
+    if (streamRequested) {
+      const backendStreamUrl = `${ORCHESTRATOR_URL}/v1/intents?stream=true`;
+
+      try {
+        const backendResp = await fetch(backendStreamUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Id': actorId,
+            'X-Suite-Id': suiteId,
+            'X-Office-Id': officeId || suiteId,
+            'X-Correlation-Id': correlationId,
+            'X-Trace-Id': traceId,
+          },
+          body: JSON.stringify(req.body),
+        });
+
+        if (!backendResp.ok || !backendResp.body) {
+          emitTraceEvent({
+            traceId,
+            correlationId,
+            suiteId,
+            stage: 'orchestrator',
+            status: 'error',
+            message: 'Backend streaming unavailable',
+            errorCode: 'STREAM_FAILED',
+            latencyMs: Date.now() - startedAt,
+          });
+          return res.status(backendResp.status || 502).json({
+            error: 'STREAM_FAILED',
+            message: 'Backend streaming unavailable',
+            correlation_id: correlationId,
+          });
+        }
+
+        // Set SSE headers
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.setHeader('X-Correlation-Id', correlationId);
+        res.setHeader('X-Trace-Id', traceId);
+        res.flushHeaders();
+
+        // Pipe the readable stream from backend to client
+        const reader = (backendResp.body as any).getReader();
+        const pump = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              res.write(Buffer.from(value));
+            }
+          } catch (_pipeErr) {
+            // Client disconnected or backend stream error
+          } finally {
+            res.end();
+          }
+        };
+
+        req.on('close', () => {
+          try { reader.cancel(); } catch {}
+        });
+
+        await pump();
+
+        emitTraceEvent({
+          traceId,
+          correlationId,
+          suiteId,
+          stage: 'orchestrator',
+          status: 'ok',
+          message: 'Streaming intent response completed',
+          latencyMs: Date.now() - startedAt,
+        });
+      } catch (err) {
+        if (!res.headersSent) {
+          emitTraceEvent({
+            traceId,
+            correlationId,
+            suiteId,
+            stage: 'orchestrator',
+            status: 'error',
+            message: 'Failed to connect to backend stream',
+            errorCode: 'STREAM_ERROR',
+            latencyMs: Date.now() - startedAt,
+          });
+          return res.status(502).json({
+            error: 'STREAM_ERROR',
+            message: 'Failed to connect to backend stream',
+            correlation_id: correlationId,
+          });
+        }
+        res.end();
+      }
+      return;
+    }
+
     // Build profile context for Ava personalization (PII-filtered — Law #9)
     // Only safe business context fields, never DOB/address/gender
     const profileContext = userProfile ? {

@@ -2531,6 +2531,14 @@ function InboxScreen() {
               officeId={tenant?.officeId ?? ''}
               voiceStatus={eliVoiceStatus}
               onPrimaryAction={handleEliMicPress}
+              onSendText={handleEliSendMessage}
+              externalMessages={eliMessages.map(m => ({
+                id: m.id,
+                role: m.from === 'user' ? 'user' as const : 'agent' as const,
+                text: m.text,
+                ts: new Date(m.ts),
+              }))}
+              isThinking={eliRun?.status === 'running'}
             />
           </Animated.View>
         </Animated.View>

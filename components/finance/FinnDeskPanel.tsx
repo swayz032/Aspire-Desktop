@@ -18,9 +18,7 @@ import {
   ChainOfThoughtHeader,
   ChainOfThoughtContent,
   ChainOfThoughtStep,
-  buildActivityFromResponse,
   type AgentActivityEvent,
-  type OrchestratorResponse,
 } from '@/components/chat';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
@@ -644,10 +642,10 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
-      // Fetch fresh financial context AND route through orchestrator in parallel
-      const [ctx, orchestratorResp] = await Promise.all([
+      // Fetch fresh financial context AND start SSE stream in parallel
+      const [ctx, streamResp] = await Promise.all([
         fetchFinnContext(),
-        fetch('/api/orchestrator/intent', {
+        fetch('/api/orchestrator/intent?stream=true', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -664,48 +662,37 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
 
       setFinnContext(ctx);
 
-      let responseText: string;
-      let activityEvents: AgentActivityEvent[];
-
-      if (orchestratorResp.ok) {
-        const data = await orchestratorResp.json();
-        responseText = data.response || data.text || "I'm ready for your next step.";
-        activityEvents = buildActivityFromResponse(data as OrchestratorResponse, 'finn');
-      } else {
-        // Orchestrator unavailable — fall back to local financial data
+      if (!streamResp.ok || !streamResp.body) {
+        // Stream unavailable — fall back to local financial data
         const intent = trimmed.toLowerCase();
         const fallbackIntent = intent.includes('cash') || intent.includes('flow') ? 'cashflow'
           : intent.includes('payroll') ? 'payroll'
           : intent.includes('invoice') ? 'invoices'
           : 'default';
-        responseText = buildResponse(fallbackIntent, ctx.snapshot, ctx.exceptions);
+        const responseText = buildResponse(fallbackIntent, ctx.snapshot, ctx.exceptions);
         const now = Date.now();
-        activityEvents = [
+        const fallbackEvents: AgentActivityEvent[] = [
           { id: `evt_${now}_1`, type: 'step', label: 'Using local financial data', status: 'completed', timestamp: now, icon: 'cloud-offline' },
           { id: `evt_${now}_2`, type: 'done', label: 'Complete', status: 'completed', timestamp: now + 1, icon: 'checkmark-circle' },
         ];
-      }
-
-      if (activityEvents.length === 0) {
-        setIsConversing(false);
+        fallbackEvents.forEach((evt) => {
+          setActiveRuns((prev) => {
+            const run = prev[runId];
+            if (!run) return prev;
+            return { ...prev, [runId]: { ...run, events: [...run.events, evt] } };
+          });
+        });
         setActiveRuns((prev) => {
           const run = prev[runId];
           if (!run) return prev;
-          return {
-            ...prev,
-            [runId]: {
-              ...run,
-              events: [],
-              status: 'completed',
-              finalText: responseText,
-            },
-          };
+          return { ...prev, [runId]: { ...run, status: 'completed', finalText: responseText } };
         });
         setChat((prev) =>
           prev.map((msg) =>
             msg.runId === runId ? { ...msg, text: responseText } : msg
           )
         );
+        setIsConversing(false);
         if (activeTab === 'voice' && responseText) {
           speakText('finn', responseText, session?.access_token).catch((err) => {
             showVoiceError('Voice playback failed - response shown in chat.');
@@ -716,43 +703,81 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
         return;
       }
 
-      // Animate real activity events
-      activityEvents.forEach((evt, idx) => {
-        const delay = idx === 0 ? 200 : 200 + idx * 600;
-        const timer = setTimeout(() => {
-          const event: AgentActivityEvent = { ...evt, timestamp: Date.now() };
-          setActiveRuns((prev) => {
-            const run = prev[runId];
-            if (!run) return prev;
-            const isDone = evt.type === 'done';
-            return {
-              ...prev,
-              [runId]: {
-                ...run,
-                events: [...run.events, event],
-                status: isDone ? 'completed' : 'running',
-              },
-            };
-          });
-          if (evt.type === 'done') {
-            setIsConversing(false);
-            setChat((prev) =>
-              prev.map((msg) =>
-                msg.runId === runId ? { ...msg, text: responseText } : msg
-              )
-            );
-            // Speak response via ElevenLabs TTS when in voice tab
-            if (activeTab === 'voice' && responseText) {
-              speakText('finn', responseText, session?.access_token).catch((err) => {
-                showVoiceError('Voice playback failed — response shown in chat.');
-                console.error('[FinnDeskPanel] TTS error:', err);
+      // Read SSE stream — real-time reasoning steps + final response
+      const reader = streamResp.body.getReader();
+      const decoder = new TextDecoder();
+      let sseBuffer = '';
+      let streamReceivedResponse = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        sseBuffer += decoder.decode(value, { stream: true });
+        const sseLines = sseBuffer.split('\n');
+        sseBuffer = sseLines.pop() || '';
+
+        for (const line of sseLines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === 'heartbeat') continue;
+
+            if (event.type === 'response') {
+              // Final response — update message text and mark run complete
+              streamReceivedResponse = true;
+              const responseText = event.data?.text || event.message || event.response || event.text || "I'm ready for your next step.";
+
+              setActiveRuns((prev) => {
+                const run = prev[runId];
+                if (!run) return prev;
+                return { ...prev, [runId]: { ...run, status: 'completed', finalText: responseText } };
               });
+              setChat((prev) =>
+                prev.map((msg) =>
+                  msg.runId === runId ? { ...msg, text: responseText } : msg
+                )
+              );
+              setIsConversing(false);
+              // Speak response via ElevenLabs TTS when in voice tab
+              if (activeTab === 'voice' && responseText) {
+                speakText('finn', responseText, session?.access_token).catch((err) => {
+                  showVoiceError('Voice playback failed — response shown in chat.');
+                  console.error('[FinnDeskPanel] TTS error:', err);
+                });
+              }
+              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+            } else {
+              // Activity/reasoning step — add to ChainOfThought live
+              const newEvent: AgentActivityEvent = {
+                id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                type: event.type === 'response' ? 'done' : event.type,
+                label: event.message || event.label || event.type,
+                icon: event.icon || 'chevron-forward-circle',
+                status: event.type === 'thinking' ? 'active' : (event.status || 'completed'),
+                timestamp: event.timestamp || Date.now(),
+              };
+              setActiveRuns((prev) => {
+                const run = prev[runId] || { id: runId, events: [], status: 'running', finalText: '' };
+                return { ...prev, [runId]: { ...run, events: [...run.events, newEvent] } };
+              });
+              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
             }
+          } catch { /* skip malformed SSE lines */ }
+        }
+      }
+
+      // If stream ended without a response event, mark as completed
+      if (!streamReceivedResponse) {
+        setActiveRuns((prev) => {
+          const run = prev[runId];
+          if (run && run.status === 'running') {
+            return { ...prev, [runId]: { ...run, status: 'completed' } };
           }
-          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-        }, delay);
-        runTimers.current.push(timer);
-      });
+          return prev;
+        });
+        setIsConversing(false);
+      }
     } catch (error) {
       // Fail closed — show error
       const rawMessage = error instanceof Error ? error.message : String(error || 'Unknown error');

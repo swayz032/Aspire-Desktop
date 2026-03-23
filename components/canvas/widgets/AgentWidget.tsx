@@ -42,12 +42,27 @@ interface ChatMessage {
   ts: Date;
 }
 
+interface ChatMessageExternal {
+  id: string;
+  role: 'user' | 'agent';
+  text: string;
+  ts: Date;
+}
+
 interface AgentWidgetProps {
   agentId: string;
   suiteId: string;
   officeId: string;
   voiceStatus?: VoiceStatus;
   onPrimaryAction?: () => void;
+  /** Called when user sends a text message in chat view. If provided, the widget
+   *  delegates message handling to the parent (real orchestrator call).
+   *  If omitted, the widget uses a local stub (demo mode). */
+  onSendText?: (text: string) => void;
+  /** External messages to display (from parent state, e.g. eliMessages). */
+  externalMessages?: ChatMessageExternal[];
+  /** Whether the agent is currently thinking/processing. */
+  isThinking?: boolean;
 }
 
 const AGENT_META: Record<string, {
@@ -321,12 +336,25 @@ function AgentWidgetInner({
   agentId,
   voiceStatus = 'idle',
   onPrimaryAction,
+  onSendText,
+  externalMessages,
+  isThinking,
 }: AgentWidgetProps) {
   const meta = AGENT_META[agentId] || AGENT_META.ava;
   const [view, setView] = useState<ViewMode>('voice');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const chatRef = useRef<FlatList<ChatMessage>>(null);
+
+  // When parent provides external messages, convert and use them
+  const messages: ChatMessage[] = externalMessages
+    ? externalMessages.map(m => ({
+        id: m.id,
+        role: m.role === 'user' ? 'user' as const : 'agent' as const,
+        text: m.text,
+        ts: m.ts,
+      }))
+    : localMessages;
 
   const switchToChat = useCallback(() => {
     playClickSound();
@@ -351,25 +379,31 @@ function AgentWidgetInner({
     if (!text) return;
     playMessageSentSound();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      text,
-      ts: new Date(),
-    };
-    setMessages(prev => [...prev, userMsg]);
     setInputText('');
 
-    setTimeout(() => {
-      const agentMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'agent',
-        text: `I'm processing your request. Give me a moment to help you with that.`,
+    if (onSendText) {
+      // Real mode: parent handles orchestrator call
+      onSendText(text);
+    } else {
+      // Demo/stub mode: local-only canned response
+      const userMsg: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'user',
+        text,
         ts: new Date(),
       };
-      setMessages(prev => [...prev, agentMsg]);
-    }, 900);
-  }, [inputText]);
+      setLocalMessages(prev => [...prev, userMsg]);
+      setTimeout(() => {
+        const agentMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'agent',
+          text: `I'm processing your request. Give me a moment to help you with that.`,
+          ts: new Date(),
+        };
+        setLocalMessages(prev => [...prev, agentMsg]);
+      }, 900);
+    }
+  }, [inputText, onSendText]);
 
   const isActive =
     voiceStatus === 'listening' ||
@@ -588,6 +622,14 @@ function AgentWidgetInner({
           </View>
         }
       />
+
+      {/* Thinking indicator — shown while agent processes */}
+      {isThinking && (
+        <View style={s.thinkingRow}>
+          <MiniOrbThumb src={meta.videoSrc} size={24} />
+          <Text style={s.thinkingText}>{meta.name} is thinking…</Text>
+        </View>
+      )}
 
       {/* Compose */}
       <KeyboardAvoidingView
@@ -816,6 +858,19 @@ const s = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 19,
+  },
+
+  thinkingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  thinkingText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontStyle: 'italic',
   },
 
   tsLabel: {
