@@ -4055,8 +4055,8 @@ For actions that affect the real world — sending emails, creating invoices, sc
     };
     const FINN_CONFIG = {
       name: 'Finn',
-      avatarId: req.body?.avatarId || '45ddc55c-14a9-4b25-8e28-f6c1ce39ccc5',
-      voiceId: req.body?.voiceId || '7db5f408-833c-49ce-97aa-eaec17077a4c',
+      avatarId: req.body?.avatarId || '42c2c36e-3e22-4750-881e-8c8e6d14acb1',   // Thomas (new Anam account)
+      voiceId: req.body?.voiceId || '7db5f408-833c-49ce-97aa-eaec17077a4c',     // Jack John
       llmId: ANAM_CUSTOM_LLM_ID,
       systemPrompt: `${aspireCtx}
 

@@ -104,6 +104,7 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
       ...resolvedHeaders,
     };
 

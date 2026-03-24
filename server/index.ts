@@ -429,6 +429,9 @@ app.use(compression({
   threshold: 1024,
   filter: (req, res) => {
     if (req.headers.accept === 'text/event-stream') return false;
+    // SSE streaming requests — compression buffers tiny SSE events in zlib,
+    // preventing real-time delivery and causing client timeouts.
+    if (req.query?.stream === 'true') return false;
     return compression.filter(req, res);
   },
 }));
@@ -478,6 +481,7 @@ app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use((req, res, next) => {
   if (req.headers.upgrade === 'websocket') return next();
   if (req.headers.accept === 'text/event-stream') return next();
+  if (req.query?.stream === 'true') return next();
 
   // Orchestrator + TTS routes need longer timeout (LLM inference + synthesis)
   const isLongRoute = req.path.startsWith('/api/orchestrator/') || req.path.startsWith('/api/elevenlabs/tts');
