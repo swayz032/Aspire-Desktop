@@ -3672,7 +3672,8 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
              draft_summary AS "draftSummary",
              execution_payload->>'invoice_id' AS "stripeInvoiceId",
              execution_payload->>'customer_name' AS "customerName",
-             execution_payload->>'document_id' AS "pandadocDocumentId"
+             execution_payload->>'document_id' AS "pandadocDocumentId",
+             payload_redacted->>'hosted_invoice_url' AS "hostedInvoiceUrl"
       FROM approval_requests
       WHERE status = 'pending' AND tenant_id = ${suiteId}
       ORDER BY created_at DESC
@@ -3815,6 +3816,68 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
               ${correlationId}, 'user', ${userId || null}, 'sha256', NOW())
     `);
 
+    // Post-deny cleanup: void finalized invoices in Stripe
+    // Since invoice.create auto-finalizes (to generate preview URL), denial must void it
+    try {
+      const approvalRows = await db.execute(sql`
+        SELECT operation, execution_payload FROM approval_requests
+        WHERE approval_id = ${id} AND tenant_id = ${suiteId}
+      `);
+      const approvalRow = (approvalRows as any).rows?.[0] || (approvalRows as any)[0];
+      if (approvalRow?.operation === 'invoice.send') {
+        const execPayload = typeof approvalRow.execution_payload === 'string'
+          ? JSON.parse(approvalRow.execution_payload)
+          : approvalRow.execution_payload;
+        const invoiceId = execPayload?.invoice_id;
+        if (invoiceId) {
+          // Call orchestrator to void the finalized invoice
+          const orchestratorUrl = resolveOrchestratorUrl();
+          const voidResp = await fetch(`${orchestratorUrl}/v1/void-invoice/${invoiceId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Suite-Id': suiteId,
+              'X-Correlation-Id': correlationId,
+              'X-Office-Id': getDefaultOfficeId(),
+            },
+          });
+          if (voidResp.ok) {
+            logger.info('Invoice voided after denial', { invoiceId, approvalId: id });
+          } else {
+            logger.warn('Invoice void failed after denial', { invoiceId, status: voidResp.status });
+          }
+        }
+      }
+
+      // Cancel finalized quotes on denial (same pattern as invoice void)
+      if (approvalRow?.operation === 'quote.send') {
+        const execPayload = typeof approvalRow.execution_payload === 'string'
+          ? JSON.parse(approvalRow.execution_payload)
+          : approvalRow.execution_payload;
+        const quoteId = execPayload?.quote_id;
+        if (quoteId) {
+          const orchestratorUrl = resolveOrchestratorUrl();
+          const cancelResp = await fetch(`${orchestratorUrl}/v1/cancel-quote/${quoteId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Suite-Id': suiteId,
+              'X-Correlation-Id': correlationId,
+              'X-Office-Id': getDefaultOfficeId(),
+            },
+          });
+          if (cancelResp.ok) {
+            logger.info('Quote canceled after denial', { quoteId, approvalId: id });
+          } else {
+            logger.warn('Quote cancel failed after denial', { quoteId, status: cancelResp.status });
+          }
+        }
+      }
+    } catch (voidErr: unknown) {
+      // Non-fatal: denial succeeded, void/cancel is best-effort cleanup
+      logger.warn('Post-deny cleanup failed', { error: voidErr instanceof Error ? voidErr.message : 'unknown' });
+    }
+
     res.json({ id, status: 'denied', reason, deniedAt: new Date().toISOString(), receiptId });
   } catch (error: unknown) {
     logger.warn('deny failed', { error: error instanceof Error ? error.message : 'unknown' });
@@ -3940,10 +4003,10 @@ For actions that affect the real world — sending emails, creating invoices, sc
       avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
       maxSessionLengthSeconds: 1800,
       voiceDetectionOptions: {
-        endOfSpeechSensitivity: 0.5,
+        endOfSpeechSensitivity: 0.7,        // Moderately eager — faster response, minimal false triggers
         silenceBeforeSkipTurnSeconds: 8,
-        silenceBeforeAutoEndTurnSeconds: 6,
-        speechEnhancementLevel: 0.8,
+        silenceBeforeAutoEndTurnSeconds: 1.5, // Respond after 1.5s pause (was 6s — major latency win)
+        speechEnhancementLevel: 0.5,         // Noise filtering for better STT accuracy
       },
       voiceGenerationOptions: {
         speed: 1.05,
@@ -3989,10 +4052,10 @@ When giving tax guidance, always include confidence level: "This is well-establi
       avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
       maxSessionLengthSeconds: 1800,
       voiceDetectionOptions: {
-        endOfSpeechSensitivity: 0.5,
+        endOfSpeechSensitivity: 0.7,        // Moderately eager — faster response, minimal false triggers
         silenceBeforeSkipTurnSeconds: 8,
-        silenceBeforeAutoEndTurnSeconds: 6,
-        speechEnhancementLevel: 0.8,
+        silenceBeforeAutoEndTurnSeconds: 1.5, // Respond after 1.5s pause (was 6s — major latency win)
+        speechEnhancementLevel: 0.5,         // Noise filtering for better STT accuracy
       },
       voiceGenerationOptions: {
         speed: 1.0,
@@ -4160,8 +4223,11 @@ router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
     }
 
     // Forward to orchestrator (Law #1: Single Brain decides)
+    // Avatar channel uses shorter timeout — filler talk prevents Anam engine timeout,
+    // but we still want faster failure than the general 90s timeout.
+    const AVATAR_TIMEOUT_MS = 30_000;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), ORCHESTRATOR_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), AVATAR_TIMEOUT_MS);
 
     const response = await fetch(`${ORCHESTRATOR_URL}/v1/intents`, {
       method: 'POST',

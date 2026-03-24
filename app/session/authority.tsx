@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, Pressable, ActivityIndicator, Animated, Platform, ViewStyle } from 'react-native';
+import { View, Text, Image, StyleSheet, SafeAreaView, ScrollView, Pressable, ActivityIndicator, Animated, Platform, ViewStyle, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '@/constants/tokens';
@@ -47,6 +47,7 @@ function mapAuthorityItem(item: any): SessionAuthorityItem {
     evidence: item.inputs_hash ? [`inputs_hash: ${item.inputs_hash}`] : [],
     createdAt: new Date(item.createdAt),
     pandadocDocumentId: item.pandadocDocumentId || undefined,
+    hostedInvoiceUrl: item.hosted_invoice_url || item.hostedInvoiceUrl || undefined,
   };
 }
 
@@ -79,6 +80,7 @@ function mapStoreItemToSession(item: AuthorityItem): SessionAuthorityItem {
     evidence: item.receiptId ? [`receipt: ${item.receiptId}`] : [],
     createdAt: new Date(item.timestamp),
     pandadocDocumentId: item.pandadocDocumentId,
+    hostedInvoiceUrl: item.hostedInvoiceUrl,
   };
 }
 
@@ -301,11 +303,15 @@ function AuthorityContent() {
                 item={item}
                 onApprove={() => handleApprove(item)}
                 onDeny={() => handleDeny(item)}
-                onReview={item.pandadocDocumentId ? () => setReviewPreview({
-                  visible: true,
-                  documentName: item.title,
-                  pandadocDocumentId: item.pandadocDocumentId,
-                }) : undefined}
+                onReview={
+                  item.pandadocDocumentId ? () => setReviewPreview({
+                    visible: true,
+                    documentName: item.title,
+                    pandadocDocumentId: item.pandadocDocumentId,
+                  })
+                  : item.hostedInvoiceUrl ? () => Linking.openURL(item.hostedInvoiceUrl!)
+                  : undefined
+                }
               />
             ))}
           </>
@@ -343,20 +349,39 @@ function AuthorityCard({
   const [expanded, setExpanded] = useState(false);
   const riskColor = RISK_COLORS[item.risk];
   const statusColor = STATUS_COLORS[item.status];
+  const titleAndDesc = `${item.title} ${item.description}`.toLowerCase();
+  const isInvoice = item.hostedInvoiceUrl || titleAndDesc.includes('invoice');
+  const isQuote = !isInvoice && titleAndDesc.includes('quote');
 
   return (
-    <Pressable 
+    <Pressable
       style={styles.card}
       onPress={() => setExpanded(!expanded)}
     >
       <View style={styles.cardHeader}>
-        <View style={styles.cardTitleRow}>
-          <Text style={styles.cardTitle}>{item.title}</Text>
-          <View style={[styles.riskBadge, { backgroundColor: riskColor.bg }]}>
-            <Text style={[styles.riskText, { color: riskColor.text }]}>{item.risk}</Text>
+        {isInvoice && (
+          <Image
+            source={require('@/assets/images/documents/invoice-blue-1.png')}
+            style={styles.invoiceThumbnail}
+            resizeMode="contain"
+          />
+        )}
+        {isQuote && (
+          <Image
+            source={require('@/assets/images/documents/quote-blue-1.png')}
+            style={styles.invoiceThumbnail}
+            resizeMode="contain"
+          />
+        )}
+        <View style={{ flex: 1 }}>
+          <View style={styles.cardTitleRow}>
+            <Text style={styles.cardTitle}>{item.title}</Text>
+            <View style={[styles.riskBadge, { backgroundColor: riskColor.bg }]}>
+              <Text style={[styles.riskText, { color: riskColor.text }]}>{item.risk}</Text>
+            </View>
           </View>
+          <Text style={styles.cardDescription}>{item.description}</Text>
         </View>
-        <Text style={styles.cardDescription}>{item.description}</Text>
       </View>
 
       <View style={styles.whyContainer}>
@@ -695,7 +720,15 @@ const styles = StyleSheet.create({
     borderColor: Colors.border.default,
   },
   cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
     marginBottom: Spacing.md,
+  },
+  invoiceThumbnail: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.sm,
   },
   cardTitleRow: {
     flexDirection: 'row',

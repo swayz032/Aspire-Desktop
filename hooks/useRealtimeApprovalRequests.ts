@@ -38,6 +38,10 @@ function rowToAuthorityItem(row: Record<string, unknown>): AuthorityItem {
   const operation = (row.operation as string) || '';
   const typeLabel = tool && operation ? `${tool}.${operation}` : tool || operation || 'approval';
 
+  // Extract hosted_invoice_url from payload_redacted (set by execute.py for invoice drafts)
+  const payloadRedacted = row.payload_redacted as Record<string, unknown> | undefined;
+  const hostedInvoiceUrl = (payloadRedacted?.hosted_invoice_url as string) || undefined;
+
   return {
     id: (row.approval_id as string) || (row.id as string) || '',
     title: (row.draft_summary as string) || typeLabel || 'Approval Request',
@@ -52,6 +56,7 @@ function rowToAuthorityItem(row: Record<string, unknown>): AuthorityItem {
     staffRole: (row.assigned_agent as string) || '',
     draftSummary: (row.draft_summary as string) || undefined,
     pandadocDocumentId: (row.pandadoc_document_id as string) || undefined,
+    hostedInvoiceUrl,
   };
 }
 
@@ -72,6 +77,7 @@ function apiRowToAuthorityItem(r: Record<string, unknown>): AuthorityItem {
     staffRole: (r.assignedAgent as string) || '',
     draftSummary: (r.draftSummary as string) || undefined,
     pandadocDocumentId: (r.pandadocDocumentId as string) || undefined,
+    hostedInvoiceUrl: (r.hostedInvoiceUrl as string) || undefined,
   };
 }
 

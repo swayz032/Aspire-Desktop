@@ -44,7 +44,7 @@ interface AnamClientExtended {
   getInputAudioState?: () => boolean;
   getActiveSessionId?: () => string | null;
   talk?: (text: string) => void;
-  createTalkMessageStream?: () => AnamTalkStream | null;
+  createTalkMessageStream?: (correlationId?: string) => AnamTalkStream | null;
 }
 
 interface AnamTalkStream {
@@ -223,10 +223,13 @@ async function bindAnamSession(
   }
 }
 
-export function createAnamTalkStream(client: AnamClientInstance): AnamTalkStream | null {
+export function createAnamTalkStream(client: AnamClientInstance, correlationId?: string): AnamTalkStream | null {
   const c = ext(client);
   if (client && typeof c.createTalkMessageStream === 'function') {
-    return c.createTalkMessageStream() ?? null;
+    // Pass correlation ID for interruption tracking (per Anam talk-commands docs)
+    return (correlationId
+      ? c.createTalkMessageStream(correlationId as any)
+      : c.createTalkMessageStream()) ?? null;
   }
   return null;
 }
@@ -251,16 +254,17 @@ export async function streamResponseToAvatar(
 
   const c = ext(client);
 
-  // Short responses: use simple talk()
-  if (responseText.length < 200) {
+  // Short responses: use simple talk() (under 80 chars — streaming adds overhead for tiny text)
+  if (responseText.length < 80) {
     if (typeof c.talk === 'function') {
       c.talk(responseText);
     }
     return;
   }
 
-  // Longer responses: stream for lower latency
-  const talkStream = createAnamTalkStream(client);
+  // Longer responses: stream for lower latency (Anam docs: streaming gives lower TTFB)
+  const correlationId = `talk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const talkStream = createAnamTalkStream(client, correlationId);
   if (!talkStream || typeof talkStream.streamMessageChunk !== 'function') {
     // Fallback to talk()
     if (typeof c.talk === 'function') {
@@ -355,9 +359,10 @@ export function setupAllEventListeners(
     }
   });
 
-  // Interruption
-  client.addListener(AnamEvent.TALK_STREAM_INTERRUPTED, () => {
-    devLog(`[Anam ${historyTarget}] Talk stream interrupted`);
+  // Interruption — cancel in-flight orchestrator requests when user interrupts
+  client.addListener(AnamEvent.TALK_STREAM_INTERRUPTED, (event: any) => {
+    const corrId = event?.correlationId || event?.correlation_id;
+    devLog(`[Anam ${historyTarget}] Talk stream interrupted`, corrId ? { correlationId: corrId } : undefined);
     options?.onInterrupted?.();
   });
 
@@ -423,6 +428,32 @@ export async function connectAnamAvatar(
     throw new Error(`Anam stream failed for #${videoElementId}: ${msg}`);
   }
   return client;
+}
+
+// ─── Filler Phrases for "Thinking" State ────────────────────
+// Sent immediately when user speaks to prevent Anam's engine timeout
+// from generating "I can't think right now" fallback.
+
+const THINKING_FILLERS = [
+  'One moment...',
+  'Let me check on that...',
+  'Looking into it...',
+  'Give me just a second...',
+  'Let me pull that up...',
+];
+
+/**
+ * Send a brief "thinking" filler to the avatar to prevent Anam's
+ * engine timeout from firing while we wait for the orchestrator.
+ * Returns the filler text sent (for logging).
+ */
+export function sendThinkingFiller(client: AnamClientInstance): string {
+  const filler = THINKING_FILLERS[Math.floor(Math.random() * THINKING_FILLERS.length)];
+  const c = ext(client);
+  if (typeof c.talk === 'function') {
+    c.talk(filler);
+  }
+  return filler;
 }
 
 // ─── Finn Avatar Configuration ─────────────────────────────

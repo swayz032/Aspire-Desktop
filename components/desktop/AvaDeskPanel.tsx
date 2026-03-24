@@ -7,7 +7,7 @@ import { Colors } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
+import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput, sendThinkingFiller } from '@/lib/anam';
 import {
   type AgentChatMessage,
   type AgentActivityEvent,
@@ -433,6 +433,13 @@ function AvaDeskPanelInner() {
           }]);
           anamStreamMessageIdRef.current = null;
           setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+
+          // Wave 2A: Send immediate "thinking" filler to prevent Anam's engine
+          // timeout from generating "I can't think right now" fallback.
+          // The filler speaks while orchestrator processes; real response follows via brain routing.
+          if (anamClientRef.current) {
+            sendThinkingFiller(anamClientRef.current);
+          }
         },
         onMessageStream: (text, role) => {
           if (!text?.trim()) return;

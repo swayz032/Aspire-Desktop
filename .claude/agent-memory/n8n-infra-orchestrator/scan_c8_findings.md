@@ -1,35 +1,67 @@
 ---
 name: C8 Workflow Scan (WF 17-24)
-description: Infrastructure scan findings for workflows 17-24 from 2026-03-23 Cycle 8 scan
+description: Infrastructure scan findings for workflows 17-24 from 2026-03-23 Cycle 8 scan — FIXED
 type: project
 ---
 
 ## Scan Date: 2026-03-23
+## Fix Date: 2026-03-23
 
 ### Workflows Scanned
-- WF-17: Intake Activation (UaALXeXhFbY5gPLp) - 4 findings
-- WF-18: Quinn Invoice Reminder (FNJAFs2C1g276IqJ) - 1 finding
-- WF-19: Adam Pulse Scan (w0yi3wVY2xKLeqZI) - 2 findings
-- WF-20: Approval Change Handler - SKIPPED (already fixed)
-- WF-21: Teressa Books Sync (KO0u11YLTlnxLvIN) - 1 finding
-- WF-22: Adam Library Curate (q2S9yVu2L2jcAe0Y) - 1 finding (shared w/ Pulse)
-- WF-23: Batch Email Digest (TPnfhjeT9vIDvkJP) - 2 findings
-- WF-24: Brain Keep-Alive (Aj1R6BncLMss2cHM) - 1 finding
+- WF-17: Intake Activation (UaALXeXhFbY5gPLp) - 4 findings -- 3 FIXED (HTTP nodes), 1 remaining (trace_id position)
+- WF-18: Quinn Invoice Reminder (FNJAFs2C1g276IqJ) - 1 finding -- FIXED
+- WF-19: Adam Pulse Scan (w0yi3wVY2xKLeqZI) - 2 findings -- 1 FIXED (receipt), 1 remaining (unsecured webhook)
+- WF-20: Approval Change Handler (jZpr0fRE7FlaNiGB) - 3 FIXED (kill switch payload passthrough + 2 receipt nodes)
+- WF-21: Teressa Books Sync (KO0u11YLTlnxLvIN) - 1 finding -- FIXED
+- WF-22: Adam Library Curate (q2S9yVu2L2jcAe0Y) - 1 finding -- FIXED, 1 remaining (unsecured webhook)
+- WF-23: Batch Email Digest (TPnfhjeT9vIDvkJP) - 2 findings -- 1 FIXED (cross-tenant), 1 remaining
+- WF-24: Brain Keep-Alive (Aj1R6BncLMss2cHM) - 1 finding (not in scope)
 
-### Totals: 5 HIGH, 6 MEDIUM, 1 LOW = 12 findings
+### Fixes Applied (2026-03-23)
 
-### Systemic Patterns
+1. **Approval Change Handler Kill Switch payload passthrough** (HIGH)
+   - Node: `Kill Switch` (ks-check)
+   - Was: returned only `{ killed: 'false' }`, dropping all webhook body data
+   - Fix: spreads `$input.first().json` into output so `$json.body.status`, `$json.body.approval_id` etc. are available downstream
 
-1. **Old-format "Receipt: FAILED (0)" nodes across 4 workflows**: Quinn, Adam Pulse, Teressa, Adam Library all have legacy receipt nodes from pg_net hardening pass with minimal schema (missing receipt_id, suite_id, office_id, actor, correlation_id). All are dead-end nodes. Same bug found in C7 scan for Receipt Handler.
+2. **Approval Change Handler receipt schema** (MEDIUM x2)
+   - Nodes: `Receipt: COMPLETED` (receipt-ok), `Receipt: FAILED` (receipt-fail)
+   - Was: old format (receipt_type/action_type/tenant_id/details/trace_id)
+   - Fix: standard schema (receipt_id, suite_id, office_id, actor_type, actor_id, action, correlation_id, created_at)
 
-2. **Batch Email Digest cross-tenant query**: Fetches inbox_items with service_role_key and no suite_id filter -- Law #6 violation.
+3. **Batch Email Digest cross-tenant read** (HIGH -- Law #6)
+   - Node: `Fetch Unread Inbox Items` (fetch-unread)
+   - Was: `inbox_items?select=*&status=eq.unread` (no suite_id filter)
+   - Fix: added `&suite_id=eq.{{ $env.DEFAULT_SUITE_ID }}` to URL
 
-3. **Unsecured manual webhook triggers**: Adam Pulse + Adam Library have webhook triggers that bypass HMAC validation, connecting directly to schedule-prep code nodes.
+4. **Quinn Invoice Reminder old receipt** (MEDIUM)
+   - Node: `Receipt: FAILED (0)` (err-receipt-0)
+   - Fix: normalized to standard schema with receipt_id, suite_id, office_id, actor, correlation_id
 
-4. **Intake Activation gateway HTTP nodes misconfigured**: 3 sequential HTTP nodes have no method/body/headers -- will send empty GET requests instead of POST intents.
+5. **Adam Pulse old receipt** (MEDIUM)
+   - Node: `Receipt: FAILED (0)` (err-receipt-0)
+   - Fix: same normalization
+
+6. **Teressa Books Sync old receipt** (MEDIUM)
+   - Node: `Receipt: FAILED (0)` (err-receipt-0)
+   - Fix: same normalization
+
+7. **Adam Library old receipt** (MEDIUM)
+   - Node: `Receipt: FAILED (0)` (err-receipt-0)
+   - Fix: same normalization
+
+8. **Intake Activation HTTP nodes misconfigured** (HIGH x3)
+   - Nodes: `Create Setup Tasks - Gateway`, `Trigger First Daily Brief`, `Trigger First Pulse Scan`
+   - Was: only `url` set, no method/body/headers (sends empty GET)
+   - Fix: added method=POST, Content-Type, tenant headers (x-suite-id, x-office-id, x-correlation-id, x-actor-id, x-actor-type), JSON body with task_type/payload, timeout=15000ms
+
+### Remaining (Not Fixed This Pass)
+- Unsecured manual webhook triggers on Adam Pulse + Adam Library (bypass HMAC)
+- Brain Keep-Alive minimal workflow (no receipt, no tenant context -- acceptable for health check)
 
 ### Key Lesson
-- The "Receipt: FAILED (0)" old-format pattern appears in ALL scheduled agent workflows that went through the pg_net hardening pass. A batch fix across all remaining workflows would be more efficient than individual fixes.
-- Manual webhook triggers added for testing convenience create HMAC bypass paths -- these should either be removed or given their own validation chain.
+- n8n MCP `updateNode` requires `updates` with dot-notation paths, NOT a full `node` object
+- Correct: `{type: "updateNode", nodeName: "X", updates: {"parameters.url": "..."}}`
+- Wrong: `{type: "updateNode", name: "X", node: {parameters: {url: "..."}}}`
 
-**How to apply:** When fixing, batch-update all old-format receipt nodes to standard schema in one pass. For manual webhook triggers, either remove them or add HMAC validation specific to webhook path.
+**How to apply:** Use `nodeName` + `updates` with dot-notation for all partial workflow updates.

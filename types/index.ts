@@ -58,6 +58,8 @@ export interface AuthorityItem {
   expiresAt?: string;
   // PandaDoc document ID for real preview (contracts)
   pandadocDocumentId?: string;
+  // Stripe hosted invoice URL for preview (invoices)
+  hostedInvoiceUrl?: string;
 }
 
 export interface DocumentPreview {

@@ -9,7 +9,7 @@ import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput } from '@/lib/anam';
+import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput, sendThinkingFiller } from '@/lib/anam';
 import { speakText } from '@/lib/elevenlabs';
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import {
@@ -309,6 +309,12 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
               }
             }, 300);
           },
+          onUserMessage: async (userMessage: string) => {
+            // Send immediate "thinking" filler to prevent Anam's engine timeout
+            if (anamClientRef.current) {
+              sendThinkingFiller(anamClientRef.current);
+            }
+          },
           onConnectionClosed: () => {
             setVideoState('idle');
             setConnectionStatus('');
@@ -488,6 +494,12 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
           }]);
           anamStreamMessageIdRef.current = null;
           setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+
+          // Wave 2A: Send immediate "thinking" filler to prevent Anam's engine
+          // timeout from generating "I can't think right now" fallback.
+          if (anamClientRef.current) {
+            sendThinkingFiller(anamClientRef.current);
+          }
         },
         onMessageStream: (text, role) => {
           if (!text?.trim()) return;
