@@ -2271,7 +2271,7 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     }
 
     const response = await fetchWithTimeoutAndRetry(
-      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}/stream?output_format=${encodeURIComponent(DEFAULT_TTS_OUTPUT_FORMAT)}`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}/stream?output_format=${encodeURIComponent(DEFAULT_TTS_OUTPUT_FORMAT)}&optimize_streaming_latency=3`,
       {
         method: 'POST',
         headers: {
@@ -2442,7 +2442,9 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
     // Use ElevenLabs Speech-to-Text API
     const formData = new FormData();
     formData.append('file', new Blob([new Uint8Array(audioBuffer)], { type: 'audio/webm' }), 'audio.webm');
-    formData.append('model_id', 'scribe_v1');
+    formData.append('model_id', 'scribe_v2');
+    formData.append('language_code', 'en');
+    formData.append('keyterms', JSON.stringify(['Aspire', 'Ava', 'Finn', 'Eli', 'Nora', 'Sarah', 'Quinn', 'Clara']));
 
     const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',

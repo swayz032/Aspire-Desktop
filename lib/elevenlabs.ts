@@ -33,17 +33,25 @@ export interface VoiceConfig {
  * Voice IDs are fixed per-agent. These map to specific ElevenLabs voices.
  * NO agent IDs — ElevenLabs is TTS only, not a conversational agent.
  */
+/**
+ * Voice settings optimized per ElevenLabs 2026 best practices:
+ * - style: 0 eliminates style computation overhead (biggest latency win)
+ * - use_speaker_boost: false reduces latency for real-time paths
+ * - stability ~0.5 gives best conversational feel
+ * - similarity_boost ~0.82 avoids diminishing returns above 0.85
+ * - speed tuned per agent personality
+ */
 export const AGENT_VOICES: Record<string, VoiceConfig> = {
   ava: {
     name: 'Ava',
     voiceId: 'uYXf8XasLslADfZ2MB4u',
     model: 'eleven_flash_v2_5',
     voiceSettings: {
-      stability: 0.55,          // Higher = clearer pronunciation, more consistent delivery
-      similarity_boost: 0.88,
-      style: 0.12,              // Lower = less dramatic, steadier pacing
-      use_speaker_boost: true,
-      speed: 0.94,              // Slightly slower for clarity — natural CEO briefing pace
+      stability: 0.55,
+      similarity_boost: 0.82,
+      style: 0,
+      use_speaker_boost: false,
+      speed: 0.94,
     },
   },
   eli: {
@@ -51,10 +59,10 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
     voiceId: 'c6kFzbpMaJ8UMD5P6l72',
     model: 'eleven_flash_v2_5',
     voiceSettings: {
-      stability: 0.36,
-      similarity_boost: 0.92,
-      style: 0.22,
-      use_speaker_boost: true,
+      stability: 0.42,
+      similarity_boost: 0.82,
+      style: 0,
+      use_speaker_boost: false,
       speed: 1.0,
     },
   },
@@ -63,10 +71,10 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
     voiceId: 's3TPKV1kjDlVtZbl4Ksh',
     model: 'eleven_flash_v2_5',
     voiceSettings: {
-      stability: 0.44,
-      similarity_boost: 0.9,
-      style: 0.16,
-      use_speaker_boost: true,
+      stability: 0.48,
+      similarity_boost: 0.82,
+      style: 0,
+      use_speaker_boost: false,
       speed: 1.0,
     },
   },
@@ -75,10 +83,10 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
     voiceId: '6aDn1KB0hjpdcocrUkmq',
     model: 'eleven_flash_v2_5',
     voiceSettings: {
-      stability: 0.4,
-      similarity_boost: 0.9,
-      style: 0.18,
-      use_speaker_boost: true,
+      stability: 0.45,
+      similarity_boost: 0.82,
+      style: 0,
+      use_speaker_boost: false,
       speed: 1.0,
     },
   },
@@ -87,10 +95,10 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
     voiceId: 'DODLEQrClDo8wCz460ld',
     model: 'eleven_flash_v2_5',
     voiceSettings: {
-      stability: 0.46,
-      similarity_boost: 0.86,
-      style: 0.14,
-      use_speaker_boost: true,
+      stability: 0.48,
+      similarity_boost: 0.82,
+      style: 0,
+      use_speaker_boost: false,
       speed: 1.0,
     },
   },
