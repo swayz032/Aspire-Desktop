@@ -258,8 +258,13 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         await ctx.resume();
       }
 
-      // Decode the accumulated audio data
-      const audioBuffer = await ctx.decodeAudioData(audioData.buffer);
+      // Decode with timeout — decodeAudioData can hang on malformed/partial MP3
+      const audioBuffer = await Promise.race([
+        ctx.decodeAudioData(audioData.buffer.slice(0)),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('decodeAudioData timeout (10s)')), 10_000)
+        ),
+      ]);
       
       // Stop any current source to avoid overlapping speech (Barge-in support)
       if (currentAudioSourceRef.current) {
@@ -365,6 +370,12 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       let totalBytes = 0;
 
       while (true) {
+        // Bail if session ended while streaming (barge-in or explicit stop)
+        if (!activeRef.current) {
+          reader.cancel().catch(() => {});
+          processingRef.current = false;
+          return;
+        }
         const { done, value } = await reader.read();
         if (done) break;
         chunks.push(value);
@@ -396,10 +407,22 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           await ctx.resume();
         }
 
-        const audioBuffer = await ctx.decodeAudioData(audioData.buffer);
-        
+        // Decode with timeout — decodeAudioData can hang on malformed/partial MP3
+        const audioBuffer = await Promise.race([
+          ctx.decodeAudioData(audioData.buffer.slice(0)),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('decodeAudioData timeout (10s)')), 10_000)
+          ),
+        ]);
+
         if (currentAudioSourceRef.current) {
           try { currentAudioSourceRef.current.stop(); } catch { /* already stopped */ }
+        }
+
+        // Bail if session ended while decoding
+        if (!activeRef.current) {
+          processingRef.current = false;
+          return;
         }
 
         const source = ctx.createBufferSource();
@@ -692,7 +715,10 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     currentContextRef.current = null;
     audioChunksRef.current.clear();
     // Ensure mic is unmuted on session end
-    ttsMutedRef.current = false;
+    if (ttsMutedRef.current) {
+      sttRef.current?.setMuted?.(false);
+      ttsMutedRef.current = false;
+    }
 
     // Abort any in-flight SSE stream (S3-H3)
     if (sseAbortRef.current) {
@@ -842,11 +868,40 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         });
         await ttsWsRef.current.connect();
 
-        // Keep-alive check every 30s
-        keepAliveRef.current = setInterval(() => {
+        // Keep-alive check every 30s — detect disconnects and attempt reconnect
+        keepAliveRef.current = setInterval(async () => {
+          if (!activeRef.current) return;
           if (ttsWsRef.current && !ttsWsRef.current.isConnected) {
-            devWarn('[useAgentVoice] TTS WebSocket disconnected, will use HTTP fallback');
+            devWarn('[useAgentVoice] TTS WebSocket disconnected, attempting reconnect');
             ttsWsRef.current = null;
+            // Attempt reconnect once — if it fails, HTTP fallback stays active
+            try {
+              const voiceId = getVoiceId(agent);
+              const voiceConfig = getVoiceConfig(agent);
+              const reconnectWs = new TtsWebSocket({
+                voiceId,
+                model: voiceConfig.model,
+                outputFormat: 'mp3_44100_128',
+                accessToken: accessTokenRef.current,
+                suiteId,
+                voiceSettings: voiceConfig.voiceSettings,
+                onAudio: (contextId: string, chunk: Uint8Array) => {
+                  if (!audioChunksRef.current.has(contextId)) {
+                    audioChunksRef.current.set(contextId, []);
+                  }
+                  audioChunksRef.current.get(contextId)!.push(chunk);
+                },
+                onContextDone: (contextId: string) => { playContextAudio(contextId); },
+                onConnected: () => { devLog('[useAgentVoice] TTS WebSocket reconnected'); },
+                onError: (error: Error) => { devWarn('[useAgentVoice] TTS WS reconnect error:', error.message); },
+                onClose: () => { ttsWsRef.current = null; },
+              });
+              await reconnectWs.connect();
+              ttsWsRef.current = reconnectWs;
+              Sentry.addBreadcrumb({ category: 'voice', message: 'TTS WebSocket reconnected', level: 'info' });
+            } catch {
+              devWarn('[useAgentVoice] TTS WebSocket reconnect failed, HTTP fallback remains active');
+            }
           }
         }, 30_000);
       } catch (err) {

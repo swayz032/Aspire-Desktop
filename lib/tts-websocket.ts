@@ -121,23 +121,6 @@ export class TtsWebSocket {
 
       this.ws = new WebSocket(url);
 
-      const connectTimeout = setTimeout(() => {
-        const err = new Error('TTS WebSocket connection timeout');
-        Sentry.captureException(err, {
-          tags: { voice_stage: 'tts', voice_code: 'WS_CONNECT_TIMEOUT', provider: 'elevenlabs' },
-          extra: { url: url, voiceId: this.voiceId },
-        });
-        reject(err);
-        this.ws?.close();
-      }, 10_000);
-
-      // On open, send auth token as first message (not in URL)
-      this.ws.onopen = () => {
-        if (this.accessToken && this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify({ type: 'auth', token: this.accessToken }));
-        }
-      };
-
       // Wait for server's "connected" signal before resolving
       const onFirstMessage = (event: MessageEvent) => {
         try {
@@ -162,10 +145,30 @@ export class TtsWebSocket {
         }
       };
 
+      const connectTimeout = setTimeout(() => {
+        const err = new Error('TTS WebSocket connection timeout');
+        Sentry.captureException(err, {
+          tags: { voice_stage: 'tts', voice_code: 'WS_CONNECT_TIMEOUT', provider: 'elevenlabs' },
+          extra: { url: url, voiceId: this.voiceId },
+        });
+        // Remove handshake listener to prevent memory leak
+        this.ws?.removeEventListener('message', onFirstMessage);
+        reject(err);
+        this.ws?.close();
+      }, 10_000);
+
+      // On open, send auth token as first message (not in URL)
+      this.ws.onopen = () => {
+        if (this.accessToken && this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'auth', token: this.accessToken }));
+        }
+      };
+
       this.ws.addEventListener('message', onFirstMessage);
 
       this.ws.onerror = () => {
         clearTimeout(connectTimeout);
+        this.ws?.removeEventListener('message', onFirstMessage);
         const wsErr = new Error('TTS WebSocket connection failed');
         Sentry.captureException(wsErr, {
           tags: { voice_stage: 'tts', voice_code: 'WS_ONERROR', provider: 'elevenlabs' },

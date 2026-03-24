@@ -2189,6 +2189,17 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     }
 
     const audioBuffer = await response.arrayBuffer();
+    // Safety: cap TTS output at 25MB to prevent memory DoS
+    if (audioBuffer.byteLength > 25 * 1024 * 1024) {
+      logger.error('[TTS] Audio response too large', { agent, bytes: audioBuffer.byteLength });
+      return res.status(502).json(voiceErrorPayload({
+        correlationId,
+        traceId,
+        errorCode: 'TTS_RESPONSE_TOO_LARGE',
+        errorStage: 'tts',
+        message: 'Voice synthesis returned unexpectedly large audio',
+      }));
+    }
     logger.info('[TTS] Success', { agent, bytes: audioBuffer.byteLength });
     emitTraceEvent({
       traceId,
@@ -2332,30 +2343,60 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     res.set('Content-Type', 'audio/mpeg');
     res.set('Transfer-Encoding', 'chunked');
     const reader = response.body.getReader();
+
+    // Safety: abort if stream stalls for >60s (prevents zombie connections)
+    const streamTimeout = setTimeout(() => {
+      reader.cancel().catch(() => {});
+      if (!res.writableEnded) res.end();
+    }, 60_000);
+
+    // Handle client disconnect mid-stream
+    let clientDisconnected = false;
+    res.on('close', () => { clientDisconnected = true; });
+
     const pump = async () => {
       let totalBytes = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          emitTraceEvent({
-            traceId,
-            correlationId,
-            suiteId,
-            agent: typeof agent === 'string' ? agent : null,
-            stage: 'tts',
-            status: 'ok',
-            message: 'TTS stream completed',
-            latencyMs: Date.now() - startedAt,
-            metadata: { bytes: totalBytes, model: resolvedModel, stream: true },
-          });
-          res.end();
-          break;
+      try {
+        while (true) {
+          if (clientDisconnected) {
+            reader.cancel().catch(() => {});
+            break;
+          }
+          const { done, value } = await reader.read();
+          if (done) {
+            emitTraceEvent({
+              traceId,
+              correlationId,
+              suiteId,
+              agent: typeof agent === 'string' ? agent : null,
+              stage: 'tts',
+              status: 'ok',
+              message: 'TTS stream completed',
+              latencyMs: Date.now() - startedAt,
+              metadata: { bytes: totalBytes, model: resolvedModel, stream: true },
+            });
+            if (!res.writableEnded) res.end();
+            break;
+          }
+          totalBytes += value?.byteLength || 0;
+          if (!res.writableEnded) {
+            const canContinue = res.write(value);
+            // Basic backpressure: if write buffer full, wait for drain
+            if (!canContinue) {
+              await new Promise<void>((resolve) => res.once('drain', resolve));
+            }
+          }
         }
-        totalBytes += value?.byteLength || 0;
-        res.write(value);
+      } catch (pumpErr) {
+        logger.error('TTS stream pump error', { error: pumpErr instanceof Error ? pumpErr.message : 'unknown', bytes: totalBytes });
+        if (!res.writableEnded) res.end();
       }
     };
-    await pump();
+    try {
+      await pump();
+    } finally {
+      clearTimeout(streamTimeout);
+    }
   } catch (error: unknown) {
     logger.error('TTS stream error', { error: error instanceof Error ? error.message : 'unknown' });
     emitTraceEvent({
@@ -2462,13 +2503,22 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
     formData.append('language_code', 'en');
     formData.append('keyterms', JSON.stringify(['Aspire', 'Ava', 'Finn', 'Eli', 'Nora', 'Sarah', 'Quinn', 'Clara']));
 
-    const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
-      method: 'POST',
-      headers: {
-        'xi-api-key': ELEVENLABS_API_KEY,
-      },
-      body: formData,
-    });
+    // Timeout: 30s for STT API call (prevents hanging on ElevenLabs stall)
+    const sttAbort = new AbortController();
+    const sttTimeout = setTimeout(() => sttAbort.abort(), 30_000);
+    let response: globalThis.Response;
+    try {
+      response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+        },
+        body: formData,
+        signal: sttAbort.signal,
+      });
+    } finally {
+      clearTimeout(sttTimeout);
+    }
 
     if (!response.ok) {
       const errorBody = await response.text();
