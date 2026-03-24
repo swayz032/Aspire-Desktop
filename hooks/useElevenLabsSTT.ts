@@ -8,6 +8,7 @@
  * API key stays server-side — client never touches secrets (Law #9).
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Sentry } from '@/lib/sentry';
 
 interface UseElevenLabsSTTOptions {
   /** Called each time a complete utterance is transcribed */
@@ -114,7 +115,9 @@ export function useElevenLabsSTT(
         onUtteranceRef.current?.(text);
       }
     } catch (err) {
-      console.warn('[ElevenLabsSTT] Transcription failed:', err instanceof Error ? err.message : err);
+      Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+        tags: { voice_stage: 'stt', voice_code: 'STT_TRANSCRIPTION_FAIL', provider: 'elevenlabs' },
+      });
       // Don't set error state for transient failures — keep listening
     } finally {
       sendingRef.current = false;
@@ -189,7 +192,12 @@ export function useElevenLabsSTT(
         }
       };
 
-      mediaRecorder.onerror = () => {
+      mediaRecorder.onerror = (event) => {
+        const recErr = new Error('Microphone recording failed');
+        Sentry.captureException(recErr, {
+          tags: { voice_stage: 'stt', voice_code: 'RECORDER_ERROR', provider: 'elevenlabs' },
+          extra: { eventType: event?.type },
+        });
         setError('Microphone recording failed');
         stop();
       };
@@ -205,6 +213,10 @@ export function useElevenLabsSTT(
       const message = e.name === 'NotAllowedError'
         ? 'Microphone access denied'
         : e.message || 'Failed to start voice input';
+      Sentry.captureException(e, {
+        tags: { voice_stage: 'stt', voice_code: 'STT_START_FAIL', provider: 'elevenlabs' },
+        extra: { errorName: e.name },
+      });
       setError(message);
       activeRef.current = false;
       stop();

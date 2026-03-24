@@ -7,6 +7,7 @@ import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import { logger } from './logger';
+import { captureServerException } from './sentry';
 import { reportAdminIncident } from './incidentReporter';
 
 // Supabase admin client for bootstrap operations (user_metadata updates)
@@ -2216,6 +2217,10 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     res.send(Buffer.from(audioBuffer));
   } catch (error: unknown) {
     logger.error('TTS error', { error: error instanceof Error ? error.message : 'unknown' });
+    captureServerException(error, {
+      tags: { voice_stage: 'tts', voice_code: 'TTS_UNAVAILABLE', provider: 'elevenlabs' },
+      extra: { correlationId, traceId, agent: typeof req.body?.agent === 'string' ? req.body.agent : null },
+    });
     emitTraceEvent({
       traceId,
       correlationId,
@@ -2389,6 +2394,10 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
         }
       } catch (pumpErr) {
         logger.error('TTS stream pump error', { error: pumpErr instanceof Error ? pumpErr.message : 'unknown', bytes: totalBytes });
+        captureServerException(pumpErr, {
+          tags: { voice_stage: 'tts', voice_code: 'TTS_STREAM_PUMP_ERROR', provider: 'elevenlabs' },
+          extra: { totalBytes },
+        });
         if (!res.writableEnded) res.end();
       }
     };
@@ -2399,6 +2408,10 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     }
   } catch (error: unknown) {
     logger.error('TTS stream error', { error: error instanceof Error ? error.message : 'unknown' });
+    captureServerException(error, {
+      tags: { voice_stage: 'tts', voice_code: 'TTS_STREAM_ERROR', provider: 'elevenlabs' },
+      extra: { correlationId, traceId },
+    });
     emitTraceEvent({
       traceId,
       correlationId,
@@ -2558,6 +2571,10 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
     res.json({ text: result.text || '', language: result.language_code || 'en', correlation_id: correlationId, trace_id: traceId });
   } catch (error: unknown) {
     logger.error('STT error', { error: error instanceof Error ? error.message : 'unknown' });
+    captureServerException(error, {
+      tags: { voice_stage: 'stt', voice_code: 'STT_UNAVAILABLE', provider: 'elevenlabs' },
+      extra: { correlationId, traceId },
+    });
     emitTraceEvent({
       traceId,
       correlationId,

@@ -314,3 +314,21 @@ export function sentryErrorHandler(): ErrorRequestHandler {
 export function setupSentryExpressErrorHandler(app: { use: (...args: unknown[]) => unknown }): void {
   app.use(sentryErrorHandler());
 }
+
+/**
+ * Capture an exception via Sentry (server-side). No-op if Sentry not initialized.
+ */
+export function captureServerException(
+  error: unknown,
+  context?: { tags?: Record<string, string>; extra?: Record<string, unknown> },
+): void {
+  if (!_sentryModule) return;
+  try {
+    _sentryModule.captureException(error, {
+      tags: context?.tags,
+      extra: context?.extra,
+    });
+  } catch {
+    // Sentry capture failed — don't crash the server
+  }
+}

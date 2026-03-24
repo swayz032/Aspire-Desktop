@@ -14,6 +14,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import { logger } from './logger';
+import { captureServerException } from './sentry';
 import { createClient } from '@supabase/supabase-js';
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -167,6 +168,10 @@ export function setupTtsWebSocket(httpServer: Server): void {
 
       upstreamWs.on('error', (err) => {
         logger.error('[WS-TTS] Upstream error', { error: err.message, suite_id: suiteId, trace_id: traceId });
+        captureServerException(err, {
+          tags: { voice_stage: 'tts', voice_code: 'WS_UPSTREAM_ERROR', provider: 'elevenlabs' },
+          extra: { suite_id: suiteId, trace_id: traceId, voice_id: voiceId },
+        });
         if (clientWs.readyState === WebSocket.OPEN) {
           clientWs.send(JSON.stringify({
             type: 'error',
@@ -242,6 +247,10 @@ export function setupTtsWebSocket(httpServer: Server): void {
     // Error handling
     clientWs.on('error', (err) => {
       logger.error('[WS-TTS] Client error', { error: err.message, suite_id: suiteId, trace_id: traceId });
+      captureServerException(err, {
+        tags: { voice_stage: 'tts', voice_code: 'WS_CLIENT_ERROR', provider: 'elevenlabs' },
+        extra: { suite_id: suiteId, trace_id: traceId },
+      });
       if (upstreamWs && upstreamWs.readyState === WebSocket.OPEN) {
         upstreamWs.close();
       }

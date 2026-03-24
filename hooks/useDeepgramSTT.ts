@@ -6,6 +6,7 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { reportProviderError } from '@/lib/providerErrorReporter';
+import { Sentry } from '@/lib/sentry';
 
 interface UseDeepgramSTTOptions {
   /** Whether to start listening immediately */
@@ -119,8 +120,12 @@ export function useDeepgramSTT(
       };
 
       ws.onerror = () => {
+        const wsErr = new Error('Deepgram WebSocket error during reconnect');
         setError('Voice connection interrupted');
-        reportProviderError({ provider: 'deepgram', action: 'stt_reconnect_ws_error', error: new Error('WebSocket error during reconnect'), component: 'useDeepgramSTT' });
+        reportProviderError({ provider: 'deepgram', action: 'stt_reconnect_ws_error', error: wsErr, component: 'useDeepgramSTT' });
+        Sentry.captureException(wsErr, {
+          tags: { voice_stage: 'stt', voice_code: 'DG_RECONNECT_WS_ERROR', provider: 'deepgram' },
+        });
         stop();
       };
 
@@ -128,7 +133,11 @@ export function useDeepgramSTT(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      reportProviderError({ provider: 'deepgram', action: 'stt_reconnect', error: err instanceof Error ? err : new Error(msg), component: 'useDeepgramSTT' });
+      const errObj = err instanceof Error ? err : new Error(msg);
+      reportProviderError({ provider: 'deepgram', action: 'stt_reconnect', error: errObj, component: 'useDeepgramSTT' });
+      Sentry.captureException(errObj, {
+        tags: { voice_stage: 'stt', voice_code: 'DG_RECONNECT_FAIL', provider: 'deepgram' },
+      });
       stop();
     }
   }, [stop]);
@@ -197,7 +206,12 @@ export function useDeepgramSTT(
       };
 
       ws.onerror = () => {
-        reportProviderError({ provider: 'deepgram', action: 'stt_ws_error', error: new Error('WebSocket error'), component: 'useDeepgramSTT' });
+        const wsErr = new Error('Deepgram WebSocket error');
+        reportProviderError({ provider: 'deepgram', action: 'stt_ws_error', error: wsErr, component: 'useDeepgramSTT' });
+        Sentry.captureException(wsErr, {
+          tags: { voice_stage: 'stt', voice_code: 'DG_WS_ERROR', provider: 'deepgram' },
+          extra: { retryCount: retryCountRef.current },
+        });
         // H17: Retry on error with exponential backoff (up to MAX_STT_RETRIES)
         if (mediaRecorderRef.current) {
           mediaRecorderRef.current.stop();
@@ -234,8 +248,12 @@ export function useDeepgramSTT(
       };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      const errObj = err instanceof Error ? err : new Error(msg);
       setError(msg);
-      reportProviderError({ provider: 'deepgram', action: 'stt_start', error: err instanceof Error ? err : new Error(msg), component: 'useDeepgramSTT' });
+      reportProviderError({ provider: 'deepgram', action: 'stt_start', error: errObj, component: 'useDeepgramSTT' });
+      Sentry.captureException(errObj, {
+        tags: { voice_stage: 'stt', voice_code: 'DG_START_FAIL', provider: 'deepgram' },
+      });
       stop();
     }
   }, [stop, reconnectWs]);
