@@ -164,6 +164,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
   const streamingContextRef = useRef<string | null>(null);
   const accumulatedResponseRef = useRef('');
   const audioUnlockedRef = useRef(false);
+  // Track whether mic is muted during TTS to prevent self-barge-in
+  const ttsMutedRef = useRef(false);
 
   const useDeepgram = DEEPGRAM_STT_AGENTS.includes(agent);
 
@@ -273,6 +275,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         if (currentAudioSourceRef.current === source) {
           currentAudioSourceRef.current = null;
           processingRef.current = false;
+          // Unmute mic after TTS playback finishes
+          if (ttsMutedRef.current) {
+            sttRef.current?.setMuted?.(false);
+            ttsMutedRef.current = false;
+          }
           if (activeRef.current) updateStatus('listening');
         }
       };
@@ -280,7 +287,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       source.start(0);
     } catch (err) {
       devError('[useAgentVoice] Web Audio playback error for context', contextId, err);
-      onError?.(new Error('Audio playback failed â€" response shown in chat.'));
+      onError?.(new Error('Audio playback failed \u2014 response shown in chat.'));
       emitDiagnostic({
         traceId: currentTraceIdRef.current || nextTraceId(),
         stage: 'tts',
@@ -289,6 +296,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         raw: err instanceof Error ? err.message : String(err),
         recoverable: true,
       });
+      // Unmute mic on error too
+      if (ttsMutedRef.current) {
+        sttRef.current?.setMuted?.(false);
+        ttsMutedRef.current = false;
+      }
       processingRef.current = false;
       if (activeRef.current) updateStatus('listening');
     }
@@ -399,6 +411,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           if (currentAudioSourceRef.current === source) {
             currentAudioSourceRef.current = null;
             processingRef.current = false;
+            // Unmute mic after HTTP TTS playback finishes
+            if (ttsMutedRef.current) {
+              sttRef.current?.setMuted?.(false);
+              ttsMutedRef.current = false;
+            }
             if (activeRef.current) updateStatus('listening');
           }
         };
@@ -406,7 +423,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         source.start(0);
       } catch (err) {
         devError('[useAgentVoice] HTTP Fallback Web Audio error', err);
-        onError?.(new Error('Audio playback failed â€" response shown in chat.'));
+        onError?.(new Error('Audio playback failed \u2014 response shown in chat.'));
         emitDiagnostic({
           traceId: currentTraceIdRef.current || nextTraceId(),
           stage: 'tts',
@@ -557,17 +574,31 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       } else {
         // Non-streaming path — speak the full response now
         updateStatus('speaking');
+
+        // Mute mic during TTS to prevent self-barge-in (same fix as Admin voice)
+        // Without this, speaker audio leaks into mic → STT transcribes TTS output
+        // → triggers new sendText → immediately cuts off current audio → no sound
+        sttRef.current?.setMuted?.(true);
+        ttsMutedRef.current = true;
+
         if (ttsWsRef.current?.isConnected) {
           const ctxId = ttsWsRef.current.nextContextId();
           currentContextRef.current = ctxId;
           audioChunksRef.current.set(ctxId, []);
           ttsWsRef.current.speak(responseText, ctxId);
           ttsWsRef.current.flush(ctxId);
+          // Mic unmute happens in playContextAudio onended callback
         } else {
           // Fallback: HTTP streaming TTS
           devWarn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
           Sentry.addBreadcrumb({ category: 'voice', message: 'Falling back to HTTP TTS — WebSocket unavailable', level: 'warning', data: { agent } });
-          await speakViaHttpStream(responseText, traceId);
+          try {
+            await speakViaHttpStream(responseText, traceId);
+          } finally {
+            // Unmute mic after HTTP TTS completes (or fails)
+            sttRef.current?.setMuted?.(false);
+            ttsMutedRef.current = false;
+          }
         }
       }
     } catch (error) {
@@ -605,6 +636,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         recoverable: stage !== 'mic',
       });
 
+      // Ensure mic is unmuted on error
+      if (ttsMutedRef.current) {
+        sttRef.current?.setMuted?.(false);
+        ttsMutedRef.current = false;
+      }
       processingRef.current = false;
       onErrorRef.current?.(err);
       updateStatus('error');
@@ -642,6 +678,9 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
   // Select the active STT provider
   const stt = useDeepgram ? deepgramStt : elevenLabsStt;
+  // Ref for sendText to access STT mute/unmute (defined after hooks)
+  const sttRef = useRef(stt);
+  sttRef.current = stt;
 
   /**
    * End the voice session. Closes WebSocket TTS, stops STT, and
@@ -652,6 +691,8 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     processingRef.current = false;
     currentContextRef.current = null;
     audioChunksRef.current.clear();
+    // Ensure mic is unmuted on session end
+    ttsMutedRef.current = false;
 
     // Abort any in-flight SSE stream (S3-H3)
     if (sseAbortRef.current) {
@@ -777,6 +818,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           outputFormat: 'mp3_44100_128',
           accessToken,
           suiteId,
+          voiceSettings: voiceConfig.voiceSettings,
           onAudio: (contextId: string, chunk: Uint8Array) => {
             if (!audioChunksRef.current.has(contextId)) {
               audioChunksRef.current.set(contextId, []);

@@ -2016,12 +2016,20 @@ const VOICE_MODELS: Record<string, string> = {
   sarah: 'eleven_flash_v2_5',
 };
 
+/**
+ * ElevenLabs 2026 optimized voice settings:
+ * - style: 0 eliminates style computation overhead (biggest latency win)
+ * - use_speaker_boost: false reduces latency for real-time paths
+ * - stability ~0.5 gives best conversational feel
+ * - similarity_boost ~0.82 avoids diminishing returns above 0.85
+ * - speed tuned per agent personality
+ */
 const VOICE_SETTINGS: Record<string, { stability: number; similarity_boost: number; style: number; use_speaker_boost: boolean; speed: number }> = {
-  ava: { stability: 0.42, similarity_boost: 0.88, style: 0.18, use_speaker_boost: true, speed: 1.0 },
-  eli: { stability: 0.36, similarity_boost: 0.92, style: 0.22, use_speaker_boost: true, speed: 1.0 },
-  finn: { stability: 0.44, similarity_boost: 0.9, style: 0.16, use_speaker_boost: true, speed: 1.0 },
-  nora: { stability: 0.4, similarity_boost: 0.9, style: 0.18, use_speaker_boost: true, speed: 1.0 },
-  sarah: { stability: 0.46, similarity_boost: 0.86, style: 0.14, use_speaker_boost: true, speed: 1.0 },
+  ava: { stability: 0.55, similarity_boost: 0.82, style: 0, use_speaker_boost: false, speed: 0.94 },
+  eli: { stability: 0.42, similarity_boost: 0.82, style: 0, use_speaker_boost: false, speed: 1.0 },
+  finn: { stability: 0.48, similarity_boost: 0.82, style: 0, use_speaker_boost: false, speed: 1.0 },
+  nora: { stability: 0.45, similarity_boost: 0.82, style: 0, use_speaker_boost: false, speed: 1.0 },
+  sarah: { stability: 0.48, similarity_boost: 0.82, style: 0, use_speaker_boost: false, speed: 1.0 },
 };
 
 /**
