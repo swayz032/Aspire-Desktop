@@ -86,6 +86,10 @@ function MessagePartRendererInner({
   const [copied, setCopied] = useState(false);
   const [hovered, setHovered] = useState(false);
 
+  // Duration tracking — start timer when reasoning begins, stop when it ends
+  const reasoningStartRef = useRef<number | null>(null);
+  const [reasoningDuration, setReasoningDuration] = useState<number | undefined>(undefined);
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -109,6 +113,18 @@ function MessagePartRendererInner({
   const hasReasoning = reasoningParts.length > 0 && reasoningText.length > 0;
   const isStreaming = reasoningParts.some((p) => (p as any).state === 'streaming') || textParts.some((p) => (p as any).state === 'streaming');
   const isReasoningStreaming = reasoningParts.some((p) => (p as any).state === 'streaming');
+
+  // Track reasoning duration
+  useEffect(() => {
+    if (isReasoningStreaming && !reasoningStartRef.current) {
+      reasoningStartRef.current = Date.now();
+      setReasoningDuration(undefined);
+    } else if (!isReasoningStreaming && reasoningStartRef.current) {
+      const elapsed = Math.round((Date.now() - reasoningStartRef.current) / 1000);
+      setReasoningDuration(elapsed);
+      reasoningStartRef.current = null;
+    }
+  }, [isReasoningStreaming]);
 
   const handleCopy = useCallback(async () => {
     const ok = await copyToClipboard(fullText);
@@ -174,11 +190,12 @@ function MessagePartRendererInner({
           </Text>
         </View>
 
-        {/* Reasoning — collapsible thinking */}
+        {/* Reasoning — collapsible live agent activity */}
         {hasReasoning && (
           <Reasoning
             agent={agent}
             isStreaming={isReasoningStreaming}
+            duration={reasoningDuration}
             style={{ marginBottom: 4 }}
           >
             <ReasoningTrigger />

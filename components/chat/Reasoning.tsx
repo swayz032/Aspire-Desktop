@@ -35,6 +35,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/tokens';
+import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import type { AgentId } from './types';
 import { AGENT_COLORS } from './types';
 
@@ -156,7 +157,7 @@ export const ReasoningTrigger = React.memo(function ReasoningTrigger({
   const defaultMessage = isStreaming
     ? 'Thinking...'
     : duration != null
-      ? `Thought for ${duration}s`
+      ? `Thought for ${duration} second${duration === 1 ? '' : 's'}`
       : 'Thought process';
 
   const displayMessage = getThinkingMessage
@@ -174,20 +175,26 @@ export const ReasoningTrigger = React.memo(function ReasoningTrigger({
       accessibilityState={{ expanded: isOpen }}
     >
       <View style={s.triggerLeft}>
-        {/* Streaming pulse indicator */}
-        {isStreaming && <StreamingPulse color={agentColor} />}
+        {/* Clock icon — matches AI Elements Reasoning component */}
+        <Ionicons
+          name={isStreaming ? 'time-outline' : 'time-outline'}
+          size={14}
+          color={isStreaming ? agentColor : Colors.text.muted}
+          style={s.triggerIcon}
+        />
 
-        {/* Brain/sparkle icon */}
-        {!isStreaming && (
-          <Ionicons
-            name="bulb-outline"
-            size={13}
+        {/* Shimmer text while streaming, static when done */}
+        {isStreaming && Platform.OS === 'web' ? (
+          <ShimmeringText
+            text={String(displayMessage)}
+            duration={1.5}
+            shimmerColor={agentColor}
             color={Colors.text.muted}
-            style={s.triggerIcon}
+            style={{ fontSize: 12, fontStyle: 'italic' as const }}
           />
+        ) : (
+          <Text style={s.triggerText}>{displayMessage}</Text>
         )}
-
-        <Text style={s.triggerText}>{displayMessage}</Text>
       </View>
 
       <Ionicons

@@ -173,9 +173,22 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
         controller.enqueue({ type: 'start' });
 
         let hasEmittedText = false;
+        // Single reasoning stream — stays open while agent works,
+        // each activity event appends a line so user sees real-time progress
+        let activeReasoningId: string | null = null;
+
+        function closeReasoning() {
+          if (activeReasoningId) {
+            controller.enqueue({ type: 'reasoning-end', id: activeReasoningId });
+            activeReasoningId = null;
+          }
+        }
 
         const handleEvent = (event: SSEEvent) => {
           if (event.type === 'response') {
+            // Close reasoning before emitting text
+            closeReasoning();
+
             // Response → text part
             const responseText = extractResponseText(event, '');
             const mediaItems = extractMediaItems(event);
@@ -195,6 +208,9 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
               onResponseText?.(responseText, mediaItems);
             }
           } else if (event.type === 'error') {
+            // Close reasoning before emitting error
+            closeReasoning();
+
             // Error event → emit as text (Ava says the error message)
             const rawMessage = event.message || event.text || 'Something went wrong';
             const userMessage = mapError ? mapError(rawMessage) : rawMessage;
@@ -208,25 +224,38 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
             controller.enqueue({ type: 'text-end', id: textId });
             hasEmittedText = true;
           } else if (event.type === 'done') {
-            // Done event — no action needed, finish is emitted after stream ends
+            // Close reasoning on done
+            closeReasoning();
           } else {
-            // Activity/step/thinking/tool_call events → reasoning parts
+            // Activity/step/thinking/tool_call events → stream into
+            // ONE reasoning part so user sees real-time agent progress
             const label =
               event.message || event.label || event.type || 'Processing...';
-            const reasoningId = nextReasoningId();
-            controller.enqueue({ type: 'reasoning-start', id: reasoningId });
-            controller.enqueue({
-              type: 'reasoning-delta',
-              id: reasoningId,
-              delta: label,
-            });
-            controller.enqueue({ type: 'reasoning-end', id: reasoningId });
+
+            if (!activeReasoningId) {
+              // Open a new reasoning stream
+              activeReasoningId = nextReasoningId();
+              controller.enqueue({ type: 'reasoning-start', id: activeReasoningId });
+              controller.enqueue({
+                type: 'reasoning-delta',
+                id: activeReasoningId,
+                delta: label,
+              });
+            } else {
+              // Append to existing reasoning stream with newline
+              controller.enqueue({
+                type: 'reasoning-delta',
+                id: activeReasoningId,
+                delta: '\n' + label,
+              });
+            }
           }
         };
 
         try {
           await readSSEStream(sseBody, handleEvent);
         } catch (err) {
+          closeReasoning();
           const rawMessage =
             err instanceof Error ? err.message : String(err);
           const userMessage = mapError ? mapError(rawMessage) : rawMessage;
@@ -242,6 +271,9 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
             controller.enqueue({ type: 'text-end', id: textId });
           }
         }
+
+        // Clean up any unclosed reasoning
+        closeReasoning();
 
         // Emit finish
         controller.enqueue({ type: 'finish', finishReason: 'stop' });
