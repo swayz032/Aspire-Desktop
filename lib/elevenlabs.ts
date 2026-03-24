@@ -137,6 +137,7 @@ export async function speakText(
   text: string,
   accessToken?: string,
   traceId?: string,
+  previousText?: string,
 ): Promise<Blob | null> {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -157,6 +158,7 @@ export async function speakText(
         voiceId: config.voiceId,
         model: config.model,
         voiceSettings: config.voiceSettings,
+        ...(previousText ? { previous_text: previousText } : {}),
       }),
     });
     if (!resp.ok) {
@@ -193,6 +195,7 @@ export async function streamSpeak(
   text: string,
   accessToken?: string,
   traceId?: string,
+  previousText?: string,
 ): Promise<ReadableStream<Uint8Array> | null> {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -213,6 +216,7 @@ export async function streamSpeak(
         voiceId: config.voiceId,
         model: config.model,
         voiceSettings: config.voiceSettings,
+        ...(previousText ? { previous_text: previousText } : {}),
       }),
     });
     if (!resp.ok || !resp.body) {

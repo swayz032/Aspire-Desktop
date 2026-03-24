@@ -2101,7 +2101,7 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
     message: 'TTS request started',
   });
   try {
-    const { agent, text, voiceId, model, voiceSettings } = req.body;
+    const { agent, text, voiceId, model, voiceSettings, previous_text } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
       logger.warn('[TTS] ELEVENLABS_API_KEY is missing — voice synthesis disabled');
@@ -2154,6 +2154,10 @@ router.post('/api/elevenlabs/tts', async (req: Request, res: Response) => {
           text: text.trim(),
           model_id: resolvedModel,
           voice_settings: resolvedVoiceSettings,
+          // Lower first-chunk latency: generate audio after 50 chars instead of default 120
+          chunk_length_schedule: [50, 80, 120, 160],
+          // Multi-turn prosody continuity: previous text helps ElevenLabs maintain tone
+          ...(previous_text ? { previous_text: String(previous_text).slice(-1000) } : {}),
         }),
       },
       { timeoutMs: 20_000, retries: 1, retryOnStatuses: [429, 500, 502, 503, 504] },
@@ -2240,7 +2244,7 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
     message: 'TTS stream request started',
   });
   try {
-    const { agent, text, voiceId, model, voiceSettings } = req.body;
+    const { agent, text, voiceId, model, voiceSettings, previous_text } = req.body;
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) {
       return res.status(500).json(voiceErrorPayload({
@@ -2291,6 +2295,10 @@ router.post('/api/elevenlabs/tts/stream', async (req: Request, res: Response) =>
           text: text.trim(),
           model_id: resolvedModel,
           voice_settings: resolvedVoiceSettings,
+          // Lower first-chunk latency: generate audio after 50 chars instead of default 120
+          chunk_length_schedule: [50, 80, 120, 160],
+          // Multi-turn prosody continuity: previous text helps ElevenLabs maintain tone
+          ...(previous_text ? { previous_text: String(previous_text).slice(-1000) } : {}),
         }),
       },
       { timeoutMs: 20_000, retries: 1, retryOnStatuses: [429, 500, 502, 503, 504] },

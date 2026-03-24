@@ -121,7 +121,12 @@ export function setupTtsWebSocket(httpServer: Server): void {
         logger.info('[WS-TTS] Upstream connected', { voice_id: voiceId });
 
         // CRITICAL: Send InitializeConnectionMulti message per ElevenLabs docs.
-        const initPayload: Record<string, unknown> = { text: ' ' };
+        // chunk_length_schedule: [50,80,120,160] reduces first-chunk latency by ~30-50ms
+        // (default [120,160,250,290] buffers more chars before generating first audio)
+        const initPayload: Record<string, unknown> = {
+          text: ' ',
+          chunk_length_schedule: [50, 80, 120, 160],
+        };
         const voiceSettings: Record<string, unknown> = {};
         if (typeof stability === 'number') voiceSettings.stability = stability;
         if (typeof similarityBoost === 'number') voiceSettings.similarity_boost = similarityBoost;
