@@ -69,27 +69,34 @@ export class TtsWebSocket {
    */
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      // Determine the base WebSocket URL. 
-      // Prefer explicit environment variable (Law #9), fallback to window.location for web.
+      // Determine the base WebSocket URL.
+      // EXPO_PUBLIC_SERVER_URL is the custom server (APIs + WebSocket TTS).
+      // In production: same origin (custom server serves everything on one port).
+      // In dev: Metro on :5000, custom server on :5001 — must target :5001 for WS.
       let host = "";
       let protocol = "ws:";
 
-      const envUrl = process.env.EXPO_PUBLIC_ORCHESTRATOR_URL || process.env.ORCHESTRATOR_URL;
-      
-      if (envUrl) {
+      const serverUrl =
+        process.env.EXPO_PUBLIC_SERVER_URL ||
+        process.env.EXPO_PUBLIC_ORCHESTRATOR_URL ||
+        process.env.ORCHESTRATOR_URL;
+
+      if (serverUrl) {
         try {
-          const parsed = new URL(envUrl);
+          const parsed = new URL(serverUrl);
           host = parsed.host;
           protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
         } catch (e) {
-          host = typeof window !== "undefined" ? window.location.host : "localhost:5000";
+          host = typeof window !== "undefined" ? window.location.host : "localhost:5001";
           protocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
         }
       } else if (typeof window !== "undefined") {
+        // Production: same origin. Dev: fallback to window.location works if
+        // custom server runs on the same port (production build mode).
         host = window.location.host;
         protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       } else {
-        host = "localhost:5000";
+        host = "localhost:5001";
       }
 
       const qs = new URLSearchParams({

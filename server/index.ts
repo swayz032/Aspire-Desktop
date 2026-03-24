@@ -52,7 +52,10 @@ try {
 }
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '5000', 10);
+// In production (Railway): PORT=5000, serves static build + APIs + WebSockets on one port.
+// In dev: PORT defaults to 5001 so Metro (port 5000) can proxy /api here without a loop.
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const PORT = parseInt(process.env.PORT || (IS_PRODUCTION ? '5000' : '5001'), 10);
 const ASPIRE_SYNTHETIC_ENV = (process.env.ASPIRE_SYNTHETIC_ENV || '').trim();
 const IS_LOCAL_SYNTHETIC_SMOKE = ASPIRE_SYNTHETIC_ENV === 'local-smoke';
 

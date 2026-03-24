@@ -6,6 +6,8 @@
     "start": "tsx server/index.ts",
     "serve": "tsx server/index.ts",
     "dev": "expo start",
+    "dev:server": "tsx server/index.ts",
+    "dev:all": "npx concurrently -n metro,server -c blue,green \"npm run dev\" \"npm run dev:server\"",
     "build": "npm run build:static",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
