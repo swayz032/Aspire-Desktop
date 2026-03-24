@@ -201,6 +201,9 @@ function useAuthGate() {
   const router = useRouter();
   const [onboardingChecked, setOnboardingChecked] = useState(DEV_BYPASS_AUTH ? true : false);
   const [onboardingComplete, setOnboardingComplete] = useState(DEV_BYPASS_AUTH ? true : false);
+  // Once onboarding is confirmed complete, never revert — prevents redirect loops
+  // during token refresh races where suiteId briefly becomes null.
+  const onboardingConfirmedRef = useRef(DEV_BYPASS_AUTH ? true : false);
   const navLockRef = useRef(false);
   // Cold start guard — on page refresh, don't redirect to login until
   // we've given Supabase time to restore the session from storage.
@@ -222,8 +225,21 @@ function useAuthGate() {
     if (isLoading) return;
 
     if (!session) {
-      setOnboardingChecked(false);
-      setOnboardingComplete(false);
+      // Only reset if onboarding was never confirmed — prevents token refresh
+      // races from bouncing an existing user back to onboarding.
+      if (!onboardingConfirmedRef.current) {
+        setOnboardingChecked(false);
+        setOnboardingComplete(false);
+      }
+      return;
+    }
+
+    // If onboarding was already confirmed complete this session, skip re-checking.
+    // This is the key fix: suiteId can briefly be null during token refresh,
+    // which would otherwise set onboardingComplete=false and trigger a redirect.
+    if (onboardingConfirmedRef.current) {
+      setOnboardingChecked(true);
+      setOnboardingComplete(true);
       return;
     }
 
@@ -246,6 +262,7 @@ function useAuthGate() {
       .then(r => r.json())
       .then(({ complete }) => {
         clearTimeout(timeoutId);
+        if (complete) onboardingConfirmedRef.current = true;
         setOnboardingComplete(!!complete);
         setOnboardingChecked(true);
       })
@@ -253,7 +270,7 @@ function useAuthGate() {
         clearTimeout(timeoutId);
         // On failure, assume onboarding is complete — sending an existing user
         // back to onboarding is worse than letting a new user skip it.
-        // New users will still see onboarding on their first successful check.
+        onboardingConfirmedRef.current = true;
         setOnboardingComplete(true);
         setOnboardingChecked(true);
       });
