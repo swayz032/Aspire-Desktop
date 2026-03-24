@@ -10,6 +10,7 @@
  */
 
 import { devError } from '@/lib/devLog';
+import { Sentry } from '@/lib/sentry';
 
 export interface VoiceConfig {
   /** Agent display name */
@@ -153,6 +154,9 @@ export async function speakText(
     if (!resp.ok) {
       devError(`[TTS] ElevenLabs returned ${resp.status} for agent "${agent}"`);
       reportProviderError({ provider: 'elevenlabs', action: 'tts', error: new Error(`HTTP ${resp.status} for agent "${agent}"`), component: 'speakText' });
+      Sentry.captureException(new Error(`ElevenLabs TTS HTTP ${resp.status} for ${agent}`), {
+        tags: { voice_agent: agent, voice_stage: 'tts', provider: 'elevenlabs' },
+      });
       return null;
     }
     const contentType = resp.headers.get('content-type') || '';
@@ -165,6 +169,9 @@ export async function speakText(
   } catch (err) {
     devError('[TTS] ElevenLabs request failed:', err instanceof Error ? err.message : err);
     reportProviderError({ provider: 'elevenlabs', action: 'tts', error: err, component: 'speakText' });
+    Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+      tags: { voice_agent: agent, voice_stage: 'tts', provider: 'elevenlabs', voice_code: 'TTS_REQUEST_FAILED' },
+    });
     return null;
   }
 }
@@ -202,11 +209,17 @@ export async function streamSpeak(
     });
     if (!resp.ok || !resp.body) {
       reportProviderError({ provider: 'elevenlabs', action: 'tts_stream', error: new Error(`HTTP ${resp.status}`), component: 'streamSpeak' });
+      Sentry.captureException(new Error(`ElevenLabs stream TTS HTTP ${resp.status} for ${agent}`), {
+        tags: { voice_agent: agent, voice_stage: 'tts', provider: 'elevenlabs', voice_code: 'TTS_STREAM_HTTP_FAIL' },
+      });
       return null;
     }
     return resp.body;
   } catch (err) {
     reportProviderError({ provider: 'elevenlabs', action: 'tts_stream', error: err, component: 'streamSpeak' });
+    Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+      tags: { voice_agent: agent, voice_stage: 'tts', provider: 'elevenlabs', voice_code: 'TTS_STREAM_FAILED' },
+    });
     return null;
   }
 }

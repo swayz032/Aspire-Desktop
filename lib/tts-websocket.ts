@@ -16,6 +16,8 @@
  *   endSession() → close()
  */
 
+import { Sentry } from '@/lib/sentry';
+
 export interface TtsWsOptions {
   voiceId: string;
   model?: string;
@@ -120,7 +122,12 @@ export class TtsWebSocket {
       this.ws = new WebSocket(url);
 
       const connectTimeout = setTimeout(() => {
-        reject(new Error('TTS WebSocket connection timeout'));
+        const err = new Error('TTS WebSocket connection timeout');
+        Sentry.captureException(err, {
+          tags: { voice_stage: 'tts', voice_code: 'WS_CONNECT_TIMEOUT', provider: 'elevenlabs' },
+          extra: { url: url, voiceId: this.voiceId },
+        });
+        reject(err);
         this.ws?.close();
       }, 10_000);
 
@@ -143,7 +150,12 @@ export class TtsWebSocket {
             resolve();
           } else if (data.type === 'error') {
             clearTimeout(connectTimeout);
-            reject(new Error(data.message || 'TTS connection failed'));
+            const connErr = new Error(data.message || 'TTS connection failed');
+            Sentry.captureException(connErr, {
+              tags: { voice_stage: 'tts', voice_code: 'WS_CONNECT_ERROR', provider: 'elevenlabs' },
+              extra: { serverMessage: data.message, voiceId: this.voiceId },
+            });
+            reject(connErr);
           }
         } catch {
           // Not JSON — ignore during handshake
@@ -154,7 +166,12 @@ export class TtsWebSocket {
 
       this.ws.onerror = () => {
         clearTimeout(connectTimeout);
-        reject(new Error('TTS WebSocket connection failed'));
+        const wsErr = new Error('TTS WebSocket connection failed');
+        Sentry.captureException(wsErr, {
+          tags: { voice_stage: 'tts', voice_code: 'WS_ONERROR', provider: 'elevenlabs' },
+          extra: { voiceId: this.voiceId },
+        });
+        reject(wsErr);
       };
 
       this.ws.onclose = () => {
@@ -189,7 +206,12 @@ export class TtsWebSocket {
 
       // Server-side error
       if (data.type === 'error') {
-        this.callbacks.onError(new Error(data.message || 'TTS streaming error'));
+        const streamErr = new Error(data.message || 'TTS streaming error');
+        Sentry.captureException(streamErr, {
+          tags: { voice_stage: 'tts', voice_code: 'WS_STREAM_ERROR', provider: 'elevenlabs' },
+          extra: { contextId, serverMessage: data.message },
+        });
+        this.callbacks.onError(streamErr);
       }
     } catch {
       // Non-JSON message — ignore

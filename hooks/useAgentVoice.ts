@@ -20,6 +20,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { devLog, devWarn, devError } from '@/lib/devLog';
+import { Sentry } from '@/lib/sentry';
 import { type AgentName, streamSpeak, getVoiceId, getVoiceConfig } from '../lib/elevenlabs';
 import { TtsWebSocket } from '../lib/tts-websocket';
 import { useDeepgramSTT } from './useDeepgramSTT';
@@ -201,6 +202,20 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       ...event,
     };
     onDiagnosticRef.current?.(payload);
+
+    // Send ALL voice diagnostics to Sentry — this pipeline was flying blind in production
+    Sentry.addBreadcrumb({
+      category: 'voice',
+      message: `[${event.stage}] ${event.code}: ${event.message}`,
+      level: event.recoverable ? 'warning' : 'error',
+      data: { agent, traceId: event.traceId, stage: event.stage, code: event.code, raw: event.raw },
+    });
+    if (!event.recoverable) {
+      Sentry.captureException(new Error(`Voice ${event.stage} failure: ${event.code}`), {
+        tags: { voice_agent: agent, voice_stage: event.stage, voice_code: event.code },
+        extra: { traceId: event.traceId, raw: event.raw, message: event.message },
+      });
+    }
   }, [agent]);
 
   /**
@@ -528,6 +543,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
 
       // Always try SSE for voice — enables sentence-level streaming TTS.
       // Falls back to standard JSON if SSE fails.
+      Sentry.addBreadcrumb({ category: 'voice', message: `SSE request starting for ${agent}`, level: 'info', data: { traceId, wsConnected: !!ttsWsRef.current?.isConnected } });
       let usedStreaming = false;
       {
         const sseAbort = new AbortController();
@@ -623,6 +639,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
                   const payload = event.data || event;
                   responseText = payload.response || payload.text || responseText;
                   receiptId = payload.receipt_id || null;
+                  Sentry.addBreadcrumb({ category: 'voice', message: `SSE response received (${responseText.length} chars)`, level: 'info', data: { agent, wsConnected: !!ttsWsRef.current?.isConnected, hadStreaming: !!streamingContextRef.current } });
 
                   // If we didn't get any partial_response events, speak the full text now
                   if (!streamingContextRef.current && ttsWsRef.current?.isConnected) {
@@ -694,6 +711,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         } else {
           // Fallback: HTTP streaming TTS
           devWarn('[useAgentVoice] WebSocket TTS unavailable, using HTTP stream fallback');
+          Sentry.addBreadcrumb({ category: 'voice', message: 'Falling back to HTTP TTS — WebSocket unavailable', level: 'warning', data: { agent } });
           await speakViaHttpStream(responseText, traceId);
         }
       }
@@ -716,6 +734,13 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         : stage === 'mic' ? 'MIC_FAILURE'
         : stage === 'autoplay' ? 'AUTOPLAY_BLOCKED'
         : 'TTS_FAILURE';
+
+      // Capture to Sentry — this is the main voice pipeline error handler
+      Sentry.captureException(err, {
+        tags: { voice_agent: agent, voice_stage: stage, voice_code: code },
+        extra: { traceId, raw: raw.slice(0, 500) },
+      });
+
       emitDiagnostic({
         traceId,
         stage,
@@ -866,6 +891,9 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         await stt.start();
       } catch (err) {
         devError('[useAgentVoice] STT start failed:', err);
+        Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+          tags: { voice_agent: agent, voice_stage: 'mic', voice_code: 'STT_START_FAILED' },
+        });
         emitDiagnostic({
           traceId: nextTraceId(),
           stage: 'mic',
@@ -882,6 +910,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
       // Step 3: Mic access succeeded — now activate the session
       activeRef.current = true;
       updateStatus('listening');
+      Sentry.addBreadcrumb({ category: 'voice', message: `Voice session started for ${agent}`, level: 'info' });
 
       // Step 4: Initialize TTS WebSocket (non-critical — HTTP fallback exists)
       try {
@@ -904,9 +933,11 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
           },
           onConnected: () => {
             devLog('[useAgentVoice] TTS WebSocket connected for', agent);
+            Sentry.addBreadcrumb({ category: 'voice', message: `TTS WebSocket connected for ${agent}`, level: 'info' });
           },
           onError: (error: Error) => {
             devWarn('[useAgentVoice] TTS WebSocket error, will use HTTP fallback:', error.message);
+            Sentry.addBreadcrumb({ category: 'voice', message: `TTS WebSocket error: ${error.message}`, level: 'warning', data: { agent } });
           },
           onClose: () => {
             ttsWsRef.current = null;
@@ -923,6 +954,10 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
         }, 30_000);
       } catch (err) {
         devWarn('[useAgentVoice] TTS WebSocket init failed, HTTP fallback active:', err);
+        Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+          tags: { voice_agent: agent, voice_stage: 'tts', voice_code: 'WS_INIT_FAILED' },
+          extra: { message: 'TTS WebSocket init failed — HTTP fallback active' },
+        });
       }
     },
     endSession,
