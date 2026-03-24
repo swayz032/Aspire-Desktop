@@ -3285,6 +3285,27 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
       const streamTimeoutId = setTimeout(() => streamController.abort(), ORCHESTRATOR_TIMEOUT_MS);
       req.on('close', () => streamController.abort());
 
+      // Build enriched body with user_profile (same as non-streaming path)
+      // so the backend can greet by name (Mr./Mrs. LastName)
+      const streamProfileContext = userProfile ? {
+        owner_name: userProfile.ownerName,
+        business_name: userProfile.businessName,
+        industry: userProfile.industry,
+        team_size: userProfile.teamSize,
+        industry_specialty: userProfile.industrySpecialty,
+        business_goals: userProfile.businessGoals,
+        pain_point: userProfile.painPoint,
+        preferred_channel: userProfile.preferredChannel,
+      } : undefined;
+      const streamBody: Record<string, any> = {
+        ...req.body,
+        agent: requestedAgent,
+        requested_agent: requestedAgent,
+        user_profile: streamProfileContext,
+        suite_id: suiteId,
+        office_id: officeId || suiteId,
+      };
+
       try {
         const backendResp = await fetch(backendStreamUrl, {
           method: 'POST',
@@ -3296,7 +3317,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
             'X-Correlation-Id': correlationId,
             'X-Trace-Id': traceId,
           },
-          body: JSON.stringify(req.body),
+          body: JSON.stringify(streamBody),
           signal: streamController.signal,
         });
 
