@@ -3327,6 +3327,15 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         res.setHeader('X-Trace-Id', traceId);
         res.flushHeaders();
 
+        // SSE keepalive — Railway's reverse proxy kills idle connections (~100s).
+        // Send comment lines (invisible to SSE clients) every 15s to keep it alive
+        // while the backend processes the LLM request.
+        const keepalive = setInterval(() => {
+          if (!res.writableEnded) {
+            res.write(': keepalive\n\n');
+          }
+        }, 15_000);
+
         // Pipe the readable stream from backend to client
         const reader = (backendResp.body as any).getReader();
         const pump = async () => {
@@ -3339,11 +3348,13 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
           } catch (_pipeErr) {
             // Client disconnected or backend stream error
           } finally {
+            clearInterval(keepalive);
             res.end();
           }
         };
 
         req.on('close', () => {
+          clearInterval(keepalive);
           try { reader.cancel(); } catch {}
         });
 
