@@ -464,8 +464,8 @@ export function sendThinkingFiller(client: AnamClientInstance): string {
 // ─── Finn Avatar Configuration ─────────────────────────────
 
 export const FINN_PERSONA = {
-  avatarId: '45ddc55c-14a9-4b25-8e28-f6c1ce39ccc5',
-  voiceId: '7db5f408-833c-49ce-97aa-eaec17077a4c',
+  avatarId: '42c2c36e-3e22-4750-881e-8c8e6d14acb1',   // Thomas (new Anam account)
+  voiceId: '7db5f408-833c-49ce-97aa-eaec17077a4c',     // Jack John - Conversational and Upbeat
 } as const;
 
 /** Finn conversation history (separate from Ava) */

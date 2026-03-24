@@ -164,8 +164,15 @@ export function useElevenLabsSTT(
       chunksRef.current = [];
       activeRef.current = true;
 
-      // Get microphone stream
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Get microphone stream with echo cancellation to prevent TTS audio
+      // from being picked up as user speech (causes false barge-in cutoffs).
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       streamRef.current = stream;
 
       const preferredMime = resolveRecorderMimeType();

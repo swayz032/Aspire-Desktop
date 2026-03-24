@@ -39,11 +39,11 @@ export const AGENT_VOICES: Record<string, VoiceConfig> = {
     voiceId: 'uYXf8XasLslADfZ2MB4u',
     model: 'eleven_flash_v2_5',
     voiceSettings: {
-      stability: 0.42,
+      stability: 0.55,          // Higher = clearer pronunciation, more consistent delivery
       similarity_boost: 0.88,
-      style: 0.18,
+      style: 0.12,              // Lower = less dramatic, steadier pacing
       use_speaker_boost: true,
-      speed: 1.0,
+      speed: 0.94,              // Slightly slower for clarity — natural CEO briefing pace
     },
   },
   eli: {
