@@ -229,11 +229,14 @@ export function useDeepgramSTT(
           setError(`Voice reconnecting (attempt ${retryCountRef.current})...`);
           retryTimerRef.current = setTimeout(() => {
             retryTimerRef.current = null;
-            // Re-use existing mic stream if still active
-            if (streamRef.current && streamRef.current.active) {
-              reconnectWs(streamRef.current);
+            // Re-use existing mic stream if still active and tracks are live
+            const stream = streamRef.current;
+            const tracksAlive = stream?.active &&
+              stream.getAudioTracks().some(t => t.readyState === 'live');
+            if (stream && tracksAlive) {
+              reconnectWs(stream);
             } else {
-              // Mic stream died — full restart
+              // Mic stream died or tracks ended — full restart
               start();
             }
           }, delay);
