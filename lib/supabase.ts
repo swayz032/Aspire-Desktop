@@ -38,6 +38,7 @@ export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: false,
+    storageKey: 'aspire-desktop-auth',
   },
   realtime: {
     params: { eventsPerSecond: 10 },

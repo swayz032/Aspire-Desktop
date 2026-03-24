@@ -860,6 +860,16 @@ function NativeLoginScreen() {
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 function LoginContent() {
+  // Security: clear any persisted session when the login page mounts.
+  // Prevents auto-sign-in risk — users must enter credentials explicitly.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        supabase.auth.signOut().catch(() => {});
+      }
+    });
+  }, []);
+
   if (Platform.OS === 'web') return <WebLoginScreen />;
   return <NativeLoginScreen />;
 }

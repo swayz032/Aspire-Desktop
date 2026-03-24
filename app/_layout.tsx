@@ -280,6 +280,7 @@ function useAuthGate() {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === ('(auth)' as any);
+    const onLoginPage = segments[1] === ('login' as any);
     const inPublicGroup = segments.length === 0 || segments[0] === ('sign' as any) || segments[0] === ('book' as any) || segments[0] === ('join' as any) || segments[0] === ('landing' as any) || segments[0] === ('index' as any);
     const onOnboarding = segments[1] === ('onboarding' as any);
 
@@ -322,7 +323,10 @@ function useAuthGate() {
       navigate('/(auth)/login');
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
       navigate('/(auth)/onboarding');
-    } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
+    } else if (session && onboardingChecked && onboardingComplete && inAuthGroup && !onLoginPage) {
+      // Auto-redirect from auth group to tabs — but NOT from the login page.
+      // The login page clears stale sessions on mount; it handles its own
+      // post-login navigation via router.replace('/(tabs)') after signIn.
       navigate('/(tabs)');
     }
   }, [session, isLoading, segments, onboardingChecked, onboardingComplete, coldStartSettled]);

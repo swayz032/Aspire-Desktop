@@ -37,11 +37,21 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
   // Prevent rapid session oscillation — if session was valid within the last 2s,
   // don't set it to null (wait for a stable SIGNED_OUT event instead).
   const lastValidSessionRef = useRef<number>(0);
+  // When true, stableSetSession skips refresh-attempt logic — the user explicitly signed out.
+  const deliberateSignOutRef = useRef(false);
   const stableSetSession = (s: Session | null) => {
     if (s) {
+      // If a deliberate sign-out is in progress, ignore any session restoration
+      // (e.g. from a refresh race or stale auth event).
+      if (deliberateSignOutRef.current) return;
       lastValidSessionRef.current = Date.now();
       setSession(s);
     } else {
+      // Deliberate sign-out — accept null immediately, no refresh attempt.
+      if (deliberateSignOutRef.current) {
+        setSession(null);
+        return;
+      }
       const timeSinceValid = Date.now() - lastValidSessionRef.current;
       if (timeSinceValid < 2000 && lastValidSessionRef.current > 0) {
         // Session was valid very recently — likely a token refresh race, not a real signout.
@@ -108,6 +118,10 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     if (DEV_BYPASS_AUTH) return;
+    // Mark deliberate sign-out BEFORE calling supabase.auth.signOut() —
+    // prevents stableSetSession from re-establishing the session via refreshSession().
+    deliberateSignOutRef.current = true;
+    lastValidSessionRef.current = 0;
     try {
       await supabase.auth.signOut();
     } catch (e) {
@@ -117,6 +131,7 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
     // Clear all Aspire-related storage
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem('aspire.bootstrap.identity');
+      window.localStorage.removeItem('aspire-desktop-auth');
       const keys = Object.keys(window.localStorage);
       keys.forEach(k => {
         if (k.startsWith('sb-') || k.startsWith('supabase.')) {
