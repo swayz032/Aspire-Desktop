@@ -159,12 +159,13 @@ function AvaDeskPanelInner() {
 
   const {
     messages,
-    input: chatInput,
-    setInput: setChatInput,
-    handleSubmit,
+    sendMessage,
     status: chatStatus,
     setMessages,
   } = avaChatResult;
+
+  // Input state managed locally (AI SDK v6 useChat doesn't include input/setInput)
+  const [chatInput, setChatInput] = useState('');
 
   // Derive isConversing from AI SDK status
   const isChatActive = chatStatus === 'submitted' || chatStatus === 'streaming';
@@ -176,13 +177,11 @@ function AvaDeskPanelInner() {
 
   // Helper to append a UIMessage without triggering API call
   const appendLocalMessage = useCallback(
-    (role: 'user' | 'assistant', text: string, extra?: Partial<UIMessage>) => {
+    (role: 'user' | 'assistant', text: string) => {
       const msg: UIMessage = {
         id: `${role}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         role,
-        parts: [{ type: 'text', text }],
-        createdAt: new Date(),
-        ...extra,
+        parts: [{ type: 'text' as const, text }],
       };
       setMessages((prev) => [...prev, msg]);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -214,7 +213,6 @@ function AvaDeskPanelInner() {
               id: `greeting_${Date.now()}`,
               role: 'assistant' as const,
               parts: [{ type: 'text' as const, text: greeting }],
-              createdAt: new Date(),
             }]);
           }
         }
@@ -286,7 +284,7 @@ function AvaDeskPanelInner() {
       } else if (/permission|denied|not found.*microphone|getUserMedia/i.test(msg)) {
         showVoiceError('Microphone access denied. Check browser permissions.');
       } else if (/tts|voice.*unavailable|synthesis|elevenlabs/i.test(msg)) {
-        showVoiceError('Voice unavailable â€” responses shown in chat.');
+        showVoiceError('Voice unavailable â€" responses shown in chat.');
       } else {
         showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
       }
@@ -414,7 +412,7 @@ function AvaDeskPanelInner() {
       setConnectionStatus('Establishing secure video...');
     }, 800);
 
-    // Timeout fallback â€” 15s for SDK WebRTC handshake (Law #3: Fail Closed)
+    // Timeout fallback â€" 15s for SDK WebRTC handshake (Law #3: Fail Closed)
     const t2 = setTimeout(() => {
       setVideoState('idle');
       setConnectionStatus('');
@@ -484,7 +482,6 @@ function AvaDeskPanelInner() {
               id,
               role: 'assistant' as const,
               parts: [{ type: 'text' as const, text }],
-              createdAt: new Date(),
             }]);
           } else {
             setMessages((prev) => prev.map((msg) =>
@@ -589,13 +586,14 @@ function AvaDeskPanelInner() {
 
   // Text chat send — delegates to Vercel AI SDK useChat (Law #1: Single Brain)
   const onSend = useCallback(() => {
-    if (!chatInput.trim()) return;
-    // handleSubmit sends the message through AspireChatTransport
-    // which handles SSE → UIMessageChunk conversion, error mapping,
-    // auth headers, tenant isolation, and Anam TTS piping
-    handleSubmit();
+    const trimmed = chatInput.trim();
+    if (!trimmed) return;
+    setChatInput('');
+    // sendMessage sends through AspireChatTransport which handles
+    // SSE → UIMessageChunk conversion, error mapping, auth, tenant isolation, Anam TTS
+    sendMessage({ text: trimmed });
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [chatInput, handleSubmit]);
+  }, [chatInput, sendMessage]);
 
   const handleStartSession = () => setIsSessionActive(!isSessionActive);
 
@@ -612,7 +610,7 @@ function AvaDeskPanelInner() {
       </View>
 
       <View style={[styles.surfaceContainer, mode === 'video' && videoState === 'connected' && styles.surfaceContainerExpanded]}>
-        {/* Voice/Video error banner â€” surfaces errors that were previously swallowed */}
+        {/* Voice/Video error banner â€" surfaces errors that were previously swallowed */}
         {voiceError && (
           <Pressable
             onPress={() => setVoiceError(null)}
@@ -815,12 +813,12 @@ function AvaDeskPanelInner() {
           showsVerticalScrollIndicator={false}
         >
           {messages.map((msg) => (
-            <MessagePartRenderer key={msg.id} message={msg} agent=”ava” />
+            <MessagePartRenderer key={msg.id} message={msg} agent="ava" />
           ))}
           {hasPendingChat && (
             <ThinkingIndicator
-              agent=”ava”
-              text=”Ava is thinking...”
+              agent="ava"
+              text="Ava is thinking..."
               style={{ marginTop: 4, marginBottom: 8 }}
             />
           )}
