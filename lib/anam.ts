@@ -131,6 +131,11 @@ export async function fetchAnamSessionToken(accessToken?: string): Promise<strin
 export function createAnamClient(sessionToken: string): AnamClientInstance {
   return createClient(sessionToken, {
     disableInputAudio: false,
+    metrics: {
+      // Enable WebRTC stats in dev for video quality diagnostics
+      showPeerConnectionStatsReport: __DEV__ ?? false,
+      peerConnectionStatsReportOutputFormat: 'console',
+    },
   });
 }
 

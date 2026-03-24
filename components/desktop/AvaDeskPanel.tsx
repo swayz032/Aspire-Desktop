@@ -9,22 +9,15 @@ import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice'
 import { useSupabase, useTenant } from '@/providers';
 import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput, sendThinkingFiller } from '@/lib/anam';
 import {
-  type AgentChatMessage,
-  type AgentActivityEvent,
-  type ActiveRun,
   type FileAttachment,
-  MessageBubble,
   ThinkingIndicator,
-  ChainOfThought,
-  ChainOfThoughtHeader,
-  ChainOfThoughtContent,
-  ChainOfThoughtStep,
-  buildActivityFromResponse,
+  MessagePartRenderer,
 } from '@/components/chat';
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
-import { readSSEStream, extractResponseText, extractMediaItems, type SSEEvent } from '@/lib/sseStream';
+import { useAvaChat } from '@/hooks/useAvaChat';
+import type { UIMessage } from 'ai';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
@@ -91,17 +84,12 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
 
 
 
-const seedChat: AgentChatMessage[] = [];
-
 function AvaDeskPanelInner() {
   const [mode, setMode] = useState<AvaMode>('voice');
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [isConversing, setIsConversing] = useState(false);
   const [videoState, setVideoState] = useState<VideoConnectionState>('idle');
   const [connectionStatus, setConnectionStatus] = useState('');
-  const [chat, setChat] = useState<AgentChatMessage[]>(seedChat);
-  const [input, setInput] = useState('');
-  const [activeRuns, setActiveRuns] = useState<Record<string, ActiveRun>>({});
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [latestVoiceDiagnostic, setLatestVoiceDiagnostic] = useState<VoiceDiagnosticEvent | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -147,10 +135,62 @@ function AvaDeskPanelInner() {
   const resolvedBusinessName = tenant?.businessName || bootstrapIdentity?.businessName || 'Your Company';
   const companyPillLabel = resolvedBusinessName;
 
-  // W4: Authority queue polling â€” provides context to orchestrator (approvals shown in Authority Queue, not chat)
+  // W4: Authority queue polling — provides context to orchestrator (approvals shown in Authority Queue, not chat)
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
 
-  // Fetch a dynamic greeting from the orchestrator on mount (replaces hardcoded seedChat)
+  // Vercel AI SDK chat — source of truth for all Aspire chat (Law #1)
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const videoStateRef = useRef(videoState);
+  videoStateRef.current = videoState;
+
+  const avaChatResult = useAvaChat({
+    onResponseText: (text) => {
+      // Pipe response to Anam avatar TTS when video is active
+      if (modeRef.current === 'video' && videoStateRef.current === 'connected' && anamClientRef.current) {
+        try { anamClientRef.current.talk(text); } catch { /* ignore */ }
+      }
+    },
+    extraBody: {
+      pendingApprovals: pendingApprovals.length,
+      approvalSummary: pendingApprovals.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
+    },
+  });
+
+  const {
+    messages,
+    input: chatInput,
+    setInput: setChatInput,
+    handleSubmit,
+    status: chatStatus,
+    setMessages,
+  } = avaChatResult;
+
+  // Derive isConversing from AI SDK status
+  const isChatActive = chatStatus === 'submitted' || chatStatus === 'streaming';
+
+  // Sync isConversing with AI SDK status for voice line animation
+  useEffect(() => {
+    setIsConversing(isChatActive);
+  }, [isChatActive]);
+
+  // Helper to append a UIMessage without triggering API call
+  const appendLocalMessage = useCallback(
+    (role: 'user' | 'assistant', text: string, extra?: Partial<UIMessage>) => {
+      const msg: UIMessage = {
+        id: `${role}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        role,
+        parts: [{ type: 'text', text }],
+        createdAt: new Date(),
+        ...extra,
+      };
+      setMessages((prev) => [...prev, msg]);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    },
+    [setMessages],
+  );
+
+  // Fetch a dynamic greeting from the orchestrator on mount
   useEffect(() => {
     if (isLocalSyntheticAuthBypass()) return;
     if (!suiteId || !session?.access_token) return;
@@ -170,15 +210,20 @@ function AvaDeskPanelInner() {
           const data = await resp.json();
           const greeting = data.response || data.text;
           if (greeting && typeof greeting === 'string') {
-            setChat([{ id: `greeting_${Date.now()}`, from: 'ava', text: greeting }]);
+            setMessages([{
+              id: `greeting_${Date.now()}`,
+              role: 'assistant' as const,
+              parts: [{ type: 'text' as const, text: greeting }],
+              createdAt: new Date(),
+            }]);
           }
         }
       } catch {
-        // Silent fail â€” no greeting is better than a stale one
+        // Silent fail — no greeting is better than a stale one
       }
     };
     fetchGreeting();
-  }, [suiteId, session?.access_token]);
+  }, [suiteId, session?.access_token, setMessages]);
 
   useEffect(() => {
     if (isLocalSyntheticAuthBypass()) return;
@@ -199,7 +244,7 @@ function AvaDeskPanelInner() {
     return () => clearInterval(interval);
   }, [session?.access_token]);
 
-  // Orchestrator-routed voice: STT â†’ Orchestrator â†’ TTS (Law #1: Single Brain)
+  // Orchestrator-routed voice: STT â†' Orchestrator â†' TTS (Law #1: Single Brain)
   const avaVoice = useAgentVoice({
     agent: 'ava',
     suiteId: suiteId ?? undefined,
@@ -218,21 +263,12 @@ function AvaDeskPanelInner() {
       setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
     onTranscript: (text) => {
-      // W5: Voice transcript â†’ chat (user message with voice indicator)
-      setChat(prev => [...prev, {
-        id: `voice_user_${Date.now()}`,
-        from: 'user',
-        text: `\uD83C\uDFA4 ${text}`,
-      }]);
+      // W5: Voice transcript → chat (user message with voice indicator)
+      appendLocalMessage('user', `\uD83C\uDFA4 ${text}`);
     },
     onResponse: (text, receiptId) => {
-      // W5: Voice response â†’ chat (Ava message synced from voice)
-      setChat(prev => [...prev, {
-        id: `voice_ava_${Date.now()}`,
-        from: 'ava',
-        text: text,
-      }]);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+      // W5: Voice response → chat (Ava message synced from voice)
+      appendLocalMessage('assistant', text);
     },
     onError: (error) => {
       console.error('Ava voice error:', error);
@@ -392,7 +428,7 @@ function AvaDeskPanelInner() {
       // Wait for React to render the <video> element before streaming
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Anam SDK: fetch session token â†’ create client (CUSTOMER_CLIENT_V1) â†’ stream to <video>
+      // Anam SDK: fetch session token â†' create client (CUSTOMER_CLIENT_V1) â†' stream to <video>
       const connectOptions: AnamConnectOptions = {
         onConnectionEstablished: () => {
           console.log('[Anam] WebRTC connection established');
@@ -404,7 +440,7 @@ function AvaDeskPanelInner() {
           setVideoState('connected');
           setConnectionStatus('');
 
-          // Greeting fires ONLY after video is visible — no more talking to a blank screen
+          // Greeting fires after video is visible + 800ms buffer for avatar to fully initialize
           setTimeout(() => {
             if (anamClientRef.current && typeof (anamClientRef.current as any).talk === 'function') {
               const ownerName = tenant?.ownerName;
@@ -416,7 +452,7 @@ function AvaDeskPanelInner() {
                 : `${timeGreeting}! I'm Ava, your chief of staff. How can I help you today?`;
               (anamClientRef.current as any).talk(greeting);
             }
-          }, 300);
+          }, 800);
         },
         onConnectionClosed: (reason, details) => {
           console.log('[Anam] Connection closed', reason ? { reason, details } : undefined);
@@ -426,17 +462,11 @@ function AvaDeskPanelInner() {
         },
         onUserMessage: async (userMessage: string) => {
           // Show user message in chat
-          setChat(prev => [...prev, {
-            id: `anam_user_${Date.now()}`,
-            from: 'user',
-            text: `\uD83C\uDFA4 ${userMessage}`,
-          }]);
+          appendLocalMessage('user', `\uD83C\uDFA4 ${userMessage}`);
           anamStreamMessageIdRef.current = null;
-          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
           // Wave 2A: Send immediate "thinking" filler to prevent Anam's engine
           // timeout from generating "I can't think right now" fallback.
-          // The filler speaks while orchestrator processes; real response follows via brain routing.
           if (anamClientRef.current) {
             sendThinkingFiller(anamClientRef.current);
           }
@@ -450,17 +480,18 @@ function AvaDeskPanelInner() {
           if (!currentId) {
             const id = `anam_ava_${Date.now()}`;
             anamStreamMessageIdRef.current = id;
-            setChat(prev => [...prev, {
+            setMessages((prev) => [...prev, {
               id,
-              from: 'ava',
-              text,
+              role: 'assistant' as const,
+              parts: [{ type: 'text' as const, text }],
+              createdAt: new Date(),
             }]);
           } else {
-            setChat(prev => prev.map(msg => (
+            setMessages((prev) => prev.map((msg) =>
               msg.id === currentId
-                ? { ...msg, text: `${msg.text}${text}` }
+                ? { ...msg, parts: [{ type: 'text' as const, text: msg.parts.filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text').map(p => p.text).join('') + text }] }
                 : msg
-            )));
+            ));
           }
           setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
         },
@@ -518,10 +549,8 @@ function AvaDeskPanelInner() {
     return isSessionActive ? 'Listening...' : 'Listening...';
   }, [isSessionActive]);
 
-  const hasPendingRunWithoutActivity = useMemo(
-    () => Object.values(activeRuns).some((run) => run.status === 'running' && run.events.length === 0),
-    [activeRuns],
-  );
+  // Show thinking indicator when submitted but no reasoning/text chunks yet
+  const hasPendingChat = chatStatus === 'submitted';
 
   useEffect(() => {
     return () => {
@@ -534,27 +563,9 @@ function AvaDeskPanelInner() {
     };
   }, []);
 
-  // W6: Approve-then-execute â€” chains approval into orchestrator resume, surfaces narration in chat
+  // W6: Approve-then-execute — chains approval into orchestrator resume, surfaces narration in chat
   const approveAndExecute = useCallback(async (approvalId: string) => {
-    const runId = `run_approve_${Date.now()}`;
-    const now = Date.now();
-    setActiveRuns((prev) => ({
-      ...prev,
-      [runId]: {
-        runId,
-        agent: 'ava',
-        events: [{ id: `evt_${now}_1`, type: 'thinking', label: 'Approving and executing...', status: 'active', timestamp: now, icon: 'sparkles' }],
-        status: 'running',
-        startedAt: now,
-        finalText: '',
-      },
-    }));
-    setChat((prev) => [
-      ...prev,
-      { id: `m_approve_${now}`, from: 'ava', text: '', runId },
-    ]);
     setIsConversing(true);
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -567,242 +578,24 @@ function AvaDeskPanelInner() {
 
       if (!res.ok) throw new Error(`Approve returned ${res.status}`);
       const data = await res.json();
-
-      const events: Omit<AgentActivityEvent, 'id' | 'timestamp' | 'status'>[] = [
-        { type: 'step', label: 'Approval confirmed', icon: 'checkmark-circle' },
-      ];
-      if (data.executed) {
-        events.push({ type: 'tool_call', label: 'Executing approved action...', icon: 'hammer' });
-        events.push({ type: 'done', label: 'Execution complete', icon: 'checkmark-circle' });
-      } else {
-        events.push({ type: 'done', label: 'Approved (execution pending)', icon: 'checkmark-circle' });
-      }
-
       const narrationText = data.narration || data.user_message || (data.executed ? 'Approved and executed successfully.' : 'Approved. Execution will follow.');
-
-      events.forEach((evt, idx) => {
-        const delay = 200 + idx * 500;
-        const timer = setTimeout(() => {
-          const isDone = evt.type === 'done';
-          const event: AgentActivityEvent = {
-            ...evt,
-            id: `evt_${Date.now()}_${idx}`,
-            timestamp: Date.now(),
-            status: isDone ? 'completed' : 'active',
-          };
-          setActiveRuns((prev) => {
-            const run = prev[runId];
-            if (!run) return prev;
-            return { ...prev, [runId]: { ...run, events: [...run.events, event], status: isDone ? 'completed' : 'running', finalText: isDone ? narrationText : '' } };
-          });
-          if (isDone) {
-            setIsConversing(false);
-            setChat((prev) => prev.map((msg) => msg.runId === runId ? { ...msg, text: narrationText } : msg));
-          }
-          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-        }, delay);
-        runTimers.current.push(timer);
-      });
-    } catch (error: unknown) {
-      setActiveRuns((prev) => {
-        const run = prev[runId];
-        if (!run) return prev;
-        return { ...prev, [runId]: { ...run, events: [...run.events, { id: `evt_err_${Date.now()}`, type: 'error', label: 'Approval failed', status: 'error', timestamp: Date.now(), icon: 'alert-circle' }], status: 'completed' } };
-      });
+      appendLocalMessage('assistant', narrationText);
+    } catch {
+      appendLocalMessage('assistant', 'Approval failed. Please try again from the Authority Queue.');
+    } finally {
       setIsConversing(false);
-      setChat((prev) => prev.map((msg) => msg.runId === runId ? { ...msg, text: 'Approval failed. Please try again from the Authority Queue.' } : msg));
     }
-  }, [session?.access_token]);
+  }, [session?.access_token, appendLocalMessage]);
 
-  const onSend = async () => {
-    const trimmed = input.trim();
-    if (!trimmed) return;
-
-    const now = Date.now();
-    const runId = `run_${now}`;
-
-    // Show user message + empty Ava response immediately
-    setActiveRuns((prev) => ({
-      ...prev,
-      [runId]: { runId, agent: 'ava', events: [], status: 'running', startedAt: now, finalText: '' },
-    }));
-
-    setChat((prev) => [
-      ...prev,
-      { id: `m_${now}`, from: 'user' as const, text: trimmed },
-      { id: `m_${now}_ava`, from: 'ava' as const, text: '', runId },
-    ]);
-    setInput('');
-    setIsConversing(true);
+  // Text chat send — delegates to Vercel AI SDK useChat (Law #1: Single Brain)
+  const onSend = useCallback(() => {
+    if (!chatInput.trim()) return;
+    // handleSubmit sends the message through AspireChatTransport
+    // which handles SSE → UIMessageChunk conversion, error mapping,
+    // auth headers, tenant isolation, and Anam TTS piping
+    handleSubmit();
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-
-    try {
-      // Law #1: Single Brain â€” route through orchestrator
-      // Law #6: X-Suite-Id for tenant isolation
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (suiteId) headers['X-Suite-Id'] = suiteId;
-      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-
-      // Build user profile context for Ava personalization (no PII â€” Law #9)
-      const userProfile = tenant ? {
-        ownerName: tenant.ownerName || undefined,
-        businessName: tenant.businessName || undefined,
-        industry: tenant.industry || undefined,
-        teamSize: tenant.teamSize || undefined,
-        industrySpecialty: tenant.industrySpecialty || undefined,
-        businessGoals: tenant.businessGoals || undefined,
-        painPoint: tenant.painPoint || undefined,
-        preferredChannel: tenant.preferredChannel || undefined,
-      } : undefined;
-
-      // SSE streaming: receive reasoning steps + final response in real-time
-      const streamResp = await fetch('/api/orchestrator/intent?stream=true', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          agent: 'ava',
-          text: trimmed,
-          channel: 'text',
-          userProfile,
-          context: {
-            pendingApprovals: pendingApprovals.length,
-            approvalSummary: pendingApprovals.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
-            conversationHistory: chat.slice(-10).map(m => ({ from: m.from, text: m.text })),
-          },
-        }),
-      });
-
-      if (!streamResp.ok || !streamResp.body) {
-        // Try to extract structured error from non-streaming error response
-        let errorBody: any = null;
-        try {
-          errorBody = await streamResp.json();
-        } catch {
-          errorBody = null;
-        }
-        const errorCode = errorBody?.error || errorBody?.error_code || '';
-        const errorText =
-          errorBody?.response ||
-          errorBody?.text ||
-          errorBody?.message ||
-          `Orchestrator returned ${streamResp.status}`;
-        const correlation = errorBody?.correlation_id || '';
-        const detail = correlation ? `${errorText} (ref: ${correlation})` : errorText;
-        throw new Error(errorCode ? `${errorCode}: ${detail}` : detail);
-      }
-
-      // Read SSE stream — uses shared parser (lib/sseStream.ts)
-      let streamReceivedResponse = false;
-
-      const handleSSEEvent = (event: SSEEvent) => {
-        if (event.type === 'response') {
-          streamReceivedResponse = true;
-          const responseText = extractResponseText(event, "I'm ready for your next step.");
-          const mediaItems = extractMediaItems(event);
-
-          // If video connected, pipe response to Anam avatar (Law #1: Single Brain)
-          if (mode === 'video' && videoState === 'connected' && anamClientRef.current) {
-            try {
-              anamClientRef.current.talk(responseText);
-            } catch (talkErr) {
-              console.warn('Anam talk failed:', talkErr);
-            }
-          }
-
-          setActiveRuns((prev) => {
-            const run = prev[runId];
-            if (!run) return prev;
-            return { ...prev, [runId]: { ...run, status: 'completed', finalText: responseText } };
-          });
-          setChat((prev) =>
-            prev.map((msg) =>
-              msg.runId === runId ? { ...msg, text: responseText, media: mediaItems } : msg
-            )
-          );
-          setIsConversing(false);
-          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-        } else {
-          const newEvent: AgentActivityEvent = {
-            id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            type: event.type as AgentActivityEvent['type'],
-            label: event.message || event.label || event.type,
-            icon: (event.icon || 'sparkles') as AgentActivityEvent['icon'],
-            status: (event.type === 'done' ? 'completed' : (event.status || 'active')) as AgentActivityEvent['status'],
-            timestamp: event.timestamp || Date.now(),
-          };
-          setActiveRuns((prev) => {
-            const run = prev[runId] || { runId, agent: 'ava', events: [], status: 'running', startedAt: Date.now(), finalText: '' };
-            return { ...prev, [runId]: { ...run, events: [...run.events, newEvent] } };
-          });
-          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-        }
-      };
-
-      await readSSEStream(streamResp.body, handleSSEEvent);
-
-      // If stream ended without a response event, mark as completed
-      if (!streamReceivedResponse) {
-        setActiveRuns((prev) => {
-          const run = prev[runId];
-          if (run && run.status === 'running') {
-            return { ...prev, [runId]: { ...run, status: 'completed' } };
-          }
-          return prev;
-        });
-        setIsConversing(false);
-      }
-    } catch (error: unknown) {
-      // Law #3: Fail Closed â€” show error, don't guess
-      const rawMessage = error instanceof Error ? error.message : String(error || 'Unknown error');
-      const lower = rawMessage.toLowerCase();
-      const userFacingMessage =
-        /401|auth_required|expired|unauthorized/.test(lower)
-          ? 'Ava session expired. Please sign in again.'
-          : /model_unavailable/.test(lower)
-          ? 'Ava model is temporarily unavailable. Please try again in a moment.'
-          : /checkpointer_unavailable/.test(lower)
-          ? 'Ava memory service is unavailable right now. Please try again shortly.'
-          : /provider_auth_missing|auth_invalid_key|invalid_key/.test(lower)
-          ? 'A required provider connection is missing or expired. Please check your connected services.'
-          : /provider_all_failed/.test(lower)
-          ? 'All research providers failed this request. Try a narrower query or retry in a moment.'
-          : /param_extraction_failed/.test(lower)
-          ? rawMessage.replace(/^param_extraction_failed:\s*/i, '')
-          : /routing_denied/.test(lower)
-          ? 'This request could not be routed to a valid skill path. Please rephrase the task.'
-          : /upstream_timeout|orchestrator_timeout|timeout|abort/.test(lower)
-          ? 'Ava is taking too long to respond. Please try again in a moment.'
-          : /orchestrator_unavailable|circuit_open|503|unavailable|circuit/.test(lower)
-          ? 'Ava Brain is temporarily unavailable. Try again shortly.'
-          : `Ava request failed: ${rawMessage.length > 140 ? `${rawMessage.slice(0, 140)}...` : rawMessage}`;
-      const errorEvent: AgentActivityEvent = {
-        id: `evt_err_${Date.now()}`,
-        type: 'error',
-        label: 'Connection failed',
-        status: 'error',
-        timestamp: Date.now(),
-        icon: 'alert-circle',
-      };
-      setActiveRuns((prev) => {
-        const run = prev[runId];
-        if (!run) return prev;
-        return {
-          ...prev,
-          [runId]: { ...run, events: [...run.events, errorEvent], status: 'error' },
-        };
-      });
-      setIsConversing(false);
-      setChat((prev) =>
-        prev.map((msg) =>
-          msg.runId === runId
-            ? { ...msg, text: userFacingMessage }
-            : msg
-        )
-      );
-    }
-  };
+  }, [chatInput, handleSubmit]);
 
   const handleStartSession = () => setIsSessionActive(!isSessionActive);
 
@@ -906,6 +699,9 @@ function AvaDeskPanelInner() {
                   left: 0,
                   zIndex: videoState === 'connected' ? 2 : -1,
                   transition: 'opacity 0.6s ease-in-out',
+                  transform: 'translateZ(0)',
+                  willChange: 'transform, opacity',
+                  imageRendering: 'auto',
                 }}
               />
             )}
@@ -1018,64 +814,13 @@ function AvaDeskPanelInner() {
           contentContainerStyle={styles.chatContent}
           showsVerticalScrollIndicator={false}
         >
-          {chat.map((msg) => {
-            const run = msg.runId ? activeRuns[msg.runId] : null;
-            const showActivity = run && run.events.length > 0;
-            const isRunning = msg.runId && run && run.status === 'running';
-
-            // User messages â€” simple bubble
-            if (msg.from === 'user') {
-              return (
-                <View key={msg.id}>
-                  <MessageBubble message={msg} agent="ava" />
-                </View>
-              );
-            }
-
-            // Agent messages â€” Chain of Thought (single component replaces 3 separate ones)
-            return (
-              <View key={msg.id}>
-                {showActivity && (
-                  <ChainOfThought
-                    agent="ava"
-                    isStreaming={!!isRunning}
-                    defaultOpen={!!isRunning}
-                    style={{ marginBottom: 4 }}
-                  >
-                    <ChainOfThoughtHeader stepCount={run.events.length}>
-                      {isRunning ? 'Thinking...' : 'Chain of Thought'}
-                    </ChainOfThoughtHeader>
-                    <ChainOfThoughtContent>
-                      {run.events.map((event, idx) => (
-                        <ChainOfThoughtStep
-                          key={event.id}
-                          label={event.label}
-                          icon={event.icon as any}
-                          status={
-                            event.status === 'completed' || event.type === 'done'
-                              ? 'complete'
-                              : event.status === 'active'
-                              ? 'active'
-                              : 'pending'
-                          }
-                          isLast={idx === run.events.length - 1}
-                        />
-                      ))}
-                    </ChainOfThoughtContent>
-                  </ChainOfThought>
-                )}
-
-                {/* Message text (only show when response text is available) */}
-                {msg.text && (
-                  <MessageBubble message={msg} agent="ava" />
-                )}
-              </View>
-            );
-          })}
-          {isConversing && hasPendingRunWithoutActivity && (
+          {messages.map((msg) => (
+            <MessagePartRenderer key={msg.id} message={msg} agent=”ava” />
+          ))}
+          {hasPendingChat && (
             <ThinkingIndicator
-              agent="ava"
-              text="Ava is thinking..."
+              agent=”ava”
+              text=”Ava is thinking...”
               style={{ marginTop: 4, marginBottom: 8 }}
             />
           )}
@@ -1084,35 +829,23 @@ function AvaDeskPanelInner() {
         <View style={styles.inputRow}>
           <Pressable style={styles.attachBtn} onPress={() => {
             if (Platform.OS === 'web') {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = '.pdf,.docx,.xlsx,.png,.jpg,.jpeg,.csv';
-              input.onchange = (e: any) => {
+              const fileInput = document.createElement('input');
+              fileInput.type = 'file';
+              fileInput.accept = '.pdf,.docx,.xlsx,.png,.jpg,.jpeg,.csv';
+              fileInput.onchange = (e: any) => {
                 const file = e.target?.files?.[0];
                 if (file) {
-                  const attachment: FileAttachment = {
-                    id: `att_${Date.now()}`,
-                    name: file.name,
-                    kind: file.name.endsWith('.pdf') ? 'PDF' :
-                          file.name.endsWith('.docx') ? 'DOCX' :
-                          file.name.endsWith('.xlsx') ? 'XLSX' : 'PNG',
-                  };
-                  setChat(prev => [...prev, {
-                    id: `att_msg_${Date.now()}`,
-                    from: 'user',
-                    text: `Attached: ${file.name}`,
-                    attachments: [attachment],
-                  }]);
+                  appendLocalMessage('user', `Attached: ${file.name}`);
                 }
               };
-              input.click();
+              fileInput.click();
             }
           }}>
             <Ionicons name="attach" size={20} color={Colors.text.secondary} />
           </Pressable>
           <TextInput
-            value={input}
-            onChangeText={setInput}
+            value={chatInput}
+            onChangeText={setChatInput}
             placeholder="Message Ava..."
             placeholderTextColor={Colors.text.tertiary}
             style={styles.input}

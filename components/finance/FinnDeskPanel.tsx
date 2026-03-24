@@ -191,13 +191,15 @@ function buildResponse(intent: string, snapshot: SnapshotData | null, exceptions
 }
 
 function buildSeedMessage(snapshot: SnapshotData | null, exceptions: ExceptionData | null): string {
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   if (!snapshot || !snapshot.connected) {
-    return 'Good morning. No providers connected yet — connect Plaid, Stripe, or QuickBooks to get started. I\'ll analyze your finances once data flows in.';
+    return `${timeGreeting}. No providers connected yet — connect Plaid, Stripe, or QuickBooks to get started. I'll analyze your finances once data flows in.`;
   }
   const cash = snapshot.chapters.now.cashAvailable;
   const excCount = exceptions?.exceptions?.length || 0;
   const net7d = snapshot.chapters.next.netCashFlow7d;
-  const parts = [`Good morning. Cash is at $${cash.toLocaleString()}.`];
+  const parts = [`${timeGreeting}. Cash is at $${cash.toLocaleString()}.`];
   if (net7d !== 0) {
     parts.push(`7-day forecast: ${net7d >= 0 ? '+' : '-'}$${Math.abs(net7d).toLocaleString()}.`);
   }
@@ -295,7 +297,7 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
             playSuccessSound();
             setVideoState('connected');
             setConnectionStatus('');
-            // Greeting after video is visible
+            // Greeting after video is visible + 800ms buffer for avatar to fully initialize
             setTimeout(() => {
               if (anamClientRef.current) {
                 const ownerName = tenant?.ownerName;
@@ -307,7 +309,7 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
                   : `${timeGreeting}! I'm Finn — let's get this document ready.`;
                 finnTalk(anamClientRef.current, greeting);
               }
-            }, 300);
+            }, 800);
           },
           onUserMessage: async (userMessage: string) => {
             // Send immediate "thinking" filler to prevent Anam's engine timeout
@@ -466,7 +468,7 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
           setVideoError(null);
           setConnectionStatus('');
 
-          // Greeting fires ONLY after video is visible — no more talking to a blank screen
+          // Greeting fires after video is visible + 800ms buffer for avatar to fully initialize
           setTimeout(() => {
             if (anamClientRef.current) {
               const ownerName = tenant?.ownerName;
@@ -478,7 +480,7 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
                 : `${timeGreeting}! I'm Finn, your finance manager. How can I help with your finances?`;
               finnTalk(anamClientRef.current, greeting);
             }
-          }, 300);
+          }, 800);
         },
         onConnectionClosed: (reason, details) => {
           console.log('[Anam/Finn] Connection closed', reason ? { reason, details } : undefined);
@@ -907,6 +909,9 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
                   opacity: videoState === 'connected' ? 1 : 0,
                   transition: 'opacity 0.3s ease-in-out',
                   backgroundColor: '#000',
+                  transform: 'translateZ(0)',
+                  willChange: 'transform, opacity',
+                  imageRendering: 'auto',
                 }}
               />
             </div>
@@ -1245,6 +1250,9 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
                     opacity: videoState === 'connected' ? 1 : 0,
                     transition: 'opacity 0.3s ease-in-out',
                     backgroundColor: '#000',
+                    transform: 'translateZ(0)',
+                    willChange: 'transform, opacity',
+                    imageRendering: 'auto',
                   }}
                 />
               </div>

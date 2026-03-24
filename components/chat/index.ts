@@ -56,3 +56,5 @@ export {
   ReasoningContent,
   useReasoning,
 } from './Reasoning';
+
+export { MessagePartRenderer } from './MessagePartRenderer';
