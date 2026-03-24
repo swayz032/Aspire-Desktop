@@ -3281,6 +3281,9 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
 
     if (streamRequested) {
       const backendStreamUrl = `${ORCHESTRATOR_URL}/v1/intents?stream=true`;
+      const streamController = new AbortController();
+      const streamTimeoutId = setTimeout(() => streamController.abort(), ORCHESTRATOR_TIMEOUT_MS);
+      req.on('close', () => streamController.abort());
 
       try {
         const backendResp = await fetch(backendStreamUrl, {
@@ -3294,6 +3297,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
             'X-Trace-Id': traceId,
           },
           body: JSON.stringify(req.body),
+          signal: streamController.signal,
         });
 
         if (!backendResp.ok || !backendResp.body) {
@@ -3344,6 +3348,7 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
         });
 
         await pump();
+        clearTimeout(streamTimeoutId);
 
         emitTraceEvent({
           traceId,
@@ -3355,6 +3360,8 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
           latencyMs: Date.now() - startedAt,
         });
       } catch (err) {
+        clearTimeout(streamTimeoutId);
+        const isTimeout = err instanceof Error && err.name === 'AbortError';
         if (!res.headersSent) {
           emitTraceEvent({
             traceId,
@@ -3362,13 +3369,13 @@ router.post('/api/orchestrator/intent', async (req: Request, res: Response) => {
             suiteId,
             stage: 'orchestrator',
             status: 'error',
-            message: 'Failed to connect to backend stream',
-            errorCode: 'STREAM_ERROR',
+            message: isTimeout ? 'Orchestrator stream timed out' : 'Failed to connect to backend stream',
+            errorCode: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'STREAM_ERROR',
             latencyMs: Date.now() - startedAt,
           });
-          return res.status(502).json({
-            error: 'STREAM_ERROR',
-            message: 'Failed to connect to backend stream',
+          return res.status(isTimeout ? 504 : 502).json({
+            error: isTimeout ? 'orchestrator_timeout' : 'STREAM_ERROR',
+            message: isTimeout ? 'Orchestrator stream timed out' : 'Failed to connect to backend stream',
             correlation_id: correlationId,
           });
         }

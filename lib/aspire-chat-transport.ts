@@ -117,13 +117,33 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
       ...resolvedBody,
     });
 
-    // Make the request
-    const response = await this.fetchFn(this.api, {
-      method: 'POST',
-      headers,
-      body,
-      signal: abortSignal,
-    });
+    // Make the request with a 60s safety-net timeout
+    // (server proxy has 90s, backend LLM has 30s — this catches edge cases)
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), 60_000);
+    const combinedSignal = abortSignal
+      ? AbortSignal.any([abortSignal, timeoutController.signal])
+      : timeoutController.signal;
+
+    let response: Response;
+    try {
+      response = await this.fetchFn(this.api, {
+        method: 'POST',
+        headers,
+        body,
+        signal: combinedSignal,
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.name === 'AbortError') {
+        const userMessage = this.mapError
+          ? this.mapError('orchestrator_timeout')
+          : 'Request timed out. Please try again.';
+        return this._createErrorAsTextStream(userMessage);
+      }
+      throw err;
+    }
+    clearTimeout(timeoutId);
 
     if (!response.ok || !response.body) {
       let errorText = `Orchestrator returned ${response.status}`;
