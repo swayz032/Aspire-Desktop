@@ -412,6 +412,7 @@ app.use(helmet({
         "https://maps.googleapis.com",
         "https://api.deepgram.com",
         "wss://api.deepgram.com",
+        "https://cdn.jsdelivr.net",
       ],
       mediaSrc: ["'self'", "data:", "blob:"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com"],
