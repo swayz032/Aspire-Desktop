@@ -315,6 +315,72 @@ router.get('/api/frontdesk/setup', async (req: Request, res: Response) => {
 });
 
 // =====================================================================
+// 1b. GET /api/frontdesk/config-by-number — resolve business config by phone number
+// Called by the gateway conversation-init webhook (internal, no JWT required)
+// Auth: x-elevenlabs-secret header (same as tool auth)
+// =====================================================================
+router.get('/api/frontdesk/config-by-number', async (req: Request, res: Response) => {
+  try {
+    // Auth: verify tool secret
+    const toolSecret = process.env.ELEVENLABS_TOOL_SECRET;
+    const providedSecret = req.headers['x-elevenlabs-secret'];
+    if (toolSecret && providedSecret !== toolSecret) {
+      return res.status(401).json({ code: 'AUTH_FAILED', message: 'Invalid secret' });
+    }
+
+    const calledNumber = req.query.called_number as string;
+    if (!calledNumber) {
+      return res.status(400).json({ code: 'MISSING_PARAM', message: 'called_number required' });
+    }
+
+    // Step 1: Resolve suite from phone number
+    const resolved = await resolveSuiteByBusinessNumber(calledNumber);
+    if (!resolved) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: 'No business found for this number' });
+    }
+
+    // Step 2: Load full business config
+    await setJwtClaims(resolved.suite_id, resolved.owner_office_id);
+    const result = await db.execute(sql`
+      SELECT bl.*,
+             sp.salutation, sp.first_name, sp.last_name, sp.company_name, sp.timezone
+      FROM public.business_lines bl
+      LEFT JOIN public.suite_profiles sp ON sp.suite_id = bl.suite_id
+      WHERE bl.suite_id = ${resolved.suite_id}::uuid
+      ORDER BY bl.created_at DESC
+      LIMIT 1
+    `);
+    const rows = (result.rows || result) as any[];
+    if (rows.length === 0) {
+      return res.status(404).json({ code: 'NO_CONFIG', message: 'No frontdesk config for this suite' });
+    }
+
+    const row = rows[0];
+    res.json({
+      suite_id: resolved.suite_id,
+      owner_office_id: resolved.owner_office_id,
+      owner_id: resolved.owner_office_id,
+      business_name: row.business_name,
+      pronunciation: row.pronunciation,
+      business_hours: row.business_hours,
+      after_hours_mode: row.after_hours_mode,
+      enabled_reasons: row.enabled_reasons,
+      questions_by_reason: row.questions_by_reason,
+      target_by_reason: row.target_by_reason,
+      team_members: row.team_members,
+      busy_mode: row.busy_mode,
+      greeting_voice_id: row.greeting_voice_id,
+      setup_complete: row.setup_complete,
+      timezone: row.timezone || 'America/New_York',
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown';
+    logger.error('GET /api/frontdesk/config-by-number error', { error: msg });
+    res.status(500).json({ code: 'INTERNAL', message: msg });
+  }
+});
+
+// =====================================================================
 // 2. PATCH /api/frontdesk/setup — upsert business_lines
 // =====================================================================
 router.patch('/api/frontdesk/setup', async (req: Request, res: Response) => {
