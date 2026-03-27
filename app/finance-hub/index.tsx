@@ -6,7 +6,7 @@ import { trackInteraction } from '@/lib/interactionTelemetry';
 type WebStyle = ViewStyle & Record<string, unknown>;
 import { Ionicons } from '@expo/vector-icons';
 import { FinanceHubShell } from '@/components/finance/FinanceHubShell';
-import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useVoice } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
@@ -501,7 +501,7 @@ function FinanceHubContent() {
   // Finn voice — ElevenLabs TTS output, STT degrades gracefully if unavailable
   const { suiteId, session } = useSupabase();
   const { tenant } = useTenant();
-  const finnVoice = useAgentVoice({
+  const finnVoice = useVoice({
     agent: 'finn',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,

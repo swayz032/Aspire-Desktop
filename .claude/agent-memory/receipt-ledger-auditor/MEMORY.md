@@ -82,6 +82,14 @@ The production `receipts` table schema is a simplified Trust Spine subset. Missi
 #### admin.py — /admin/ops/outbox/stream (line 3961)
 - MEDIUM: stream exception path (line 4027) logs error but does NOT emit a failure receipt.
 
+## Cycle 9 Audit — ElevenLabs V1 Hybrid Architecture (2026-03-27)
+Full detail in `cycle9-elevenlabs-hybrid-audit.md`. Key new patterns:
+- Gateway-layer `handleToolError` calls `reportGatewayIncident` only — incidents are NOT receipts (recurring pattern)
+- `writeReceipt` in telephonyEnterpriseRoutes.ts missing 6 of 8 Law #2 fields — systemic across ~20 call sites
+- Partial-failure (ElevenLabs import fails while Twilio succeeds) produces same receipt as full success — HIGH gap pattern
+- `twilio_auth_token` sent in POST body to ElevenLabs — accepted risk but must audit error response logging
+- Telephony `correlationId()` generates isolated `fd_...` IDs not linked to HTTP session correlation IDs
+
 #### admin.py — /admin/ops/incidents/report (line 914)
 - MEDIUM: JSON parse failure (line 938-944) returns 400 with NO receipt (denied receipt was stored for auth failure, but subsequent validation failures do not get receipts).
 - MEDIUM: validation error for missing title (line 954-961) returns 400 with NO receipt.

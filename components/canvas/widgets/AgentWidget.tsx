@@ -25,7 +25,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import type { VoiceStatus } from '@/hooks/useAgentVoice';
+import type { VoiceStatus } from '@/hooks/useVoice';
 import {
   playClickSound,
   playMicActivateSound,

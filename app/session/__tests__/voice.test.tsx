@@ -29,8 +29,8 @@ let capturedOnDiagnostic: ((diag: { stage: string }) => void) | undefined;
 let capturedAccessToken: string | undefined;
 let capturedSuiteId: string | undefined;
 
-jest.mock('@/hooks/useAgentVoice', () => ({
-  useAgentVoice: (options: {
+jest.mock('@/hooks/useVoice', () => ({
+  useVoice: (options: {
     agent: string;
     suiteId?: string;
     accessToken?: string;
@@ -287,7 +287,7 @@ describe('VoiceSession', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Auth guard — passes credentials to useAgentVoice (2 tests)
+  // Auth guard — passes credentials to useVoice (2 tests)
   // -------------------------------------------------------------------------
 
   describe('auth guard', () => {

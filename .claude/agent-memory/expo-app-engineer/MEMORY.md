@@ -13,8 +13,16 @@
 - Design tokens: `constants/tokens.ts` (Colors, Spacing, BorderRadius, Typography, Shadows, Canvas)
 - Card patterns: `constants/cardPatterns.ts` (CARD_BG=#1C1C1E, CARD_BORDER, SVG patterns)
 - Finance components: `components/finance/documents/` (barrel export via index.ts)
-- Server routes: `server/routes.ts` (5000+ lines, PandaDoc at ~L5170)
+- Server routes: `server/routes.ts` (6800+ lines, ElevenLabs agent-session at ~L6850, PandaDoc at ~L5170)
 - Static assets: `public/templates/*.png` served via express.static in server/index.ts
+
+## Voice Hook Architecture (Pass 2B - 2026-03-27)
+- `hooks/useAgentVoice.ts` — legacy orchestrator-routed hook (STT → LangGraph → TTS), KEPT for rollback
+- `hooks/useElevenLabsAgent.ts` — new ElevenLabs Conversational AI hook (Pass 2A)
+- `hooks/useVoice.ts` — barrel export with adapter, feature-flagged via EXPO_PUBLIC_USE_ELEVENLABS_AGENTS
+- Adapter bridges interface gap: fills isActive, interimTranscript, lastReceiptId, sendText, replayLastAudio
+- 9 consumers migrated: AvaDeskPanel, FinnDeskPanel, voice.tsx, inbox.tsx, conference-live.tsx, finance-hub/index.tsx, FinnChatModal.tsx, useCanvasVoice.ts, AgentWidget.tsx
+- Test mocks updated: voice.test.tsx, useCanvasVoice.test.ts (mock path changed to @/hooks/useVoice)
 
 ## Design Token Conventions
 - Colors.background: primary=#0a0a0a, secondary=#0d0d0d, tertiary=#0f0f0f, elevated=#141414
@@ -47,6 +55,20 @@
 - Express params type: use `as string` assertion for `req.params.id`
 - Auth: routes under /api/ are JWT-gated unless listed in PUBLIC_PATHS
 - Thumbnail resolution: UUID map > name-based fallback > PandaDoc API image
+- Route auth pattern: `requireAuth(req, res)` returns suiteId or null (sends 401)
+- Error payload: `voiceErrorPayload({ correlationId, traceId, errorCode, errorStage, message })`
+- Trace events: `emitTraceEvent({ traceId, correlationId, suiteId, agent, stage, status, message })`
+- TraceStage: 'session' | 'mic' | 'stt' | 'orchestrator' | 'tts' | 'playback'
+- voiceErrorPayload errorStage: 'tts' | 'stt' | 'orchestrator' | 'agent_session'
+
+## ElevenLabs SDK Types (@elevenlabs/react v0.13.1)
+- `useConversation` hook: accepts `HookOptions & ControlledState` (clientTools, micMuted, volume, callbacks)
+- SDK Status: 'disconnected' | 'connecting' | 'connected' | 'disconnecting'
+- SDK Mode: 'speaking' | 'listening'
+- SessionConfig: signedUrl (private WS) OR agentId (public) OR conversationToken (WebRTC)
+- `dynamicVariables: Record<string, string | number | boolean>` on session config
+- `clientTools: Record<string, (params: any) => Promise<string | number | void>>`
+- Returns: startSession, endSession, setVolume, status, isSpeaking, micMuted, sendUserMessage, sendContextualUpdate
 
 ## TypeScript Notes
 - Pre-existing TS errors in codebase (CelebrationModal, canvas widgets, mailRoutes) -- not our concern

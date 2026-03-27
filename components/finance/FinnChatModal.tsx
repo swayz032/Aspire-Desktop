@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
-import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useVoice } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
 import {
   MessageBubble,
@@ -38,7 +38,7 @@ function FinnChatModalInner({ visible, onClose }: Props) {
   const { suiteId, session } = useSupabase();
   const { tenant } = useTenant();
 
-  const finnVoice = useAgentVoice({
+  const finnVoice = useVoice({
     agent: 'finn',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,

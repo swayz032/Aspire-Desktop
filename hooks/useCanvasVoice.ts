@@ -6,14 +6,14 @@
  * to drive visual feedback (listening/thinking/speaking indicators).
  *
  * Law #1: Single Brain -- all voice traffic routes through orchestrator.
- * Law #6: Tenant Isolation -- suiteId injected via useAgentVoice.
+ * Law #6: Tenant Isolation -- suiteId injected via useVoice.
  *
  * Usage:
  *   const { startSession, endSession, isListening } = useCanvasVoice('finn');
  */
 
 import { useState, useCallback } from 'react';
-import { useAgentVoice, type VoiceStatus, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
+import { useVoice, type VoiceStatus, type VoiceDiagnosticEvent } from '@/hooks/useVoice';
 import {
   addActivityEvent,
   setActiveAgent,
@@ -88,7 +88,7 @@ export function useCanvasVoice(agent: AgentName): UseCanvasVoiceReturn {
     startSession: voiceStart,
     endSession: voiceEnd,
     replayLastAudio,
-  } = useAgentVoice({
+  } = useVoice({
     agent,
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token ?? undefined,

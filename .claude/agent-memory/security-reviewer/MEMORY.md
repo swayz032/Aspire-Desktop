@@ -260,3 +260,108 @@
 
 ### `bypassPermissions` Status
 - NOT FOUND in any Cycle 8 files reviewed.
+
+## Cycle 9 Findings (ElevenLabs V1 Hybrid Architecture) — 2026-03-27
+
+### CRITICAL
+- None found.
+
+### HIGH
+
+#### HIGH: suite_id extraction mismatch — tool calls will 400 in production
+- `elevenlabs-auth.ts:59` reads `suite_id` from `req.body` (request body)
+- `setup-elevenlabs-agents.ts:104` puts `suite_id` in the request **header** (`x-suite-id: {{suite_id}}`), NOT the body
+- The request body schemas for all 5 tool endpoints only define domain-specific fields (e.g., `query`, `domain`) — `suite_id` is NOT in any body schema
+- ElevenLabs injects dynamic variables into the body only when they appear in the request_body_schema
+- Result: `req.body.suite_id` is always undefined → every ElevenLabs tool call returns 400 `SCHEMA_VALIDATION_FAILED`
+- OR: if ElevenLabs does inject dynamic vars into the body regardless, then `suite_id` IS in the body but is **user-supplied** (from the session's dynamic_variables) not server-derived — this is a documented design constraint, not a bypass since the shared secret gates the endpoint
+- Fix: Either add `suite_id` to the request_body_schema for each server tool, OR update the middleware to also accept `suite_id` from the `x-suite-id` header when body field is absent, AND validate it is a UUID format
+- Note: The middleware's body-read design is explicitly documented ("ElevenLabs passes it via dynamic variables") — but the setup script doesn't match this design
+
+#### HIGH: `/v1/sessions` mounts elevenlabsToolsRouter without tool-secret middleware
+- `server.ts:178` — `app.use('/v1/sessions', standardRateLimiter, elevenlabsToolsRouter)`
+- The JWT `authMiddleware` at line 150 applies to all `/v1/*` routes, so `/v1/sessions/signed-url` is JWT-gated — CORRECT
+- BUT: the full `elevenlabsToolsRouter` is also mounted here, meaning `/v1/sessions/context`, `/v1/sessions/search`, `/v1/sessions/draft`, `/v1/sessions/approve`, `/v1/sessions/execute` are all accessible via JWT auth instead of the tool secret
+- These execution endpoints bypass the ElevenLabs tool secret verification when accessed via `/v1/sessions/` prefix
+- An authenticated JWT user can call `/v1/sessions/execute` directly and execute RED-tier actions without going through the ElevenLabs agent flow
+- `req.auth` is set by the JWT middleware, providing `suiteId` from a real JWT — so tenant isolation holds, but the full execute/approve/draft chain is now reachable from the web client without a capability token
+
+#### HIGH: `routes.ts:6931` — ElevenLabs error body logged without sanitization
+- `logger.error('[AgentSession] ElevenLabs returned ${elResp.status}', { agent, errorBody })`
+- `errorBody` is the raw text from ElevenLabs API error response, untruncated, unredacted
+- ElevenLabs error responses can include API key validity hints, quota messages, or agent configuration details
+- The `agent` value is validated as one of 5 known values — safe
+- `errorBody` is not truncated — could be large; no PII scrubbing
+- Fix: truncate errorBody to 200 chars and strip any key-like patterns before logging
+
+### MEDIUM
+
+#### MEDIUM: Rate limiter keyed to IP (not suite_id) on /v1/tools path
+- `server.ts:109` — `app.use('/v1/tools', standardRateLimiter, elevenlabsToolAuthMiddleware, elevenlabsToolsRouter)`
+- Rate limiter runs BEFORE auth middleware, so `req.auth` is undefined at that point
+- `suiteKeyGenerator` falls back to IP address when `req.auth?.suiteId` is undefined
+- An attacker with multiple IPs can bypass per-suite rate limits on the tool endpoints
+- This mirrors the Cycle 3/4 finding on `x-suite-id` header spoofing
+
+#### MEDIUM: Twilio credentials transmitted to ElevenLabs API in cleartext request body (telephony)
+- `telephonyEnterpriseRoutes.ts:79-85` — `twilio_account_sid` and `twilio_auth_token` sent to `api.elevenlabs.io/v1/convai/phone-numbers/create`
+- These are passed directly from env vars (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) to a third-party API
+- The request is HTTPS so transit is protected, but ElevenLabs now holds Twilio credentials
+- If ElevenLabs is compromised, Twilio account is accessible
+- No logging of the credentials — safe on that dimension
+- This is a design constraint of the ElevenLabs Twilio integration; risk should be documented
+
+#### MEDIUM: /v1/webhooks/elevenlabs accepts suite_id from ElevenLabs metadata with no UUID validation
+- `elevenlabs-webhooks.ts:107` — `const suiteId = typeof metadata.suite_id === 'string' ? metadata.suite_id : 'system'`
+- `suiteId` is set from the webhook payload's metadata field — this is HMAC-verified (the whole body is signed)
+- However, if a valid ElevenLabs agent is configured with a malicious suite_id (e.g., `system` or a fake UUID), that transcript is stored with the wrong tenant context
+- The HMAC signature means only legitimate ElevenLabs calls reach this code — not exploitable externally
+- Risk is an ElevenLabs platform compromise or misconfigured agent; not currently exploitable
+
+#### MEDIUM: `useElevenLabsAgent.ts:110-113` — raw HTTP error body included in thrown Error message
+- Error message: `Agent session request failed: HTTP ${resp.status} — ${body}` (line 112)
+- This `Error` is passed to `Sentry.captureException` (line 167) and `onError` callback
+- If the server sends a detailed error response, it appears in Sentry telemetry
+- `voiceErrorPayload` responses are structured and contain no secrets — risk is LOW for server-to-client
+- The raw body path (line 111 `.text()`) could expose any server-side message including internal error details from upstream
+
+#### MEDIUM: Dynamic variable `suite_id` supplied by client in session request (design constraint)
+- `useElevenLabsAgent.ts:258` — `suite_id: suiteId || ''` placed in `dynamicVariables` passed to `conversation.startSession()`
+- The server's `dynamic_variables` response overrides the client value (`...serverVars` spread at line 265), but if the server returns no `suite_id` in `dynamic_variables` (e.g., profile fetch fails), the client-supplied value is used
+- This client-supplied `suite_id` becomes the value ElevenLabs injects into tool calls as a dynamic variable
+- The tool secret middleware trusts this body-supplied `suite_id` for tenant routing
+- Mitigation: the server ALWAYS includes `suite_id: suiteId` in the dynamic_variables response (routes.ts:6977) where `suiteId` is from the JWT — so the server value wins in normal operation
+- Risk materializes if: (a) profile fetch throws and the catch block skips setting suite_id, or (b) dynamicVariables is empty
+
+#### MEDIUM: No receipt emitted for agent session failures (Law #2 gap)
+- `routes.ts` agent-session handler catches errors but only calls `captureServerException` and `emitTraceEvent`
+- No receipt is written to the database for agent session errors
+- The `emitTraceEvent` is an in-memory/log trace, not a governance receipt
+- For audit trail completeness, failed agent session requests (especially those that return 401/403) should emit a receipt
+
+### LOW
+
+#### LOW: `useVoice.ts:59` — dynamic require of useElevenLabsAgent silently falls back without alerting
+- If `require('@/hooks/useElevenLabsAgent')` throws (e.g., due to a runtime error, not just missing file), the fallback to legacy hook happens silently
+- All errors in the require catch block are swallowed — a broken ElevenLabs module would silently revert to legacy
+- This is labeled "Law #3: Fail closed" in the comment but the behavior is actually fail-open (falls back to old behavior)
+
+#### LOW: `elevenlabs-agents.ts` EXPO_PUBLIC_ agent IDs exposed at build time
+- `EXPO_PUBLIC_ELEVENLABS_AGENT_AVA` etc. are baked into the client bundle
+- ElevenLabs agent IDs (e.g., `agent_12345`) are semi-public by design — used to initiate sessions
+- However, if an attacker obtains these IDs they can try to initiate sessions against ElevenLabs directly (bypassing the signed URL flow) if they also have an API key
+- Since API key is server-side only, direct use of agent IDs without the API key is limited to reading public agent metadata
+- Risk: low, but agent IDs should be treated as semi-sensitive and rotatable
+
+#### LOW: `setup-elevenlabs-agents.ts` prints agent IDs to stdout in Railway export format
+- Lines 776-783 print `railway variables set ELEVENLABS_AGENT_ID_AVA=<agent_id>` to stdout
+- If CI/CD logs are publicly accessible or leaked, agent IDs are exposed
+- Not critical (agent IDs are not API keys) but worth noting
+
+### INFO
+- `bypassPermissions`: NOT FOUND in any V1 hybrid files reviewed.
+- `elevenlabs-auth.ts` timing-safe comparison: CORRECTLY implemented using `crypto.timingSafeEqual` with length pre-check
+- HMAC webhook verification in `elevenlabs-webhooks.ts`: CORRECTLY implemented — raw body used for HMAC, timing-safe comparison
+- ElevenLabs API key: stays server-side only. Client receives signed URL only. Verified across all files.
+- System prompts in setup script contain no secrets — voice IDs are non-sensitive identifiers (already in MEMORY.md)
+- `telephonyEnterpriseRoutes.ts` — ELEVENLABS_API_KEY set via `process.env` only, NOT logged

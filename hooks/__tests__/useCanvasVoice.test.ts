@@ -17,8 +17,8 @@ let mockStatus = 'idle';
 let mockOnStatusChange: ((status: string) => void) | undefined;
 let mockOnError: ((err: Error) => void) | undefined;
 
-jest.mock('@/hooks/useAgentVoice', () => ({
-  useAgentVoice: (options: {
+jest.mock('@/hooks/useVoice', () => ({
+  useVoice: (options: {
     agent: string;
     onStatusChange?: (status: string) => void;
     onError?: (err: Error) => void;
