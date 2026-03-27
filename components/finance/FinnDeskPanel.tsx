@@ -24,7 +24,7 @@ import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
 import { USE_ELEVENLABS_AGENTS } from '@/lib/elevenlabs-agents';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-const ANAM_FINN_EMBED_URL = 'https://lab.anam.ai/frame/a9954c24-7f8e-4932-81e7-482edc9f61fc';
+const ANAM_FINN_PERSONA_ID = 'a9954c24-7f8e-4932-81e7-482edc9f61fc';
 import { readSSEStream, extractResponseText, type SSEEvent } from '@/lib/sseStream';
 
 /* ── Web-only keyframe animations for immersive mode ─────── */
@@ -1241,19 +1241,11 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
           <View style={styles.videoSurface}>
             {/* V1 Hybrid: Anam hosted iframe (feature flag) — handles full pipeline */}
             {USE_ELEVENLABS_AGENTS && Platform.OS === 'web' ? (
-              <iframe
-                src={ANAM_FINN_EMBED_URL}
-                width="100%"
-                height="100%"
-                allow="microphone"
-                style={{
-                  border: 'none',
-                  borderRadius: 12,
-                  width: '100%',
-                  height: '100%',
-                  minHeight: 480,
-                  backgroundColor: '#000',
-                } as any}
+              <div
+                style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
+                dangerouslySetInnerHTML={{
+                  __html: `<anam-agent agent-id="${ANAM_FINN_PERSONA_ID}"></anam-agent><script src="https://unpkg.com/@anam-ai/agent-widget" async><\/script>`,
+                }}
               />
             ) : (
             <>

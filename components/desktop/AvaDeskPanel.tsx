@@ -20,7 +20,7 @@ import { useAvaChat } from '@/hooks/useAvaChat';
 import { USE_ELEVENLABS_AGENTS } from '@/lib/elevenlabs-agents';
 import type { UIMessage } from 'ai';
 
-const ANAM_AVA_EMBED_URL = 'https://lab.anam.ai/frame/58f82b89-8ae7-43cc-930d-be8def14dff3';
+const ANAM_AVA_PERSONA_ID = '58f82b89-8ae7-43cc-930d-be8def14dff3';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
@@ -681,19 +681,11 @@ function AvaDeskPanelInner() {
           <View style={styles.videoSurface}>
             {/* V1 Hybrid: Anam hosted iframe (feature flag) — handles full pipeline */}
             {USE_ELEVENLABS_AGENTS && Platform.OS === 'web' ? (
-              <iframe
-                src={ANAM_AVA_EMBED_URL}
-                width="100%"
-                height="100%"
-                allow="microphone"
-                style={{
-                  border: 'none',
-                  borderRadius: 12,
-                  width: '100%',
-                  height: '100%',
-                  minHeight: 480,
-                  backgroundColor: '#000',
-                } as any}
+              <div
+                style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
+                dangerouslySetInnerHTML={{
+                  __html: `<anam-agent agent-id="${ANAM_AVA_PERSONA_ID}"></anam-agent><script src="https://unpkg.com/@anam-ai/agent-widget" async><\/script>`,
+                }}
               />
             ) : (
             <>
