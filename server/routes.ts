@@ -2068,7 +2068,7 @@ function voiceErrorPayload(params: {
   correlationId: string;
   traceId?: string;
   errorCode: string;
-  errorStage: 'tts' | 'stt' | 'orchestrator';
+  errorStage: 'tts' | 'stt' | 'orchestrator' | 'agent_session';
   message: string;
   retryAfterMs?: number;
   error?: string;
@@ -6843,6 +6843,195 @@ router.post('/api/voice-test/bypass', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     logger.error('Voice bypass test error', { error: error instanceof Error ? error.message : 'unknown' });
     res.status(500).json({ error: error instanceof Error ? error.message : 'unknown', stage: 'unknown' });
+  }
+});
+
+// ─── ElevenLabs Conversational AI — Signed URL Proxy (Pass 2A) ───
+// Returns a signed URL for establishing an ElevenLabs agent session.
+// The ElevenLabs API key stays server-side (Law #9). The signed URL is
+// short-lived and scoped to a single conversation session.
+router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response) => {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-agent-session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const traceId = resolveTraceId(req, correlationId);
+  const startedAt = Date.now();
+  res.setHeader('X-Trace-Id', traceId);
+  res.setHeader('X-Correlation-Id', correlationId);
+  emitTraceEvent({
+    traceId,
+    correlationId,
+    suiteId,
+    agent: typeof req.body?.agent === 'string' ? req.body.agent : null,
+    stage: 'tts',
+    status: 'start',
+    message: 'Agent session signed URL request started',
+  });
+  try {
+    const { agent } = req.body;
+    if (!agent || typeof agent !== 'string') {
+      return res.status(400).json(voiceErrorPayload({
+        correlationId,
+        traceId,
+        errorCode: 'INVALID_AGENT',
+        errorStage: 'agent_session',
+        message: 'Agent name is required',
+      }));
+    }
+    const validAgents = ['ava', 'eli', 'finn', 'nora', 'sarah'];
+    if (!validAgents.includes(agent)) {
+      return res.status(400).json(voiceErrorPayload({
+        correlationId,
+        traceId,
+        errorCode: 'UNKNOWN_AGENT',
+        errorStage: 'agent_session',
+        message: `Unknown agent: ${agent}`,
+      }));
+    }
+
+    const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!ELEVENLABS_API_KEY) {
+      logger.warn('[AgentSession] ELEVENLABS_API_KEY is missing — agent sessions disabled');
+      return res.status(500).json(voiceErrorPayload({
+        correlationId,
+        traceId,
+        errorCode: 'AGENT_NOT_CONFIGURED',
+        errorStage: 'agent_session',
+        message: 'Agent session service not configured',
+      }));
+    }
+
+    // Resolve the agent ID from environment variables
+    const agentEnvKey = `ELEVENLABS_AGENT_${agent.toUpperCase()}`;
+    const agentId = process.env[agentEnvKey];
+    if (!agentId) {
+      logger.warn(`[AgentSession] ${agentEnvKey} not configured for agent "${agent}"`);
+      return res.status(500).json(voiceErrorPayload({
+        correlationId,
+        traceId,
+        errorCode: 'AGENT_ID_NOT_CONFIGURED',
+        errorStage: 'agent_session',
+        message: `Agent ID not configured for ${agent}`,
+      }));
+    }
+
+    // Fetch signed URL from ElevenLabs API
+    const elResp = await fetch(
+      `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${encodeURIComponent(agentId)}`,
+      {
+        method: 'GET',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+        },
+      },
+    );
+
+    if (!elResp.ok) {
+      const errorBody = await elResp.text().catch(() => '');
+      logger.error(`[AgentSession] ElevenLabs returned ${elResp.status}`, { agent, errorBody });
+      emitTraceEvent({
+        traceId,
+        correlationId,
+        suiteId,
+        agent,
+        stage: 'tts',
+        status: 'error',
+        errorCode: 'ELEVENLABS_API_ERROR',
+        message: `ElevenLabs API returned ${elResp.status}`,
+        latencyMs: Date.now() - startedAt,
+      });
+      return res.status(502).json(voiceErrorPayload({
+        correlationId,
+        traceId,
+        errorCode: 'ELEVENLABS_API_ERROR',
+        errorStage: 'agent_session',
+        message: 'Failed to obtain signed URL from ElevenLabs',
+      }));
+    }
+
+    const elData = await elResp.json();
+    const signedUrl = elData.signed_url;
+    if (!signedUrl || typeof signedUrl !== 'string') {
+      logger.error('[AgentSession] ElevenLabs response missing signed_url', { agent, elData });
+      return res.status(502).json(voiceErrorPayload({
+        correlationId,
+        traceId,
+        errorCode: 'MISSING_SIGNED_URL',
+        errorStage: 'agent_session',
+        message: 'ElevenLabs response did not contain a signed URL',
+      }));
+    }
+
+    // Fetch user profile from Supabase for dynamic variables (optional enrichment)
+    let dynamicVariables: Record<string, string | number | boolean> = {};
+    try {
+      if (supabaseAdmin) {
+        const { data: profile } = await supabaseAdmin
+          .from('suite_profiles')
+          .select('owner_name, business_name, salutation, last_name, industry, office_id')
+          .eq('suite_id', suiteId)
+          .maybeSingle();
+
+        if (profile) {
+          dynamicVariables = {
+            suite_id: suiteId,
+            owner_name: profile.owner_name || '',
+            business_name: profile.business_name || '',
+            salutation: profile.salutation || 'Mr.',
+            last_name: profile.last_name || '',
+            industry: profile.industry || '',
+            office_id: profile.office_id || '',
+          };
+        }
+      }
+    } catch (profileErr) {
+      // Non-fatal: agent session works without profile enrichment
+      logger.warn('[AgentSession] Failed to fetch suite profile', {
+        suiteId,
+        error: profileErr instanceof Error ? profileErr.message : 'unknown',
+      });
+    }
+
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      agent,
+      stage: 'tts',
+      status: 'ok',
+      message: 'Agent session signed URL obtained',
+      latencyMs: Date.now() - startedAt,
+    });
+
+    return res.json({
+      signed_url: signedUrl,
+      agent_id: agentId,
+      dynamic_variables: dynamicVariables,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'unknown';
+    logger.error('[AgentSession] Unexpected error', { error: message });
+    captureServerException(error instanceof Error ? error : new Error(message), {
+      tags: { voice_stage: 'agent_session', provider: 'elevenlabs' },
+    });
+    emitTraceEvent({
+      traceId,
+      correlationId,
+      suiteId,
+      agent: typeof req.body?.agent === 'string' ? req.body.agent : null,
+      stage: 'tts',
+      status: 'error',
+      errorCode: 'AGENT_SESSION_UNEXPECTED',
+      message,
+      latencyMs: Date.now() - startedAt,
+    });
+    return res.status(500).json(voiceErrorPayload({
+      correlationId,
+      traceId,
+      errorCode: 'AGENT_SESSION_UNEXPECTED',
+      errorStage: 'agent_session',
+      message: 'Unexpected error creating agent session',
+    }));
   }
 });
 

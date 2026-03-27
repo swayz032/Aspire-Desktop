@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { AvaOrbVideo, OrbState } from '@/components/AvaOrbVideo';
 import { useSupabase, useTenant } from '@/providers';
-import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
+import { useVoice, type VoiceDiagnosticEvent } from '@/hooks/useVoice';
 import { getCurrentSession } from '@/data/session';
 import type { AgentName } from '@/lib/elevenlabs';
 import { ConfirmationModal } from '@/components/session/ConfirmationModal';
@@ -17,7 +17,7 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { useKeepAwake } from '@/hooks/useKeepAwake';
 
-/** Map staff participant IDs from the session wizard to AgentName for useAgentVoice. */
+/** Map staff participant IDs from the session wizard to AgentName for useVoice. */
 const STAFF_TO_AGENT: Record<string, AgentName> = {
   'staff-eli': 'eli',
   'staff-finn': 'finn',
@@ -88,8 +88,8 @@ function VoiceSession() {
     setToastVisible(true);
   };
 
-  // --- Real voice pipeline via useAgentVoice (same hook used in AvaDeskPanel) ---
-  const voice = useAgentVoice({
+  // --- Real voice pipeline via useVoice (same hook used in AvaDeskPanel) ---
+  const voice = useVoice({
     agent: agentName,
     suiteId: suiteId ?? undefined,
     accessToken: authSession?.access_token,

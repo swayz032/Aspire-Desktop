@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
-import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
+import { useVoice, type VoiceDiagnosticEvent } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput, sendThinkingFiller } from '@/lib/anam';
 import {
@@ -17,7 +17,10 @@ import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { useAvaChat } from '@/hooks/useAvaChat';
+import { USE_ELEVENLABS_AGENTS } from '@/lib/elevenlabs-agents';
 import type { UIMessage } from 'ai';
+
+const ANAM_AVA_EMBED_URL = 'https://lab.anam.ai/frame/58f82b89-8ae7-43cc-930d-be8def14dff3';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
@@ -243,7 +246,7 @@ function AvaDeskPanelInner() {
   }, [session?.access_token]);
 
   // Orchestrator-routed voice: STT â†' Orchestrator â†' TTS (Law #1: Single Brain)
-  const avaVoice = useAgentVoice({
+  const avaVoice = useVoice({
     agent: 'ava',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
@@ -676,9 +679,25 @@ function AvaDeskPanelInner() {
           </View>
         ) : (
           <View style={styles.videoSurface}>
-            {/* Anam <video> element must be in DOM BEFORE streamToVideoElement() is called.
-                Render it during both 'connecting' and 'connected' states. Hidden during connecting
-                so the spinner shows, visible once connected. */}
+            {/* V1 Hybrid: Anam hosted iframe (feature flag) — handles full pipeline */}
+            {USE_ELEVENLABS_AGENTS && Platform.OS === 'web' ? (
+              <iframe
+                src={ANAM_AVA_EMBED_URL}
+                width="100%"
+                height="100%"
+                allow="microphone"
+                style={{
+                  border: 'none',
+                  borderRadius: 12,
+                  width: '100%',
+                  height: '100%',
+                  minHeight: 480,
+                  backgroundColor: '#000',
+                } as any}
+              />
+            ) : (
+            <>
+            {/* Legacy Anam SDK <video> element — kept for rollback */}
             {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
               <video
                 id="anam-video-element"
@@ -762,6 +781,8 @@ function AvaDeskPanelInner() {
                   )}
                 </View>
               </ImageBackground>
+            )}
+            </>
             )}
             {/* End session overlay — floats above video when connected */}
             {videoState === 'connected' && (

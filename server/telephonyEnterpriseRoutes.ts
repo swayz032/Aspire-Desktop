@@ -42,6 +42,81 @@ import { applyTenantContext } from './tenantContext';
 
 const router = Router();
 
+// =====================================================================
+// V1 HYBRID: ElevenLabs Agent Integration (feature-flagged)
+// When enabled, Twilio numbers are imported into ElevenLabs and assigned
+// to Sarah agent. ElevenLabs handles the voice conversation; Twilio
+// stays as PSTN infrastructure. Rollback: set flag to false and Twilio
+// webhooks point back to our server.
+// =====================================================================
+const USE_ELEVENLABS_AGENTS = process.env.USE_ELEVENLABS_AGENTS === 'true';
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
+const ELEVENLABS_AGENT_SARAH = process.env.ELEVENLABS_AGENT_SARAH || '';
+
+/**
+ * Import a Twilio phone number into ElevenLabs and assign Sarah agent.
+ * ElevenLabs auto-configures the Twilio webhooks to point at their infrastructure.
+ * Only called when USE_ELEVENLABS_AGENTS is true.
+ */
+async function importNumberToElevenLabs(
+  phoneNumber: string,
+  twilioAccountSid: string,
+  twilioAuthToken: string,
+  label: string,
+): Promise<{ phone_number_id: string } | null> {
+  if (!USE_ELEVENLABS_AGENTS || !ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_SARAH) {
+    return null;
+  }
+
+  try {
+    // Step 1: Import phone number
+    const importResp = await fetch('https://api.elevenlabs.io/v1/convai/phone-numbers/create', {
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        phone_number: phoneNumber,
+        label,
+        provider: 'twilio',
+        twilio_account_sid: twilioAccountSid,
+        twilio_auth_token: twilioAuthToken,
+      }),
+    });
+
+    if (!importResp.ok) {
+      const err = await importResp.text().catch(() => 'unknown');
+      logger.error('ElevenLabs phone import failed', { status: importResp.status, error: err.slice(0, 200) });
+      return null;
+    }
+
+    const importData = await importResp.json();
+    const phoneNumberId = importData.phone_number_id;
+
+    // Step 2: Assign Sarah agent to handle inbound calls
+    const assignResp = await fetch(`https://api.elevenlabs.io/v1/convai/phone-numbers/${phoneNumberId}/agent`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ agent_id: ELEVENLABS_AGENT_SARAH }),
+    });
+
+    if (!assignResp.ok) {
+      logger.warn('ElevenLabs agent assignment failed', { phoneNumberId, status: assignResp.status });
+      // Number imported but agent not assigned — non-fatal, can be fixed in dashboard
+    }
+
+    logger.info('ElevenLabs phone number imported + Sarah assigned', { phoneNumber, phoneNumberId });
+    return { phone_number_id: phoneNumberId };
+  } catch (error) {
+    logger.error('ElevenLabs phone import error', { error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
+
 type CallsCacheEntry = {
   expiresAt: number;
   payload: { calls: any[]; total: number };
@@ -1389,8 +1464,25 @@ async function processOutboxJob(job: any): Promise<void> {
         WHERE business_line_id = ${p.business_line_id}::uuid AND suite_id = ${suite_id}::uuid
       `);
 
+      // V1 Hybrid: Import number into ElevenLabs and assign Sarah agent
+      let elevenLabsPhoneId: string | null = null;
+      if (USE_ELEVENLABS_AGENTS) {
+        const twilioSid = process.env.TWILIO_ACCOUNT_SID || '';
+        const twilioToken = process.env.TWILIO_AUTH_TOKEN || '';
+        const elResult = await importNumberToElevenLabs(
+          p.e164, twilioSid, twilioToken,
+          `Aspire Sarah - ${p.e164}`,
+        );
+        elevenLabsPhoneId = elResult?.phone_number_id || null;
+      }
+
       await writeReceipt(suite_id, 'frontdesk.number.provisioned', {
         e164: p.e164, twilio_sid: number.sid,
+        elevenlabs_phone_id: elevenLabsPhoneId,
+        elevenlabs_enabled: USE_ELEVENLABS_AGENTS,
+        elevenlabs_import_status: USE_ELEVENLABS_AGENTS
+          ? (elevenLabsPhoneId ? 'success' : 'failed')
+          : 'skipped',
       }, p.correlation_id);
       break;
     }

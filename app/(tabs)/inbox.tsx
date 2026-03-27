@@ -14,7 +14,7 @@ import { MailThread, MailDetail, MailMessage } from '@/types/mail';
 import { Contact } from '@/types/contacts';
 import { useDesktop } from '@/lib/useDesktop';
 import { DesktopPageWrapper } from '@/components/desktop/DesktopPageWrapper';
-import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
+import { useVoice, type VoiceDiagnosticEvent } from '@/hooks/useVoice';
 import { useSupabase } from '@/providers';
 import { useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
@@ -1096,7 +1096,7 @@ function InboxScreen() {
     [],
   );
 
-  const eliVoice = useAgentVoice({
+  const eliVoice = useVoice({
     agent: 'eli',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,

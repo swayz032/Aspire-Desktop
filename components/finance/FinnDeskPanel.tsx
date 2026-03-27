@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
-import { useAgentVoice, type VoiceDiagnosticEvent } from '@/hooks/useAgentVoice';
+import { useVoice, type VoiceDiagnosticEvent } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput, sendThinkingFiller } from '@/lib/anam';
 import { speakText } from '@/lib/elevenlabs';
@@ -21,7 +21,10 @@ import {
   type AgentActivityEvent,
 } from '@/components/chat';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
+import { USE_ELEVENLABS_AGENTS } from '@/lib/elevenlabs-agents';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+
+const ANAM_FINN_EMBED_URL = 'https://lab.anam.ai/frame/a9954c24-7f8e-4932-81e7-482edc9f61fc';
 import { readSSEStream, extractResponseText, type SSEEvent } from '@/lib/sseStream';
 
 /* ── Web-only keyframe animations for immersive mode ─────── */
@@ -339,7 +342,7 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
   }, [templateContext, activeTab, videoState, videoOnly, session?.access_token, showVoiceError]);
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
-  const finnVoice = useAgentVoice({
+  const finnVoice = useVoice({
     agent: 'finn',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
@@ -1236,6 +1239,25 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
           </View>
         ) : (
           <View style={styles.videoSurface}>
+            {/* V1 Hybrid: Anam hosted iframe (feature flag) — handles full pipeline */}
+            {USE_ELEVENLABS_AGENTS && Platform.OS === 'web' ? (
+              <iframe
+                src={ANAM_FINN_EMBED_URL}
+                width="100%"
+                height="100%"
+                allow="microphone"
+                style={{
+                  border: 'none',
+                  borderRadius: 12,
+                  width: '100%',
+                  height: '100%',
+                  minHeight: 480,
+                  backgroundColor: '#000',
+                } as any}
+              />
+            ) : (
+            <>
+            {/* Legacy Anam SDK video — kept for rollback */}
             {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
               <div style={{ position: 'absolute', inset: '0', overflow: 'hidden', zIndex: 1, borderRadius: 'inherit' }}>
                 <video
@@ -1353,6 +1375,8 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
                   </View>
                 )}
               </ImageBackground>
+            )}
+            </>
             )}
           </View>
         )}

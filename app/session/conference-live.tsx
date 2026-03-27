@@ -13,7 +13,7 @@ import { ConferenceChatDrawer, ChatMessage as DrawerChatMessage, MaterialItem as
 import { AvatarTileSurface } from '@/components/session/AvatarTileSurface';
 import { Image } from 'expo-image';
 import { Platform } from 'react-native';
-import { useAgentVoice } from '@/hooks/useAgentVoice';
+import { useVoice } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useParticipants, useTracks, useRoomContext } from '@livekit/components-react';
@@ -507,7 +507,7 @@ function ConferenceLive() {
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const { tenant } = useTenant();
-  const noraVoice = useAgentVoice({
+  const noraVoice = useVoice({
     agent: 'nora',
     suiteId: suiteId ?? undefined,
     accessToken: session?.access_token,
