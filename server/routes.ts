@@ -6917,7 +6917,7 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
 
     // Fetch signed URL from ElevenLabs API
     const elResp = await fetch(
-      `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${encodeURIComponent(agentId)}`,
+      `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`,
       {
         method: 'GET',
         headers: {
