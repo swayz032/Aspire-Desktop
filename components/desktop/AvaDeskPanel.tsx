@@ -191,46 +191,6 @@ function AvaDeskPanelInner() {
     [setMessages],
   );
 
-  // Fetch a dynamic greeting from the orchestrator on mount
-  useEffect(() => {
-    if (isLocalSyntheticAuthBypass()) return;
-    if (!suiteId || !session?.access_token) return;
-    const fetchGreeting = async () => {
-      try {
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'X-Suite-Id': suiteId,
-          'Authorization': `Bearer ${session.access_token}`,
-        };
-        const resp = await fetch('/api/orchestrator/intent', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ agent: 'ava', text: '__greeting__', channel: 'chat' }),
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          // Backend returns {response: {text: "..."}} or {text: "..."} or {response: "..."}
-          let greeting = '';
-          if (typeof data.response === 'string') greeting = data.response;
-          else if (data.response?.text) greeting = data.response.text;
-          else if (typeof data.text === 'string') greeting = data.text;
-
-          // Filter out generic/outdated greetings that mention old agent names or list capabilities
-          const isGeneric = greeting && /loop in specialists|Quinn|Clara.*legal|good to see you.*I can handle|I can handle invoices/i.test(greeting);
-          if (greeting && !isGeneric) {
-            setMessages([{
-              id: `greeting_${Date.now()}`,
-              role: 'assistant' as const,
-              parts: [{ type: 'text' as const, text: greeting }],
-            }]);
-          }
-        }
-      } catch {
-        // Silent fail — no greeting is better than a stale one
-      }
-    };
-    fetchGreeting();
-  }, [suiteId, session?.access_token, setMessages]);
 
   useEffect(() => {
     if (isLocalSyntheticAuthBypass()) return;
