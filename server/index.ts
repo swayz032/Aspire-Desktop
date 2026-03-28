@@ -892,9 +892,9 @@ app.get('/terms', (req, res) => {
 const publicPath = path.join(process.cwd(), 'public');
 const distPath = path.join(process.cwd(), 'dist');
 
-// Serve Ionicons font directly — the bundled path has @/+ chars that break on some systems
-app.get('/assets/:path(*)', (req, res, next) => {
-  if (req.params.path.includes('Ionicons') && req.params.path.endsWith('.ttf')) {
+// Serve Ionicons font directly — the bundled path has @/+ chars that break express.static
+app.use((req, res, next) => {
+  if (req.method === 'GET' && req.path.includes('Ionicons') && req.path.endsWith('.ttf')) {
     return res.sendFile(path.join(publicPath, 'fonts', 'Ionicons.ttf'));
   }
   next();
