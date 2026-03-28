@@ -7,6 +7,7 @@ import { Badge } from './ui/Badge';
 import { DocumentThumbnail } from './DocumentThumbnail';
 import { useRouter } from 'expo-router';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useSupabase } from '@/providers';
 
 interface TodayPlanItem {
   id: string;
@@ -28,7 +29,13 @@ function TodayPlanTabsInner({ planItems }: { planItems: TodayPlanItem[] }) {
   useEffect(() => {
     const checkOnboarding = async () => {
       try {
-        const resp = await fetch('/api/onboarding/status');
+        const headers: Record<string, string> = {};
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const { data: { session: s } } = await supabase.auth.getSession();
+          if (s?.access_token) headers['Authorization'] = `Bearer ${s.access_token}`;
+        } catch {}
+        const resp = await fetch('/api/onboarding/status', { headers });
         if (resp.ok) {
           const data = await resp.json();
           setIsInboxSetup(!!data.inbox_configured || !!data.email_connected);
