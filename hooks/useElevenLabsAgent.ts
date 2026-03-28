@@ -298,6 +298,10 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       await conversation.startSession({
         signedUrl: signed_url,
         dynamicVariables,
+        workletPaths: {
+          audioConcatProcessor: '/elevenlabs/audioConcatProcessor.js',
+          rawAudioProcessor: '/elevenlabs/rawAudioProcessor.js',
+        },
       });
 
       devLog(`[ElevenLabsAgent] Session started for agent "${agent}"`);
