@@ -209,10 +209,15 @@ function AvaDeskPanelInner() {
         });
         if (resp.ok) {
           const data = await resp.json();
-          const greeting = data.response || data.text;
-          // Filter out generic/outdated greetings that list agent names
-          const isGeneric = greeting && /loop in specialists|Quinn.*invoicing|Clara.*legal|good to see you.*I can handle/i.test(greeting);
-          if (greeting && typeof greeting === 'string' && !isGeneric) {
+          // Backend returns {response: {text: "..."}} or {text: "..."} or {response: "..."}
+          let greeting = '';
+          if (typeof data.response === 'string') greeting = data.response;
+          else if (data.response?.text) greeting = data.response.text;
+          else if (typeof data.text === 'string') greeting = data.text;
+
+          // Filter out generic/outdated greetings that mention old agent names or list capabilities
+          const isGeneric = greeting && /loop in specialists|Quinn|Clara.*legal|good to see you.*I can handle|I can handle invoices/i.test(greeting);
+          if (greeting && !isGeneric) {
             setMessages([{
               id: `greeting_${Date.now()}`,
               role: 'assistant' as const,
