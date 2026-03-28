@@ -397,10 +397,10 @@ function DesktopHeaderInner({
                   ]}
                   onPress={async () => {
                     if (item.id === 'signout') {
-                      setActivePanel('none');
-                      // Sign out and redirect — always redirect even if signOut fails
-                      signOut().catch((e: any) => console.error('Sign out error:', e));
-                      router.replace('/(auth)/login' as any);
+                      // Don't close the panel first — unmounting aborts the handler on web.
+                      // Sign out, redirect, panel unmounts naturally with the page.
+                      try { await signOut(); } catch {}
+                      window.location.href = '/login';
                       return;
                     }
                     setActivePanel('none');
