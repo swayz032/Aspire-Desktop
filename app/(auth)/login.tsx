@@ -429,8 +429,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
           </p>
         </div>
 
-        {/* ── WAITLIST (Ecommerce) ── */}
-        {consoleDef.mode === 'waitlist' ? (
+        {/* Only render form inputs for the active card — prevents browser autofill leak */}
+        {!isActive ? null : consoleDef.mode === 'waitlist' ? (
           <>
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 7,

@@ -328,6 +328,15 @@ function useAuthGate() {
       // The login page clears stale sessions on mount and handles its own
       // post-login navigation via router.replace('/(tabs)') after signIn.
       // Always sign out stale sessions when entering login — prevents auto-login glitch.
+      // Reset body/html styles that the landing page may have set
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        document.body.style.overflow = 'hidden';
+        document.body.style.height = '100%';
+        document.documentElement.style.overflow = 'hidden';
+        document.documentElement.style.height = '100%';
+        const root = document.getElementById('root');
+        if (root) { root.style.overflow = 'hidden'; root.style.height = '100%'; root.style.minHeight = ''; root.style.display = 'flex'; }
+      }
       navigate('/(tabs)');
     } else if (session && inAuthGroup && onLoginPage) {
       // Session exists but user is on login page — sign out the stale session
