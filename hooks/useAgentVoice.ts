@@ -59,6 +59,8 @@ interface UseAgentVoiceOptions {
   agent: AgentName;
   /** Suite ID for tenant isolation (Law #6). Required. */
   suiteId?: string;
+  /** Supabase user ID — passed to ElevenLabs as conversation userId. */
+  userId?: string;
   /** JWT access token for auth (Law #3). Required in production. */
   accessToken?: string;
   /** User profile for personalized greetings and context. */

@@ -286,8 +286,8 @@ function OverviewTab({ data }: { data: any }) {
         })]}>
           <Text style={[Typography.headline, { color: Colors.text.primary, marginBottom: 4 }]}>P&L Trend</Text>
           <Text style={[Typography.small, { color: Colors.text.muted, marginBottom: 20 }]}>Monthly revenue vs expenses</Text>
-          <div style={{ animation: 'fadeSlideUp 0.8s ease-out 0.6s both' }}>
-            <ResponsiveContainer width="100%" height={260}>
+          <div style={{ animation: 'fadeSlideUp 0.8s ease-out 0.6s both', minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height={260} minWidth={0}>
               <AreaChart data={pnlTrendData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="pnlRevGrad" x1="0" y1="0" x2="0" y2="1">
@@ -322,8 +322,8 @@ function OverviewTab({ data }: { data: any }) {
           })]}>
             <Text style={[Typography.headline, { color: Colors.text.primary, marginBottom: 4 }]}>Expense Breakdown</Text>
             <Text style={[Typography.small, { color: Colors.text.muted, marginBottom: 16 }]}>By account category</Text>
-            <div className="pie-chart-animated" style={{ animation: 'fadeSlideUp 0.8s ease-out 0.7s both' }}>
-              <ResponsiveContainer width="100%" height={220}>
+            <div className="pie-chart-animated" style={{ animation: 'fadeSlideUp 0.8s ease-out 0.7s both', minWidth: 0 }}>
+              <ResponsiveContainer width="100%" height={220} minWidth={0}>
                 <PieChart>
                   <defs>
                     {expenseBreakdown.map((entry, i) => (
@@ -370,8 +370,8 @@ function OverviewTab({ data }: { data: any }) {
             })]}>
               <Text style={[Typography.headline, { color: Colors.text.primary, marginBottom: 4 }]}>Cash Flow</Text>
               <Text style={[Typography.small, { color: Colors.text.muted, marginBottom: 16 }]}>Operating / Investing / Financing</Text>
-              <div className="bar-chart-container" style={{ animation: 'fadeSlideUp 0.8s ease-out 0.8s both', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))' }}>
-                <ResponsiveContainer width="100%" height={220}>
+              <div className="bar-chart-container" style={{ animation: 'fadeSlideUp 0.8s ease-out 0.8s both', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))', minWidth: 0 }}>
+                <ResponsiveContainer width="100%" height={220} minWidth={0}>
                   <BarChart data={cashFlowSections} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
                     <defs>
                       <linearGradient id="cashFlowPosGrad" x1="0" y1="0" x2="0" y2="1">

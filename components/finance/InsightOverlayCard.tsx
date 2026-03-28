@@ -62,7 +62,7 @@ function InsightOverlayCardInner({ quote, sparkData, accentColor, loading }: Ins
           height: 36,
           opacity: 0.7,
         }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <AreaChart data={sparkData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
               <defs>
                 <linearGradient id={sparkGradientId} x1="0" y1="0" x2="0" y2="1">

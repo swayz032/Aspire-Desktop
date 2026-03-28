@@ -91,6 +91,7 @@ const PUBLIC_PATHS = [
   '/api/auth/validate-invite-code', // Private beta invite gate — rate-limited, no JWT needed
   '/api/auth/signup',               // Private beta signup — rate-limited, invite code validated server-side
   '/api/config/public',             // Public client config (Google Places key) — no secrets, referrer-restricted
+  '/api/geolocation',               // Server-side geolocation proxy (ipapi.co blocks browser CORS)
   // Places API requires auth to prevent quota exhaustion
 ];
 
@@ -417,6 +418,7 @@ app.use(helmet({
         "https://*.ingest.sentry.io",
         "https://unpkg.com",
         "https://ipapi.co",
+        "https://api.open-meteo.com",
       ],
       mediaSrc: ["'self'", "data:", "blob:"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com"],

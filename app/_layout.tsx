@@ -2,10 +2,31 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
+import { LogBox, View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import React, { useEffect, useRef, useState } from 'react';
+
+// Suppress known React Native framework warnings on web (not fixable in app code)
+LogBox.ignoreLogs([
+  'Cannot record touch end without a touch start',
+  'Animated: `useNativeDriver` is not supported',
+]);
+
+// LogBox only suppresses the RN yellow box, not browser console.
+// Patch console.warn on web to filter these RN-internal warnings from DevTools.
+if (Platform.OS === 'web' && typeof console !== 'undefined') {
+  const _origWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    const msg = typeof args[0] === 'string' ? args[0] : '';
+    if (
+      msg.includes('Cannot record touch end without a touch start') ||
+      msg.includes('`useNativeDriver` is not supported') ||
+      msg.includes('width') && msg.includes('height') && msg.includes('chart should be greater than 0')
+    ) return;
+    _origWarn.apply(console, args);
+  };
+}
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';

@@ -215,6 +215,7 @@ function AvaDeskPanelInner() {
   const avaVoice = useVoice({
     agent: 'ava',
     suiteId: suiteId ?? undefined,
+    userId: session?.user?.id,
     accessToken: session?.access_token,
     userProfile: tenant ? {
       ownerName: tenant.ownerName,

@@ -5952,6 +5952,23 @@ router.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Geolocation Proxy (ipapi.co blocks browser CORS) ───
+router.get('/api/geolocation', async (_req: Request, res: Response) => {
+  try {
+    const resp = await fetch('https://ipapi.co/json/', {
+      headers: { 'User-Agent': 'Aspire-Server/1.0' },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!resp.ok) {
+      return res.json({ latitude: null, longitude: null, error: 'upstream_error' });
+    }
+    const data = await resp.json();
+    res.json({ latitude: data.latitude, longitude: data.longitude, city: data.city, region: data.region });
+  } catch {
+    res.json({ latitude: null, longitude: null, error: 'timeout' });
+  }
+});
+
 // ─── PandaDoc Health Check ───
 router.get('/api/health/pandadoc', async (_req: Request, res: Response) => {
   try {

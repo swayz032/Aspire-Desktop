@@ -74,8 +74,8 @@ async function loadWeather(): Promise<WeatherState> {
     return fetchWeatherForCoords(fromBrowser.lat, fromBrowser.lon);
   }
 
-  // 2. Fallback: IP-based approximate location (no permission needed)
-  const ipRes = await fetch('https://ipapi.co/json/');
+  // 2. Fallback: IP-based approximate location via server proxy (ipapi.co blocks browser CORS)
+  const ipRes = await fetch('/api/geolocation');
   const ipData = await ipRes.json();
   if (ipData.latitude && ipData.longitude) {
     return fetchWeatherForCoords(ipData.latitude, ipData.longitude);

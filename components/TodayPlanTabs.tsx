@@ -23,19 +23,18 @@ interface TodayPlanItem {
 
 function TodayPlanTabsInner({ planItems }: { planItems: TodayPlanItem[] }) {
   const router = useRouter();
+  const { session } = useSupabase();
   const displayedPlan = planItems.slice(0, 4);
   const [isInboxSetup, setIsInboxSetup] = useState<boolean | null>(null);
 
   useEffect(() => {
+    // Wait for session to be available before checking onboarding status
+    if (!session?.access_token) return;
     const checkOnboarding = async () => {
       try {
-        const headers: Record<string, string> = {};
-        try {
-          const { supabase } = await import('@/lib/supabase');
-          const { data: { session: s } } = await supabase.auth.getSession();
-          if (s?.access_token) headers['Authorization'] = `Bearer ${s.access_token}`;
-        } catch {}
-        const resp = await fetch('/api/onboarding/status', { headers });
+        const resp = await fetch('/api/onboarding/status', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
         if (resp.ok) {
           const data = await resp.json();
           setIsInboxSetup(!!data.inbox_configured || !!data.email_connected);
@@ -45,7 +44,7 @@ function TodayPlanTabsInner({ planItems }: { planItems: TodayPlanItem[] }) {
       }
     };
     checkOnboarding();
-  }, []);
+  }, [session?.access_token]);
 
   return (
     <Card variant="elevated" style={styles.container}>

@@ -80,7 +80,7 @@ function SegmentRingCardInner({ title, centerValue, centerLabel, segments, accen
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <div style={{ position: 'relative' as const, width: 110, height: 110, flexShrink: 0, minWidth: 110, minHeight: 110 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <PieChart>
 
                 <defs>

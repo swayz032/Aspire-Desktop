@@ -51,15 +51,18 @@ function IndexContent() {
     document.head.appendChild(scrollStyle);
     return () => {
       document.getElementById('hide-scrollbar')?.remove();
-      body.style.overflow = '';
-      body.style.height = '';
-      html.style.overflow = '';
-      html.style.height = '';
+      // Restore app-expected styles (overflow:hidden, height:100%)
+      // Setting to '' causes a race with DesktopHome's useEffect,
+      // leaving body in auto-overflow mode and causing the homepage to stretch.
+      body.style.overflow = 'hidden';
+      body.style.height = '100%';
+      html.style.overflow = 'hidden';
+      html.style.height = '100%';
       if (root) {
-        root.style.overflow = '';
-        root.style.height = '';
+        root.style.overflow = 'hidden';
+        root.style.height = '100%';
         root.style.minHeight = '';
-        root.style.display = '';
+        root.style.display = 'flex';
       }
     };
   }, [showLanding]);

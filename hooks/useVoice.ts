@@ -35,6 +35,7 @@ const USE_ELEVENLABS_AGENTS = process.env.EXPO_PUBLIC_USE_ELEVENLABS_AGENTS === 
 type ElevenLabsHookFn = (options: {
   agent: string;
   suiteId?: string;
+  userId?: string;
   accessToken?: string;
   userProfile?: Record<string, unknown>;
   onTranscript?: (text: string) => void;
@@ -117,6 +118,7 @@ function useElevenLabsAgentAdapter(options: Parameters<typeof useAgentVoice>[0])
   const result = elevenLabsHook!({
     agent: options.agent,
     suiteId: options.suiteId,
+    userId: options.userId,
     accessToken: options.accessToken,
     userProfile: options.userProfile,
     onTranscript: options.onTranscript,

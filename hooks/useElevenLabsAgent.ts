@@ -32,6 +32,8 @@ export interface UseElevenLabsAgentOptions {
   agent: AgentName;
   /** Suite ID for tenant isolation (Law #6). */
   suiteId?: string;
+  /** Supabase user ID — passed to ElevenLabs as conversation userId. */
+  userId?: string;
   /** JWT access token for auth (Law #3). */
   accessToken?: string;
   /** User profile for personalized greetings via dynamic variables. */
@@ -131,6 +133,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   const {
     agent,
     suiteId,
+    userId,
     accessToken,
     userProfile,
     onTranscript,
@@ -302,6 +305,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       await conversation.startSession({
         signedUrl: signed_url,
         dynamicVariables,
+        ...(userId ? { userId } : {}),
         workletPaths: {
           audioConcatProcessor: '/elevenlabs/audioConcatProcessor.js',
           rawAudioProcessor: '/elevenlabs/rawAudioProcessor.js',
@@ -314,7 +318,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       const error = err instanceof Error ? err : new Error(String(err));
       handleError(error);
     }
-  }, [agent, suiteId, userProfile, conversation, updateStatus, handleError]);
+  }, [agent, suiteId, userId, userProfile, conversation, updateStatus, handleError]);
 
   const endSession = useCallback(async () => {
     if (!sessionActiveRef.current) return;
