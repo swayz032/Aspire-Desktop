@@ -556,7 +556,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: Spacing.xxl,
-    minHeight: Platform.OS === 'web' ? 'calc(100vh - 120px)' as any : undefined,
   },
   grid: {
     flexDirection: 'column',

@@ -325,9 +325,14 @@ function useAuthGate() {
       navigate('/(auth)/onboarding');
     } else if (session && onboardingChecked && onboardingComplete && inAuthGroup && !onLoginPage) {
       // Auto-redirect from auth group to tabs — but NOT from the login page.
-      // The login page clears stale sessions on mount; it handles its own
+      // The login page clears stale sessions on mount and handles its own
       // post-login navigation via router.replace('/(tabs)') after signIn.
+      // Always sign out stale sessions when entering login — prevents auto-login glitch.
       navigate('/(tabs)');
+    } else if (session && inAuthGroup && onLoginPage) {
+      // Session exists but user is on login page — sign out the stale session
+      // so they must re-enter credentials. Prevents auto-login after previous session.
+      supabase.auth.signOut().catch(() => {});
     }
   }, [session, isLoading, segments, onboardingChecked, onboardingComplete, coldStartSettled]);
 }

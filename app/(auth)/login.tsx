@@ -503,7 +503,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
             <input type="email" placeholder="you@company.com" value={email}
               onChange={(e: any) => setEmail(e.target.value)}
               onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
-              autoComplete="off"
+              autoComplete="off" name="aspire-email-nocache" data-lpignore="true"
               disabled={loading} style={inp('email')} />
 
             <label style={lbl}>Password</label>
@@ -511,7 +511,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
               value={password} onChange={(e: any) => setPassword(e.target.value)}
               onFocus={() => setFocused('password')} onBlur={() => setFocused(null)}
               onKeyDown={(e: any) => e.key === 'Enter' && mode === 'signin' && handleSignIn()}
-              autoComplete={mode === 'signup' ? 'new-password' : 'off'}
+              autoComplete="new-password" name="aspire-pw-nocache" data-lpignore="true"
               disabled={loading} style={inp('password')} />
 
             {mode === 'signup' && (
