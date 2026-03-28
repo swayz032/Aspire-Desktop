@@ -17,7 +17,6 @@ import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { useAvaChat } from '@/hooks/useAvaChat';
-import { USE_ELEVENLABS_AGENTS } from '@/lib/elevenlabs-agents';
 import type { UIMessage } from 'ai';
 
 const ANAM_AVA_PERSONA_ID = '58f82b89-8ae7-43cc-930d-be8def14dff3';
@@ -679,103 +678,15 @@ function AvaDeskPanelInner() {
           </View>
         ) : (
           <View style={styles.videoSurface}>
-            {/* V1 Hybrid: Anam hosted iframe (feature flag) — handles full pipeline */}
-            {USE_ELEVENLABS_AGENTS && Platform.OS === 'web' ? (
+            {/* Anam hosted embed — avatar video rendering */}
+            {Platform.OS === 'web' ? (
               <div
                 style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
                 dangerouslySetInnerHTML={{
                   __html: `<anam-agent agent-id="${ANAM_AVA_PERSONA_ID}"></anam-agent><script src="https://unpkg.com/@anam-ai/agent-widget" async><\/script>`,
                 }}
               />
-            ) : (
-            <>
-            {/* Legacy Anam SDK <video> element — kept for rollback */}
-            {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
-              <video
-                id="anam-video-element"
-                autoPlay
-                playsInline
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  borderRadius: 0,
-                  opacity: videoState === 'connected' ? 1 : 0,
-                  pointerEvents: videoState === 'connected' ? 'auto' : 'none',
-                  backgroundColor: '#000',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  zIndex: videoState === 'connected' ? 2 : -1,
-                  transition: 'opacity 0.6s ease-in-out',
-                  transform: 'translateZ(0)',
-                  willChange: 'transform, opacity',
-                  imageRendering: 'auto',
-                }}
-              />
-            )}
-            {/* Background layer: connecting animation + idle state (stays mounted during fade) */}
-            {videoState !== 'connected' && (
-              <ImageBackground
-                source={{ uri: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=800' }}
-                style={styles.videoIdleContainer}
-                imageStyle={{ opacity: 0.25 }}
-              >
-                {/* Top vignette */}
-                <LinearGradient
-                  colors={['rgba(0,0,0,0.6)', 'transparent']}
-                  style={styles.videoIdleVignetteTop}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                />
-                {/* Bottom gradient fade */}
-                <LinearGradient
-                  colors={['transparent', Colors.background.primary]}
-                  style={styles.videoIdleVignetteBottom}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                />
-                <View style={styles.videoIdleCenter}>
-                  {videoState === 'connecting' ? (
-                    <>
-                      <Animated.View style={[styles.connectingRing, { transform: [{ rotate: connectingAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }]}>
-                        <View style={styles.connectingRingInner} />
-                      </Animated.View>
-                      <View style={styles.avaAvatarIdle}>
-                        <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
-                      </View>
-                      {Platform.OS === 'web' ? (
-                        <ShimmeringText
-                          text={connectionStatus}
-                          duration={2}
-                          color={Colors.text.muted}
-                          shimmerColor={Colors.accent.cyan}
-                          style={{ fontSize: 14, fontWeight: '500', marginTop: 16 }}
-                        />
-                      ) : (
-                        <Text style={styles.connectionStatusText}>{connectionStatus}</Text>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <View style={styles.avaAvatarIdleGlow}>
-                        <View style={styles.avaAvatarIdle}>
-                          <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
-                        </View>
-                      </View>
-                      <Text style={styles.videoIdleTitle}>Video with Ava</Text>
-                      <Text style={styles.videoIdleSubtitle}>Start a face-to-face session</Text>
-                      <Pressable style={styles.connectBtn} onPress={handleConnectToAva}>
-                        <Ionicons name="videocam" size={18} color="#fff" />
-                        <Text style={styles.connectBtnText}>Connect to Ava</Text>
-                      </Pressable>
-                    </>
-                  )}
-                </View>
-              </ImageBackground>
-            )}
-            </>
-            )}
+            ) : null}
             {/* End session overlay — floats above video when connected */}
             {videoState === 'connected' && (
               <Pressable

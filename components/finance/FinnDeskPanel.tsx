@@ -21,7 +21,6 @@ import {
   type AgentActivityEvent,
 } from '@/components/chat';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
-import { USE_ELEVENLABS_AGENTS } from '@/lib/elevenlabs-agents';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const ANAM_FINN_PERSONA_ID = 'a9954c24-7f8e-4932-81e7-482edc9f61fc';
@@ -1239,137 +1238,15 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
           </View>
         ) : (
           <View style={styles.videoSurface}>
-            {/* V1 Hybrid: Anam hosted iframe (feature flag) — handles full pipeline */}
-            {USE_ELEVENLABS_AGENTS && Platform.OS === 'web' ? (
+            {/* Anam hosted embed — avatar video rendering */}
+            {Platform.OS === 'web' ? (
               <div
                 style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
                 dangerouslySetInnerHTML={{
                   __html: `<anam-agent agent-id="${ANAM_FINN_PERSONA_ID}"></anam-agent><script src="https://unpkg.com/@anam-ai/agent-widget" async><\/script>`,
                 }}
               />
-            ) : (
-            <>
-            {/* Legacy Anam SDK video — kept for rollback */}
-            {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
-              <div style={{ position: 'absolute', inset: '0', overflow: 'hidden', zIndex: 1, borderRadius: 'inherit' }}>
-                <video
-                  id="finn-video-sidebar"
-                  autoPlay
-                  playsInline
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    objectPosition: 'center 30%',  // Keep face visible when cropping
-                    opacity: videoState === 'connected' ? 1 : 0,
-                    transition: 'opacity 0.3s ease-in-out',
-                    backgroundColor: '#000',
-                    transform: 'translateZ(0)',
-                    willChange: 'transform, opacity',
-                    imageRendering: 'auto',
-                  }}
-                />
-              </div>
-            )}
-            {videoState === 'connected' ? (
-              <View style={{ flex: 1 }}>
-                <Pressable
-                  style={{
-                    position: 'absolute',
-                    bottom: 16,
-                    right: 16,
-                    backgroundColor: 'rgba(239,68,68,0.9)',
-                    borderRadius: 24,
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    zIndex: 2,
-                  }}
-                  onPress={() => { trackInteraction('session_end', 'finn-desk-panel', { agent: 'finn' }); handleEndFinnSession(); }}
-                >
-                  <Ionicons name="close-circle" size={18} color="#fff" />
-                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>End Session</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <ImageBackground
-                source={financeConnectHero}
-                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}
-                resizeMode="cover"
-                imageStyle={Platform.OS === 'web'
-                  ? { opacity: 0.2, objectPosition: 'center 40%' } as any
-                  : { opacity: 0.2 }
-                }
-              >
-                <LinearGradient
-                  colors={['rgba(0,0,0,0.6)', 'transparent']}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 80 }}
-                />
-                <LinearGradient
-                  colors={['transparent', '#1C1C1E']}
-                  style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 80 }}
-                />
-                {videoState === 'connecting' ? (
-                  <View style={{ alignItems: 'center', gap: 12 }}>
-                    <ActivityIndicator size="large" color={Colors.accent.cyan} />
-                    {Platform.OS === 'web' ? (
-                      <ShimmeringText
-                        text={connectionStatus}
-                        duration={2}
-                        color={Colors.text.muted}
-                        shimmerColor={Colors.accent.cyan}
-                        style={{ fontSize: 14, fontWeight: '500' }}
-                      />
-                    ) : (
-                      <Text style={{ color: Colors.text.secondary, fontSize: 14 }}>{connectionStatus}</Text>
-                    )}
-                  </View>
-                ) : videoError ? (
-                  <View style={{ alignItems: 'center', gap: 14, paddingHorizontal: 32 }}>
-                    <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,149,0,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name="videocam-off-outline" size={28} color="#FF9500" />
-                    </View>
-                    <Text style={{ color: Colors.text.secondary, fontSize: 15, fontWeight: '600', textAlign: 'center' }}>Video Not Available</Text>
-                    <Text style={{ color: Colors.text.muted, fontSize: 13, textAlign: 'center', lineHeight: 18 }}>{videoError}</Text>
-                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-                      <Pressable
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.06)' }}
-                        onPress={() => { trackInteraction('agent_connect_retry', 'finn-desk-panel', { agent: 'finn' }); setVideoError(null); handleConnectToFinn(); }}
-                      >
-                        <Ionicons name="refresh" size={14} color={Colors.text.secondary} />
-                        <Text style={{ color: Colors.text.secondary, fontSize: 13, fontWeight: '500' }}>Retry</Text>
-                      </Pressable>
-                      <Pressable
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 20, backgroundColor: Colors.accent.cyan }}
-                        onPress={() => setActiveTab('voice')}
-                      >
-                        <Ionicons name="mic" size={14} color="#fff" />
-                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Use Voice</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={{ alignItems: 'center', gap: 16 }}>
-                    <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(59,130,246,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(59,130,246,0.3)' }}>
-                      <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
-                    </View>
-                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>Video with Finn</Text>
-                    <Text style={{ color: Colors.text.tertiary, fontSize: 13 }}>Start a face-to-face financial session</Text>
-                    <Pressable
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.accent.cyan, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 }}
-                      onPress={() => { trackInteraction('agent_connect', 'finn-desk-panel', { agent: 'finn', trigger: 'button' }); handleConnectToFinn(); }}
-                    >
-                      <Ionicons name="videocam" size={18} color="#fff" />
-                      <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Connect to Finn</Text>
-                    </Pressable>
-                  </View>
-                )}
-              </ImageBackground>
-            )}
-            </>
-            )}
+            ) : null}
           </View>
         )}
       </View>

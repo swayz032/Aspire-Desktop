@@ -13,7 +13,7 @@
 
 import type { AgentName } from './elevenlabs';
 
-/** Feature flag: set EXPO_PUBLIC_USE_ELEVENLABS_AGENTS=true to enable agent sessions. */
+/** Feature flag: ElevenLabs voice agent sessions (STT + TTS). */
 export const USE_ELEVENLABS_AGENTS =
   process.env.EXPO_PUBLIC_USE_ELEVENLABS_AGENTS === 'true';
 
