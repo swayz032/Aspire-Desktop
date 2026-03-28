@@ -229,13 +229,11 @@ function AvaDeskPanelInner() {
     onStatusChange: (voiceStatus) => {
       setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
-    onTranscript: (text) => {
-      // W5: Voice transcript → chat (user message with voice indicator)
-      appendLocalMessage('user', `\uD83C\uDFA4 ${text}`);
+    onTranscript: () => {
+      // Voice transcripts no longer piped to chat — ElevenLabs handles voice UI
     },
-    onResponse: (text, receiptId) => {
-      // W5: Voice response → chat (Ava message synced from voice)
-      appendLocalMessage('assistant', text);
+    onResponse: () => {
+      // Voice responses no longer piped to chat — ElevenLabs handles voice UI
     },
     onError: (error) => {
       console.error('Ava voice error:', error);
