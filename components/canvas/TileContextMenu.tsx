@@ -120,12 +120,12 @@ function TileContextMenuInner({
         damping: Canvas.motion.spring.damping,
         stiffness: Canvas.motion.spring.stiffness,
         mass: Canvas.motion.spring.mass,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(opacityAnim, {
         toValue: 1,
         duration: 120,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
   }, [scaleAnim, opacityAnim]);

@@ -427,8 +427,8 @@ function ApprovalsTab({
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(overdueAnim, { toValue: 0.5, duration: 800, useNativeDriver: true }),
-        Animated.timing(overdueAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(overdueAnim, { toValue: 0.5, duration: 800, useNativeDriver: false }),
+        Animated.timing(overdueAnim, { toValue: 1, duration: 800, useNativeDriver: false }),
       ])
     );
     pulse.start();
@@ -631,14 +631,14 @@ function QueuesTab({
     const exitValue = dir === 'right' ? -60 : 60;
     const enterValue = dir === 'right' ? 60 : -60;
     Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: exitValue, duration: 150, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: false }),
+      Animated.timing(slideAnim, { toValue: exitValue, duration: 150, useNativeDriver: false }),
     ]).start(() => {
       setCurrentIndex(newIndex);
       slideAnim.setValue(enterValue);
       Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 12 }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, tension: 80, friction: 12 }),
       ]).start();
     });
   };

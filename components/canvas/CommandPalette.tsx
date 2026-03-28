@@ -166,7 +166,7 @@ function CommandPaletteInner(): React.ReactElement | null {
       Animated.timing(opacityAnim, {
         toValue: 1,
         duration: Canvas.motion.palette,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
 
       // Auto-focus input
@@ -177,7 +177,7 @@ function CommandPaletteInner(): React.ReactElement | null {
       Animated.timing(opacityAnim, {
         toValue: 0,
         duration: 120,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start(() => {
         isVisible.current = false;
         setQuery('');

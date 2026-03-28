@@ -65,7 +65,7 @@ function VignetteOverlayInner(): React.ReactElement | null {
     Animated.timing(opacity, {
       toValue: targetOpacity,
       duration: TRANSITION_MS,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [targetOpacity, opacity]);
 

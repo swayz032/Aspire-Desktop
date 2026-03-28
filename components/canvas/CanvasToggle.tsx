@@ -88,7 +88,7 @@ function CanvasToggleInner(): React.ReactElement {
       damping: SPRING.damping,
       stiffness: SPRING.stiffness,
       mass: SPRING.mass,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [mode, indicatorX]);
 

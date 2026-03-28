@@ -416,10 +416,11 @@ app.use(helmet({
         "https://*.sentry.io",
         "https://*.ingest.sentry.io",
         "https://unpkg.com",
+        "https://ipapi.co",
       ],
       mediaSrc: ["'self'", "data:", "blob:"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com"],
-      fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net"],
+      fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: [],
     },
@@ -892,10 +893,20 @@ app.get('/terms', (req, res) => {
 const publicPath = path.join(process.cwd(), 'public');
 const distPath = path.join(process.cwd(), 'dist');
 
-// Serve Ionicons font directly — the bundled path has @/+ chars that break express.static
+// Serve icon fonts from public/fonts/ — the bundled paths in node_modules/.pnpm/
+// have @/+ chars that cause express.static to serve HTML instead of the font binary
 app.use((req, res, next) => {
-  if (req.method === 'GET' && req.path.includes('Ionicons') && req.path.endsWith('.ttf')) {
-    return res.sendFile(path.join(publicPath, 'fonts', 'Ionicons.ttf'));
+  if (req.method === 'GET' && req.path.endsWith('.ttf') && req.path.includes('/Fonts/')) {
+    const fontName = req.path.split('/').pop();
+    if (fontName) {
+      const cleanName = fontName.replace(/\.[a-f0-9]+\.ttf$/, '.ttf');
+      const fontPath = path.join(publicPath, 'fonts', cleanName);
+      const fs = require('fs');
+      if (fs.existsSync(fontPath)) {
+        res.setHeader('Content-Type', 'font/ttf');
+        return res.sendFile(fontPath);
+      }
+    }
   }
   next();
 });

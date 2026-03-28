@@ -180,7 +180,7 @@ function ParticleBurst({ isActive, onComplete }: ParticleBurstProps) {
           toValue: 1,
           duration: CanvasTokens.trash.animation.particleDuration,
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ])
     );

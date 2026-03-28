@@ -142,13 +142,13 @@ function OrbVideo({
           toValue: -16,
           duration: 2200,
           easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(floatAnim, {
           toValue: 0,
           duration: 2200,
           easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ])
     );
@@ -170,12 +170,12 @@ function OrbVideo({
         Animated.timing(pulseAnim, {
           toValue: pulseTgt,
           duration: 700,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1.0,
           duration: 700,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ])
     );

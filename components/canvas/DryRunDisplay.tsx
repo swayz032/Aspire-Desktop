@@ -154,7 +154,7 @@ function DryRunDisplayInner({
       damping: Canvas.motion.spring.damping,
       stiffness: Canvas.motion.spring.stiffness,
       mass: Canvas.motion.spring.mass,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
 
     return () => {

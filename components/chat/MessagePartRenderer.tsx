@@ -94,7 +94,7 @@ function MessagePartRendererInner({
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 200,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [fadeAnim]);
 

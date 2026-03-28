@@ -230,7 +230,7 @@ function DesktopHeaderInner({
       Animated.timing(profilePanelAnim, {
         toValue: 1,
         duration: 180,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
     } else {
       profilePanelAnim.setValue(0);

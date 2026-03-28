@@ -139,13 +139,13 @@ function SettingsPanelInner({ visible, onClose, initialSection = 'account' }: Se
         damping: 28,
         stiffness: 300,
         mass: 0.8,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
     } else {
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
     }
   }, [visible, slideAnim]);

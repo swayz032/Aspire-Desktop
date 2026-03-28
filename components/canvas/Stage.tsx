@@ -305,12 +305,12 @@ function StageInner(): React.ReactElement | null {
         Animated.timing(slideAnim, {
           toValue: 1,
           duration: Canvas.motion.stageEnter,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(opacityAnim, {
           toValue: 1,
           duration: Canvas.motion.stageEnter,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]).start();
     } else if (!shouldShow && isVisible.current) {
@@ -318,12 +318,12 @@ function StageInner(): React.ReactElement | null {
         Animated.timing(slideAnim, {
           toValue: 0,
           duration: Canvas.motion.stageExit,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(opacityAnim, {
           toValue: 0,
           duration: Canvas.motion.stageExit,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]).start(() => {
         isVisible.current = false;

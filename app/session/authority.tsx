@@ -456,8 +456,8 @@ function SigningOverlay({
   // Entrance animation
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeIn, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.spring(scaleIn, { toValue: 1, damping: 20, stiffness: 200, useNativeDriver: true }),
+      Animated.timing(fadeIn, { toValue: 1, duration: 300, useNativeDriver: false }),
+      Animated.spring(scaleIn, { toValue: 1, damping: 20, stiffness: 200, useNativeDriver: false }),
     ]).start();
   }, [fadeIn, scaleIn]);
 

@@ -166,7 +166,7 @@ export const AgentAvatar: React.FC<AgentAvatarProps> = ({
             toValue: BREATHING_SCALE_MAX,
             duration: BREATHING_DURATION / 2,
             easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           Animated.timing(breathGlow, {
             toValue: BREATHING_GLOW_MAX,
@@ -180,7 +180,7 @@ export const AgentAvatar: React.FC<AgentAvatarProps> = ({
             toValue: BREATHING_SCALE_MIN,
             duration: BREATHING_DURATION / 2,
             easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           Animated.timing(breathGlow, {
             toValue: BREATHING_GLOW_MIN,

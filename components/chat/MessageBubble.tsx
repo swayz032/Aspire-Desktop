@@ -158,7 +158,7 @@ const MessageBubbleInnerWrapped = React.memo(function MessageBubbleInner({
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 200,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [fadeAnim]);
 

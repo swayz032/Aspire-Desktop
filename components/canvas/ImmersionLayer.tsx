@@ -77,14 +77,14 @@ function ImmersionLayerInner({
           damping: SPRING.damping,
           stiffness: SPRING.stiffness,
           mass: SPRING.mass,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.spring(translateY, {
           toValue: targetY,
           damping: SPRING.damping,
           stiffness: SPRING.stiffness,
           mass: SPRING.mass,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]).start();
     },

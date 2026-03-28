@@ -82,7 +82,7 @@ function StepCircle({ status, staggerDelay }: { status: StepStatus; staggerDelay
       damping: Canvas.motion.spring.damping,
       stiffness: Canvas.motion.spring.stiffness,
       mass: Canvas.motion.spring.mass,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [scale, staggerDelay]);
 
@@ -98,12 +98,12 @@ function StepCircle({ status, staggerDelay }: { status: StepStatus; staggerDelay
         Animated.timing(pulseAnim, {
           toValue: 1.15,
           duration: 800,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
           duration: 800,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]),
     );

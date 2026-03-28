@@ -498,14 +498,14 @@ function MessagesPage() {
       RNAnimated.timing(fadeAnim, {
         toValue: 0,
         duration: 120,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start(() => {
         setSelectedThreadId(threadId);
         setSendError(null);
         RNAnimated.timing(fadeAnim, {
           toValue: 1,
           duration: 180,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }).start();
       });
     },

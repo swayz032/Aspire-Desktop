@@ -84,24 +84,24 @@ function IncomingCallOverlayInner(): React.ReactElement | null {
   useEffect(() => {
     if (!overlayState.visible) {
       Animated.parallel([
-        Animated.timing(cardOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-        Animated.timing(cardScale, { toValue: 0.95, duration: 150, useNativeDriver: true }),
+        Animated.timing(cardOpacity, { toValue: 0, duration: 150, useNativeDriver: false }),
+        Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: false }),
+        Animated.timing(cardScale, { toValue: 0.95, duration: 150, useNativeDriver: false }),
       ]).start();
       return;
     }
 
     Animated.parallel([
-      Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.spring(cardScale, { toValue: 1, damping: 16, stiffness: 220, mass: 0.9, useNativeDriver: true }),
-      Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: false }),
+      Animated.spring(cardScale, { toValue: 1, damping: 16, stiffness: 220, mass: 0.9, useNativeDriver: false }),
+      Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: false }),
     ]).start();
 
     ringPulse.setValue(0);
     Animated.loop(
       Animated.sequence([
-        Animated.timing(ringPulse, { toValue: 1, duration: 1200, useNativeDriver: true }),
-        Animated.timing(ringPulse, { toValue: 0, duration: 0, useNativeDriver: true }),
+        Animated.timing(ringPulse, { toValue: 1, duration: 1200, useNativeDriver: false }),
+        Animated.timing(ringPulse, { toValue: 0, duration: 0, useNativeDriver: false }),
       ]),
     ).start();
 

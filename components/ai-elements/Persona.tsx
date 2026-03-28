@@ -245,8 +245,8 @@ function PersonaNative({ state, style }: PersonaProps) {
       const scale = state === 'asleep' ? 1.02 : 1.05;
       const anim = Animated.loop(
         Animated.sequence([
-          Animated.timing(breathScale, { toValue: scale, duration, useNativeDriver: true }),
-          Animated.timing(breathScale, { toValue: 1, duration, useNativeDriver: true }),
+          Animated.timing(breathScale, { toValue: scale, duration, useNativeDriver: false }),
+          Animated.timing(breathScale, { toValue: 1, duration, useNativeDriver: false }),
         ])
       );
       anim.start();
@@ -258,7 +258,7 @@ function PersonaNative({ state, style }: PersonaProps) {
     Animated.timing(orbOpacity, {
       toValue: state === 'asleep' ? 0.4 : 1,
       duration: 400,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [state, orbOpacity]);
 

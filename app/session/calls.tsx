@@ -362,12 +362,12 @@ function CallsScreen() {
           Animated.timing(pulseAnim, {
             toValue: 1.08,
             duration: 800,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           Animated.timing(pulseAnim, {
             toValue: 1,
             duration: 800,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ])
       );
@@ -404,36 +404,36 @@ function CallsScreen() {
             Animated.timing(ringAnim1, {
               toValue: 1,
               duration: 1500,
-              useNativeDriver: true,
+              useNativeDriver: false,
             }),
             Animated.timing(ringAnim1, {
               toValue: 0,
               duration: 0,
-              useNativeDriver: true,
+              useNativeDriver: false,
             }),
           ]),
           Animated.sequence([
             Animated.timing(ringAnim2, {
               toValue: 1,
               duration: 1500,
-              useNativeDriver: true,
+              useNativeDriver: false,
             }),
             Animated.timing(ringAnim2, {
               toValue: 0,
               duration: 0,
-              useNativeDriver: true,
+              useNativeDriver: false,
             }),
           ]),
           Animated.sequence([
             Animated.timing(ringAnim3, {
               toValue: 1,
               duration: 1500,
-              useNativeDriver: true,
+              useNativeDriver: false,
             }),
             Animated.timing(ringAnim3, {
               toValue: 0,
               duration: 0,
-              useNativeDriver: true,
+              useNativeDriver: false,
             }),
           ]),
         ])
@@ -445,12 +445,12 @@ function CallsScreen() {
           Animated.timing(glowPulseAnim, {
             toValue: 1.15,
             duration: 1200,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           Animated.timing(glowPulseAnim, {
             toValue: 1,
             duration: 1200,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ])
       );

@@ -146,12 +146,12 @@ function SigningContent() {
         Animated.timing(fadeIn, {
           toValue: 1,
           duration: 600,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(slideUp, {
           toValue: 0,
           duration: 600,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]).start();
     }
@@ -213,17 +213,17 @@ function SigningContent() {
         toValue: 1,
         damping: 12,
         stiffness: 180,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(successOpacity, {
         toValue: 1,
         duration: 400,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(checkmarkRotate, {
         toValue: 1,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
 
@@ -242,18 +242,18 @@ function SigningContent() {
       Animated.timing(overlayOpacity, {
         toValue: 1,
         duration: 300,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.spring(modalScale, {
         toValue: 1,
         damping: 16,
         stiffness: 200,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(modalOpacity, {
         toValue: 1,
         duration: 350,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
   }, [showAcquisition, overlayOpacity, modalScale, modalOpacity]);
@@ -263,12 +263,12 @@ function SigningContent() {
       Animated.timing(overlayOpacity, {
         toValue: 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(modalOpacity, {
         toValue: 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start(() => {
       setShowAcquisition(false);
@@ -398,8 +398,8 @@ function LoadingState() {
   useEffect(() => {
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1200, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.4, duration: 1200, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 1200, useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 1200, useNativeDriver: false }),
       ])
     );
     anim.start();

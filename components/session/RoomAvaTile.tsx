@@ -31,8 +31,8 @@ function RoomAvaTileInner({
     if (state === 'listening' || state === 'speaking') {
       pulseLoopRef.current = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.08, duration: 1200, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.08, duration: 1200, useNativeDriver: false }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1200, useNativeDriver: false }),
         ])
       );
       pulseLoopRef.current.start();

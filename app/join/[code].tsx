@@ -252,11 +252,11 @@ function LoadingView() {
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(breatheAnim, { toValue: 1.12, duration: 1200, useNativeDriver: true }),
-        Animated.timing(breatheAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+        Animated.timing(breatheAnim, { toValue: 1.12, duration: 1200, useNativeDriver: false }),
+        Animated.timing(breatheAnim, { toValue: 1, duration: 1200, useNativeDriver: false }),
       ]),
     ).start();
-    Animated.timing(fadeIn, { toValue: 1, duration: 600, delay: 100, useNativeDriver: true }).start();
+    Animated.timing(fadeIn, { toValue: 1, duration: 600, delay: 100, useNativeDriver: false }).start();
   }, []);
 
   return (
@@ -382,7 +382,7 @@ function ErrorView({
   const fadeIn = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(fadeIn, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    Animated.timing(fadeIn, { toValue: 1, duration: 500, useNativeDriver: false }).start();
   }, []);
 
   const config = {
@@ -536,11 +536,11 @@ function ConnectingView() {
   const pulseAnim = useRef(new Animated.Value(0.6)).current;
 
   useEffect(() => {
-    Animated.timing(fadeIn, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    Animated.timing(fadeIn, { toValue: 1, duration: 400, useNativeDriver: false }).start();
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: false }),
+        Animated.timing(pulseAnim, { toValue: 0.6, duration: 800, useNativeDriver: false }),
       ]),
     ).start();
   }, []);
@@ -576,7 +576,7 @@ function DisconnectedView({
   const fadeIn = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(fadeIn, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    Animated.timing(fadeIn, { toValue: 1, duration: 500, useNativeDriver: false }).start();
   }, []);
 
   return (

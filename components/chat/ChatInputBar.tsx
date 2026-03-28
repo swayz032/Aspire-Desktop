@@ -109,13 +109,13 @@ const ChatInputBarInnerWrapped = React.memo(function ChatInputBarInner({
       Animated.timing(pulseAnim, {
         toValue: 1.08,
         duration: 100,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.spring(pulseAnim, {
         toValue: 1,
         damping: 15,
         stiffness: 200,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
     onMicToggle();

@@ -1734,10 +1734,10 @@ function InboxScreen() {
 
   const toggleReplyPopup = useCallback(() => {
     if (replyPopupOpen) {
-      Animated.timing(replyPopupAnim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => setReplyPopupOpen(false));
+      Animated.timing(replyPopupAnim, { toValue: 0, duration: 160, useNativeDriver: false }).start(() => setReplyPopupOpen(false));
     } else {
       setReplyPopupOpen(true);
-      Animated.timing(replyPopupAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      Animated.timing(replyPopupAnim, { toValue: 1, duration: 200, useNativeDriver: false }).start();
     }
   }, [replyPopupOpen, replyPopupAnim]);
 
@@ -1747,7 +1747,7 @@ function InboxScreen() {
       Animated.timing(emailPageFadeAnim, {
         toValue: 1,
         duration: 280,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
     }
   }, [selectedEmail, emailPageFadeAnim]);
@@ -1757,16 +1757,16 @@ function InboxScreen() {
     eliModalSlideAnim.setValue(80);
     eliModalOpacityAnim.setValue(0);
     Animated.parallel([
-      Animated.timing(eliModalSlideAnim, { toValue: 0, duration: 360, useNativeDriver: true }),
-      Animated.timing(eliModalOpacityAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.timing(eliModalSlideAnim, { toValue: 0, duration: 360, useNativeDriver: false }),
+      Animated.timing(eliModalOpacityAnim, { toValue: 1, duration: 280, useNativeDriver: false }),
     ]).start();
   }, [eliModalSlideAnim, eliModalOpacityAnim]);
 
   const closeEliVoiceModal = useCallback(() => {
     if (eliVoiceActive) eliVoice.endSession();
     Animated.parallel([
-      Animated.timing(eliModalSlideAnim, { toValue: 80, duration: 240, useNativeDriver: true }),
-      Animated.timing(eliModalOpacityAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(eliModalSlideAnim, { toValue: 80, duration: 240, useNativeDriver: false }),
+      Animated.timing(eliModalOpacityAnim, { toValue: 0, duration: 200, useNativeDriver: false }),
     ]).start(() => {
       setEliVoiceModalOpen(false);
     });

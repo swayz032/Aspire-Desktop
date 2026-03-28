@@ -225,7 +225,7 @@ function RiskTierModalInner(props: RiskTierModalProps): React.ReactElement | nul
         Animated.timing(backdropOpacity, {
           toValue: 1,
           duration: CanvasTokens.modal.animation.backdropFade,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }).start();
 
         // Modal spring entrance
@@ -235,12 +235,12 @@ function RiskTierModalInner(props: RiskTierModalProps): React.ReactElement | nul
             damping: CanvasTokens.modal.animation.spring.damping,
             stiffness: CanvasTokens.modal.animation.spring.stiffness,
             mass: CanvasTokens.modal.animation.spring.mass,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           Animated.timing(modalOpacity, {
             toValue: 1,
             duration: CanvasTokens.modal.animation.backdropFade,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ]).start();
       }
@@ -266,19 +266,19 @@ function RiskTierModalInner(props: RiskTierModalProps): React.ReactElement | nul
           Animated.timing(backdropOpacity, {
             toValue: 0,
             duration: CanvasTokens.modal.animation.exitDuration,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           Animated.timing(modalScale, {
             toValue: tier === 'red'
               ? CanvasTokens.modal.animation.exitScaleRed.to
               : CanvasTokens.modal.animation.exitScale.to,
             duration: CanvasTokens.modal.animation.exitDuration,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           Animated.timing(modalOpacity, {
             toValue: 0,
             duration: CanvasTokens.modal.animation.exitDuration,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ]).start(() => {
           isShown.current = false;

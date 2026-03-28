@@ -130,12 +130,12 @@ function LiveLensInner({
       Animated.timing(scaleAnim, {
         toValue: 1,
         duration: Canvas.motion.lensOpen,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(opacityAnim, {
         toValue: 1,
         duration: Canvas.motion.lensOpen,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
   }, [shouldRender, scaleAnim, opacityAnim]);
@@ -146,12 +146,12 @@ function LiveLensInner({
       Animated.timing(scaleAnim, {
         toValue: 0.95,
         duration: Canvas.motion.lensClose,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(opacityAnim, {
         toValue: 0,
         duration: Canvas.motion.lensClose,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start(() => onClose());
   }, [scaleAnim, opacityAnim, onClose]);

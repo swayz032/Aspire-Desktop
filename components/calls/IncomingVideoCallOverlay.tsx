@@ -235,17 +235,17 @@ function IncomingVideoCallOverlayInner(): React.ReactElement | null {
         Animated.timing(cardOpacity, {
           toValue: 0,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(backdropOpacity, {
           toValue: 0,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(cardScale, {
           toValue: 0.95,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]).start();
       return;
@@ -255,19 +255,19 @@ function IncomingVideoCallOverlayInner(): React.ReactElement | null {
       Animated.timing(backdropOpacity, {
         toValue: 1,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.spring(cardScale, {
         toValue: 1,
         damping: 16,
         stiffness: 220,
         mass: 0.9,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(cardOpacity, {
         toValue: 1,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
 

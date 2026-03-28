@@ -580,12 +580,12 @@ function CelebrationNative({
         toValue: 1,
         damping: Animation.spring.damping,
         stiffness: Animation.spring.stiffness,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(opacityAnim, {
         toValue: 1,
         duration: Animation.slow,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
   }, [scaleAnim, opacityAnim]);

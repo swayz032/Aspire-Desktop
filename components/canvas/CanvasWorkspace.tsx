@@ -255,7 +255,7 @@ function CanvasWorkspaceInner(): React.ReactElement {
       damping: 25,
       stiffness: 200,
       mass: 1.0,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
 
     // 3D canvas entrance — scale up from slightly smaller
@@ -264,7 +264,7 @@ function CanvasWorkspaceInner(): React.ReactElement {
       damping: 20,
       stiffness: 180,
       mass: 1.1,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
 
     emitCanvasEvent('mode_change', { mode: 'canvas' });
