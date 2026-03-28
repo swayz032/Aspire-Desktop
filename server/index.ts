@@ -513,6 +513,13 @@ app.use(routes);
 import agentToolRoutes from './agentToolRoutes';
 app.use(agentToolRoutes);
 
+// Client-side incident reports — accepts and logs, best-effort
+app.post('/admin/ops/incidents/report', express.json(), (req, res) => {
+  const { title, severity, component } = req.body || {};
+  logger.info('[Incident] Client report', { title, severity, component });
+  res.json({ received: true });
+});
+
 try {
   const gustoRoutes = require('./gustoRoutes').default;
   app.use(gustoRoutes);

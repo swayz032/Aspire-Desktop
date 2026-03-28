@@ -97,7 +97,7 @@ function AdvisorContent() {
         }
 
         // Suite profile for business info
-        const { data: profile } = await supabase.from('suite_profiles').select('*').limit(1).single();
+        const { data: profile } = await supabase.from('suite_profiles').select('*').limit(1).maybeSingle();
         if (profile) {
           setBusinessProfile({
             industry: profile.industry ?? 'Business Services',
