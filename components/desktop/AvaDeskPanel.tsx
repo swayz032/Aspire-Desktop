@@ -652,10 +652,26 @@ function AvaDeskPanelInner() {
               const fileInput = document.createElement('input');
               fileInput.type = 'file';
               fileInput.accept = '.pdf,.docx,.xlsx,.png,.jpg,.jpeg,.csv';
-              fileInput.onchange = (e: any) => {
+              fileInput.onchange = async (e: any) => {
                 const file = e.target?.files?.[0];
-                if (file) {
-                  appendLocalMessage('user', `Attached: ${file.name}`);
+                if (!file) return;
+                appendLocalMessage('user', `Attached: ${file.name}`);
+                try {
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  formData.append('suite_id', suiteId || '');
+                  const headers: Record<string, string> = {};
+                  if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                  const resp = await fetch('/v1/tools/analyze-document', { method: 'POST', headers, body: formData });
+                  if (resp.ok) {
+                    const result = await resp.json();
+                    const preview = result.extracted_text || 'Document received but text extraction is pending.';
+                    appendLocalMessage('assistant', `I received ${file.name}. ${preview}`);
+                  } else {
+                    appendLocalMessage('assistant', `I received ${file.name} but could not analyze it right now. I have it saved for review.`);
+                  }
+                } catch {
+                  appendLocalMessage('assistant', `I received ${file.name} but had trouble processing it. It has been saved.`);
                 }
               };
               fileInput.click();
