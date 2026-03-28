@@ -284,11 +284,15 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       );
 
       // Build dynamic variables for session personalization
+      // Extract last name from ownerName if lastName not provided separately
+      const ownerName = userProfile?.ownerName || '';
+      const lastName = userProfile?.lastName || ownerName.trim().split(' ').pop() || '';
+
       const dynamicVariables: Record<string, string | number | boolean> = {
         suite_id: suiteId || '',
-        salutation: userProfile?.salutation || 'Mr.',
-        last_name: userProfile?.lastName || '',
-        owner_name: userProfile?.ownerName || '',
+        salutation: userProfile?.salutation || (lastName ? 'Mr.' : ''),
+        last_name: lastName,
+        owner_name: ownerName,
         business_name: userProfile?.businessName || '',
         industry: userProfile?.industry || '',
         time_of_day: getTimeOfDay(),

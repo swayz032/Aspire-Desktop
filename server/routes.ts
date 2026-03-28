@@ -6968,17 +6968,24 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
       if (supabaseAdmin) {
         const { data: profile } = await supabaseAdmin
           .from('suite_profiles')
-          .select('owner_name, business_name, salutation, last_name, industry, office_id')
+          .select('owner_name, business_name, industry, office_id')
           .eq('suite_id', suiteId)
           .maybeSingle();
 
         if (profile) {
+          // Extract last name from owner_name (e.g. "Tonio Scott" → "Scott")
+          const ownerName = (profile.owner_name || '').trim();
+          const nameParts = ownerName.split(' ').filter(Boolean);
+          const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+          const firstName = nameParts[0] || '';
+
           dynamicVariables = {
             suite_id: suiteId,
-            owner_name: profile.owner_name || '',
+            owner_name: ownerName,
+            first_name: firstName,
+            last_name: lastName,
+            salutation: lastName ? 'Mr.' : '',
             business_name: profile.business_name || '',
-            salutation: profile.salutation || 'Mr.',
-            last_name: profile.last_name || '',
             industry: profile.industry || '',
             office_id: profile.office_id || '',
           };
