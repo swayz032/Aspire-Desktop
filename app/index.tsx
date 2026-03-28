@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import LandingNav from '@/components/landing/LandingNav';
@@ -17,26 +17,24 @@ function IndexContent() {
   const { useSupabase } = require('@/providers');
   const { session, isLoading } = useSupabase();
   const router = require('expo-router').useRouter();
+  const [showLanding, setShowLanding] = useState(false);
+
   useEffect(() => {
-    if (!isLoading && session) {
+    if (isLoading) return;
+    if (session) {
       router.replace('/(tabs)');
+    } else {
+      setShowLanding(true);
     }
   }, [session, isLoading]);
 
+  // Only modify DOM styles when we're actually showing the landing page
+  // NOT when redirecting to /(tabs) — that causes the homepage to stretch
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
+    if (Platform.OS !== 'web' || !showLanding) return;
     const body = document.body;
     const html = document.documentElement;
     const root = document.getElementById('root');
-    const prev = {
-      bodyOverflow: body.style.overflow,
-      htmlOverflow: html.style.overflow,
-      htmlHeight: html.style.height,
-      bodyHeight: body.style.height,
-      rootOverflow: root?.style.overflow ?? '',
-      rootHeight: root?.style.height ?? '',
-      rootDisplay: root?.style.display ?? '',
-    };
     body.style.overflow = 'auto';
     body.style.height = 'auto';
     html.style.overflow = 'auto';
@@ -53,19 +51,20 @@ function IndexContent() {
     document.head.appendChild(scrollStyle);
     return () => {
       document.getElementById('hide-scrollbar')?.remove();
-      body.style.overflow = prev.bodyOverflow;
-      body.style.height = prev.bodyHeight;
-      html.style.overflow = prev.htmlOverflow;
-      html.style.height = prev.htmlHeight;
+      body.style.overflow = '';
+      body.style.height = '';
+      html.style.overflow = '';
+      html.style.height = '';
       if (root) {
-        root.style.overflow = prev.rootOverflow;
-        root.style.height = prev.rootHeight;
-        root.style.display = prev.rootDisplay;
+        root.style.overflow = '';
+        root.style.height = '';
+        root.style.minHeight = '';
+        root.style.display = '';
       }
     };
-  }, []);
+  }, [showLanding]);
 
-  if (Platform.OS !== 'web') {
+  if (Platform.OS !== 'web' || !showLanding) {
     return null;
   }
 
