@@ -1,6 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
@@ -546,8 +545,25 @@ function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  // Load Ionicons separately — don't block app render if icon font fails
-  const [iconsLoaded] = useFonts(Ionicons.font);
+  // Inject Ionicons font via CSS on web — node_modules .ttf path fails in static export
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const existing = document.getElementById('ionicons-font');
+      if (!existing) {
+        const style = document.createElement('style');
+        style.id = 'ionicons-font';
+        style.textContent = `
+          @font-face {
+            font-family: 'Ionicons';
+            src: url('https://cdn.jsdelivr.net/npm/ionicons@7.4.0/dist/fonts/ionicons.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+  }, []);
 
   if (!fontsLoaded) {
     return null;
