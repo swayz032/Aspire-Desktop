@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { motion, useScroll, useMotionValueEvent } from 'framer-motion';
+import { motion, useScroll, useMotionValueEvent } from 'motion/react';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const navLinks = ['Product', 'Features', 'AI Staff', 'Pricing'];

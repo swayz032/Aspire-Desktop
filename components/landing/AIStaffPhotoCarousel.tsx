@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 const STEP = 360 / 7;

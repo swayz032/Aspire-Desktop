@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform } from 'motion/react';
 import CockpitMockup from './CockpitMockup';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 

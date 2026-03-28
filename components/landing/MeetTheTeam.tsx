@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { teamMembers } from './TeamData';
 import VideoModal from './VideoModal';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';

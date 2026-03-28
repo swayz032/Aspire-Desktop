@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { Feature } from './FeaturesData';
 import AIStaffVideoCarousel from './AIStaffVideoCarousel';
 import AIStaffPhotoCarousel from './AIStaffPhotoCarousel';
