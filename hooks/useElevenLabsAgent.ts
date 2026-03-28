@@ -293,6 +293,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
 
       const dynamicVariables: Record<string, string | number | boolean> = {
         suite_id: suiteId || '',
+        user_id: userId || '',
         salutation: userProfile?.salutation || (lastName ? 'Mr.' : ''),
         last_name: lastName,
         owner_name: ownerName,
