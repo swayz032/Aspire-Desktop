@@ -393,7 +393,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.plaid.com", "https://elevenlabs.io"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [
@@ -413,10 +413,13 @@ app.use(helmet({
         "https://api.deepgram.com",
         "wss://api.deepgram.com",
         "https://cdn.jsdelivr.net",
+        "https://*.sentry.io",
+        "https://*.ingest.sentry.io",
+        "https://unpkg.com",
       ],
       mediaSrc: ["'self'", "data:", "blob:"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com"],
-      fontSrc: ["'self'", "data:"],
+      fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: [],
     },
@@ -881,6 +884,11 @@ app.get('/terms', (req, res) => {
 
 const publicPath = path.join(process.cwd(), 'public');
 const distPath = path.join(process.cwd(), 'dist');
+
+// Serve Ionicons font directly — the bundled path has @/+ chars that break on some systems
+app.get('/assets/*Ionicons*.ttf', (req, res) => {
+  res.sendFile(path.join(publicPath, 'fonts', 'Ionicons.ttf'));
+});
 
 // Hashed assets (JS/CSS bundles) — cache forever, content hash guarantees freshness
 app.use('/assets', express.static(path.join(distPath, 'assets'), {

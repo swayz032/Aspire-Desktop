@@ -338,10 +338,6 @@ function useAuthGate() {
         if (root) { root.style.overflow = 'hidden'; root.style.height = '100%'; root.style.minHeight = ''; root.style.display = 'flex'; }
       }
       navigate('/(tabs)');
-    } else if (session && inAuthGroup && onLoginPage) {
-      // Session exists but user is on login page — sign out the stale session
-      // so they must re-enter credentials. Prevents auto-login after previous session.
-      import('@/lib/supabase').then(({ supabase }) => supabase.auth.signOut()).catch(() => {});
     }
   }, [session, isLoading, segments, onboardingChecked, onboardingComplete, coldStartSettled]);
 }
