@@ -542,12 +542,14 @@ function AppNavigator() {
 
 function RootLayout() {
   useWebDesktopSetup();
-  const [loaded] = useFonts({
+  const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...Ionicons.font,
   });
 
-  if (!loaded) {
+  // Load Ionicons separately — don't block app render if icon font fails
+  const [iconsLoaded] = useFonts(Ionicons.font);
+
+  if (!fontsLoaded) {
     return null;
   }
 
