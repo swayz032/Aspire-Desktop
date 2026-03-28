@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
-import { StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 
@@ -8,6 +8,24 @@ import { HapticTab } from '@/components/HapticTab';
 import { MicTabIcon } from '@/components/MicTabIcon';
 
 export default function TabLayout() {
+  // Lock viewport — the landing page sets body/html to overflow:auto + height:auto
+  // for scrollable content. When navigating to tabs, those styles persist and cause
+  // the homepage to stretch beyond the viewport. Reset them here.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    document.body.style.overflow = 'hidden';
+    document.body.style.height = '100%';
+    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.height = '100%';
+    const root = document.getElementById('root');
+    if (root) {
+      root.style.overflow = 'hidden';
+      root.style.height = '100%';
+      root.style.minHeight = '';
+      root.style.display = 'flex';
+    }
+  }, []);
+
   // Desktop-only mode: Always hide the tab bar
   return (
     <Tabs
