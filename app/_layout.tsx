@@ -332,7 +332,7 @@ function useAuthGate() {
     } else if (session && inAuthGroup && onLoginPage) {
       // Session exists but user is on login page — sign out the stale session
       // so they must re-enter credentials. Prevents auto-login after previous session.
-      supabase.auth.signOut().catch(() => {});
+      import('@/lib/supabase').then(({ supabase }) => supabase.auth.signOut()).catch(() => {});
     }
   }, [session, isLoading, segments, onboardingChecked, onboardingComplete, coldStartSettled]);
 }
