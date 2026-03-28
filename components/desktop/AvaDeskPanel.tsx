@@ -404,133 +404,9 @@ function AvaDeskPanelInner() {
   const handleConnectToAva = useCallback(async () => {
     if (videoState !== 'idle') return;
     trackInteraction('agent_connect', 'ava-desk-panel', { mode: 'video', agent: 'ava' });
-
-    clearConnectionTimeouts();
-    setVideoState('connecting');
-    setConnectionStatus('Connecting to Ava...');
-    playConnectionSound();
-
-    const t1 = setTimeout(() => {
-      setConnectionStatus('Establishing secure video...');
-    }, 800);
-
-    // Timeout fallback â€" 15s for SDK WebRTC handshake (Law #3: Fail Closed)
-    const t2 = setTimeout(() => {
-      setVideoState('idle');
-      setConnectionStatus('');
-      anamClientRef.current = null;
-      Alert.alert('Connection Timeout', 'Unable to connect to Ava video. Please try again.');
-    }, 15000);
-
-    connectionTimeouts.current = [t1, t2];
-
-    try {
-      // Wait for React to render the <video> element before streaming
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Anam SDK: fetch session token â†' create client (CUSTOMER_CLIENT_V1) â†' stream to <video>
-      const connectOptions: AnamConnectOptions = {
-        onConnectionEstablished: () => {
-          console.log('[Anam] WebRTC connection established');
-        },
-        onVideoStarted: () => {
-          console.log('[Anam] Video stream playing');
-          clearConnectionTimeouts();
-          playSuccessSound();
-          setVideoState('connected');
-          setConnectionStatus('');
-
-          // Greeting fires after video is visible + 800ms buffer for avatar to fully initialize
-          setTimeout(() => {
-            if (anamClientRef.current && typeof (anamClientRef.current as any).talk === 'function') {
-              const ownerName = tenant?.ownerName;
-              const lastName = ownerName?.trim().split(' ').pop();
-              const hour = new Date().getHours();
-              const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-              const greeting = lastName
-                ? `${timeGreeting}, Mr. ${lastName}. I'm Ava, your chief of staff. What can I help you with?`
-                : `${timeGreeting}! I'm Ava, your chief of staff. How can I help you today?`;
-              (anamClientRef.current as any).talk(greeting);
-            }
-          }, 800);
-        },
-        onConnectionClosed: (reason, details) => {
-          console.log('[Anam] Connection closed', reason ? { reason, details } : undefined);
-          setVideoState('idle');
-          setConnectionStatus('');
-          anamClientRef.current = null;
-        },
-        onUserMessage: async (userMessage: string) => {
-          // Show user message in chat
-          appendLocalMessage('user', `\uD83C\uDFA4 ${userMessage}`);
-          anamStreamMessageIdRef.current = null;
-
-          // Wave 2A: Send immediate "thinking" filler to prevent Anam's engine
-          // timeout from generating "I can't think right now" fallback.
-          if (anamClientRef.current) {
-            sendThinkingFiller(anamClientRef.current);
-          }
-        },
-        onMessageStream: (text, role) => {
-          if (!text?.trim()) return;
-          const normalizedRole = String(role || '').toLowerCase();
-          if (!['assistant', 'persona'].includes(normalizedRole)) return;
-
-          const currentId = anamStreamMessageIdRef.current;
-          if (!currentId) {
-            const id = `anam_ava_${Date.now()}`;
-            anamStreamMessageIdRef.current = id;
-            setMessages((prev) => [...prev, {
-              id,
-              role: 'assistant' as const,
-              parts: [{ type: 'text' as const, text }],
-            }]);
-          } else {
-            setMessages((prev) => prev.map((msg) =>
-              msg.id === currentId
-                ? { ...msg, parts: [{ type: 'text' as const, text: msg.parts.filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text').map(p => p.text).join('') + text }] }
-                : msg
-            ));
-          }
-          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-        },
-      };
-      const client = await connectAnamAvatar('anam-video-element', session?.access_token, connectOptions);
-      anamClientRef.current = client;
-
-      // Event listeners registered inside connectAnamAvatar via setupAllEventListeners.
-      // Video state + greeting are triggered by onVideoStarted callback above —
-      // keeps spinner visible until avatar is actually rendering on screen.
-    } catch (error: any) {
-      clearConnectionTimeouts();
-      anamClientRef.current = null;
-      setVideoState('idle');
-      setConnectionStatus('');
-      const msg = error?.message || String(error);
-      console.error('Video connection failed:', msg);
-
-      // Classify error with actionable message
-      if (/not configured|503|AVATAR_NOT_CONFIGURED/i.test(msg)) {
-        showVoiceError('Ava video not configured for this environment. Voice mode is ready.');
-      } else if (/not found in DOM/i.test(msg)) {
-        showVoiceError('Video element not ready. Please try again.');
-      } else if (/AUTH_REQUIRED|401.*avatar/i.test(msg)) {
-        showVoiceError('Authentication failed. Please sign in again.');
-      } else if (/AVATAR_SESSION_FAILED|Anam API/i.test(msg)) {
-        showVoiceError('Avatar service temporarily unavailable. Voice mode is ready.');
-      } else if (/Authentication failed when starting|CLIENT_ERROR_CODE_AUTHENTICATION/i.test(msg)) {
-        showVoiceError('Anam avatar auth error. Check Anam account/plan status.');
-      } else if (/sign up for a plan|NO_PLAN_FOUND|usage limit|spend cap/i.test(msg)) {
-        showVoiceError('Anam plan limit reached. Check Anam account billing.');
-      } else if (/network|fetch|ERR_/i.test(msg)) {
-        showVoiceError('Network error. Check your connection and try again.');
-      } else if (/timeout/i.test(msg)) {
-        showVoiceError('Connection timed out. Please try again.');
-      } else {
-        showVoiceError(msg.length > 100 ? msg.slice(0, 100) + '...' : msg);
-      }
-    }
-  }, [videoState, clearConnectionTimeouts]);
+    // Anam embed handles the full pipeline — just show it
+    setVideoState('connected');
+  }, [videoState]);
 
   const handleEndSession = useCallback(() => {
     trackInteraction('agent_disconnect', 'ava-desk-panel', { agent: 'ava' });
@@ -678,14 +554,70 @@ function AvaDeskPanelInner() {
           </View>
         ) : (
           <View style={styles.videoSurface}>
-            {/* Anam hosted embed — avatar video rendering */}
-            {Platform.OS === 'web' ? (
+            {/* Anam hosted embed — loads after user clicks Connect */}
+            {videoState === 'connected' && Platform.OS === 'web' ? (
               <div
                 style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
                 dangerouslySetInnerHTML={{
                   __html: `<anam-agent agent-id="${ANAM_AVA_PERSONA_ID}"></anam-agent><script src="https://unpkg.com/@anam-ai/agent-widget" async><\/script>`,
                 }}
               />
+            ) : videoState !== 'connected' ? (
+              <ImageBackground
+                source={{ uri: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=800' }}
+                style={styles.videoIdleContainer}
+                imageStyle={{ opacity: 0.25 }}
+              >
+                <LinearGradient
+                  colors={['rgba(0,0,0,0.6)', 'transparent']}
+                  style={styles.videoIdleVignetteTop}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                />
+                <LinearGradient
+                  colors={['transparent', Colors.background.primary]}
+                  style={styles.videoIdleVignetteBottom}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                />
+                <View style={styles.videoIdleCenter}>
+                  {videoState === 'connecting' ? (
+                    <>
+                      <Animated.View style={[styles.connectingRing, { transform: [{ rotate: connectingAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }]}>
+                        <View style={styles.connectingRingInner} />
+                      </Animated.View>
+                      <View style={styles.avaAvatarIdle}>
+                        <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
+                      </View>
+                      {Platform.OS === 'web' ? (
+                        <ShimmeringText
+                          text={connectionStatus}
+                          duration={2}
+                          color={Colors.text.muted}
+                          shimmerColor={Colors.accent.cyan}
+                          style={{ fontSize: 14, fontWeight: '500', marginTop: 16 }}
+                        />
+                      ) : (
+                        <Text style={styles.connectionStatusText}>{connectionStatus}</Text>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.avaAvatarIdleGlow}>
+                        <View style={styles.avaAvatarIdle}>
+                          <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
+                        </View>
+                      </View>
+                      <Text style={styles.videoIdleTitle}>Video with Ava</Text>
+                      <Text style={styles.videoIdleSubtitle}>Start a face-to-face session</Text>
+                      <Pressable style={styles.connectBtn} onPress={handleConnectToAva}>
+                        <Ionicons name="videocam" size={18} color="#fff" />
+                        <Text style={styles.connectBtnText}>Connect to Ava</Text>
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+              </ImageBackground>
             ) : null}
             {/* End session overlay — floats above video when connected */}
             {videoState === 'connected' && (
