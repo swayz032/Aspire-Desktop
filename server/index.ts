@@ -506,6 +506,10 @@ app.use((req, res, next) => {
 
 app.use(routes);
 
+// ElevenLabs agent tool webhook endpoints (/v1/tools/*)
+import agentToolRoutes from './agentToolRoutes';
+app.use(agentToolRoutes);
+
 try {
   const gustoRoutes = require('./gustoRoutes').default;
   app.use(gustoRoutes);
