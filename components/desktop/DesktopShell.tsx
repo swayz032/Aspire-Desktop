@@ -47,6 +47,7 @@ const styles = StyleSheet.create({
   rightSection: {
     flex: 1,
     flexDirection: 'column',
+    overflow: 'hidden',
   },
   content: {
     flex: 1,

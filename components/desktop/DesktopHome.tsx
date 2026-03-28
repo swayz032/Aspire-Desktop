@@ -569,6 +569,7 @@ function DesktopHomeInner() {
 const styles = StyleSheet.create({
   smokeRoot: {
     flex: 1,
+    overflow: 'hidden',
   },
   scroll: { 
     flex: 1,
