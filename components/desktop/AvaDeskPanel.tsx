@@ -210,7 +210,9 @@ function AvaDeskPanelInner() {
         if (resp.ok) {
           const data = await resp.json();
           const greeting = data.response || data.text;
-          if (greeting && typeof greeting === 'string') {
+          // Filter out generic/outdated greetings that list agent names
+          const isGeneric = greeting && /loop in specialists|Quinn.*invoicing|Clara.*legal|good to see you.*I can handle/i.test(greeting);
+          if (greeting && typeof greeting === 'string' && !isGeneric) {
             setMessages([{
               id: `greeting_${Date.now()}`,
               role: 'assistant' as const,

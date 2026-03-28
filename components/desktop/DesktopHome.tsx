@@ -77,6 +77,25 @@ function isBannerDismissed(): boolean {
 }
 
 function DesktopHomeInner() {
+  // Reset body/html styles that the landing page may have set (overflow: auto, height: auto)
+  // These persist after navigation and cause the homepage to stretch beyond viewport.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const body = document.body;
+    const html = document.documentElement;
+    const root = document.getElementById('root');
+    body.style.overflow = 'hidden';
+    body.style.height = '100%';
+    html.style.overflow = 'hidden';
+    html.style.height = '100%';
+    if (root) {
+      root.style.overflow = 'hidden';
+      root.style.height = '100%';
+      root.style.minHeight = '';
+      root.style.display = 'flex';
+    }
+  }, []);
+
   const router = useRouter();
   const { mode, stageOpen, runwayState } = useImmersion();
   const { isTablet, isLaptop, width, mounted: bpMounted } = useBreakpoint();

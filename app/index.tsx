@@ -13,6 +13,16 @@ import { features } from '@/components/landing/FeaturesData';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 function IndexContent() {
+  // If user has a session, skip landing and go to homepage
+  const { useSupabase } = require('@/providers');
+  const { session, isLoading } = useSupabase();
+  const router = require('expo-router').useRouter();
+  useEffect(() => {
+    if (!isLoading && session) {
+      router.replace('/(tabs)');
+    }
+  }, [session, isLoading]);
+
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const body = document.body;

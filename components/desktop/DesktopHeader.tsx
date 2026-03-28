@@ -397,14 +397,9 @@ function DesktopHeaderInner({
                   ]}
                   onPress={async () => {
                     if (item.id === 'signout') {
-                      // Sign out BEFORE closing panel — prevents dropdown unmount aborting async chain
-                      try {
-                        await signOut();
-                      } catch (e) {
-                        console.error('Sign out error:', e);
-                      }
                       setActivePanel('none');
-                      // Redirect to login via Expo Router (handles group path resolution)
+                      // Sign out and redirect — always redirect even if signOut fails
+                      signOut().catch((e: any) => console.error('Sign out error:', e));
                       router.replace('/(auth)/login' as any);
                       return;
                     }
