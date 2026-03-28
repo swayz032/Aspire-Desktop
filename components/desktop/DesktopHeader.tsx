@@ -245,8 +245,8 @@ function DesktopHeaderInner({
         setActivePanel('none');
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
   }, [activePanel]);
 
   const renderNotificationPanel = () => (
@@ -397,8 +397,6 @@ function DesktopHeaderInner({
                   ]}
                   onPress={async () => {
                     if (item.id === 'signout') {
-                      // Don't close the panel first — unmounting aborts the handler on web.
-                      // Sign out, redirect, panel unmounts naturally with the page.
                       try { await signOut(); } catch {}
                       window.location.href = '/login';
                       return;
