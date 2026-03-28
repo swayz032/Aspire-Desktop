@@ -398,7 +398,8 @@ function DesktopHeaderInner({
                   onPress={async () => {
                     if (item.id === 'signout') {
                       try { await signOut(); } catch {}
-                      window.location.href = '/login';
+                      setActivePanel('none');
+                      router.replace('/(auth)/login' as any);
                       return;
                     }
                     setActivePanel('none');
