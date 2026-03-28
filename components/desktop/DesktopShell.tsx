@@ -1,5 +1,5 @@
 import React, { ReactNode } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { DesktopHeader } from './DesktopHeader';
 import { DesktopSidebar } from './DesktopSidebar';
 import { Colors } from '@/constants/tokens';
@@ -42,7 +42,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
-  },
+    ...(Platform.OS === 'web' ? { height: '100vh', overflow: 'hidden' } : {}),
+  } as any,
   rightSection: {
     flex: 1,
     flexDirection: 'column',

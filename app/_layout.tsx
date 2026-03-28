@@ -550,7 +550,9 @@ function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  // Inject Ionicons font via CSS on web — node_modules .ttf path fails in static export
+  // Inject Ionicons font via CSS on web — the Metro-bundled .ttf path inside
+  // node_modules/.pnpm/ gets served as HTML by the SPA fallback (OTS parse error).
+  // Loading from /fonts/Ionicons.ttf (public/ dir, served by express.static) works.
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const existing = document.getElementById('ionicons-font');
@@ -560,7 +562,7 @@ function RootLayout() {
         style.textContent = `
           @font-face {
             font-family: 'Ionicons';
-            src: url('https://cdn.jsdelivr.net/npm/ionicons@7.4.0/dist/fonts/ionicons.woff2') format('woff2');
+            src: url('/fonts/Ionicons.ttf') format('truetype');
             font-weight: normal;
             font-style: normal;
           }
