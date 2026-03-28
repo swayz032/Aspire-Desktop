@@ -6981,6 +6981,7 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
 
           dynamicVariables = {
             suite_id: suiteId,
+            user_id: (req as any).authenticatedUserId || '',
             owner_name: ownerName,
             first_name: firstName,
             last_name: lastName,
