@@ -893,8 +893,11 @@ const publicPath = path.join(process.cwd(), 'public');
 const distPath = path.join(process.cwd(), 'dist');
 
 // Serve Ionicons font directly — the bundled path has @/+ chars that break on some systems
-app.get('/assets/*Ionicons*.ttf', (req, res) => {
-  res.sendFile(path.join(publicPath, 'fonts', 'Ionicons.ttf'));
+app.get('/assets/:path(*)', (req, res, next) => {
+  if (req.params.path.includes('Ionicons') && req.params.path.endsWith('.ttf')) {
+    return res.sendFile(path.join(publicPath, 'fonts', 'Ionicons.ttf'));
+  }
+  next();
 });
 
 // Hashed assets (JS/CSS bundles) — cache forever, content hash guarantees freshness
