@@ -321,7 +321,7 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     logger.info('[AgentTool] invoke -> invoke-sync', { agent, correlationId, url: `${orchestratorUrl}/v1/agents/invoke-sync` });
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 60000); // 60s — agents use run_agentic_loop with 55s timeout
 
     const a2aResp = await fetch(`${orchestratorUrl}/v1/agents/invoke-sync`, {
       method: 'POST',
