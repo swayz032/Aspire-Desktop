@@ -317,27 +317,24 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     }
 
     const correlationId = `corr-invoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const officeId = suite_id; // Default office_id to suite_id
 
-    const a2aPayload = {
-      suite_id,
-      office_id: officeId,
-      correlation_id: correlationId,
-      task_type: `${agent}.${task.split(' ')[0]?.toLowerCase() || 'general'}`,
-      assigned_to_agent: agent,
-      payload: { task, details: details || null, user_id },
-      priority: 3,
-    };
-
-    logger.info('[AgentTool] invoke -> A2A dispatch', { agent, correlationId, url: `${orchestratorUrl}/v1/a2a/dispatch` });
+    logger.info('[AgentTool] invoke -> invoke-sync', { agent, correlationId, url: `${orchestratorUrl}/v1/agents/invoke-sync` });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
-    const a2aResp = await fetch(`${orchestratorUrl}/v1/a2a/dispatch`, {
+    const a2aResp = await fetch(`${orchestratorUrl}/v1/agents/invoke-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(a2aPayload),
+      body: JSON.stringify({
+        suite_id,
+        office_id: officeId,
+        correlation_id: correlationId,
+        agent,
+        task,
+        details: details || '',
+        user_id,
+      }),
       signal: controller.signal,
     });
 
