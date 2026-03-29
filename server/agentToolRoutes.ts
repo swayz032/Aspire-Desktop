@@ -146,8 +146,91 @@ router.post('/v1/tools/draft', async (req: Request, res: Response) => {
   logger.info('[AgentTool] draft', { suite_id, draft_type, params: Object.keys(draftParams) });
 
   try {
-    // For now, acknowledge the draft request and return it for confirmation
-    // TODO: Wire to actual draft creation (email via IMAP, invoice via Stripe)
+    // ── Meeting / Calendar Event — insert directly into Supabase ──
+    if (draft_type === 'meeting') {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+      if (!supabaseUrl || !supabaseKey) {
+        return res.json({
+          draft_id: null,
+          draft_type: 'meeting',
+          summary: 'Calendar is not available right now. Please try again later.',
+          status: 'error',
+        });
+      }
+
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const title = draftParams.subject || draftParams.title || 'Meeting';
+      const description = draftParams.body || draftParams.description || '';
+      const location = draftParams.location || '';
+      const participants = draftParams.to ? [draftParams.to] : [];
+
+      // Parse start_time — try ISO string first, then natural language fallback
+      let startTime: Date;
+      if (draftParams.start_time) {
+        startTime = new Date(draftParams.start_time);
+      } else if (draftParams.date && draftParams.time) {
+        startTime = new Date(`${draftParams.date}T${draftParams.time}`);
+      } else {
+        // Default to tomorrow at 9 AM if no time specified
+        startTime = new Date();
+        startTime.setDate(startTime.getDate() + 1);
+        startTime.setHours(9, 0, 0, 0);
+      }
+
+      const durationMinutes = draftParams.duration_minutes || 30;
+      const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
+
+      const { data: event, error: insertErr } = await supabase
+        .from('calendar_events')
+        .insert({
+          suite_id,
+          title,
+          description,
+          event_type: 'meeting',
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          duration_minutes: durationMinutes,
+          location,
+          participants,
+          source: 'ava',
+          created_by: user_id || 'ava',
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (insertErr) {
+        logger.error('[AgentTool] draft meeting insert error', { error: insertErr.message });
+        return res.json({
+          draft_id: null,
+          draft_type: 'meeting',
+          summary: 'I was not able to add that to your calendar right now. Please try again.',
+          status: 'error',
+        });
+      }
+
+      const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+      return res.json({
+        draft_id: event.id,
+        draft_type: 'meeting',
+        title,
+        date: dateStr,
+        time: timeStr,
+        duration_minutes: durationMinutes,
+        location: location || null,
+        participants,
+        summary: `Added ${title} on ${dateStr} at ${timeStr} to your calendar.`,
+        status: 'created',
+      });
+    }
+
+    // ── Other draft types (email, invoice, office_note) — stub for now ──
     return res.json({
       draft_id: `draft_${Date.now()}`,
       draft_type: draft_type || 'general',
@@ -222,26 +305,74 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   }
 
   try {
-    // TODO: Wire to actual agent skillpacks via orchestrator
-    // For now, acknowledge the task and return a structured response
-    const agentLabels: Record<string, string> = {
-      quinn: 'Quinn (Invoicing)',
-      adam: 'Adam (Research)',
-      tec: 'Tec (Documents)',
+    // Proxy to Python backend A2A dispatch — calls real agents (Quinn, Adam, Tec)
+    const orchestratorUrl = process.env.ORCHESTRATOR_URL?.trim();
+    if (!orchestratorUrl) {
+      logger.warn('[AgentTool] ORCHESTRATOR_URL not set — cannot reach agents');
+      return res.json({
+        agent,
+        result: `I was not able to reach ${agent} right now because the backend service is not configured. Please try again later.`,
+        status: 'error',
+      });
+    }
+
+    const correlationId = `corr-invoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const officeId = suite_id; // Default office_id to suite_id
+
+    const a2aPayload = {
+      suite_id,
+      office_id: officeId,
+      correlation_id: correlationId,
+      task_type: `${agent}.${task.split(' ')[0]?.toLowerCase() || 'general'}`,
+      assigned_to_agent: agent,
+      payload: { task, details: details || null, user_id },
+      priority: 3,
     };
+
+    logger.info('[AgentTool] invoke -> A2A dispatch', { agent, correlationId, url: `${orchestratorUrl}/v1/a2a/dispatch` });
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const a2aResp = await fetch(`${orchestratorUrl}/v1/a2a/dispatch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(a2aPayload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!a2aResp.ok) {
+      const errBody = await a2aResp.text().catch(() => '');
+      logger.error('[AgentTool] A2A dispatch failed', { agent, status: a2aResp.status, body: errBody.slice(0, 200) });
+      return res.json({
+        agent,
+        result: `I was not able to reach ${agent} right now. The service returned an error. Please try again.`,
+        status: 'error',
+      });
+    }
+
+    const a2aResult = await a2aResp.json();
+    logger.info('[AgentTool] A2A dispatch result', { agent, success: a2aResult.success, taskId: a2aResult.task_id });
 
     return res.json({
       agent,
-      agent_label: agentLabels[agent] || agent,
       task,
-      details: details || null,
-      result: `${agentLabels[agent] || agent} has received your request: "${task}". Working on it now.`,
-      status: 'processing',
+      result: a2aResult.result || a2aResult.message || `${agent} has processed your request.`,
+      data: a2aResult.data || null,
+      receipt_id: a2aResult.receipt_id || null,
+      status: a2aResult.success ? 'completed' : 'error',
     });
-  } catch (err) {
-    logger.error('[AgentTool] invoke error', { agent, error: err instanceof Error ? err.message : 'unknown' });
+  } catch (err: unknown) {
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    const message = isTimeout
+      ? `${agent} is taking longer than expected. Please try again in a moment.`
+      : `I was not able to reach ${agent} right now. Please try again.`;
+    logger.error('[AgentTool] invoke error', { agent, error: err instanceof Error ? err.message : 'unknown', isTimeout });
     return res.json({
-      message: `I was not able to reach ${agent} right now. Please try again.`,
+      agent,
+      result: message,
       status: 'error',
     });
   }
