@@ -7,7 +7,7 @@ import { Colors } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useVoice, type VoiceDiagnosticEvent } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectAnamAvatar, clearConversationHistory, type AnamClientInstance, AnamConnectOptions, interruptPersona, muteAnamInput, unmuteAnamInput, sendThinkingFiller } from '@/lib/anam';
+import { clearConversationHistory, type AnamClientInstance } from '@/lib/anam';
 import {
   type FileAttachment,
   ThinkingIndicator,
@@ -23,6 +23,9 @@ const ANAM_AVA_PERSONA_ID = '58f82b89-8ae7-43cc-930d-be8def14dff3';
 
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
+
+// Anam embed session token — fetched from server with personalized prompt
+let _anamSessionToken: string | null = null;
 
 
 function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
@@ -147,11 +150,8 @@ function AvaDeskPanelInner() {
   videoStateRef.current = videoState;
 
   const avaChatResult = useAvaChat({
-    onResponseText: (text) => {
-      // Pipe response to Anam avatar TTS when video is active
-      if (modeRef.current === 'video' && videoStateRef.current === 'connected' && anamClientRef.current) {
-        try { anamClientRef.current.talk(text); } catch { /* ignore */ }
-      }
+    onResponseText: (_text) => {
+      // Anam hosted embed handles TTS internally — no SDK talk() needed
     },
     extraBody: {
       pendingApprovals: pendingApprovals.length,
@@ -370,17 +370,27 @@ function AvaDeskPanelInner() {
   const handleConnectToAva = useCallback(async () => {
     if (videoState !== 'idle') return;
     trackInteraction('agent_connect', 'ava-desk-panel', { mode: 'video', agent: 'ava' });
-    // Anam embed handles the full pipeline — just show it
-    setVideoState('connected');
-  }, [videoState]);
+    setVideoState('connecting');
+    try {
+      // Fetch personalized session token from server — includes user name in prompt
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const resp = await fetch('/api/anam/session', { method: 'POST', headers, body: JSON.stringify({ persona: 'ava' }) });
+      if (!resp.ok) throw new Error(`Session failed: ${resp.status}`);
+      const data = await resp.json();
+      if (!data.sessionToken) throw new Error('No session token returned');
+      _anamSessionToken = data.sessionToken;
+      setVideoState('connected');
+    } catch (err) {
+      setVideoState('idle');
+      setConnectionStatus('Failed to connect to video');
+    }
+  }, [videoState, session?.access_token]);
 
   const handleEndSession = useCallback(() => {
     trackInteraction('agent_disconnect', 'ava-desk-panel', { agent: 'ava' });
     clearConnectionTimeouts();
-    if (anamClientRef.current) {
-      try { anamClientRef.current.stopStreaming(); } catch (_) { /* ignore cleanup errors */ }
-      anamClientRef.current = null;
-    }
+    _anamSessionToken = null;
     clearConversationHistory();
     setVideoState('idle');
     setConnectionStatus('');
@@ -525,7 +535,7 @@ function AvaDeskPanelInner() {
               <div
                 style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
                 dangerouslySetInnerHTML={{
-                  __html: `<anam-agent agent-id="${ANAM_AVA_PERSONA_ID}"></anam-agent><script src="https://unpkg.com/@anam-ai/agent-widget" async><\/script>`,
+                  __html: `<anam-agent session-token="${_anamSessionToken || ''}"></anam-agent><script src="https://unpkg.com/@anam-ai/agent-widget" async><\/script>`,
                 }}
               />
             ) : videoState !== 'connected' ? (

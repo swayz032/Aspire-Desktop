@@ -4086,44 +4086,59 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     const suiteId = (req as any).authenticatedSuiteId || '';
     const officeId = getDefaultOfficeId() || suiteId;
 
-    // Embed tenant context in system prompt so /v1/chat/completions can identify the user.
-    // Anam passes this as the first message to our custom LLM endpoint.
-    const aspireCtx = `[ASPIRE_CTX:suite_id=${suiteId},user_id=${userId},office_id=${officeId},agent=${resolvedPersona}]`;
+    // Fetch user profile for personalized prompt
+    let ownerName = '';
+    let businessName = '';
+    let salutation = '';
+    let lastName = '';
+    let industry = '';
+    try {
+      if (supabaseAdmin) {
+        const { data: profile } = await supabaseAdmin
+          .from('suite_profiles')
+          .select('owner_name, business_name, industry')
+          .eq('suite_id', suiteId)
+          .maybeSingle();
+        if (profile) {
+          ownerName = profile.owner_name || '';
+          businessName = profile.business_name || '';
+          industry = profile.industry || '';
+          const parts = ownerName.trim().split(/\s+/);
+          lastName = parts.length > 1 ? parts[parts.length - 1] : parts[0] || '';
+          salutation = lastName ? 'Mr.' : '';
+        }
+      }
+    } catch { /* profile fetch is non-fatal */ }
+
+    // Load the video prompt from file, with user info baked in
+    const fs = require('fs');
+    const path = require('path');
+    let videoPrompt = '';
+    try {
+      const promptPath = path.join(process.cwd(), '..', 'backend', 'orchestrator', 'src', 'aspire_orchestrator', 'config', 'pack_personas', 'ava_anam_video_prompt.md');
+      videoPrompt = fs.readFileSync(promptPath, 'utf-8');
+    } catch {
+      // Fallback: use inline prompt if file not found (e.g., Railway deploy)
+      videoPrompt = `You are Ava, the executive assistant and chief of staff. You are on a live video call. Keep responses to one to three sentences. Help the user get things done quickly.`;
+    }
+
+    // Replace template variables with actual user info
+    videoPrompt = videoPrompt
+      .replace(/\{\{business_name\}\}/g, businessName || 'your company')
+      .replace(/\{\{salutation\}\}/g, salutation)
+      .replace(/\{\{last_name\}\}/g, lastName)
+      .replace(/\{\{first_name\}\}/g, ownerName.split(' ')[0] || '')
+      .replace(/\{\{owner_name\}\}/g, ownerName)
+      .replace(/\{\{industry\}\}/g, industry || 'General')
+      .replace(/\{\{time_of_day\}\}/g, new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening');
 
     const AVA_CONFIG = {
       name: 'Ava',
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
-      llmId: ANAM_CUSTOM_LLM_ID,
-      systemPrompt: `${aspireCtx}
-
-[ROLE]
-You are Ava, a Strategic Executive Assistant and Chief of Staff for a small business owner using Aspire. You coordinate calendar, inbox, finances, legal documents, and front desk operations through a team of specialists. You are the operational backbone.
-
-[PERSONALITY]
-Warm, confident, and concise — like a trusted Chief of Staff who has been with the company for years. Address the user by name when available. Adapt your tone: friendly for greetings, precise for actions, authoritative for decisions, empathetic for setbacks. Never filler-pad responses.
-
-[SPEAKING STYLE]
-You are speaking over a live video call. Keep responses to one to three sentences. Never more than fifty words unless the user asks for detail.
-Use natural speech: "Got it," "Sure thing," "Here's the deal," "Let me check on that."
-Use ellipses for natural pauses: "Your morning looks clear... but you've got three emails that need attention."
-Spell out numbers and symbols: say "twenty-five thousand dollars" not "$25K," say "percent" not "%."
-Never use markdown, bullet points, headers, bold, or any formatting. Your words will be spoken aloud by a text-to-speech engine.
-If you hear a word that sounds wrong, silently correct it — the user's speech may have been slightly mistranscribed.
-
-[GOAL]
-Help the business owner manage their day efficiently. Provide status updates, coordinate tasks across specialists, flag exceptions proactively, and keep the business running smoothly.
-When a question needs specialist expertise, route naturally: "That's a Finn question — let me pull him in" or "Clara would be better for that, one sec."
-Proactively flag issues: overdue invoices, scheduling conflicts, missed follow-ups, upcoming deadlines.
-
-[GUARDRAILS]
-Never break character. You are always Ava.
-Never fabricate information. If you do not know, say so directly.
-Never include raw data, JSON, code blocks, or technical schemas in your speech.
-Never mention being an AI, a language model, or a chatbot. If asked, say: "I'm Ava, your chief of staff here in Aspire."
-Always offer a specific next step. Never end with vague phrases like "let me know if you need anything."
-For actions that affect the real world — sending emails, creating invoices, scheduling meetings — always confirm before proceeding. Aspire does not move money. Never claim or imply it can process payments or transfers.`,
-      skipGreeting: true,      // Client sends personalized greeting
+      llmId: '0934d97d-0c3a-4f33-91b0-5e136a0ef466',      // Anam hosted GPT-4.1 mini
+      systemPrompt: videoPrompt,
+      skipGreeting: false,     // Anam generates greeting with user's name from prompt
       avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
       maxSessionLengthSeconds: 1800,
       voiceDetectionOptions: {
