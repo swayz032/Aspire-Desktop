@@ -185,11 +185,11 @@ export const ENTERPRISE_ROOM_OPTIONS: RoomOptions = {
     screenShareEncoding: SCREEN_SHARE_ENCODING,
     screenShareSimulcastLayers: [],
 
-    // Audio: AudioPresets.music = 48kbps opus (SDK default for publishDefaults).
-    // Docs: "which audio preset should be used for publishing (audio) tracks,
-    // defaults to AudioPresets.music"
-    // 48kbps is the sweet spot for speech clarity without wasting bandwidth.
-    audioPreset: AudioPresets.music,
+    // Audio: AudioPresets.musicHighQuality = 96kbps opus for crystal-clear voice.
+    // Docs: "which audio preset should be used for publishing (audio) tracks"
+    // Upgraded from 48kbps (music) to 96kbps (musicHighQuality) for enterprise
+    // conference quality. The extra 48kbps per participant is worth the clarity.
+    audioPreset: AudioPresets.musicHighQuality,
 
     // DTX (Discontinuous Transmission): save bandwidth during silence.
     // Docs: "dtx (Discontinuous Transmission of audio), enabled by default"

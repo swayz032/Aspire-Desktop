@@ -12,7 +12,7 @@
  * Video: 1080p capture, 3-layer simulcast (1080p/720p/360p), VP8 codec,
  * adaptiveStream + dynacast. All settings from livekit-config.ts (single source of truth).
  */
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { LiveKitRoom, RoomAudioRenderer } from '@livekit/components-react';
 import { useKrispNoiseFilter } from '@livekit/components-react/krisp';
@@ -53,8 +53,21 @@ function KrispBridge({ children }: { children: React.ReactNode }) {
     toggle: async () => {},
   };
 
+  const autoEnabled = useRef(false);
+
   try {
     const krisp = useKrispNoiseFilter();
+
+    // Auto-enable Krisp on first render — crystal-clear audio without user action
+    useEffect(() => {
+      if (!autoEnabled.current && !krisp.isNoiseFilterEnabled && !krisp.isNoiseFilterPending) {
+        autoEnabled.current = true;
+        krisp.setNoiseFilterEnabled(true).catch(() => {
+          // Krisp auto-enable failed — baseline WebRTC still active
+        });
+      }
+    }, [krisp.isNoiseFilterEnabled, krisp.isNoiseFilterPending]);
+
     krispState = {
       isEnabled: krisp.isNoiseFilterEnabled,
       isPending: krisp.isNoiseFilterPending,

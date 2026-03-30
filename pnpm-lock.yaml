@@ -43,7 +43,7 @@ importers:
         specifier: ^0.26.0
         version: 0.26.0(@tanstack/react-query@5.95.2(react@19.1.0))(react-dom@19.1.0(react@19.1.0))(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
       '@livekit/components-react':
-        specifier: ^2.9.19
+        specifier: ^2.9.20
         version: 2.9.20(@livekit/krisp-noise-filter@0.3.4(livekit-client@2.18.0(@types/dom-mediacapture-record@1.0.22)))(livekit-client@2.18.0(@types/dom-mediacapture-record@1.0.22))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(tslib@2.8.1)
       '@livekit/components-styles':
         specifier: ^1.2.0
@@ -229,7 +229,7 @@ importers:
         specifier: ^3.1.21
         version: 3.1.21(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       livekit-client:
-        specifier: ^2.9.0
+        specifier: ^2.18.0
         version: 2.18.0(@types/dom-mediacapture-record@1.0.22)
       livekit-server-sdk:
         specifier: ^2.15.0
@@ -19729,4 +19729,3 @@ snapshots:
       use-sync-external-store: 1.6.0(react@19.1.0)
 
   zwitch@2.0.4: {}
-
