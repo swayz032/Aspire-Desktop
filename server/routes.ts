@@ -4043,13 +4043,15 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     const ANAM_CUSTOM_LLM_ID = process.env.ANAM_CUSTOM_LLM_ID || ANAM_HOSTED_LLM_ID;
     const suiteId = (req as any).authenticatedSuiteId || '';
     const officeId = getDefaultOfficeId() || suiteId;
+    const requestedProfile = req.body?.profile || {};
 
     // Fetch user profile for personalized prompt
-    let ownerName = '';
-    let businessName = '';
-    let salutation = '';
-    let lastName = '';
-    let industry = '';
+    let ownerName = sanitizeText(requestedProfile.ownerName) || '';
+    let businessName = sanitizeText(requestedProfile.businessName) || '';
+    let salutation = sanitizeText(requestedProfile.salutation) || '';
+    let lastName = sanitizeText(requestedProfile.lastName) || '';
+    let industry = sanitizeText(requestedProfile.industry) || '';
+    const fallbackFirstName = sanitizeText(requestedProfile.firstName) || '';
     try {
       if (supabaseAdmin) {
         const { data: profile } = await supabaseAdmin
@@ -4058,15 +4060,17 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
           .eq('suite_id', suiteId)
           .maybeSingle();
         if (profile) {
-          ownerName = profile.owner_name || '';
-          businessName = profile.business_name || '';
-          industry = profile.industry || '';
-          const parts = ownerName.trim().split(/\s+/);
-          lastName = parts.length > 1 ? parts[parts.length - 1] : parts[0] || '';
-          salutation = lastName ? 'Mr.' : '';
+          ownerName = profile.owner_name || ownerName;
+          businessName = profile.business_name || businessName;
+          industry = profile.industry || industry;
         }
       }
     } catch { /* profile fetch is non-fatal */ }
+
+    const parts = ownerName.trim().split(/\s+/).filter(Boolean);
+    const firstName = parts[0] || fallbackFirstName || '';
+    if (!lastName) lastName = parts.length > 1 ? parts[parts.length - 1] : '';
+    if (!salutation && lastName) salutation = 'Mr.';
 
     // Load the video prompt from file, with user info baked in
     const fs = require('fs');
@@ -4085,7 +4089,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       .replace(/\{\{business_name\}\}/g, businessName || 'your company')
       .replace(/\{\{salutation\}\}/g, salutation)
       .replace(/\{\{last_name\}\}/g, lastName)
-      .replace(/\{\{first_name\}\}/g, ownerName.split(' ')[0] || '')
+      .replace(/\{\{first_name\}\}/g, firstName)
       .replace(/\{\{owner_name\}\}/g, ownerName)
       .replace(/\{\{industry\}\}/g, industry || 'General')
       .replace(/\{\{time_of_day\}\}/g, new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening');

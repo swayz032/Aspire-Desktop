@@ -21,6 +21,84 @@ import type { UIMessage } from 'ai';
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
 
+function buildAvaVideoFrameDoc(sessionToken: string) {
+  const encodedSessionToken = JSON.stringify(sessionToken);
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
+      body {
+        position: relative;
+        font-family: Arial, sans-serif;
+      }
+      #anam-video {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
+        background: #000;
+      }
+      #status {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 14px;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <video id="anam-video" autoplay playsinline></video>
+    <div id="status">Starting Ava video...</div>
+    <script type="module">
+      const sessionToken = ${encodedSessionToken};
+      const statusEl = document.getElementById('status');
+      const post = (payload) => window.parent.postMessage({ source: 'ava-anam-frame', ...payload }, '*');
+      const setStatus = (message) => {
+        if (statusEl) statusEl.textContent = message;
+      };
+
+      let client = null;
+
+      const start = async () => {
+        try {
+          const sdk = await import('https://unpkg.com/@anam-ai/js-sdk?module');
+          client = sdk.createClient(sessionToken);
+          await client.streamToVideoElement('anam-video');
+          if (statusEl) statusEl.remove();
+          post({ type: 'connected' });
+        } catch (error) {
+          console.error('Ava video bootstrap failed', error);
+          setStatus('Unable to start Ava video');
+          post({
+            type: 'error',
+            message: error instanceof Error ? error.message : 'Unable to start Ava video',
+          });
+        }
+      };
+
+      window.addEventListener('beforeunload', () => {
+        client?.stopStreaming?.().catch?.(() => {});
+      });
+
+      start();
+    </script>
+  </body>
+</html>`;
+}
+
 
 function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -90,7 +168,6 @@ function AvaDeskPanelInner() {
   const [videoState, setVideoState] = useState<VideoConnectionState>('idle');
   const [connectionStatus, setConnectionStatus] = useState('');
   const [anamSessionToken, setAnamSessionToken] = useState<string | null>(null);
-  const [anamWidgetReady, setAnamWidgetReady] = useState(Platform.OS !== 'web');
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [latestVoiceDiagnostic, setLatestVoiceDiagnostic] = useState<VoiceDiagnosticEvent | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -112,6 +189,7 @@ function AvaDeskPanelInner() {
   const { tenant } = useTenant();
   const [bootstrapIdentity, setBootstrapIdentity] = useState<{
     businessName?: string;
+    ownerName?: string;
     suiteDisplayId?: string;
     officeDisplayId?: string;
   } | null>(null);
@@ -123,6 +201,7 @@ function AvaDeskPanelInner() {
       const parsed = JSON.parse(raw);
       setBootstrapIdentity({
         businessName: parsed.businessName || undefined,
+        ownerName: parsed.ownerName || undefined,
         suiteDisplayId: parsed.suiteDisplayId || undefined,
         officeDisplayId: parsed.officeDisplayId || undefined,
       });
@@ -134,6 +213,25 @@ function AvaDeskPanelInner() {
   const officeDisplayId = tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId || '';
   const resolvedBusinessName = tenant?.businessName || bootstrapIdentity?.businessName || 'Your Company';
   const companyPillLabel = resolvedBusinessName;
+  const resolvedOwnerName = tenant?.ownerName || bootstrapIdentity?.ownerName || '';
+  const avaProfileFallback = useMemo(() => {
+    const ownerName = resolvedOwnerName.trim();
+    const nameParts = ownerName ? ownerName.split(/\s+/) : [];
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+    return {
+      ownerName: ownerName || undefined,
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
+      salutation: lastName ? 'Mr.' : undefined,
+      businessName: resolvedBusinessName || undefined,
+      industry: tenant?.industry || undefined,
+    };
+  }, [resolvedBusinessName, resolvedOwnerName, tenant?.industry]);
+  const avaVideoFrameDoc = useMemo(
+    () => (anamSessionToken ? buildAvaVideoFrameDoc(anamSessionToken) : null),
+    [anamSessionToken],
+  );
 
   // W4: Authority queue polling — provides context to orchestrator (approvals shown in Authority Queue, not chat)
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
@@ -363,52 +461,60 @@ function AvaDeskPanelInner() {
   const handleConnectToAva = useCallback(async () => {
     if (videoState !== 'idle') return;
     trackInteraction('agent_connect', 'ava-desk-panel', { mode: 'video', agent: 'ava' });
+    clearConnectionTimeouts();
     setVideoState('connecting');
     setConnectionStatus('Connecting to Ava...');
     try {
-      // Fetch personalized session token from server — includes user name in prompt
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const resp = await fetch('/api/anam/session', { method: 'POST', headers, body: JSON.stringify({ persona: 'ava' }) });
+      const resp = await fetch('/api/anam/session', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          persona: 'ava',
+          profile: avaProfileFallback,
+        }),
+      });
       if (!resp.ok) throw new Error(`Session failed: ${resp.status}`);
       const data = await resp.json();
       if (!data.sessionToken) throw new Error('No session token returned');
       setAnamSessionToken(data.sessionToken);
-      setVideoState('connected');
-      setConnectionStatus('');
+      setConnectionStatus('Starting Ava video...');
+      connectionTimeouts.current.push(setTimeout(() => {
+        setAnamSessionToken(null);
+        setVideoState('idle');
+        setConnectionStatus('Connect failed');
+      }, 25000));
     } catch (err) {
+      clearConnectionTimeouts();
       setAnamSessionToken(null);
       setVideoState('idle');
-      setConnectionStatus('Failed to connect to video');
+      setConnectionStatus('Connect failed');
     }
-  }, [videoState, session?.access_token]);
+  }, [avaProfileFallback, clearConnectionTimeouts, videoState, session?.access_token]);
 
   useEffect(() => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
-    if (customElements.get('anam-agent')) {
-      setAnamWidgetReady(true);
-      return;
-    }
+    const handleMessage = (event: MessageEvent) => {
+      if (!event.data || event.data.source !== 'ava-anam-frame') return;
+      if (event.data.type === 'connected') {
+        clearConnectionTimeouts();
+        setVideoState('connected');
+        setConnectionStatus('');
+        return;
+      }
+      if (event.data.type === 'error') {
+        clearConnectionTimeouts();
+        setAnamSessionToken(null);
+        setVideoState('idle');
+        setConnectionStatus('Connect failed');
+      }
+    };
 
-    const existing = document.querySelector('script[data-anam-agent-widget="true"]') as HTMLScriptElement | null;
-    const markReady = () => setAnamWidgetReady(true);
-
-    if (existing) {
-      existing.addEventListener('load', markReady);
-      if (customElements.get('anam-agent')) setAnamWidgetReady(true);
-      return () => existing.removeEventListener('load', markReady);
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/@anam-ai/agent-widget';
-    script.async = true;
-    script.dataset.anamAgentWidget = 'true';
-    script.addEventListener('load', markReady);
-    document.head.appendChild(script);
-
-    return () => script.removeEventListener('load', markReady);
-  }, []);
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [clearConnectionTimeouts]);
 
   const handleEndSession = useCallback(() => {
     trackInteraction('agent_disconnect', 'ava-desk-panel', { agent: 'ava' });
@@ -547,17 +653,31 @@ function AvaDeskPanelInner() {
           </View>
         ) : (
           <View style={styles.videoSurface}>
-            {/* Anam hosted embed — loads after user clicks Connect */}
-            {videoState === 'connected' && Platform.OS === 'web' ? (
-                <div
-                  style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
-                  dangerouslySetInnerHTML={{
-                  __html: anamWidgetReady
-                    ? `<anam-agent session-token="${anamSessionToken || ''}" style="display:block;width:100%;height:100%;min-height:480px;"></anam-agent>`
-                    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94A3B8;background:#000;">Loading Ava video…</div>`,
-                  }}
+            {anamSessionToken && Platform.OS === 'web' ? (
+              <div style={{ width: '100%', height: '100%', minHeight: 480, position: 'relative', backgroundColor: '#000' } as any}>
+                <iframe
+                  key={anamSessionToken}
+                  title="Ava video"
+                  srcDoc={avaVideoFrameDoc || undefined}
+                  allow="microphone; autoplay"
+                  style={{ width: '100%', height: '100%', border: '0', display: 'block', backgroundColor: '#000' }}
                 />
-            ) : videoState !== 'connected' ? (
+                {videoState === 'connecting' ? (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#94A3B8',
+                    background: 'rgba(0,0,0,0.35)',
+                    fontSize: 14,
+                  } as any}>
+                    {connectionStatus || 'Starting Ava video...'}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
               <ImageBackground
                 source={{ uri: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=800' }}
                 style={styles.videoIdleContainer}
@@ -609,11 +729,14 @@ function AvaDeskPanelInner() {
                         <Ionicons name="videocam" size={18} color="#fff" />
                         <Text style={styles.connectBtnText}>Connect to Ava</Text>
                       </Pressable>
+                      {connectionStatus ? (
+                        <Text style={styles.connectionStatusText}>{connectionStatus}</Text>
+                      ) : null}
                     </>
                   )}
                 </View>
               </ImageBackground>
-            ) : null}
+            )}
           </View>
         )}
       </View>
