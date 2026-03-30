@@ -328,7 +328,7 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         suite_id,
-        office_id: officeId,
+        office_id: suite_id,
         correlation_id: correlationId,
         agent,
         task,

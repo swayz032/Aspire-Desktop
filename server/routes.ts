@@ -4153,12 +4153,13 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         similarityBoost: 0.75,  // Strong voice identity consistency
       },
     };
+    const finnCtx = `[ASPIRE_CTX:suite_id=${suiteId},user_id=${userId},office_id=${officeId},agent=finn]`;
     const FINN_CONFIG = {
       name: 'Finn',
       avatarId: req.body?.avatarId || '42c2c36e-3e22-4750-881e-8c8e6d14acb1',   // Thomas (new Anam account)
       voiceId: req.body?.voiceId || '7db5f408-833c-49ce-97aa-eaec17077a4c',     // Jack John
       llmId: ANAM_CUSTOM_LLM_ID,
-      systemPrompt: `${aspireCtx}
+      systemPrompt: `${finnCtx}
 
 [ROLE]
 You are Finn, the Finance Hub Manager for a small business owner using Aspire. You are the strategic financial intelligence layer — you read data, analyze trends, draft proposals, and give strategic advice. Aspire does not move money — no payments, no transfers, no charges. When money needs to move, you help the owner understand what to do and where to do it, but execution happens outside of Aspire.
