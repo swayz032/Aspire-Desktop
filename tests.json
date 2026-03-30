@@ -1,0 +1,69 @@
+{
+    "tests": [
+        {
+            "config": "test_configs\\Identity-Protection.json",
+            "id": "test_0301kmsz4ewkfgra06se4dxxd19v",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\No-Data-Fabrication.json",
+            "id": "test_0501kmsz4ejre3qbprf53g224cet",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\Email-Routes-to-Eli.json",
+            "id": "test_7401kmsz4e82e44sm1j337hs606c",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\No-Robotic-Closing.json",
+            "id": "test_9801kmsz4dxnf0xs1wjed9f953tg",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\No-Double-Greeting.json",
+            "id": "test_8701kmsz4dk3efzt87fbfnq7fnyj",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\No-Double-Greeting-1.json",
+            "id": "test_2301kmsz3parevt9qaa1c84t1nn2",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\Multi-Turn-Lost-Baggage-Conversation-Test.json",
+            "id": "test_2401khjb79dffsqs7816k1rrkccq",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\Greeting-Response-Test.json",
+            "id": "test_2501khjb7917fktbnkbw0rc4fsqj",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\Empathy-for-Delayed-Flight-Test.json",
+            "id": "test_7101khjb796qfhyr0j0g10c8wshc",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\Workflow-Node-Transition-Test.json",
+            "id": "test_7201khjb79kkfkb8khsq5xgsxfax",
+            "type": "tool"
+        },
+        {
+            "config": "test_configs\\Can-read-knowledge-base.json",
+            "id": "test_9701khjb78v9em386ttnrt7xnc4m",
+            "type": "llm"
+        },
+        {
+            "config": "test_configs\\Quinn-Invoice-Test.json",
+            "type": "basic-llm",
+            "id": "test_6401kmw2sp8hfd1ab9q8b7tx1ssk"
+        },
+        {
+            "config": "test_configs\\Calendar-Event-Test.json",
+            "type": "basic-llm",
+            "id": "test_4201kmw2ts26fhqat5t995k6p76y"
+        }
+    ]
+}

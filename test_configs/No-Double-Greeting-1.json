@@ -1,0 +1,35 @@
+{
+    "type": "llm",
+    "dynamic_variables": {
+        "salutation": "Mr.",
+        "last_name": "Scott",
+        "time_of_day": "morning",
+        "business_name": "Scott Painting Services",
+        "owner_name": "Tonio Scott",
+        "first_name": "Tonio",
+        "industry": "Painting"
+    },
+    "chat_history": [
+        {
+            "role": "agent",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 0,
+            "interrupted": false,
+            "source_event_id": null
+        },
+        {
+            "role": "user",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 3,
+            "interrupted": false,
+            "source_event_id": null
+        }
+    ],
+    "success_condition": "",
+    "success_examples": [],
+    "failure_examples": [],
+    "id": "test_2301kmsz3parevt9qaa1c84t1nn2",
+    "name": "No Double Greeting"
+}

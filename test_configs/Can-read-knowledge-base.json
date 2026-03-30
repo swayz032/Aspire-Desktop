@@ -1,0 +1,38 @@
+{
+    "type": "llm",
+    "dynamic_variables": {},
+    "chat_history": [
+        {
+            "role": "user",
+            "message": "What cities does Eleven Airlines fly to from New York?",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 0,
+            "interrupted": false,
+            "source_event_id": null
+        }
+    ],
+    "success_condition": "The agent correctly retrieves and uses information from the knowledge base to answer that Eleven Airlines has daily flights from New York to London and Warsaw.",
+    "success_examples": [
+        {
+            "response": "[checking] let me look that up for you... [warmly] so from New York, we have daily flights to London and Warsaw. Is there a particular destination you're interested in?",
+            "type": "success"
+        },
+        {
+            "response": "[warmly] great question! From New York, Eleven Airlines offers daily flights to both London and Warsaw. Would you like help booking one of those routes?",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "I don't have information about our flight routes.",
+            "type": "failure"
+        },
+        {
+            "response": "Let me transfer you to someone who can help with route information.",
+            "type": "failure"
+        }
+    ],
+    "id": "test_9701khjb78v9em386ttnrt7xnc4m",
+    "name": "Can read knowledge base"
+}

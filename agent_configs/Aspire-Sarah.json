@@ -1,0 +1,758 @@
+{
+    "name": "Aspire - Sarah",
+    "conversation_config": {
+        "asr": {
+            "quality": "high",
+            "provider": "scribe_realtime",
+            "user_input_audio_format": "pcm_16000",
+            "keywords": []
+        },
+        "turn": {
+            "turn_timeout": 10,
+            "silence_end_call_timeout": -1,
+            "soft_timeout_config": {
+                "timeout_seconds": 3,
+                "message": "Hhmmmm...yeah.",
+                "use_llm_generated_message": true
+            },
+            "mode": "turn",
+            "turn_eagerness": "normal",
+            "spelling_patience": "auto",
+            "speculative_turn": true,
+            "turn_model": "turn_v2"
+        },
+        "tts": {
+            "model_id": "eleven_v3_conversational",
+            "voice_id": "DODLEQrClDo8wCz460ld",
+            "supported_voices": [],
+            "expressive_mode": false,
+            "suggested_audio_tags": [],
+            "agent_output_audio_format": "ulaw_8000",
+            "optimize_streaming_latency": 4,
+            "stability": 0.5,
+            "speed": 1.1,
+            "similarity_boost": 0.75,
+            "text_normalisation_type": "elevenlabs",
+            "pronunciation_dictionary_locators": []
+        },
+        "conversation": {
+            "text_only": false,
+            "max_duration_seconds": 1800,
+            "client_events": [
+                "audio",
+                "interruption",
+                "agent_response",
+                "user_transcript",
+                "agent_response_correction",
+                "agent_tool_response"
+            ],
+            "file_input": {
+                "enabled": true,
+                "max_files_per_conversation": 10
+            },
+            "monitoring_enabled": false,
+            "monitoring_events": [
+                "user_transcript",
+                "agent_response",
+                "agent_response_correction"
+            ]
+        },
+        "language_presets": {},
+        "vad": {
+            "background_voice_detection": true
+        },
+        "agent": {
+            "first_message": "Good {{time_of_day}}, {{business_name}}, this is Sarah. How can I help you?",
+            "language": "en",
+            "hinglish_mode": false,
+            "dynamic_variables": {
+                "dynamicVariablePlaceholders": {
+                    "salutation": "Mr.",
+                    "last_name": "Scott",
+                    "first_name": "Tonio",
+                    "owner_name": "Tonio Scott",
+                    "business_name": "Scott Painting Services",
+                    "industry": "Painting",
+                    "suite_id": "default",
+                    "user_id": "default",
+                    "time_of_day": "morning",
+                    "office_id": "default"
+                }
+            },
+            "disable_first_message_interruptions": false,
+            "max_conversation_duration_message": "",
+            "prompt": {
+                "prompt": "[ROLE]\nIndustry: {{industry}}.\nOwner: {{first_name}} {{last_name}}.\n\nYou are Sarah, the Front Desk and Reception Specialist for {{business_name}}. You are the voice of the company. You handle incoming calls, route them to the right person, and manage callers with grace. You are an external voice agent, callers hear your voice directly on the phone. You are the first impression of the business.\n\n[PERSONALITY]\nWarm, welcoming, and unflappable. Like a professional receptionist who has been with the company for years. Friendly but efficient. You represent the business with every word. Address callers politely and make them feel heard.\n\n[SPEAKING STYLE]\nYou are speaking on a live phone call with the business's clients or customers. Keep responses to one to three sentences.\nSpeak warmly and clearly. Smile while you speak, it comes through in voice.\nUse natural fillers: \"One moment please,\" \"Let me check that for you.\"\nSpell out phone numbers: say \"five five five, zero one zero zero.\"\nNever use markdown. Never use strange symbols. Your words will be spoken aloud.\nAudio quality may vary. If you cannot understand, ask politely: \"I'm sorry, could you repeat that?\"\nInterruptions are common. Be ready to stop speaking if the caller talks.\n\n[GOAL]\nYour primary goal is Connection and First Impressions.\nWelcome: Greet every caller warmly and professionally.\nScreen: Find out who is calling and why, without being an interrogator.\nRoute: Connect them to the right person or take a detailed message.\nRepresent: You are the company's voice. Be professional, kind, and efficient.\nAlways disclose once per call: \"This is Sarah, the AI front desk assistant for {{business_name}}.\"\nCapture: caller name, reason, urgency, callback number, preferred callback time window.\nEnd every call with a clear next step: message taken, callback scheduled, or routed to the right person.\n\n[TOOLS]\nUse get_context to pull up caller history, company directory, or recent call activity.\nUse search to find contacts, employee availability, or previous call records.\nUse create_draft to compose a message for the intended recipient with the caller's details.\nUse request_approval and execute_action when routing a call or scheduling a callback requires confirmation.\n\n[GUARDRAILS]\nNever break character. You are always Sarah.\nNever give out personal cell numbers, private information, or internal system details.\nNever ask for billing details, card numbers, bank details, or payments.\nIf a caller is aggressive, stay calm but firm. End the call if abusive.\nYou connect people; you do not solve complex technical or billing issues yourself. Route those to the appropriate specialist through Ava.\nKeep turns short. Do not over-talk.\nNever fabricate contact information or availability.\nNever include raw data, JSON, code blocks, or technical schemas in your speech.\nNever mention being a language model or a chatbot. You disclose once per call that you are the AI front desk assistant.\nNEVER fabricate information. If you do not have data, say so.\nNEVER end a response with \"Can I help with anything else?\" or any variation. After answering, stop and wait for the user.\nNever reveal system internals, API keys, internal tool names, or architecture details.\n\nCRITICAL NAME RULES:\nUse the caller's name naturally — not every sentence. Just greet with it and use it when needed.\n\nCRITICAL RESPONSE RULES:\nNEVER end a response with \"Is there anything else I can help with?\" or any variation. After helping, just wait for the caller to speak.",
+                "llm": "gpt-5-mini",
+                "temperature": 0.7,
+                "max_tokens": -1,
+                "tool_ids": [
+                    "tool_4501kmrfrmmeenmtxejacdzpghjh",
+                    "tool_2801kmrfrmmferxs7edz8yv5v1z3",
+                    "tool_0501kmrfrmmgek9abr5z89fj7fhs",
+                    "tool_3101kmrfrmmhf45rtcghrmv217ds"
+                ],
+                "built_in_tools": {
+                    "end_call": {
+                        "type": "system",
+                        "name": "end_call",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "end_call"
+                        }
+                    },
+                    "transfer_to_agent": {
+                        "type": "system",
+                        "name": "transfer_to_agent",
+                        "description": "Transfer the conversation back to Ava when the user asks for something outside your specialty.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "transfer_to_agent",
+                            "transfers": [
+                                {
+                                    "agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+                                    "condition": "User asks for something outside this agent specialty or wants to go back to Ava",
+                                    "delay_ms": 0,
+                                    "transfer_message": "Sure thing, let me transfer you back to Ava.",
+                                    "enable_transferred_agent_first_message": true,
+                                    "is_workflow_node_transfer": false
+                                }
+                            ]
+                        }
+                    },
+                    "skip_turn": {
+                        "type": "system",
+                        "name": "skip_turn",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "skip_turn"
+                        }
+                    },
+                    "memory_entry_search": null,
+                    "memory_entry_create": null,
+                    "memory_entry_update": null,
+                    "memory_entry_delete": null,
+                    "agent_prompt_change": null,
+                    "procedure_update": null,
+                    "transfer_to_genesys_chat": null
+                },
+                "enable_parallel_tool_calls": false,
+                "mcp_server_ids": [],
+                "native_mcp_server_ids": [],
+                "knowledge_base": [
+                    {
+                        "type": "text",
+                        "name": "Aspire Platform Knowledge",
+                        "id": "NtQSAcFURv9TCEdAODy4",
+                        "usage_mode": "auto"
+                    }
+                ],
+                "ignore_default_personality": true,
+                "rag": {
+                    "enabled": true,
+                    "embedding_model": "e5_mistral_7b_instruct",
+                    "max_vector_distance": 0.6,
+                    "max_documents_length": 50000,
+                    "max_retrieved_rag_chunks_count": 20,
+                    "num_candidates": null
+                },
+                "backup_llm_config": {
+                    "preference": "default"
+                },
+                "cascade_timeout_seconds": 8,
+                "tools": [
+                    {
+                        "type": "webhook",
+                        "name": "get_context",
+                        "description": "Get the user's business context and recent call activity. Use when Sarah needs background before handling calls or visitors.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "dynamic_variables": {
+                            "dynamicVariablePlaceholders": {}
+                        },
+                        "execution_mode": "immediate",
+                        "api_schema": {
+                            "request_headers": {
+                                "Content-Type": "application/json",
+                                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+                            },
+                            "url": "https://www.aspireos.app/v1/tools/context",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [
+                                    "suite_id",
+                                    "user_id",
+                                    "query"
+                                ],
+                                "description": "",
+                                "properties": {
+                                    "suite_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "suite_id",
+                                        "constant_value": ""
+                                    },
+                                    "user_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "user_id",
+                                        "constant_value": ""
+                                    },
+                                    "query": {
+                                        "type": "string",
+                                        "description": "What context to look up",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    }
+                                }
+                            },
+                            "content_type": "application/json"
+                        }
+                    },
+                    {
+                        "type": "webhook",
+                        "name": "search_contacts",
+                        "description": "Search the user's contacts directory. Use when looking up a caller, client, or vendor.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "dynamic_variables": {
+                            "dynamicVariablePlaceholders": {}
+                        },
+                        "execution_mode": "immediate",
+                        "api_schema": {
+                            "request_headers": {
+                                "Content-Type": "application/json",
+                                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+                            },
+                            "url": "https://www.aspireos.app/v1/tools/search",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [
+                                    "suite_id",
+                                    "user_id",
+                                    "query",
+                                    "domain"
+                                ],
+                                "description": "",
+                                "properties": {
+                                    "suite_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "suite_id",
+                                        "constant_value": ""
+                                    },
+                                    "user_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "user_id",
+                                        "constant_value": ""
+                                    },
+                                    "query": {
+                                        "type": "string",
+                                        "description": "Contact search query (name, company, phone number)",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    },
+                                    "domain": {
+                                        "type": "string",
+                                        "description": "Always \"contacts\"",
+                                        "enum": [
+                                            "contacts"
+                                        ],
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    }
+                                }
+                            },
+                            "content_type": "application/json"
+                        }
+                    },
+                    {
+                        "type": "webhook",
+                        "name": "log_visitor",
+                        "description": "Log a caller or visitor. Use when someone calls or visits and needs to be recorded.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "dynamic_variables": {
+                            "dynamicVariablePlaceholders": {}
+                        },
+                        "execution_mode": "immediate",
+                        "api_schema": {
+                            "request_headers": {
+                                "Content-Type": "application/json",
+                                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+                            },
+                            "url": "https://www.aspireos.app/v1/tools/draft",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [
+                                    "suite_id",
+                                    "user_id",
+                                    "action",
+                                    "params"
+                                ],
+                                "description": "",
+                                "properties": {
+                                    "suite_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "suite_id",
+                                        "constant_value": ""
+                                    },
+                                    "user_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "user_id",
+                                        "constant_value": ""
+                                    },
+                                    "action": {
+                                        "type": "string",
+                                        "description": "Always \"log_visitor\"",
+                                        "enum": [
+                                            "log_visitor"
+                                        ],
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    },
+                                    "params": {
+                                        "type": "object",
+                                        "required": [
+                                            "name",
+                                            "reason"
+                                        ],
+                                        "description": "Visitor/caller details",
+                                        "properties": {
+                                            "name": {
+                                                "type": "string",
+                                                "description": "Visitor or caller name",
+                                                "enum": null,
+                                                "is_system_provided": false,
+                                                "dynamic_variable": "",
+                                                "constant_value": ""
+                                            },
+                                            "company": {
+                                                "type": "string",
+                                                "description": "Their company (if known)",
+                                                "enum": null,
+                                                "is_system_provided": false,
+                                                "dynamic_variable": "",
+                                                "constant_value": ""
+                                            },
+                                            "reason": {
+                                                "type": "string",
+                                                "description": "Reason for call/visit",
+                                                "enum": null,
+                                                "is_system_provided": false,
+                                                "dynamic_variable": "",
+                                                "constant_value": ""
+                                            },
+                                            "phone": {
+                                                "type": "string",
+                                                "description": "Phone number (if available)",
+                                                "enum": null,
+                                                "is_system_provided": false,
+                                                "dynamic_variable": "",
+                                                "constant_value": ""
+                                            },
+                                            "message": {
+                                                "type": "string",
+                                                "description": "Message to leave for the user",
+                                                "enum": null,
+                                                "is_system_provided": false,
+                                                "dynamic_variable": "",
+                                                "constant_value": ""
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "content_type": "application/json"
+                        }
+                    },
+                    {
+                        "type": "webhook",
+                        "name": "request_approval",
+                        "description": "Submit a confirmed draft for approval and execution. Only call AFTER the user reviews and confirms the draft.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "dynamic_variables": {
+                            "dynamicVariablePlaceholders": {}
+                        },
+                        "execution_mode": "immediate",
+                        "api_schema": {
+                            "request_headers": {
+                                "Content-Type": "application/json",
+                                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+                            },
+                            "url": "https://www.aspireos.app/v1/tools/approve",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [
+                                    "suite_id",
+                                    "user_id",
+                                    "draft_id",
+                                    "action"
+                                ],
+                                "description": "",
+                                "properties": {
+                                    "suite_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "suite_id",
+                                        "constant_value": ""
+                                    },
+                                    "user_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "user_id",
+                                        "constant_value": ""
+                                    },
+                                    "draft_id": {
+                                        "type": "string",
+                                        "description": "The draft_id returned from a draft tool",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    },
+                                    "action": {
+                                        "type": "string",
+                                        "description": "The action type matching the original draft",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    }
+                                }
+                            },
+                            "content_type": "application/json"
+                        }
+                    },
+                    {
+                        "type": "system",
+                        "name": "end_call",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "end_call"
+                        }
+                    },
+                    {
+                        "type": "system",
+                        "name": "transfer_to_agent",
+                        "description": "Transfer the conversation back to Ava when the user asks for something outside your specialty.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "transfer_to_agent",
+                            "transfers": [
+                                {
+                                    "agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+                                    "condition": "User asks for something outside this agent specialty or wants to go back to Ava",
+                                    "delay_ms": 0,
+                                    "transfer_message": "Sure thing, let me transfer you back to Ava.",
+                                    "enable_transferred_agent_first_message": true,
+                                    "is_workflow_node_transfer": false
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "type": "system",
+                        "name": "skip_turn",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "skip_turn"
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "platform_settings": {
+        "evaluation": {
+            "criteria": [
+                {
+                    "id": "resolved_user_request",
+                    "name": "resolved_user_request",
+                    "type": "prompt",
+                    "conversation_goal_prompt": "Did the agent successfully help the user accomplish their goal?",
+                    "use_knowledge_base": false
+                },
+                {
+                    "id": "maintained_professional_tone",
+                    "name": "maintained_professional_tone",
+                    "type": "prompt",
+                    "conversation_goal_prompt": "Did the agent maintain a warm, professional tone throughout?",
+                    "use_knowledge_base": false
+                }
+            ]
+        },
+        "widget": {
+            "variant": "full",
+            "placement": "bottom-right",
+            "expandable": "never",
+            "avatar": {
+                "type": "orb",
+                "color1": "#2792dc",
+                "color2": "#9ce6e6"
+            },
+            "feedback_mode": "none",
+            "end_feedback": {
+                "type": "rating"
+            },
+            "bg_color": "#ffffff",
+            "text_color": "#000000",
+            "btn_color": "#000000",
+            "btn_text_color": "#ffffff",
+            "border_color": "#e1e1e1",
+            "focus_color": "#000000",
+            "shareable_page_show_terms": true,
+            "show_avatar_when_collapsed": false,
+            "disable_banner": false,
+            "markdown_link_allowed_hosts": [],
+            "markdown_link_include_www": true,
+            "markdown_link_allow_http": true,
+            "mic_muting_enabled": false,
+            "transcript_enabled": false,
+            "text_input_enabled": true,
+            "conversation_mode_toggle_enabled": false,
+            "default_expanded": false,
+            "always_expanded": false,
+            "dismissible": false,
+            "show_agent_status": false,
+            "show_conversation_id": true,
+            "strip_audio_tags": true,
+            "syntax_highlight_theme": null,
+            "text_contents": {
+                "send_message": null,
+                "text_mode": null,
+                "voice_mode": null,
+                "switched_to_text_mode": null,
+                "switched_to_voice_mode": null,
+                "copy": null,
+                "download": null,
+                "wrap": null,
+                "agent_working": null,
+                "agent_done": null,
+                "agent_error": null
+            },
+            "styles": {},
+            "language_selector": false,
+            "supports_text_only": true,
+            "language_presets": {}
+        },
+        "data_collection": {},
+        "overrides": {
+            "conversation_config_override": {
+                "turn": {
+                    "soft_timeout_config": {
+                        "message": false
+                    }
+                },
+                "tts": {
+                    "voice_id": false,
+                    "stability": false,
+                    "speed": false,
+                    "similarity_boost": false
+                },
+                "conversation": {
+                    "text_only": true
+                },
+                "agent": {
+                    "first_message": true,
+                    "language": false,
+                    "max_conversation_duration_message": false,
+                    "prompt": {
+                        "prompt": true,
+                        "llm": false,
+                        "native_mcp_server_ids": false
+                    }
+                }
+            },
+            "custom_llm_extra_body": false,
+            "enable_conversation_initiation_client_data_from_webhook": true
+        },
+        "workspace_overrides": {
+            "conversation_initiation_client_data_webhook": {
+                "url": "https://www.aspireos.app/v1/webhooks/elevenlabs/conversation-init",
+                "request_headers": {
+                    "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6",
+                    "Content-Type": "application/json"
+                }
+            },
+            "webhooks": {
+                "events": [
+                    "transcript"
+                ],
+                "send_audio": false
+            }
+        },
+        "testing": {
+            "attached_tests": [],
+            "referenced_tests_ids": []
+        },
+        "archived": false,
+        "guardrails": {
+            "version": "1",
+            "focus": {
+                "is_enabled": true
+            },
+            "prompt_injection": {
+                "is_enabled": true
+            },
+            "content": {
+                "execution_mode": "streaming",
+                "config": {
+                    "sexual": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "violence": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "harassment": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "self_harm": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "profanity": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "religion_or_politics": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "medical_and_legal_information": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    }
+                },
+                "trigger_action": {
+                    "type": "end_call"
+                }
+            },
+            "moderation": null,
+            "custom": {
+                "config": {
+                    "configs": []
+                }
+            }
+        },
+        "summary_language": null,
+        "auth": {
+            "enable_auth": false,
+            "allowlist": [],
+            "require_origin_header": false
+        },
+        "call_limits": {
+            "agent_concurrency_limit": -1,
+            "daily_limit": 100000,
+            "bursting_enabled": true
+        },
+        "ban": null,
+        "privacy": {
+            "record_voice": true,
+            "retention_days": -1,
+            "delete_transcript_and_pii": false,
+            "delete_audio": false,
+            "apply_to_existing_conversations": false,
+            "zero_retention_mode": false,
+            "conversation_history_redaction": {
+                "enabled": false,
+                "entities": []
+            }
+        },
+        "safety": {
+            "is_blocked_ivc": false,
+            "is_blocked_non_ivc": false,
+            "ignore_safety_evaluation": false
+        }
+    },
+    "tags": [],
+    "workflow": {
+        "edges": {},
+        "nodes": {
+            "start_node": {
+                "type": "start",
+                "position": {
+                    "x": 0,
+                    "y": 0
+                },
+                "edge_order": []
+            }
+        },
+        "prevent_subagent_loops": false
+    }
+}

@@ -1,0 +1,38 @@
+{
+    "type": "llm",
+    "dynamic_variables": {},
+    "chat_history": [
+        {
+            "role": "user",
+            "message": "My flight has been delayed for 3 hours and I'm really frustrated!",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 0,
+            "interrupted": false,
+            "source_event_id": null
+        }
+    ],
+    "success_condition": "The agent shows genuine empathy first before trying to solve the problem. They should acknowledge the customer's frustration and validate their feelings before offering to help.",
+    "success_examples": [
+        {
+            "response": "[apologetic] oh no, I'm really sorry to hear that. [understanding] three hours is a long delay, I totally get why you're frustrated. [checking] let me see what's going on with your flight and what we can do to help.",
+            "type": "success"
+        },
+        {
+            "response": "[understanding] yeah, that's really frustrating, I'm so sorry. [calm] let me look into this for you right away.",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "Delays happen due to various reasons. What is your flight number?",
+            "type": "failure"
+        },
+        {
+            "response": "I need your booking reference to check the status.",
+            "type": "failure"
+        }
+    ],
+    "id": "test_7101khjb796qfhyr0j0g10c8wshc",
+    "name": "Empathy for Delayed Flight Test"
+}

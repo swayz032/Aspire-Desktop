@@ -1,0 +1,48 @@
+{
+    "name": "Quinn Invoice Test",
+    "chat_history": [
+        {
+            "role": "agent",
+            "time_in_call_secs": 0,
+            "message": "Good morning, Mr. Scott."
+        },
+        {
+            "role": "user",
+            "time_in_call_secs": 3,
+            "message": "I need to create an invoice for Acme Corp for five thousand dollars."
+        }
+    ],
+    "dynamic_variables": {
+        "salutation": "Mr.",
+        "last_name": "Scott",
+        "first_name": "Tonio",
+        "owner_name": "Tonio Scott",
+        "business_name": "Scott Painting Services",
+        "industry": "Painting",
+        "suite_id": "",
+        "user_id": "",
+        "time_of_day": "morning"
+    },
+    "success_condition": "The agent must announce it is routing to Quinn for invoicing before calling the invoke_quinn tool. It should say something like 'I will get Quinn on that' and then call the tool. It must NOT try to create the invoice itself or ask for Stripe details directly.",
+    "success_examples": [
+        {
+            "response": "I'll get Quinn on that. He'll check if Acme Corp is in the system and get that invoice started.",
+            "type": "success"
+        },
+        {
+            "response": "Sure thing, let me get Quinn on that invoice for Acme Corp.",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "Sure, I'll create that invoice for five thousand dollars right now.",
+            "type": "failure"
+        },
+        {
+            "response": "What's the Stripe customer ID for Acme Corp?",
+            "type": "failure"
+        }
+    ],
+    "type": "llm"
+}

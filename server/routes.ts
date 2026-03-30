@@ -33,13 +33,6 @@ type SupportedAgent =
   | 'clara'
   | 'mail_ops';
 
-type AnamSessionContext = {
-  userId: string;
-  suiteId: string;
-  persona: SupportedAgent;
-  createdAt: number;
-};
-
 const SUPPORTED_AGENTS = new Set<SupportedAgent>([
   'ava', 'finn', 'eli', 'nora', 'sarah', 'adam',
   'quinn', 'tec', 'teressa', 'milo', 'clara', 'mail_ops',
@@ -71,15 +64,6 @@ function resolveTraceId(req: Request, fallback?: string): string {
   const fromHeader = (req.headers['x-trace-id'] as string) || '';
   const fromCorr = (req.headers['x-correlation-id'] as string) || '';
   return fromHeader || fromCorr || fallback || `trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function normalizeSessionKey(raw: unknown): string {
-  if (typeof raw !== 'string') return '';
-  const trimmed = raw.trim();
-  if (!trimmed) return '';
-  return trimmed
-    .replace(/^session[:_-]/i, '')
-    .replace(/^sess[:_-]/i, '');
 }
 
 type FetchRetryOptions = {
@@ -248,33 +232,6 @@ function humanizeUserError(message: string | null | undefined, correlationId: st
   const base = (message || '').trim() || 'I hit a temporary issue while handling that. Please try again in a moment.';
   return `${base} (ref ${shortCorrelationRef(correlationId)})`;
 }
-
-// ─── Anam Session Store (CUSTOMER_CLIENT_V1 Auth Bridge) ───
-// When a user starts an Anam avatar session, we store their auth context.
-// When Anam's brain routing calls /api/ava/chat-stream (without JWT), we look up
-// the user's suite_id from this store. TTL: 30 minutes, cleanup every 5 minutes.
-const anamSessionStore = new Map<string, AnamSessionContext>();
-
-function setAnamSessionContext(sessionKey: string, ctx: AnamSessionContext): void {
-  if (!sessionKey) return;
-  anamSessionStore.set(sessionKey, ctx);
-  const normalized = normalizeSessionKey(sessionKey);
-  if (normalized && normalized !== sessionKey) {
-    anamSessionStore.set(normalized, ctx);
-  }
-}
-
-function getAnamSessionContext(sessionKey: unknown): AnamSessionContext | undefined {
-  if (typeof sessionKey !== 'string' || !sessionKey.trim()) return undefined;
-  return anamSessionStore.get(sessionKey) ?? anamSessionStore.get(normalizeSessionKey(sessionKey));
-}
-
-setInterval(() => {
-  const cutoff = Date.now() - 30 * 60 * 1000;
-  for (const [key, val] of anamSessionStore) {
-    if (val.createdAt < cutoff) anamSessionStore.delete(key);
-  }
-}, 5 * 60 * 1000);
 
 const getParam = (param: string | string[]): string =>
   Array.isArray(param) ? param[0] : param;
@@ -4055,8 +4012,8 @@ router.post('/api/authority-queue/:id/execute', async (req: Request, res: Respon
  * Persona "Ava" created in Anam dashboard (lab.anam.ai/personas):
  *   - Avatar: Cara at desk (30fa96d0)
  *   - Voice: Hope (0c8b52f4-f26d-4810-855c-c90e5f599cbc)
- *   - LLM: CUSTOMER_CLIENT_V1 → routes to /api/ava/chat-stream (Law #1: Single Brain)
- *   - Persona ID stored in ANAM_PERSONA_ID env var
+ *   - LLM: Anam-hosted or server-side custom LLM
+ *   - Persona state is created fresh per session token request
  */
 
 router.post('/api/anam/session', async (req: Request, res: Response) => {
@@ -4081,8 +4038,9 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     // Ava: Cara avatar + Hope voice, Finn: custom avatar + voice
     // llmId: Custom LLM registered with Anam → routes to /v1/chat/completions (Law #1: Single Brain)
-    // Fallback to CUSTOMER_CLIENT_V1 if custom LLM not configured.
-    const ANAM_CUSTOM_LLM_ID = process.env.ANAM_CUSTOM_LLM_ID || 'CUSTOMER_CLIENT_V1';
+    // Fallback stays server-side/hosted only; there is no client-side SDK brain routing fallback.
+    const ANAM_HOSTED_LLM_ID = '0934d97d-0c3a-4f33-91b0-5e136a0ef466';
+    const ANAM_CUSTOM_LLM_ID = process.env.ANAM_CUSTOM_LLM_ID || ANAM_HOSTED_LLM_ID;
     const suiteId = (req as any).authenticatedSuiteId || '';
     const officeId = getDefaultOfficeId() || suiteId;
 
@@ -4136,7 +4094,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       name: 'Ava',
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
-      llmId: '0934d97d-0c3a-4f33-91b0-5e136a0ef466',      // Anam hosted GPT-4.1 mini
+      llmId: ANAM_HOSTED_LLM_ID,                         // Anam hosted GPT-4.1 mini
       systemPrompt: videoPrompt,
       skipGreeting: false,     // Anam generates greeting with user's name from prompt
       avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
@@ -4239,18 +4197,6 @@ When giving tax guidance, always include confidence level: "This is well-establi
 
     logger.info('Anam session token obtained', { persona: resolvedPersona, tokenLength: data.sessionToken.length });
 
-    // Store user context for CUSTOMER_CLIENT_V1 brain routing auth bridge.
-    // When Anam calls /api/ava/chat-stream, it sends the session_id — we look up the suite context.
-    if (suiteId && data.sessionToken) {
-      setAnamSessionContext(data.sessionToken, {
-        userId,
-        suiteId,
-        persona: resolvedPersona,
-        createdAt: Date.now(),
-      });
-      logger.info('Anam session stored for brain routing', { userId, persona: resolvedPersona });
-    }
-
     // Return only the session token — no API key exposure
     res.json({ sessionToken: data.sessionToken });
   } catch (error: unknown) {
@@ -4259,241 +4205,6 @@ When giving tax guidance, always include confidence level: "This is well-establi
   }
 });
 
-// ─── Anam CUSTOMER_CLIENT_V1 Chat Stream ───
-// When Anam is configured with llmId: CUSTOMER_CLIENT_V1, it sends user speech
-// transcripts to this endpoint instead of using its built-in LLM.
-// This endpoint forwards to our orchestrator (Law #1: Single Brain).
-
-router.post('/api/ava/chat-stream', async (req: Request, res: Response) => {
-  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const sendSse = (text: string, extra: Record<string, unknown> = {}) => {
-    if (!res.headersSent) {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-    }
-    res.write(`data: ${JSON.stringify({ text, done: false, ...extra })}\n\n`);
-    res.write(`data: ${JSON.stringify({ text: '', done: true, ...extra })}\n\n`);
-    res.end();
-  };
-
-  try {
-    const { message, session_id, message_history, userProfile, agent } = req.body;
-
-    if (!message || typeof message !== 'string' || !message.trim()) {
-      return res.status(400).json({ error: 'Missing or empty message parameter' });
-    }
-
-    const ORCHESTRATOR_URL = resolveOrchestratorUrl();
-    if (!ORCHESTRATOR_URL) {
-      return res.status(503).json({
-        error: 'ORCHESTRATOR_NOT_CONFIGURED',
-        message: 'ORCHESTRATOR_URL is required in production.',
-      });
-    }
-
-    // Auth bridge: prefer JWT-derived suiteId/userId, fall back to session store for Anam brain routing
-    let suiteId = (req as any).authenticatedSuiteId;
-    let userId = (req as any).authenticatedUserId;
-    let sessionCtx: AnamSessionContext | undefined;
-    if ((!suiteId || !userId) && session_id) {
-      // CUSTOMER_CLIENT_V1 callback — Anam sends session_id, look up stored context
-      sessionCtx = getAnamSessionContext(session_id);
-      if (sessionCtx) {
-        if (!suiteId) suiteId = sessionCtx.suiteId;
-        if (!userId) userId = sessionCtx.userId;
-        logger.info('Anam brain routing: resolved context from session store', { correlationId });
-      }
-    }
-
-    const parsedAgent = parseRequestedAgent(agent ?? sessionCtx?.persona);
-    if (STRICT_AGENT_VALIDATION && parsedAgent.provided && !parsedAgent.valid) {
-      return sendSse('Unsupported agent selection. Please choose a valid agent.', {
-        correlation_id: correlationId,
-        error: 'INVALID_AGENT',
-        allowed_agents: Array.from(SUPPORTED_AGENTS),
-      });
-    }
-    const requestedAgent = parsedAgent.value;
-
-    if (!suiteId) {
-      logger.warn('Ava chat-stream: no suite context available', { correlationId, hasSessionId: !!session_id });
-      return sendSse("Your session expired. Please reconnect your avatar and try again.", {
-        correlation_id: correlationId,
-        error: 'AUTH_REQUIRED',
-      });
-    }
-
-    // Build profile context for Ava avatar personalization (PII-filtered — Law #9)
-    // When Anam's brain routing calls this endpoint, userProfile is NOT in the request body.
-    // Fall back to querying suite_profiles server-side so the LLM knows who it's talking to.
-    let profileContext = userProfile ? {
-      owner_name: userProfile.ownerName,
-      business_name: userProfile.businessName,
-      industry: userProfile.industry,
-      team_size: userProfile.teamSize,
-      industry_specialty: userProfile.industrySpecialty,
-      business_goals: userProfile.businessGoals,
-      pain_point: userProfile.painPoint,
-      preferred_channel: userProfile.preferredChannel,
-    } : undefined;
-
-    if (!profileContext && suiteId && supabaseAdmin) {
-      try {
-        const { data: sp } = await supabaseAdmin
-          .from('suite_profiles')
-          .select('owner_name, business_name, industry, team_size, industry_specialty, business_goals, pain_point, preferred_channel')
-          .eq('suite_id', suiteId)
-          .single();
-        if (sp) {
-          profileContext = {
-            owner_name: sp.owner_name,
-            business_name: sp.business_name,
-            industry: sp.industry,
-            team_size: sp.team_size,
-            industry_specialty: sp.industry_specialty,
-            business_goals: sp.business_goals,
-            pain_point: sp.pain_point,
-            preferred_channel: sp.preferred_channel,
-          };
-        }
-      } catch (profileErr) {
-        logger.warn('Anam chat-stream: suite_profiles lookup failed (non-fatal)', { correlationId });
-      }
-    }
-
-    // Forward to orchestrator (Law #1: Single Brain decides)
-    // Avatar channel uses shorter timeout — filler talk prevents Anam engine timeout,
-    // but we still want faster failure than the general 90s timeout.
-    const AVATAR_TIMEOUT_MS = 30_000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), AVATAR_TIMEOUT_MS);
-
-    const response = await fetch(`${ORCHESTRATOR_URL}/v1/intents`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Suite-Id': suiteId,
-        'X-Office-Id': getDefaultOfficeId() || suiteId,
-        'X-Actor-Id': userId || 'anam-brain-routing',
-        'X-Correlation-Id': correlationId,
-      },
-      body: JSON.stringify({
-        text: message.trim(),
-        agent: requestedAgent,
-        requested_agent: requestedAgent,
-        channel: 'avatar',
-        session_id,
-        message_history: message_history?.slice(-10),
-        user_profile: profileContext,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.error('Ava chat-stream orchestrator error', { correlationId, status: response.status, error: errorText.substring(0, 200) });
-      let responseMessage = `Ava Brain returned ${response.status}. Please try again.`;
-      try {
-        const parsed = JSON.parse(errorText);
-        responseMessage = parsed?.text || parsed?.message || parsed?.error || responseMessage;
-      } catch {
-        if (errorText?.trim()) responseMessage = errorText.trim().slice(0, 240);
-      }
-      return sendSse(responseMessage, {
-        correlation_id: correlationId,
-        error: 'ORCHESTRATOR_ERROR',
-      });
-    }
-
-    const data = await response.json();
-    const resolvedAgent = typeof data?.assigned_agent === 'string' && data.assigned_agent.trim()
-      ? data.assigned_agent.trim().toLowerCase()
-      : requestedAgent;
-    const responseText = data.text || data.message || "I'm ready when you are.";
-    return sendSse(responseText, {
-      correlation_id: correlationId,
-      receipt_id: data.governance?.receipt_ids?.[0] || null,
-      resolved_agent: resolvedAgent,
-      assigned_agent: resolvedAgent,
-    });
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      logger.error('Ava chat-stream timeout', { correlationId });
-      return sendSse('Ava Brain timed out while processing this request. Please try again.', {
-        correlation_id: correlationId,
-        error: 'ORCHESTRATOR_TIMEOUT',
-      });
-    }
-    logger.error('Ava chat-stream error', { correlationId, error: error instanceof Error ? error.message : 'unknown' });
-    return sendSse('Unable to connect to Ava Brain right now. Please check backend/orchestrator availability.', {
-      correlation_id: correlationId,
-      error: 'ORCHESTRATOR_UNAVAILABLE',
-    });
-  }
-});
-
-// Bind active Anam session_id -> authenticated suite/user context.
-// Used after SDK SESSION_READY so CUSTOMER_CLIENT_V1 callbacks can resolve auth.
-router.post('/api/anam/session/bind', async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).authenticatedUserId;
-    const suiteId = (req as any).authenticatedSuiteId;
-    if (!userId || !suiteId) {
-      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required for avatar session binding' });
-    }
-
-    const rawSessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId.trim() : '';
-    if (!rawSessionId) {
-      return res.status(400).json({ error: 'MISSING_SESSION_ID', message: 'sessionId is required' });
-    }
-
-    const parsedAgent = parseRequestedAgent(req.body?.persona);
-    const persona = parsedAgent.value;
-    const now = Date.now();
-
-    setAnamSessionContext(rawSessionId, {
-      userId,
-      suiteId,
-      persona,
-      createdAt: now,
-    });
-
-    // Optional: also alias by raw token if client provides it.
-    const rawSessionToken = typeof req.body?.sessionToken === 'string' ? req.body.sessionToken.trim() : '';
-    if (rawSessionToken) {
-      setAnamSessionContext(rawSessionToken, {
-        userId,
-        suiteId,
-        persona,
-        createdAt: now,
-      });
-    }
-
-    logger.info('Anam session bound for callback auth bridge', {
-      userId,
-      suiteId,
-      persona,
-      sessionIdLength: rawSessionId.length,
-    });
-
-    return res.json({ ok: true });
-  } catch (error: unknown) {
-    logger.error('Anam session bind error', { error: error instanceof Error ? error.message : 'unknown' });
-    return res.status(500).json({ error: 'ANAM_BIND_FAILED', message: 'Failed to bind avatar session' });
-  }
-});
-
-// ─── Anam Server-Side Custom LLM Endpoint (OpenAI Chat Completions compatible) ───
-// When Anam is configured with a custom LLM (server-side), it sends standard
-// OpenAI Chat Completions requests to this endpoint. Our endpoint:
-// 1. Validates the shared secret (ANAM_LLM_SECRET env var)
-// 2. Extracts tenant context from [ASPIRE_CTX:...] in the system prompt
-// 3. Routes through LangGraph orchestrator (Law #1: Single Brain)
-// 4. Streams response back in Chat Completions SSE format
-//
 // This replaces CUSTOMER_CLIENT_V1 — Anam servers call us directly (server-to-server),
 // eliminating the broken client-side round-trip.
 
@@ -7077,3 +6788,8 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
 });
 
 export default router;
+
+
+
+
+

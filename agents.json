@@ -1,0 +1,24 @@
+{
+    "agents": [
+        {
+            "config": "agent_configs\\Aspire-Sarah.json",
+            "id": "agent_8901kmqdjnrte7psp6en4f85m4kt"
+        },
+        {
+            "config": "agent_configs\\Aspire-Nora.json",
+            "id": "agent_1901kmqdjmwmfqg9rqr5jngfydnw"
+        },
+        {
+            "config": "agent_configs\\Aspire-Eli.json",
+            "id": "agent_4201kmqdjm1tfhfaggnnfjax3m6d"
+        },
+        {
+            "config": "agent_configs\\Aspire-Finn.json",
+            "id": "agent_2201kmqdjjyben0tyg2t5eexnmzg"
+        },
+        {
+            "config": "agent_configs\\Aspire-Ava.json",
+            "id": "agent_1201kmqdjgxvfxxteedpkvjej7er"
+        }
+    ]
+}

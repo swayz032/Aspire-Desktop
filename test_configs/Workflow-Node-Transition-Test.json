@@ -1,0 +1,26 @@
+{
+    "type": "tool",
+    "dynamic_variables": {},
+    "chat_history": [
+        {
+            "role": "user",
+            "message": "I need to pay my outstanding balance.",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 0,
+            "interrupted": false,
+            "source_event_id": null
+        }
+    ],
+    "tool_call_parameters": {
+        "parameters": [],
+        "verify_absence": false,
+        "workflow_node_transition": {
+            "type": "node_id",
+            "agent_id": "agent_0001khjb78v7fj2t9gk3zmagnjhj",
+            "target_node_id": "billing_support"
+        }
+    },
+    "id": "test_7201khjb79kkfkb8khsq5xgsxfax",
+    "name": "Workflow Node Transition Test"
+}

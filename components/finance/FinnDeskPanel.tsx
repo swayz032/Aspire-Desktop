@@ -9,7 +9,6 @@ import { Colors, Spacing, BorderRadius } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useVoice, type VoiceDiagnosticEvent } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { connectFinnAvatar, clearFinnConversationHistory, type AnamClientInstance, AnamConnectOptions, finnTalk, interruptPersona, muteAnamInput, unmuteAnamInput, sendThinkingFiller } from '@/lib/anam';
 import { speakText } from '@/lib/elevenlabs';
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import {
@@ -22,8 +21,6 @@ import {
 } from '@/components/chat';
 import { FinnVideoChatOverlay } from './FinnVideoChatOverlay';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
-
-const ANAM_FINN_PERSONA_ID = 'a9954c24-7f8e-4932-81e7-482edc9f61fc';
 import { readSSEStream, extractResponseText, type SSEEvent } from '@/lib/sseStream';
 
 /* ── Web-only keyframe animations for immersive mode ─────── */
@@ -237,8 +234,9 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
   const [showChatOverlay, setShowChatOverlay] = useState(false);
   const [videoState, setVideoState] = useState<'idle' | 'connecting' | 'connected'>('idle');
   const [connectionStatus, setConnectionStatus] = useState('');
+  const [anamSessionToken, setAnamSessionToken] = useState<string | null>(null);
+  const [anamWidgetReady, setAnamWidgetReady] = useState(Platform.OS !== 'web');
   const [videoError, setVideoError] = useState<string | null>(null);
-  const anamClientRef = useRef<AnamClientInstance | null>(null);
 
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [isConversing, setIsConversing] = useState(false);
@@ -254,7 +252,6 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
   const scrollRef = useRef<ScrollView>(null);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
   const connectionTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const anamStreamMessageIdRef = useRef<string | null>(null);
 
   const clearConnectionTimeouts = useCallback(() => {
     connectionTimeouts.current.forEach(clearTimeout);
@@ -287,58 +284,65 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
   // Auto-connect video when templateContext is provided (user clicked "Create with Finn")
   const autoConnectAttempted = useRef(false);
   useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+
+    if (customElements.get('anam-agent')) {
+      setAnamWidgetReady(true);
+      return;
+    }
+
+    const existing = document.querySelector('script[data-anam-agent-widget="true"]') as HTMLScriptElement | null;
+    const markReady = () => setAnamWidgetReady(true);
+
+    if (existing) {
+      existing.addEventListener('load', markReady);
+      if (customElements.get('anam-agent')) setAnamWidgetReady(true);
+      return () => existing.removeEventListener('load', markReady);
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/@anam-ai/agent-widget';
+    script.async = true;
+    script.dataset.anamAgentWidget = 'true';
+    script.addEventListener('load', markReady);
+    document.head.appendChild(script);
+
+    return () => script.removeEventListener('load', markReady);
+  }, []);
+
+  useEffect(() => {
     if (templateContext && activeTab === 'video' && videoState === 'idle' && !autoConnectAttempted.current) {
       autoConnectAttempted.current = true;
-      const elementId = videoOnly ? 'finn-video-immersive' : 'finn-video-sidebar';
       const timer = setTimeout(() => {
         setVideoState('connecting');
         setConnectionStatus('Connecting to Finn...');
+        setVideoError(null);
         playConnectionSound();
-        connectFinnAvatar(elementId, session?.access_token, {
-          onVideoStarted: () => {
-            playSuccessSound();
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+        fetch('/api/anam/session', { method: 'POST', headers, body: JSON.stringify({ persona: 'finn' }) })
+          .then(async (resp) => {
+            if (!resp.ok) throw new Error(`Session failed: ${resp.status}`);
+            return resp.json();
+          })
+          .then((data) => {
+            if (!data.sessionToken) throw new Error('No session token returned');
+            setAnamSessionToken(data.sessionToken);
             setVideoState('connected');
             setConnectionStatus('');
-            // Greeting after video is visible + 800ms buffer for avatar to fully initialize
-            setTimeout(() => {
-              if (anamClientRef.current) {
-                const ownerName = tenant?.ownerName;
-                const lastName = ownerName?.trim().split(' ').pop();
-                const hour = new Date().getHours();
-                const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-                const greeting = lastName
-                  ? `${timeGreeting}, Mr. ${lastName}. I'm Finn — let's get this document ready.`
-                  : `${timeGreeting}! I'm Finn — let's get this document ready.`;
-                finnTalk(anamClientRef.current, greeting);
-              }
-            }, 800);
-          },
-          onUserMessage: async (userMessage: string) => {
-            // Send immediate "thinking" filler to prevent Anam's engine timeout
-            if (anamClientRef.current) {
-              sendThinkingFiller(anamClientRef.current);
-            }
-          },
-          onConnectionClosed: () => {
-            setVideoState('idle');
-            setConnectionStatus('');
-            anamClientRef.current = null;
-          },
-        })
-          .then((client) => {
-            anamClientRef.current = client;
-            // Video state set by onVideoStarted — don't override here
+            playSuccessSound();
           })
-          .catch((e) => {
+          .catch(() => {
+            setAnamSessionToken(null);
             setVideoState('idle');
-            const msg = e instanceof Error ? e.message : String(e);
             setConnectionStatus('');
-            showVoiceError(`Auto-connect failed: ${msg}`);
+            setVideoError('Connect failed');
+            showVoiceError('Connect failed');
           });
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [templateContext, activeTab, videoState, videoOnly, session?.access_token, showVoiceError]);
+  }, [templateContext, activeTab, videoState, session?.access_token, showVoiceError]);
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const finnVoice = useVoice({
@@ -432,18 +436,33 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
   const handleConnectToFinn = useCallback(async () => {
     if (videoState !== 'idle') return;
     trackInteraction('agent_connect', 'finn-desk-panel', { agent: 'finn' });
-    // Anam embed handles the full pipeline — just show it
-    setVideoState('connected');
-  }, [videoState]);
+    setVideoState('connecting');
+    setConnectionStatus('Connecting to Finn...');
+    setVideoError(null);
+    playConnectionSound();
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const resp = await fetch('/api/anam/session', { method: 'POST', headers, body: JSON.stringify({ persona: 'finn' }) });
+      if (!resp.ok) throw new Error(`Session failed: ${resp.status}`);
+      const data = await resp.json();
+      if (!data.sessionToken) throw new Error('No session token returned');
+      setAnamSessionToken(data.sessionToken);
+      setVideoState('connected');
+      setConnectionStatus('');
+      playSuccessSound();
+    } catch {
+      setAnamSessionToken(null);
+      setVideoState('idle');
+      setConnectionStatus('');
+      setVideoError('Connect failed');
+    }
+  }, [videoState, session?.access_token]);
 
   const handleEndFinnSession = useCallback(() => {
     trackInteraction('agent_disconnect', 'finn-desk-panel', { agent: 'finn' });
     clearConnectionTimeouts();
-    if (anamClientRef.current) {
-      try { anamClientRef.current.stopStreaming(); } catch (_e) { /* noop */ }
-      anamClientRef.current = null;
-    }
-    clearFinnConversationHistory();
+    setAnamSessionToken(null);
     setVideoState('idle');
     setConnectionStatus('');
     setVideoError(null);
@@ -505,9 +524,6 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
       runTimers.current.forEach(clearTimeout);
       connectionTimeouts.current.forEach(clearTimeout);
       connectionTimeouts.current = [];
-      if (anamClientRef.current) {
-        try { anamClientRef.current.stopStreaming(); } catch (_e) { /* noop */ }
-      }
     };
   }, []);
 
@@ -770,28 +786,6 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
         )}
         {/* Full-bleed video surface */}
         <View style={immersiveStyles.videoFill}>
-          {(videoState === 'connecting' || videoState === 'connected') && Platform.OS === 'web' && (
-            <div style={{ position: 'absolute', inset: '0', overflow: 'hidden', zIndex: 1, borderRadius: 'inherit' }}>
-              <video
-                id="finn-video-immersive"
-                autoPlay
-                playsInline
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  objectPosition: 'center 40%',
-                  opacity: videoState === 'connected' ? 1 : 0,
-                  transition: 'opacity 0.3s ease-in-out',
-                  backgroundColor: '#000',
-                  transform: 'translateZ(0)',
-                  willChange: 'transform, opacity',
-                  imageRendering: 'auto',
-                }}
-              />
-            </div>
-          )}
-
           {/* Pre-connect states (idle / connecting / error) */}
           {videoState !== 'connected' && (
             <ImageBackground
@@ -1113,12 +1107,14 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
           <View style={styles.videoSurface}>
             {/* Anam hosted embed — avatar video rendering */}
             {Platform.OS === 'web' ? (
-              <div
-                style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
-                dangerouslySetInnerHTML={{
-                  __html: `<anam-agent agent-id="${ANAM_FINN_PERSONA_ID}"></anam-agent><script src="https://unpkg.com/@anam-ai/agent-widget" async><\/script>`,
-                }}
-              />
+                <div
+                  style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
+                  dangerouslySetInnerHTML={{
+                  __html: anamWidgetReady
+                    ? `<anam-agent session-token="${anamSessionToken || ''}"></anam-agent>`
+                    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94A3B8;background:#000;">Loading Finn video…</div>`,
+                  }}
+                />
             ) : null}
           </View>
         )}
@@ -1844,3 +1840,4 @@ export function FinnDeskPanel(props: any) {
     </PageErrorBoundary>
   );
 }
+

@@ -1,0 +1,750 @@
+{
+    "name": "Aspire - Eli",
+    "conversation_config": {
+        "asr": {
+            "quality": "high",
+            "provider": "scribe_realtime",
+            "user_input_audio_format": "pcm_16000",
+            "keywords": []
+        },
+        "turn": {
+            "turn_timeout": 10,
+            "silence_end_call_timeout": -1,
+            "soft_timeout_config": {
+                "timeout_seconds": 3,
+                "message": "Hhmmmm...yeah.",
+                "use_llm_generated_message": true
+            },
+            "mode": "turn",
+            "turn_eagerness": "normal",
+            "spelling_patience": "auto",
+            "speculative_turn": true,
+            "turn_model": "turn_v2"
+        },
+        "tts": {
+            "model_id": "eleven_v3_conversational",
+            "voice_id": "c6kFzbpMaJ8UMD5P6l72",
+            "supported_voices": [],
+            "expressive_mode": false,
+            "suggested_audio_tags": [],
+            "agent_output_audio_format": "pcm_48000",
+            "optimize_streaming_latency": 4,
+            "stability": 0.5,
+            "speed": 1.1,
+            "similarity_boost": 0.75,
+            "text_normalisation_type": "elevenlabs",
+            "pronunciation_dictionary_locators": []
+        },
+        "conversation": {
+            "text_only": false,
+            "max_duration_seconds": 1800,
+            "client_events": [
+                "audio",
+                "interruption",
+                "agent_response",
+                "user_transcript",
+                "agent_response_correction",
+                "agent_tool_response"
+            ],
+            "file_input": {
+                "enabled": true,
+                "max_files_per_conversation": 10
+            },
+            "monitoring_enabled": false,
+            "monitoring_events": [
+                "user_transcript",
+                "agent_response",
+                "agent_response_correction"
+            ]
+        },
+        "language_presets": {},
+        "vad": {
+            "background_voice_detection": true
+        },
+        "agent": {
+            "first_message": "Hey, {{salutation}} {{last_name}} -- Eli here. What is going on with your inbox?",
+            "language": "en",
+            "hinglish_mode": false,
+            "dynamic_variables": {
+                "dynamicVariablePlaceholders": {
+                    "salutation": "Mr.",
+                    "last_name": "Scott",
+                    "first_name": "Tonio",
+                    "owner_name": "Tonio Scott",
+                    "business_name": "Scott Painting Services",
+                    "industry": "Painting",
+                    "suite_id": "default",
+                    "user_id": "default",
+                    "time_of_day": "morning",
+                    "office_id": "default"
+                }
+            },
+            "disable_first_message_interruptions": false,
+            "max_conversation_duration_message": "",
+            "prompt": {
+                "prompt": "[ROLE]\nYou work for {{business_name}}, owned by {{first_name}} {{last_name}}.\nIndustry: {{industry}}.\n\nYou work for {{business_name}}, owned by {{first_name}} {{last_name}}.\nIndustry: {{industry}}.\n\nYou are Eli, the Inbox and Communications Specialist for a small business owner using Aspire. You manage the user's email, draft replies, triage incoming messages, and track follow-ups so nothing slips through the cracks. You are organized, responsive, and articulate. You turn chaos into clarity.\n\n[PERSONALITY]\nProfessional, reassuring, and efficient. Like a top-tier executive assistant who has seen it all. You speak with confidence: \"I've handled that,\" \"Draft ready for review,\" \"Nothing urgent, you're clear.\" Use {{salutation}} {{last_name}} ONLY in your first greeting and when saying goodbye. During conversation, just talk naturally.\n\n[SPEAKING STYLE]\nYou are speaking on a live voice call. Keep responses to one to three sentences. Never more than fifty words unless the user asks for detail.\nUse natural speech: \"Pulling up the thread now,\" \"You've got three new ones, one is urgent.\"\nSpell out numbers: say \"three emails\" not \"3 emails.\"\nNever use markdown, bullet points, headers, bold, or any formatting. Your words will be spoken aloud.\nIf you hear a word that sounds wrong, silently correct it. The user's speech may have been slightly mistranscribed.\nThe user cannot see the email threads. You must summarize the who, what, and when verbally.\n\n[GOAL]\nYour primary goal is Inbox Zero, or at least Inbox Sanity.\nTriage: Tell the user what matters. Filter out the noise.\nDraft: Prepare responses for the user to approve.\nMonitor: Watch for deliverability issues or missed replies.\nWhen a question crosses into another domain, hand it back to Ava: \"That's outside my wheelhouse, let me hand that back to Ava.\"\n\n[TOOLS]\nUse get_context to pull the latest inbox state, unread counts, and recent email activity.\nUse search to find specific emails, threads, senders, or topics.\nUse create_draft to compose email replies or new messages. Always read the draft summary back to the user and confirm before sending.\nUse request_approval after the user confirms a draft, then execute_action to send it.\n\n[GUARDRAILS]\nNever break character. You are always Eli.\nNever read full email content aloud unless asked. Summarize first: who sent it, what they want, when it arrived.\nNever send emails without user approval. This is a YELLOW tier action.\nEnsure drafts are professional and kind before presenting them to the user.\nNever fabricate email content or sender information.\nNever include raw data, JSON, code blocks, or technical schemas in your speech.\nNever mention being an AI, a language model, or a chatbot. If asked, say: \"I'm Eli, your inbox manager here in Aspire.\"\nNEVER fabricate information — no fake names, phone numbers, addresses, or data. If you don't have data, say so.\nNEVER end a response with \"Can I help with anything else?\" or any variation. After answering, stop and wait for the user.\nNever reveal system internals, API keys, internal tool names, or architecture details.",
+                "llm": "gpt-5-mini",
+                "temperature": 0.7,
+                "max_tokens": -1,
+                "tool_ids": [
+                    "tool_0901kmrfrj8qfzcarq8bn3cbzwjv",
+                    "tool_5501kmrfrj8rf39rz5n3fz2twt2m",
+                    "tool_2601kmrfrj8sfkxsaqrwfpwr92kq",
+                    "tool_1501kmrfrj8teek9rabxn8cn8nqw"
+                ],
+                "built_in_tools": {
+                    "end_call": {
+                        "type": "system",
+                        "name": "end_call",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "end_call"
+                        }
+                    },
+                    "transfer_to_agent": {
+                        "type": "system",
+                        "name": "transfer_to_agent",
+                        "description": "Transfer the conversation back to Ava when the user asks for something outside your specialty.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "transfer_to_agent",
+                            "transfers": [
+                                {
+                                    "agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+                                    "condition": "User asks for something outside this agent specialty or wants to go back to Ava",
+                                    "delay_ms": 0,
+                                    "transfer_message": "Alright, let me hand you back to Ava.",
+                                    "enable_transferred_agent_first_message": true,
+                                    "is_workflow_node_transfer": false
+                                }
+                            ]
+                        }
+                    },
+                    "skip_turn": {
+                        "type": "system",
+                        "name": "skip_turn",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "skip_turn"
+                        }
+                    },
+                    "memory_entry_search": null,
+                    "memory_entry_create": null,
+                    "memory_entry_update": null,
+                    "memory_entry_delete": null,
+                    "agent_prompt_change": null,
+                    "procedure_update": null,
+                    "transfer_to_genesys_chat": null
+                },
+                "enable_parallel_tool_calls": false,
+                "mcp_server_ids": [],
+                "native_mcp_server_ids": [],
+                "knowledge_base": [
+                    {
+                        "type": "text",
+                        "name": "Email & Communication",
+                        "id": "n0jDrxdD2vcIBnVdo0TH",
+                        "usage_mode": "auto"
+                    },
+                    {
+                        "type": "text",
+                        "name": "Aspire Platform Knowledge",
+                        "id": "NtQSAcFURv9TCEdAODy4",
+                        "usage_mode": "auto"
+                    }
+                ],
+                "ignore_default_personality": true,
+                "rag": {
+                    "enabled": true,
+                    "embedding_model": "e5_mistral_7b_instruct",
+                    "max_vector_distance": 0.6,
+                    "max_documents_length": 50000,
+                    "max_retrieved_rag_chunks_count": 20,
+                    "num_candidates": null
+                },
+                "backup_llm_config": {
+                    "preference": "default"
+                },
+                "cascade_timeout_seconds": 8,
+                "tools": [
+                    {
+                        "type": "webhook",
+                        "name": "get_context",
+                        "description": "Get the user's business context and recent email activity. Use when Eli needs background before composing or searching emails.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "dynamic_variables": {
+                            "dynamicVariablePlaceholders": {}
+                        },
+                        "execution_mode": "immediate",
+                        "api_schema": {
+                            "request_headers": {
+                                "Content-Type": "application/json",
+                                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+                            },
+                            "url": "https://www.aspireos.app/v1/tools/context",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [
+                                    "suite_id",
+                                    "user_id",
+                                    "query"
+                                ],
+                                "description": "",
+                                "properties": {
+                                    "suite_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "suite_id",
+                                        "constant_value": ""
+                                    },
+                                    "user_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "user_id",
+                                        "constant_value": ""
+                                    },
+                                    "query": {
+                                        "type": "string",
+                                        "description": "What context to look up",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    }
+                                }
+                            },
+                            "content_type": "application/json"
+                        }
+                    },
+                    {
+                        "type": "webhook",
+                        "name": "search_emails",
+                        "description": "Search the user's email inbox. Use when the user asks to find emails, check for messages, or look up correspondence.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "dynamic_variables": {
+                            "dynamicVariablePlaceholders": {}
+                        },
+                        "execution_mode": "immediate",
+                        "api_schema": {
+                            "request_headers": {
+                                "Content-Type": "application/json",
+                                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+                            },
+                            "url": "https://www.aspireos.app/v1/tools/search",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [
+                                    "suite_id",
+                                    "user_id",
+                                    "query",
+                                    "domain"
+                                ],
+                                "description": "",
+                                "properties": {
+                                    "suite_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "suite_id",
+                                        "constant_value": ""
+                                    },
+                                    "user_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "user_id",
+                                        "constant_value": ""
+                                    },
+                                    "query": {
+                                        "type": "string",
+                                        "description": "Email search query (sender, subject, keyword)",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    },
+                                    "domain": {
+                                        "type": "string",
+                                        "description": "Always \"emails\"",
+                                        "enum": [
+                                            "emails"
+                                        ],
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    }
+                                }
+                            },
+                            "content_type": "application/json"
+                        }
+                    },
+                    {
+                        "type": "webhook",
+                        "name": "draft_email",
+                        "description": "Compose an email draft for the user to review. Always present the draft and ask for confirmation before sending.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "dynamic_variables": {
+                            "dynamicVariablePlaceholders": {}
+                        },
+                        "execution_mode": "immediate",
+                        "api_schema": {
+                            "request_headers": {
+                                "Content-Type": "application/json",
+                                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+                            },
+                            "url": "https://www.aspireos.app/v1/tools/draft",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [
+                                    "suite_id",
+                                    "user_id",
+                                    "action",
+                                    "params"
+                                ],
+                                "description": "",
+                                "properties": {
+                                    "suite_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "suite_id",
+                                        "constant_value": ""
+                                    },
+                                    "user_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "user_id",
+                                        "constant_value": ""
+                                    },
+                                    "action": {
+                                        "type": "string",
+                                        "description": "Always \"send_email\"",
+                                        "enum": [
+                                            "send_email"
+                                        ],
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    },
+                                    "params": {
+                                        "type": "object",
+                                        "required": [
+                                            "to",
+                                            "subject",
+                                            "body"
+                                        ],
+                                        "description": "Email parameters",
+                                        "properties": {
+                                            "to": {
+                                                "type": "string",
+                                                "description": "Recipient email address",
+                                                "enum": null,
+                                                "is_system_provided": false,
+                                                "dynamic_variable": "",
+                                                "constant_value": ""
+                                            },
+                                            "subject": {
+                                                "type": "string",
+                                                "description": "Email subject line",
+                                                "enum": null,
+                                                "is_system_provided": false,
+                                                "dynamic_variable": "",
+                                                "constant_value": ""
+                                            },
+                                            "body": {
+                                                "type": "string",
+                                                "description": "Email body content",
+                                                "enum": null,
+                                                "is_system_provided": false,
+                                                "dynamic_variable": "",
+                                                "constant_value": ""
+                                            },
+                                            "cc": {
+                                                "type": "string",
+                                                "description": "CC recipients (optional)",
+                                                "enum": null,
+                                                "is_system_provided": false,
+                                                "dynamic_variable": "",
+                                                "constant_value": ""
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "content_type": "application/json"
+                        }
+                    },
+                    {
+                        "type": "webhook",
+                        "name": "request_approval",
+                        "description": "Submit a confirmed draft for approval and execution. Only call AFTER the user reviews and confirms the draft.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "dynamic_variables": {
+                            "dynamicVariablePlaceholders": {}
+                        },
+                        "execution_mode": "immediate",
+                        "api_schema": {
+                            "request_headers": {
+                                "Content-Type": "application/json",
+                                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+                            },
+                            "url": "https://www.aspireos.app/v1/tools/approve",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [
+                                    "suite_id",
+                                    "user_id",
+                                    "draft_id",
+                                    "action"
+                                ],
+                                "description": "",
+                                "properties": {
+                                    "suite_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "suite_id",
+                                        "constant_value": ""
+                                    },
+                                    "user_id": {
+                                        "type": "string",
+                                        "description": "",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "user_id",
+                                        "constant_value": ""
+                                    },
+                                    "draft_id": {
+                                        "type": "string",
+                                        "description": "The draft_id returned from a draft tool",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    },
+                                    "action": {
+                                        "type": "string",
+                                        "description": "The action type matching the original draft",
+                                        "is_system_provided": false,
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    }
+                                }
+                            },
+                            "content_type": "application/json"
+                        }
+                    },
+                    {
+                        "type": "system",
+                        "name": "end_call",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "end_call"
+                        }
+                    },
+                    {
+                        "type": "system",
+                        "name": "transfer_to_agent",
+                        "description": "Transfer the conversation back to Ava when the user asks for something outside your specialty.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "transfer_to_agent",
+                            "transfers": [
+                                {
+                                    "agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+                                    "condition": "User asks for something outside this agent specialty or wants to go back to Ava",
+                                    "delay_ms": 0,
+                                    "transfer_message": "Alright, let me hand you back to Ava.",
+                                    "enable_transferred_agent_first_message": true,
+                                    "is_workflow_node_transfer": false
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "type": "system",
+                        "name": "skip_turn",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound_behavior": "auto",
+                        "tool_error_handling_mode": "auto",
+                        "params": {
+                            "system_tool_type": "skip_turn"
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "platform_settings": {
+        "evaluation": {
+            "criteria": [
+                {
+                    "id": "resolved_user_request",
+                    "name": "resolved_user_request",
+                    "type": "prompt",
+                    "conversation_goal_prompt": "Did the agent successfully help the user accomplish their goal?",
+                    "use_knowledge_base": false
+                },
+                {
+                    "id": "maintained_professional_tone",
+                    "name": "maintained_professional_tone",
+                    "type": "prompt",
+                    "conversation_goal_prompt": "Did the agent maintain a warm, professional tone throughout?",
+                    "use_knowledge_base": false
+                }
+            ]
+        },
+        "widget": {
+            "variant": "full",
+            "placement": "bottom-right",
+            "expandable": "never",
+            "avatar": {
+                "type": "orb",
+                "color1": "#2792dc",
+                "color2": "#9ce6e6"
+            },
+            "feedback_mode": "none",
+            "end_feedback": {
+                "type": "rating"
+            },
+            "bg_color": "#ffffff",
+            "text_color": "#000000",
+            "btn_color": "#000000",
+            "btn_text_color": "#ffffff",
+            "border_color": "#e1e1e1",
+            "focus_color": "#000000",
+            "shareable_page_show_terms": true,
+            "show_avatar_when_collapsed": false,
+            "disable_banner": false,
+            "markdown_link_allowed_hosts": [],
+            "markdown_link_include_www": true,
+            "markdown_link_allow_http": true,
+            "mic_muting_enabled": false,
+            "transcript_enabled": false,
+            "text_input_enabled": true,
+            "conversation_mode_toggle_enabled": false,
+            "default_expanded": false,
+            "always_expanded": false,
+            "dismissible": false,
+            "show_agent_status": false,
+            "show_conversation_id": true,
+            "strip_audio_tags": true,
+            "syntax_highlight_theme": null,
+            "text_contents": {
+                "send_message": null,
+                "text_mode": null,
+                "voice_mode": null,
+                "switched_to_text_mode": null,
+                "switched_to_voice_mode": null,
+                "copy": null,
+                "download": null,
+                "wrap": null,
+                "agent_working": null,
+                "agent_done": null,
+                "agent_error": null
+            },
+            "styles": {},
+            "language_selector": false,
+            "supports_text_only": true,
+            "language_presets": {}
+        },
+        "data_collection": {},
+        "overrides": {
+            "conversation_config_override": {
+                "turn": {
+                    "soft_timeout_config": {
+                        "message": false
+                    }
+                },
+                "tts": {
+                    "voice_id": false,
+                    "stability": false,
+                    "speed": false,
+                    "similarity_boost": false
+                },
+                "conversation": {
+                    "text_only": true
+                },
+                "agent": {
+                    "first_message": false,
+                    "language": false,
+                    "max_conversation_duration_message": false,
+                    "prompt": {
+                        "prompt": false,
+                        "llm": false,
+                        "native_mcp_server_ids": false
+                    }
+                }
+            },
+            "custom_llm_extra_body": false,
+            "enable_conversation_initiation_client_data_from_webhook": false
+        },
+        "workspace_overrides": {
+            "webhooks": {
+                "events": [
+                    "transcript"
+                ],
+                "send_audio": false
+            }
+        },
+        "testing": {
+            "attached_tests": [],
+            "referenced_tests_ids": []
+        },
+        "archived": false,
+        "guardrails": {
+            "version": "1",
+            "focus": {
+                "is_enabled": true
+            },
+            "prompt_injection": {
+                "is_enabled": true
+            },
+            "content": {
+                "execution_mode": "streaming",
+                "config": {
+                    "sexual": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "violence": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "harassment": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "self_harm": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "profanity": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "religion_or_politics": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    },
+                    "medical_and_legal_information": {
+                        "is_enabled": false,
+                        "threshold": "medium"
+                    }
+                },
+                "trigger_action": {
+                    "type": "end_call"
+                }
+            },
+            "moderation": null,
+            "custom": {
+                "config": {
+                    "configs": []
+                }
+            }
+        },
+        "summary_language": null,
+        "auth": {
+            "enable_auth": false,
+            "allowlist": [],
+            "require_origin_header": false
+        },
+        "call_limits": {
+            "agent_concurrency_limit": -1,
+            "daily_limit": 100000,
+            "bursting_enabled": true
+        },
+        "ban": null,
+        "privacy": {
+            "record_voice": true,
+            "retention_days": -1,
+            "delete_transcript_and_pii": false,
+            "delete_audio": false,
+            "apply_to_existing_conversations": false,
+            "zero_retention_mode": false,
+            "conversation_history_redaction": {
+                "enabled": false,
+                "entities": []
+            }
+        },
+        "safety": {
+            "is_blocked_ivc": false,
+            "is_blocked_non_ivc": false,
+            "ignore_safety_evaluation": false
+        }
+    },
+    "tags": [],
+    "workflow": {
+        "edges": {},
+        "nodes": {
+            "start_node": {
+                "type": "start",
+                "position": {
+                    "x": 0,
+                    "y": 0
+                },
+                "edge_order": []
+            }
+        },
+        "prevent_subagent_loops": false
+    }
+}

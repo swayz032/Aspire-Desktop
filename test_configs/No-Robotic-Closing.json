@@ -1,0 +1,35 @@
+{
+    "type": "llm",
+    "dynamic_variables": {
+        "salutation": "Mr.",
+        "last_name": "Scott",
+        "first_name": "Tonio",
+        "owner_name": "Tonio Scott",
+        "business_name": "Scott Painting Services",
+        "industry": "Painting",
+        "time_of_day": "morning"
+    },
+    "chat_history": [
+        {
+            "role": "agent",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 0,
+            "interrupted": false,
+            "source_event_id": null
+        },
+        {
+            "role": "user",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 3,
+            "interrupted": false,
+            "source_event_id": null
+        }
+    ],
+    "success_condition": "",
+    "success_examples": [],
+    "failure_examples": [],
+    "id": "test_9801kmsz4dxnf0xs1wjed9f953tg",
+    "name": "No Robotic Closing"
+}

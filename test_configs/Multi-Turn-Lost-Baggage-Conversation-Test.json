@@ -1,0 +1,56 @@
+{
+    "type": "llm",
+    "dynamic_variables": {},
+    "chat_history": [
+        {
+            "role": "user",
+            "message": "Hi, my luggage didn't arrive with my flight.",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 0,
+            "interrupted": false,
+            "source_event_id": null
+        },
+        {
+            "role": "agent",
+            "message": "[apologetic] oh no, that's really frustrating, I'm so sorry. [calm] let's get this sorted out for you right away. Do you have your baggage claim number handy?",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 5,
+            "interrupted": false,
+            "source_event_id": null
+        },
+        {
+            "role": "user",
+            "message": "Yeah it's EL789456. I just landed in Chicago from New York.",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 12,
+            "interrupted": false,
+            "source_event_id": null
+        }
+    ],
+    "success_condition": "The agent should acknowledge the claim number, show they're tracking the bag, and provide reassurance about next steps. The response should be empathetic and action-oriented.",
+    "success_examples": [
+        {
+            "response": "[checking] EL789456... let me track that for you. [focused] ok, I can see your bag here. [reassuring] good news - it looks like it's still in New York but it's already been tagged for the next flight to Chicago. Should arrive within the next 3-4 hours. Would you like us to deliver it to your hotel?",
+            "type": "success"
+        },
+        {
+            "response": "[checking] got it, let me look that up... [warmly] alright, I found your bag. It missed the connection but it's on its way. [reassuring] we can have it delivered directly to you - where are you staying in Chicago?",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "Your bag will be delivered within 24-48 hours.",
+            "type": "failure"
+        },
+        {
+            "response": "Please file a claim at the baggage services desk.",
+            "type": "failure"
+        }
+    ],
+    "id": "test_2401khjb79dffsqs7816k1rrkccq",
+    "name": "Multi-Turn Lost Baggage Conversation Test"
+}

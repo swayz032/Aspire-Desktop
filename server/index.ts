@@ -87,7 +87,6 @@ const PUBLIC_PATHS = [
   '/api/quickbooks/callback',        // Intuit OAuth redirect — no JWT, server validates state+code
   '/api/plaid/oauth-callback',       // Plaid OAuth redirect — no JWT, redirects to connections page
   '/api/conference/join/',  // Join code resolution — guests authenticate via short-lived code, not JWT
-  '/api/ava/chat-stream',   // Anam CUSTOMER_CLIENT_V1 callback — auth via session store, not JWT
   '/api/auth/validate-invite-code', // Private beta invite gate — rate-limited, no JWT needed
   '/api/auth/signup',               // Private beta signup — rate-limited, invite code validated server-side
   '/api/config/public',             // Public client config (Google Places key) — no secrets, referrer-restricted

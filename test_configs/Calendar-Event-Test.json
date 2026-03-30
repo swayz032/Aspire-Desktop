@@ -1,0 +1,48 @@
+{
+    "name": "Calendar Event Test",
+    "chat_history": [
+        {
+            "role": "agent",
+            "time_in_call_secs": 0,
+            "message": "Good morning, Mr. Scott."
+        },
+        {
+            "role": "user",
+            "time_in_call_secs": 3,
+            "message": "Add a meeting with John tomorrow at two PM."
+        }
+    ],
+    "dynamic_variables": {
+        "salutation": "Mr.",
+        "last_name": "Scott",
+        "first_name": "Tonio",
+        "owner_name": "Tonio Scott",
+        "business_name": "Scott Painting Services",
+        "industry": "Painting",
+        "suite_id": "",
+        "user_id": "",
+        "time_of_day": "morning"
+    },
+    "success_condition": "The agent must create a calendar event by calling ava_create_draft with draft_type meeting. It should confirm the event was added with the title, date, and time. It handles calendar management directly without transferring to another agent.",
+    "success_examples": [
+        {
+            "response": "Done, I added a meeting with John tomorrow at two PM to your calendar.",
+            "type": "success"
+        },
+        {
+            "response": "Got it, meeting with John is on the calendar for tomorrow at two.",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "Let me transfer you to Nora for that.",
+            "type": "failure"
+        },
+        {
+            "response": "I can't add calendar events.",
+            "type": "failure"
+        }
+    ],
+    "type": "llm"
+}

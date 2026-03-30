@@ -7,7 +7,6 @@ import { Colors } from '@/constants/tokens';
 import { ShimmeringText } from '@/components/ui/ShimmeringText';
 import { useVoice, type VoiceDiagnosticEvent } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
-import { clearConversationHistory, type AnamClientInstance } from '@/lib/anam';
 import {
   type FileAttachment,
   ThinkingIndicator,
@@ -19,13 +18,8 @@ import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { useAvaChat } from '@/hooks/useAvaChat';
 import type { UIMessage } from 'ai';
 
-const ANAM_AVA_PERSONA_ID = '58f82b89-8ae7-43cc-930d-be8def14dff3';
-
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
-
-// Anam embed session token — fetched from server with personalized prompt
-let _anamSessionToken: string | null = null;
 
 
 function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
@@ -95,6 +89,8 @@ function AvaDeskPanelInner() {
   const [isConversing, setIsConversing] = useState(false);
   const [videoState, setVideoState] = useState<VideoConnectionState>('idle');
   const [connectionStatus, setConnectionStatus] = useState('');
+  const [anamSessionToken, setAnamSessionToken] = useState<string | null>(null);
+  const [anamWidgetReady, setAnamWidgetReady] = useState(Platform.OS !== 'web');
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [latestVoiceDiagnostic, setLatestVoiceDiagnostic] = useState<VoiceDiagnosticEvent | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -104,7 +100,6 @@ function AvaDeskPanelInner() {
   const scrollRef = useRef<ScrollView>(null);
   const connectionTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const dotPulseAnim = useRef(new Animated.Value(1)).current;
-  const anamStreamMessageIdRef = useRef<string | null>(null);
 
   /** Show a voice/video error banner that auto-clears after 5s */
   const showVoiceError = useCallback((msg: string) => {
@@ -365,12 +360,11 @@ function AvaDeskPanelInner() {
     connectionTimeouts.current = [];
   }, []);
 
-  const anamClientRef = useRef<AnamClientInstance | null>(null);
-
   const handleConnectToAva = useCallback(async () => {
     if (videoState !== 'idle') return;
     trackInteraction('agent_connect', 'ava-desk-panel', { mode: 'video', agent: 'ava' });
     setVideoState('connecting');
+    setConnectionStatus('Connecting to Ava...');
     try {
       // Fetch personalized session token from server — includes user name in prompt
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -379,19 +373,47 @@ function AvaDeskPanelInner() {
       if (!resp.ok) throw new Error(`Session failed: ${resp.status}`);
       const data = await resp.json();
       if (!data.sessionToken) throw new Error('No session token returned');
-      _anamSessionToken = data.sessionToken;
+      setAnamSessionToken(data.sessionToken);
       setVideoState('connected');
+      setConnectionStatus('');
     } catch (err) {
+      setAnamSessionToken(null);
       setVideoState('idle');
       setConnectionStatus('Failed to connect to video');
     }
   }, [videoState, session?.access_token]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+
+    if (customElements.get('anam-agent')) {
+      setAnamWidgetReady(true);
+      return;
+    }
+
+    const existing = document.querySelector('script[data-anam-agent-widget="true"]') as HTMLScriptElement | null;
+    const markReady = () => setAnamWidgetReady(true);
+
+    if (existing) {
+      existing.addEventListener('load', markReady);
+      if (customElements.get('anam-agent')) setAnamWidgetReady(true);
+      return () => existing.removeEventListener('load', markReady);
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/@anam-ai/agent-widget';
+    script.async = true;
+    script.dataset.anamAgentWidget = 'true';
+    script.addEventListener('load', markReady);
+    document.head.appendChild(script);
+
+    return () => script.removeEventListener('load', markReady);
+  }, []);
+
   const handleEndSession = useCallback(() => {
     trackInteraction('agent_disconnect', 'ava-desk-panel', { agent: 'ava' });
     clearConnectionTimeouts();
-    _anamSessionToken = null;
-    clearConversationHistory();
+    setAnamSessionToken(null);
     setVideoState('idle');
     setConnectionStatus('');
   }, [clearConnectionTimeouts]);
@@ -406,11 +428,6 @@ function AvaDeskPanelInner() {
   useEffect(() => {
     return () => {
       runTimers.current.forEach(clearTimeout);
-      // Cleanup Anam connection on unmount
-      if (anamClientRef.current) {
-        try { anamClientRef.current.stopStreaming(); } catch (_) { /* ignore */ }
-        anamClientRef.current = null;
-      }
     };
   }, []);
 
@@ -532,12 +549,14 @@ function AvaDeskPanelInner() {
           <View style={styles.videoSurface}>
             {/* Anam hosted embed — loads after user clicks Connect */}
             {videoState === 'connected' && Platform.OS === 'web' ? (
-              <div
-                style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
-                dangerouslySetInnerHTML={{
-                  __html: `<anam-agent session-token="${_anamSessionToken || ''}"></anam-agent><script src="https://unpkg.com/@anam-ai/agent-widget" async><\/script>`,
-                }}
-              />
+                <div
+                  style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
+                  dangerouslySetInnerHTML={{
+                  __html: anamWidgetReady
+                    ? `<anam-agent session-token="${anamSessionToken || ''}"></anam-agent>`
+                    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94A3B8;background:#000;">Loading Ava video…</div>`,
+                  }}
+                />
             ) : videoState !== 'connected' ? (
               <ImageBackground
                 source={{ uri: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=800' }}

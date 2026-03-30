@@ -1,0 +1,38 @@
+{
+    "type": "llm",
+    "dynamic_variables": {},
+    "chat_history": [
+        {
+            "role": "user",
+            "message": "Hi, I need help with my flight.",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 0,
+            "interrupted": false,
+            "source_event_id": null
+        }
+    ],
+    "success_condition": "The agent responds warmly and professionally, acknowledging the customer's need for help and asking how they can assist. The response should feel natural and empathetic, not robotic.",
+    "success_examples": [
+        {
+            "response": "[warmly] hey there! I'd be happy to help you with your flight. what's going on?",
+            "type": "success"
+        },
+        {
+            "response": "[understanding] of course, I'm here to help. what seems to be the issue with your flight?",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "Please provide your booking reference number.",
+            "type": "failure"
+        },
+        {
+            "response": "I cannot help you without more information.",
+            "type": "failure"
+        }
+    ],
+    "id": "test_2501khjb7917fktbnkbw0rc4fsqj",
+    "name": "Greeting Response Test"
+}
