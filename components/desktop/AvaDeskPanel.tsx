@@ -60,7 +60,7 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
     </style>
   </head>
   <body>
-    <video id="anam-video" autoplay playsinline></video>
+    <video id="anam-video" autoplay playsinline muted></video>
     <div id="status">Starting Ava video...</div>
     <script type="module">
       const sessionToken = ${encodedSessionToken};
@@ -74,11 +74,26 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
 
       const start = async () => {
         try {
-          const sdk = await import('https://unpkg.com/@anam-ai/js-sdk?module');
+          const sdk = await import('https://esm.sh/@anam-ai/js-sdk@latest');
+          const types = await import('https://esm.sh/@anam-ai/js-sdk@latest/dist/module/types');
           client = sdk.createClient(sessionToken);
+          const AnamEvent = types.AnamEvent;
+
+          client.addListener(AnamEvent.SESSION_READY, () => {
+            if (statusEl) statusEl.remove();
+            post({ type: 'connected' });
+          });
+
+          client.addListener(AnamEvent.CONNECTION_ESTABLISHED, () => {
+            if (statusEl) statusEl.remove();
+            post({ type: 'connected' });
+          });
+
+          client.addListener(AnamEvent.CONNECTION_CLOSED, (code) => {
+            post({ type: 'closed', code });
+          });
+
           await client.streamToVideoElement('anam-video');
-          if (statusEl) statusEl.remove();
-          post({ type: 'connected' });
         } catch (error) {
           console.error('Ava video bootstrap failed', error);
           setStatus('Unable to start Ava video');
@@ -484,7 +499,7 @@ function AvaDeskPanelInner() {
         setAnamSessionToken(null);
         setVideoState('idle');
         setConnectionStatus('Connect failed');
-      }, 25000));
+      }, 40000));
     } catch (err) {
       clearConnectionTimeouts();
       setAnamSessionToken(null);
@@ -509,6 +524,13 @@ function AvaDeskPanelInner() {
         setAnamSessionToken(null);
         setVideoState('idle');
         setConnectionStatus('Connect failed');
+        return;
+      }
+      if (event.data.type === 'closed') {
+        clearConnectionTimeouts();
+        setAnamSessionToken(null);
+        setVideoState('idle');
+        setConnectionStatus('Session ended');
       }
     };
 
