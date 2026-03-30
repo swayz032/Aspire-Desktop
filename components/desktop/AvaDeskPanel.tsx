@@ -47,6 +47,9 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
         object-fit: cover;
         background: #000;
       }
+      #anam-audio {
+        display: none;
+      }
       #status {
         position: absolute;
         inset: 0;
@@ -61,6 +64,7 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
   </head>
   <body>
     <video id="anam-video" autoplay playsinline muted></video>
+    <audio id="anam-audio" autoplay></audio>
     <div id="status">Starting Ava video...</div>
     <script type="module">
       const sessionToken = ${encodedSessionToken};
@@ -93,7 +97,7 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
             post({ type: 'closed', code });
           });
 
-          await client.streamToVideoElement('anam-video');
+          await client.streamToVideoAndAudioElements('anam-video', 'anam-audio');
         } catch (error) {
           console.error('Ava video bootstrap failed', error);
           setStatus('Unable to start Ava video');
