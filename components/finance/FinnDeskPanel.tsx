@@ -1111,7 +1111,7 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
                   style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
                   dangerouslySetInnerHTML={{
                   __html: anamWidgetReady
-                    ? `<anam-agent session-token="${anamSessionToken || ''}"></anam-agent>`
+                    ? `<anam-agent session-token="${anamSessionToken || ''}" style="display:block;width:100%;height:100%;min-height:480px;"></anam-agent>`
                     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94A3B8;background:#000;">Loading Finn video…</div>`,
                   }}
                 />

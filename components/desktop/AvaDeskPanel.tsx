@@ -553,7 +553,7 @@ function AvaDeskPanelInner() {
                   style={{ width: '100%', height: '100%', minHeight: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' } as any}
                   dangerouslySetInnerHTML={{
                   __html: anamWidgetReady
-                    ? `<anam-agent session-token="${anamSessionToken || ''}"></anam-agent>`
+                    ? `<anam-agent session-token="${anamSessionToken || ''}" style="display:block;width:100%;height:100%;min-height:480px;"></anam-agent>`
                     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94A3B8;background:#000;">Loading Ava video…</div>`,
                   }}
                 />
@@ -614,28 +614,6 @@ function AvaDeskPanelInner() {
                 </View>
               </ImageBackground>
             ) : null}
-            {/* End session overlay — floats above video when connected */}
-            {videoState === 'connected' && (
-              <Pressable
-                style={{
-                  position: 'absolute',
-                  bottom: 16,
-                  right: 16,
-                  backgroundColor: 'rgba(239,68,68,0.9)',
-                  borderRadius: 24,
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  zIndex: 3,
-                }}
-                onPress={() => { trackInteraction('session_end', 'ava-desk-panel', { agent: 'ava' }); handleEndSession(); }}
-              >
-                <Ionicons name="close-circle" size={18} color="#fff" />
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>End Session</Text>
-              </Pressable>
-            )}
           </View>
         )}
       </View>
