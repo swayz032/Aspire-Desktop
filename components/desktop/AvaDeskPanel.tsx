@@ -33,19 +33,26 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
         margin: 0;
         width: 100%;
         height: 100%;
-        background: #000;
+        background: radial-gradient(circle at top, #111827 0%, #020617 45%, #000 100%);
         overflow: hidden;
       }
       body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
         position: relative;
         font-family: Arial, sans-serif;
       }
       #anam-video {
         width: 100%;
         height: 100%;
+        max-width: 100%;
+        max-height: 100%;
         display: block;
-        object-fit: cover;
-        background: #000;
+        object-fit: contain;
+        object-position: center center;
+        background: transparent;
+        image-rendering: auto;
       }
       #anam-audio {
         display: none;
@@ -696,7 +703,7 @@ function AvaDeskPanelInner() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: '#94A3B8',
-                    background: 'rgba(0,0,0,0.35)',
+                    background: 'linear-gradient(180deg, rgba(2,6,23,0.55), rgba(0,0,0,0.28))',
                     fontSize: 14,
                   } as any}>
                     {connectionStatus || 'Starting Ava video...'}
