@@ -3817,7 +3817,7 @@ router.post('/api/authority-queue/:id/approve', async (req: Request, res: Respon
       INSERT INTO receipts (receipt_id, receipt_type, action, result, status, suite_id, tenant_id,
                             correlation_id, actor_type, actor_id, hash_alg, created_at)
       VALUES (${receiptId}, 'approval', ${approveAction}::jsonb, ${approveResult}::jsonb, 'SUCCEEDED', ${suiteId}, ${suiteId},
-              ${correlationId}, 'user', ${userId || null}, 'sha256', NOW())
+              ${correlationId}, 'USER', ${userId || null}, 'sha256', NOW())
     `);
 
     // After successful approval, trigger resume execution via orchestrator
@@ -3894,7 +3894,7 @@ router.post('/api/authority-queue/:id/deny', async (req: Request, res: Response)
       INSERT INTO receipts (receipt_id, receipt_type, action, result, status, suite_id, tenant_id,
                             correlation_id, actor_type, actor_id, hash_alg, created_at)
       VALUES (${receiptId}, 'approval', ${denyAction}::jsonb, ${denyResultPayload}::jsonb, 'DENIED', ${suiteId}, ${suiteId},
-              ${correlationId}, 'user', ${userId || null}, 'sha256', NOW())
+              ${correlationId}, 'USER', ${userId || null}, 'sha256', NOW())
     `);
 
     // Post-deny cleanup: void finalized invoices in Stripe
