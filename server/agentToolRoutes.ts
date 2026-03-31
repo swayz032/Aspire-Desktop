@@ -79,7 +79,10 @@ router.post('/v1/tools/context', async (req: Request, res: Response) => {
       .order('created_at', { ascending: false })
       .limit(5);
 
+    const now = new Date();
     const context = {
+      current_date: now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      current_time: now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
       owner_name: profile?.owner_name || 'Unknown',
       business_name: profile?.business_name || 'Unknown',
       industry: profile?.industry || 'General',

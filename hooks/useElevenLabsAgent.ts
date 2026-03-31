@@ -304,6 +304,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         business_name: userProfile?.businessName || '',
         industry: userProfile?.industry || '',
         time_of_day: getTimeOfDay(),
+        current_date: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
         ...serverVars,
       };
 
