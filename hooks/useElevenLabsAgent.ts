@@ -77,6 +77,10 @@ export interface UseElevenLabsAgentReturn {
   transcript: string;
   /** Last agent response text. */
   lastResponse: string;
+  /** Send a text message to the agent (works in voice or text mode). */
+  sendTextMessage: (text: string) => void;
+  /** Whether the agent session is active (connected). */
+  isSessionActive: boolean;
 }
 
 /**
@@ -354,6 +358,17 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     };
   }, [conversation]);
 
+  const sendTextMessage = useCallback((text: string) => {
+    if (!sessionActiveRef.current) {
+      devWarn('[ElevenLabsAgent] Cannot send text — no active session');
+      return;
+    }
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    devLog(`[ElevenLabsAgent] Sending text message to agent "${agent}":`, trimmed);
+    conversation.sendUserMessage(trimmed);
+  }, [agent, conversation]);
+
   return {
     status: voiceStatus,
     startSession,
@@ -362,5 +377,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     setMuted,
     transcript,
     lastResponse,
+    sendTextMessage,
+    isSessionActive: sessionActiveRef.current,
   };
 }

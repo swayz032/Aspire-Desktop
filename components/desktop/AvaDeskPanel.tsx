@@ -349,11 +349,16 @@ function AvaDeskPanelInner() {
     onStatusChange: (voiceStatus) => {
       setIsSessionActive(voiceStatus !== 'idle' && voiceStatus !== 'error');
     },
-    onTranscript: () => {
-      // Voice transcripts no longer piped to chat — ElevenLabs handles voice UI
+    onTranscript: (text: string) => {
+      // Show user speech in chat panel for visibility
+      if (text.trim()) appendLocalMessage('user', text);
     },
-    onResponse: () => {
-      // Voice responses no longer piped to chat — ElevenLabs handles voice UI
+    onResponse: (text: string) => {
+      // Show agent response in chat panel
+      if (text.trim()) {
+        appendLocalMessage('assistant', text);
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+      }
     },
     onError: (error) => {
       console.error('Ava voice error:', error);
@@ -594,16 +599,24 @@ function AvaDeskPanelInner() {
     }
   }, [session?.access_token, appendLocalMessage]);
 
-  // Text chat send — delegates to Vercel AI SDK useChat (Law #1: Single Brain)
+  // Text chat send — routes through ElevenLabs agent (same as voice, unified pipeline)
   const onSend = useCallback(() => {
     const trimmed = chatInput.trim();
     if (!trimmed) return;
     setChatInput('');
-    // sendMessage sends through AspireChatTransport which handles
-    // SSE → UIMessageChunk conversion, error mapping, auth, tenant isolation, Anam TTS
-    sendMessage({ text: trimmed });
+
+    // Add user message to chat UI immediately
+    appendLocalMessage('user', trimmed);
+
+    // Send through ElevenLabs agent if session is active, otherwise fall back to LangGraph
+    if (avaVoice.isActive) {
+      avaVoice.sendText(trimmed);
+    } else {
+      // Fallback: send through LangGraph if no ElevenLabs session
+      sendMessage({ text: trimmed });
+    }
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [chatInput, sendMessage]);
+  }, [chatInput, sendMessage, avaVoice, appendLocalMessage]);
 
   const handleStartSession = () => setIsSessionActive(!isSessionActive);
 

@@ -138,7 +138,7 @@ function useElevenLabsAgentAdapter(options: Parameters<typeof useAgentVoice>[0])
     lastReceiptId: null,
     startSession: result.startSession,
     endSession: () => { result.endSession(); },
-    sendText: async () => { /* ElevenLabs agents handle all interaction via voice */ },
+    sendText: async (text: string) => { result.sendTextMessage(text); },
     setMuted: result.setMuted,
     replayLastAudio: async () => false,
   };
