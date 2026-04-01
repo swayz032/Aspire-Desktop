@@ -1,0 +1,47 @@
+{
+    "name": "Short Confirmations",
+    "chat_history": [
+        {
+            "role": "agent",
+            "time_in_call_secs": 0,
+            "message": "Okay, racking at forty feet gives you a lot more usable space..."
+        },
+        {
+            "role": "user",
+            "time_in_call_secs": 5,
+            "message": "No no no, I'm not saying forty feet. We stack the pallets forty high — two stacks of twenty. It's twenty pallets in a stack, and we put one on top of the other, so that's forty pallets high."
+        }
+    ],
+    "success_condition": "The agent confirms the correction in 5 words or less without parroting back everything the user said. The agent should quickly acknowledge and move forward.",
+    "success_examples": [
+        {
+            "response": "Got it, 40 pallets high. So at that stack height, you'd need about...",
+            "type": "success"
+        },
+        {
+            "response": "Right, 40 pallets high. Let me recalculate the floor space.",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "Okay... got it. You're talking about stacking loose pallets 40 high — two stacks of twenty — not forty feet of racking. Do you want me to use that 40-high stacking assumption?",
+            "type": "failure"
+        },
+        {
+            "response": "I understand. So you're not using forty feet of racking, you're stacking pallets twenty high and then putting another stack of twenty on top, giving you forty pallets in each column.",
+            "type": "failure"
+        }
+    ],
+    "type": "llm",
+    "agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+    "dynamic_variables": {
+        "salutation": "Mr.",
+        "last_name": "Scott",
+        "first_name": "Tonio",
+        "owner_name": "Tonio Scott",
+        "business_name": "Scott Painting Services",
+        "industry": "Painting",
+        "time_of_day": "morning"
+    }
+}

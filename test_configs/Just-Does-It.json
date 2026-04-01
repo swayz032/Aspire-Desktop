@@ -1,0 +1,47 @@
+{
+    "name": "Just Does It",
+    "chat_history": [
+        {
+            "role": "agent",
+            "time_in_call_secs": 0,
+            "message": "Got it, 40 pallets high."
+        },
+        {
+            "role": "user",
+            "time_in_call_secs": 3,
+            "message": "Yeah so with that, how much warehouse space do I need?"
+        }
+    ],
+    "success_condition": "The agent starts calculating or gives a direct answer instead of asking permission to do the calculation. The agent should NOT say 'Do you want me to run the numbers?' or 'Should I calculate that?' — they should just do it.",
+    "success_examples": [
+        {
+            "response": "Alright, let me run those numbers... at 40 pallets high and fifteen thousand a month, you'd need roughly...",
+            "type": "success"
+        },
+        {
+            "response": "Okay, with 40-high stacks and about seven thousand pallets on-site... you're looking at around ten thousand square feet.",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "Do you want me to run the square-foot calculation now?",
+            "type": "failure"
+        },
+        {
+            "response": "Should I calculate the required floor space based on those numbers?",
+            "type": "failure"
+        }
+    ],
+    "type": "llm",
+    "agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+    "dynamic_variables": {
+        "salutation": "Mr.",
+        "last_name": "Scott",
+        "first_name": "Tonio",
+        "owner_name": "Tonio Scott",
+        "business_name": "Scott Painting Services",
+        "industry": "Painting",
+        "time_of_day": "morning"
+    }
+}

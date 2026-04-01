@@ -1,0 +1,42 @@
+{
+    "name": "Leads With Recommendation",
+    "chat_history": [
+        {
+            "role": "user",
+            "time_in_call_secs": 1,
+            "message": "Hey Ava, I'm thinking about getting a warehouse in Atlanta for my pallet business. How many days of inventory should I keep on-site?"
+        }
+    ],
+    "success_condition": "The agent gives a specific recommendation (like 'I'd go with fourteen days' or 'I'd recommend two weeks') instead of asking the user to choose. The agent should lead with their opinion, not ask a question back.",
+    "success_examples": [
+        {
+            "response": "I'd go with about fourteen days of buffer. That gives you enough room to handle spikes without tying up too much cash in stock.",
+            "type": "success"
+        },
+        {
+            "response": "Honestly? Two weeks of inventory on-site. Enough cushion to ride out a slow delivery week without running dry.",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "That depends on your situation. Do you want seven, fourteen, or thirty days of inventory?",
+            "type": "failure"
+        },
+        {
+            "response": "How many days of inventory do you want on-site at peak — seven, fourteen, or thirty?",
+            "type": "failure"
+        }
+    ],
+    "type": "llm",
+    "agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+    "dynamic_variables": {
+        "salutation": "Mr.",
+        "last_name": "Scott",
+        "first_name": "Tonio",
+        "owner_name": "Tonio Scott",
+        "business_name": "Scott Painting Services",
+        "industry": "Painting",
+        "time_of_day": "morning"
+    }
+}

@@ -1,0 +1,47 @@
+{
+    "name": "No Multiple Choice",
+    "chat_history": [
+        {
+            "role": "agent",
+            "time_in_call_secs": 0,
+            "message": "That's about fifteen thousand pallets a month. Now here's the thing..."
+        },
+        {
+            "role": "user",
+            "time_in_call_secs": 5,
+            "message": "Yeah so how should I store them? Like what kind of setup?"
+        }
+    ],
+    "success_condition": "The agent gives a direct recommendation for storage instead of offering options like 'A, B, or C?' or 'racked or floor-stacked?' The agent should say what THEY would do.",
+    "success_examples": [
+        {
+            "response": "I'd go racked. You'll fit way more pallets in the same footprint.",
+            "type": "success"
+        },
+        {
+            "response": "Racking, for sure. At your volume, floor stacking would eat up too much space.",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "Do you want racked (vertical storage) or floor-stacked for quicker turnover?",
+            "type": "failure"
+        },
+        {
+            "response": "There are a few options: racked, floor-stacked, or a hybrid approach. Which sounds right?",
+            "type": "failure"
+        }
+    ],
+    "type": "llm",
+    "agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+    "dynamic_variables": {
+        "salutation": "Mr.",
+        "last_name": "Scott",
+        "first_name": "Tonio",
+        "owner_name": "Tonio Scott",
+        "business_name": "Scott Painting Services",
+        "industry": "Painting",
+        "time_of_day": "morning"
+    }
+}

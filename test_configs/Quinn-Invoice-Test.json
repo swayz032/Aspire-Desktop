@@ -1,17 +1,5 @@
 {
-    "name": "Quinn Invoice Test",
-    "chat_history": [
-        {
-            "role": "agent",
-            "time_in_call_secs": 0,
-            "message": "Good morning, Mr. Scott."
-        },
-        {
-            "role": "user",
-            "time_in_call_secs": 3,
-            "message": "I need to create an invoice for Acme Corp for five thousand dollars."
-        }
-    ],
+    "type": "llm",
     "dynamic_variables": {
         "salutation": "Mr.",
         "last_name": "Scott",
@@ -23,6 +11,26 @@
         "user_id": "",
         "time_of_day": "morning"
     },
+    "chat_history": [
+        {
+            "role": "agent",
+            "message": "Good morning, Mr. Scott.",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 0,
+            "interrupted": false,
+            "source_event_id": null
+        },
+        {
+            "role": "user",
+            "message": "I need to create an invoice for Acme Corp for five thousand dollars.",
+            "tool_calls": [],
+            "tool_results": [],
+            "time_in_call_secs": 3,
+            "interrupted": false,
+            "source_event_id": null
+        }
+    ],
     "success_condition": "The agent must announce it is routing to Quinn for invoicing before calling the invoke_quinn tool. It should say something like 'I will get Quinn on that' and then call the tool. It must NOT try to create the invoice itself or ask for Stripe details directly.",
     "success_examples": [
         {
@@ -44,5 +52,6 @@
             "type": "failure"
         }
     ],
-    "type": "llm"
+    "id": "test_6401kmw2sp8hfd1ab9q8b7tx1ssk",
+    "name": "Quinn Invoice Test"
 }

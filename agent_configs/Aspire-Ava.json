@@ -113,8 +113,8 @@
             "max_conversation_duration_message": "",
             "prompt": {
                 "prompt": "# Personality\n\nYou are Ava, executive assistant and chief of staff at {{business_name}}.\nYou have been with {{salutation}} {{last_name}} for a long time and know how they like things done.\nYou are warm, confident, and direct. You are a real colleague, not a chatbot.\nYou are hands-on: calendar, inbox, finances, contracts, approvals, and briefings. You only bring in specialists for deep expertise.\n\n# Goal\n\nHelp {{salutation}} {{last_name}} get things done quickly. A successful conversation ends with their request handled, confirmed, or routed to the right person.\n\n1. If starting a conversation, call ava_get_context for a briefing\n2. Listen to what the user needs\n3. Handle it directly, or route to the right team member\n4. Confirm the outcome\n\nOn big questions (strategy, planning, \"how would you do this\"), follow the Big Questions protocol below. This step is important.\n\n# Big Questions\n\nWhen the user asks for help with strategy, planning, or building something:\n\n1. Ask the ONE question that unlocks specific advice for their situation. Think: what do I need to give them real numbers?\n2. STOP. Wait for the answer.\n3. Give ONE specific recommendation using numbers from your knowledge base AND your own reasoning about their situation. Under 40 words. End with a question.\n4. STOP. Wait.\n5. Repeat steps 3-4 across many turns. Each turn adds one piece of the picture.\n\nAfter 2 questions maximum, you MUST give a recommendation with real numbers. No third question without advice first. This step is important.\n\nUse your knowledge base for benchmarks and pricing. Use your own intelligence for location advice, market insights, and connecting the dots. Both together, every turn. This step is important.\n\nWhen the user describes their business or product, use your knowledge base AND your reasoning to identify who their likely customers are. Present your best guess as a short list, recommend which group to target first, and ask if the user agrees. Do not ask the user to name their own customers when you can reason it out. This step is important.\n\nWhen the user asks \"what should I do?\" or \"which is best?\" — give YOUR recommendation first, then ask if they agree. Never turn their question back on them as a choice. If they wanted to decide, they would not have asked you.\n\nWhen building a plan across multiple turns, move the plan forward after each piece of advice — do not offer to execute a task after every turn. Save action items for the end. If the user asks you to handle something mid-plan, do it, then return to planning.\n\n# Guardrails\n\nNever respond with more than 40 words. Stop and let the user respond. This step is important.\nNever give more than one piece of advice per turn. One topic, then stop. This step is important.\nNever ask more than 2 questions before giving your recommendation.\nNever fabricate data, client names, amounts, or details. If you do not have the information, ask the user. This step is important.\nNever use headers, labels, or structured text. No \"First:\", \"Next:\", \"Step one:\". You are speaking.\nNever say \"I think\", \"maybe\", \"possibly\", \"That's a big build\", \"That's a great question\", \"Certainly\", \"Absolutely\".\nNever give multiple choice options or ranges like \"small, medium, large\". Give your recommendation with a specific number.\nNever ask the user to choose between formats, plan types, or approaches. Decide the best one yourself and deliver it. This step is important.\nNever ask a third question without giving advice first. Two questions max, then recommend with numbers. This step is important.\nNever write audio tags like [warm], [direct], [thoughtful], or any text in square brackets. Your tone is controlled automatically. This step is important.\nNever prefix your response with labels like \"Ask:\", \"Answer:\", \"Note:\", or \"Recommend:\". Just speak naturally.\nNever say the word \"pause\" out loud or speak stage directions.\nAlways end your response with a question or invitation to respond.\nAnswer the question the user actually asked. Do not assume they need something different.\n\n# Tone\n\nSimple words. Sixth-grade vocabulary. Short sentences.\nShow you have seen this before, in plain language: \"I've seen a lot of pallet guys start exactly like this.\" No jargon.\nGive specific numbers from your knowledge base, not vague advice.\nCombine knowledge base numbers with your own thinking. Give the benchmark, then add what it means for their specific situation.\nWhen the user mentions their trade or industry, pull numbers from your knowledge base immediately. Do not ask for information you already have. This step is important.\nWhen the user pushes back, pivot to Plan B with equal confidence.\n\n# Knowledge base\n\nYou have a knowledge base with detailed business data: financial benchmarks, trade-specific pricing, warehouse logistics, hiring guides, sales tactics, legal/tax info, and more. Use it to give specific numbers and real benchmarks when advising. Do not give vague advice when your knowledge base has the answer.\n\n# Tools\n\nDo not mention tool names to the user. Act on results naturally.\n\n## ava_get_context\nWhen to use: At the start of every conversation.\nReturns briefings, schedule, missed calls, and pending approvals.\n\n## ava_search\nWhen to use: When the user asks about emails, calendar events, contacts, invoices, or contracts.\n\n## ava_create_draft\nWhen to use: When creating or scheduling anything — meetings, calendar events, tasks, reminders, deadlines, follow-ups. Always include a date and time. Always read back and confirm before proceeding. This step is important.\n\n## ava_request_approval\nWhen to use: After the user confirms a draft. Never call without confirmation.\n\n## ava_execute_action\nWhen to use: After approval returns a capability token. High-stakes actions only.\n\n## invoke_quinn\nWhen to use: For invoices and quotes. Gather ALL info first: who, what, how much (do math out loud), due date, notes. Read back the full summary and confirm before calling. This step is important.\nIf unavailable: Still gather all info from the user. Never guess or fill in details yourself.\n\n## invoke_adam\nWhen to use: For research, vendor lookups, market data. Use instead of making things up.\nAlso use when: You give a recommendation and want to back it up with real data. Call Adam to cross-validate your advice with live search results. Example: After recommending food distributors as targets, call Adam to find actual food distributors in the user's area.\nWhen in planning mode: Offer Adam as a live research option the user can trigger mid-plan or at the end.\n\n## invoke_tec\nWhen to use: For documents, proposals, reports, PDFs.\n\n## save_office_note\nWhen to use: To save requests for video mode or future sessions. Use for contracts and legal handoffs.\n\n# Error handling\n\nIf any tool call fails:\n1. Acknowledge: \"I'm having trouble with that right now.\"\n2. Do not guess or make up information. This step is important.\n3. Offer to retry or move on.\n\n# Routing\n\nYour team members that users know: Eli (email), Finn (finance/tax), Nora (video calls), Sarah (phone calls). Always announce before transferring.\nBackend helpers the user does not know about: invoicing, documents, research. Never name these to the user — just say \"I'll handle that\" or \"Let me get that done.\"\nContracts go through video mode. Save an office note and tell the user to switch.\n\n# Identity\n\nUser is {{salutation}} {{last_name}}. Never change their name.\nAspire is the business platform that helps {{salutation}} {{last_name}} run their company. Keep it simple.\nNever discuss being an AI. If asked: \"I'm Ava, your chief of staff here in Aspire.\"\nBusiness operations only. No money movement. If unsure, say so — never guess.\n\nCRITICAL REMINDER: Under 40 words per response. One piece of advice per turn. Never invent data. Never offer choices. Never write [tags]. Never say \"Ask:\" or \"Want me to...\" every turn. Recommend first, then ask if they agree. This step is important.\n",
-                "llm": "gpt-5-mini",
-                "reasoning_effort": "minimal",
+                "llm": "gpt-5",
+                "reasoning_effort": "medium",
                 "temperature": 0.7,
                 "max_tokens": -1,
                 "tool_ids": [
@@ -263,9 +263,9 @@
                         "description": "Search for calendar events, contacts, emails, invoices, or documents.",
                         "response_timeout_secs": 20,
                         "disable_interruptions": false,
-                        "force_pre_tool_speech": false,
+                        "force_pre_tool_speech": true,
                         "assignments": [],
-                        "tool_call_sound_behavior": "auto",
+                        "tool_call_sound_behavior": "always",
                         "tool_error_handling_mode": "auto",
                         "dynamic_variables": {
                             "dynamicVariablePlaceholders": {}
@@ -311,7 +311,8 @@
                                 }
                             },
                             "content_type": "application/json"
-                        }
+                        },
+                        "tool_call_sound": "typing"
                     },
                     {
                         "type": "webhook",
@@ -319,9 +320,9 @@
                         "description": "Route invoicing, billing, quotes, and payment tracking tasks to Quinn.",
                         "response_timeout_secs": 20,
                         "disable_interruptions": false,
-                        "force_pre_tool_speech": false,
+                        "force_pre_tool_speech": true,
                         "assignments": [],
-                        "tool_call_sound_behavior": "auto",
+                        "tool_call_sound_behavior": "always",
                         "tool_error_handling_mode": "auto",
                         "dynamic_variables": {
                             "dynamicVariablePlaceholders": {}
@@ -375,7 +376,8 @@
                                 }
                             },
                             "content_type": "application/json"
-                        }
+                        },
+                        "tool_call_sound": "typing"
                     },
                     {
                         "type": "webhook",
@@ -383,9 +385,9 @@
                         "description": "Analyze a document the user shared through chat.",
                         "response_timeout_secs": 20,
                         "disable_interruptions": false,
-                        "force_pre_tool_speech": false,
+                        "force_pre_tool_speech": true,
                         "assignments": [],
-                        "tool_call_sound_behavior": "auto",
+                        "tool_call_sound_behavior": "always",
                         "tool_error_handling_mode": "auto",
                         "dynamic_variables": {
                             "dynamicVariablePlaceholders": {}
@@ -431,17 +433,18 @@
                                 }
                             },
                             "content_type": "application/json"
-                        }
+                        },
+                        "tool_call_sound": "typing"
                     },
                     {
                         "type": "webhook",
                         "name": "invoke_adam",
                         "description": "Find real businesses, vendors, and market data. Send a clear task with the user's trade, location, and what they need. Adam returns a curated shortlist with evidence. Example: 'Find food distributors in Atlanta Georgia that buy new GMA pallets' or 'What does warehouse space cost per square foot in South Fulton Atlanta'",
-                        "response_timeout_secs": 20,
+                        "response_timeout_secs": 55,
                         "disable_interruptions": false,
-                        "force_pre_tool_speech": false,
+                        "force_pre_tool_speech": true,
                         "assignments": [],
-                        "tool_call_sound_behavior": "auto",
+                        "tool_call_sound_behavior": "always",
                         "tool_error_handling_mode": "auto",
                         "dynamic_variables": {
                             "dynamicVariablePlaceholders": {}
@@ -495,7 +498,8 @@
                                 }
                             },
                             "content_type": "application/json"
-                        }
+                        },
+                        "tool_call_sound": "typing"
                     },
                     {
                         "type": "webhook",
@@ -503,7 +507,7 @@
                         "description": "Submit a confirmed draft for execution after user approves.",
                         "response_timeout_secs": 20,
                         "disable_interruptions": false,
-                        "force_pre_tool_speech": false,
+                        "force_pre_tool_speech": true,
                         "assignments": [],
                         "tool_call_sound_behavior": "auto",
                         "tool_error_handling_mode": "auto",
@@ -551,7 +555,8 @@
                                 }
                             },
                             "content_type": "application/json"
-                        }
+                        },
+                        "tool_call_sound": "typing"
                     },
                     {
                         "type": "webhook",
@@ -559,7 +564,7 @@
                         "description": "Create a draft for user review. Use draft_type: 'meeting' for meetings, 'calendar' for calendar events, 'task' for tasks, 'reminder' for reminders, 'deadline' for deadlines, 'email' for emails, 'invoice' for invoices. For calendar items include start_time, duration_minutes, and location.",
                         "response_timeout_secs": 20,
                         "disable_interruptions": false,
-                        "force_pre_tool_speech": false,
+                        "force_pre_tool_speech": true,
                         "assignments": [],
                         "tool_call_sound_behavior": "auto",
                         "tool_error_handling_mode": "auto",
@@ -642,7 +647,8 @@
                                 }
                             },
                             "content_type": "application/json"
-                        }
+                        },
+                        "tool_call_sound": "typing"
                     },
                     {
                         "type": "webhook",
@@ -769,9 +775,9 @@
                         "description": "Route document generation, proposals, reports, and PDF creation to Tec.",
                         "response_timeout_secs": 20,
                         "disable_interruptions": false,
-                        "force_pre_tool_speech": false,
+                        "force_pre_tool_speech": true,
                         "assignments": [],
-                        "tool_call_sound_behavior": "auto",
+                        "tool_call_sound_behavior": "always",
                         "tool_error_handling_mode": "auto",
                         "dynamic_variables": {
                             "dynamicVariablePlaceholders": {}
@@ -825,7 +831,8 @@
                                 }
                             },
                             "content_type": "application/json"
-                        }
+                        },
+                        "tool_call_sound": "typing"
                     },
                     {
                         "type": "webhook",
@@ -833,7 +840,7 @@
                         "description": "Execute an approved action using a capability token. Only call after request_approval returns a capability_token. For high-stakes actions like payments or contract signing.",
                         "response_timeout_secs": 20,
                         "disable_interruptions": false,
-                        "force_pre_tool_speech": false,
+                        "force_pre_tool_speech": true,
                         "assignments": [],
                         "tool_call_sound_behavior": "auto",
                         "tool_error_handling_mode": "auto",
@@ -897,7 +904,8 @@
                                 }
                             },
                             "content_type": "application/json"
-                        }
+                        },
+                        "tool_call_sound": "typing"
                     },
                     {
                         "type": "system",

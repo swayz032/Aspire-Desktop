@@ -64,6 +64,31 @@
             "config": "test_configs\\Calendar-Event-Test.json",
             "type": "basic-llm",
             "id": "test_4201kmw2ts26fhqat5t995k6p76y"
+        },
+        {
+            "config": "test_configs\\Leads-With-Recommendation.json",
+            "type": "basic-llm",
+            "id": "test_8501kmysmhppffv9zqaqe64bxvjx"
+        },
+        {
+            "config": "test_configs\\No-Pause-Spoken.json",
+            "type": "basic-llm",
+            "id": "test_7201kmysmztsfr09nkkd85xn1ydb"
+        },
+        {
+            "config": "test_configs\\No-Multiple-Choice.json",
+            "type": "basic-llm",
+            "id": "test_2201kmysn1jkfgarca7ccv30v1h6"
+        },
+        {
+            "config": "test_configs\\Short-Confirmations.json",
+            "type": "basic-llm",
+            "id": "test_7201kmysn3adepvt1t4v9wr11nar"
+        },
+        {
+            "config": "test_configs\\Just-Does-It.json",
+            "type": "basic-llm",
+            "id": "test_0201kmysn5jtf4jbay9kf4ebgqve"
         }
     ]
 }

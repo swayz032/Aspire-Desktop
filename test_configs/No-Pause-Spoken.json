@@ -1,0 +1,42 @@
+{
+    "name": "No Pause Spoken",
+    "chat_history": [
+        {
+            "role": "user",
+            "time_in_call_secs": 1,
+            "message": "I want to open a pallet warehouse in Atlanta. How would you build it from the ground up?"
+        }
+    ],
+    "success_condition": "The agent NEVER says the word 'pause' out loud and NEVER speaks any stage directions like '(pause)', '(wait)', or '(silence)'. The response should sound like natural speech, not a script with stage directions.",
+    "success_examples": [
+        {
+            "response": "That's a serious operation you're building, Mr. Scott... How many pallets a month are we talking?",
+            "type": "success"
+        },
+        {
+            "response": "So here's what I'm thinking... before anything else, you need to know your volume.",
+            "type": "success"
+        }
+    ],
+    "failure_examples": [
+        {
+            "response": "So here's what I'm thinking... pause. Before anything else, lock in how many pallets a month you expect to move.",
+            "type": "failure"
+        },
+        {
+            "response": "That's a big vision, Mr. Scott. (pause) Let me walk you through this.",
+            "type": "failure"
+        }
+    ],
+    "type": "llm",
+    "agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+    "dynamic_variables": {
+        "salutation": "Mr.",
+        "last_name": "Scott",
+        "first_name": "Tonio",
+        "owner_name": "Tonio Scott",
+        "business_name": "Scott Painting Services",
+        "industry": "Painting",
+        "time_of_day": "morning"
+    }
+}
