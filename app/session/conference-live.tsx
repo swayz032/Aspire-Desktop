@@ -322,27 +322,28 @@ function ConferenceLive() {
         const container = zoomContainerRef.current;
         if (!container) throw new Error('Zoom container element not found');
 
+        // Use viewport dimensions if container hasn't laid out yet
+        const viewWidth = container.clientWidth || window.innerWidth || 1280;
+        const viewHeight = container.clientHeight || window.innerHeight || 720;
+
         await client.init({
           zoomAppRoot: container,
           language: 'en-US',
           patchJsMedia: true,
           leaveOnPageUnload: true,
+          maximumVideosInGalleryView: 25,
           customize: {
             video: {
               isResizable: true,
               viewSizes: {
                 default: {
-                  width: Math.min(container.clientWidth, 1920),
-                  height: Math.min(container.clientHeight, 1080),
+                  width: Math.min(viewWidth, 1920),
+                  height: Math.min(viewHeight, 1080),
                 },
               },
+              defaultViewType: 'gallery',
             },
-            meetingInfo: ['topic', 'host', 'mn', 'pwd', 'telPwd', 'invite', 'participant', 'dc', 'enctype'],
-            toolbar: {
-              buttons: [
-                { text: 'Custom Button', className: 'CustomButton', onClick: () => setChatVisible(v => !v) },
-              ],
-            },
+            meetingInfo: ['topic', 'host', 'mn', 'participant', 'dc', 'enctype'],
           },
         });
         if (controller.signal.aborted) return;

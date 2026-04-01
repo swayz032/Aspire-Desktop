@@ -1015,7 +1015,7 @@ function GuestVideoConference({
         }}
       >
         {participants.map((participant: ZoomParticipant) => (
-          <ZoomVideoTile key={participant.userId} participant={participant} />
+          <ZoomVideoTile key={participant.userId} participant={participant} stream={stream as any} />
         ))}
         <NoraTile />
       </div>

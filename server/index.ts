@@ -393,8 +393,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://esm.sh", "https://source.zoom.us"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://esm.sh", "https://source.zoom.us"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://source.zoom.us"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [
         "'self'",
@@ -404,6 +404,9 @@ app.use(helmet({
         "wss://*.elevenlabs.io",
         "https://*.zoom.us",
         "wss://*.zoom.us",
+        "https://*.zoomdev.us",
+        "wss://*.zoomdev.us",
+        "https://*.cloudflare.com",
         "https://*.anam.ai",
         "wss://*.anam.ai",
         "https://*.pandadoc.com",
@@ -420,10 +423,10 @@ app.use(helmet({
         "https://ipapi.co",
         "https://api.open-meteo.com",
       ],
-      mediaSrc: ["'self'", "data:", "blob:"],
+      mediaSrc: ["'self'", "data:", "blob:", "https://*.zoom.us"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://*.zoom.us"],
       workerSrc: ["'self'", "blob:", "https://source.zoom.us"],
-      fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com"],
+      fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://source.zoom.us"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: [],
     },
