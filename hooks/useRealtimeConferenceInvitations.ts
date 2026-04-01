@@ -130,6 +130,11 @@ export function useRealtimeConferenceInvitations(): void {
     // ── 2. Polling fallback (secondary — catches missed events) ────────
     // Runs every 5s. If Realtime is working, polling typically finds nothing.
     // If Realtime is down, polling is the safety net.
+    //
+    // FIX: Only show invitations created AFTER this hook mounted.
+    // Stale pending invitations from before the session started should NOT
+    // trigger the ringtone — they were likely missed/abandoned.
+    const mountedAt = new Date().toISOString();
 
     const checkPendingInvitations = async () => {
       try {
@@ -139,6 +144,7 @@ export function useRealtimeConferenceInvitations(): void {
           .eq('invitee_user_id', userId)
           .eq('status', 'pending')
           .gt('expires_at', new Date().toISOString())
+          .gt('created_at', mountedAt)
           .order('created_at', { ascending: false })
           .limit(1);
 
@@ -161,8 +167,8 @@ export function useRealtimeConferenceInvitations(): void {
       }
     };
 
-    // Initial check + periodic polling
-    checkPendingInvitations();
+    // Delay initial poll by 3s — let Realtime connect first, avoid false triggers on stale data
+    const initialPollTimer = setTimeout(checkPendingInvitations, 3000);
     const pollTimer = setInterval(checkPendingInvitations, POLL_INTERVAL_MS);
 
     // ── Cleanup ────────────────────────────────────────────────────────
@@ -172,6 +178,7 @@ export function useRealtimeConferenceInvitations(): void {
       disposed = true;
       realtimeConnected.current = false;
       channels.forEach(ch => supabase.removeChannel(ch));
+      clearTimeout(initialPollTimer);
       clearInterval(pollTimer);
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };

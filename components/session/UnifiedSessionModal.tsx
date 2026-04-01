@@ -77,7 +77,7 @@ function injectModalKeyframes() {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const MODAL_WIDTH = 600;
+const MODAL_WIDTH = 720;
 const MODAL_BORDER_RADIUS = 20;
 
 /** Step indicator layout */
@@ -539,7 +539,7 @@ const styles = StyleSheet.create({
   modalContainer: {
     width: MODAL_WIDTH,
     maxWidth: '90%' as unknown as number,
-    maxHeight: '85%' as unknown as number,
+    maxHeight: '92%' as unknown as number,
     backgroundColor: '#111113',
     borderRadius: MODAL_BORDER_RADIUS,
     overflow: 'hidden',
@@ -656,8 +656,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollBodyContent: {
-    padding: Spacing.xxl,
-    gap: Spacing.xl,
+    padding: Spacing.xxl + 4,
+    paddingBottom: Spacing.xxl + 12,
+    gap: Spacing.xxl,
   },
 
   // Section layout
@@ -685,18 +686,18 @@ const styles = StyleSheet.create({
   purposeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.sm + 2,
+    gap: Spacing.md,
   },
   purposeOption: {
     alignItems: 'center',
     gap: Spacing.sm,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 22,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.background.tertiary,
     borderWidth: 1,
     borderColor: Colors.border.subtle,
-    minWidth: 90,
+    minWidth: 110,
     ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease', cursor: 'pointer' } as unknown as ViewStyle : {}),
   },
   purposeOptionActive: {
@@ -731,8 +732,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.background.tertiary,
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 12,
+    padding: 14,
     borderWidth: 1,
     borderColor: Colors.border.subtle,
   },
