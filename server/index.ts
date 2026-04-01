@@ -393,7 +393,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://esm.sh"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://esm.sh", "https://source.zoom.us"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [
@@ -421,7 +421,8 @@ app.use(helmet({
         "https://api.open-meteo.com",
       ],
       mediaSrc: ["'self'", "data:", "blob:"],
-      frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com"],
+      frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://*.zoom.us"],
+      workerSrc: ["'self'", "blob:", "https://source.zoom.us"],
       fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://unpkg.com"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: [],
