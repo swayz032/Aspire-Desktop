@@ -404,6 +404,14 @@ function OnboardingContent() {
     });
   }, []);
 
+  // Cleanup debounce timers on unmount (prevents memory leak)
+  useEffect(() => {
+    return () => {
+      if (homeDebounceRef.current) clearTimeout(homeDebounceRef.current);
+      if (businessDebounceRef.current) clearTimeout(businessDebounceRef.current);
+    };
+  }, []);
+
   // Pre-fill owner name and email from session
   useEffect(() => {
     if (!session?.user) return;
@@ -504,6 +512,9 @@ function OnboardingContent() {
         const cur = COUNTRY_CURRENCY[address.country] || 'USD';
         updateForm({ homeAddress: address, timezone: tz, currency: cur, homeEditable: false });
         doValidateAddress(address, setHomeValidated);
+      } else {
+        setError('Could not load address details. Please try a different address.');
+        updateForm({ homeSearchText: '' });
       }
     }
   };
@@ -531,6 +542,9 @@ function OnboardingContent() {
       if (address) {
         updateForm({ businessAddress: address, businessEditable: false });
         doValidateAddress(address, setBusinessValidated);
+      } else {
+        setError('Could not load address details. Please try a different address.');
+        updateForm({ businessSearchText: '' });
       }
     }
   };
@@ -581,6 +595,13 @@ function OnboardingContent() {
   const handleComplete = async () => {
     // Double-submission guard
     if (submittingRef.current) return;
+
+    // Client-side validation before submit (catches trim-to-empty edge case)
+    if (!form.businessName.trim()) { setError('Business name is required.'); return; }
+    if (!form.firstName.trim()) { setError('First name is required.'); return; }
+    if (!form.industry) { setError('Please select your industry.'); return; }
+    if (!form.teamSize) { setError('Please select your team size.'); return; }
+
     submittingRef.current = true;
     setLoading(true);
     setShowLoading(true);
