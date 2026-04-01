@@ -220,7 +220,7 @@ function UnifiedSessionModalInner({
         style={styles.borderWrapper}
       >
         <LinearGradient
-          colors={['rgba(59, 130, 246, 0.25)', 'rgba(59, 130, 246, 0.08)', 'rgba(255, 255, 255, 0.06)']}
+          colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.03)', 'rgba(255, 255, 255, 0.01)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.gradientBorder}
@@ -528,10 +528,10 @@ const styles = StyleSheet.create({
     } as unknown as ViewStyle : {}),
   },
 
-  // Gradient border wrapper — clean dark shadow (no blue glow)
+  // Gradient border wrapper — pure dark shadow, no color glow
   borderWrapper: {
     borderRadius: MODAL_BORDER_RADIUS + 1,
-    boxShadow: '0 32px 80px -16px rgba(0, 0, 0, 0.9), 0 0 1px rgba(255, 255, 255, 0.06)',
+    boxShadow: '0 32px 80px -16px rgba(0, 0, 0, 0.95)',
   } as ViewStyle,
   gradientBorder: {
     borderRadius: MODAL_BORDER_RADIUS + 1,
@@ -546,10 +546,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#111113',
     borderRadius: MODAL_BORDER_RADIUS,
     overflow: 'hidden',
-    // Subtle inner glow at top edge for depth
-    ...(Platform.OS === 'web' ? {
-      boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.04)',
-    } as unknown as ViewStyle : {}),
   },
 
   // Header

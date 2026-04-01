@@ -943,10 +943,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
     marginBottom: Spacing.md,
+    ...(Platform.OS === 'web' ? { transition: 'border-color 0.15s ease, box-shadow 0.15s ease' } as unknown as ViewStyle : {}),
   },
   searchContainerFocused: {
     borderColor: Colors.accent.cyan,
-    ...Shadows.glow(Colors.accent.cyan),
+    // Tight glow that follows the border-radius (replaces Shadows.glow which overflows)
+    ...(Platform.OS === 'web' ? {
+      boxShadow: `0 0 0 2px rgba(0, 242, 254, 0.15), 0 0 8px rgba(0, 242, 254, 0.2)`,
+    } as unknown as ViewStyle : Shadows.glow(Colors.accent.cyan)),
   },
   searchInput: {
     flex: 1,
