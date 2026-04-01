@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { View, Text, StyleSheet, Pressable, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -50,13 +51,10 @@ function loadZoomMeetingSdk(): Promise<any> {
 
     // The Zoom Meeting SDK requires React and ReactDOM on the global window.
     // In our Expo/Metro bundle, they're module-scoped — not on window.
-    // Expose them before loading the SDK script.
-    try {
-      const React = require('react');
-      const ReactDOM = require('react-dom');
-      if (!(window as any).React) (window as any).React = React;
-      if (!(window as any).ReactDOM) (window as any).ReactDOM = ReactDOM;
-    } catch {}
+    // Use the top-level imports (lines 1-2) which are the real objects.
+    // require('react') in Metro may return an ESM wrapper missing ReactCurrentOwner.
+    if (!(window as any).React) (window as any).React = React;
+    if (!(window as any).ReactDOM) (window as any).ReactDOM = ReactDOM;
 
     const script = document.createElement('script');
     script.src = ZOOM_SDK_CDN;
