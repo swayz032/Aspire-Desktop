@@ -511,24 +511,27 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     zIndex: 100,
-    // Backdrop blur for web — frosted glass overlay
     ...(Platform.OS === 'web' ? {
-      backdropFilter: 'blur(8px) saturate(1.2)',
-      WebkitBackdropFilter: 'blur(8px) saturate(1.2)',
+      backdropFilter: 'blur(12px) saturate(1.1)',
+      WebkitBackdropFilter: 'blur(12px) saturate(1.1)',
+      // Ensure full viewport centering on web
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100vw',
+      height: '100vh',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
     } as unknown as ViewStyle : {}),
   },
 
-  // Gradient border wrapper — multi-layer premium shadow
+  // Gradient border wrapper — clean dark shadow (no blue glow)
   borderWrapper: {
     borderRadius: MODAL_BORDER_RADIUS + 1,
-    // Layered shadow: deep ambient + cyan glow halo + tight edge shadow
-    boxShadow: [
-      '0 32px 80px -16px rgba(0, 0, 0, 0.8)',
-      '0 0 60px rgba(59, 130, 246, 0.06)',
-      '0 0 1px rgba(255, 255, 255, 0.1)',
-    ].join(', '),
+    boxShadow: '0 32px 80px -16px rgba(0, 0, 0, 0.9), 0 0 1px rgba(255, 255, 255, 0.06)',
   } as ViewStyle,
   gradientBorder: {
     borderRadius: MODAL_BORDER_RADIUS + 1,

@@ -941,7 +941,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     borderWidth: 1,
-    borderColor: Colors.border.subtle,
+    borderColor: 'transparent',
     marginBottom: Spacing.md,
   },
   searchContainerFocused: {
