@@ -32,6 +32,26 @@ const ZOOM_SDK_SECRET = process.env.ZOOM_SDK_SECRET || '';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://www.aspireos.app';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
+/**
+ * Format an email local part into a readable name.
+ * "tonioscott58@gmail.com" → "Tonio Scott"
+ * "john.doe@company.com" → "John Doe"
+ */
+function formatEmailAsName(email: string | null | undefined): string {
+  if (!email) return '';
+  const local = email.split('@')[0] || '';
+  // Split on dots, underscores, hyphens, or camelCase boundaries
+  const parts = local
+    .replace(/[._-]/g, ' ')
+    .replace(/(\d+)$/g, '') // strip trailing numbers (tonioscott58 → tonioscott)
+    .replace(/([a-z])([A-Z])/g, '$1 $2') // camelCase → camel Case
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  return parts.join(' ') || local;
+}
+
 function resolveOrchestratorUrl(): string | null {
   const configured = process.env.ORCHESTRATOR_URL?.trim();
   if (configured) return configured;
@@ -208,16 +228,22 @@ router.get('/api/conference/members', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Failed to search members' });
     }
 
-    // Resolve user_ids from profiles table via email match
+    // Resolve user_ids + full names from profiles table via email match
     const emails = (data || []).map((r: any) => r.email).filter(Boolean);
     let userIdMap: Record<string, string> = {};
+    let profileNameMap: Record<string, string> = {};
     if (emails.length > 0) {
       const { data: profiles } = await supabaseAdmin
         .from('profiles')
-        .select('user_id, email')
+        .select('user_id, email, display_name')
         .in('email', emails);
       for (const p of profiles || []) {
-        if (p.email) userIdMap[p.email] = p.user_id;
+        if (p.email) {
+          userIdMap[p.email] = p.user_id;
+          // Use display_name from profiles as name fallback
+          const profileName = (p.display_name || '').trim();
+          if (profileName) profileNameMap[p.email] = profileName;
+        }
       }
     }
 
@@ -232,7 +258,8 @@ router.get('/api/conference/members', async (req: Request, res: Response) => {
       .map((row: any) => ({
         userId: userIdMap[row.email],
         suiteId: row.suite_id,
-        name: row.owner_name || row.name || row.email?.split('@')[0] || 'Unknown',
+        // Priority: suite owner_name → suite name → profile full_name → formatted email → Unknown
+        name: row.owner_name || row.name || profileNameMap[row.email] || formatEmailAsName(row.email) || 'Unknown',
         email: row.email || '',
         officeId: row.office_display_id || '',
         officeLabel: row.office_display_id ? `Office ${row.office_display_id}` : '',

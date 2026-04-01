@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useSupabase } from '@/providers';
+import { useSupabase, useTenant } from '@/providers';
 import {
   acceptVideoCall,
   declineVideoCall,
@@ -188,6 +188,7 @@ function CallerDetailRow({
 function IncomingVideoCallOverlayInner(): React.ReactElement | null {
   const router = useRouter();
   const { session, suiteId } = useSupabase();
+  const { tenant } = useTenant();
   const [overlayState, setOverlayState] = useState(getIncomingVideoCallState());
   const [secondsLeft, setSecondsLeft] = useState(0);
 
@@ -312,12 +313,14 @@ function IncomingVideoCallOverlayInner(): React.ReactElement | null {
     if (!invitation || !session?.access_token) return;
     try {
       const result = await acceptVideoCall(invitation.id, session.access_token, suiteId ?? undefined);
+      const myName = tenant?.ownerName || session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'You';
       router.push({
         pathname: '/session/conference-live' as any,
         params: {
           roomName: result.roomName,
           token: result.token,
           topic: result.topic,
+          participantName: myName,
         },
       });
     } catch (err) {

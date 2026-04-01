@@ -314,7 +314,7 @@ function ConferenceLive() {
 
     const controller = new AbortController();
     const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
-    const participantName = (params.participantName as string) || 'You';
+    const participantName = (params.participantName as string) || tenant?.ownerName || session?.user?.user_metadata?.full_name || 'You';
 
     let client: ZoomClient | null = null;
 
@@ -578,7 +578,7 @@ function ConferenceLive() {
     // The useEffect depends on authenticatedFetch which is stable, so we
     // navigate to the same route to force remount.
     const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
-    const participantName = (params.participantName as string) || 'You';
+    const participantName = (params.participantName as string) || tenant?.ownerName || session?.user?.user_metadata?.full_name || 'You';
     router.replace({
       pathname: '/session/conference-live',
       params: { roomName, participantName },

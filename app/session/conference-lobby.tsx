@@ -245,9 +245,10 @@ function ConferenceLobby() {
   // Inject web hover CSS once
   useEffect(() => { injectLobbyKeyframes(); }, []);
 
-  const userName = session?.user?.user_metadata?.full_name
-    ?? session?.user?.email?.split('@')[0]
-    ?? 'You';
+  const userName = tenant?.ownerName
+    || session?.user?.user_metadata?.full_name
+    || session?.user?.email?.split('@')[0]
+    || 'You';
   const suiteDisplay = formatDisplayId(tenant?.displayId || bootstrapIdentity?.suiteDisplayId, suiteId);
   const officeDisplay = (tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId)
     ? formatDisplayId(tenant?.officeDisplayId || bootstrapIdentity?.officeDisplayId, tenant?.officeId)
@@ -503,6 +504,7 @@ function ConferenceLobby() {
             roomName: result.roomName,
             token: result.token,
             topic: result.topic,
+            participantName: userName,
           },
         });
         return;
@@ -580,6 +582,7 @@ function ConferenceLobby() {
       params: {
         purpose,
         roomName,
+        participantName: userName,
         participantIds: participants.map(p => p.id).join(','),
       }
     });
@@ -797,6 +800,7 @@ function ConferenceLobby() {
                                 roomName: result.roomName,
                                 token: result.token,
                                 topic: result.topic,
+                                participantName: userName,
                               },
                             });
                           } catch {
