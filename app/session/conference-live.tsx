@@ -48,6 +48,16 @@ function loadZoomMeetingSdk(): Promise<any> {
   _zoomSdkPromise = new Promise((resolve, reject) => {
     if (typeof document === 'undefined') return reject(new Error('Not in browser'));
 
+    // The Zoom Meeting SDK requires React and ReactDOM on the global window.
+    // In our Expo/Metro bundle, they're module-scoped — not on window.
+    // Expose them before loading the SDK script.
+    try {
+      const React = require('react');
+      const ReactDOM = require('react-dom');
+      if (!(window as any).React) (window as any).React = React;
+      if (!(window as any).ReactDOM) (window as any).ReactDOM = ReactDOM;
+    } catch {}
+
     const script = document.createElement('script');
     script.src = ZOOM_SDK_CDN;
     script.async = true;
