@@ -9,6 +9,7 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 type Priority = 'high' | 'medium' | 'low';
 type FilterMode = 'All' | 'Today' | 'Upcoming';
 type ViewState = 'list' | 'detail';
+type TaskSource = 'task' | 'calendar' | 'approval';
 
 interface Task {
   id: string;
@@ -18,6 +19,8 @@ interface Task {
   timeEstimate: string;
   completed: boolean;
   due_date?: string;
+  source?: TaskSource;
+  sourceIcon?: keyof typeof Ionicons.glyphMap;
 }
 
 interface TodaysPlanWidgetProps {
@@ -55,15 +58,67 @@ function TodaysPlanWidgetInner({ suiteId, officeId }: TodaysPlanWidgetProps) {
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('id, title, description, priority, time_estimate_hours, is_completed, due_at')
-        .eq('suite_id', suiteId)
-        .eq('office_id', officeId)
-        .order('priority', { ascending: true })
-        .limit(20);
-      if (error) throw error;
-      setTasks((data ?? []).map((row: any) => ({
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      // Parallel fetch: calendar events (priority), approval requests, tasks
+      const [calendarRes, approvalsRes, tasksRes] = await Promise.all([
+        supabase
+          .from('calendar_events')
+          .select('id, title, description, event_type, start_time, duration_minutes, location, status')
+          .eq('suite_id', suiteId)
+          .gte('start_time', todayStart.toISOString())
+          .lte('start_time', todayEnd.toISOString())
+          .neq('status', 'cancelled')
+          .order('start_time', { ascending: true })
+          .limit(15),
+        supabase
+          .from('approval_requests')
+          .select('approval_id, draft_summary, risk_tier, assigned_agent, created_at, status')
+          .eq('tenant_id', suiteId)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(10),
+        supabase
+          .from('tasks')
+          .select('id, title, description, priority, time_estimate_hours, is_completed, due_at')
+          .eq('suite_id', suiteId)
+          .eq('office_id', officeId)
+          .order('priority', { ascending: true })
+          .limit(20),
+      ]);
+
+      const calendarTasks: Task[] = (calendarRes.data ?? []).map((row: any) => {
+        const start = new Date(row.start_time);
+        const timeStr = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        return {
+          id: `cal-${row.id}`,
+          title: row.title || 'Event',
+          description: row.location ? `${timeStr} · ${row.location}` : timeStr,
+          priority: 'high' as Priority,
+          timeEstimate: row.duration_minutes ? `${row.duration_minutes}m` : '30m',
+          completed: row.status === 'completed',
+          due_date: row.start_time,
+          source: 'calendar' as TaskSource,
+          sourceIcon: 'calendar' as keyof typeof Ionicons.glyphMap,
+        };
+      });
+
+      const approvalTasks: Task[] = (approvalsRes.data ?? []).map((row: any) => ({
+        id: `appr-${row.approval_id}`,
+        title: row.draft_summary || 'Approval needed',
+        description: row.assigned_agent ? `From ${row.assigned_agent}` : 'Pending review',
+        priority: (row.risk_tier === 'red' ? 'high' : 'medium') as Priority,
+        timeEstimate: '2m',
+        completed: false,
+        due_date: row.created_at,
+        source: 'approval' as TaskSource,
+        sourceIcon: 'shield-checkmark' as keyof typeof Ionicons.glyphMap,
+      }));
+
+      const regularTasks: Task[] = (tasksRes.data ?? []).map((row: any) => ({
         id: row.id,
         title: row.title,
         description: row.description,
@@ -71,7 +126,26 @@ function TodaysPlanWidgetInner({ suiteId, officeId }: TodaysPlanWidgetProps) {
         timeEstimate: formatTimeEstimate(row.time_estimate_hours),
         completed: row.is_completed,
         due_date: row.due_at,
-      })));
+        source: 'task' as TaskSource,
+        sourceIcon: 'checkbox' as keyof typeof Ionicons.glyphMap,
+      }));
+
+      // Merge: calendar first (high priority), then approvals, then tasks
+      // Within each group, existing sort order is preserved
+      const priorityOrder: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
+      const sourceOrder: Record<TaskSource, number> = { calendar: 0, approval: 1, task: 2 };
+      const merged = [...calendarTasks, ...approvalTasks, ...regularTasks].sort((a, b) => {
+        // Completed items sink to bottom
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        // Calendar events always first
+        const srcA = sourceOrder[a.source || 'task'];
+        const srcB = sourceOrder[b.source || 'task'];
+        if (srcA !== srcB) return srcA - srcB;
+        // Then by priority within same source
+        return priorityOrder[a.priority] - priorityOrder[b.priority];
+      });
+
+      setTasks(merged.length > 0 ? merged : DEMO_TASKS);
     } catch {
       setTasks(DEMO_TASKS);
     } finally {
@@ -100,6 +174,8 @@ function TodaysPlanWidgetInner({ suiteId, officeId }: TodaysPlanWidgetProps) {
   }, [tasks, filterMode]);
 
   const incompleteTasks = tasks.filter(t => !t.completed);
+  const calendarCount = tasks.filter(t => t.source === 'calendar' && !t.completed).length;
+  const approvalCount = tasks.filter(t => t.source === 'approval' && !t.completed).length;
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   if (viewState === 'detail' && selectedTask) {
@@ -153,8 +229,16 @@ function TodaysPlanWidgetInner({ suiteId, officeId }: TodaysPlanWidgetProps) {
       <View style={s.hero}>
         <View style={s.heroLeft}>
           <Text style={s.heroSub}>You've got</Text>
-          <Text style={s.heroCount}>{incompleteTasks.length} tasks</Text>
-          <Text style={s.heroCrush}>to crush today</Text>
+          <Text style={s.heroCount}>{incompleteTasks.length} items</Text>
+          <Text style={s.heroCrush}>
+            {calendarCount > 0 && approvalCount > 0
+              ? `${calendarCount} events · ${approvalCount} approvals`
+              : calendarCount > 0
+              ? `${calendarCount} events on deck`
+              : approvalCount > 0
+              ? `${approvalCount} awaiting approval`
+              : 'to crush today'}
+          </Text>
         </View>
         <Text style={s.heroDate}>{today}</Text>
       </View>
@@ -194,8 +278,17 @@ function TodaysPlanWidgetInner({ suiteId, officeId }: TodaysPlanWidgetProps) {
               onPress={() => { playClickSound(); setSelectedTask(task); setViewState('list' as any === 'detail' ? 'detail' : 'detail'); }}
             >
               <View style={s.taskLeft}>
-                <View style={[s.badge, { backgroundColor: PRIORITY[task.priority].bg, borderWidth: 1, borderColor: PRIORITY[task.priority].border }]}>
-                  <Text style={[s.badgeText, { color: PRIORITY[task.priority].text }]}>{PRIORITY[task.priority].label}</Text>
+                <View style={s.badgeRow}>
+                  {task.sourceIcon && (
+                    <Ionicons
+                      name={task.sourceIcon}
+                      size={12}
+                      color={task.source === 'calendar' ? '#4FACFE' : task.source === 'approval' ? '#F59E0B' : 'rgba(255,255,255,0.3)'}
+                    />
+                  )}
+                  <View style={[s.badge, { backgroundColor: PRIORITY[task.priority].bg, borderWidth: 1, borderColor: PRIORITY[task.priority].border }]}>
+                    <Text style={[s.badgeText, { color: PRIORITY[task.priority].text }]}>{PRIORITY[task.priority].label}</Text>
+                  </View>
                 </View>
                 <Text style={[s.taskTitle, task.completed && s.taskDone]} numberOfLines={1}>
                   {task.title}
@@ -206,13 +299,21 @@ function TodaysPlanWidgetInner({ suiteId, officeId }: TodaysPlanWidgetProps) {
               </View>
               <View style={s.taskRight}>
                 <Text style={s.taskTime}>{task.timeEstimate}</Text>
-                <Pressable
-                  onPress={e => { (e as any).stopPropagation?.(); toggleTask(task); }}
-                  style={[s.checkbox, task.completed && s.checkboxDone]}
-                  hitSlop={8}
-                >
-                  {task.completed && <Ionicons name="checkmark" size={14} color="#FFF" />}
-                </Pressable>
+                {task.source === 'task' || !task.source ? (
+                  <Pressable
+                    onPress={e => { (e as any).stopPropagation?.(); toggleTask(task); }}
+                    style={[s.checkbox, task.completed && s.checkboxDone]}
+                    hitSlop={8}
+                  >
+                    {task.completed && <Ionicons name="checkmark" size={14} color="#FFF" />}
+                  </Pressable>
+                ) : (
+                  <Ionicons
+                    name={task.source === 'calendar' ? 'time-outline' : 'arrow-forward'}
+                    size={18}
+                    color="rgba(255,255,255,0.2)"
+                  />
+                )}
               </View>
             </Pressable>
           ))
@@ -321,6 +422,11 @@ const s = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   taskLeft: { flex: 1, gap: 4 },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   badge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
