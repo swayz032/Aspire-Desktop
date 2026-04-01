@@ -9,17 +9,28 @@ import {
   ActivityIndicator,
   Platform,
   Switch,
-  Animated,
+  Pressable,
   ViewStyle,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  interpolate,
+  Easing,
+  runOnJS,
+} from 'react-native-reanimated';
 import { useSupabase } from '@/providers';
 import { supabase } from '@/lib/supabase';
 import { CelebrationModal } from '@/components/CelebrationModal';
 import { PremiumLoadingScreen } from '@/components/PremiumLoadingScreen';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { devError } from '@/lib/devLog';
+import { Colors, Spacing, BorderRadius, Typography } from '@/constants/tokens';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -163,6 +174,7 @@ const YEARS_MAP: Record<string, string> = {
 const GENDER_OPTIONS = [
   { value: 'male', label: 'Male' },
   { value: 'female', label: 'Female' },
+  { value: 'prefer_not', label: 'Prefer not to say' },
 ];
 
 // SERVICES array removed in v3 — all services auto-included per Genesis Gate
@@ -347,6 +359,244 @@ function clearDraft(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Step configuration
+// ---------------------------------------------------------------------------
+
+const STEP_COUNT = 4;
+const STEP_LABELS = ['About You', 'Business', 'Addresses', 'Review'];
+
+const SPRING_CONFIG = {
+  damping: 20,
+  stiffness: 200,
+  mass: 0.9,
+};
+
+// ---------------------------------------------------------------------------
+// Modal design tokens (local)
+// ---------------------------------------------------------------------------
+
+const MODAL_WIDTH = 760;
+const MODAL_SURFACE = '#111113';
+const MODAL_RADIUS = 20;
+const MODAL_BORDER_START = 'rgba(59,130,246,0.25)';
+const MODAL_BORDER_END = 'rgba(255,255,255,0.06)';
+const OVERLAY_BG = 'rgba(0,0,0,0.85)';
+
+const ACCENT = Colors.accent.cyan;
+const ACCENT_LIGHT = Colors.accent.cyanLight;
+const ACCENT_GLOW = 'rgba(59,130,246,0.35)';
+const SUCCESS_GREEN = Colors.semantic.success;
+const TEXT_PRIMARY = Colors.text.primary;
+const TEXT_SECONDARY = Colors.text.secondary;
+const TEXT_MUTED = Colors.text.muted;
+const TEXT_DIM = Colors.text.disabled;
+const ERROR_RED = Colors.semantic.error;
+const SURFACE = Colors.surface.card;
+const BORDER = Colors.border.default;
+const BORDER_STRONG = Colors.border.strong;
+
+// ---------------------------------------------------------------------------
+// Web-only styles for native HTML inputs
+// ---------------------------------------------------------------------------
+
+const webInputStyle: React.CSSProperties = {
+  flex: 1,
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  color: TEXT_PRIMARY,
+  fontSize: 15,
+  padding: '12px 14px 12px 0',
+  fontFamily: 'inherit',
+  width: '100%',
+};
+
+const webSelectStyle: React.CSSProperties = {
+  width: '100%',
+  background: SURFACE,
+  border: `1px solid ${BORDER}`,
+  borderRadius: 10,
+  padding: '12px 36px 12px 14px',
+  fontSize: 15,
+  color: TEXT_PRIMARY,
+  cursor: 'pointer',
+  outline: 'none',
+  appearance: 'none' as any,
+  WebkitAppearance: 'none' as any,
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236e6e73' d='M6 8L0 0h12z'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 12px center',
+  marginTop: 4,
+};
+
+const webDateStyle: React.CSSProperties = {
+  width: '100%',
+  background: SURFACE,
+  border: `1px solid ${BORDER}`,
+  borderRadius: 10,
+  padding: '12px 14px',
+  fontSize: 15,
+  color: TEXT_PRIMARY,
+  cursor: 'pointer',
+  outline: 'none',
+  fontFamily: 'inherit',
+  marginTop: 4,
+  colorScheme: 'dark',
+  boxSizing: 'border-box' as any,
+};
+
+// ---------------------------------------------------------------------------
+// Step Indicator Component
+// ---------------------------------------------------------------------------
+
+function StepIndicator({
+  currentStep,
+  completedSteps,
+}: {
+  currentStep: number;
+  completedSteps: Set<number>;
+}) {
+  return (
+    <View style={si.container}>
+      <View style={si.dotsRow}>
+        {STEP_LABELS.map((label, i) => {
+          const stepNum = i + 1;
+          const isActive = stepNum === currentStep;
+          const isComplete = completedSteps.has(stepNum);
+          const isPast = stepNum < currentStep;
+
+          return (
+            <React.Fragment key={label}>
+              {/* Connector line before dot (skip first) */}
+              {i > 0 && (
+                <View
+                  style={[
+                    si.connector,
+                    (isPast || isComplete) && si.connectorActive,
+                  ]}
+                />
+              )}
+              <View style={si.stepColumn}>
+                <View
+                  style={[
+                    si.dot,
+                    isActive && si.dotActive,
+                    isComplete && si.dotComplete,
+                    isPast && !isComplete && si.dotPast,
+                  ]}
+                  accessibilityRole="text"
+                  accessibilityLabel={`Step ${stepNum}: ${label}${isActive ? ', current' : ''}${isComplete ? ', completed' : ''}`}
+                >
+                  {isComplete ? (
+                    <Ionicons name="checkmark" size={12} color={TEXT_PRIMARY} />
+                  ) : (
+                    <Text
+                      style={[
+                        si.dotText,
+                        isActive && si.dotTextActive,
+                        isPast && si.dotTextPast,
+                      ]}
+                    >
+                      {stepNum}
+                    </Text>
+                  )}
+                </View>
+                <Text
+                  style={[
+                    si.label,
+                    isActive && si.labelActive,
+                    (isComplete || isPast) && si.labelPast,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </View>
+            </React.Fragment>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const si = StyleSheet.create({
+  container: {
+    paddingHorizontal: Spacing.xxl,
+    paddingTop: Spacing.xxl,
+    paddingBottom: Spacing.lg,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  stepColumn: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+    width: 72,
+  },
+  connector: {
+    height: 2,
+    flex: 1,
+    backgroundColor: Colors.border.subtle,
+    marginTop: 14, // vertically center with dot (28/2)
+    maxWidth: 64,
+  },
+  connectorActive: {
+    backgroundColor: SUCCESS_GREEN,
+  },
+  dot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: Colors.border.default,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dotActive: {
+    borderColor: ACCENT,
+    backgroundColor: 'rgba(59,130,246,0.12)',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: `0 0 12px rgba(59,130,246,0.4)` } as unknown as ViewStyle)
+      : {}),
+  },
+  dotComplete: {
+    borderColor: SUCCESS_GREEN,
+    backgroundColor: SUCCESS_GREEN,
+  },
+  dotPast: {
+    borderColor: Colors.border.strong,
+    backgroundColor: Colors.border.subtle,
+  },
+  dotText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: TEXT_MUTED,
+  },
+  dotTextActive: {
+    color: ACCENT,
+  },
+  dotTextPast: {
+    color: Colors.text.tertiary,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: TEXT_MUTED,
+    textAlign: 'center',
+  },
+  labelActive: {
+    color: TEXT_PRIMARY,
+    fontWeight: '600',
+  },
+  labelPast: {
+    color: Colors.text.tertiary,
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -392,8 +642,12 @@ function OnboardingContent() {
   const [industryDropdownOpen, setIndustryDropdownOpen] = useState(false);
   const [specialtyDropdownOpen, setSpecialtyDropdownOpen] = useState(false);
 
-  // Progress animation
-  const progressAnim = useRef(new Animated.Value(1)).current;
+  // Step animation (reanimated)
+  const slideOffset = useSharedValue(0);
+  const slideOpacity = useSharedValue(1);
+
+  // Track completed steps for indicator
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
 
   // Convenience updater
   const updateForm = useCallback((patch: Partial<FormState>) => {
@@ -441,15 +695,21 @@ function OnboardingContent() {
     }
   }, []);
 
-  // Progress bar animation
+  // Keyboard: Enter to advance
   useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: step,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  }, [step, progressAnim]);
-
+    if (Platform.OS !== 'web') return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        // Only advance if current step is valid
+        if (step === 1 && canProceedStep1) goNext();
+        else if (step === 2 && canProceedStep2) goNext();
+        else if (step === 3) goNext(); // Step 3 always allows advance to review
+        else if (step === 4 && canSubmit && !loading) handleComplete();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  });
 
   // Google Places REST address search helpers
 
@@ -555,21 +815,21 @@ function OnboardingContent() {
     setBusinessSuggestions([]);
   };
 
-    // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // Validation
   // ---------------------------------------------------------------------------
 
   const canProceedStep1 =
+    form.firstName.trim() !== '' &&
+    form.gender !== '' &&
+    isAdultDob(form.dateOfBirth);
+
+  const canProceedStep2 =
     form.businessName.trim() !== '' &&
     form.industry !== '' &&
     form.industrySpecialty !== '' &&
     form.teamSize !== '' &&
-    form.firstName.trim() !== '' &&
-    form.gender !== '' &&
-    isAdultDob(form.dateOfBirth) &&
-    form.entityType !== '' &&
-    form.yearsInBusiness !== '' &&
-    form.ownerTitle.trim() !== '';
+    form.entityType !== '';
 
   const hasHomeAddress =
     form.homeAddress.line1.trim() !== '' &&
@@ -584,7 +844,7 @@ function OnboardingContent() {
       form.businessAddress.state.trim() !== '' &&
       form.businessAddress.zip.trim() !== '');
 
-  const canProceedStep2 = hasHomeAddress && hasBusinessAddress;
+  const canProceedStep3 = hasHomeAddress && hasBusinessAddress;
 
   const canSubmit = form.consentPersonalization;
 
@@ -790,58 +1050,93 @@ function OnboardingContent() {
   }, [loadingComplete, showLoading]);
 
   // ---------------------------------------------------------------------------
-  // Step transitions
+  // Step transitions (animated)
   // ---------------------------------------------------------------------------
 
-  const goNext = () => {
-    setError(null);
-    setEntityDropdownOpen(false);
-    setStep((s) => Math.min(s + 1, 3));
-  };
+  const animateToStep = useCallback((targetStep: number) => {
+    const direction = targetStep > step ? 1 : -1;
+    // Slide out current step
+    slideOpacity.value = withTiming(0, { duration: 120, easing: Easing.in(Easing.ease) });
+    slideOffset.value = withTiming(direction * -40, { duration: 120, easing: Easing.in(Easing.ease) }, () => {
+      // After slide-out, snap to entry position and slide in
+      runOnJS(setStep)(targetStep);
+      slideOffset.value = direction * 40;
+      slideOpacity.value = 0;
+      slideOffset.value = withSpring(0, SPRING_CONFIG);
+      slideOpacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.ease) });
+    });
+  }, [step, slideOffset, slideOpacity]);
 
-  const goBack = () => {
+  const goNext = useCallback(() => {
     setError(null);
     setEntityDropdownOpen(false);
-    setStep((s) => Math.max(s - 1, 1));
-  };
+    setIndustryDropdownOpen(false);
+    setSpecialtyDropdownOpen(false);
+    // Mark current step as complete
+    setCompletedSteps((prev) => new Set(prev).add(step));
+    const nextStep = Math.min(step + 1, STEP_COUNT);
+    animateToStep(nextStep);
+  }, [step, animateToStep]);
+
+  const goBack = useCallback(() => {
+    setError(null);
+    setEntityDropdownOpen(false);
+    setIndustryDropdownOpen(false);
+    setSpecialtyDropdownOpen(false);
+    const prevStep = Math.max(step - 1, 1);
+    animateToStep(prevStep);
+  }, [step, animateToStep]);
+
+  const goToStep = useCallback((targetStep: number) => {
+    if (targetStep === step) return;
+    setError(null);
+    animateToStep(targetStep);
+  }, [step, animateToStep]);
+
+  const stepAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slideOffset.value }],
+    opacity: slideOpacity.value,
+  }));
 
   // ---------------------------------------------------------------------------
-  // Step 1: You & Your Business
+  // Step 1: About You
   // ---------------------------------------------------------------------------
 
   const renderStep1 = () => (
     <View>
-      <Text style={styles.stepTitle}>You & Your Business</Text>
-      <Text style={styles.stepSubtitle}>
-        Tell us a bit about yourself so Ava can personalize your experience
+      <Text style={s.stepTitle} accessibilityRole="header">About You</Text>
+      <Text style={s.stepSubtitle}>
+        Tell us about yourself so Ava can personalize your experience
       </Text>
 
       {/* Row: First Name + Last Name */}
-      <View style={styles.fieldRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.label}>First Name</Text>
+      <View style={s.fieldRow}>
+        <View style={s.fieldRowItem}>
+          <Text style={s.label}>First Name <Text style={s.requiredStar}>*</Text></Text>
           <TextInput
-            style={styles.input}
+            style={s.input}
             placeholder="First name"
-            placeholderTextColor="#555"
+            placeholderTextColor={TEXT_DIM}
             value={form.firstName}
             onChangeText={(v) => updateForm({ firstName: v })}
+            accessibilityLabel="First name"
           />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Last Name</Text>
+        <View style={s.fieldRowItem}>
+          <Text style={s.label}>Last Name</Text>
           <TextInput
-            style={styles.input}
+            style={s.input}
             placeholder="Last name"
-            placeholderTextColor="#555"
+            placeholderTextColor={TEXT_DIM}
             value={form.lastName}
             onChangeText={(v) => updateForm({ lastName: v })}
+            accessibilityLabel="Last name"
           />
         </View>
       </View>
 
-      {/* Date of Birth — full width */}
-      <Text style={styles.label}>Date of Birth</Text>
+      {/* Date of Birth */}
+      <Text style={s.label}>Date of Birth <Text style={s.requiredStar}>*</Text></Text>
       {Platform.OS === 'web' ? (
         <input
           type="date"
@@ -849,92 +1144,98 @@ function OnboardingContent() {
           onChange={(e: any) => updateForm({ dateOfBirth: e.target.value })}
           max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
           style={webDateStyle}
+          aria-label="Date of birth"
         />
       ) : (
         <TextInput
-          style={styles.input}
+          style={s.input}
           placeholder="YYYY-MM-DD"
-          placeholderTextColor="#555"
+          placeholderTextColor={TEXT_DIM}
           value={form.dateOfBirth}
           onChangeText={(v) => updateForm({ dateOfBirth: v.trim() })}
           autoCapitalize="none"
+          accessibilityLabel="Date of birth"
         />
       )}
       {form.dateOfBirth !== '' && !isAdultDob(form.dateOfBirth) && (
-        <Text style={styles.helperErrorText}>Must be 18+</Text>
+        <Text style={s.helperErrorText} accessibilityRole="alert">Must be 18 or older</Text>
       )}
 
-      {/* Row: Gender + Role */}
-      <View style={styles.fieldRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Gender</Text>
-          {Platform.OS === 'web' ? (
-            <select
-              value={form.gender}
-              onChange={(e: any) => updateForm({ gender: e.target.value })}
-              style={webSelectStyle}
-            >
-              <option value="">Select gender</option>
-              {GENDER_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          ) : (
-            <View style={styles.dropdown}>
-              {GENDER_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[styles.pill, form.gender === opt.value && styles.pillSelected, { marginBottom: 0 }]}
-                  onPress={() => updateForm({ gender: opt.value })}
-                >
-                  <Text style={[styles.pillText, form.gender === opt.value && styles.pillTextSelected]}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Role</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Owner, CEO"
-            placeholderTextColor="#555"
-            value={form.ownerTitle}
-            onChangeText={(v) => updateForm({ ownerTitle: v })}
-          />
-        </View>
+      {/* Gender */}
+      <Text style={s.label}>Gender <Text style={s.requiredStar}>*</Text></Text>
+      <View style={s.pillRow} accessibilityRole="radiogroup" accessibilityLabel="Gender selection">
+        {GENDER_OPTIONS.map((opt) => (
+          <Pressable
+            key={opt.value}
+            style={[s.pill, form.gender === opt.value && s.pillSelected]}
+            onPress={() => updateForm({ gender: opt.value })}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: form.gender === opt.value }}
+            accessibilityLabel={opt.label}
+          >
+            <Text style={[s.pillText, form.gender === opt.value && s.pillTextSelected]}>
+              {opt.label}
+            </Text>
+          </Pressable>
+        ))}
       </View>
+
+      {/* Title/Role */}
+      <Text style={s.label}>Title / Role</Text>
+      <TextInput
+        style={s.input}
+        placeholder="e.g. Owner, CEO"
+        placeholderTextColor={TEXT_DIM}
+        value={form.ownerTitle}
+        onChangeText={(v) => updateForm({ ownerTitle: v })}
+        accessibilityLabel="Title or role"
+      />
 
       {/* Email read-only */}
       {session?.user?.email && (
         <>
-          <Text style={styles.label}>Email</Text>
-          <View style={styles.readOnlyField}>
-            <Text style={styles.readOnlyText}>{session.user.email}</Text>
-            <Ionicons name="checkmark-circle" size={16} color={ACCENT} />
+          <Text style={s.label}>Email</Text>
+          <View style={s.readOnlyField}>
+            <Text style={s.readOnlyText} selectable>{session.user.email}</Text>
+            <Ionicons name="checkmark-circle" size={16} color={SUCCESS_GREEN} />
           </View>
         </>
       )}
+    </View>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Step 2: Your Business
+  // ---------------------------------------------------------------------------
+
+  const renderStep2 = () => (
+    <View>
+      <Text style={s.stepTitle} accessibilityRole="header">Your Business</Text>
+      <Text style={s.stepSubtitle}>
+        Help us understand your business to configure Aspire perfectly
+      </Text>
 
       {/* Business Name */}
-      <Text style={styles.label}>Business Name</Text>
+      <Text style={s.label}>Business Name <Text style={s.requiredStar}>*</Text></Text>
       <TextInput
-        style={styles.input}
+        style={s.input}
         placeholder="e.g. Apex Plumbing LLC"
-        placeholderTextColor="#555"
+        placeholderTextColor={TEXT_DIM}
         value={form.businessName}
         onChangeText={(v) => updateForm({ businessName: v })}
+        accessibilityLabel="Business name"
       />
 
       {/* Industry + Specialty — linked dropdowns */}
-      <View style={Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'row', gap: 12 } as any) : { gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Industry</Text>
+      <View style={s.fieldRow}>
+        <View style={s.fieldRowItem}>
+          <Text style={s.label}>Industry <Text style={s.requiredStar}>*</Text></Text>
           {Platform.OS === 'web' ? (
             <select
               value={form.industry}
               onChange={(e: any) => updateForm({ industry: e.target.value, industrySpecialty: '' })}
               style={webSelectStyle}
+              aria-label="Industry"
             >
               <option value="">Select industry</option>
               {INDUSTRIES.map((ind) => (
@@ -943,16 +1244,26 @@ function OnboardingContent() {
             </select>
           ) : (
             <>
-              <TouchableOpacity style={styles.dropdown} onPress={() => setIndustryDropdownOpen((v) => !v)}>
-                <Text style={form.industry ? styles.dropdownValue : styles.dropdownPlaceholder}>{form.industry || 'Select industry'}</Text>
-                <Ionicons name={industryDropdownOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#888" />
+              <TouchableOpacity
+                style={s.dropdown}
+                onPress={() => setIndustryDropdownOpen((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel={`Industry: ${form.industry || 'Select industry'}`}
+              >
+                <Text style={form.industry ? s.dropdownValue : s.dropdownPlaceholder}>
+                  {form.industry || 'Select industry'}
+                </Text>
+                <Ionicons name={industryDropdownOpen ? 'chevron-up' : 'chevron-down'} size={16} color={TEXT_MUTED} />
               </TouchableOpacity>
               {industryDropdownOpen && (
-                <View style={styles.dropdownList}>
+                <View style={s.dropdownList}>
                   {INDUSTRIES.map((ind) => (
-                    <TouchableOpacity key={ind} style={[styles.dropdownItem, form.industry === ind && styles.dropdownItemSelected]}
-                      onPress={() => { updateForm({ industry: ind, industrySpecialty: '' }); setIndustryDropdownOpen(false); }}>
-                      <Text style={[styles.dropdownItemText, form.industry === ind && styles.dropdownItemTextSelected]}>{ind}</Text>
+                    <TouchableOpacity
+                      key={ind}
+                      style={[s.dropdownItem, form.industry === ind && s.dropdownItemSelected]}
+                      onPress={() => { updateForm({ industry: ind, industrySpecialty: '' }); setIndustryDropdownOpen(false); }}
+                    >
+                      <Text style={[s.dropdownItemText, form.industry === ind && s.dropdownItemTextSelected]}>{ind}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -962,13 +1273,14 @@ function OnboardingContent() {
         </View>
 
         {form.industry && INDUSTRY_SPECIALTIES[form.industry] && (
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Specialty</Text>
+          <View style={s.fieldRowItem}>
+            <Text style={s.label}>Specialty <Text style={s.requiredStar}>*</Text></Text>
             {Platform.OS === 'web' ? (
               <select
                 value={form.industrySpecialty}
                 onChange={(e: any) => updateForm({ industrySpecialty: e.target.value })}
                 style={webSelectStyle}
+                aria-label="Industry specialty"
               >
                 <option value="">Select specialty</option>
                 {INDUSTRY_SPECIALTIES[form.industry].map((spec) => (
@@ -977,16 +1289,26 @@ function OnboardingContent() {
               </select>
             ) : (
               <>
-                <TouchableOpacity style={styles.dropdown} onPress={() => setSpecialtyDropdownOpen((v) => !v)}>
-                  <Text style={form.industrySpecialty ? styles.dropdownValue : styles.dropdownPlaceholder}>{form.industrySpecialty || 'Select specialty'}</Text>
-                  <Ionicons name={specialtyDropdownOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#888" />
+                <TouchableOpacity
+                  style={s.dropdown}
+                  onPress={() => setSpecialtyDropdownOpen((v) => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Specialty: ${form.industrySpecialty || 'Select specialty'}`}
+                >
+                  <Text style={form.industrySpecialty ? s.dropdownValue : s.dropdownPlaceholder}>
+                    {form.industrySpecialty || 'Select specialty'}
+                  </Text>
+                  <Ionicons name={specialtyDropdownOpen ? 'chevron-up' : 'chevron-down'} size={16} color={TEXT_MUTED} />
                 </TouchableOpacity>
                 {specialtyDropdownOpen && (
-                  <View style={styles.dropdownList}>
+                  <View style={s.dropdownList}>
                     {INDUSTRY_SPECIALTIES[form.industry].map((spec) => (
-                      <TouchableOpacity key={spec} style={[styles.dropdownItem, form.industrySpecialty === spec && styles.dropdownItemSelected]}
-                        onPress={() => { updateForm({ industrySpecialty: spec }); setSpecialtyDropdownOpen(false); }}>
-                        <Text style={[styles.dropdownItemText, form.industrySpecialty === spec && styles.dropdownItemTextSelected]}>{spec}</Text>
+                      <TouchableOpacity
+                        key={spec}
+                        style={[s.dropdownItem, form.industrySpecialty === spec && s.dropdownItemSelected]}
+                        onPress={() => { updateForm({ industrySpecialty: spec }); setSpecialtyDropdownOpen(false); }}
+                      >
+                        <Text style={[s.dropdownItemText, form.industrySpecialty === spec && s.dropdownItemTextSelected]}>{spec}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -997,71 +1319,31 @@ function OnboardingContent() {
         )}
       </View>
 
-      {/* Row: Team Size + Years in Business — dropdowns */}
-      <View style={styles.fieldRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Team Size</Text>
-          {Platform.OS === 'web' ? (
-            <select
-              value={form.teamSize}
-              onChange={(e: any) => updateForm({ teamSize: e.target.value })}
-              style={webSelectStyle}
-            >
-              <option value="">Select team size</option>
-              {TEAM_SIZES.map((size) => (
-                <option key={size} value={size}>{size}</option>
-              ))}
-            </select>
-          ) : (
-            <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
-              {TEAM_SIZES.map((size) => (
-                <TouchableOpacity
-                  key={size}
-                  style={[styles.pill, form.teamSize === size && styles.pillSelected]}
-                  onPress={() => updateForm({ teamSize: size })}
-                >
-                  <Text style={[styles.pillText, form.teamSize === size && styles.pillTextSelected]}>{size}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Years in Business</Text>
-          {Platform.OS === 'web' ? (
-            <select
-              value={form.yearsInBusiness}
-              onChange={(e: any) => updateForm({ yearsInBusiness: e.target.value })}
-              style={webSelectStyle}
-            >
-              <option value="">Select years</option>
-              {YEARS_OPTIONS.map((yr) => (
-                <option key={yr} value={yr}>{yr}</option>
-              ))}
-            </select>
-          ) : (
-            <View style={[styles.pillRow, { flexWrap: 'wrap' }]}>
-              {YEARS_OPTIONS.map((yr) => (
-                <TouchableOpacity
-                  key={yr}
-                  style={[styles.pill, form.yearsInBusiness === yr && styles.pillSelected]}
-                  onPress={() => updateForm({ yearsInBusiness: yr })}
-                >
-                  <Text style={[styles.pillText, form.yearsInBusiness === yr && styles.pillTextSelected]}>{yr}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
+      {/* Team Size */}
+      <Text style={s.label}>Team Size <Text style={s.requiredStar}>*</Text></Text>
+      <View style={s.pillRow} accessibilityRole="radiogroup" accessibilityLabel="Team size">
+        {TEAM_SIZES.map((size) => (
+          <Pressable
+            key={size}
+            style={[s.pill, form.teamSize === size && s.pillSelected]}
+            onPress={() => updateForm({ teamSize: size })}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: form.teamSize === size }}
+            accessibilityLabel={size}
+          >
+            <Text style={[s.pillText, form.teamSize === size && s.pillTextSelected]}>{size}</Text>
+          </Pressable>
+        ))}
       </View>
 
       {/* Entity Type */}
-      <Text style={styles.label}>Entity Type</Text>
+      <Text style={s.label}>Entity Type <Text style={s.requiredStar}>*</Text></Text>
       {Platform.OS === 'web' ? (
         <select
           value={form.entityType}
           onChange={(e: any) => updateForm({ entityType: e.target.value })}
           style={webSelectStyle}
+          aria-label="Entity type"
         >
           <option value="">Select entity type</option>
           {ENTITY_TYPES.map((et) => (
@@ -1070,34 +1352,57 @@ function OnboardingContent() {
         </select>
       ) : (
         <>
-          <TouchableOpacity style={styles.dropdown} onPress={() => setEntityDropdownOpen((v) => !v)}>
-            <Text style={form.entityType ? styles.dropdownValue : styles.dropdownPlaceholder}>
+          <TouchableOpacity
+            style={s.dropdown}
+            onPress={() => setEntityDropdownOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={`Entity type: ${form.entityType || 'Select entity type'}`}
+          >
+            <Text style={form.entityType ? s.dropdownValue : s.dropdownPlaceholder}>
               {form.entityType || 'Select entity type'}
             </Text>
-            <Ionicons name={entityDropdownOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#888" />
+            <Ionicons name={entityDropdownOpen ? 'chevron-up' : 'chevron-down'} size={16} color={TEXT_MUTED} />
           </TouchableOpacity>
           {entityDropdownOpen && (
-            <View style={styles.dropdownList}>
+            <View style={s.dropdownList}>
               {ENTITY_TYPES.map((et) => (
                 <TouchableOpacity
                   key={et}
-                  style={[styles.dropdownItem, form.entityType === et && styles.dropdownItemSelected]}
+                  style={[s.dropdownItem, form.entityType === et && s.dropdownItemSelected]}
                   onPress={() => { updateForm({ entityType: et }); setEntityDropdownOpen(false); }}
                 >
-                  <Text style={[styles.dropdownItemText, form.entityType === et && styles.dropdownItemTextSelected]}>{et}</Text>
+                  <Text style={[s.dropdownItemText, form.entityType === et && s.dropdownItemTextSelected]}>{et}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
         </>
       )}
+
+      {/* Years in Business */}
+      <Text style={s.label}>Years in Business</Text>
+      <View style={s.pillRow} accessibilityRole="radiogroup" accessibilityLabel="Years in business">
+        {YEARS_OPTIONS.map((yr) => (
+          <Pressable
+            key={yr}
+            style={[s.pill, form.yearsInBusiness === yr && s.pillSelected]}
+            onPress={() => updateForm({ yearsInBusiness: yr })}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: form.yearsInBusiness === yr }}
+            accessibilityLabel={`${yr} years`}
+          >
+            <Text style={[s.pillText, form.yearsInBusiness === yr && s.pillTextSelected]}>{yr}</Text>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
+
   // ---------------------------------------------------------------------------
-  // Step 2: Address & Location
+  // Step 3: Addresses
   // ---------------------------------------------------------------------------
 
-  const renderStep2 = () => {
+  const renderStep3 = () => {
     const isWeb = Platform.OS === 'web';
 
     const renderAddressField = (
@@ -1113,24 +1418,30 @@ function OnboardingContent() {
       const confirmed = !!address.line1;
       if (confirmed) {
         return (
-          <View style={styles.confirmedAddressRow}>
-            <Ionicons name={validated ? 'checkmark-circle' : 'location'} size={18} color={validated ? '#22C55E' : ACCENT} />
-            <Text style={styles.confirmedAddressText} numberOfLines={2}>{searchText}</Text>
+          <View style={s.confirmedAddressRow}>
+            <Ionicons name={validated ? 'checkmark-circle' : 'location'} size={18} color={validated ? SUCCESS_GREEN : ACCENT} />
+            <Text style={s.confirmedAddressText} numberOfLines={2}>{searchText}</Text>
             {validated && (
-              <View style={styles.verifiedBadge}>
-                <Text style={styles.verifiedBadgeText}>Verified</Text>
+              <View style={s.verifiedBadge}>
+                <Text style={s.verifiedBadgeText}>Verified</Text>
               </View>
             )}
-            <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.changeLink}>Change</Text>
-            </TouchableOpacity>
+            <Pressable
+              onPress={onClear}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={s.changeLinkWrap}
+              accessibilityRole="button"
+              accessibilityLabel="Change address"
+            >
+              <Text style={s.changeLink}>Change</Text>
+            </Pressable>
           </View>
         );
       }
       return (
         <View style={isWeb ? ({ position: 'relative', zIndex: 200 } as any) : {}}>
-          <View style={styles.searchInputWrap}>
-            <Ionicons name="search-outline" size={18} color="#888" style={styles.searchIcon} />
+          <View style={s.searchInputWrap}>
+            <Ionicons name="search-outline" size={16} color={TEXT_MUTED} style={s.searchIcon} />
             {isWeb ? (
               <input
                 type="text"
@@ -1139,36 +1450,49 @@ function OnboardingContent() {
                 onChange={(e: any) => onChangeText(e.target.value)}
                 style={webInputStyle}
                 autoComplete="off"
+                aria-label={placeholder}
               />
             ) : (
               <TextInput
-                style={{ flex: 1, color: '#fff', fontSize: 16, paddingVertical: 14, paddingRight: 16 }}
+                style={{ flex: 1, color: TEXT_PRIMARY, fontSize: 15, paddingVertical: 12, paddingRight: 14 }}
                 placeholder={placeholder}
-                placeholderTextColor="#555"
+                placeholderTextColor={TEXT_DIM}
                 value={searchText}
                 onChangeText={onChangeText}
+                accessibilityLabel={placeholder}
               />
             )}
             {searchText.length > 0 && (
-              <TouchableOpacity onPress={onClear} style={{ paddingRight: 14 }}>
-                <Ionicons name="close-circle" size={18} color="#555" />
-              </TouchableOpacity>
+              <Pressable
+                onPress={onClear}
+                style={{ paddingRight: 12, minHeight: 44, justifyContent: 'center' }}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+              >
+                <Ionicons name="close-circle" size={16} color={TEXT_MUTED} />
+              </Pressable>
             )}
           </View>
           {suggestions.length > 0 && (
-            <View style={styles.placesDropdown}>
-              {suggestions.map((s: any, i: number) => (
-                <TouchableOpacity key={i} style={styles.placesItem} onPress={() => onSelect(s)}>
+            <View style={s.placesDropdown}>
+              {suggestions.map((sg: any, i: number) => (
+                <Pressable
+                  key={i}
+                  style={s.placesItem}
+                  onPress={() => onSelect(sg)}
+                  accessibilityRole="button"
+                  accessibilityLabel={sg.placePrediction?.text?.text || 'Address suggestion'}
+                >
                   <Ionicons name="location-outline" size={14} color={ACCENT} style={{ marginRight: 10, flexShrink: 0 } as any} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.placesItemMain} numberOfLines={1}>
-                      {s.placePrediction?.structuredFormat?.mainText?.text || s.placePrediction?.text?.text || ''}
+                    <Text style={s.placesItemMain} numberOfLines={1}>
+                      {sg.placePrediction?.structuredFormat?.mainText?.text || sg.placePrediction?.text?.text || ''}
                     </Text>
-                    <Text style={styles.placesItemSub} numberOfLines={1}>
-                      {s.placePrediction?.structuredFormat?.secondaryText?.text || ''}
+                    <Text style={s.placesItemSub} numberOfLines={1}>
+                      {sg.placePrediction?.structuredFormat?.secondaryText?.text || ''}
                     </Text>
                   </View>
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
           )}
@@ -1178,12 +1502,12 @@ function OnboardingContent() {
 
     return (
       <View>
-        <Text style={styles.stepTitle}>Address & Location</Text>
-        <Text style={styles.stepSubtitle}>
-          Your address helps configure taxes, timezone, and currency automatically
+        <Text style={s.stepTitle} accessibilityRole="header">Addresses</Text>
+        <Text style={s.stepSubtitle}>
+          Your address configures taxes, timezone, and currency automatically
         </Text>
 
-        <Text style={styles.label}>Home Address</Text>
+        <Text style={s.label}>Home Address <Text style={s.requiredStar}>*</Text></Text>
         {renderAddressField(
           form.homeSearchText,
           form.homeAddress,
@@ -1192,39 +1516,40 @@ function OnboardingContent() {
           onHomeSearchChange,
           onHomeSelect,
           onHomeClear,
-          'Search your home address…',
+          'Search your home address...',
         )}
 
         {(form.timezone || form.currency) && (
-          <View style={styles.autoDetectedRow}>
+          <View style={s.autoDetectedRow}>
             {form.timezone ? (
-              <View style={styles.autoTag}>
+              <View style={s.autoTag}>
                 <Ionicons name="time-outline" size={14} color={ACCENT} />
-                <Text style={styles.autoTagText}>{form.timezone}</Text>
+                <Text style={s.autoTagText}>{form.timezone}</Text>
               </View>
             ) : null}
             {form.currency ? (
-              <View style={styles.autoTag}>
+              <View style={s.autoTag}>
                 <Ionicons name="cash-outline" size={14} color={ACCENT} />
-                <Text style={styles.autoTagText}>{form.currency}</Text>
+                <Text style={s.autoTagText}>{form.currency}</Text>
               </View>
             ) : null}
           </View>
         )}
 
-        <View style={[styles.toggleRow, { marginTop: 24 }]}>
-          <Text style={styles.toggleLabel}>Business address same as home?</Text>
+        <View style={s.toggleRow}>
+          <Text style={s.toggleLabel}>Business address same as home</Text>
           <Switch
             value={form.businessAddressSameAsHome}
             onValueChange={(v) => updateForm({ businessAddressSameAsHome: v })}
-            trackColor={{ false: '#333', true: ACCENT_LIGHT }}
-            thumbColor={form.businessAddressSameAsHome ? ACCENT : '#888'}
+            trackColor={{ false: Colors.border.default, true: ACCENT_LIGHT }}
+            thumbColor={form.businessAddressSameAsHome ? ACCENT : TEXT_MUTED}
+            accessibilityLabel="Business address same as home"
           />
         </View>
 
         {!form.businessAddressSameAsHome && (
-          <View style={isWeb ? ({ zIndex: 100 } as any) : {}}>
-            <Text style={[styles.label, { marginTop: 20 }]}>Business Address</Text>
+          <View style={Platform.OS === 'web' ? ({ zIndex: 100 } as any) : {}}>
+            <Text style={[s.label, { marginTop: Spacing.xl }]}>Business Address <Text style={s.requiredStar}>*</Text></Text>
             {renderAddressField(
               form.businessSearchText,
               form.businessAddress,
@@ -1233,138 +1558,134 @@ function OnboardingContent() {
               onBusinessSearchChange,
               onBusinessSelect,
               onBusinessClear,
-              'Search business address…',
+              'Search business address...',
             )}
           </View>
         )}
       </View>
     );
   };
+
   // ---------------------------------------------------------------------------
-  // Step 3: Services & Go
+  // Step 4: Review & Launch
   // ---------------------------------------------------------------------------
 
-  const renderStep3 = () => (
-    <View>
-      <Text style={styles.stepTitle}>Final Details & Go</Text>
-      <Text style={styles.stepSubtitle}>
-        A few more details so Ava can tailor your experience perfectly.
-      </Text>
+  const renderStep4 = () => {
+    const formatAddress = (addr: AddressFields): string => {
+      if (!addr.line1) return 'Not provided';
+      const parts = [addr.line1, addr.line2, addr.city, addr.state, addr.zip].filter(Boolean);
+      return parts.join(', ');
+    };
 
-      {/* Income Range */}
-      <Text style={styles.label}>Annual Income Range</Text>
-      {Platform.OS === 'web' ? (
-        <select
-          value={form.incomeRange}
-          onChange={(e: any) => updateForm({ incomeRange: e.target.value })}
-          style={webSelectStyle}
-        >
-          <option value="">Select income range</option>
-          {INCOME_RANGES.map((ir) => (
-            <option key={ir.value} value={ir.value}>{ir.label}</option>
-          ))}
-        </select>
-      ) : (
-        <View style={[styles.pillRow, { flexWrap: 'wrap', gap: 8 }]}>
-          {INCOME_RANGES.map((ir) => (
-            <TouchableOpacity
-              key={ir.value}
-              style={[styles.pill, form.incomeRange === ir.value && styles.pillSelected]}
-              onPress={() => updateForm({ incomeRange: ir.value })}
-            >
-              <Text style={[styles.pillText, form.incomeRange === ir.value && styles.pillTextSelected]}>{ir.label}</Text>
-            </TouchableOpacity>
-          ))}
+    const ReviewSection = ({
+      title,
+      targetStep,
+      children,
+    }: {
+      title: string;
+      targetStep: number;
+      children: React.ReactNode;
+    }) => (
+      <View style={s.reviewSection}>
+        <View style={s.reviewSectionHeader}>
+          <Text style={s.reviewSectionTitle}>{title}</Text>
+          <Pressable
+            onPress={() => goToStep(targetStep)}
+            style={s.editButton}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${title}`}
+          >
+            <Ionicons name="pencil-outline" size={14} color={ACCENT} />
+            <Text style={s.editButtonText}>Edit</Text>
+          </Pressable>
         </View>
-      )}
+        {children}
+      </View>
+    );
 
-      {/* Referral Source */}
-      <Text style={[styles.label, { marginTop: 18 }]}>How did you hear about Aspire?</Text>
-      <View style={styles.chipGrid}>
-        {REFERRAL_SOURCES.map((rs) => (
-          <TouchableOpacity
-            key={rs.value}
-            style={[styles.chip, form.referralSource === rs.value && styles.chipSelected]}
-            onPress={() => updateForm({ referralSource: rs.value })}
+    const ReviewRow = ({ label, value }: { label: string; value: string }) => (
+      <View style={s.reviewRow}>
+        <Text style={s.reviewLabel}>{label}</Text>
+        <Text style={s.reviewValue} selectable>{value || '--'}</Text>
+      </View>
+    );
+
+    return (
+      <View>
+        <Text style={s.stepTitle} accessibilityRole="header">Review & Launch</Text>
+        <Text style={s.stepSubtitle}>
+          Confirm your details before launching Aspire
+        </Text>
+
+        <ReviewSection title="About You" targetStep={1}>
+          <ReviewRow label="Name" value={`${form.firstName} ${form.lastName}`.trim()} />
+          <ReviewRow label="Date of Birth" value={form.dateOfBirth} />
+          <ReviewRow
+            label="Gender"
+            value={GENDER_OPTIONS.find((g) => g.value === form.gender)?.label || form.gender}
+          />
+          <ReviewRow label="Role" value={form.ownerTitle} />
+        </ReviewSection>
+
+        <ReviewSection title="Your Business" targetStep={2}>
+          <ReviewRow label="Business Name" value={form.businessName} />
+          <ReviewRow label="Industry" value={form.industry} />
+          <ReviewRow label="Specialty" value={form.industrySpecialty} />
+          <ReviewRow label="Team Size" value={form.teamSize} />
+          <ReviewRow label="Entity Type" value={form.entityType} />
+          <ReviewRow label="Years" value={form.yearsInBusiness} />
+        </ReviewSection>
+
+        <ReviewSection title="Addresses" targetStep={3}>
+          <ReviewRow label="Home" value={formatAddress(form.homeAddress)} />
+          <ReviewRow
+            label="Business"
+            value={
+              form.businessAddressSameAsHome
+                ? 'Same as home'
+                : formatAddress(form.businessAddress)
+            }
+          />
+          <ReviewRow label="Timezone" value={form.timezone || 'Auto-detect'} />
+          <ReviewRow label="Currency" value={form.currency} />
+        </ReviewSection>
+
+        {/* Consent checkboxes */}
+        <View style={s.consentSection}>
+          <Pressable
+            style={s.consentRow}
+            onPress={() => updateForm({ consentPersonalization: !form.consentPersonalization })}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: form.consentPersonalization }}
+            accessibilityLabel="I agree to a personalized experience powered by my business data"
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons
-                name={rs.icon as keyof typeof Ionicons.glyphMap}
-                size={14}
-                color={form.referralSource === rs.value ? ACCENT : '#888'}
-              />
-              <Text style={[styles.chipText, form.referralSource === rs.value && styles.chipTextSelected]}>
-                {rs.label}
-              </Text>
+            <View style={[s.checkbox, form.consentPersonalization && s.checkboxChecked]}>
+              {form.consentPersonalization && <Ionicons name="checkmark" size={14} color={TEXT_PRIMARY} />}
             </View>
-          </TouchableOpacity>
-        ))}
-      </View>
+            <Text style={s.consentText}>
+              I agree to a personalized experience powered by my business data{' '}
+              <Text style={s.requiredStar}>*</Text>
+            </Text>
+          </Pressable>
 
-      {/* Biggest Challenge (optional) */}
-      <Text style={[styles.label, { marginTop: 24 }]}>Biggest Challenge (optional)</Text>
-      <TextInput
-        style={[styles.input, styles.multilineInput]}
-        placeholder="What's your #1 operational headache?"
-        placeholderTextColor="#555"
-        value={form.painPoint}
-        onChangeText={(v) => updateForm({ painPoint: v })}
-        multiline
-        numberOfLines={3}
-      />
-
-      {/* Consent checkboxes */}
-      <View style={styles.consentSection}>
-        <TouchableOpacity
-          style={styles.consentRow}
-          onPress={() => updateForm({ consentPersonalization: !form.consentPersonalization })}
-        >
-          <View
-            style={[
-              styles.checkbox,
-              form.consentPersonalization && styles.checkboxChecked,
-            ]}
+          <Pressable
+            style={s.consentRow}
+            onPress={() => updateForm({ consentCommunications: !form.consentCommunications })}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: form.consentCommunications }}
+            accessibilityLabel="Receive product updates and tips"
           >
-            {form.consentPersonalization && (
-              <Ionicons name="checkmark" size={14} color="#fff" />
-            )}
-          </View>
-          <Text style={styles.consentText}>
-            I agree to a personalized experience powered by my business data{' '}
-            <Text style={styles.requiredStar}>*</Text>
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.consentRow}
-          onPress={() => updateForm({ consentCommunications: !form.consentCommunications })}
-        >
-          <View
-            style={[
-              styles.checkbox,
-              form.consentCommunications && styles.checkboxChecked,
-            ]}
-          >
-            {form.consentCommunications && (
-              <Ionicons name="checkmark" size={14} color="#fff" />
-            )}
-          </View>
-          <Text style={styles.consentText}>
-            I would like to receive product updates and tips (optional)
-          </Text>
-        </TouchableOpacity>
+            <View style={[s.checkbox, form.consentCommunications && s.checkboxChecked]}>
+              {form.consentCommunications && <Ionicons name="checkmark" size={14} color={TEXT_PRIMARY} />}
+            </View>
+            <Text style={s.consentText}>
+              I would like to receive product updates and tips (optional)
+            </Text>
+          </Pressable>
+        </View>
       </View>
-    </View>
-  );
-
-  // ---------------------------------------------------------------------------
-  // Progress Bar
-  // ---------------------------------------------------------------------------
-
-  const progressWidth = progressAnim.interpolate({
-    inputRange: [1, 2, 3],
-    outputRange: ['33.33%', '66.66%', '100%'],
-  });
+    );
+  };
 
   // ---------------------------------------------------------------------------
   // Celebration modal dismiss → navigate to home
@@ -1374,6 +1695,20 @@ function OnboardingContent() {
     // and won't redirect back to onboarding after we navigate.
     await supabase.auth.refreshSession();
     router.replace('/(tabs)');
+  };
+
+  // ---------------------------------------------------------------------------
+  // Validation for current step
+  // ---------------------------------------------------------------------------
+
+  const isCurrentStepValid = (): boolean => {
+    switch (step) {
+      case 1: return canProceedStep1;
+      case 2: return canProceedStep2;
+      case 3: return canProceedStep3;
+      case 4: return canSubmit;
+      default: return false;
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -1404,234 +1739,227 @@ function OnboardingContent() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Logo — top-left, no border, transparent bg, matches login/landing height */}
-      {Platform.OS === 'web' ? (
-        <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 10, pointerEvents: 'none' } as React.CSSProperties}>
-          <img
-            src="/aspire-logo-full.png"
-            alt="Aspire"
-            style={{ height: 140, objectFit: 'contain', display: 'block' } as React.CSSProperties}
-          />
-        </div>
-      ) : (
-        <View style={styles.logoWrap}>
-          <View style={{ width: 32, height: 32 }}>
-            <Ionicons name="trending-up" size={28} color="#3B82F6" />
+    <View style={s.fullScreen}>
+      {/* Overlay backdrop with blur */}
+      <View
+        style={s.overlay}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+
+      {/* Modal */}
+      <View style={s.modalOuter}>
+        {/* Gradient border wrapper */}
+        <LinearGradient
+          colors={[MODAL_BORDER_START, MODAL_BORDER_END]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={s.modalGradientBorder}
+        >
+          <View style={s.modalInner}>
+            {/* Step Indicator */}
+            <StepIndicator currentStep={step} completedSteps={completedSteps} />
+
+            {/* Error banner */}
+            {error && (
+              <View style={s.errorBox} accessibilityRole="alert">
+                <Ionicons name="alert-circle-outline" size={16} color={ERROR_RED} />
+                <Text style={s.errorText}>{error}</Text>
+              </View>
+            )}
+
+            {/* Scrollable step content */}
+            <ScrollView
+              style={s.stepScrollView}
+              contentContainerStyle={s.stepScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Animated.View style={stepAnimStyle}>
+                {step === 1 && renderStep1()}
+                {step === 2 && renderStep2()}
+                {step === 3 && renderStep3()}
+                {step === 4 && renderStep4()}
+              </Animated.View>
+            </ScrollView>
+
+            {/* Footer */}
+            <View style={s.footer}>
+              <View style={s.footerInner}>
+                {/* Back button */}
+                {step > 1 ? (
+                  <Pressable
+                    style={s.backButton}
+                    onPress={goBack}
+                    disabled={loading}
+                    accessibilityRole="button"
+                    accessibilityLabel="Go back"
+                  >
+                    <Ionicons name="arrow-back" size={16} color={Colors.text.tertiary} />
+                    <Text style={s.backButtonText}>Back</Text>
+                  </Pressable>
+                ) : (
+                  <View style={{ width: 80 }} />
+                )}
+
+                {/* Next / Launch button */}
+                {step < STEP_COUNT ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      s.nextButton,
+                      !isCurrentStepValid() && s.buttonDisabled,
+                      pressed && { opacity: 0.85 },
+                    ]}
+                    onPress={goNext}
+                    disabled={!isCurrentStepValid()}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Continue to ${STEP_LABELS[step] || 'next step'}`}
+                  >
+                    {Platform.OS === 'web' && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          borderRadius: 12,
+                          background: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)',
+                          zIndex: 0,
+                        } as React.CSSProperties}
+                      />
+                    )}
+                    <Text style={s.nextButtonText}>Continue</Text>
+                    <Ionicons name="arrow-forward" size={16} color={TEXT_PRIMARY} />
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={({ pressed }) => [
+                      s.launchButton,
+                      (!canSubmit || loading) && s.buttonDisabled,
+                      pressed && { opacity: 0.85 },
+                    ]}
+                    onPress={handleComplete}
+                    disabled={!canSubmit || loading}
+                    accessibilityRole="button"
+                    accessibilityLabel="Launch Aspire"
+                  >
+                    {Platform.OS === 'web' && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          borderRadius: 12,
+                          background: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)',
+                          zIndex: 0,
+                        } as React.CSSProperties}
+                      />
+                    )}
+                    {loading ? (
+                      <ActivityIndicator color={TEXT_PRIMARY} size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="rocket-outline" size={18} color={TEXT_PRIMARY} />
+                        <Text style={s.launchButtonText}>Launch Aspire</Text>
+                      </>
+                    )}
+                  </Pressable>
+                )}
+              </View>
+            </View>
           </View>
-        </View>
-      )}
-
-      <View style={styles.inner}>
-        {/* Progress bar */}
-        <View style={styles.progressTrack}>
-          <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
-        </View>
-        <View style={styles.stepIndicatorRow}>
-          <Text style={styles.stepIndicator}>Step {step} of 3</Text>
-          <Text style={styles.stepName}>
-            {step === 1 ? 'You & Your Business' : step === 2 ? 'Address & Location' : 'Final Details & Go'}
-          </Text>
-        </View>
-
-        {/* Error */}
-        {error && (
-          <View style={styles.errorBox}>
-            <Ionicons name="alert-circle-outline" size={18} color="#F87171" />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-
-        {/* Step Content */}
-        {step === 1 && renderStep1()}
-        {step === 2 && renderStep2()}
-        {step === 3 && renderStep3()}
-
-        {/* Navigation */}
-        <View style={styles.buttonRow}>
-          {step > 1 && (
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={goBack}
-              disabled={loading}
-            >
-              <Ionicons name="arrow-back" size={18} color="#aaa" />
-              <Text style={styles.backButtonText}>Back</Text>
-            </TouchableOpacity>
-          )}
-
-          <View style={{ flex: 1 }} />
-
-          {step < 3 ? (
-            <TouchableOpacity
-              style={[
-                styles.nextButton,
-                !(step === 1 ? canProceedStep1 : canProceedStep2) && styles.buttonDisabled,
-                Platform.OS === 'web' ? ({ background: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)' } as any) : null,
-              ]}
-              onPress={goNext}
-              disabled={!(step === 1 ? canProceedStep1 : canProceedStep2)}
-            >
-              <Text style={styles.nextButtonText}>Continue</Text>
-              <Ionicons name="arrow-forward" size={18} color="#fff" />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[
-                styles.launchButton,
-                (!canSubmit || loading) && styles.buttonDisabled,
-                Platform.OS === 'web' ? ({ background: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 40%, #06B6D4 100%)' } as any) : null,
-              ]}
-              onPress={handleComplete}
-              disabled={!canSubmit || loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <Ionicons name="rocket-outline" size={20} color="#fff" />
-                  <Text style={styles.launchButtonText}>Launch Aspire</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
+        </LinearGradient>
       </View>
-    </ScrollView>
+    </View>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Color constants (local to file — avoids long token references in styles)
-// ---------------------------------------------------------------------------
-
-const ACCENT = '#3B82F6';
-const ACCENT_LIGHT = 'rgba(59,130,246,0.15)';
-const ACCENT_GLOW = 'rgba(59,130,246,0.35)';
-const BG = '#000000';
-const SURFACE = '#1a1a1a';
-const BORDER = '#333';
-const BORDER_STRONG = '#444';
-const TEXT_PRIMARY = '#fff';
-const TEXT_SECONDARY = '#ccc';
-const TEXT_MUTED = '#888';
-const TEXT_DIM = '#555';
-const ERROR_RED = '#F87171';
-
-// Web-only inline style for the HTML <input> used by Google Places
-const webInputStyle: React.CSSProperties = {
-  flex: 1,
-  background: 'transparent',
-  border: 'none',
-  outline: 'none',
-  color: TEXT_PRIMARY,
-  fontSize: 16,
-  padding: '14px 16px 14px 0',
-  fontFamily: 'inherit',
-  width: '100%',
-};
-const webSelectStyle: React.CSSProperties = {
-  width: '100%',
-  background: '#1a1a1a',
-  border: '1px solid #333',
-  borderRadius: 10,
-  padding: '14px 40px 14px 16px',
-  fontSize: 16,
-  color: '#fff',
-  cursor: 'pointer',
-  outline: 'none',
-  appearance: 'none' as any,
-  WebkitAppearance: 'none' as any,
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23888' d='M6 8L0 0h12z'/%3E%3C/svg%3E")`,
-  backgroundRepeat: 'no-repeat',
-  backgroundPosition: 'right 14px center',
-  marginTop: 6,
-};
-const webDateStyle: React.CSSProperties = {
-  width: '100%',
-  background: '#1a1a1a',
-  border: '1px solid #333',
-  borderRadius: 10,
-  padding: '14px 16px',
-  fontSize: 16,
-  color: '#fff',
-  cursor: 'pointer',
-  outline: 'none',
-  fontFamily: 'inherit',
-  marginTop: 6,
-  colorScheme: 'dark',
-  boxSizing: 'border-box' as any,
-};
-
 
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  // Full-screen container
+  fullScreen: {
     flex: 1,
-    backgroundColor: BG,
-  },
-  contentContainer: {
-    paddingBottom: 80,
-  },
-  logoWrap: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    zIndex: 10,
-    padding: 16,
-  },
-  inner: {
-    maxWidth: 640,
-    alignSelf: 'center',
-    width: '100%',
-    paddingHorizontal: 32,
-    paddingTop: 52,
+    backgroundColor: Colors.background.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  // Progress bar
-  progressTrack: {
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#1e1e1e',
+  // Dark overlay
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: OVERLAY_BG,
+    ...(Platform.OS === 'web'
+      ? ({ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as unknown as ViewStyle)
+      : {}),
+  },
+
+  // Modal positioning
+  modalOuter: {
+    width: MODAL_WIDTH,
+    maxWidth: '94%',
+    maxHeight: '92%',
+    zIndex: 10,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 32px 80px -16px rgba(0,0,0,0.9)' } as unknown as ViewStyle)
+      : {}),
+  },
+
+  // Gradient border (1px via padding)
+  modalGradientBorder: {
+    borderRadius: MODAL_RADIUS,
+    padding: 1,
+  },
+
+  // Modal content area
+  modalInner: {
+    backgroundColor: MODAL_SURFACE,
+    borderRadius: MODAL_RADIUS - 1,
     overflow: 'hidden',
-    marginBottom: 14,
+    maxHeight: '100%',
+    ...(Platform.OS === 'web'
+      ? ({ display: 'flex', flexDirection: 'column' } as unknown as ViewStyle)
+      : {}),
   },
-  progressFill: {
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: ACCENT,
+
+  // Step content scroll area
+  stepScrollView: {
+    flex: 1,
+    ...(Platform.OS === 'web'
+      ? ({ maxHeight: 'calc(92vh - 180px)' } as unknown as ViewStyle)
+      : {}),
   },
-  stepIndicatorRow: {
+  stepScrollContent: {
+    paddingHorizontal: Spacing.xxxl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xxxl,
+  },
+
+  // Footer
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border.subtle,
+    backgroundColor: MODAL_SURFACE,
+  },
+  footerInner: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 32,
-  },
-  stepIndicator: {
-    color: TEXT_MUTED,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  stepName: {
-    color: TEXT_SECONDARY,
-    fontSize: 13,
-    fontWeight: '600',
+    paddingHorizontal: Spacing.xxxl,
+    paddingVertical: Spacing.xl,
   },
 
   // Step header
   stepTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '700',
     color: TEXT_PRIMARY,
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
+    letterSpacing: -0.3,
   },
   stepSubtitle: {
     fontSize: 15,
     color: TEXT_MUTED,
-    marginBottom: 28,
+    marginBottom: Spacing.xxl,
     lineHeight: 22,
   },
 
@@ -1639,14 +1967,18 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#aaa',
-    marginBottom: 6,
-    marginTop: 18,
+    color: Colors.text.tertiary,
+    marginBottom: Spacing.xs,
+    marginTop: Spacing.lg,
   },
   helperErrorText: {
     color: ERROR_RED,
     fontSize: 12,
-    marginTop: 6,
+    marginTop: Spacing.xs,
+  },
+  requiredStar: {
+    color: ERROR_RED,
+    fontWeight: '700',
   },
 
   // Inputs
@@ -1655,79 +1987,51 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
     color: TEXT_PRIMARY,
-  },
-  multilineInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
   },
 
   // Read-only field (email)
   readOnlyField: {
-    backgroundColor: '#111',
+    backgroundColor: Colors.background.elevated,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: Colors.border.subtle,
     borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   readOnlyText: {
     color: TEXT_SECONDARY,
-    fontSize: 16,
+    fontSize: 15,
   },
 
-  // Chip grid (industry)
-  chipGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  chipSelected: {
-    backgroundColor: ACCENT_LIGHT,
-    borderColor: ACCENT,
-  },
-  chipText: {
-    color: '#aaa',
-    fontSize: 14,
-  },
-  chipTextSelected: {
-    color: ACCENT,
-    fontWeight: '600',
-  },
-
-  // Pill row (team size, years)
+  // Pill row
   pillRow: {
     flexDirection: 'row',
-    gap: 8,
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
   },
   pill: {
     backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: BORDER,
-    borderRadius: 20,
-    paddingHorizontal: 18,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.lg,
     paddingVertical: 10,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   pillSelected: {
     backgroundColor: ACCENT_LIGHT,
     borderColor: ACCENT,
   },
   pillText: {
-    color: '#aaa',
+    color: Colors.text.tertiary,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -1736,51 +2040,64 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Dropdown (entity type)
+  // Dropdown
   dropdown: {
     backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: 44,
   },
   dropdownValue: {
     color: TEXT_PRIMARY,
-    fontSize: 16,
+    fontSize: 15,
   },
   dropdownPlaceholder: {
     color: TEXT_DIM,
-    fontSize: 16,
+    fontSize: 15,
   },
   dropdownList: {
-    backgroundColor: '#1e1e1e',
+    backgroundColor: Colors.background.elevated,
     borderWidth: 1,
     borderColor: BORDER_STRONG,
     borderRadius: 10,
-    marginTop: 4,
+    marginTop: Spacing.xs,
     overflow: 'hidden',
   },
   dropdownItem: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 12,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   dropdownItemSelected: {
     backgroundColor: ACCENT_LIGHT,
   },
   dropdownItemText: {
     color: TEXT_SECONDARY,
-    fontSize: 15,
+    fontSize: 14,
   },
   dropdownItemTextSelected: {
     color: ACCENT,
     fontWeight: '600',
   },
 
-  // Step 2: Address search
+  // Field row (side by side)
+  fieldRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    alignItems: 'flex-start',
+  },
+  fieldRowItem: {
+    flex: 1,
+  },
+
+  // Address search
   searchInputWrap: {
     backgroundColor: SURFACE,
     borderWidth: 1,
@@ -1788,70 +2105,69 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 14,
+    paddingLeft: 12,
     overflow: 'hidden' as const,
+    minHeight: 44,
   },
   searchIcon: {
-    marginRight: 4,
+    marginRight: Spacing.xs,
   },
 
-  // Parsed address display
-  parsedAddressBox: {
-    backgroundColor: '#141414',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-    borderRadius: 10,
-    padding: 14,
-    marginTop: 10,
-  },
-  parsedHeaderRow: {
+  // Confirmed address
+  confirmedAddressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
+    gap: 10,
+    backgroundColor: 'rgba(59,130,246,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.15)',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexWrap: 'wrap' as const,
   },
-  parsedLabel: {
-    color: TEXT_MUTED,
-    fontSize: 12,
-    fontWeight: '600',
+  confirmedAddressText: {
     flex: 1,
-  },
-  editLink: {
-    color: ACCENT,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  parsedAddressText: {
-    color: TEXT_SECONDARY,
+    color: Colors.text.bright,
     fontSize: 14,
     lineHeight: 20,
+    minWidth: 0,
   },
-  parsedFieldsGrid: {
-    gap: 8,
+  verifiedBadge: {
+    backgroundColor: Colors.semantic.successLight,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
   },
-  addressField: {
-    paddingVertical: 10,
-    fontSize: 14,
+  verifiedBadgeText: {
+    color: SUCCESS_GREEN,
+    fontSize: 11,
+    fontWeight: '700',
   },
-  addressRow: {
-    flexDirection: 'row',
-    gap: 8,
+  changeLinkWrap: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  changeLink: {
+    color: ACCENT,
+    fontSize: 13,
+    fontWeight: '600',
   },
 
-  // Auto-detected badges
+  // Auto-detected timezone/currency pills
   autoDetectedRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 12,
+    marginTop: Spacing.md,
   },
   autoTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.sm,
     backgroundColor: ACCENT_LIGHT,
-    borderRadius: 6,
+    borderRadius: BorderRadius.sm,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: Spacing.sm,
   },
   autoTagText: {
     color: ACCENT,
@@ -1859,18 +2175,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Toggle row (same address)
+  // Toggle row
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 24,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    marginTop: Spacing.xxl,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     backgroundColor: SURFACE,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: BORDER,
+    minHeight: 44,
   },
   toggleLabel: {
     color: TEXT_SECONDARY,
@@ -1878,16 +2195,103 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Step 3: Service cards
+  // Places dropdown
+  placesDropdown: {
+    backgroundColor: Colors.background.elevated,
+    borderWidth: 1,
+    borderColor: ACCENT,
+    borderRadius: 10,
+    marginTop: Spacing.xs,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? { position: 'absolute' as any, top: '100%' as any, left: 0, right: 0, zIndex: 9999 } : {}),
+  } as ViewStyle,
+  placesItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+    minHeight: 44,
+  },
+  placesItemMain: {
+    color: Colors.text.bright,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  placesItemSub: {
+    color: TEXT_MUTED,
+    fontSize: 12,
+    marginTop: 1,
+  },
+
+  // Review step
+  reviewSection: {
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  reviewSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
+  reviewSectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: TEXT_PRIMARY,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    minHeight: 44,
+  },
+  editButtonText: {
+    color: ACCENT,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: Spacing.sm,
+  },
+  reviewLabel: {
+    color: TEXT_MUTED,
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 0.4,
+  },
+  reviewValue: {
+    color: TEXT_PRIMARY,
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 0.6,
+    textAlign: 'right',
+  },
+
   // Consent
   consentSection: {
-    marginTop: 28,
-    gap: 14,
+    marginTop: Spacing.xxl,
+    gap: Spacing.lg,
   },
   consentRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: Spacing.md,
+    minHeight: 44,
   },
   checkbox: {
     width: 22,
@@ -1910,22 +2314,18 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     flex: 1,
   },
-  requiredStar: {
-    color: ERROR_RED,
-    fontWeight: '700',
-  },
 
   // Error
   errorBox: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: Colors.semantic.errorLight,
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.25)',
+    borderColor: 'rgba(255, 59, 48, 0.25)',
     borderRadius: 10,
-    padding: 14,
-    marginBottom: 20,
+    padding: 12,
+    marginHorizontal: Spacing.xxxl,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: Spacing.sm,
   },
   errorText: {
     color: ERROR_RED,
@@ -1934,160 +2334,63 @@ const styles = StyleSheet.create({
   },
 
   // Buttons
-  buttonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 36,
-    gap: 12,
-  },
   backButton: {
     borderWidth: 1,
     borderColor: BORDER,
-    borderRadius: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.sm,
+    minHeight: 44,
   },
   backButtonText: {
-    color: '#aaa',
+    color: Colors.text.tertiary,
     fontSize: 15,
     fontWeight: '600',
   },
   nextButton: {
     backgroundColor: ACCENT,
-    borderRadius: 10,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.sm,
+    minHeight: 44,
+    overflow: 'hidden',
   },
   nextButtonText: {
     color: TEXT_PRIMARY,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
+    zIndex: 1,
   },
   launchButton: {
     backgroundColor: ACCENT,
     borderRadius: 12,
-    paddingHorizontal: 32,
-    paddingVertical: 16,
+    paddingHorizontal: Spacing.xxxl,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    flex: 1,
+    gap: Spacing.sm,
+    minHeight: 48,
+    overflow: 'hidden',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: `0 0 20px ${ACCENT_GLOW}` } as unknown as ViewStyle)
+      ? ({ boxShadow: `0 0 24px ${ACCENT_GLOW}` } as unknown as ViewStyle)
       : {}),
   } as ViewStyle,
   launchButtonText: {
     color: TEXT_PRIMARY,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
+    zIndex: 1,
   },
-  // 2-column field pairing
-  fieldRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
-  },
-
-  // Google Places confirmed address
-  confirmedAddressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#0d1a2e',
-    borderWidth: 1,
-    borderColor: '#1d3a5e',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    flexWrap: 'wrap' as const,
-  },
-  confirmedAddressText: {
-    flex: 1,
-    color: '#e2e8f0',
-    fontSize: 14,
-    lineHeight: 20,
-    minWidth: 0,
-  },
-  verifiedBadge: {
-    backgroundColor: 'rgba(34,197,94,0.15)',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  verifiedBadgeText: {
-    color: '#22C55E',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  changeLink: {
-    color: ACCENT,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-
-  // Google Places suggestion dropdown
-  placesDropdown: {
-    backgroundColor: '#111',
-    borderWidth: 1,
-    borderColor: ACCENT,
-    borderRadius: 10,
-    marginTop: 4,
-    overflow: 'hidden',
-    ...(Platform.OS === 'web' ? { position: 'absolute' as any, top: '100%' as any, left: 0, right: 0, zIndex: 9999 } : {}),
-  } as ViewStyle,
-  placesItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e1e1e',
-  },
-  placesItemMain: {
-    color: '#e2e8f0',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  placesItemSub: {
-    color: '#666',
-    fontSize: 12,
-    marginTop: 1,
-  },
-
   buttonDisabled: {
-    opacity: 0.45,
-  },
-
-  nominatimDropdown: {
-    backgroundColor: '#111',
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-    borderRadius: 10,
-    marginTop: 4,
-    overflow: 'hidden',
-    ...(Platform.OS === 'web' ? { position: 'absolute' as any, top: '100%' as any, left: 0, right: 0, zIndex: 9999 } : {}),
-  } as ViewStyle,
-  nominatimItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#222',
-  },
-  nominatimItemText: {
-    color: '#ccc',
-    fontSize: 14,
-    flex: 1,
-    lineHeight: 19,
+    opacity: 0.4,
   },
 });
 
