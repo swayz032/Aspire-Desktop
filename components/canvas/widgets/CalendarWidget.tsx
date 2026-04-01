@@ -86,18 +86,32 @@ function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
       const { data, error } = await supabase
         .from('calendar_events')
         .select('*')
-        .eq('suite_id', suiteId)
-        .eq('office_id', officeId)
         .gte('start_time', start)
         .lte('start_time', end);
       if (error) throw error;
-      setEvents(data && data.length > 0 ? data : DEMO_EVENTS);
+      setEvents(data && data.length > 0 ? data : []);
     } catch {
-      setEvents(DEMO_EVENTS);
+      setEvents([]);
     } finally {
       setLoading(false);
     }
-  }, [suiteId, officeId, currentMonth]);
+  }, [suiteId, currentMonth]);
+
+  // Realtime subscription for instant updates
+  useEffect(() => {
+    if (!suiteId) return;
+
+    const channel = supabase
+      .channel(`calendar-widget-${suiteId.slice(0, 8)}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'calendar_events', filter: `suite_id=eq.${suiteId}` },
+        () => { fetchEvents(); },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [suiteId, fetchEvents]);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
@@ -208,7 +222,7 @@ function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
         {selectedEvents.length === 0 ? (
           <View style={s.noEventsContainer}>
             <View style={s.noEvents}>
-              <Text style={s.noEventsText}>No events</Text>
+              <Text style={s.noEventsText}>No events this day</Text>
             </View>
           </View>
         ) : (
