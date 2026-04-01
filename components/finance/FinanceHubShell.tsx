@@ -53,6 +53,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'column',
     backgroundColor: Colors.background.primary,
+    overflow: 'hidden',
   },
   content: {
     flex: 1,
@@ -61,12 +62,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 16,
+    overflow: 'hidden',
   },
   contentStacked: {
     flexDirection: 'column',
   },
   mainArea: {
     flex: 1,
+    overflow: 'hidden',
   },
   rightRail: {
     width: 260,

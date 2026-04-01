@@ -4,13 +4,13 @@ import { Platform } from 'react-native';
 const SIDEBAR_STORAGE_KEY = 'aspire_sidebar_expanded';
 
 function getStoredSidebarState(): boolean {
-  if (Platform.OS !== 'web') return true;
-  
+  if (Platform.OS !== 'web') return false;
+
   try {
     const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
-    return stored === null ? true : stored === 'true';
+    return stored === null ? false : stored === 'true';
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -23,7 +23,7 @@ function setStoredSidebarState(expanded: boolean): void {
   }
 }
 
-let sidebarState = true;
+let sidebarState = false;
 const listeners = new Set<(expanded: boolean) => void>();
 
 export function useSidebarState() {

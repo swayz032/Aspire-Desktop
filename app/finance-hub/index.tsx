@@ -791,12 +791,14 @@ function FinanceHubContent() {
         ) : (
           <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', minHeight: 560 }}>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', flex: 1 }}>
                 <div style={{ flex: '3 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                  <StoryModeCarousel
-                    activeMode={activeStoryMode}
-                    onSelectMode={(mode) => handleModeSwitch(mode.id)}
-                  />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <StoryModeCarousel
+                      activeMode={activeStoryMode}
+                      onSelectMode={(mode) => handleModeSwitch(mode.id)}
+                    />
+                  </div>
                 </div>
                 <div style={{ flex: '2 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                   {finnPanelNode}
