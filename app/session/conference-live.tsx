@@ -16,13 +16,38 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { useKeepAwake } from '@/hooks/useKeepAwake';
 import { readSSEStream, extractResponseText } from '@/lib/sseStream';
-import type { EmbeddedClient } from '@zoom/meetingsdk/embedded';
+// Zoom Meeting SDK loaded via CDN at runtime (87MB package too large for Metro bundler).
+// ZoomMtgEmbedded is accessed from window after script injection.
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type ZoomClient = typeof EmbeddedClient;
+type ZoomClient = any;
+
+const ZOOM_SDK_CDN = 'https://source.zoom.us/meetingsdk/5.1.4/lib/js/zoomus-websdk-embedded.umd.min.js';
+let _zoomSdkPromise: Promise<any> | null = null;
+
+/** Load Zoom Meeting SDK from CDN. Cached — safe to call multiple times. */
+function loadZoomMeetingSdk(): Promise<any> {
+  if (_zoomSdkPromise) return _zoomSdkPromise;
+  if (typeof window !== 'undefined' && (window as any).ZoomMtgEmbedded) {
+    return Promise.resolve((window as any).ZoomMtgEmbedded);
+  }
+
+  _zoomSdkPromise = new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') return reject(new Error('Not in browser'));
+
+    const script = document.createElement('script');
+    script.src = ZOOM_SDK_CDN;
+    script.async = true;
+    script.onload = () => resolve((window as any).ZoomMtgEmbedded);
+    script.onerror = () => reject(new Error('Failed to load Zoom Meeting SDK from CDN'));
+    document.head.appendChild(script);
+  });
+
+  return _zoomSdkPromise;
+}
 
 interface ChatMessage {
   id: string;
@@ -278,9 +303,9 @@ function ConferenceLive() {
         if (!data.token) throw new Error(data.error || 'No token returned');
         if (controller.signal.aborted) return;
 
-        // 2. Dynamic import of Meeting SDK
-        const { default: ZoomMtgEmbedded } = await import('@zoom/meetingsdk/embedded');
-        if (controller.signal.aborted) return;
+        // 2. Load Meeting SDK via CDN (too large for Metro bundler at 87MB)
+        const ZoomMtgEmbedded = await loadZoomMeetingSdk();
+        if (controller.signal.aborted || !ZoomMtgEmbedded) throw new Error('Failed to load Zoom Meeting SDK');
 
         // 3. Create client and init
         client = ZoomMtgEmbedded.createClient();
