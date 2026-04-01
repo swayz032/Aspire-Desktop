@@ -270,7 +270,10 @@ function useAuthGate() {
       return;
     }
 
-    setOnboardingChecked(false);
+    // DON'T set onboardingChecked=false here — that causes a flash where the
+    // navigation effect sees checked=false and doesn't redirect, allowing the
+    // onboarding page to briefly render before the API confirms completion.
+    // Instead, keep the previous state until the fetch resolves.
 
     const token = session.access_token;
     const controller = new AbortController();
@@ -575,6 +578,19 @@ function RootLayout() {
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+
+  // Permanent viewport lock — prevents homepage stretching on ALL routes.
+  // Injected at the root layout so it fires before any child page mounts.
+  // Uses !important CSS rule that survives all navigation and page transitions.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    if (!document.getElementById('aspire-viewport-lock')) {
+      const style = document.createElement('style');
+      style.id = 'aspire-viewport-lock';
+      style.textContent = 'html,body,#root{overflow:hidden!important;height:100%!important;margin:0!important}#root{display:flex!important;min-height:0!important}';
+      document.head.appendChild(style);
+    }
+  }, []);
 
   // Inject Ionicons font via CSS on web — the Metro-bundled .ttf path inside
   // node_modules/.pnpm/ gets served as HTML by the SPA fallback (OTS parse error).
