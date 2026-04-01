@@ -51,18 +51,19 @@ function IndexContent() {
     document.head.appendChild(scrollStyle);
     return () => {
       document.getElementById('hide-scrollbar')?.remove();
-      // Restore app-expected styles (overflow:hidden, height:100%)
-      // Setting to '' causes a race with DesktopHome's useEffect,
-      // leaving body in auto-overflow mode and causing the homepage to stretch.
-      body.style.overflow = 'hidden';
-      body.style.height = '100%';
-      html.style.overflow = 'hidden';
-      html.style.height = '100%';
+      // Reset to neutral — don't set app-mode styles here.
+      // DesktopHome's useEffect handles setting overflow:hidden + height:100%.
+      // Setting them here causes a race condition where this cleanup
+      // fires AFTER DesktopHome mounts, overriding its styles.
+      body.style.overflow = '';
+      body.style.height = '';
+      html.style.overflow = '';
+      html.style.height = '';
       if (root) {
-        root.style.overflow = 'hidden';
-        root.style.height = '100%';
+        root.style.overflow = '';
+        root.style.height = '';
         root.style.minHeight = '';
-        root.style.display = 'flex';
+        root.style.display = '';
       }
     };
   }, [showLanding]);

@@ -38,7 +38,7 @@ function FinanceHubShellInner({ children, rightRail }: Props) {
         </View>
         {rightRail && showRailColumn && (
           <View style={styles.rightRail}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
               {rightRail}
             </ScrollView>
           </View>
@@ -74,6 +74,7 @@ const styles = StyleSheet.create({
     borderLeftColor: 'rgba(255,255,255,0.12)',
     paddingHorizontal: 16,
     paddingVertical: 16,
+    overflow: 'hidden',
   },
   rightRailInline: {
     marginTop: 24,

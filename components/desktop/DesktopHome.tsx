@@ -79,7 +79,8 @@ function isBannerDismissed(): boolean {
 function DesktopHomeInner() {
   // Reset body/html styles that the landing page may have set (overflow: auto, height: auto)
   // These persist after navigation and cause the homepage to stretch beyond viewport.
-  // Apply immediately AND on next frame to survive any pending landing-page cleanup.
+  // Apply immediately, on next frame, AND on a short interval to win any race with
+  // landing-page cleanup or login-page unmount ordering.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     const applyAppStyles = () => {
@@ -88,8 +89,10 @@ function DesktopHomeInner() {
       const root = document.getElementById('root');
       body.style.overflow = 'hidden';
       body.style.height = '100%';
+      body.style.margin = '0';
       html.style.overflow = 'hidden';
       html.style.height = '100%';
+      html.style.margin = '0';
       if (root) {
         root.style.overflow = 'hidden';
         root.style.height = '100%';
@@ -98,9 +101,16 @@ function DesktopHomeInner() {
       }
     };
     applyAppStyles();
-    // Re-apply on next frame to win any race with landing-page cleanup
+    // Re-apply on next frame to win race with landing-page cleanup
     const raf = requestAnimationFrame(applyAppStyles);
-    return () => cancelAnimationFrame(raf);
+    // Re-apply after 100ms and 500ms to catch delayed cleanup from other pages
+    const t1 = setTimeout(applyAppStyles, 100);
+    const t2 = setTimeout(applyAppStyles, 500);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, []);
 
   const router = useRouter();
