@@ -479,12 +479,7 @@ function DesktopHomeInner() {
                     onContextMenu={handleContextMenu}
                   >
                     <View style={[styles.section, styles.flexSection]}>
-                      <SectionHeader title="Calendar" />
-                      {calendarEvents.length > 0 ? (
-                        <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
-                      ) : (
-                        <CalendarCard events={[]} />
-                      )}
+                      <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
                     </View>
                   </CanvasTileWrapper>
                 </View>

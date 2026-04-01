@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { playClickSound } from '@/lib/sounds';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
@@ -72,6 +73,7 @@ const DEMO_EVENTS: CalendarEvent[] = [
 ];
 
 function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
+  const router = useRouter();
   const today = useMemo(() => new Date(), []);
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -248,6 +250,15 @@ function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
           })
         )}
       </ScrollView>
+
+      {/* Open Calendar button — matches Finance Hub "Open Dashboard" pattern */}
+      <Pressable
+        style={({ pressed }) => [s.openButton, pressed && { opacity: 0.8 }]}
+        onPress={() => { playClickSound(); router.push('/calendar' as any); }}
+      >
+        <Text style={s.openButtonText}>Open Calendar</Text>
+        <Ionicons name="arrow-forward" size={16} color="#FFF" />
+      </Pressable>
     </View>
   );
 }
@@ -413,6 +424,26 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.3)',
     marginTop: 4,
   },
+  openButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    marginTop: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+  },
+  openButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  } as any,
 });
 
 export function CalendarWidget(props: any) {
