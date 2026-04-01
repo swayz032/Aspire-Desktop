@@ -31,10 +31,19 @@ let _zoomSdkPromise: Promise<any> | null = null;
 /** Load Zoom Meeting SDK from CDN. Cached — safe to call multiple times. */
 function loadZoomMeetingSdk(): Promise<any> {
   if (_zoomSdkPromise) return _zoomSdkPromise;
-  // The embedded SDK exports window.ZoomMtgEmbedded (verified from SDK source)
-  if (typeof window !== 'undefined' && (window as any).ZoomMtgEmbedded?.createClient) {
-    return Promise.resolve((window as any).ZoomMtgEmbedded);
-  }
+
+  // The SDK sets window.ZoomMtgEmbedded via webpack n.n() getter pattern.
+  // createClient may be on the object directly OR on .default (ESM interop).
+  const getClient = () => {
+    const sdk = (window as any).ZoomMtgEmbedded;
+    if (!sdk) return null;
+    if (typeof sdk.createClient === 'function') return sdk;
+    if (sdk.default && typeof sdk.default.createClient === 'function') return sdk.default;
+    return null;
+  };
+
+  const cached = typeof window !== 'undefined' ? getClient() : null;
+  if (cached) return Promise.resolve(cached);
 
   _zoomSdkPromise = new Promise((resolve, reject) => {
     if (typeof document === 'undefined') return reject(new Error('Not in browser'));
@@ -43,12 +52,15 @@ function loadZoomMeetingSdk(): Promise<any> {
     script.src = ZOOM_SDK_CDN;
     script.async = true;
     script.onload = () => {
-      // SDK source: window.ZoomMtgEmbedded = t() (confirmed from minified source)
-      const ZoomSdk = (window as any).ZoomMtgEmbedded;
-      if (ZoomSdk?.createClient) {
-        resolve(ZoomSdk);
+      const sdk = getClient();
+      if (sdk) {
+        resolve(sdk);
       } else {
-        reject(new Error('Zoom SDK loaded but ZoomMtgEmbedded.createClient not found on window'));
+        // Debug: log what ZoomMtgEmbedded actually is
+        const raw = (window as any).ZoomMtgEmbedded;
+        const keys = raw ? Object.keys(raw).slice(0, 10).join(', ') : 'undefined';
+        const type = typeof raw;
+        reject(new Error(`Zoom SDK loaded but createClient not found. Type: ${type}, keys: [${keys}]`));
       }
     };
     script.onerror = () => reject(new Error('Failed to load Zoom Meeting SDK from CDN'));
