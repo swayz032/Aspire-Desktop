@@ -8,7 +8,7 @@ import { canAccessTeamWorkspace } from '@/lib/permissions';
 import { useTenant } from '@/providers/TenantProvider';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-const logoSource = require('../../assets/images/aspire-logo-new.png');
+const logoSource = require('../../assets/images/aspire-logo-premium.png');
 const iconSource = require('../../assets/images/aspire-icon-new.png');
 
 interface SubNavItem {
@@ -121,11 +121,13 @@ function DesktopSidebarInner({ expanded = true }: DesktopSidebarProps) {
         >
           {expanded ? (
             <View style={styles.expandedLogoRow}>
-              <Image 
-                source={logoSource}
-                style={styles.logoImageFull}
-                resizeMode="contain"
-              />
+              <View style={styles.logoCenter}>
+                <Image
+                  source={logoSource}
+                  style={styles.logoImageFull}
+                  resizeMode="contain"
+                />
+              </View>
               {/* Show collapse toggle on hover when expanded */}
               <Pressable
                 style={[
@@ -361,16 +363,25 @@ const styles = StyleSheet.create({
   expandedLogoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingLeft: 8,
-    paddingRight: 4,
-    height: 80,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    height: 100,
+    position: 'relative',
+  },
+  logoCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   logoImageFull: {
-    height: 72,
-    width: 180,
+    height: 90,
+    width: 210,
   },
   collapseToggle: {
+    position: 'absolute',
+    right: 4,
+    top: '50%',
+    marginTop: -12,
     width: 24,
     height: 24,
     borderRadius: 6,
