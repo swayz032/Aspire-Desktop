@@ -6,7 +6,7 @@
  * LangGraph orchestrator via OpenAI SDK skill packs (Law #1: Single Brain).
  *
  * Flow: User speaks → ElevenLabs STT (Scribe) → Orchestrator → Skill Pack → response text → ElevenLabs TTS → User hears
- * Exception: Nora uses Deepgram STT (conference transcription via LiveKit)
+ * Exception: Nora uses Deepgram STT (conference transcription via Zoom)
  */
 
 import { devError } from '@/lib/devLog';

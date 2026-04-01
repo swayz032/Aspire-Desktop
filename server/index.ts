@@ -402,8 +402,8 @@ app.use(helmet({
         "wss://*.supabase.co",
         "https://*.elevenlabs.io",
         "wss://*.elevenlabs.io",
-        "https://*.livekit.cloud",
-        "wss://*.livekit.cloud",
+        "https://*.zoom.us",
+        "wss://*.zoom.us",
         "https://*.anam.ai",
         "wss://*.anam.ai",
         "https://*.pandadoc.com",
@@ -613,11 +613,11 @@ try {
 }
 
 try {
-  const livekitRoutes = require('./routes/livekit').default;
-  app.use(livekitRoutes);
-  logger.info('LiveKit routes registered');
+  const zoomRoutes = require('./routes/zoom').default;
+  app.use(zoomRoutes);
+  logger.info('Zoom routes registered');
 } catch (e) {
-  logger.warn('LiveKit routes not available, skipping');
+  logger.warn('Zoom routes not available, skipping');
 }
 
 try {

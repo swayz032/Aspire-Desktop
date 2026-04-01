@@ -407,7 +407,7 @@ function ConferenceLobby() {
     }
   }, [pendingInvitation]);
 
-  // Pre-join validation: check if LiveKit is configured before starting a session
+  // Pre-join validation: check if Zoom Video SDK is configured before starting a session
   // Law #3: Fail Closed — 5s timeout prevents indefinite hang
   const checkConferenceReady = async (): Promise<boolean> => {
     const controller = new AbortController();
@@ -416,7 +416,7 @@ function ConferenceLobby() {
     conferenceCheckTimeoutRef.current = timeoutId;
     try {
       setIsJoining(true);
-      const resp = await authenticatedFetch('/api/livekit/status', {
+      const resp = await authenticatedFetch('/api/zoom/status', {
         signal: controller.signal,
       });
       if (!resp.ok) {

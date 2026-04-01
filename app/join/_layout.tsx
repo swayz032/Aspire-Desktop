@@ -1,6 +1,6 @@
 /**
  * Join Layout — Public guest join route (NO auth required).
- * External guests access LiveKit conference rooms through this minimal dark layout.
+ * External guests access Zoom conference sessions through this minimal dark layout.
  * No sidebar, no navigation chrome, no Aspire account needed.
  * The join code itself is the auth gate (short-lived, single-room scoped).
  */

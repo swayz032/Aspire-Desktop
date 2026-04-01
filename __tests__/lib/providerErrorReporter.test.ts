@@ -73,7 +73,7 @@ describe('reportProviderError', () => {
 
   it('rate-limits total across providers to 10 per window', () => {
     // 3 per provider * 4 providers = 12 attempted, but total limit is 10
-    const providers = ['deepgram', 'elevenlabs', 'anam', 'livekit'];
+    const providers = ['deepgram', 'elevenlabs', 'anam', 'zoom'];
     for (const p of providers) {
       for (let i = 0; i < 3; i++) {
         reportProviderError({

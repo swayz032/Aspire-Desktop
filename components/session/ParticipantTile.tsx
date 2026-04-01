@@ -8,7 +8,7 @@ import { AvaVoiceStrip } from './AvaVoiceStrip';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /**
- * Renders a LiveKit HTMLVideoElement inside a React Native View (web only).
+ * Renders a video HTMLVideoElement inside a React Native View (web only).
  */
 function VideoTrackView({ videoEl }: { videoEl: HTMLVideoElement }) {
   const containerRef = useRef<any>(null);
@@ -59,7 +59,7 @@ interface ParticipantTileProps {
   isActiveSpeaker?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
-  /** Optional LiveKit video track element for rendering real video */
+  /** Optional video track element for rendering real video */
   videoTrack?: HTMLVideoElement | null;
 }
 

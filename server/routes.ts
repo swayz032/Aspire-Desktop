@@ -2679,15 +2679,12 @@ router.get('/api/sandbox/health', async (_req: Request, res: Response) => {
     await runProbe('orchestrator', checks.orchestrator.configured, `${orchUrl.replace(/\/$/, '')}/healthz`);
   }
 
-  // LiveKit
-  checks.livekit = {
-    configured: !!process.env.LIVEKIT_URL && !!process.env.LIVEKIT_API_KEY,
+  // Zoom Video SDK
+  checks.zoom = {
+    configured: !!process.env.ZOOM_SDK_KEY && !!process.env.ZOOM_SDK_SECRET,
     sandbox: true,
-    status: !process.env.LIVEKIT_URL ? 'NOT_SET' : 'CONFIGURED',
+    status: !process.env.ZOOM_SDK_KEY ? 'NOT_SET' : 'CONFIGURED',
   };
-  if (process.env.LIVEKIT_URL) {
-    await runProbe('livekit', checks.livekit.configured, process.env.LIVEKIT_URL, undefined, 2500);
-  }
 
   // Supabase
   checks.supabase = {

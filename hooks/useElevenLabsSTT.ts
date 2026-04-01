@@ -4,7 +4,7 @@
  * Speech-to-text using ElevenLabs Scribe via server-side proxy.
  * Records mic audio in chunks, sends to /api/elevenlabs/stt for transcription.
  *
- * Used by Finn, Ava, and Eli. Deepgram STT is for Nora only (LiveKit conference).
+ * Used by Finn, Ava, and Eli. Deepgram STT is for Nora only (Zoom conference).
  * API key stays server-side — client never touches secrets (Law #9).
  */
 import { useState, useRef, useCallback, useEffect } from 'react';

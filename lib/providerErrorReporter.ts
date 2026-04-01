@@ -1,7 +1,7 @@
 /**
  * providerErrorReporter — rate-limited per-provider error reporter.
  *
- * Tracks errors from frontend providers (ElevenLabs, Deepgram, Anam, LiveKit)
+ * Tracks errors from frontend providers (ElevenLabs, Deepgram, Anam, Zoom)
  * with dual rate limiting: per-provider (3/min) and total (10/min).
  *
  * Law #2: Receipt for All — provider errors flow to the incidents table.

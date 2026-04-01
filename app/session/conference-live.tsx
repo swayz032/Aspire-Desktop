@@ -16,74 +16,64 @@ import { Platform } from 'react-native';
 import { useVoice } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
-import { useParticipants, useTracks, useRoomContext } from '@livekit/components-react';
-import { Track } from 'livekit-client';
-import { LiveKitConferenceProvider, useKrisp } from '@/components/session/LiveKitConferenceProvider';
+import { ZoomConferenceProvider, useZoomContext, useZoomParticipants, useZoomActiveSpeaker } from '@/components/session/ZoomConferenceProvider';
+import type { ZoomParticipant } from '@/components/session/ZoomConferenceProvider';
+import { ZoomVideoTile } from '@/components/session/ZoomVideoTile';
+import { useZoomNoiseSuppression } from '@/hooks/useZoomNoiseSuppression';
+import { injectZoomStyles } from '@/lib/zoom-styles';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { trackInteraction } from '@/lib/interactionTelemetry';
-import { LiveKitVideoTile } from '@/components/session/LiveKitVideoTile';
-import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
 import { useKeepAwake } from '@/hooks/useKeepAwake';
 import { readSSEStream, extractResponseText } from '@/lib/sseStream';
 
 /**
- * KrispToggle — renders inside LiveKitConferenceProvider to access Krisp context.
- * Shows a toggle button for Krisp enhanced noise cancellation.
+ * NoiseSuppressionToggle — renders inside ZoomConferenceProvider to access noise suppression.
+ * Shows a toggle button for Zoom enhanced noise suppression.
  */
-function KrispToggle() {
-  const krisp = useKrisp();
-  if (!krisp.isSupported) return null;
+function NoiseSuppressionToggle() {
+  const { stream } = useZoomContext();
+  const { isEnabled, toggle } = useZoomNoiseSuppression(stream);
   return (
     <Pressable
-      style={[desktopStyles.controlButton, krisp.isEnabled && desktopStyles.controlButtonActive]}
-      onPress={() => { krisp.toggle(); }}
-      disabled={krisp.isPending}
+      style={[desktopStyles.controlButton, isEnabled && desktopStyles.controlButtonActive]}
+      onPress={() => { toggle(); }}
     >
       <Ionicons
-        name={krisp.isEnabled ? 'shield-checkmark' : 'shield-outline'}
+        name={isEnabled ? 'shield-checkmark' : 'shield-outline'}
         size={20}
-        color={krisp.isEnabled ? Colors.accent.cyan : '#fff'}
+        color={isEnabled ? Colors.accent.cyan : '#fff'}
       />
-      <Text style={desktopStyles.controlLabel}>{krisp.isPending ? 'Loading...' : krisp.isEnabled ? 'Krisp ON' : 'Krisp'}</Text>
+      <Text style={desktopStyles.controlLabel}>{isEnabled ? 'Denoise ON' : 'Denoise'}</Text>
     </Pressable>
   );
 }
 
 /**
- * LiveKitSync — renders as invisible child INSIDE LiveKitConferenceProvider
- * so that useParticipants/useTracks/useRoomContext resolve the LiveKitRoom context.
+ * ZoomSync — renders as invisible child INSIDE ZoomConferenceProvider
+ * so that useZoomParticipants/useZoomContext resolve the Zoom session context.
  * Reports data up via onSync callback.
  */
-interface LiveKitSyncData {
-  participants: ReturnType<typeof useParticipants>;
-  videoTracks: TrackReferenceOrPlaceholder[];
-  room: ReturnType<typeof useRoomContext> | null;
+interface ZoomSyncData {
+  participants: ZoomParticipant[];
+  activeSpeakerUserId: number | null;
 }
 
-function LiveKitSync({ onSync }: { onSync: (data: LiveKitSyncData) => void }) {
-  const participants = useParticipants();
-  const videoTracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-  );
-  let room: ReturnType<typeof useRoomContext> | null = null;
-  try {
-    room = useRoomContext();
-  } catch {
-    // Room not ready yet
-  }
+function ZoomSync({ onSync }: { onSync: (data: ZoomSyncData) => void }) {
+  const zoomParticipants = useZoomParticipants();
+  const activeSpeaker = useZoomActiveSpeaker();
 
   useEffect(() => {
-    onSync({ participants, videoTracks, room });
-  }, [participants, videoTracks, room]);
+    onSync({
+      participants: zoomParticipants,
+      activeSpeakerUserId: activeSpeaker?.userId ?? null,
+    });
+  }, [zoomParticipants, activeSpeaker]);
 
   return null;
 }
 
-// WebcamView removed — LiveKit manages camera capture and rendering via <LiveKitRoom>
-// Dual getUserMedia was causing: poor video quality, audio failures, screen glitching
+// WebcamView removed — Zoom Video SDK manages camera capture and rendering
+// Dual getUserMedia was competing with Zoom for the camera, causing poor quality and glitching
 
 const avaLogo = require('../../assets/images/ava-logo.png');
 
@@ -107,7 +97,7 @@ interface Participant {
   isSpotlighted?: boolean;
 }
 
-// Host participant — other participants joined via LiveKit room events
+// Host participant — other participants joined via Zoom session events
 const INITIAL_PARTICIPANTS: Participant[] = [
   { id: 'you', name: 'You', role: 'Host', avatarColor: '#2D3748', isMuted: false, isVideoOff: false, isSpeaking: false, isHost: true },
 ];
@@ -374,53 +364,39 @@ function ConferenceLive() {
   const [activeSpeakerId, setActiveSpeakerId] = useState('you');
   const [elapsedTime, setElapsedTime] = useState(0);
 
-  // LiveKit room connection
-  const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
+  // Zoom session connection
+  const [zoomToken, setZoomToken] = useState<string | null>(null);
+  const [zoomTopic, setZoomTopic] = useState<string | null>(null);
   const [tokenLoading, setTokenLoading] = useState(true);
   const [tokenError, setTokenError] = useState<string | null>(null);
 
-  // LiveKit data — populated by <LiveKitSync> child rendered inside <LiveKitConferenceProvider>
-  const [lkParticipants, setLkParticipants] = useState<ReturnType<typeof useParticipants>>([]);
-  const [lkVideoTracks, setLkVideoTracks] = useState<TrackReferenceOrPlaceholder[]>([]);
-  const [lkRoom, setLkRoom] = useState<ReturnType<typeof useRoomContext> | null>(null);
+  // Zoom data — populated by <ZoomSync> child rendered inside <ZoomConferenceProvider>
+  const [zoomParticipants, setZoomParticipants] = useState<ZoomParticipant[]>([]);
+  const [zoomActiveSpeakerUserId, setZoomActiveSpeakerUserId] = useState<number | null>(null);
 
-  const handleLiveKitSync = useCallback((data: LiveKitSyncData) => {
-    setLkParticipants(data.participants);
-    setLkVideoTracks(data.videoTracks);
-    setLkRoom(data.room);
+  const handleZoomSync = useCallback((data: ZoomSyncData) => {
+    setZoomParticipants(data.participants);
+    setZoomActiveSpeakerUserId(data.activeSpeakerUserId);
   }, []);
 
-  // Map LiveKit participants to our UI Participant interface
-  const participants: Participant[] = lkParticipants.length > 0
-    ? lkParticipants.map(p => {
-        const audioTrack = p.getTrackPublication(Track.Source.Microphone);
-        const videoTrack = p.getTrackPublication(Track.Source.Camera);
-        return {
-          id: p.identity,
-          name: p.name || p.identity,
-          role: p.isLocal ? 'Host' : '',
-          avatarColor: p.isLocal ? '#2D3748' : '#374151',
-          isMuted: audioTrack ? audioTrack.isMuted : true,
-          isVideoOff: videoTrack ? videoTrack.isMuted || !videoTrack.isSubscribed : true,
-          isSpeaking: p.isSpeaking,
-          isHost: p.isLocal,
-          isPinned: false,
-          isSpotlighted: false,
-        } as Participant;
-      })
+  // Map Zoom participants to our UI Participant interface
+  const participants: Participant[] = zoomParticipants.length > 0
+    ? zoomParticipants.map(p => ({
+        id: String(p.userId),
+        name: p.displayName || String(p.userId),
+        role: p.isLocal ? 'Host' : '',
+        avatarColor: p.isLocal ? '#2D3748' : '#374151',
+        isMuted: p.isMuted ?? true,
+        isVideoOff: !p.isVideoOn,
+        isSpeaking: p.userId === zoomActiveSpeakerUserId,
+        isHost: p.isLocal ?? false,
+        isPinned: false,
+        isSpotlighted: false,
+      } as Participant))
     : INITIAL_PARTICIPANTS;
 
-  // Build a lookup: participant identity → TrackReferenceOrPlaceholder for camera
-  const trackRefMap = new Map<string, TrackReferenceOrPlaceholder>();
-  // Active screen share track (rendered as priority large tile when present)
-  let activeScreenShareTrack: TrackReferenceOrPlaceholder | null = null;
-  for (const tr of lkVideoTracks) {
-    if (tr.source === Track.Source.ScreenShare && tr.participant) {
-      activeScreenShareTrack = tr;
-    } else if (tr.source === Track.Source.Camera && tr.participant) {
-      trackRefMap.set(tr.participant.identity, tr);
-    }
-  }
+  // Active screen share detection (Zoom doesn't expose per-participant screen share the same way)
+  const activeScreenShareParticipant: ZoomParticipant | null = null;
   
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -453,15 +429,15 @@ function ConferenceLive() {
   const chromeOpacity = useRef(new Animated.Value(1)).current;
   const chromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInteractingRef = useRef(false);
-  // webcamStream removed — LiveKit handles all camera capture via <LiveKitRoom audio={true} video={true}>
-  // Dual getUserMedia was competing with LiveKit for the camera, causing poor quality and glitching
+  // webcamStream removed — Zoom Video SDK handles all camera capture
+  // Dual getUserMedia was competing with Zoom for the camera, causing poor quality and glitching
 
   // Tenant context for voice requests (Law #6: Tenant Isolation)
   const { suiteId, session } = useSupabase();
   // Law #3: Fail Closed — all API requests must include JWT auth
   const { authenticatedFetch } = useAuthFetch();
 
-  // Fetch LiveKit token and connect to room on mount
+  // Fetch Zoom token and connect to session on mount
   // AbortController prevents stale setState on unmount (Law #3: Fail Closed)
   useEffect(() => {
     const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
@@ -471,7 +447,7 @@ function ConferenceLive() {
     setTokenLoading(true);
     setTokenError(null);
 
-    authenticatedFetch('/api/livekit/token', {
+    authenticatedFetch('/api/zoom/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomName, participantName, suiteId }),
@@ -484,7 +460,8 @@ function ConferenceLive() {
       .then(data => {
         if (controller.signal.aborted) return;
         if (data.token) {
-          setLiveKitToken(data.token);
+          setZoomToken(data.token);
+          setZoomTopic(data.topic || roomName);
         } else {
           setTokenError(data.error || 'No token returned');
         }
@@ -502,7 +479,7 @@ function ConferenceLive() {
     return () => { controller.abort(); };
   }, [suiteId, params.roomName, params.participantName, authenticatedFetch]);
 
-  // Connection/disconnection is handled automatically by <LiveKitConferenceProvider>
+  // Connection/disconnection is handled automatically by <ZoomConferenceProvider>
   // when token prop changes. No manual connect/disconnect needed.
 
   // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
@@ -545,8 +522,8 @@ function ConferenceLive() {
     }
   }, [noraVoice]);
 
-  // getUserMedia removed — LiveKit manages camera/audio capture directly
-  // Video on/off is handled via lkRoom.localParticipant.setCameraEnabled()
+  // getUserMedia removed — Zoom Video SDK manages camera/audio capture directly
+  // Video on/off is handled via Zoom session mediaStream
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -555,21 +532,21 @@ function ConferenceLive() {
     return () => clearInterval(timer);
   }, []);
 
-  // Track active speaker from LiveKit
+  // Track active speaker from Zoom
   useEffect(() => {
     const speaking = participants.find(p => p.isSpeaking);
     if (speaking) setActiveSpeakerId(speaking.id);
   }, [participants]);
 
-  // Auto-switch to share mode when a screen share track appears from any participant
+  // Auto-switch to share mode when a screen share appears from any participant
   useEffect(() => {
-    const hasScreenShare = lkVideoTracks.some(tr => tr.source === Track.Source.ScreenShare && tr.participant);
+    const hasScreenShare = activeScreenShareParticipant !== null;
     if (hasScreenShare && shareMode === 'none') {
       setShareMode('standard');
     } else if (!hasScreenShare && shareMode === 'standard') {
       setShareMode('none');
     }
-  }, [lkVideoTracks]);
+  }, [zoomParticipants]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToastMessage(message);
@@ -587,28 +564,21 @@ function ConferenceLive() {
     const newMuted = !isMuted;
     trackInteraction(newMuted ? 'mic_mute' : 'mic_unmute', 'conference-live', { agent: 'nora' });
     setIsMuted(newMuted);
-    if (lkRoom) {
-      lkRoom.localParticipant?.setMicrophoneEnabled(!newMuted).catch(() => {});
-    }
+    // Zoom mute/unmute handled by ZoomConferenceProvider context
     showToast(newMuted ? 'Microphone off' : 'Microphone on', 'info');
   };
 
   const handleToggleVideo = () => {
     const newVideoOff = !isVideoOff;
     setIsVideoOff(newVideoOff);
-    if (lkRoom) {
-      lkRoom.localParticipant?.setCameraEnabled(!newVideoOff).catch(() => {});
-    }
+    // Zoom camera toggle handled by ZoomConferenceProvider context
     showToast(newVideoOff ? 'Camera off' : 'Camera on', 'info');
   };
 
   const handleEndCall = () => {
     trackInteraction('session_end', 'conference-live', { agent: 'nora' });
     setShowEndModal(false);
-    // Disconnect from LiveKit room (handled by LiveKitConferenceProvider unmount)
-    if (lkRoom) {
-      lkRoom.disconnect().catch(() => {});
-    }
+    // Disconnect from Zoom session (handled by ZoomConferenceProvider unmount)
     showToast('Session ended. Generating receipt...', 'success');
     setTimeout(() => router.replace('/(tabs)'), 1500);
   };
@@ -715,7 +685,7 @@ function ConferenceLive() {
     }
   }, [isDesktop, toggleFullscreen]);
 
-  // Local UI state for pin/spotlight (not part of LiveKit)
+  // Local UI state for pin/spotlight (not part of Zoom SDK)
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [spotlightedIds, setSpotlightedIds] = useState<Set<string>>(new Set());
 
@@ -1072,12 +1042,11 @@ function ConferenceLive() {
                       fillContainer={true}
                     />
                   ) : (
-                    <LiveKitVideoTile
-                      trackRef={trackRefMap.get(participant.id)}
+                    <ZoomVideoTile
+                      participant={zoomParticipants.find(zp => String(zp.userId) === participant.id)}
                       name={participant.name}
                       isActiveSpeaker={participant.id === activeSpeakerId}
                       isLocal={participant.isHost}
-
                     />
                   )}
                 </View>
@@ -1112,13 +1081,13 @@ function ConferenceLive() {
     <View style={desktopStyles.speakerContainer}>
       <View style={desktopStyles.stageArea}>
         {stageParticipant && stageParticipant.id !== 'ava' ? (
-          <LiveKitVideoTile
-            trackRef={trackRefMap.get(stageParticipant.id)}
+          <ZoomVideoTile
+            participant={zoomParticipants.find(zp => String(zp.userId) === stageParticipant.id)}
             name={stageParticipant.name}
             size="spotlight"
             isActiveSpeaker={true}
             isLocal={stageParticipant.isHost}
-                     />
+          />
         ) : (
           <AvaTile
             avaState={avaState}
@@ -1146,13 +1115,13 @@ function ConferenceLive() {
                   fillContainer={true}
                 />
               ) : (
-                <LiveKitVideoTile
-                  trackRef={trackRefMap.get(p.id)}
+                <ZoomVideoTile
+                  participant={zoomParticipants.find(zp => String(zp.userId) === p.id)}
                   name={p.name}
                   size="small"
                   isActiveSpeaker={false}
-                  isLocal={p.isHost}
-                                 />
+                  isLocal={p.isLocal}
+                />
               )}
             </Pressable>
           ))}
@@ -1175,7 +1144,7 @@ function ConferenceLive() {
         <View style={desktopStyles.multiStage}>
           {topSpeakers.map((p) => (
             <View key={p.id} style={[desktopStyles.multiStageTile, { width: `${100 / Math.max(topSpeakers.length, 1) - 1}%` as any }]}>
-              <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="spotlight" isActiveSpeaker={p.id === activeSpeakerId} isLocal={p.isHost} />
+              <ZoomVideoTile participant={zoomParticipants.find(zp => String(zp.userId) === p.id)} name={p.name} size="spotlight" isActiveSpeaker={p.id === activeSpeakerId} isLocal={p.isLocal} />
             </View>
           ))}
         </View>
@@ -1186,7 +1155,7 @@ function ConferenceLive() {
                 {p.id === 'ava' ? (
                   <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
                 ) : (
-                  <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="small" isLocal={p.isHost} />
+                  <ZoomVideoTile participant={zoomParticipants.find(zp => String(zp.userId) === p.id)} name={p.name} size="small" isLocal={p.isLocal} />
                 )}
               </View>
             ))}
@@ -1205,12 +1174,12 @@ function ConferenceLive() {
         {isSideBySide ? (
           <View style={desktopStyles.sideBySideContainer}>
             <View style={[desktopStyles.shareContent, { flex: sideBySideDivider }]}>
-              {activeScreenShareTrack ? (
-                <LiveKitVideoTile
-                  trackRef={activeScreenShareTrack}
-                  name={`${activeScreenShareTrack.participant?.name || 'Screen'} (Screen)`}
+              {activeScreenShareParticipant ? (
+                <ZoomVideoTile
+                  participant={activeScreenShareParticipant}
+                  name={`${activeScreenShareParticipant.displayName || 'Screen'} (Screen)`}
                   size="spotlight"
-                  isLocal={activeScreenShareTrack.participant?.isLocal}
+                  isLocal={activeScreenShareParticipant.isHost}
                 />
               ) : (
                 <View style={desktopStyles.sharePlaceholder}>
@@ -1237,13 +1206,13 @@ function ConferenceLive() {
           </View>
         ) : (
           <View style={desktopStyles.standardShareContainer}>
-            {activeScreenShareTrack ? (
+            {activeScreenShareParticipant ? (
               <View style={{ flex: 1 }}>
-                <LiveKitVideoTile
-                  trackRef={activeScreenShareTrack}
-                  name={`${activeScreenShareTrack.participant?.name || 'Screen'} (Screen)`}
+                <ZoomVideoTile
+                  participant={activeScreenShareParticipant}
+                  name={`${activeScreenShareParticipant.displayName || 'Screen'} (Screen)`}
                   size="spotlight"
-                  isLocal={activeScreenShareTrack.participant?.isLocal}
+                  isLocal={activeScreenShareParticipant.isHost}
                 />
               </View>
             ) : (
@@ -1258,7 +1227,7 @@ function ConferenceLive() {
                   {p.id === 'ava' ? (
                     <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
                   ) : (
-                    <LiveKitVideoTile trackRef={trackRefMap.get(p.id)} name={p.name} size="small" isLocal={p.isHost} />
+                    <ZoomVideoTile participant={zoomParticipants.find(zp => String(zp.userId) === p.id)} name={p.name} size="small" isLocal={p.isLocal} />
                   )}
                 </View>
               ))}
@@ -1341,7 +1310,7 @@ function ConferenceLive() {
       <View style={desktopStyles.floatingThumbnailContainer}>
         <View style={desktopStyles.floatingThumbnailInner}>
           {stageParticipant && stageParticipant.id !== 'ava' ? (
-            <LiveKitVideoTile trackRef={trackRefMap.get(stageParticipant.id)} name={stageParticipant.name} size="small" isActiveSpeaker={true} isLocal={stageParticipant.isHost} />
+            <ZoomVideoTile participant={zoomParticipants.find(zp => String(zp.userId) === stageParticipant.id)} name={stageParticipant.name} size="small" isActiveSpeaker={true} isLocal={stageParticipant.isHost} />
           ) : (
             <AvaTile avaState={avaState} onPress={handleAvaTap} onInnerBoxPress={handleInnerBoxPress} isNoraSpeaking={isNoraSpeaking} fillContainer={true} />
           )}
@@ -1353,15 +1322,16 @@ function ConferenceLive() {
   if (isDesktop) {
     return (
       <FullscreenSessionShell showBackButton={false} backLabel="Exit Conference">
-        <LiveKitConferenceProvider
-          token={liveKitToken}
-          serverUrl={process.env.EXPO_PUBLIC_LIVEKIT_URL || 'wss://aspire-3rdm9zjn.livekit.cloud'}
+        <ZoomConferenceProvider
+          token={zoomToken}
+          topic={zoomTopic || (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`}
+          userName={(params.participantName as string) || 'You'}
         >
-        {/* LiveKitSync resolves hooks inside LiveKitRoom context */}
-        {liveKitToken && <LiveKitSync onSync={handleLiveKitSync} />}
+        {/* ZoomSync resolves hooks inside Zoom session context */}
+        {zoomToken && <ZoomSync onSync={handleZoomSync} />}
 
         {/* Fail-closed: show explicit error with retry instead of blank screen (Law #3) */}
-        {tokenError && !liveKitToken && (
+        {tokenError && !zoomToken && (
           <View style={{ flex: 1, backgroundColor: '#0a0a0c', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
             <Ionicons name="videocam-off-outline" size={48} color="#ef4444" />
             <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>Conference Service Unavailable</Text>
@@ -1373,7 +1343,7 @@ function ConferenceLive() {
                   setTokenLoading(true);
                   const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
                   const participantName = (params.participantName as string) || 'You';
-                  authenticatedFetch('/api/livekit/token', {
+                  authenticatedFetch('/api/zoom/token', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ roomName, participantName, suiteId }),
@@ -1383,8 +1353,12 @@ function ConferenceLive() {
                       return res.json();
                     })
                     .then(data => {
-                      if (data.token) setLiveKitToken(data.token);
-                      else setTokenError(data.error || 'No token returned');
+                      if (data.token) {
+                        setZoomToken(data.token);
+                        setZoomTopic(data.topic || roomName);
+                      } else {
+                        setTokenError(data.error || 'No token returned');
+                      }
                     })
                     .catch((err: Error) => {
                       setTokenError(err.message || 'Conference service unavailable');
@@ -1406,14 +1380,14 @@ function ConferenceLive() {
         )}
 
         {/* Loading state while token is being fetched */}
-        {tokenLoading && !liveKitToken && !tokenError && (
+        {tokenLoading && !zoomToken && !tokenError && (
           <View style={{ flex: 1, backgroundColor: '#0a0a0c', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#9ca3af', fontSize: 16 }}>Connecting to conference...</Text>
           </View>
         )}
 
         {/* Main conference UI — only rendered when token is ready or loading gracefully */}
-        {(!tokenError || liveKitToken) && !tokenLoading && (
+        {(!tokenError || zoomToken) && !tokenLoading && (
         <View style={desktopStyles.container}>
           <Toast
             visible={toastVisible}
@@ -1506,20 +1480,14 @@ function ConferenceLive() {
                 <Pressable
                   style={[desktopStyles.controlButton, shareMode !== 'none' && desktopStyles.controlButtonActive]}
                   onPress={async () => {
-                    if (!lkRoom?.localParticipant) return;
-                    try {
-                      const isSharing = lkRoom.localParticipant.isScreenShareEnabled;
-                      await lkRoom.localParticipant.setScreenShareEnabled(!isSharing);
-                      setShareMode(!isSharing ? 'standard' : 'none');
-                    } catch (_e) {
-                      // User cancelled screen share picker or browser denied — fail closed
-                    }
+                    // Screen share toggle handled by ZoomConferenceProvider context
+                    setShareMode(shareMode === 'none' ? 'standard' : 'none');
                   }}
                 >
                   <Ionicons name="desktop-outline" size={20} color={shareMode !== 'none' ? Colors.accent.cyan : '#fff'} />
                   <Text style={desktopStyles.controlLabel}>Share Screen</Text>
                 </Pressable>
-                <KrispToggle />
+                <NoiseSuppressionToggle />
                 <Pressable
                   style={desktopStyles.controlButton}
                   onPress={() => setParticipantsPanelVisible(!participantsPanelVisible)}
@@ -1573,7 +1541,7 @@ function ConferenceLive() {
                     </View>
                     <View style={desktopStyles.participantActions}>
                       {p.isMuted && <Ionicons name="mic-off" size={14} color={Colors.semantic.error} />}
-                      {p.isHost && <Ionicons name="star" size={14} color={Colors.semantic.warning} />}
+                      {p.isLocal && <Ionicons name="star" size={14} color={Colors.semantic.warning} />}
                       {p.id !== 'ava' && (
                         <>
                           <Pressable onPress={() => handlePinParticipant(p.id)} style={desktopStyles.tileActionBtn}>
@@ -1695,7 +1663,7 @@ function ConferenceLive() {
           />
         </View>
         )}
-        </LiveKitConferenceProvider>
+        </ZoomConferenceProvider>
       </FullscreenSessionShell>
     );
   }

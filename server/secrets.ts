@@ -48,9 +48,8 @@ const KEY_MAP: Record<string, string> = {
   // Providers
   elevenlabs_key: 'ELEVENLABS_API_KEY',
   deepgram_key: 'DEEPGRAM_API_KEY',
-  livekit_key: 'LIVEKIT_API_KEY',
-  livekit_secret: 'LIVEKIT_API_SECRET',
-  livekit_url: 'LIVEKIT_SERVER_URL',
+  zoom_sdk_key: 'ZOOM_SDK_KEY',
+  zoom_sdk_secret: 'ZOOM_SDK_SECRET',
   anam_key: 'ANAM_API_KEY',
   anam_custom_llm_id: 'ANAM_CUSTOM_LLM_ID',
   anam_llm_secret: 'ANAM_LLM_SECRET',

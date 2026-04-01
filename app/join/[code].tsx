@@ -2,15 +2,17 @@
  * Guest Join Page — Public, NO auth required.
  *
  * External guests receive a link like /join/{code} and land on this page
- * to join a LiveKit conference room. The join code is resolved via
+ * to join a Zoom Video SDK conference. The join code is resolved via
  * GET /api/conference/join/:code (a PUBLIC endpoint).
  *
  * Flow: loading → prejoin (name + device preview) → connecting → active → disconnected
  * Error states: expired (410) | invalid (404) | error
  *
- * Uses LiveKit components:
- * - PreJoin: name entry + camera/mic preview (before connecting)
- * - Custom GuestVideoConference: grid layout with ParticipantTile + NoraTile + ControlBar
+ * Uses Zoom Video SDK via:
+ * - ZoomConferenceProvider: session management + context
+ * - ZoomVideoTile: participant video rendering
+ * - Custom ZoomPreJoin: name entry + camera preview (before connecting)
+ * - Custom ZoomGuestControlBar: mic/camera/disconnect controls
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -25,31 +27,21 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
-import {
-  LiveKitRoom,
-  RoomAudioRenderer,
-  PreJoin,
-  ParticipantTile,
-  ControlBar,
-  useTracks,
-  LayoutContextProvider,
-  useCreateLayoutContext,
-} from '@livekit/components-react';
-import type { LocalUserChoices } from '@livekit/components-core';
-import { DisconnectReason, MediaDeviceFailure, Track } from 'livekit-client';
 import { Image } from 'expo-image';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
-import { injectLiveKitStyles } from '@/lib/livekit-styles';
-import { buildRoomOptionsWithDevices } from '@/lib/livekit-config';
+import { ZoomConferenceProvider, useZoomContext, useZoomParticipants } from '@/components/session/ZoomConferenceProvider';
+import type { ZoomParticipant } from '@/components/session/ZoomConferenceProvider';
+import { ZoomVideoTile } from '@/components/session/ZoomVideoTile';
+import { injectZoomStyles } from '@/lib/zoom-styles';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface JoinResponse {
   token: string;
+  topic?: string;
   roomName: string;
   guestName: string;
-  serverUrl: string;
 }
 
 type PageState =
@@ -61,6 +53,13 @@ type PageState =
   | 'expired'
   | 'invalid'
   | 'error';
+
+/** Lightweight replacement for LiveKit's LocalUserChoices */
+interface GuestUserChoices {
+  username: string;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -172,50 +171,23 @@ function injectGuestKeyframes() {
       -webkit-tap-highlight-color: transparent;
     }
 
-    /* Mobile: ensure LiveKit control bar has safe area padding at bottom */
+    /* Mobile: ensure Zoom control bar has safe area padding at bottom */
     @supports (padding-bottom: env(safe-area-inset-bottom)) {
-      .lk-control-bar {
+      .aspire-guest-conference-root > div:last-child {
         padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
       }
     }
 
     /* Mobile: ensure touch targets are at least 44px (Apple HIG) */
     @media (max-width: 768px) {
-      .lk-control-bar .lk-button {
+      .aspire-guest-conference-root button {
         min-width: 44px !important;
         min-height: 44px !important;
-      }
-      /* Tighter grid gaps on small screens */
-      .lk-grid-layout {
-        gap: 4px !important;
-      }
-      /* Hide chat sidebar on very small screens to maximize video area */
-      .lk-chat {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        z-index: 100 !important;
-        background: rgba(10, 10, 12, 0.98) !important;
       }
     }
 
     /* Extra small screens (phones in portrait) */
     @media (max-width: 480px) {
-      .lk-control-bar {
-        gap: 4px !important;
-        padding: 8px 4px !important;
-        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
-      }
-      .lk-control-bar .lk-button {
-        padding: 8px !important;
-        font-size: 0 !important; /* Hide button labels, show only icons */
-      }
-      .lk-control-bar .lk-button svg {
-        width: 20px !important;
-        height: 20px !important;
-      }
       /* Guest badge compact on small screens */
       .guest-badge-overlay {
         top: calc(4px + env(safe-area-inset-top, 0px)) !important;
@@ -227,13 +199,6 @@ function injectGuestKeyframes() {
 
     /* Landscape orientation on mobile — maximize video area */
     @media (max-height: 500px) and (orientation: landscape) {
-      .lk-control-bar {
-        padding: 4px 8px !important;
-        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px)) !important;
-      }
-      .lk-grid-layout {
-        gap: 2px !important;
-      }
       .guest-badge-overlay {
         opacity: 0.6 !important;
         transform: scale(0.85) !important;
@@ -475,15 +440,61 @@ function ErrorView({
   );
 }
 
-// ── PreJoin Lobby ─────────────────────────────────────────────────────────────
+// ── PreJoin Lobby (Zoom — custom camera preview) ─────────────────────────────
 
 function GuestPreJoin({
   onJoin,
   onDeviceError,
 }: {
-  onJoin: (choices: LocalUserChoices) => void;
+  onJoin: (choices: GuestUserChoices) => void;
   onDeviceError: (error: Error) => void;
 }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [guestName, setGuestName] = useState('');
+  const [cameraActive, setCameraActive] = useState(true);
+  const [micActive, setMicActive] = useState(true);
+
+  // Start camera preview on mount
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    let cancelled = false;
+
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: false })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        setCameraActive(true);
+      })
+      .catch((err: Error) => {
+        setCameraActive(false);
+        onDeviceError(err);
+      });
+
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+  }, [onDeviceError]);
+
+  const handleSubmit = useCallback(() => {
+    if (guestName.trim().length < 2) return;
+    // Stop preview stream before joining
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    onJoin({ username: guestName.trim(), audioEnabled: micActive, videoEnabled: cameraActive });
+  }, [guestName, micActive, cameraActive, onJoin]);
+
+  const isValid = guestName.trim().length >= 2;
+
   return (
     <View style={styles.prejoinContainer}>
       {/* Aspire branding header */}
@@ -497,27 +508,142 @@ function GuestPreJoin({
         </Text>
       </View>
 
-      {/* LiveKit PreJoin — handles camera preview, mic/cam toggles, device menus, username input */}
-      <div
-        data-lk-theme="default"
-        style={{
-          flex: 1,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
+      {/* Camera preview + controls */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column' as const,
+        alignItems: 'center',
+        width: '100%',
+        maxWidth: '480px',
+        margin: '0 auto',
+        gap: '16px',
+      }}>
+        {/* Camera preview */}
+        <div style={{
           width: '100%',
-          maxWidth: '480px',
-          margin: '0 auto',
-        }}
-      >
-        <PreJoin
-          defaults={{ username: '', audioEnabled: true, videoEnabled: true }}
-          onSubmit={onJoin}
-          onError={onDeviceError}
-          joinLabel="Join Conference"
-          userLabel="Your Name"
-          onValidate={(values) => values.username.trim().length >= 2}
+          aspectRatio: '16/9',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          background: '#111',
+          position: 'relative' as const,
+          border: '1px solid rgba(59, 130, 246, 0.15)',
+        }}>
+          {cameraActive ? (
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                transform: 'scaleX(-1)',
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Ionicons name="videocam-off" size={48} color={Colors.text.muted} />
+            </div>
+          )}
+        </div>
+
+        {/* Device toggle row */}
+        <div style={{
+          display: 'flex',
+          gap: '12px',
+          justifyContent: 'center',
+        }}>
+          <button
+            type="button"
+            onClick={() => setMicActive((v) => !v)}
+            aria-label={micActive ? 'Mute microphone' : 'Unmute microphone'}
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '22px',
+              border: 'none',
+              background: micActive ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255, 59, 48, 0.2)',
+              color: micActive ? Colors.accent.cyan : Colors.semantic.error,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '18px',
+            }}
+          >
+            <Ionicons name={micActive ? 'mic' : 'mic-off'} size={20} color={micActive ? Colors.accent.cyan : Colors.semantic.error} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setCameraActive((v) => !v)}
+            aria-label={cameraActive ? 'Turn off camera' : 'Turn on camera'}
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '22px',
+              border: 'none',
+              background: cameraActive ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255, 59, 48, 0.2)',
+              color: cameraActive ? Colors.accent.cyan : Colors.semantic.error,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '18px',
+            }}
+          >
+            <Ionicons name={cameraActive ? 'videocam' : 'videocam-off'} size={20} color={cameraActive ? Colors.accent.cyan : Colors.semantic.error} />
+          </button>
+        </div>
+
+        {/* Name input */}
+        <input
+          type="text"
+          value={guestName}
+          onChange={(e) => setGuestName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && isValid) handleSubmit(); }}
+          placeholder="Your Name"
+          aria-label="Your Name"
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            background: 'rgba(255, 255, 255, 0.04)',
+            color: '#fff',
+            fontSize: '14px',
+            outline: 'none',
+          }}
         />
+
+        {/* Join button */}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!isValid}
+          aria-label="Join Conference"
+          style={{
+            width: '100%',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            border: 'none',
+            background: isValid ? Colors.accent.cyan : 'rgba(59, 130, 246, 0.3)',
+            color: '#fff',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: isValid ? 'pointer' : 'not-allowed',
+            opacity: isValid ? 1 : 0.5,
+            transition: 'opacity 0.2s ease',
+          }}
+        >
+          Join Conference
+        </button>
       </div>
 
       {/* Footer branding */}
@@ -639,34 +765,27 @@ function DisconnectedView({
   );
 }
 
-// ── Active Conference (Full LiveKit Prefab) ──────────────────────────────────
+// ── Active Conference (Zoom Video SDK) ────────────────────────────────────────
 
 function GuestActiveConference({
   token,
-  serverUrl,
+  topic,
   guestName,
   userChoices,
   onDisconnected,
   onError,
-  onMediaDeviceFailure,
   onConnected,
 }: {
   token: string;
-  serverUrl: string;
+  topic: string;
   guestName: string;
-  userChoices: LocalUserChoices | null;
-  onDisconnected: (reason?: DisconnectReason) => void;
+  userChoices: GuestUserChoices | null;
+  onDisconnected: (reason?: string) => void;
   onError: (error: Error) => void;
-  onMediaDeviceFailure: (failure?: MediaDeviceFailure) => void;
   onConnected: () => void;
 }) {
-  // Honor guest's PreJoin device selections. If no choices (edge case), default to on.
-  const audioEnabled = userChoices?.audioEnabled ?? true;
-  const videoEnabled = userChoices?.videoEnabled ?? true;
-
   return (
     <div
-      data-lk-theme="default"
       className="aspire-guest-conference-root"
       style={{
         height: '100dvh',
@@ -683,27 +802,15 @@ function GuestActiveConference({
         touchAction: 'manipulation',
       } as React.CSSProperties}
     >
-      <LiveKitRoom
-        serverUrl={serverUrl}
+      <ZoomConferenceProvider
         token={token}
-        connect={true}
-        audio={audioEnabled}
-        video={videoEnabled}
-        onConnected={onConnected}
-        onDisconnected={onDisconnected}
-        onError={onError}
-        onMediaDeviceFailure={onMediaDeviceFailure}
-        style={{ height: '100%', width: '100%' }}
-        options={buildRoomOptionsWithDevices({
-          // Honor guest's selected devices from PreJoin lobby
-          audioDeviceId: userChoices?.audioDeviceId,
-          videoDeviceId: userChoices?.videoDeviceId,
-        })}
+        topic={topic}
+        userName={guestName}
       >
-        <GuestVideoConference />
-        <RoomAudioRenderer />
+        <GuestVideoConference userChoices={userChoices} onConnected={onConnected} onError={onError} />
         <GuestBadgeOverlay guestName={guestName} />
-      </LiveKitRoom>
+        <ZoomGuestControlBar onDisconnected={onDisconnected} />
+      </ZoomConferenceProvider>
     </div>
   );
 }
@@ -846,52 +953,203 @@ function NoraTile() {
   );
 }
 
-// ── Custom Video Conference with Nora Tile ──────────────────────────────────
-// Replaces <VideoConference /> prefab to inject Nora as a participant tile
-// in the grid, matching the internal conference experience.
+// ── Custom Video Conference with Nora Tile (Zoom) ───────────────────────────
+// Uses ZoomConferenceProvider context to render participant tiles in a grid,
+// with the Nora AI tile injected to match the internal conference experience.
 
-function GuestVideoConference() {
-  const tracks = useTracks([
-    { source: Track.Source.Camera, withPlaceholder: true },
-    { source: Track.Source.ScreenShare, withPlaceholder: false },
-  ]);
-  const layoutContext = useCreateLayoutContext();
-  const tileCount = tracks.length + 1; // +1 for Nora tile
+function GuestVideoConference({
+  userChoices,
+  onConnected,
+  onError,
+}: {
+  userChoices: GuestUserChoices | null;
+  onConnected: () => void;
+  onError: (error: Error) => void;
+}) {
+  const participants = useZoomParticipants();
+  const { stream } = useZoomContext();
+  const hasConnectedRef = useRef(false);
+
+  // Start audio/video after Zoom session connects
+  useEffect(() => {
+    if (!stream || hasConnectedRef.current) return;
+    hasConnectedRef.current = true;
+
+    const init = async () => {
+      try {
+        const audioEnabled = userChoices?.audioEnabled ?? true;
+        const videoEnabled = userChoices?.videoEnabled ?? true;
+        if (audioEnabled) await stream.startAudio();
+        if (videoEnabled) await stream.startVideo();
+        onConnected();
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error('Failed to start media');
+        onError(error);
+      }
+    };
+    init();
+  }, [stream, userChoices, onConnected, onError]);
+
+  const tileCount = participants.length + 1; // +1 for Nora tile
 
   // Grid columns: 1 col for solo, 2 cols for 2-4 tiles, 3 cols for 5-9, 4 for more
   const cols = tileCount <= 1 ? 1 : tileCount <= 4 ? 2 : tileCount <= 9 ? 3 : 4;
 
   return (
-    <LayoutContextProvider value={layoutContext}>
-      <div className="lk-video-conference" style={{
-        position: 'relative' as const,
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column' as const,
-        overflow: 'hidden',
-      }}>
-        {/* Video grid: participants + Nora */}
-        <div
-          className="lk-grid-layout"
-          style={{
-            flex: 1,
-            display: 'grid',
-            gridTemplateColumns: `repeat(${cols}, 1fr)`,
-            gridAutoRows: '1fr',
-            gap: '0.25rem',
-            padding: '0.25rem',
-          }}
-        >
-          {tracks.map((trackRef, i) => (
-            <ParticipantTile key={i} trackRef={trackRef} />
-          ))}
-          <NoraTile />
-        </div>
-
-        {/* Control bar — camera, mic, disconnect, chat */}
-        <ControlBar controls={{ chat: true, screenShare: false }} />
+    <div style={{
+      position: 'relative' as const,
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      overflow: 'hidden',
+    }}>
+      {/* Video grid: participants + Nora */}
+      <div
+        style={{
+          flex: 1,
+          display: 'grid',
+          gridTemplateColumns: `repeat(${cols}, 1fr)`,
+          gridAutoRows: '1fr',
+          gap: '0.25rem',
+          padding: '0.25rem',
+        }}
+      >
+        {participants.map((participant: ZoomParticipant) => (
+          <ZoomVideoTile key={participant.userId} participant={participant} />
+        ))}
+        <NoraTile />
       </div>
-    </LayoutContextProvider>
+    </div>
+  );
+}
+
+// ── Guest Control Bar (Zoom) ────────────────────────────────────────────────
+
+function ZoomGuestControlBar({
+  onDisconnected,
+}: {
+  onDisconnected: (reason?: string) => void;
+}) {
+  const { stream, client } = useZoomContext();
+  const [micMuted, setMicMuted] = useState(false);
+  const [camOff, setCamOff] = useState(false);
+
+  const toggleMic = useCallback(async () => {
+    if (!stream) return;
+    try {
+      if (micMuted) {
+        await stream.unmuteAudio();
+      } else {
+        await stream.muteAudio();
+      }
+      setMicMuted((v) => !v);
+    } catch (_e: unknown) {
+      // Non-fatal — user can retry
+    }
+  }, [stream, micMuted]);
+
+  const toggleCam = useCallback(async () => {
+    if (!stream) return;
+    try {
+      if (camOff) {
+        await stream.startVideo();
+      } else {
+        await stream.stopVideo();
+      }
+      setCamOff((v) => !v);
+    } catch (_e: unknown) {
+      // Non-fatal — user can retry
+    }
+  }, [stream, camOff]);
+
+  const handleDisconnect = useCallback(async () => {
+    try {
+      if (client) await client.leave();
+    } catch (_e: unknown) {
+      // Best-effort leave
+    }
+    onDisconnected('You have left the conference.');
+  }, [client, onDisconnected]);
+
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: '12px',
+      padding: '12px',
+      background: 'rgba(0, 0, 0, 0.6)',
+      backdropFilter: 'blur(8px)',
+      WebkitBackdropFilter: 'blur(8px)',
+    }}>
+      {/* Mic toggle */}
+      <button
+        type="button"
+        onClick={toggleMic}
+        aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+        style={{
+          width: '48px',
+          height: '48px',
+          borderRadius: '24px',
+          border: 'none',
+          background: micMuted ? 'rgba(255, 59, 48, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons
+          name={micMuted ? 'mic-off' : 'mic'}
+          size={22}
+          color={micMuted ? Colors.semantic.error : Colors.text.primary}
+        />
+      </button>
+
+      {/* Camera toggle */}
+      <button
+        type="button"
+        onClick={toggleCam}
+        aria-label={camOff ? 'Turn on camera' : 'Turn off camera'}
+        style={{
+          width: '48px',
+          height: '48px',
+          borderRadius: '24px',
+          border: 'none',
+          background: camOff ? 'rgba(255, 59, 48, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons
+          name={camOff ? 'videocam-off' : 'videocam'}
+          size={22}
+          color={camOff ? Colors.semantic.error : Colors.text.primary}
+        />
+      </button>
+
+      {/* Disconnect */}
+      <button
+        type="button"
+        onClick={handleDisconnect}
+        aria-label="Leave conference"
+        style={{
+          width: '48px',
+          height: '48px',
+          borderRadius: '24px',
+          border: 'none',
+          background: 'rgba(255, 59, 48, 0.8)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name="call" size={22} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+      </button>
+    </div>
   );
 }
 
@@ -903,14 +1161,14 @@ function GuestJoinContent() {
   const [joinData, setJoinData] = useState<JoinResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [disconnectReason, setDisconnectReason] = useState('');
-  const [userChoices, setUserChoices] = useState<LocalUserChoices | null>(null);
+  const [userChoices, setUserChoices] = useState<GuestUserChoices | null>(null);
 
   // Inject styles + mobile viewport on mount
   useEffect(() => {
     ensureMobileViewport();
     injectGuestKeyframes();
     if (Platform.OS === 'web') {
-      injectLiveKitStyles();
+      injectZoomStyles();
     }
   }, []);
 
@@ -943,7 +1201,7 @@ function GuestJoinContent() {
       })
       .then((data: JoinResponse | null) => {
         if (!data) return;
-        if (!data.serverUrl) {
+        if (!data.token) {
           setPageState('error');
           setErrorMessage('Invalid response from server');
           return;
@@ -970,7 +1228,7 @@ function GuestJoinContent() {
   }, [code]);
 
   // Step 2: PreJoin submit → fetch token with guest's chosen name → connect
-  const handlePreJoinSubmit = useCallback(async (choices: LocalUserChoices) => {
+  const handlePreJoinSubmit = useCallback(async (choices: GuestUserChoices) => {
     setUserChoices(choices);
     setPageState('connecting');
 
@@ -996,7 +1254,7 @@ function GuestJoinContent() {
 
       const data: JoinResponse = await res.json();
       setJoinData(data);
-      // Move to 'active' — LiveKitRoom mounts and handles its own connection UI.
+      // Move to 'active' — ZoomConferenceProvider mounts and handles session join.
       setPageState('active');
     } catch (err: unknown) {
       clearTimeout(timeoutId);
@@ -1012,45 +1270,25 @@ function GuestJoinContent() {
 
   // Handle PreJoin device errors (camera/mic permission denied)
   const handleDeviceError = useCallback((error: Error) => {
-    // Don't crash — PreJoin will still render with camera-off placeholder.
-    // Only transition to error if the error message indicates a hard failure.
-    console.warn('[GuestJoin] Device error:', error.message);
-    reportProviderError({ provider: 'livekit', action: 'guest_device_error', error, component: 'GuestJoinPage' });
+    // Don't crash — prejoin will still render with camera-off placeholder.
+    reportProviderError({ provider: 'zoom', action: 'guest_device_error', error, component: 'GuestJoinPage' });
   }, []);
 
-  // LiveKit room event handlers
+  // Zoom session event handlers
   const handleConnected = useCallback(() => {
     setPageState('active');
   }, []);
 
-  const handleDisconnected = useCallback((reason?: DisconnectReason) => {
-    let message = 'You have left the conference.';
-    if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
-      message = 'You were removed from the conference by the host.';
-    } else if (reason === DisconnectReason.ROOM_DELETED) {
-      message = 'The conference has ended.';
-    } else if (reason === DisconnectReason.STATE_MISMATCH) {
-      message = 'Connection lost due to a state mismatch. You may rejoin.';
-    } else if (reason === DisconnectReason.JOIN_FAILURE) {
-      message = 'Failed to join the conference. The room may be full or unavailable.';
-    }
+  const handleDisconnected = useCallback((reason?: string) => {
+    const message = reason || 'You have left the conference.';
     setDisconnectReason(message);
     setPageState('disconnected');
   }, []);
 
   const handleRoomError = useCallback((error: Error) => {
-    reportProviderError({ provider: 'livekit', action: 'guest_room_error', error, component: 'GuestJoinPage' });
+    reportProviderError({ provider: 'zoom', action: 'guest_room_error', error, component: 'GuestJoinPage' });
     setErrorMessage(error.message || 'A connection error occurred.');
     setPageState('error');
-  }, []);
-
-  const handleMediaDeviceFailure = useCallback((failure?: MediaDeviceFailure) => {
-    // MediaDeviceFailure is non-fatal — user can still participate with
-    // reduced capabilities (e.g. audio-only if camera fails).
-    // Only log a warning; do not kick them out of the conference.
-    const msg = failure ? `Device failure: ${failure}` : 'Unknown device failure';
-    console.warn('[GuestJoin] Media device failure:', msg);
-    reportProviderError({ provider: 'livekit', action: 'guest_media_device_failure', error: new Error(msg), component: 'GuestJoinPage' });
   }, []);
 
   // Retry handler — reload the page to re-validate join code and start fresh
@@ -1084,13 +1322,12 @@ function GuestJoinContent() {
       {pageState === 'active' && joinData && (
         <GuestActiveConference
           token={joinData.token}
-          serverUrl={joinData.serverUrl}
+          topic={joinData.topic || joinData.roomName}
           guestName={joinData.guestName}
           userChoices={userChoices}
           onConnected={handleConnected}
           onDisconnected={handleDisconnected}
           onError={handleRoomError}
-          onMediaDeviceFailure={handleMediaDeviceFailure}
         />
       )}
 

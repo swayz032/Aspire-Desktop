@@ -35,7 +35,7 @@ function rowToInvitation(row: Record<string, unknown>) {
     inviterBusinessName: (row.inviter_business_name as string) || null,
     inviterRole: (row.inviter_role as string) || null,
     roomName: row.room_name as string,
-    serverUrl: row.livekit_server_url as string,
+    zoomSessionId: row.zoom_session_id as string,
     expiresAt: row.expires_at as string,
     status: 'pending' as const,
   };

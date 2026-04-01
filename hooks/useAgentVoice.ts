@@ -9,7 +9,7 @@
  *
  * STT Provider Routing:
  *   - Finn, Ava, Eli, Sarah: ElevenLabs STT (Scribe via /api/elevenlabs/stt)
- *   - Nora: Deepgram STT (conference transcription via LiveKit)
+ *   - Nora: Deepgram STT (conference transcription via Zoom)
  *
  * Law #1: Single Brain â€" LangGraph orchestrator decides, not any provider.
  * Law #3: Fail Closed â€" orchestrator errors return 503, not 200.
@@ -43,7 +43,7 @@ export interface VoiceDiagnosticEvent {
   recoverable: boolean;
 }
 
-/** Agents that use Deepgram STT (LiveKit conference). All others use ElevenLabs. */
+/** Agents that use Deepgram STT (Zoom conference). All others use ElevenLabs. */
 const DEEPGRAM_STT_AGENTS: string[] = ['nora'];
 
 interface AgentActivityEvent {
@@ -689,7 +689,7 @@ export function useAgentVoice(options: UseAgentVoiceOptions): UseAgentVoiceRetur
     }
   }, []);
 
-  // Deepgram STT â€" for Nora (conference transcription via LiveKit)
+  // Deepgram STT â€" for Nora (conference transcription via Zoom)
   const deepgramStt = useDeepgramSTT({
     onUtterance: useDeepgram ? handleUtterance : undefined,
     accessToken,

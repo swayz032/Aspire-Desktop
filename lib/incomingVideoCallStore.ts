@@ -112,7 +112,7 @@ export function getCurrentVideoCallInvitation(): VideoCallInvitation | null {
 
 /**
  * Accept a video call invitation via the PATCH endpoint.
- * Returns the LiveKit token, server URL, and room name for joining.
+ * Returns the Zoom token, topic, and room name for joining.
  *
  * Law #3: Fail Closed — accessToken is required for auth. Requests without
  * a valid Bearer token are rejected 401 by Express middleware.
