@@ -263,17 +263,45 @@ router.post('/v1/tools/draft', async (req: Request, res: Response) => {
       const location = draftParams.location || '';
       const participants = draftParams.to ? [draftParams.to] : [];
 
-      // Parse start_time — try ISO string first, then natural language fallback
+      // Parse start_time — try ISO string first, then date+time combo, then default
       let startTime: Date;
+      const now = new Date();
+
       if (draftParams.start_time) {
         startTime = new Date(draftParams.start_time);
       } else if (draftParams.date && draftParams.time) {
         startTime = new Date(`${draftParams.date}T${draftParams.time}`);
       } else {
         // Default to tomorrow at 9 AM if no time specified
-        startTime = new Date();
+        startTime = new Date(now);
         startTime.setDate(startTime.getDate() + 1);
         startTime.setHours(9, 0, 0, 0);
+      }
+
+      // ── Date sanity guard ──────────────────────────────────────────────
+      // LLMs sometimes hallucinate dates from their training cutoff (e.g. 2023)
+      // instead of the real current year. Detect and correct:
+      //   1. Invalid date → default to tomorrow 9 AM
+      //   2. Year before current year → preserve month/day/time, snap to current year
+      //      (if that result is still in the past, bump to next year)
+      //   3. More than 2 years in the future → cap to current year (likely hallucination)
+      //   4. Already past today but within current year → bump to tomorrow same time
+      //      (catches "today at 2pm" when it's already 5pm)
+      if (isNaN(startTime.getTime())) {
+        logger.warn('[AgentTool] draft: invalid start_time, defaulting to tomorrow 9 AM', { raw: draftParams.start_time });
+        startTime = new Date(now);
+        startTime.setDate(startTime.getDate() + 1);
+        startTime.setHours(9, 0, 0, 0);
+      } else if (startTime.getFullYear() < now.getFullYear()) {
+        const originalYear = startTime.getFullYear();
+        startTime.setFullYear(now.getFullYear());
+        if (startTime.getTime() < now.getTime()) {
+          startTime.setFullYear(now.getFullYear() + 1);
+        }
+        logger.warn('[AgentTool] draft: corrected past-year date', { original: originalYear, corrected: startTime.getFullYear() });
+      } else if (startTime.getFullYear() > now.getFullYear() + 2) {
+        logger.warn('[AgentTool] draft: date too far in future, capping to current year', { original: startTime.getFullYear() });
+        startTime.setFullYear(now.getFullYear());
       }
 
       const durationMinutes = draftParams.duration_minutes || 30;
