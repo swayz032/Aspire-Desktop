@@ -52,19 +52,22 @@ const UNLOCK_EVENTS = ['click', 'touchstart', 'keydown', 'scroll'] as const;
 function unlockAudio(): void {
   if (_audioUnlocked) return;
 
-  // Create and pre-load the Audio element
-  if (!_ringAudio) {
-    _ringAudio = new Audio(RINGTONE_URL);
-    _ringAudio.loop = true;
-    _ringAudio.preload = 'auto';
-    _ringAudio.volume = 0;
-  }
+  // Use a tiny silent WAV for the unlock — NOT the ringtone mp3.
+  // Playing the actual ringtone causes an audible blip on Safari before
+  // the async .pause() fires. A 1-sample silent WAV is inaudible.
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+  const silentAudio = new Audio(SILENT_WAV);
 
-  // Strategy 1: HTML5 Audio silent play+pause
-  const htmlUnlock = _ringAudio.play().then(() => {
-    _ringAudio!.pause();
-    _ringAudio!.currentTime = 0;
-    _ringAudio!.volume = 0.7;
+  // Strategy 1: Play silent WAV to unlock audio playback
+  const htmlUnlock = silentAudio.play().then(() => {
+    silentAudio.pause();
+    // Now pre-load the real ringtone (unlocked, won't autoplay)
+    if (!_ringAudio) {
+      _ringAudio = new Audio(RINGTONE_URL);
+      _ringAudio.loop = true;
+      _ringAudio.preload = 'auto';
+      _ringAudio.volume = 0.7;
+    }
     return true;
   }).catch(() => false);
 
