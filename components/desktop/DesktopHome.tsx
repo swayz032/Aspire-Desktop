@@ -6,6 +6,7 @@ import { InteractionModePanel } from '@/components/InteractionModePanel';
 import { OpsSnapshotTabs } from '@/components/OpsSnapshotTabs';
 import { TodayPlanTabs } from '@/components/TodayPlanTabs';
 import { CalendarCard } from '@/components/CalendarCard';
+import { CalendarWidget } from '@/components/canvas/widgets/CalendarWidget';
 import { AuthorityQueueCard } from '@/components/AuthorityQueueCard';
 import { DocumentPreviewModal } from '@/components/DocumentPreviewModal';
 import { SectionHeader } from '@/components/ui/SectionHeader';
@@ -479,7 +480,11 @@ function DesktopHomeInner() {
                   >
                     <View style={[styles.section, styles.flexSection]}>
                       <SectionHeader title="Calendar" />
-                      <CalendarCard events={calendarEvents as any} />
+                      {calendarEvents.length > 0 ? (
+                        <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
+                      ) : (
+                        <CalendarCard events={[]} />
+                      )}
                     </View>
                   </CanvasTileWrapper>
                 </View>
