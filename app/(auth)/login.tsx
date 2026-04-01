@@ -878,15 +878,12 @@ function NativeLoginScreen() {
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 function LoginContent() {
-  // Security: clear any persisted session when the login page mounts.
-  // Prevents auto-sign-in risk — users must enter credentials explicitly.
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        supabase.auth.signOut().catch(() => {});
-      }
-    });
-  }, []);
+  // NOTE: Do NOT call signOut() on mount. The previous implementation
+  // cleared sessions on mount to prevent "auto-login", but this caused
+  // a race condition: if signOut was still in-flight when the user
+  // clicked Sign In, the new session was immediately destroyed — forcing
+  // the user to sign in twice. The _layout.tsx auth gate already handles
+  // redirecting authenticated users away from this page.
 
   if (Platform.OS === 'web') return <WebLoginScreen />;
   return <NativeLoginScreen />;
