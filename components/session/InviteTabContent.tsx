@@ -958,6 +958,8 @@ const styles = StyleSheet.create({
     paddingLeft: Spacing.sm,
     color: Colors.text.primary,
     ...Typography.body,
+    // Remove browser default focus outline — the container handles the glow
+    ...(Platform.OS === 'web' ? { outline: 'none', border: 'none', background: 'transparent' } as unknown as ViewStyle : {}),
   },
 
   // Loading skeleton

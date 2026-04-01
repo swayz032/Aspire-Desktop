@@ -35,7 +35,7 @@ import Animated, {
   FadeOut,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+// LinearGradient removed — modal border was causing visible blue/purple shadow
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Animation, Canvas } from '@/constants/tokens';
 import { SessionPurpose } from '@/data/session';
 import { InviteTabContent, PressableScale } from '@/components/session/InviteTabContent';
@@ -49,6 +49,14 @@ function injectModalKeyframes() {
   const style = document.createElement('style');
   style.id = 'aspire-modal-keyframes';
   style.textContent = `
+    /* Remove browser default focus outlines inside modal — container handles glow */
+    [data-testid="unified-session-modal"] input,
+    [data-testid="unified-session-modal"] textarea,
+    [data-testid="unified-session-modal"] [role="textbox"] {
+      outline: none !important;
+      border: none !important;
+      background: transparent !important;
+    }
     .modal-close-btn:hover {
       background-color: ${Colors.background.elevated} !important;
       transform: scale(1.05);
@@ -213,19 +221,13 @@ function UnifiedSessionModalInner({
         accessibilityRole="button"
       />
 
-      {/* Gradient border wrapper — outer LinearGradient + inner solid fill */}
+      {/* Modal wrapper — clean dark surface, no gradient border */}
       <Animated.View
         entering={FadeIn.duration(180)}
         exiting={FadeOut.duration(140)}
         style={styles.borderWrapper}
       >
-        <LinearGradient
-          colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.03)', 'rgba(255, 255, 255, 0.01)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.gradientBorder}
-        >
-          <View style={styles.modalContainer} accessible accessibilityLabel="Start session dialog">
+          <View style={styles.modalContainer} accessible accessibilityLabel="Start session dialog" testID="unified-session-modal">
 
             {/* Header */}
             <View style={styles.header}>
@@ -494,7 +496,6 @@ function UnifiedSessionModalInner({
               )}
             </View>
           </View>
-        </LinearGradient>
       </Animated.View>
     </View>
   );
@@ -533,10 +534,6 @@ const styles = StyleSheet.create({
     borderRadius: MODAL_BORDER_RADIUS + 1,
     boxShadow: '0 32px 80px -16px rgba(0, 0, 0, 0.95)',
   } as ViewStyle,
-  gradientBorder: {
-    borderRadius: MODAL_BORDER_RADIUS + 1,
-    padding: 1,
-  },
 
   // Modal surface — elevated dark glass
   modalContainer: {
