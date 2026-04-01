@@ -25,14 +25,15 @@ import { readSSEStream, extractResponseText } from '@/lib/sseStream';
 
 type ZoomClient = any;
 
-const ZOOM_SDK_CDN = 'https://source.zoom.us/meetingsdk/5.1.4/lib/js/zoomus-websdk-embedded.umd.min.js';
+const ZOOM_SDK_CDN = 'https://source.zoom.us/5.1.4/zoom-meeting-embedded-5.1.4.min.js';
 let _zoomSdkPromise: Promise<any> | null = null;
 
 /** Load Zoom Meeting SDK from CDN. Cached — safe to call multiple times. */
 function loadZoomMeetingSdk(): Promise<any> {
   if (_zoomSdkPromise) return _zoomSdkPromise;
-  if (typeof window !== 'undefined' && (window as any).ZoomMtgEmbedded) {
-    return Promise.resolve((window as any).ZoomMtgEmbedded);
+  // The embedded SDK exposes window.Zoom.createClient after loading
+  if (typeof window !== 'undefined' && (window as any).Zoom?.createClient) {
+    return Promise.resolve((window as any).Zoom);
   }
 
   _zoomSdkPromise = new Promise((resolve, reject) => {
@@ -41,7 +42,14 @@ function loadZoomMeetingSdk(): Promise<any> {
     const script = document.createElement('script');
     script.src = ZOOM_SDK_CDN;
     script.async = true;
-    script.onload = () => resolve((window as any).ZoomMtgEmbedded);
+    script.onload = () => {
+      const ZoomSdk = (window as any).Zoom || (window as any).ZoomMtgEmbedded;
+      if (ZoomSdk?.createClient) {
+        resolve(ZoomSdk);
+      } else {
+        reject(new Error('Zoom SDK loaded but createClient not found on window'));
+      }
+    };
     script.onerror = () => reject(new Error('Failed to load Zoom Meeting SDK from CDN'));
     document.head.appendChild(script);
   });
