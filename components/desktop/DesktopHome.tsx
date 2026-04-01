@@ -29,6 +29,7 @@ import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { getCalendarEvents } from '@/lib/api';
 import { useDynamicAuthorityQueue, removeAuthorityItem } from '@/lib/authorityQueueStore';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
+import { supabase as supabaseClient } from '@/lib/supabase';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useTenant, useSupabase } from '@/providers';
 import type { CashPosition } from '@/types';
@@ -226,13 +227,40 @@ function DesktopHomeInner() {
       } catch (e) { /* ops-snapshot not available */ }
     })();
 
-    // Fetch calendar events from Supabase
-    (async () => {
+    // Fetch calendar events from Supabase and map to CalendarCard format
+    const loadCalendarEvents = async () => {
       try {
-        const events = await getCalendarEvents();
-        setCalendarEvents(events);
+        const raw = await getCalendarEvents();
+        const mapped = (raw as any[]).map((e: any) => {
+          const startTime = e.start_time || e.scheduled_at || '';
+          const startDate = startTime ? new Date(startTime) : new Date();
+          return {
+            id: e.id || e.booking_id || '',
+            date: startTime ? startDate.toISOString().split('T')[0] : '',
+            time: startTime ? startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '',
+            title: e.title || e.service_name || 'Event',
+            type: e.event_type || e.type || 'meeting',
+            duration: e.duration_minutes ? `${e.duration_minutes} min` : undefined,
+            location: e.location || undefined,
+            participants: e.participants || [],
+            isAllDay: e.is_all_day || false,
+          };
+        });
+        setCalendarEvents(mapped);
       } catch (e) { /* calendar not available */ }
-    })();
+    };
+    loadCalendarEvents();
+
+    // Realtime subscription — refresh calendar on any change
+    const suiteId = session?.user?.user_metadata?.suite_id;
+    const calChannel = suiteId
+      ? supabaseClient
+          .channel(`home-calendar-${Date.now()}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_events' }, () => {
+            loadCalendarEvents();
+          })
+          .subscribe()
+      : null;
 
     // Fetch Today's Plan: merge calendar events + pending approvals
     (async () => {
@@ -289,6 +317,10 @@ function DesktopHomeInner() {
         setPlanItems(merged);
       } catch (e) { /* plan not available */ }
     })();
+
+    return () => {
+      if (calChannel) supabaseClient.removeChannel(calChannel);
+    };
   }, [session?.access_token]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
