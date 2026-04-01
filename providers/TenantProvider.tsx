@@ -86,7 +86,9 @@ export function TenantProvider({ children }: TenantProviderProps) {
       let identity: { suiteDisplayId?: string; officeDisplayId?: string; businessName?: string } | null = null;
       try {
         identity = await getTenantIdentity();
-      } catch {
+      } catch (identityErr) {
+        // Log but don't block — identity is supplementary to profile
+        if (__DEV__) console.warn('[TenantProvider] Identity fetch failed:', identityErr);
         identity = null;
       }
       const cached = readBootstrapIdentityCache();

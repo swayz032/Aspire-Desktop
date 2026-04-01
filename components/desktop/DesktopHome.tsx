@@ -200,6 +200,7 @@ function DesktopHomeInner() {
     (async () => {
       try {
         const res = await fetch('/api/ops-snapshot', { headers });
+        if (res.status === 401) { router.replace('/(auth)/login' as any); return; }
         if (res.ok) {
           const data = await res.json();
           const cp = data.cashPosition;

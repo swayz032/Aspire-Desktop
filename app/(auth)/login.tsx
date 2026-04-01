@@ -283,7 +283,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
 
   const handleMouseLeave = useCallback(() => setTilt({ x: 0, y: 0 }), []);
 
-  const switchMode = (m: AuthMode) => { setMode(m); setError(null); setSuccessMsg(null); };
+  const switchMode = (m: AuthMode) => { setMode(m); setError(null); setSuccessMsg(null); setPassword(''); setConfirmPassword(''); };
 
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) { setError('Please enter both email and password.'); return; }
@@ -293,14 +293,17 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
       if (ae) { setError(ae.message); return; }
       if (data.session) {
         const suiteId = data.session.user?.user_metadata?.suite_id;
-        if (suiteId) {
-          const { data: profile } = await supabase
-            .from('suite_profiles')
-            .select('onboarding_completed_at, owner_name, business_name, industry')
-            .eq('suite_id', suiteId).single();
-          if (!profile?.onboarding_completed_at || !profile?.owner_name || !profile?.business_name || !profile?.industry) {
-            router.replace('/(auth)/onboarding' as any); return;
-          }
+        if (!suiteId) {
+          // No suite — user needs onboarding
+          router.replace('/(auth)/onboarding' as any); return;
+        }
+        // Check onboarding completion — use .maybeSingle() to avoid throw on missing row
+        const { data: profile, error: profileError } = await supabase
+          .from('suite_profiles')
+          .select('onboarding_completed_at, owner_name, business_name, industry')
+          .eq('suite_id', suiteId).maybeSingle();
+        if (profileError || !profile?.onboarding_completed_at || !profile?.owner_name || !profile?.business_name || !profile?.industry) {
+          router.replace('/(auth)/onboarding' as any); return;
         }
         router.replace('/(tabs)');
       }
@@ -313,14 +316,24 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
     if (!email.trim() || !password.trim()) { setError('Please enter email and password.'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
-    setLoading(true); setError(null);
+    setError(null);
+    setLoading(true);
     try {
-      const res = await fetch('/api/auth/signup', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password, inviteCode: inviteCode.trim() }),
-      });
-      const rd = await res.json();
-      if (!res.ok || !rd.success) { setError(rd.error || 'Signup failed.'); return; }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      let res: Response;
+      try {
+        res = await fetch('/api/auth/signup', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), password, inviteCode: inviteCode.trim() }),
+          signal: controller.signal,
+        });
+      } catch (fetchErr: any) {
+        if (fetchErr.name === 'AbortError') { setError('Request timed out. Please check your connection and try again.'); return; }
+        setError('Unable to reach the server. Please check your connection.'); return;
+      } finally { clearTimeout(timeout); }
+      const rd = await res.json().catch(() => ({ error: 'Invalid server response' }));
+      if (!res.ok || !rd.success) { setError(rd.error || 'Signup failed. Please try again.'); return; }
       const { error: sie } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (sie) { setError(sie.message); return; }
       router.replace('/(auth)/onboarding' as any);
@@ -330,6 +343,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
 
   const handleWaitlist = () => {
     if (!email.trim()) { setError('Please enter your email address.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Please enter a valid email address.'); return; }
+    setError(null);
     setSuccessMsg("You're on the list! We'll be in touch soon.");
     setEmail('');
   };
@@ -662,6 +677,7 @@ function WebLoginScreen() {
           {/* Left arrow */}
           {activeIndex > 0 && (
             <button
+              aria-label="Previous console"
               onClick={() => setActiveIndex(i => Math.max(0, i - 1))}
               style={{
                 position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', zIndex: 50,
@@ -680,6 +696,7 @@ function WebLoginScreen() {
           {/* Right arrow */}
           {activeIndex < CONSOLES.length - 1 && (
             <button
+              aria-label="Next console"
               onClick={() => setActiveIndex(i => Math.min(CONSOLES.length - 1, i + 1))}
               style={{
                 position: 'absolute', right: 18, top: '50%', transform: 'translateY(-50%)', zIndex: 50,
@@ -766,13 +783,14 @@ function NativeLoginScreen() {
       if (authError) { setError(authError.message); return; }
       if (data.session) {
         const suiteId = data.session.user?.user_metadata?.suite_id;
-        if (suiteId) {
-          const { data: profile } = await supabase.from('suite_profiles')
-            .select('onboarding_completed_at, owner_name, business_name, industry')
-            .eq('suite_id', suiteId).single();
-          if (!profile?.onboarding_completed_at || !profile?.owner_name || !profile?.business_name || !profile?.industry) {
-            router.replace('/(auth)/onboarding' as any); return;
-          }
+        if (!suiteId) {
+          router.replace('/(auth)/onboarding' as any); return;
+        }
+        const { data: profile, error: profileError } = await supabase.from('suite_profiles')
+          .select('onboarding_completed_at, owner_name, business_name, industry')
+          .eq('suite_id', suiteId).maybeSingle();
+        if (profileError || !profile?.onboarding_completed_at || !profile?.owner_name || !profile?.business_name || !profile?.industry) {
+          router.replace('/(auth)/onboarding' as any); return;
         }
         router.replace('/(tabs)');
       }
