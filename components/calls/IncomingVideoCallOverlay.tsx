@@ -314,7 +314,7 @@ function IncomingVideoCallOverlayInner(): React.ReactElement | null {
         params: {
           roomName: result.roomName,
           token: result.token,
-          serverUrl: result.serverUrl,
+          topic: result.topic,
         },
       });
     } catch (err) {

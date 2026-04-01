@@ -502,7 +502,7 @@ function ConferenceLobby() {
           params: {
             roomName: result.roomName,
             token: result.token,
-            serverUrl: result.serverUrl,
+            topic: result.topic,
           },
         });
         return;
@@ -796,7 +796,7 @@ function ConferenceLobby() {
                               params: {
                                 roomName: result.roomName,
                                 token: result.token,
-                                serverUrl: result.serverUrl,
+                                topic: result.topic,
                               },
                             });
                           } catch {

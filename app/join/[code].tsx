@@ -54,7 +54,7 @@ type PageState =
   | 'invalid'
   | 'error';
 
-/** Lightweight replacement for LiveKit's LocalUserChoices */
+/** Guest local state for name, audio, and video preferences */
 interface GuestUserChoices {
   username: string;
   audioEnabled: boolean;

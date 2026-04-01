@@ -372,6 +372,7 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
     res.json({
       token,
       topic: entry.room_name,
+      roomName: entry.room_name,
       guestName,
     });
   } catch (error: unknown) {

@@ -21,7 +21,7 @@ export interface VideoCallInvitation {
   inviterBusinessName: string | null;
   inviterRole: string | null;
   roomName: string;
-  serverUrl: string;
+  zoomSessionId: string;
   expiresAt: string;
   status: 'pending' | 'accepted' | 'declined' | 'expired';
 }
@@ -121,7 +121,7 @@ export async function acceptVideoCall(
   invitationId: string,
   accessToken: string,
   suiteId?: string,
-): Promise<{ token: string; serverUrl: string; roomName: string }> {
+): Promise<{ token: string; topic: string; roomName: string }> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${accessToken}`,
@@ -141,7 +141,7 @@ export async function acceptVideoCall(
 
   const data = await res.json();
   dismissIncomingVideoCall();
-  return { token: data.token, serverUrl: data.serverUrl, roomName: data.roomName };
+  return { token: data.token, topic: data.topic || data.roomName, roomName: data.roomName };
 }
 
 /**
