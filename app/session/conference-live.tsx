@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import ReactDOM from 'react-dom';
 import { View, Text, StyleSheet, Pressable, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -27,53 +26,69 @@ import { readSSEStream, extractResponseText } from '@/lib/sseStream';
 type ZoomClient = any;
 
 const ZOOM_SDK_CDN = 'https://source.zoom.us/5.1.4/zoom-meeting-embedded-5.1.4.min.js';
+const REACT_18_CDN = 'https://unpkg.com/react@18.2.0/umd/react.production.min.js';
+const REACT_DOM_18_CDN = 'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js';
 let _zoomSdkPromise: Promise<any> | null = null;
 
-/** Load Zoom Meeting SDK from CDN. Cached — safe to call multiple times. */
+/** Load a script from URL and return a promise. */
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = false; // Preserve load order
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error(`Failed to load: ${src}`));
+    document.head.appendChild(s);
+  });
+}
+
+/**
+ * Load Zoom Meeting SDK from CDN.
+ *
+ * The SDK was built with React 18. Our app runs React 19 (Expo SDK 54).
+ * React 19 removed/restructured internals like ReactCurrentOwner, causing
+ * "Cannot read properties of undefined" when the SDK initializes.
+ *
+ * Solution: Load React 18 + ReactDOM 18 from CDN for the SDK, then
+ * restore our React 19 after the SDK has initialized.
+ */
 function loadZoomMeetingSdk(): Promise<any> {
   if (_zoomSdkPromise) return _zoomSdkPromise;
 
-  // The SDK sets window.ZoomMtgEmbedded via webpack n.n() getter pattern.
-  // createClient may be on the object directly OR on .default (ESM interop).
-  const getClient = () => {
-    const sdk = (window as any).ZoomMtgEmbedded;
-    if (!sdk) return null;
-    if (typeof sdk.createClient === 'function') return sdk;
-    if (sdk.default && typeof sdk.default.createClient === 'function') return sdk.default;
-    return null;
-  };
+  if (typeof window !== 'undefined' && (window as any).ZoomMtgEmbedded?.createClient) {
+    return Promise.resolve((window as any).ZoomMtgEmbedded);
+  }
 
-  const cached = typeof window !== 'undefined' ? getClient() : null;
-  if (cached) return Promise.resolve(cached);
+  _zoomSdkPromise = (async () => {
+    if (typeof document === 'undefined') throw new Error('Not in browser');
 
-  _zoomSdkPromise = new Promise((resolve, reject) => {
-    if (typeof document === 'undefined') return reject(new Error('Not in browser'));
+    // Save our React 19 references
+    const ourReact = (window as any).React;
+    const ourReactDOM = (window as any).ReactDOM;
 
-    // The Zoom Meeting SDK requires React and ReactDOM on the global window.
-    // In our Expo/Metro bundle, they're module-scoped — not on window.
-    // Use the top-level imports (lines 1-2) which are the real objects.
-    // require('react') in Metro may return an ESM wrapper missing ReactCurrentOwner.
-    if (!(window as any).React) (window as any).React = React;
-    if (!(window as any).ReactDOM) (window as any).ReactDOM = ReactDOM;
+    try {
+      // Load React 18 from CDN (SDK requires it)
+      await loadScript(REACT_18_CDN);
+      await loadScript(REACT_DOM_18_CDN);
 
-    const script = document.createElement('script');
-    script.src = ZOOM_SDK_CDN;
-    script.async = true;
-    script.onload = () => {
-      const sdk = getClient();
-      if (sdk) {
-        resolve(sdk);
-      } else {
-        // Debug: log what ZoomMtgEmbedded actually is
-        const raw = (window as any).ZoomMtgEmbedded;
-        const keys = raw ? Object.keys(raw).slice(0, 10).join(', ') : 'undefined';
-        const type = typeof raw;
-        reject(new Error(`Zoom SDK loaded but createClient not found. Type: ${type}, keys: [${keys}]`));
+      // Now load the Zoom SDK — it will use the React 18 globals
+      await loadScript(ZOOM_SDK_CDN);
+
+      const sdk = (window as any).ZoomMtgEmbedded;
+      if (!sdk?.createClient) {
+        const type = typeof sdk;
+        const keys = sdk ? Object.keys(sdk).slice(0, 10).join(', ') : 'undefined';
+        throw new Error(`Zoom SDK loaded but createClient not found. Type: ${type}, keys: [${keys}]`);
       }
-    };
-    script.onerror = () => reject(new Error('Failed to load Zoom Meeting SDK from CDN'));
-    document.head.appendChild(script);
-  });
+
+      return sdk;
+    } finally {
+      // Restore our React 19 for the rest of the app
+      // The Zoom SDK keeps its own React 18 reference internally
+      if (ourReact) (window as any).React = ourReact;
+      if (ourReactDOM) (window as any).ReactDOM = ourReactDOM;
+    }
+  })();
 
   return _zoomSdkPromise;
 }
