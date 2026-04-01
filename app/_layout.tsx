@@ -264,16 +264,15 @@ function useAuthGate() {
       return;
     }
 
-    if (!suiteId) {
+    // If suiteId is null, the user might need onboarding OR suiteId might
+    // still be loading from user_metadata. Don't assume — check the API.
+    // Only skip the API check and immediately redirect to onboarding if
+    // we have NO session token to check with.
+    if (!session.access_token) {
       setOnboardingChecked(true);
       setOnboardingComplete(false);
       return;
     }
-
-    // DON'T set onboardingChecked=false here — that causes a flash where the
-    // navigation effect sees checked=false and doesn't redirect, allowing the
-    // onboarding page to briefly render before the API confirms completion.
-    // Instead, keep the previous state until the fetch resolves.
 
     const token = session.access_token;
     const controller = new AbortController();
@@ -347,12 +346,9 @@ function useAuthGate() {
       navigate('/(auth)/login');
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
       navigate('/(auth)/onboarding');
-    } else if (session && onboardingChecked && onboardingComplete && inAuthGroup && !onLoginPage) {
-      // Auto-redirect from auth group to tabs — but NOT from the login page.
-      // The login page clears stale sessions on mount and handles its own
-      // post-login navigation via router.replace('/(tabs)') after signIn.
-      // Always sign out stale sessions when entering login — prevents auto-login glitch.
-      // Reset body/html styles that the landing page may have set
+    } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
+      // Auto-redirect from auth group (login, onboarding) to tabs.
+      // Login page no longer navigates itself — auth gate handles all redirects.
       if (Platform.OS === 'web' && typeof document !== 'undefined') {
         document.body.style.overflow = 'hidden';
         document.body.style.height = '100%';

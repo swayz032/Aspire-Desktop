@@ -289,26 +289,17 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
     if (!email.trim() || !password.trim()) { setError('Please enter both email and password.'); return; }
     setLoading(true); setError(null);
     try {
-      const { data, error: ae } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { error: ae } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (ae) { setError(ae.message); return; }
-      if (data.session) {
-        const suiteId = data.session.user?.user_metadata?.suite_id;
-        if (!suiteId) {
-          // No suite — user needs onboarding
-          router.replace('/(auth)/onboarding' as any); return;
-        }
-        // Check onboarding completion — use .maybeSingle() to avoid throw on missing row
-        const { data: profile, error: profileError } = await supabase
-          .from('suite_profiles')
-          .select('onboarding_completed_at, owner_name, business_name, industry')
-          .eq('suite_id', suiteId).maybeSingle();
-        if (profileError || !profile?.onboarding_completed_at || !profile?.owner_name || !profile?.business_name || !profile?.industry) {
-          router.replace('/(auth)/onboarding' as any); return;
-        }
-        router.replace('/(tabs)');
-      }
+      // Sign-in succeeded. The session change triggers _layout.tsx useAuthGate
+      // which handles onboarding check + redirect to /(tabs) or /(auth)/onboarding.
+      // Do NOT navigate here — it races with the auth gate and causes double-redirect.
+      // Just keep loading=true and let the auth gate take over.
     } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
-    } finally { setLoading(false); }
+      setLoading(false);
+    }
+    // NOTE: No finally { setLoading(false) } — we want the button to stay
+    // in loading state until the auth gate redirects away from this page.
   };
 
   const handleSignUp = async () => {
@@ -779,23 +770,12 @@ function NativeLoginScreen() {
     if (!email.trim() || !password.trim()) { setError('Please enter both email and password.'); return; }
     setLoading(true); setError(null);
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (authError) { setError(authError.message); return; }
-      if (data.session) {
-        const suiteId = data.session.user?.user_metadata?.suite_id;
-        if (!suiteId) {
-          router.replace('/(auth)/onboarding' as any); return;
-        }
-        const { data: profile, error: profileError } = await supabase.from('suite_profiles')
-          .select('onboarding_completed_at, owner_name, business_name, industry')
-          .eq('suite_id', suiteId).maybeSingle();
-        if (profileError || !profile?.onboarding_completed_at || !profile?.owner_name || !profile?.business_name || !profile?.industry) {
-          router.replace('/(auth)/onboarding' as any); return;
-        }
-        router.replace('/(tabs)');
-      }
+      const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (authError) { setError(authError.message); setLoading(false); return; }
+      // Auth gate in _layout.tsx handles redirect after session change
     } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
-    } finally { setLoading(false); }
+      setLoading(false);
+    }
   };
 
   const handleSignUp = async () => {
