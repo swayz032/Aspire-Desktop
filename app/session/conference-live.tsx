@@ -331,8 +331,18 @@ function ConferenceLive() {
           language: 'en-US',
           patchJsMedia: true,
           leaveOnPageUnload: true,
+
+          // ── Video Quality ──────────────────────────────────────────
+          // 25 simultaneous video tiles in gallery (Zoom SDK max)
           maximumVideosInGalleryView: 25,
+
+          // ── Virtual Background ─────────────────────────────────────
+          // Enable virtual background support (blur, custom images)
+          enforceVirtualBackground: false,
+
+          // ── UI Customization ───────────────────────────────────────
           customize: {
+            // Video panel: resizable, 1080p default, gallery view
             video: {
               isResizable: true,
               viewSizes: {
@@ -340,10 +350,48 @@ function ConferenceLive() {
                   width: Math.min(viewWidth, 1920),
                   height: Math.min(viewHeight, 1080),
                 },
+                ribbon: {
+                  width: Math.min(viewWidth, 1920),
+                  height: 180,
+                },
               },
               defaultViewType: 'gallery',
+              popper: {
+                disableDraggable: true,
+              },
             },
+
+            // Screen sharing options
+            sharing: {
+              options: {
+                hideShareAudioOption: false,
+              },
+            },
+
+            // Meeting info bar
             meetingInfo: ['topic', 'host', 'mn', 'participant', 'dc', 'enctype'],
+
+            // Chat panel position (right side, non-draggable for consistent UX)
+            chat: {
+              popper: {
+                placement: 'right',
+                disableDraggable: true,
+              },
+            },
+
+            // Participants panel position
+            participants: {
+              popper: {
+                placement: 'right',
+              },
+            },
+
+            // Settings panel position
+            setting: {
+              popper: {
+                placement: 'bottom-end',
+              },
+            },
           },
         });
         if (controller.signal.aborted) return;
@@ -368,6 +416,36 @@ function ConferenceLive() {
         setZoomStatus('joined');
         trackInteraction('session_start', 'conference-live', { agent: 'nora', roomName });
 
+        // 5. Event listeners — meeting end, connection, participants
+        client.on('connection-change', (payload: any) => {
+          if (payload?.state === 'Closed' || payload?.state === 'Fail') {
+            showToast('Meeting has ended.', 'info');
+            setTimeout(() => router.replace('/(tabs)'), 2000);
+          }
+        });
+
+        client.on('user-added', (user: any) => {
+          if (user?.displayName) {
+            showToast(`${user.displayName} joined`, 'info');
+          }
+        });
+
+        client.on('user-removed', (user: any) => {
+          if (user?.displayName) {
+            showToast(`${user.displayName} left`, 'info');
+          }
+        });
+
+        client.on('active-speaker', (speakers: any) => {
+          // Zoom handles speaker highlight in its own UI
+        });
+
+        client.on('network-quality-change', (payload: any) => {
+          if (payload?.level !== undefined && payload.level <= 1) {
+            showToast('Poor network connection detected', 'error');
+          }
+        });
+
       } catch (err: unknown) {
         if (controller.signal.aborted) return;
         const message = err instanceof Error ? err.message : 'Conference service unavailable';
@@ -379,6 +457,14 @@ function ConferenceLive() {
     return () => {
       controller.abort();
       if (client) {
+        // Remove event listeners before leaving
+        try {
+          client.off('connection-change');
+          client.off('user-added');
+          client.off('user-removed');
+          client.off('active-speaker');
+          client.off('network-quality-change');
+        } catch {}
         client.leaveMeeting().catch(() => {});
       }
       zoomClientRef.current = null;
@@ -546,10 +632,14 @@ function ConferenceLive() {
             ref={(el) => { zoomContainerRef.current = el; }}
             id="meetingSDKElement"
             style={{
-              width: '100%',
-              height: '100%',
-              position: 'relative',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              overflow: 'hidden',
               display: zoomStatus === 'error' ? 'none' : 'block',
+              background: '#0a0a0c',
             }}
           />
         )}
