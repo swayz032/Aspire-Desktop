@@ -279,13 +279,21 @@ router.post('/v1/tools/draft', async (req: Request, res: Response) => {
       const durationMinutes = draftParams.duration_minutes || 30;
       const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
 
+      // Map draft_type to valid event_type (DB constraint: meeting, task, reminder, call, deadline, other)
+      const eventTypeMap: Record<string, string> = {
+        meeting: 'meeting', task: 'task', reminder: 'reminder', call: 'call',
+        deadline: 'deadline', calendar: 'meeting', event: 'meeting',
+        follow_up: 'reminder', follow_up_call: 'call',
+      };
+      const eventType = eventTypeMap[draft_type] || 'other';
+
       const { data: event, error: insertErr } = await supabase
         .from('calendar_events')
         .insert({
           suite_id,
           title,
           description,
-          event_type: draft_type || 'event',
+          event_type: eventType,
           start_time: startTime.toISOString(),
           end_time: endTime.toISOString(),
           duration_minutes: durationMinutes,
