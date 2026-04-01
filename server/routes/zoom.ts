@@ -41,6 +41,7 @@ function resolveOrchestratorUrl(): string | null {
 
 /**
  * Generate a Zoom Video SDK JWT for a given topic and participant.
+ * Used by the guest join page (Video SDK sessions).
  * role_type: 1 = host, 0 = attendee
  */
 function generateZoomJwt(
@@ -61,6 +62,31 @@ function generateZoomJwt(
       iat,
       exp,
       user_identity: userIdentity,
+    },
+    ZOOM_SDK_SECRET,
+  );
+}
+
+/**
+ * Generate a Zoom Meeting SDK signature for embedded component view.
+ * Used by the internal conference page (Meeting SDK embedded UI).
+ * role: 0 = attendee, 1 = host
+ */
+function generateMeetingSdkSignature(
+  meetingNumber: string,
+  role: 0 | 1,
+): string {
+  const iat = Math.floor(Date.now() / 1000);
+  const exp = iat + 7200;
+
+  return jwt.sign(
+    {
+      sdkKey: ZOOM_SDK_KEY,
+      mn: meetingNumber,
+      role,
+      iat,
+      exp,
+      tokenExp: exp,
     },
     ZOOM_SDK_SECRET,
   );
@@ -101,12 +127,23 @@ router.post('/api/zoom/token', async (req: Request, res: Response) => {
         .json({ error: 'Conference service not configured' });
     }
 
-    // Zoom Video SDK sessions are topic-based — created on-demand when first participant joins.
-    // No server-side room creation needed (unlike LiveKit).
-    const participantIdentity = `${(req as any).authenticatedUserId || participantName}-${suiteId || 'default'}`;
-    const token = generateZoomJwt(roomName, participantIdentity, 1, 7200);
+    // Generate Meeting SDK signature for embedded component view.
+    // The roomName is used as the meeting number identifier.
+    // For production: create a real Zoom meeting via API and use its meeting number.
+    const meetingNumber = roomName;
+    const signature = generateMeetingSdkSignature(meetingNumber, 1);
 
-    res.json({ token, topic: roomName });
+    // Also generate a Video SDK JWT for fallback/guest usage
+    const participantIdentity = `${(req as any).authenticatedUserId || participantName}-${suiteId || 'default'}`;
+    const videoSdkToken = generateZoomJwt(roomName, participantIdentity, 1, 7200);
+
+    res.json({
+      signature,
+      sdkKey: ZOOM_SDK_KEY,
+      meetingNumber,
+      token: videoSdkToken,
+      topic: roomName,
+    });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
     logger.error('Zoom token error', { error: msg });
