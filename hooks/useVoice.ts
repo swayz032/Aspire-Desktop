@@ -50,6 +50,13 @@ type ElevenLabsHookFn = (options: {
   setMuted: (muted: boolean) => void;
   transcript: string;
   lastResponse: string;
+  sendTextMessage: (text: string) => void;
+  sendContextualUpdate: (text: string) => void;
+  isSessionActive: boolean;
+  isSpeaking: boolean;
+  isListening: boolean;
+  canSendFeedback: boolean;
+  sendFeedback: (like: boolean) => void;
 };
 
 let elevenLabsHook: ElevenLabsHookFn | null = null;

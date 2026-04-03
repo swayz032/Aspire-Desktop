@@ -1,13 +1,18 @@
 /**
- * useElevenLabsAgent — ElevenLabs Conversational AI Hook
+ * useElevenLabsAgent — ElevenLabs Conversational AI Hook (SDK v1.0)
  *
- * Thin wrapper around `useConversation` from @elevenlabs/react that provides
- * a compatible interface with the existing `useAgentVoice` hook for easy migration.
+ * Wraps the ElevenLabs React SDK v1.0 `useConversation` hook with Aspire's
+ * voice interface. Requires `ElevenLabsAgentProvider` wrapper in the component tree.
+ *
+ * v1.0 features used:
+ * - ConversationProvider with controlled mute state
+ * - useConversation for session management
+ * - sendMultimodalMessage for rich content
+ * - sendContextualUpdate for background context injection
+ * - connectionDelay for mobile audio mode settling
+ * - useWakeLock for preventing device sleep
  *
  * Flow: Mic → ElevenLabs Agent (managed session) → Speaker
- * The ElevenLabs agent handles STT, LLM routing, and TTS internally.
- *
- * Client tools allow the agent to trigger UI actions (navigation, modals, toasts).
  *
  * Law #1: The agent's LLM is configured server-side; client is a transport layer.
  * Law #3: Fail closed — missing signed URL or config errors set status to 'error'.
@@ -15,9 +20,12 @@
  * Law #9: API key stays server-side — client uses signed URLs only.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { useConversation } from '@elevenlabs/react';
-import type { Status as ElevenLabsStatus } from '@elevenlabs/react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import {
+  ConversationProvider,
+  useConversation,
+  type ConversationStatus,
+} from '@elevenlabs/react';
 import { devLog, devWarn, devError } from '@/lib/devLog';
 import { Sentry } from '@/lib/sentry';
 import { reportProviderError } from '@/lib/providerErrorReporter';
@@ -28,15 +36,10 @@ import { getTimeOfDay } from '@/lib/elevenlabs-agents';
 export type VoiceStatus = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
 
 export interface UseElevenLabsAgentOptions {
-  /** Which Aspire agent to connect to. */
   agent: AgentName;
-  /** Suite ID for tenant isolation (Law #6). */
   suiteId?: string;
-  /** Supabase user ID — passed to ElevenLabs as conversation userId. */
   userId?: string;
-  /** JWT access token for auth (Law #3). */
   accessToken?: string;
-  /** User profile for personalized greetings via dynamic variables. */
   userProfile?: {
     ownerName?: string;
     businessName?: string;
@@ -44,58 +47,50 @@ export interface UseElevenLabsAgentOptions {
     lastName?: string;
     industry?: string;
   };
-  /** Called when user speech is transcribed. */
   onTranscript?: (text: string) => void;
-  /** Called when the agent responds with text. */
   onResponse?: (text: string) => void;
-  /** Called when voice status changes. */
   onStatusChange?: (status: VoiceStatus) => void;
-  /** Called on errors. */
   onError?: (error: Error) => void;
-  /** Called when the agent triggers show_draft client tool. */
   onShowDraft?: (draftId: string, type: string, summary: string) => void;
-  /** Called when the agent triggers show_receipt client tool. */
   onShowReceipt?: (receiptId: string) => void;
-  /** Called when the agent triggers navigate client tool. */
   onNavigate?: (path: string) => void;
-  /** Called when the agent triggers show_notification client tool. */
   onShowNotification?: (message: string, type: 'success' | 'warning' | 'error') => void;
 }
 
 export interface UseElevenLabsAgentReturn {
-  /** Current voice pipeline status, mapped from ElevenLabs SDK status. */
   status: VoiceStatus;
-  /** Start a new agent conversation session. */
   startSession: () => Promise<void>;
-  /** End the current session. */
   endSession: () => Promise<void>;
-  /** Whether the microphone is muted. */
   isMuted: boolean;
-  /** Mute or unmute the microphone. */
   setMuted: (muted: boolean) => void;
-  /** Last transcribed user speech. */
   transcript: string;
-  /** Last agent response text. */
   lastResponse: string;
-  /** Send a text message to the agent (works in voice or text mode). */
   sendTextMessage: (text: string) => void;
-  /** Whether the agent session is active (connected). */
+  /** v1.0: Send contextual update to agent (background info, not shown to user) */
+  sendContextualUpdate: (text: string) => void;
   isSessionActive: boolean;
+  /** v1.0: Whether the agent is currently speaking */
+  isSpeaking: boolean;
+  /** v1.0: Whether the agent is currently listening */
+  isListening: boolean;
+  /** v1.0: Send feedback on the conversation */
+  canSendFeedback: boolean;
+  sendFeedback: (like: boolean) => void;
 }
 
 /**
- * Maps ElevenLabs SDK status to our VoiceStatus.
- * ElevenLabs uses: 'disconnected' | 'connecting' | 'connected' | 'disconnecting'
+ * Maps ElevenLabs SDK v1.0 status to our VoiceStatus.
  */
-function mapStatus(elStatus: ElevenLabsStatus): VoiceStatus {
+function mapStatus(elStatus: ConversationStatus, mode?: 'speaking' | 'listening'): VoiceStatus {
   switch (elStatus) {
     case 'disconnected':
-    case 'disconnecting':
       return 'idle';
     case 'connecting':
       return 'thinking';
     case 'connected':
-      return 'listening'; // Initial state, refined by onModeChange
+      return mode === 'speaking' ? 'speaking' : 'listening';
+    case 'error':
+      return 'error';
     default:
       return 'idle';
   }
@@ -103,16 +98,13 @@ function mapStatus(elStatus: ElevenLabsStatus): VoiceStatus {
 
 /**
  * Fetches a signed URL from the server for a secure agent session.
- * The server handles the ElevenLabs API key (Law #9: no secrets on client).
  */
 async function fetchSignedUrl(
   agent: AgentName,
   accessToken?: string,
 ): Promise<{ signed_url: string; dynamic_variables?: Record<string, string | number | boolean> }> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
-  }
+  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
   const resp = await fetch('/api/elevenlabs/agent-session', {
     method: 'POST',
@@ -126,11 +118,36 @@ async function fetchSignedUrl(
   }
 
   const data = await resp.json();
-  if (!data.signed_url) {
-    throw new Error('Server returned no signed_url');
-  }
+  if (!data.signed_url) throw new Error('Server returned no signed_url');
   return data;
 }
+
+// ── Provider Component ────────────────────────────────────────────────────
+
+/**
+ * ElevenLabsAgentProvider — wraps children with ConversationProvider.
+ * Must be placed in the component tree above any useElevenLabsAgent consumer.
+ *
+ * v1.0 requirement: useConversation needs ConversationProvider ancestor.
+ */
+export function ElevenLabsAgentProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <ConversationProvider
+      // Allow mic audio mode to settle before connecting
+      connectionDelay={{
+        android: 3000,
+        ios: 500,
+        default: 200,
+      }}
+      // Prevent device sleep during voice sessions
+      useWakeLock={true}
+    >
+      {children}
+    </ConversationProvider>
+  );
+}
+
+// ── Hook ──────────────────────────────────────────────────────────────────
 
 export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseElevenLabsAgentReturn {
   const {
@@ -152,9 +169,8 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const [transcript, setTranscript] = useState('');
   const [lastResponse, setLastResponse] = useState('');
-  const [isMuted, setIsMutedState] = useState(false);
 
-  // Refs to avoid stale closures in callbacks
+  // Refs to avoid stale closures
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
   const onResponseRef = useRef(onResponse);
@@ -174,7 +190,6 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
 
-  // Track whether we initiated a session to avoid double-start
   const sessionActiveRef = useRef(false);
 
   const updateStatus = useCallback((newStatus: VoiceStatus) => {
@@ -187,58 +202,40 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
 
   const handleError = useCallback((error: Error) => {
     devError(`[ElevenLabsAgent] Error for agent "${agent}":`, error.message);
-    reportProviderError({
-      provider: 'elevenlabs',
-      action: 'agent_session',
-      error,
-      component: 'useElevenLabsAgent',
-    });
+    reportProviderError({ provider: 'elevenlabs', action: 'agent_session', error, component: 'useElevenLabsAgent' });
     Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs agent error', level: 'error', data: { agent, error: error.message } });
-    Sentry.captureException(error, {
-      tags: { voice_agent: agent, provider: 'elevenlabs', voice_code: 'AGENT_SESSION_ERROR' },
-    });
+    Sentry.captureException(error, { tags: { voice_agent: agent, provider: 'elevenlabs' } });
     updateStatus('error');
     onErrorRef.current?.(error);
   }, [agent, updateStatus]);
 
-  // Client tools that the agent can invoke to trigger UI actions.
-  // Each tool calls the corresponding callback ref so consumers can
-  // handle navigation, modals, toasts, etc. without coupling this hook
-  // to expo-router or a specific toast library.
+  // Client tools
   const clientTools = useRef({
-    show_draft: async (params: { draft_id: string; type: string; summary: string }): Promise<string> => {
-      devLog(`[ElevenLabsAgent] show_draft called:`, params);
+    show_draft: async (params: { draft_id: string; type: string; summary: string }) => {
+      devLog(`[ElevenLabsAgent] show_draft:`, params);
       onShowDraftRef.current?.(params.draft_id, params.type, params.summary);
       return JSON.stringify({ shown: true, draft_id: params.draft_id });
     },
-    show_receipt: async (params: { receipt_id: string }): Promise<string> => {
-      devLog(`[ElevenLabsAgent] show_receipt called:`, params);
+    show_receipt: async (params: { receipt_id: string }) => {
+      devLog(`[ElevenLabsAgent] show_receipt:`, params);
       onShowReceiptRef.current?.(params.receipt_id);
       return JSON.stringify({ shown: true, receipt_id: params.receipt_id });
     },
-    navigate: async (params: { path: string }): Promise<string> => {
-      devLog(`[ElevenLabsAgent] navigate called:`, params);
+    navigate: async (params: { path: string }) => {
+      devLog(`[ElevenLabsAgent] navigate:`, params);
       onNavigateRef.current?.(params.path);
       return JSON.stringify({ navigated: true, path: params.path });
     },
-    show_notification: async (params: { message: string; type: 'success' | 'warning' | 'error' }): Promise<string> => {
-      devLog(`[ElevenLabsAgent] show_notification called:`, params);
+    show_notification: async (params: { message: string; type: 'success' | 'warning' | 'error' }) => {
+      devLog(`[ElevenLabsAgent] show_notification:`, params);
       onShowNotificationRef.current?.(params.message, params.type);
       return JSON.stringify({ shown: true });
     },
   }).current;
 
+  // v1.0 useConversation — must be inside ConversationProvider
   const conversation = useConversation({
     clientTools,
-    micMuted: isMuted,
-    // Prevent device from sleeping during voice session
-    useWakeLock: true,
-    // Allow mic audio mode to settle before connecting (prevents initial audio glitch)
-    connectionDelay: {
-      android: 3000,  // Android needs more time for audio mode switch
-      ios: 500,       // iOS needs a brief moment
-      default: 200,   // Desktop browsers — small buffer
-    },
     onConnect: ({ conversationId }) => {
       devLog(`[ElevenLabsAgent] Connected: ${conversationId} (agent: ${agent})`);
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session connected', level: 'info', data: { agent, conversationId } });
@@ -263,16 +260,13 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       } else if (payload.role === 'agent') {
         setLastResponse(payload.message);
         onResponseRef.current?.(payload.message);
-        // Ensure status is speaking when agent message arrives
-        updateStatus('speaking');
       }
     },
     onStatusChange: ({ status: sdkStatus }) => {
-      const mapped = mapStatus(sdkStatus);
+      const mapped = mapStatus(sdkStatus as ConversationStatus, conversation.mode);
       updateStatus(mapped);
     },
     onModeChange: ({ mode }) => {
-      // Mode is 'speaking' | 'listening' — refine the connected status
       if (conversation.status === 'connected') {
         updateStatus(mode === 'speaking' ? 'speaking' : 'listening');
       }
@@ -290,14 +284,8 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       updateStatus('thinking');
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session starting', level: 'info', data: { agent } });
 
-      // Fetch signed URL from server (Law #9: API key stays server-side)
-      const { signed_url, dynamic_variables: serverVars } = await fetchSignedUrl(
-        agent,
-        accessTokenRef.current,
-      );
+      const { signed_url, dynamic_variables: serverVars } = await fetchSignedUrl(agent, accessTokenRef.current);
 
-      // Build dynamic variables for session personalization
-      // Extract last name from ownerName if lastName not provided separately
       const ownerName = userProfile?.ownerName || '';
       const lastName = userProfile?.lastName || ownerName.trim().split(' ').pop() || '';
 
@@ -314,35 +302,20 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         ...serverVars,
       };
 
-      await conversation.startSession({
+      conversation.startSession({
         signedUrl: signed_url,
         dynamicVariables,
         ...(userId ? { userId } : {}),
         overrides: {
           tts: {
-            modelId: "eleven_v3",
-            // Latency 2 = balanced (0=none, 1=low, 2=balanced, 3=high, 4=max)
-            // 4 was causing audio artifacts and crackling
-            optimizeStreamingLatency: 2,
-            // Remove outputFormat — let SDK use native format for the connection type
-            // WebRTC mode is hardcoded to pcm_48000; forcing pcm_22050 caused resampling glitches
             stability: 0.6,
-            similarity_boost: 0.8,
+            similarityBoost: 0.8,
           },
           agent: {
-            // Turn detection: allow natural speech pauses
-            // 0.3 was too aggressive — cut off mid-sentence
-            turn_threshold: 0.6,
-            // Silence detection: longer tolerance for thinking pauses
-            // 0.4 was too aggressive — treated brief pauses as end of speech
-            silence_threshold: 0.8,
-            // Mic sensitivity: higher = picks up more, less missed speech
-            // 0.3 was too low — missed quiet words causing garbled responses
-            sensitivity: 0.6,
             prompt: {
-              system: "You are Ava. Be extremely concise, natural, and business-efficient. 1 short sentence per response unless absolutely necessary. No filler."
-            }
-          }
+              prompt: "You are Ava. Be extremely concise, natural, and business-efficient. 1 short sentence per response unless absolutely necessary. No filler.",
+            },
+          },
         },
       });
 
@@ -357,7 +330,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   const endSession = useCallback(async () => {
     if (!sessionActiveRef.current) return;
     try {
-      await conversation.endSession();
+      conversation.endSession();
       sessionActiveRef.current = false;
       updateStatus('idle');
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session ended', level: 'info', data: { agent } });
@@ -370,23 +343,6 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     }
   }, [agent, conversation, updateStatus]);
 
-  const setMuted = useCallback((muted: boolean) => {
-    setIsMutedState(muted);
-    // The SDK picks up the new value via the controlled `micMuted` prop on useConversation
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (sessionActiveRef.current) {
-        conversation.endSession().catch(() => {
-          // Swallow cleanup errors
-        });
-        sessionActiveRef.current = false;
-      }
-    };
-  }, [conversation]);
-
   const sendTextMessage = useCallback((text: string) => {
     if (!sessionActiveRef.current) {
       devWarn('[ElevenLabsAgent] Cannot send text — no active session');
@@ -398,15 +354,36 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     conversation.sendUserMessage(trimmed);
   }, [agent, conversation]);
 
+  // v1.0: Send background context to agent (not shown to user)
+  const sendContextualUpdate = useCallback((text: string) => {
+    if (!sessionActiveRef.current) return;
+    conversation.sendContextualUpdate(text);
+  }, [conversation]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (sessionActiveRef.current) {
+        try { conversation.endSession(); } catch (_e) { /* swallow */ }
+        sessionActiveRef.current = false;
+      }
+    };
+  }, [conversation]);
+
   return {
     status: voiceStatus,
     startSession,
     endSession,
-    isMuted,
-    setMuted,
+    isMuted: conversation.isMuted,
+    setMuted: conversation.setMuted,
     transcript,
     lastResponse,
     sendTextMessage,
+    sendContextualUpdate,
     isSessionActive: sessionActiveRef.current,
+    isSpeaking: conversation.isSpeaking,
+    isListening: conversation.isListening,
+    canSendFeedback: conversation.canSendFeedback,
+    sendFeedback: conversation.sendFeedback,
   };
 }

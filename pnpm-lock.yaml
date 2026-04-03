@@ -25,11 +25,11 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.1.0)
       '@elevenlabs/client':
-        specifier: ^1.1.0
-        version: 1.1.0(@types/dom-mediacapture-record@1.0.22)
+        specifier: ^1.1.1
+        version: 1.1.1(@types/dom-mediacapture-record@1.0.22)
       '@elevenlabs/react':
-        specifier: ^0.14.0
-        version: 0.14.0(@types/dom-mediacapture-record@1.0.22)(react@19.1.0)
+        specifier: ^1.0.2
+        version: 1.0.2(@types/dom-mediacapture-record@1.0.22)(react@19.1.0)
       '@expo/cli':
         specifier: ^54.0.23
         version: 54.0.23(expo-router@6.0.23)(expo@54.0.33)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))
@@ -938,19 +938,13 @@ packages:
     resolution: {integrity: sha512-XQsZgjm2EcVUiZQf11UBJQfmZeEmOW8DpI1gsFeln6w0ae0ii4dMQEQ0kjl6DspdWX1aGY1/loyXnP0JS06e/A==}
     engines: {node: '>=0.8.0'}
 
-  '@elevenlabs/client@0.14.0':
-    resolution: {integrity: sha512-Iy+iHSDhYm4vxWiIjrmIsjwiesEkgB5MPRizluigL7GTb9tZwlcx2J53/WNYewplQvRhLiMmwqGoDn6qxy7JzQ==}
+  '@elevenlabs/client@1.1.1':
+    resolution: {integrity: sha512-CFCIDERaU2i6ucRzY7ZZP9Z6eF8xpj1mSAUVcAPg17KNryS0Ia/yQAAfY+KNYsBaUL7P0akLaM8XT2zXS+EnsA==}
 
-  '@elevenlabs/client@1.1.0':
-    resolution: {integrity: sha512-09txdIekGAyH5iMadtk/GdO0wzkgZ2SxMMVczchYFoU+RWLXGkgwM121ZaK0vAn+L9kKEB3Pv0Adj35wsSBtTw==}
-
-  '@elevenlabs/react@0.14.0':
-    resolution: {integrity: sha512-iGI6yyPgZF1/FBtQtvyCW5lhQvlIEQ5LrKQxwzT3qBcS4Ja0f+jVftKQGhilRtJLOKeli5t7Dv9g9dDGO2gAwg==}
+  '@elevenlabs/react@1.0.2':
+    resolution: {integrity: sha512-hw0yKkaxb8RQf1fkibn2HhTORczYXFLw1j03VFN1UWSTgdEb4yArH5ZfNcFWmcfRXjygYZBNnl4s/D+7zzHl9Q==}
     peerDependencies:
       react: '>=16.8.0'
-
-  '@elevenlabs/types@0.5.0':
-    resolution: {integrity: sha512-tTawfIkJdOmV1W74yOYFbCXOwz/5sYKtdxVoK8uf5tDdtpZUHerBC25Oc8i7shZQc6QvvIuyV2YtMh37PKYMBA==}
 
   '@elevenlabs/types@0.9.0':
     resolution: {integrity: sha512-LaTO48+R2dY6CdgGQbKUcpSPs+5BA9hbvwHg+27P6Rg4pDZA/rIBHyBVzEVmySZ7i7dGNXRcFlZp5vMAxqUHqw==}
@@ -9663,28 +9657,19 @@ snapshots:
     dependencies:
       '@types/hammerjs': 2.0.46
 
-  '@elevenlabs/client@0.14.0(@types/dom-mediacapture-record@1.0.22)':
-    dependencies:
-      '@elevenlabs/types': 0.5.0
-      livekit-client: 2.18.0(@types/dom-mediacapture-record@1.0.22)
-    transitivePeerDependencies:
-      - '@types/dom-mediacapture-record'
-
-  '@elevenlabs/client@1.1.0(@types/dom-mediacapture-record@1.0.22)':
+  '@elevenlabs/client@1.1.1(@types/dom-mediacapture-record@1.0.22)':
     dependencies:
       '@elevenlabs/types': 0.9.0
       livekit-client: 2.18.0(@types/dom-mediacapture-record@1.0.22)
     transitivePeerDependencies:
       - '@types/dom-mediacapture-record'
 
-  '@elevenlabs/react@0.14.0(@types/dom-mediacapture-record@1.0.22)(react@19.1.0)':
+  '@elevenlabs/react@1.0.2(@types/dom-mediacapture-record@1.0.22)(react@19.1.0)':
     dependencies:
-      '@elevenlabs/client': 0.14.0(@types/dom-mediacapture-record@1.0.22)
+      '@elevenlabs/client': 1.1.1(@types/dom-mediacapture-record@1.0.22)
       react: 19.1.0
     transitivePeerDependencies:
       - '@types/dom-mediacapture-record'
-
-  '@elevenlabs/types@0.5.0': {}
 
   '@elevenlabs/types@0.9.0': {}
 

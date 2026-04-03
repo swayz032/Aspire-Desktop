@@ -30,6 +30,7 @@ if (Platform.OS === 'web' && typeof console !== 'undefined') {
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
+import { ElevenLabsAgentProvider } from '@/hooks/useElevenLabsAgent';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 import { SessionTimeoutWarning } from '@/components/ui/SessionTimeoutWarning';
 import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
@@ -625,9 +626,11 @@ function RootLayout() {
           <SessionProvider>
             <AvaDockProvider>
               <MicStateProvider>
+                <ElevenLabsAgentProvider>
                 <CanvasDragDropProvider>
                   <AppNavigator />
                 </CanvasDragDropProvider>
+                </ElevenLabsAgentProvider>
               </MicStateProvider>
             </AvaDockProvider>
           </SessionProvider>
