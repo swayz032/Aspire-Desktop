@@ -49,6 +49,7 @@ import { ConferenceHeader } from '@/components/session/ConferenceHeader';
 import { ConferenceControlBar } from '@/components/session/ConferenceControlBar';
 import { NoraTile } from '@/components/session/NoraTile';
 import { ConferenceParticipantsPanel } from '@/components/session/ConferenceParticipantsPanel';
+import { ConferenceCaptions } from '@/components/session/ConferenceCaptions';
 
 // Hooks
 import { useConferenceTimer } from '@/hooks/useConferenceTimer';
@@ -134,7 +135,10 @@ function ConferenceContent({
   onLeave: () => void;
 }) {
   const participants = useZoomParticipants();
-  const { stream, client, isRecording, networkQuality, screenShareUserId } = useZoomContext();
+  const {
+    stream, client, isRecording, networkQuality, screenShareUserId,
+    chatMessages, sendChatMessage, transcriptEntries, isTranscribing, toggleTranscription,
+  } = useZoomContext();
   const activeSpeaker = useZoomActiveSpeaker();
   const { formatted: duration } = useConferenceTimer();
 
@@ -161,6 +165,7 @@ function ConferenceContent({
         v: controls.toggleCamera,
         s: controls.toggleScreenShare,
         r: controls.toggleRecording,
+        t: toggleTranscription,
         h: onToggleChat,
         p: onToggleParticipants,
         l: onToggleView,
@@ -275,6 +280,7 @@ function ConferenceContent({
 
       <View style={styles.gridContainer}>
         {renderGrid()}
+        <ConferenceCaptions entries={transcriptEntries} visible={isTranscribing} />
       </View>
 
       <ConferenceControlBar
@@ -282,6 +288,7 @@ function ConferenceContent({
         isCameraOff={controls.isCameraOff}
         isScreenSharing={controls.isScreenSharing}
         isRecording={controls.isRecording}
+        isTranscribing={isTranscribing}
         isChatOpen={chatVisible}
         isParticipantsOpen={participantsVisible}
         viewMode={viewMode}
@@ -290,6 +297,7 @@ function ConferenceContent({
         onToggleCamera={controls.toggleCamera}
         onToggleScreenShare={controls.toggleScreenShare}
         onToggleRecording={controls.toggleRecording}
+        onToggleTranscription={toggleTranscription}
         onToggleChat={onToggleChat}
         onToggleParticipants={onToggleParticipants}
         onToggleView={onToggleView}

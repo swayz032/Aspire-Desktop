@@ -12,6 +12,7 @@ interface ControlBarProps {
   isCameraOff: boolean;
   isScreenSharing: boolean;
   isRecording: boolean;
+  isTranscribing: boolean;
   isChatOpen: boolean;
   isParticipantsOpen: boolean;
   viewMode: 'gallery' | 'speaker';
@@ -20,6 +21,7 @@ interface ControlBarProps {
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
   onToggleRecording: () => void;
+  onToggleTranscription: () => void;
   onToggleChat: () => void;
   onToggleParticipants: () => void;
   onToggleView: () => void;
@@ -110,6 +112,12 @@ export function ConferenceControlBar(props: ControlBarProps) {
           label={props.isRecording ? 'Stop Rec' : 'Record'}
           isActive={props.isRecording}
           onPress={props.onToggleRecording}
+        />
+        <ControlButton
+          icon="text"
+          label={props.isTranscribing ? 'CC On' : 'CC'}
+          isActive={props.isTranscribing}
+          onPress={props.onToggleTranscription}
         />
       </View>
 

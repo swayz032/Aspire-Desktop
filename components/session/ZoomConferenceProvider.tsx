@@ -52,13 +52,41 @@ type ZoomClient = {
   on: (event: string, callback: (...args: unknown[]) => void) => void;
 };
 
+type MediaDevice = { deviceId: string; label: string };
+
 type ZoomMediaStream = {
+  // Audio
   startAudio: () => Promise<void>;
+  stopAudio: () => Promise<void>;
+  muteAudio: (userId?: number) => Promise<void>;
+  unmuteAudio: (userId?: number) => Promise<void>;
+  enableBackgroundNoiseSuppression?: (enable: boolean) => Promise<void>;
+  enableOriginalSound?: (enable: boolean) => Promise<void>;
+  getMicList: () => MediaDevice[];
+  getSpeakerList: () => MediaDevice[];
+  switchMicrophone: (deviceId: string) => Promise<void>;
+  switchSpeaker: (deviceId: string) => Promise<void>;
+  getActiveMicrophone: () => string;
+  getActiveSpeaker: () => string;
+  // Video
   startVideo: (options?: Record<string, unknown>) => Promise<void>;
   stopVideo: () => Promise<void>;
   renderVideo: (canvas: HTMLCanvasElement, userId: number, width: number, height: number, x: number, y: number, rotation: number) => void;
   stopRenderVideo: (canvas: HTMLCanvasElement, userId: number) => void;
-  enableBackgroundNoiseSuppression?: (enable: boolean) => Promise<void>;
+  getCameraList: () => MediaDevice[];
+  switchCamera: (deviceId: string) => Promise<void>;
+  enableHardwareAcceleration?: (enable: boolean) => Promise<void>;
+  isSupportHDVideo?: () => boolean;
+  getVideoMaxQuality?: () => number;
+  getMaxRenderableVideos?: () => number;
+  // Virtual background
+  updateVirtualBackgroundImage?: (imageUrl: string | undefined) => Promise<void>;
+  previewVirtualBackground?: (canvas: HTMLCanvasElement, imageUrl: string | undefined) => Promise<void>;
+  stopPreviewVirtualBackground?: () => Promise<void>;
+  // Screen share
+  startShareScreen: () => Promise<void>;
+  stopShareScreen: () => Promise<void>;
+  startShareView: (canvas: HTMLCanvasElement, userId: number) => Promise<void>;
 };
 
 export interface ZoomParticipant {
@@ -67,6 +95,21 @@ export interface ZoomParticipant {
   isVideoOn: boolean;
   isMuted: boolean;
   isLocal: boolean;
+}
+
+export interface ZoomChatMessage {
+  sender: { name: string; userId: number };
+  message: string;
+  timestamp: number;
+  receiver?: { name: string; userId: number };
+}
+
+export interface ZoomTranscriptEntry {
+  text: string;
+  speakerName: string;
+  speakerId: number;
+  timestamp: number;
+  language?: string;
 }
 
 export interface ZoomContextValue {
@@ -82,6 +125,16 @@ export interface ZoomContextValue {
   isRecording: boolean;
   networkQuality: { uplink: number; downlink: number };
   screenShareUserId: number | null;
+  /** Zoom SDK chat messages (Room tab) */
+  chatMessages: ZoomChatMessage[];
+  /** Send chat message to all or specific user */
+  sendChatMessage: (text: string, userId?: number) => Promise<void>;
+  /** Live transcription entries */
+  transcriptEntries: ZoomTranscriptEntry[];
+  /** Whether live transcription is active */
+  isTranscribing: boolean;
+  /** Start/stop live transcription */
+  toggleTranscription: () => Promise<void>;
 }
 
 const DEFAULT_CONTEXT: ZoomContextValue = {
@@ -95,6 +148,11 @@ const DEFAULT_CONTEXT: ZoomContextValue = {
   isRecording: false,
   networkQuality: { uplink: 5, downlink: 5 },
   screenShareUserId: null,
+  chatMessages: [],
+  sendChatMessage: async () => {},
+  transcriptEntries: [],
+  isTranscribing: false,
+  toggleTranscription: async () => {},
 };
 
 const ZoomContext = createContext<ZoomContextValue>(DEFAULT_CONTEXT);
@@ -149,6 +207,11 @@ function ZoomConferenceProviderWeb({
   const [isRecording, setIsRecording] = useState(false);
   const [networkQuality, setNetworkQuality] = useState({ uplink: 5, downlink: 5 });
   const [screenShareUserId, setScreenShareUserId] = useState<number | null>(null);
+  const [chatMessages, setChatMessages] = useState<ZoomChatMessage[]>([]);
+  const [transcriptEntries, setTranscriptEntries] = useState<ZoomTranscriptEntry[]>([]);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const chatClientRef = useRef<any>(null);
+  const transcriptionClientRef = useRef<any>(null);
 
   // Refs to avoid stale closures in event handlers
   const clientRef = useRef<ZoomClient | null>(null);
@@ -271,6 +334,49 @@ function ZoomConferenceProviderWeb({
             });
           }
         }
+
+        // Enable hardware acceleration for better video performance
+        try {
+          if (typeof mediaStream.enableHardwareAcceleration === 'function') {
+            await mediaStream.enableHardwareAcceleration(true);
+          }
+        } catch (_e) { /* non-critical */ }
+
+        // Initialize Zoom SDK Chat client
+        try {
+          const cc = (client as any).getChatClient?.();
+          if (cc) chatClientRef.current = cc;
+        } catch (_e) { /* non-critical */ }
+
+        // Initialize Live Transcription client
+        try {
+          const tc = (client as any).getLiveTranscriptionClient?.();
+          if (tc) transcriptionClientRef.current = tc;
+        } catch (_e) { /* non-critical */ }
+
+        // Listen for Zoom SDK chat messages
+        client.on('chat-on-message', (...args: unknown[]) => {
+          if (!mountedRef.current) return;
+          const payload = args[0] as ZoomChatMessage;
+          if (payload && payload.message) {
+            setChatMessages(prev => [...prev, payload]);
+          }
+        });
+
+        // Listen for live transcription events
+        client.on('caption-message', (...args: unknown[]) => {
+          if (!mountedRef.current) return;
+          const payload = args[0] as { text: string; id: string; done: boolean; displayName: string; userId: number; language: string; timestamp: number };
+          if (payload && payload.text && payload.done) {
+            setTranscriptEntries(prev => [...prev, {
+              text: payload.text,
+              speakerName: payload.displayName,
+              speakerId: payload.userId,
+              timestamp: payload.timestamp || Date.now(),
+              language: payload.language,
+            }]);
+          }
+        });
 
         // Build initial participants list (retry after 1s if empty — SDK may still be syncing)
         const buildParticipants = () => {
@@ -422,6 +528,38 @@ function ZoomConferenceProviderWeb({
     };
   }, [token, topic, userName, startVideoProp, autoRecordProp]);
 
+  // ── Chat + Transcription methods ──────────────────────────────────────
+
+  const sendChatMessage = useCallback(async (text: string, userId?: number) => {
+    const cc = chatClientRef.current;
+    if (!cc) return;
+    try {
+      if (userId) {
+        await cc.send(text, userId);
+      } else {
+        await cc.sendToAll(text);
+      }
+    } catch (_e) {
+      reportProviderError({ provider: 'zoom', action: 'send_chat', error: _e, component: 'ZoomConferenceProvider' });
+    }
+  }, []);
+
+  const toggleTranscription = useCallback(async () => {
+    const tc = transcriptionClientRef.current;
+    if (!tc) return;
+    try {
+      if (isTranscribing) {
+        await tc.disableCaptions(true);
+        setIsTranscribing(false);
+      } else {
+        await tc.startLiveTranscription();
+        setIsTranscribing(true);
+      }
+    } catch (_e) {
+      reportProviderError({ provider: 'zoom', action: 'toggle_transcription', error: _e, component: 'ZoomConferenceProvider' });
+    }
+  }, [isTranscribing]);
+
   // ── Context value ─────────────────────────────────────────────────────
 
   const contextValue: ZoomContextValue = {
@@ -435,6 +573,11 @@ function ZoomConferenceProviderWeb({
     isRecording,
     networkQuality,
     screenShareUserId,
+    chatMessages,
+    sendChatMessage,
+    transcriptEntries,
+    isTranscribing,
+    toggleTranscription,
   };
 
   return (
