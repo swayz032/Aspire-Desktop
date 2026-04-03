@@ -117,6 +117,7 @@ function StoryModeCarouselInner({ activeMode, onSelectMode }: StoryModeCarouselP
         items={items}
         autoRotate={true}
         rotateInterval={4000}
+        cardHeight={512}
         onActivate={handleActivate}
       />
     </div>

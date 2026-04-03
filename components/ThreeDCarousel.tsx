@@ -140,7 +140,7 @@ const ThreeDCarousel = ({
     >
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
         <div
-          style={{ position: "relative", overflow: "visible", flex: 1, minHeight: cardHeight, perspective: "900px" }}
+          style={{ position: "relative", overflow: "hidden", flex: 1, minHeight: cardHeight, perspective: "900px" }}
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
           onTouchStart={onTouchStart}

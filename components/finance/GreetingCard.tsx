@@ -187,7 +187,7 @@ function GreetingCardInner({
       />
 
       {/* Content pinned to bottom */}
-      <div style={{ position: 'relative', zIndex: 1, padding: '14px 16px 16px 20px' }}>
+      <div style={{ position: 'relative', zIndex: 1, padding: '18px 22px 22px 24px' }}>
         {/* Weather row */}
         {weather && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
@@ -199,10 +199,10 @@ function GreetingCardInner({
           </div>
         )}
 
-        <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, lineHeight: '26px' }}>
+        <div style={{ color: '#fff', fontSize: 24, fontWeight: 700, lineHeight: '30px' }}>
           {greeting},
         </div>
-        <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, lineHeight: '26px', marginBottom: 5 }}>
+        <div style={{ color: '#fff', fontSize: 24, fontWeight: 700, lineHeight: '30px', marginBottom: 5 }}>
           {ownerName}
         </div>
         <div style={{ color: 'rgba(255,255,255,0.38)', fontSize: 11, letterSpacing: 0.3 }}>

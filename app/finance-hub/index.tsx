@@ -719,6 +719,8 @@ function FinanceHubContent() {
       flexDirection: 'column',
       gap: 12,
       position: 'relative',
+      height: 320,
+      flexShrink: 0,
     }}>
       <div className={dashCardClass(0)} style={{ position: 'relative', zIndex: 1 }}>
         <GlowTrendCard
@@ -791,7 +793,7 @@ function FinanceHubContent() {
         ) : (
           <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', gap: 16, height: 560 }}>
+              <div style={{ display: 'flex', gap: 16, height: 512, alignItems: 'stretch' }}>
                 <div style={{ flex: 3, minWidth: 0, overflow: 'hidden', borderRadius: 12, height: '100%' }}>
                   <StoryModeCarousel
                     activeMode={activeStoryMode}
@@ -1011,6 +1013,7 @@ const s = StyleSheet.create({
   },
   finnCardOuter: {
     flex: 1,
+    height: '100%',
     flexDirection: 'column',
     backgroundColor: '#000',
     borderRadius: 16,

@@ -140,6 +140,7 @@ function cardShell(_accentColor: string): React.CSSProperties {
     background: '#1C1C1E',
     overflow: 'hidden',
     boxShadow: '0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.02)',
+    height: '100%',
   };
 }
 
