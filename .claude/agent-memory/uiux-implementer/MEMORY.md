@@ -1,5 +1,8 @@
 # UI/UX Implementer Memory
 
+## Onboarding
+- [Onboarding Modal Rewrite](onboarding-modal-rewrite.md) -- 4-step floating modal replacing scroll form, spring animations, review step
+
 ## Project Structure
 - **Token files**: `constants/tokens.ts` (main) + `constants/canvas.tokens.ts` (canvas-specific)
 - **Canvas components**: `components/canvas/` — CanvasWorkspace, CanvasGrid, CanvasModeToggle, VignetteOverlay, Stage, LiveLens, etc.

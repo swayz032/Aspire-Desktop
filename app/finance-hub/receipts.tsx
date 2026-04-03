@@ -460,9 +460,9 @@ function FinanceMemoryContent() {
               ))}
             </div>
 
-            {/* Finn Anam floating widget */}
+            {/* Finn ElevenLabs floating widget */}
             {/* @ts-ignore */}
-            <elevenlabs-convai agent-id="e98e22fb-9c6e-4f83-ae75-09556815a6bf" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 200 }} />
+            <elevenlabs-convai agent-id="agent_2201kmqdjjyben0tyg2t5eexnmzg" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 200 }} />
           </div>
         )}
 

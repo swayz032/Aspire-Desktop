@@ -268,69 +268,7 @@ function AvaDeskPanelInner() {
   const videoStateRef = useRef(videoState);
   videoStateRef.current = videoState;
 
-  const avaChatResult = useAvaChat({
-    onResponseText: (_text) => {
-      // Anam hosted embed handles TTS internally — no SDK talk() needed
-    },
-    extraBody: {
-      pendingApprovals: pendingApprovals.length,
-      approvalSummary: pendingApprovals.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
-    },
-  });
-
-  const {
-    messages,
-    sendMessage,
-    status: chatStatus,
-    setMessages,
-  } = avaChatResult;
-
-  // Input state managed locally (AI SDK v6 useChat doesn't include input/setInput)
-  const [chatInput, setChatInput] = useState('');
-
-  // Derive isConversing from AI SDK status
-  const isChatActive = chatStatus === 'submitted' || chatStatus === 'streaming';
-
-  // Sync isConversing with AI SDK status for voice line animation
-  useEffect(() => {
-    setIsConversing(isChatActive);
-  }, [isChatActive]);
-
-  // Helper to append a UIMessage without triggering API call
-  const appendLocalMessage = useCallback(
-    (role: 'user' | 'assistant', text: string) => {
-      const msg: UIMessage = {
-        id: `${role}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        role,
-        parts: [{ type: 'text' as const, text }],
-      };
-      setMessages((prev) => [...prev, msg]);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-    },
-    [setMessages],
-  );
-
-
-  useEffect(() => {
-    if (isLocalSyntheticAuthBypass()) return;
-    const fetchApprovals = async () => {
-      try {
-        const res = await fetch('/api/authority-queue', {
-          headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setPendingApprovals(data.pendingApprovals || []);
-        }
-      } catch (e) { /* authority queue not available */ }
-    };
-
-    fetchApprovals();
-    const interval = setInterval(fetchApprovals, 30000);
-    return () => clearInterval(interval);
-  }, [session?.access_token]);
-
-  // Orchestrator-routed voice: STT â†' Orchestrator â†' TTS (Law #1: Single Brain)
+  // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const avaVoice = useVoice({
     agent: 'ava',
     suiteId: suiteId ?? undefined,
@@ -376,7 +314,7 @@ function AvaDeskPanelInner() {
       } else if (/permission|denied|not found.*microphone|getUserMedia/i.test(msg)) {
         showVoiceError('Microphone access denied. Check browser permissions.');
       } else if (/tts|voice.*unavailable|synthesis|elevenlabs/i.test(msg)) {
-        showVoiceError('Voice unavailable â€" responses shown in chat.');
+        showVoiceError('Voice unavailable — responses shown in chat.');
       } else {
         showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
       }
@@ -386,6 +324,17 @@ function AvaDeskPanelInner() {
       if (diag.stage === 'autoplay') {
         showVoiceError(`Audio blocked by browser. Tap voice again to retry. Trace: ${diag.traceId}`);
       }
+    },
+  });
+
+  const avaChatResult = useAvaChat({
+    avaVoice, // Pass the active voice session to useAvaChat to prevent double-hook overhead
+    onResponseText: (_text) => {
+      // Anam hosted embed handles TTS internally — no SDK talk() needed
+    },
+    extraBody: {
+      pendingApprovals: pendingApprovals.length,
+      approvalSummary: pendingApprovals.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
     },
   });
 
@@ -891,7 +840,7 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: '#1C1C1E',
-    flex: 1,
+    height: 840,
   } as any,
   header: {
     paddingHorizontal: 16,

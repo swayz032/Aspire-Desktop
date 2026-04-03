@@ -86,9 +86,8 @@ export interface UseElevenLabsAgentReturn {
 /**
  * Maps ElevenLabs SDK status to our VoiceStatus.
  * ElevenLabs uses: 'disconnected' | 'connecting' | 'connected' | 'disconnecting'
- * We map based on status + isSpeaking mode for finer granularity.
  */
-function mapStatus(elStatus: ElevenLabsStatus, isSpeaking: boolean): VoiceStatus {
+function mapStatus(elStatus: ElevenLabsStatus): VoiceStatus {
   switch (elStatus) {
     case 'disconnected':
     case 'disconnecting':
@@ -96,7 +95,7 @@ function mapStatus(elStatus: ElevenLabsStatus, isSpeaking: boolean): VoiceStatus
     case 'connecting':
       return 'thinking';
     case 'connected':
-      return isSpeaking ? 'speaking' : 'listening';
+      return 'listening'; // Initial state, refined by onModeChange
     default:
       return 'idle';
   }
@@ -179,8 +178,11 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   const sessionActiveRef = useRef(false);
 
   const updateStatus = useCallback((newStatus: VoiceStatus) => {
-    setVoiceStatus(newStatus);
-    onStatusChangeRef.current?.(newStatus);
+    setVoiceStatus(prev => {
+      if (prev === newStatus) return prev;
+      onStatusChangeRef.current?.(newStatus);
+      return newStatus;
+    });
   }, []);
 
   const handleError = useCallback((error: Error) => {
@@ -232,6 +234,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     onConnect: ({ conversationId }) => {
       devLog(`[ElevenLabsAgent] Connected: ${conversationId} (agent: ${agent})`);
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session connected', level: 'info', data: { agent, conversationId } });
+      updateStatus('listening');
     },
     onDisconnect: (details) => {
       devLog(`[ElevenLabsAgent] Disconnected:`, details.reason);
@@ -252,10 +255,12 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       } else if (payload.role === 'agent') {
         setLastResponse(payload.message);
         onResponseRef.current?.(payload.message);
+        // Ensure status is speaking when agent message arrives
+        updateStatus('speaking');
       }
     },
     onStatusChange: ({ status: sdkStatus }) => {
-      const mapped = mapStatus(sdkStatus, conversation.isSpeaking);
+      const mapped = mapStatus(sdkStatus);
       updateStatus(mapped);
     },
     onModeChange: ({ mode }) => {
@@ -265,13 +270,6 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       }
     },
   });
-
-  // Sync isSpeaking changes to status when already connected
-  useEffect(() => {
-    if (conversation.status === 'connected') {
-      updateStatus(conversation.isSpeaking ? 'speaking' : 'listening');
-    }
-  }, [conversation.isSpeaking, conversation.status, updateStatus]);
 
   const startSession = useCallback(async () => {
     if (sessionActiveRef.current) {
@@ -312,6 +310,25 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         signedUrl: signed_url,
         dynamicVariables,
         ...(userId ? { userId } : {}),
+        overrides: {
+          tts: {
+            modelId: "eleven_v3",
+            optimizeStreamingLatency: 4,
+            outputFormat: "pcm_22050",
+            stability: 0.5,       // Lowered for faster synthesis in V3
+            similarity_boost: 0.75,
+          },
+          agent: {
+            // Maximum speed: pickup user voice instantly
+            turn_threshold: 0.3,
+            silence_threshold: 0.4,
+            sensitivity: 0.3,
+            // Removed robotic greeting to allow natural start
+            prompt: {
+              system: "You are Ava. Be extremely concise, natural, and business-efficient. 1 short sentence per response unless absolutely necessary. No filler."
+            }
+          }
+        },
         workletPaths: {
           audioConcatProcessor: '/elevenlabs/audioConcatProcessor.js',
           rawAudioProcessor: '/elevenlabs/rawAudioProcessor.js',

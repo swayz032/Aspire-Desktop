@@ -397,9 +397,9 @@ function DesktopHomeInner() {
               )}
 
               <ImmersionLayer depth={1}>
-              <View style={[styles.threeColWrapper, { gap: columnGap }]}>
+              <View style={[styles.threeColWrapper, { gap: columnGap, height: 840 }]}>
                 {showThreeCol && (
-                <View style={[styles.leftCol, { width: leftWidth }]}>
+                <View style={[styles.leftCol, { width: leftWidth, height: '100%' }]}>
                   <CanvasTileWrapper
                     tileId="conference_call"
                     mode={mode}
@@ -422,7 +422,7 @@ function DesktopHomeInner() {
                     onHoverOut={handleTileHoverOut}
                     onContextMenu={handleContextMenu}
                   >
-                    <View style={[styles.section, styles.flexSection]}>
+                    <View style={[styles.section, styles.flexSection, { height: '100%' }]}>
                       <SectionHeader
                         title="Today's Plan"
                         subtitle={`${planItems.length} tasks`}
@@ -454,12 +454,12 @@ function DesktopHomeInner() {
                   </View>
                 )}
 
-                <View style={styles.centerCol}>
+                <View style={[styles.centerCol, { height: '100%', flex: 1 }]}>
                   {/* Ava is the brain — NOT wrapped as a tile */}
                   <AvaDeskPanel />
                 </View>
 
-                <View style={[styles.rightCol, { width: rightWidth }]}>
+                <View style={[styles.rightCol, { width: rightWidth, height: '100%' }]}>
                   <CanvasTileWrapper
                     tileId="finance_hub"
                     mode={mode}
@@ -478,7 +478,7 @@ function DesktopHomeInner() {
                     </View>
                   </CanvasTileWrapper>
 
-                  <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E', padding: 16, flex: 1, overflow: 'hidden' }}>
+                  <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E', padding: 16, flex: 1, overflow: 'hidden', height: '100%' }}>
                     <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
                   </View>
                 </View>
