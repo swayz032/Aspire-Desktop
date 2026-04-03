@@ -571,7 +571,22 @@ function RootLayout() {
     if (!document.getElementById('aspire-viewport-lock')) {
       const style = document.createElement('style');
       style.id = 'aspire-viewport-lock';
-      style.textContent = 'html,body,#root{overflow:hidden!important;height:100%!important;margin:0!important}#root{display:flex!important;min-height:0!important}';
+      style.textContent = `
+        html, body, #root {
+          overflow: hidden !important;
+          height: 100% !important;
+          max-height: 100vh !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          max-width: 100vw !important;
+        }
+        #root {
+          display: flex !important;
+          flex-direction: column !important;
+          min-height: 0 !important;
+        }
+      `;
       document.head.appendChild(style);
     }
   }, []);

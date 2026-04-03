@@ -42,12 +42,21 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: Colors.background.primary,
-    ...(Platform.OS === 'web' ? { height: '100vh', overflow: 'hidden' } : {}),
+    ...(Platform.OS === 'web' ? { 
+      height: '100vh', 
+      maxHeight: '100vh',
+      overflow: 'hidden',
+      width: '100vw',
+      maxWidth: '100vw',
+    } : {}),
   } as any,
   rightSection: {
     flex: 1,
     flexDirection: 'column',
     overflow: 'hidden',
+    height: '100%',
+    maxHeight: '100%',
+    minHeight: 0,
   },
   content: {
     flex: 1,
@@ -55,6 +64,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     overflow: 'hidden',
+    height: '100%',
+    maxHeight: '100%',
+    minHeight: 0,
   },
   contentInner: {
     flex: 1,
@@ -62,6 +74,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     overflow: 'hidden',
+    height: '100%',
+    maxHeight: '100%',
+    minHeight: 0,
   },
 });
 
