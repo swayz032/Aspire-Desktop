@@ -231,6 +231,14 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   const conversation = useConversation({
     clientTools,
     micMuted: isMuted,
+    // Prevent device from sleeping during voice session
+    useWakeLock: true,
+    // Allow mic audio mode to settle before connecting (prevents initial audio glitch)
+    connectionDelay: {
+      android: 3000,  // Android needs more time for audio mode switch
+      ios: 500,       // iOS needs a brief moment
+      default: 200,   // Desktop browsers — small buffer
+    },
     onConnect: ({ conversationId }) => {
       devLog(`[ElevenLabsAgent] Connected: ${conversationId} (agent: ${agent})`);
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session connected', level: 'info', data: { agent, conversationId } });
@@ -313,25 +321,28 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         overrides: {
           tts: {
             modelId: "eleven_v3",
-            optimizeStreamingLatency: 4,
-            outputFormat: "pcm_22050",
-            stability: 0.5,       // Lowered for faster synthesis in V3
-            similarity_boost: 0.75,
+            // Latency 2 = balanced (0=none, 1=low, 2=balanced, 3=high, 4=max)
+            // 4 was causing audio artifacts and crackling
+            optimizeStreamingLatency: 2,
+            // Remove outputFormat — let SDK use native format for the connection type
+            // WebRTC mode is hardcoded to pcm_48000; forcing pcm_22050 caused resampling glitches
+            stability: 0.6,
+            similarity_boost: 0.8,
           },
           agent: {
-            // Maximum speed: pickup user voice instantly
-            turn_threshold: 0.3,
-            silence_threshold: 0.4,
-            sensitivity: 0.3,
-            // Removed robotic greeting to allow natural start
+            // Turn detection: allow natural speech pauses
+            // 0.3 was too aggressive — cut off mid-sentence
+            turn_threshold: 0.6,
+            // Silence detection: longer tolerance for thinking pauses
+            // 0.4 was too aggressive — treated brief pauses as end of speech
+            silence_threshold: 0.8,
+            // Mic sensitivity: higher = picks up more, less missed speech
+            // 0.3 was too low — missed quiet words causing garbled responses
+            sensitivity: 0.6,
             prompt: {
               system: "You are Ava. Be extremely concise, natural, and business-efficient. 1 short sentence per response unless absolutely necessary. No filler."
             }
           }
-        },
-        workletPaths: {
-          audioConcatProcessor: '/elevenlabs/audioConcatProcessor.js',
-          rawAudioProcessor: '/elevenlabs/rawAudioProcessor.js',
         },
       });
 
