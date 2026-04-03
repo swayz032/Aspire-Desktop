@@ -792,11 +792,13 @@ function FinanceHubContent() {
           <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-                <div style={{ flex: '3 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                  <StoryModeCarousel
-                    activeMode={activeStoryMode}
-                    onSelectMode={(mode) => handleModeSwitch(mode.id)}
-                  />
+                <div style={{ flex: '3 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                    <StoryModeCarousel
+                      activeMode={activeStoryMode}
+                      onSelectMode={(mode) => handleModeSwitch(mode.id)}
+                    />
+                  </div>
                 </div>
                 <div style={{ flex: '2 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                   {finnPanelNode}
@@ -1010,14 +1012,13 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   finnCardOuter: {
+    flex: 1,
     flexDirection: 'column',
     backgroundColor: '#000',
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(139,92,246,0.15)',
-    // No flex:1 — height determined by content (3D orb + buttons)
-    // alignItems:stretch on parent row makes carousel match this height
   } as WebStyle,
   finnCardOuterStacked: {
     flexDirection: 'column',
