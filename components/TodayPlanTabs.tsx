@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from './ui/Card';
@@ -8,6 +8,8 @@ import { DocumentThumbnail } from './DocumentThumbnail';
 import { useRouter } from 'expo-router';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useSupabase } from '@/providers';
+
+const calendarHero = require('../assets/images/calendar-hero.jpg');
 
 interface TodayPlanItem {
   id: string;
@@ -79,63 +81,89 @@ function TodayPlanTabsInner({ planItems }: { planItems: TodayPlanItem[] }) {
 }
 
 function TodayPlanContent({ items, router }: { items: TodayPlanItem[]; router: any }) {
+  const getBarColor = (item: TodayPlanItem) => {
+    if (item.status === 'next') return Colors.accent.cyan;
+    if (item._type === 'approval') return Colors.semantic.warning;
+    return '#8B5CF6';
+  };
+
   return (
     <View style={styles.planContainer}>
-      {items.map((planItem, index) => (
-        <View key={planItem.id} style={[
-          styles.planItem,
-          index > 0 && styles.planItemBorder
-        ]}>
-          <View style={styles.badgeCol}>
-            <Badge
-              label={planItem.status === 'next' ? 'NEXT' : planItem.time.split('–')[0]}
-              variant={planItem.status === 'next' ? 'primary' : 'muted'}
-              size="sm"
-            />
-            <Ionicons
-              name={planItem._type === 'approval' ? 'shield-checkmark' : 'calendar'}
-              size={12}
-              color={planItem._type === 'approval' ? Colors.semantic.warning : Colors.accent.cyan}
-              style={{ marginTop: 4 }}
-            />
-          </View>
-          <View style={styles.planDetails}>
-            <Text style={styles.planTime}>{planItem.time}</Text>
-            <Text style={styles.planAction}>{planItem.action}</Text>
-            <Text style={styles.planSubAction} numberOfLines={2}>{planItem.details}</Text>
-            
-            {planItem.documents && (
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                style={styles.documentsScroll}
-                contentContainerStyle={styles.documentsContent}
-              >
-                {planItem.documents.slice(0, 1).map((doc: any, docIndex: number) => (
-                  <View key={docIndex} style={styles.docPreviewCard}>
-                    <DocumentThumbnail 
-                      type={doc.type || 'invoice'}
-                      size="xl"
-                      variant={docIndex}
-                      context="todayplan"
-                    />
-                    <View style={styles.docPreviewMeta}>
-                      <Text style={styles.docName} numberOfLines={1}>{doc.name?.split(' - ')[0]}</Text>
-                      {doc.amount && (
-                        <Text style={styles.docAmount}>{doc.amount}</Text>
-                      )}
-                      {doc.value && (
-                        <Text style={styles.docValue}>{doc.value}</Text>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      ))}
+      {items.map((planItem, index) => {
+        const isCalendar = planItem._type === 'calendar';
+        const isApproval = planItem._type === 'approval';
+        const barColor = getBarColor(planItem);
+        const timeNum = planItem.time.split(':')[0].replace(/^0/, '') + ':' + (planItem.time.split(':')[1] || '00').replace(/ .*/,'');
+        const timePeriod = planItem.time.includes('PM') ? 'PM' : planItem.time.includes('AM') ? 'AM' : '';
 
+        return (
+          <View key={planItem.id} style={[styles.planItem, index > 0 && styles.planItemBorder]}>
+            {/* Time slot on the left */}
+            <View style={styles.timeCol}>
+              <Text style={[styles.timeNum, planItem.status === 'next' && styles.timeNumActive]}>
+                {timeNum}
+              </Text>
+              <Text style={styles.timePeriod}>{timePeriod}</Text>
+            </View>
+
+            {/* Colored bar */}
+            <View style={[styles.itemBar, { backgroundColor: barColor }]} />
+
+            {/* Content card */}
+            <View style={styles.itemContent}>
+              {/* Hero image for calendar tasks */}
+              {isCalendar && (
+                <View style={styles.heroImageContainer}>
+                  <Image source={calendarHero} style={styles.heroImage} resizeMode="cover" />
+                  <View style={styles.heroOverlay} />
+                  <View style={styles.heroTextOverlay}>
+                    <Text style={styles.heroTitle} numberOfLines={1}>{planItem.action}</Text>
+                    {planItem.details ? (
+                      <Text style={styles.heroSubtitle} numberOfLines={1}>{planItem.details}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              )}
+
+              {/* Document card for approvals */}
+              {isApproval && planItem.documents && planItem.documents.length > 0 && (
+                <View style={styles.docRow}>
+                  {planItem.documents.slice(0, 1).map((doc: any, docIndex: number) => (
+                    <View key={docIndex} style={styles.docPreviewCard}>
+                      <DocumentThumbnail
+                        type={doc.type || 'invoice'}
+                        size="xl"
+                        variant={docIndex}
+                        context="todayplan"
+                      />
+                      <View style={styles.docPreviewMeta}>
+                        <Text style={styles.docName} numberOfLines={1}>{doc.name?.split(' - ')[0]}</Text>
+                        {doc.amount && <Text style={styles.docAmount}>{doc.amount}</Text>}
+                        {doc.value && <Text style={styles.docValue}>{doc.value}</Text>}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Text details (always shown for approvals, shown below hero for calendar without image) */}
+              {!isCalendar && (
+                <View style={styles.textDetails}>
+                  <Text style={styles.planAction}>{planItem.action}</Text>
+                  <Text style={styles.planSubAction} numberOfLines={2}>{planItem.details}</Text>
+                </View>
+              )}
+
+              {/* Status badge */}
+              {planItem.status === 'next' && (
+                <View style={styles.nextBadge}>
+                  <Text style={styles.nextBadgeText}>NEXT</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -185,33 +213,90 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   planContainer: {
-    padding: Spacing.md,
+    padding: Spacing.sm,
   },
   planItem: {
     flexDirection: 'row',
-    gap: Spacing.md,
-    paddingVertical: Spacing.md,
+    alignItems: 'stretch',
+    marginBottom: Spacing.sm,
+    minHeight: 80,
   },
-  planItemBorder: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.border.subtle,
-  },
-  badgeCol: {
+  planItemBorder: {},
+  timeCol: {
+    width: 44,
     alignItems: 'center',
-    minWidth: 40,
+    justifyContent: 'center',
+    paddingRight: Spacing.xs,
   },
-  planDetails: {
+  timeNum: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text.muted,
+    letterSpacing: -0.5,
+  },
+  timeNumActive: {
+    color: Colors.accent.cyan,
+  },
+  timePeriod: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: Colors.text.muted,
+    letterSpacing: 0.5,
+    marginTop: 1,
+  },
+  itemBar: {
+    width: 3,
+    borderRadius: 2,
+    marginRight: Spacing.sm,
+  },
+  itemContent: {
     flex: 1,
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  planTime: {
-    color: Colors.text.tertiary,
-    fontSize: Typography.caption.fontSize,
-    marginBottom: 2,
+  heroImageContainer: {
+    height: 100,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  heroTextOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    left: 12,
+    right: 12,
+  },
+  heroTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  heroSubtitle: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
+  },
+  textDetails: {
+    padding: Spacing.sm,
   },
   planAction: {
     color: Colors.text.primary,
     fontSize: Typography.bodyMedium.fontSize,
-    fontWeight: Typography.bodyMedium.fontWeight,
+    fontWeight: '600',
   },
   planSubAction: {
     color: Colors.text.muted,
@@ -219,13 +304,23 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     lineHeight: 16,
   },
-  documentsScroll: {
-    marginTop: Spacing.sm,
-    marginHorizontal: -Spacing.xs,
+  nextBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: Colors.accent.cyan,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
-  documentsContent: {
-    paddingHorizontal: Spacing.xs,
-    gap: Spacing.sm,
+  nextBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: 0.8,
+  },
+  docRow: {
+    padding: Spacing.sm,
   },
   docPreviewCard: {
     flexDirection: 'row',
@@ -255,19 +350,6 @@ const styles = StyleSheet.create({
     fontSize: Typography.micro.fontSize,
     fontWeight: '500',
     marginTop: 1,
-  },
-  moreDocsIndicator: {
-    width: 32,
-    height: 40,
-    backgroundColor: Colors.background.tertiary,
-    borderRadius: BorderRadius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  moreDocsText: {
-    color: Colors.text.muted,
-    fontSize: Typography.small.fontSize,
-    fontWeight: '600',
   },
 });
 
