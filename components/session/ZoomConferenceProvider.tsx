@@ -108,6 +108,10 @@ interface ZoomConferenceProviderProps {
   topic: string;
   /** Display name for the local participant */
   userName: string;
+  /** Whether to start video on join (false for voice-only mode) */
+  startVideo?: boolean;
+  /** Whether to auto-start cloud recording on join */
+  autoRecord?: boolean;
   /** Child components rendered inside the Zoom context */
   children: React.ReactNode;
 }
@@ -133,6 +137,8 @@ function ZoomConferenceProviderWeb({
   token,
   topic,
   userName,
+  startVideo: startVideoProp = true,
+  autoRecord: autoRecordProp = false,
   children,
 }: ZoomConferenceProviderProps) {
   const [connectionState, setConnectionState] = useState<ConnectionState>('idle');
@@ -211,7 +217,8 @@ function ZoomConferenceProviderWeb({
         }
 
         // Auto-start video per config — 1080p (fullHd) with 720p fallback
-        if (SESSION_CONFIG.autoStartVideo) {
+        // Respects startVideo prop (false for voice-only mode)
+        if (SESSION_CONFIG.autoStartVideo && startVideoProp) {
           try {
             await mediaStream.startVideo({
               fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
@@ -244,6 +251,24 @@ function ZoomConferenceProviderWeb({
             }
           } catch (_e) {
             // Non-critical — built-in WebRTC noise suppression still active
+          }
+        }
+
+        // Auto-start cloud recording if requested (purpose-driven)
+        if (autoRecordProp) {
+          try {
+            const rc = (client as any).getRecordingClient?.();
+            if (rc && typeof rc.startCloudRecording === 'function') {
+              await rc.startCloudRecording();
+              setIsRecording(true);
+            }
+          } catch (_e) {
+            reportProviderError({
+              provider: 'zoom',
+              action: 'auto_start_recording',
+              error: _e,
+              component: 'ZoomConferenceProvider',
+            });
           }
         }
 
@@ -395,7 +420,7 @@ function ZoomConferenceProviderWeb({
         })();
       }
     };
-  }, [token, topic, userName]);
+  }, [token, topic, userName, startVideoProp, autoRecordProp]);
 
   // ── Context value ─────────────────────────────────────────────────────
 

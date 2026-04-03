@@ -134,6 +134,23 @@ interface Participant {
   inviteType?: 'internal' | 'cross-suite' | 'external';
 }
 
+type SessionMode = 'voice' | 'video' | 'conference';
+
+const MODE_OPTIONS: { id: SessionMode; label: string; icon: keyof typeof Ionicons.glyphMap; description: string }[] = [
+  { id: 'voice', label: 'Voice', icon: 'mic', description: 'Audio only' },
+  { id: 'video', label: 'Video', icon: 'videocam', description: '1:1 video call' },
+  { id: 'conference', label: 'Conference', icon: 'people-circle', description: 'Multi-party room' },
+];
+
+/** Recording rules per purpose */
+const RECORDING_RULES: Record<SessionPurpose, { default: boolean; locked: boolean; consentRequired: boolean }> = {
+  'Internal':    { default: true,  locked: false, consentRequired: false },
+  'Client Call': { default: true,  locked: false, consentRequired: true },
+  'Vendor Call': { default: true,  locked: false, consentRequired: true },
+  'Deal Review': { default: true,  locked: true,  consentRequired: false },
+  'Networking':  { default: false, locked: false, consentRequired: false },
+};
+
 interface UnifiedSessionModalProps {
   visible: boolean;
   onClose: () => void;
@@ -141,6 +158,10 @@ interface UnifiedSessionModalProps {
   isJoining: boolean;
   purpose: SessionPurpose;
   onPurposeChange: (purpose: SessionPurpose) => void;
+  sessionMode: SessionMode;
+  onSessionModeChange: (mode: SessionMode) => void;
+  isRecording: boolean;
+  onRecordingChange: (enabled: boolean) => void;
   participants: Participant[];
   onAddParticipant: (userId: string, name: string, inviteType?: 'internal' | 'cross-suite', suiteId?: string) => void;
   onAddGuest: (name: string, contact: string) => void;
@@ -161,6 +182,10 @@ function UnifiedSessionModalInner({
   isJoining,
   purpose,
   onPurposeChange,
+  sessionMode,
+  onSessionModeChange,
+  isRecording,
+  onRecordingChange,
   participants,
   onAddParticipant,
   onAddGuest,
@@ -169,6 +194,7 @@ function UnifiedSessionModalInner({
   hostName,
   correlationId,
 }: UnifiedSessionModalProps) {
+  const recordingRule = RECORDING_RULES[purpose];
   const [step, setStep] = useState<Step>(1);
 
   // Inject web hover CSS once
@@ -344,6 +370,77 @@ function UnifiedSessionModalInner({
                         </Pressable>
                       ))}
                     </View>
+                  </View>
+
+                  {/* Session Mode */}
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Session Mode</Text>
+                    <View style={styles.modeRow}>
+                      {MODE_OPTIONS.map((m) => (
+                        <Pressable
+                          key={m.id}
+                          style={({ pressed }) => [
+                            styles.modeOption,
+                            sessionMode === m.id && styles.modeOptionActive,
+                            pressed && styles.pressedOpacity,
+                          ]}
+                          onPress={() => onSessionModeChange(m.id)}
+                          accessibilityLabel={`${m.label} mode: ${m.description}`}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected: sessionMode === m.id }}
+                        >
+                          <Ionicons
+                            name={m.icon}
+                            size={20}
+                            color={sessionMode === m.id ? '#FFFFFF' : Colors.text.muted}
+                          />
+                          <Text style={[
+                            styles.modeLabel,
+                            sessionMode === m.id && styles.modeLabelActive,
+                          ]}>
+                            {m.label}
+                          </Text>
+                          <Text style={styles.modeDescription}>{m.description}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Recording */}
+                  <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                      <Text style={styles.sectionTitle}>Recording</Text>
+                      {recordingRule.locked && (
+                        <View style={styles.lockedBadge}>
+                          <Ionicons name="lock-closed" size={10} color={Colors.accent.cyan} />
+                          <Text style={styles.lockedBadgeText}>Required</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Pressable
+                      style={[
+                        styles.recordingToggle,
+                        isRecording && styles.recordingToggleActive,
+                      ]}
+                      onPress={() => {
+                        if (!recordingRule.locked) onRecordingChange(!isRecording);
+                      }}
+                      disabled={recordingRule.locked}
+                      accessibilityLabel={`Recording ${isRecording ? 'enabled' : 'disabled'}${recordingRule.locked ? ', required for this purpose' : ''}`}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: isRecording }}
+                    >
+                      <View style={[styles.recordingDot, isRecording && styles.recordingDotActive]} />
+                      <Text style={[styles.recordingLabel, isRecording && styles.recordingLabelActive]}>
+                        {isRecording ? 'Recording On' : 'Recording Off'}
+                      </Text>
+                      {recordingRule.consentRequired && isRecording && (
+                        <View style={styles.consentNotice}>
+                          <Ionicons name="information-circle" size={14} color={Colors.semantic.warning} />
+                          <Text style={styles.consentText}>Participants will be notified</Text>
+                        </View>
+                      )}
+                    </Pressable>
                   </View>
 
                   {/* Participants Section */}
@@ -740,6 +837,97 @@ const styles = StyleSheet.create({
   },
   purposeOptionTextActive: {
     color: Colors.text.primary,
+  },
+
+  // Mode selector
+  modeRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  modeOption: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.background.tertiary,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease', cursor: 'pointer' } as unknown as ViewStyle : {}),
+  },
+  modeOptionActive: {
+    backgroundColor: Colors.accent.blueLight,
+    borderColor: Colors.accent.cyanDark,
+  },
+  modeLabel: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.text.muted,
+  },
+  modeLabelActive: {
+    color: Colors.text.primary,
+  },
+  modeDescription: {
+    fontSize: 10,
+    color: Colors.text.muted,
+  },
+
+  // Recording toggle
+  recordingToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.background.tertiary,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+  },
+  recordingToggleActive: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.text.muted,
+  },
+  recordingDotActive: {
+    backgroundColor: '#EF4444',
+  },
+  recordingLabel: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    color: Colors.text.muted,
+    flex: 1,
+  },
+  recordingLabelActive: {
+    color: Colors.text.primary,
+  },
+  lockedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.accent.blueLight,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  lockedBadgeText: {
+    fontSize: 10,
+    fontWeight: '600' as const,
+    color: Colors.accent.cyan,
+  },
+  consentNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  consentText: {
+    fontSize: 11,
+    color: Colors.semantic.warning,
   },
 
   // Participants list (Step 1) — horizontal wrapping chips

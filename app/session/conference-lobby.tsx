@@ -257,10 +257,24 @@ function ConferenceLobby() {
   const roomNumber = `CR-${suiteDisplay || '001'}`;
 
   const [purpose, setPurpose] = useState<SessionPurpose>('Internal');
+  const [sessionMode, setSessionMode] = useState<'voice' | 'video' | 'conference'>('conference');
+  const [isRecording, setIsRecording] = useState(true);
   const [participants, setParticipants] = useState<Participant[]>([
     { id: 'you', name: userName, role: 'Founder', avatarColor: Colors.accent.cyan, status: 'ready' },
   ]);
   const [menuVisible, setMenuVisible] = useState(false);
+
+  // Sync recording default when purpose changes
+  React.useEffect(() => {
+    const rules: Record<SessionPurpose, { default: boolean }> = {
+      'Internal': { default: true },
+      'Client Call': { default: true },
+      'Vendor Call': { default: true },
+      'Deal Review': { default: true },
+      'Networking': { default: false },
+    };
+    setIsRecording(rules[purpose].default);
+  }, [purpose]);
   // Authority items from realtime store (global) + local video invitation items
   const storeItems = useDynamicAuthorityQueue();
   const [localVideoItems, setLocalVideoItems] = useState<AuthorityItem[]>([]);
@@ -581,6 +595,8 @@ function ConferenceLobby() {
       pathname: '/session/conference-live' as any,
       params: {
         purpose,
+        sessionMode,
+        isRecording: isRecording ? '1' : '0',
         roomName,
         participantName: userName,
         participantIds: participants.map(p => p.id).join(','),
@@ -969,6 +985,10 @@ function ConferenceLobby() {
         isJoining={isJoining}
         purpose={purpose}
         onPurposeChange={setPurpose}
+        sessionMode={sessionMode}
+        onSessionModeChange={setSessionMode}
+        isRecording={isRecording}
+        onRecordingChange={setIsRecording}
         participants={participants}
         onAddParticipant={async (userId, name, inviteType, suiteIdParam) => {
           if (!participants.find(p => p.id === userId)) {

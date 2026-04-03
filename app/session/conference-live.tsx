@@ -344,6 +344,10 @@ function ConferenceLive() {
 
   const participantName = (params.participantName as string) || tenant?.ownerName || session?.user?.user_metadata?.full_name || 'You';
   const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
+  const purpose = (params.purpose as string) || 'Internal';
+  const sessionMode = (params.sessionMode as string) || 'conference';
+  const autoRecord = params.isRecording === '1' || params.isRecording === undefined; // default on
+  const isVoiceOnly = sessionMode === 'voice';
 
   // UI state
   const [chatVisible, setChatVisible] = useState(false);
@@ -560,7 +564,7 @@ function ConferenceLive() {
 
         {/* Conference — Zoom SDK + full UI */}
         {zoomStatus === 'joined' && zoomToken && (
-          <ZoomConferenceProvider token={zoomToken} topic={zoomTopic} userName={participantName}>
+          <ZoomConferenceProvider token={zoomToken} topic={zoomTopic} userName={participantName} startVideo={!isVoiceOnly} autoRecord={autoRecord}>
             <ConferenceContent
               roomName={roomName}
               avaState={avaState}
