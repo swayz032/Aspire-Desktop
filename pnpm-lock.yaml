@@ -114,6 +114,9 @@ importers:
       '@zoom/videosdk':
         specifier: ^2.3.15
         version: 2.3.15
+      '@zoom/videosdk-ui-toolkit':
+        specifier: 2.3.15-1
+        version: 2.3.15-1(@reduxjs/toolkit@2.11.2(react-redux@9.2.0(@types/react@19.2.14)(react@19.1.0)(redux@5.0.1))(react@19.1.0))(@zoom/videosdk@2.3.15)(react-dom@19.1.0(react@19.1.0))(react-draggable@4.5.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-redux@9.2.0(@types/react@19.2.14)(react@19.1.0)(redux@5.0.1))(react@19.1.0)
       ai:
         specifier: ^6.0.105
         version: 6.0.137(zod@3.25.76)
@@ -3852,6 +3855,16 @@ packages:
   '@zone-eu/mailsplit@5.4.8':
     resolution: {integrity: sha512-eEyACj4JZ7sjzRvy26QhLgKEMWwQbsw1+QZnlLX+/gihcNH07lVPOcnwf5U6UAL7gkc//J3jVd76o/WS+taUiA==}
 
+  '@zoom/videosdk-ui-toolkit@2.3.15-1':
+    resolution: {integrity: sha512-iKJowF9Z3+wW0vfRvQVJr2OctpESJaEZi3dxFXfXkrnizElaPVe8+FDZ8yCINf52WKFTg2Wlo9pKfOXDoi+r3g==}
+    peerDependencies:
+      '@reduxjs/toolkit': ^2.0.0
+      '@zoom/videosdk': 2.3.15
+      react: ^18.0.0
+      react-dom: ^18.0.0
+      react-draggable: ^4.0.0
+      react-redux: ^9.0.0
+
   '@zoom/videosdk@2.3.15':
     resolution: {integrity: sha512-4+vAI/LCsjPdWV36KjXuRVfre0NErOBWBLGipEtIZOpErhP5Ktjoz9lyt7tyZ0pWulk3N1cTQepOilQXF5//NA==}
 
@@ -7517,6 +7530,12 @@ packages:
     resolution: {integrity: sha512-Xs1hdnE+DyKgeHJeJznQmYMIBG3TKIHJJT95Q58nHLSrElKlGQqDTR2HQ9fx5CN/Gk6Vh/kupBTDLU11/nDk/g==}
     peerDependencies:
       react: ^19.1.0
+
+  react-draggable@4.5.0:
+    resolution: {integrity: sha512-VC+HBLEZ0XJxnOxVAZsdRi8rD04Iz3SiiKOoYzamjylUcju/hP9np/aZdLHf/7WOD268WMoNJMvYfB5yAK45cw==}
+    peerDependencies:
+      react: '>= 16.3.0'
+      react-dom: '>= 16.3.0'
 
   react-error-boundary@6.1.1:
     resolution: {integrity: sha512-BrYwPOdXi5mqkk5lw+Uvt0ThHx32rCt3BkukS4X23A2AIWDPSGX6iaWTc0y9TU/mHDA/6qOSGel+B2ERkOvD1w==}
@@ -13367,6 +13386,15 @@ snapshots:
       libmime: 5.3.7
       libqp: 2.1.1
 
+  '@zoom/videosdk-ui-toolkit@2.3.15-1(@reduxjs/toolkit@2.11.2(react-redux@9.2.0(@types/react@19.2.14)(react@19.1.0)(redux@5.0.1))(react@19.1.0))(@zoom/videosdk@2.3.15)(react-dom@19.1.0(react@19.1.0))(react-draggable@4.5.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-redux@9.2.0(@types/react@19.2.14)(react@19.1.0)(redux@5.0.1))(react@19.1.0)':
+    dependencies:
+      '@reduxjs/toolkit': 2.11.2(react-redux@9.2.0(@types/react@19.2.14)(react@19.1.0)(redux@5.0.1))(react@19.1.0)
+      '@zoom/videosdk': 2.3.15
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+      react-draggable: 4.5.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      react-redux: 9.2.0(@types/react@19.2.14)(react@19.1.0)(redux@5.0.1)
+
   '@zoom/videosdk@2.3.15': {}
 
   abab@2.0.6: {}
@@ -17956,6 +17984,13 @@ snapshots:
     dependencies:
       react: 19.1.0
       scheduler: 0.26.0
+
+  react-draggable@4.5.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
+    dependencies:
+      clsx: 2.1.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
 
   react-error-boundary@6.1.1(react@19.1.0):
     dependencies:
