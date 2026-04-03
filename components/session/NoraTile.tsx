@@ -1,17 +1,16 @@
 /**
  * NoraTile — full-size Nora AI participant tile for the video conference grid.
- * Matches the original Nora design: black box with cyan glow border,
- * inner black square with Ava logo, "Nora - Room Assistant" label.
- * Click toggles Nora voice session.
+ * Immersive black design: inner box fills most of the tile, no visible borders,
+ * new Aspire arrow logo centered, subtle cyan glow on active states.
+ * "Nora - Room Assistant" label with status dot at bottom.
  */
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Platform } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '@/constants/tokens';
 import type { RoomAvaState } from '@/components/session/RoomAvaTile';
 
-const noraAvatar = require('../../assets/images/ava-logo.png');
+const aspireLogo = require('../../assets/images/aspire-arrow-logo.png');
 
 interface NoraTileProps {
   avaState: RoomAvaState;
@@ -20,7 +19,7 @@ interface NoraTileProps {
 }
 
 export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
-  const glowAnim = useRef(new Animated.Value(0.4)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
   const glowLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const isActive = avaState === 'listening' || avaState === 'thinking' || avaState === 'speaking';
@@ -30,38 +29,36 @@ export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
       glowLoopRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(glowAnim, { toValue: 1, duration: 1400, useNativeDriver: false }),
-          Animated.timing(glowAnim, { toValue: 0.4, duration: 1400, useNativeDriver: false }),
+          Animated.timing(glowAnim, { toValue: 0, duration: 1400, useNativeDriver: false }),
         ])
       );
       glowLoopRef.current.start();
     } else {
       glowLoopRef.current?.stop();
-      glowAnim.setValue(0.4);
+      glowAnim.setValue(0);
     }
     return () => { glowLoopRef.current?.stop(); };
   }, [isActive]);
 
-  const glowColor = avaState === 'listening' ? '#3B82F6'
-    : avaState === 'thinking' ? '#A78BFA'
-    : avaState === 'speaking' ? '#4ade80'
-    : '#3B82F6';
+  const glowColor = avaState === 'listening' ? 'rgba(59,130,246,0.4)'
+    : avaState === 'thinking' ? 'rgba(167,139,250,0.4)'
+    : avaState === 'speaking' ? 'rgba(74,222,128,0.4)'
+    : 'rgba(59,130,246,0.15)';
 
   const statusText = avaState === 'listening' ? 'Listening...'
     : avaState === 'thinking' ? 'Thinking...'
     : avaState === 'speaking' ? 'Speaking...'
     : 'Ready';
 
-  const statusDotColor = isNoraSpeaking ? '#4ade80' : glowColor;
+  const statusDotColor = isNoraSpeaking ? '#4ade80'
+    : avaState === 'listening' ? '#3B82F6'
+    : avaState === 'thinking' ? '#A78BFA'
+    : '#4ade80';
 
-  // Outer border glow: cyan with animated intensity
-  const outerGlow = isActive
-    ? `0 0 12px 4px ${glowColor}80, 0 0 25px 8px ${glowColor}40, inset 0 0 6px ${glowColor}30`
-    : `0 0 8px 2px rgba(59,130,246,0.3), 0 0 15px 3px rgba(0,242,254,0.15)`;
-
-  // Inner box glow
-  const innerGlow = isActive
-    ? `0 0 10px 3px ${glowColor}60, 0 0 20px 6px ${glowColor}25`
-    : `0 0 6px 2px rgba(59,130,246,0.25), 0 0 12px 3px rgba(0,242,254,0.1)`;
+  // Subtle ambient glow only when active — no borders
+  const activeGlow = isActive
+    ? `0 0 60px ${glowColor}, 0 0 120px ${glowColor}`
+    : 'none';
 
   return (
     <Pressable
@@ -70,26 +67,20 @@ export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
       accessibilityRole="button"
       accessibilityLabel={`Nora Room Assistant, ${statusText}. Tap to ${isNoraSpeaking ? 'stop' : 'start'}.`}
     >
-      {/* Outer tile — solid black with glow border */}
-      <Animated.View style={[
-        styles.outerBox,
-        {
-          borderColor: glowColor,
-          opacity: Animated.add(new Animated.Value(0.6), Animated.multiply(glowAnim, new Animated.Value(0.4))),
-        },
-        Platform.OS === 'web' && { boxShadow: outerGlow } as any,
-      ]}>
-        {/* Inner box — smaller black square with glow border + logo */}
-        <View style={[
+      {/* Full-tile black background — immersive */}
+      <View style={styles.background}>
+        {/* Inner box — fills 80% of tile, no border, pure black */}
+        <Animated.View style={[
           styles.innerBox,
-          { borderColor: glowColor },
-          Platform.OS === 'web' && { boxShadow: innerGlow } as any,
+          Platform.OS === 'web' && isActive && {
+            boxShadow: activeGlow,
+          } as any,
         ]}>
-          <Image source={noraAvatar} style={styles.logo} contentFit="contain" />
-        </View>
-      </Animated.View>
+          <Image source={aspireLogo} style={styles.logo} contentFit="contain" />
+        </Animated.View>
+      </View>
 
-      {/* Bottom label — outside the glow box, at bottom of tile */}
+      {/* Bottom label bar */}
       <View style={styles.labelBar}>
         <Text style={styles.nameLabel}>Nora - Room Assistant</Text>
         <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
@@ -104,30 +95,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
     borderRadius: 10,
     overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  outerBox: {
+  background: {
     flex: 1,
-    width: '100%',
+    backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderRadius: 10,
-    backgroundColor: '#000000',
   },
   innerBox: {
-    width: 120,
-    height: 120,
-    borderRadius: 12,
-    borderWidth: 2,
-    backgroundColor: '#000000',
+    width: '70%',
+    aspectRatio: 1,
+    maxWidth: 280,
+    maxHeight: 280,
+    backgroundColor: '#0a0a0a',
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
   logo: {
-    width: 64,
-    height: 64,
+    width: '65%',
+    height: '65%',
   },
   labelBar: {
     position: 'absolute',
@@ -138,11 +125,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   nameLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
     color: 'rgba(255,255,255,0.9)',
     letterSpacing: 0.3,

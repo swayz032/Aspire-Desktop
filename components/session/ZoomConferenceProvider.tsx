@@ -280,31 +280,41 @@ function ZoomConferenceProviderWeb({
           }
         }
 
-        // Auto-start video per config — 1080p (fullHd) with 720p fallback
+        // Auto-start video per config — with delay after audio to avoid permission race
         // Respects startVideo prop (false for voice-only mode)
         if (SESSION_CONFIG.autoStartVideo && startVideoProp) {
-          try {
-            await mediaStream.startVideo({
-              fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
-              hd: VIDEO_CAPTURE_DEFAULTS.hd,
-              facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
-            });
-          } catch (videoErr) {
-            // Fallback: try 720p if 1080p fails (device/bandwidth constraint)
+          // Brief delay — some browsers need time between audio and video getUserMedia
+          await new Promise(r => setTimeout(r, 500));
+          if (destroyed) return;
+
+          const tryStartVideo = async (attempt: number): Promise<void> => {
             try {
-              await mediaStream.startVideo({
-                hd: true,
-                facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
-              });
-            } catch (_fallbackErr) {
-              reportProviderError({
-                provider: 'zoom',
-                action: 'auto_start_video',
-                error: videoErr,
-                component: 'ZoomConferenceProvider',
-              });
+              if (attempt === 1) {
+                await mediaStream.startVideo({
+                  fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
+                  hd: VIDEO_CAPTURE_DEFAULTS.hd,
+                  facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
+                });
+              } else {
+                // Fallback attempts: just HD, no fullHd
+                await mediaStream.startVideo({ hd: true });
+              }
+            } catch (err) {
+              if (attempt < 3) {
+                // Retry after a delay — camera might still be initializing
+                await new Promise(r => setTimeout(r, 1000));
+                if (!destroyed) await tryStartVideo(attempt + 1);
+              } else {
+                reportProviderError({
+                  provider: 'zoom',
+                  action: 'auto_start_video',
+                  error: err,
+                  component: 'ZoomConferenceProvider',
+                });
+              }
             }
-          }
+          };
+          await tryStartVideo(1);
         }
 
         // Enable Zoom SDK background noise suppression for crystal clear audio
