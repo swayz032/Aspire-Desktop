@@ -281,9 +281,7 @@ function CalendarWidgetInner({ suiteId: propSuiteId, officeId }: CalendarWidgetP
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   navRow: {
     flexDirection: 'row',
