@@ -227,17 +227,6 @@ function useAuthGate() {
   // during token refresh races where suiteId briefly becomes null.
   const onboardingConfirmedRef = useRef(DEV_BYPASS_AUTH ? true : false);
   const navLockRef = useRef(false);
-  // Cold start guard — on page refresh, don't redirect to login until
-  // we've given Supabase time to restore the session from storage.
-  const [coldStartSettled, setColdStartSettled] = useState(DEV_BYPASS_AUTH ? true : false);
-  useEffect(() => {
-    if (DEV_BYPASS_AUTH) { setColdStartSettled(true); return; }
-    // If session arrives before timeout, we're settled
-    if (session) { setColdStartSettled(true); return; }
-    // Otherwise wait 2s for session restoration before allowing login redirect
-    const timer = setTimeout(() => setColdStartSettled(true), 2000);
-    return () => clearTimeout(timer);
-  }, [session]);
 
   useEffect(() => {
     if (DEV_BYPASS_AUTH) return;
@@ -301,10 +290,11 @@ function useAuthGate() {
   }, [session, suiteId, isLoading]);
 
   useEffect(() => {
+    // CRITICAL: If still loading session from storage, do nothing. 
+    // This prevents the "flash to login" that forces users to sign in twice.
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === ('(auth)' as any);
-    const onLoginPage = segments[1] === ('login' as any);
     const inPublicGroup = segments.length === 0 || segments[0] === ('sign' as any) || segments[0] === ('book' as any) || segments[0] === ('join' as any) || segments[0] === ('landing' as any) || segments[0] === ('index' as any);
     const onOnboarding = segments[1] === ('onboarding' as any);
 
@@ -334,10 +324,6 @@ function useAuthGate() {
     const inSessionGroup = segments[0] === ('session' as any);
 
     if (!session && !inAuthGroup && !inPublicGroup) {
-      // Don't redirect to login until cold start has settled — gives Supabase
-      // time to restore session from storage on page refresh.
-      if (!coldStartSettled) return;
-
       if (inSessionGroup) {
         // Delay redirect for session pages — only act after 5s of confirmed no-session.
         navLockRef.current = true;
@@ -360,7 +346,7 @@ function useAuthGate() {
       }
       navigate('/(tabs)');
     }
-  }, [session, isLoading, segments, onboardingChecked, onboardingComplete, coldStartSettled]);
+  }, [session, isLoading, segments, onboardingChecked, onboardingComplete]);
 }
 
 /** Biometric lock gate — prompts for biometric on app resume (native only). */

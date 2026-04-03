@@ -75,19 +75,27 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (DEV_BYPASS_AUTH) return;
 
-    // Subscribe to auth changes FIRST — don't miss events during getSession
+    let authChangeReceived = false;
+    let initialSessionFetched = false;
+
+    // Subscribe to auth changes FIRST
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, s) => {
       stableSetSession(s);
-      setIsLoading(false);
+      authChangeReceived = true;
+      if (initialSessionFetched) setIsLoading(false);
     });
 
     // Then restore from storage
     supabase.auth.getSession()
       .then(({ data: { session: s } }) => {
-        stableSetSession(s);
-        setIsLoading(false);
+        if (s) stableSetSession(s);
+        initialSessionFetched = true;
+        // Only stop loading once we've had at least one auth change event OR getSession finished
+        if (authChangeReceived || s) setIsLoading(false);
+        // Fallback for no-session case: wait 500ms for listener to settle
+        setTimeout(() => setIsLoading(false), 500);
       })
       .catch(() => {
         setIsLoading(false); // Never hang on error
