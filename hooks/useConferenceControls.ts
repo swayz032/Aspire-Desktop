@@ -18,7 +18,7 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
   const [isRecording, setIsRecording] = useState(false);
 
   const toggleMic = useCallback(async () => {
-    if (!stream) return;
+    if (!stream || typeof stream.muteAudio !== 'function') return;
     try {
       if (isMuted) {
         await stream.unmuteAudio();
@@ -32,7 +32,7 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
   }, [stream, isMuted]);
 
   const toggleCamera = useCallback(async () => {
-    if (!stream) return;
+    if (!stream || typeof stream.startVideo !== 'function') return;
     try {
       if (isCameraOff) {
         await stream.startVideo({
@@ -55,10 +55,25 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
       if (isScreenSharing) {
         await stream.stopShareScreen();
       } else {
-        await stream.startShareScreen();
+        // Zoom SDK startShareScreen requires a canvas/video element.
+        // Create a temporary video element — SDK renders share into it.
+        if (typeof document !== 'undefined') {
+          let shareEl = document.getElementById('zoom-share-canvas') as HTMLVideoElement;
+          if (!shareEl) {
+            shareEl = document.createElement('video');
+            shareEl.id = 'zoom-share-canvas';
+            shareEl.style.display = 'none';
+            document.body.appendChild(shareEl);
+          }
+          await stream.startShareScreen(shareEl as any);
+        }
       }
       setIsScreenSharing(prev => !prev);
-    } catch (e) {
+    } catch (e: any) {
+      // USER_FORBIDDEN = user cancelled the share picker — not an error
+      if (e?.type === 'USER_FORBIDDEN' || e?.message?.includes('Permission denied')) {
+        return;
+      }
       reportProviderError({ provider: 'zoom', action: 'toggle_screen_share', error: e, component: 'ConferenceControls' });
     }
   }, [stream, isScreenSharing]);
@@ -67,9 +82,15 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
     if (!client) return;
     try {
       const rc = client.getRecordingClient();
+      if (!rc) return;
       if (isRecording) {
         await rc.stopCloudRecording();
       } else {
+        // Check if recording is available (host/co-host only)
+        if (typeof rc.canStartRecording === 'function' && !rc.canStartRecording()) {
+          console.warn('[ConferenceControls] Recording not available — may require host role');
+          return;
+        }
         await rc.startCloudRecording();
       }
       setIsRecording(prev => !prev);
