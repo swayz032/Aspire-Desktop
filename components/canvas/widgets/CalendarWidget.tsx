@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-n
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { useSupabase } from '@/providers';
 import { playClickSound } from '@/lib/sounds';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
@@ -72,8 +73,10 @@ const DEMO_EVENTS: CalendarEvent[] = [
   { id: '3', title: 'Investor Call', start_time: new Date(Date.now() + 2 * 86400000).toISOString(), end_time: new Date(Date.now() + 2 * 86400000 + 3600000).toISOString() },
 ];
 
-function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
+function CalendarWidgetInner({ suiteId: propSuiteId, officeId }: CalendarWidgetProps) {
   const router = useRouter();
+  const { suiteId: authSuiteId } = useSupabase();
+  const suiteId = propSuiteId || authSuiteId || '';
   const today = useMemo(() => new Date(), []);
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -81,6 +84,7 @@ function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
   const [loading, setLoading] = useState(true);
 
   const fetchEvents = useCallback(async () => {
+    if (!suiteId) { setLoading(false); return; }
     try {
       setLoading(true);
       const start = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).toISOString();
@@ -88,11 +92,18 @@ function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
       const { data, error } = await supabase
         .from('calendar_events')
         .select('*')
+        .eq('suite_id', suiteId)
         .gte('start_time', start)
-        .lte('start_time', end);
-      if (error) throw error;
-      setEvents(data && data.length > 0 ? data : []);
-    } catch {
+        .lte('start_time', end)
+        .order('start_time', { ascending: true });
+      if (error) {
+        console.warn('[CalendarWidget] fetch error:', error.message);
+        setEvents([]);
+      } else {
+        setEvents(data ?? []);
+      }
+    } catch (err) {
+      console.warn('[CalendarWidget] fetch exception:', err);
       setEvents([]);
     } finally {
       setLoading(false);

@@ -128,6 +128,10 @@ export async function getCalendarEvents() {
       .order('start_time', { ascending: true }),
   ]);
 
+  if (eventsResult.error) {
+    console.warn('[getCalendarEvents] calendar_events error:', eventsResult.error.message);
+  }
+
   const bookings = (bookingsResult.data ?? []).map((b: any) => ({
     ...b,
     _source: 'booking' as const,
