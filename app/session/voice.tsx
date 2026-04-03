@@ -66,7 +66,7 @@ function VoiceSession() {
   const { session: authSession, suiteId } = useSupabase();
   const { tenant } = useTenant();
   const [orbState, setOrbState] = useState<OrbState>('idle');
-  const [currentActivity, setCurrentActivity] = useState<string>('Connecting...');
+  const [currentActivity, setCurrentActivity] = useState<string>('Tap the mic to start');
   const [isMuted, setIsMuted] = useState(false);
   const [endSessionVisible, setEndSessionVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -170,11 +170,8 @@ function VoiceSession() {
   // Destructure stable refs to avoid eslint-disable on useEffect deps
   const { startSession, endSession } = voice;
 
-  // Start voice session on mount, cleanup on unmount
+  // Cleanup on unmount.
   useEffect(() => {
-    startSession().catch((err: Error) => {
-      showToast(err.message || 'Failed to start voice session', 'error');
-    });
     return () => {
       endSession();
     };
@@ -203,6 +200,16 @@ function VoiceSession() {
     outputRange: [0.4, 0.8, 0.4],
   });
 
+  const handleStartSession = useCallback(async () => {
+    try {
+      setCurrentActivity('Connecting...');
+      await startSession();
+    } catch (err) {
+      setCurrentActivity('Tap the mic to start');
+      showToast(err instanceof Error ? err.message : 'Failed to start voice session', 'error');
+    }
+  }, [startSession]);
+
   const handleEndSession = useCallback(() => {
     trackInteraction('session_end', 'voice-session', { agent: agentName });
     voice.endSession();
@@ -211,12 +218,17 @@ function VoiceSession() {
   }, [voice, router]);
 
   const handleToggleMute = useCallback(() => {
+    if (!voice.isActive) {
+      void handleStartSession();
+      return;
+    }
+
     const willMute = !isMuted;
     setIsMuted(willMute);
     trackInteraction(willMute ? 'mic_mute' : 'mic_unmute', 'voice-session', { agent: agentName });
     voice.setMuted(willMute);
     showToast(willMute ? 'Microphone muted' : 'Microphone on', 'info');
-  }, [isMuted, voice]);
+  }, [handleStartSession, isMuted, voice]);
 
   const handleMenuSelect = (optionId: string) => {
     trackInteraction('session_menu_select', 'voice-session', { option: optionId });
@@ -351,9 +363,10 @@ function VoiceSession() {
           <Pressable
             style={[styles.controlButton, isMuted && styles.controlButtonActive]}
             onPress={handleToggleMute}
+            accessibilityLabel={voice.isActive ? (isMuted ? 'Unmute microphone' : 'Mute microphone') : 'Start voice session'}
           >
             <Ionicons 
-              name={isMuted ? "mic-off" : "mic"} 
+              name={voice.isActive ? (isMuted ? "mic-off" : "mic") : "play"} 
               size={22} 
               color={isMuted ? Colors.semantic.error : Colors.text.primary} 
             />

@@ -72,6 +72,8 @@ type ZoomMediaStream = {
   // Video
   startVideo: (options?: Record<string, unknown>) => Promise<void>;
   stopVideo: () => Promise<void>;
+  attachVideo?: (userId: number, quality: number, element: HTMLVideoElement) => Promise<unknown> | unknown;
+  detachVideo?: (userId: number, element?: HTMLVideoElement) => Promise<unknown> | unknown;
   renderVideo: (canvas: HTMLCanvasElement, userId: number, width: number, height: number, x: number, y: number, rotation: number) => void;
   stopRenderVideo: (canvas: HTMLCanvasElement, userId: number) => void;
   getCameraList: () => MediaDevice[];
@@ -265,6 +267,7 @@ function ZoomConferenceProviderWeb({
         // Get media stream handle
         const mediaStream = client.getMediaStream();
         setStream(mediaStream);
+        let localVideoStarted = false;
 
         // Start audio and video in PARALLEL — no delay between them.
         // Both use separate device streams (mic vs camera), no permission race.
@@ -284,9 +287,13 @@ function ZoomConferenceProviderWeb({
               fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
               hd: VIDEO_CAPTURE_DEFAULTS.hd,
               facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
+            }).then(() => {
+              localVideoStarted = true;
             }).catch(() =>
               // Fallback: try HD only if fullHd fails
-              mediaStream.startVideo({ hd: true }).catch((_e: unknown) => {
+              mediaStream.startVideo({ hd: true }).then(() => {
+                localVideoStarted = true;
+              }).catch((_e: unknown) => {
                 reportProviderError({ provider: 'zoom', action: 'auto_start_video', error: _e, component: 'ZoomConferenceProvider' });
               })
             )
@@ -371,9 +378,13 @@ function ZoomConferenceProviderWeb({
         // Build initial participants list (retry after 1s if empty — SDK may still be syncing)
         const buildParticipants = () => {
           const allUsers = client.getAllUser?.() || [];
-          return allUsers.map((u: ZoomUserPayload) =>
-            toParticipant(u, localUserIdRef.current),
-          );
+          return allUsers.map((u: ZoomUserPayload) => {
+            const participant = toParticipant(u, localUserIdRef.current);
+            if (localVideoStarted && u.userId === localUserIdRef.current) {
+              return { ...participant, isVideoOn: true };
+            }
+            return participant;
+          });
         };
         let mapped = buildParticipants();
         setParticipants(mapped);
@@ -422,7 +433,11 @@ function ZoomConferenceProviderWeb({
             return prev.map((p) => {
               const update = updateMap.get(p.userId);
               if (!update) return p;
-              return toParticipant(update, localUserIdRef.current);
+              const participant = toParticipant(update, localUserIdRef.current);
+              if (localVideoStarted && update.userId === localUserIdRef.current) {
+                return { ...participant, isVideoOn: true };
+              }
+              return participant;
             });
           });
         });

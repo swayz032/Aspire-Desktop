@@ -1,12 +1,13 @@
 /**
  * ZoomVideoTile
  *
- * Renders a Zoom Video SDK participant into a canvas element.
+ * Renders a Zoom Video SDK participant into a DOM video/canvas target.
  * Falls back to AvatarTileSurface when video is off or on non-web platforms.
  *
  * Critical difference from LiveKitVideoTile: Zoom renders video via
- * `stream.renderVideo(canvas, userId, width, height, x, y, rotation)`,
- * NOT to a <video> DOM element. Local camera uses rotation=2 for mirroring.
+ * `stream.renderVideo(canvas, userId, width, height, x, y, rotation)` for
+ * remote tiles, but some Chromium self-view paths require a `<video>` target
+ * via `attachVideo(...)`.
  *
  * Animation patterns ported from LiveKitVideoTile:
  * - Multi-layer breathing ring (inner border + outer glow with offset timing)
@@ -46,6 +47,15 @@ interface ZoomVideoTileProps {
   participant: ZoomParticipant | null;
   /** MediaStream from ZoomConferenceProvider — exposes renderVideo/stopRenderVideo */
   stream: {
+    attachVideo?: (
+      userId: number,
+      quality: number,
+      element: HTMLVideoElement,
+    ) => Promise<unknown> | unknown;
+    detachVideo?: (
+      userId: number,
+      element?: HTMLVideoElement,
+    ) => Promise<unknown> | unknown;
     renderVideo: (
       canvas: HTMLCanvasElement,
       userId: number,
@@ -75,10 +85,29 @@ function ZoomCanvasView({
   stream: ZoomVideoTileProps['stream'];
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const useVideoElement = participant.isLocal && typeof stream?.attachVideo === 'function';
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    if (!canvasRef.current || !participant.userId || !participant.isVideoOn || !stream) return;
+    if (!participant.userId || !participant.isVideoOn || !stream) return;
+
+    if (useVideoElement) {
+      if (!videoRef.current) return;
+      const videoElement = videoRef.current;
+
+      stream.attachVideo?.(participant.userId, 3, videoElement);
+
+      return () => {
+        try {
+          stream.detachVideo?.(participant.userId, videoElement);
+        } catch (_e) {
+          // Zoom SDK may throw if element already detached.
+        }
+      };
+    }
+
+    if (!canvasRef.current) return;
 
     const canvas = canvasRef.current;
 
@@ -108,7 +137,7 @@ function ZoomCanvasView({
         // Zoom SDK may throw if canvas already detached — safe to ignore
       }
     };
-  }, [participant.userId, participant.isVideoOn, stream]);
+  }, [participant.userId, participant.isVideoOn, stream, useVideoElement]);
 
   if (Platform.OS !== 'web') return null;
 
@@ -120,7 +149,7 @@ function ZoomCanvasView({
     position: 'absolute',
     top: '0',
     left: '0',
-    objectFit: 'contain',
+    objectFit: 'cover',
     background: '#0a0a0c',
   };
 
@@ -133,10 +162,20 @@ function ZoomCanvasView({
       style={styles.canvasContainer}
       accessibilityElementsHidden
     >
-      <canvas
-        ref={canvasRef as React.RefObject<HTMLCanvasElement>}
-        style={canvasStyle as unknown as React.CSSProperties}
-      />
+      {useVideoElement ? (
+        <video
+          ref={videoRef as React.RefObject<HTMLVideoElement>}
+          autoPlay
+          muted={participant.isLocal}
+          playsInline
+          style={canvasStyle as unknown as React.CSSProperties}
+        />
+      ) : (
+        <canvas
+          ref={canvasRef as React.RefObject<HTMLCanvasElement>}
+          style={canvasStyle as unknown as React.CSSProperties}
+        />
+      )}
     </View>
   );
 }

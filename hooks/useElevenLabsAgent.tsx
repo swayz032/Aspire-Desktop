@@ -31,6 +31,7 @@ import { Sentry } from '@/lib/sentry';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 import type { AgentName } from '@/lib/elevenlabs';
 import { getTimeOfDay } from '@/lib/elevenlabs-agents';
+import { unlockBrowserAudioPlayback } from '@/lib/browserAudioUnlock';
 
 // Re-export VoiceStatus so consumers can import from either hook
 export type VoiceStatus = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
@@ -192,6 +193,13 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
 
   const sessionActiveRef = useRef(false);
 
+  const ensureMicrophoneReady = useCallback(async () => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+  }, []);
+
   const updateStatus = useCallback((newStatus: VoiceStatus) => {
     setVoiceStatus(prev => {
       if (prev === newStatus) return prev;
@@ -284,6 +292,9 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       updateStatus('thinking');
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session starting', level: 'info', data: { agent } });
 
+      await unlockBrowserAudioPlayback();
+      await ensureMicrophoneReady();
+
       const { signed_url, dynamic_variables: serverVars } = await fetchSignedUrl(agent, accessTokenRef.current);
 
       const ownerName = userProfile?.ownerName || '';
@@ -302,7 +313,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         ...serverVars,
       };
 
-      conversation.startSession({
+      await conversation.startSession({
         signedUrl: signed_url,
         dynamicVariables,
         ...(userId ? { userId } : {}),
