@@ -639,7 +639,7 @@ const styles = StyleSheet.create({
   threeColWrapper: {
     flexDirection: 'row',
     gap: Spacing.lg,
-    alignItems: 'stretch',
+    alignItems: 'flex-start',
   },
   leftCol: {
     width: Canvas.layout.leftColDesktop,
@@ -651,6 +651,7 @@ const styles = StyleSheet.create({
   centerCol: {
     flex: 1,
     minWidth: 440,
+    height: 520,
     ...(Platform.OS === 'web' ? {
       position: 'relative',
     } : {}),
@@ -670,7 +671,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface.card,
   },
   flexSection: {
-    flex: 1,
     display: 'flex',
     flexDirection: 'column',
   },
