@@ -1,16 +1,18 @@
 /**
- * NoraTile — full-size Nora AI participant tile for the video conference grid.
- * Immersive black design: inner box fills most of the tile, no visible borders,
- * new Aspire arrow logo centered, subtle cyan glow on active states.
- * "Nora - Room Assistant" label with status dot at bottom.
+ * NoraTile — Nora AI participant tile for the video conference grid.
+ *
+ * Design: Pure black (#000) tile. Large inner black box fills ~85% of tile.
+ * Nora's real photo in a circle centered in the box — NO ring, NO border,
+ * seamlessly blends into the black. Ambient glow breathes continuously
+ * even when idle (color shifts by state). "Nora - Room Assistant" label.
  */
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Platform } from 'react-native';
 import { Image } from 'expo-image';
-import { Colors, Spacing } from '@/constants/tokens';
+import { Colors } from '@/constants/tokens';
 import type { RoomAvaState } from '@/components/session/RoomAvaTile';
 
-const aspireLogo = require('../../assets/images/aspire-arrow-logo.png');
+const noraPhoto = require('../../assets/images/nora-avatar-photo.png');
 
 interface NoraTileProps {
   avaState: RoomAvaState;
@@ -20,30 +22,30 @@ interface NoraTileProps {
 
 export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
   const glowAnim = useRef(new Animated.Value(0)).current;
-  const glowLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  // Ambient glow breathes ALWAYS — even when idle
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 2400, useNativeDriver: false }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 2400, useNativeDriver: false }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  // Glow color changes by state
+  const glowColor = avaState === 'listening' ? '59,130,246'    // blue
+    : avaState === 'thinking' ? '167,139,250'                   // purple
+    : avaState === 'speaking' ? '74,222,128'                     // green
+    : '59,130,246';                                               // blue (idle)
 
   const isActive = avaState === 'listening' || avaState === 'thinking' || avaState === 'speaking';
 
-  useEffect(() => {
-    if (isActive) {
-      glowLoopRef.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(glowAnim, { toValue: 1, duration: 1400, useNativeDriver: false }),
-          Animated.timing(glowAnim, { toValue: 0, duration: 1400, useNativeDriver: false }),
-        ])
-      );
-      glowLoopRef.current.start();
-    } else {
-      glowLoopRef.current?.stop();
-      glowAnim.setValue(0);
-    }
-    return () => { glowLoopRef.current?.stop(); };
-  }, [isActive]);
-
-  const glowColor = avaState === 'listening' ? 'rgba(59,130,246,0.4)'
-    : avaState === 'thinking' ? 'rgba(167,139,250,0.4)'
-    : avaState === 'speaking' ? 'rgba(74,222,128,0.4)'
-    : 'rgba(59,130,246,0.15)';
+  // Stronger glow when active, subtle when idle
+  const idleGlow = `0 0 40px rgba(${glowColor},0.08), 0 0 80px rgba(${glowColor},0.04)`;
+  const activeGlow = `0 0 50px rgba(${glowColor},0.2), 0 0 100px rgba(${glowColor},0.1), 0 0 150px rgba(${glowColor},0.05)`;
 
   const statusText = avaState === 'listening' ? 'Listening...'
     : avaState === 'thinking' ? 'Thinking...'
@@ -55,32 +57,30 @@ export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
     : avaState === 'thinking' ? '#A78BFA'
     : '#4ade80';
 
-  // Subtle ambient glow only when active — no borders
-  const activeGlow = isActive
-    ? `0 0 60px ${glowColor}, 0 0 120px ${glowColor}`
-    : 'none';
-
   return (
     <Pressable
       onPress={onPress}
       style={styles.container}
       accessibilityRole="button"
-      accessibilityLabel={`Nora Room Assistant, ${statusText}. Tap to ${isNoraSpeaking ? 'stop' : 'start'}.`}
+      accessibilityLabel={`Nora Room Assistant, ${statusText}`}
     >
-      {/* Full-tile black background — immersive */}
-      <View style={styles.background}>
-        {/* Inner box — fills 80% of tile, no border, pure black */}
-        <Animated.View style={[
-          styles.innerBox,
-          Platform.OS === 'web' && isActive && {
-            boxShadow: activeGlow,
-          } as any,
-        ]}>
-          <Image source={aspireLogo} style={styles.logo} contentFit="contain" />
-        </Animated.View>
-      </View>
+      {/* Pure black background */}
+      <Animated.View style={[
+        styles.innerBox,
+        Platform.OS === 'web' && {
+          boxShadow: isActive ? activeGlow : idleGlow,
+          transition: 'box-shadow 1.2s ease',
+        } as any,
+      ]}>
+        {/* Nora photo — circle, no border, no ring, seamless on black */}
+        <Image
+          source={noraPhoto}
+          style={styles.photo}
+          contentFit="cover"
+        />
+      </Animated.View>
 
-      {/* Bottom label bar */}
+      {/* Bottom label */}
       <View style={styles.labelBar}>
         <Text style={styles.nameLabel}>Nora - Room Assistant</Text>
         <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
@@ -96,25 +96,19 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     overflow: 'hidden',
   },
-  background: {
-    flex: 1,
-    backgroundColor: '#000000',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   innerBox: {
-    width: '70%',
-    aspectRatio: 1,
-    maxWidth: 280,
-    maxHeight: 280,
-    backgroundColor: '#0a0a0a',
-    borderRadius: 16,
+    flex: 1,
+    margin: '7%' as any,
+    backgroundColor: '#000000',
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logo: {
-    width: '65%',
-    height: '65%',
+  photo: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    // No border, no ring — seamless circle on black
   },
   labelBar: {
     position: 'absolute',
@@ -126,7 +120,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   nameLabel: {
     fontSize: 14,
