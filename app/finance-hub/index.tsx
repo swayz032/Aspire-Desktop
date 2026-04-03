@@ -793,7 +793,7 @@ function FinanceHubContent() {
         ) : (
           <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', gap: 16, height: 512, alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', gap: 16, height: 560, alignItems: 'stretch' }}>
                 <div style={{ flex: 3, minWidth: 0, overflow: 'hidden', borderRadius: 12, height: '100%' }}>
                   <StoryModeCarousel
                     activeMode={activeStoryMode}
