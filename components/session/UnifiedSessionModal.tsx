@@ -255,17 +255,20 @@ function UnifiedSessionModalInner({
               </Pressable>
             </View>
 
-            {/* Step Indicator */}
+            {/* Step Indicator — each step is a column (dot + label) connected by a line */}
             <View style={styles.stepIndicatorRow} accessibilityRole="progressbar" accessibilityLabel={`Step ${step} of 2`}>
-              {/* Dot 1 */}
-              <View style={[
-                styles.stepDot,
-                step1Active && styles.stepDotActive,
-                step === 2 && styles.stepDotComplete,
-              ]}>
-                {step === 2 && (
-                  <Ionicons name="checkmark" size={7} color="#FFFFFF" accessibilityElementsHidden />
-                )}
+              {/* Step 1 column */}
+              <View style={styles.stepColumn}>
+                <View style={[
+                  styles.stepDot,
+                  step1Active && styles.stepDotActive,
+                  step === 2 && styles.stepDotComplete,
+                ]}>
+                  {step === 2 && (
+                    <Ionicons name="checkmark" size={7} color="#FFFFFF" accessibilityElementsHidden />
+                  )}
+                </View>
+                <Text style={[styles.stepLabel, step1Active && styles.stepLabelActive]}>Configure</Text>
               </View>
 
               {/* Connector line */}
@@ -274,15 +277,12 @@ function UnifiedSessionModalInner({
                 step === 2 && styles.stepConnectorActive,
               ]} />
 
-              {/* Dot 2 */}
-              <View style={[
-                styles.stepDot,
-                step2Active && styles.stepDotActive,
-              ]} />
-
-              {/* Step labels */}
-              <View style={styles.stepLabels}>
-                <Text style={[styles.stepLabel, step1Active && styles.stepLabelActive]}>Configure</Text>
+              {/* Step 2 column */}
+              <View style={styles.stepColumn}>
+                <View style={[
+                  styles.stepDot,
+                  step2Active && styles.stepDotActive,
+                ]} />
                 <Text style={[styles.stepLabel, step2Active && styles.stepLabelActive]}>Invite</Text>
               </View>
             </View>
@@ -512,7 +512,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
     zIndex: 100,
     ...(Platform.OS === 'web' ? {
       backdropFilter: 'blur(12px) saturate(1.1)',
@@ -529,11 +529,9 @@ const styles = StyleSheet.create({
     } as unknown as ViewStyle : {}),
   },
 
-  // Gradient border wrapper — pure dark shadow, no color glow
   borderWrapper: {
-    borderRadius: MODAL_BORDER_RADIUS + 1,
-    boxShadow: '0 32px 80px -16px rgba(0, 0, 0, 0.95)',
-  } as ViewStyle,
+    borderRadius: MODAL_BORDER_RADIUS,
+  },
 
   // Modal surface — elevated dark glass
   modalContainer: {
@@ -593,13 +591,16 @@ const styles = StyleSheet.create({
   // Step Indicator
   stepIndicatorRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
     paddingVertical: Spacing.lg,
-    gap: 0,
+    paddingBottom: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.04)',
-    position: 'relative',
+  },
+  stepColumn: {
+    alignItems: 'center',
+    gap: 6,
   },
   stepDot: {
     width: STEP_DOT_SIZE,
@@ -622,21 +623,14 @@ const styles = StyleSheet.create({
     height: STEP_CONNECTOR_HEIGHT,
     backgroundColor: Colors.border.strong,
     marginHorizontal: Spacing.sm,
+    marginTop: STEP_DOT_SIZE / 2 - STEP_CONNECTOR_HEIGHT / 2,
   },
   stepConnectorActive: {
     backgroundColor: Colors.semantic.success,
   },
-  stepLabels: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: Spacing.xs,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: STEP_CONNECTOR_WIDTH + STEP_DOT_SIZE + Spacing.lg,
-  },
   stepLabel: {
-    ...Typography.micro,
+    fontSize: 11,
+    fontWeight: '500',
     color: Colors.text.muted,
   },
   stepLabelActive: {
@@ -720,44 +714,46 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
 
-  // Participants list (Step 1)
+  // Participants list (Step 1) — horizontal wrapping chips
   participantsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.sm,
   },
   participantRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.background.tertiary,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: Colors.border.subtle,
+    gap: 8,
   },
   participantAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.md,
   },
   participantInitial: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#000000',
   },
   participantInfo: {
-    flex: 1,
+    flexShrink: 1,
   },
   participantName: {
-    ...Typography.caption,
+    fontSize: 13,
     fontWeight: '500',
     color: Colors.text.primary,
   },
   participantRole: {
-    ...Typography.micro,
+    fontSize: 11,
     color: Colors.text.muted,
-    marginTop: 1,
   },
   invitedBadge: {
     flexDirection: 'row',
