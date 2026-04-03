@@ -502,8 +502,24 @@ function UnifiedSessionModalInner({
                     {...(Platform.OS === 'web' ? { className: 'modal-back-btn' } as Record<string, string> : {})}
                   >
                     <Ionicons name="arrow-back" size={16} color={Colors.text.secondary} accessibilityElementsHidden />
-                    <Text style={styles.backBtnText}>Done</Text>
+                    <Text style={styles.backBtnText}>Back</Text>
                   </Pressable>
+                  <PressableScale
+                    style={[styles.startBtn, isJoining && styles.startBtnDisabled]}
+                    onPress={onStartSession}
+                    disabled={isJoining}
+                    accessibilityLabel={isJoining ? 'Checking conference service' : 'Start session'}
+                  >
+                    <Ionicons
+                      name={isJoining ? 'hourglass' : 'play'}
+                      size={16}
+                      color="#FFFFFF"
+                      accessibilityElementsHidden
+                    />
+                    <Text style={styles.startBtnText}>
+                      {isJoining ? 'Checking...' : 'Start Session'}
+                    </Text>
+                  </PressableScale>
                 </>
               )}
             </View>
