@@ -195,6 +195,7 @@ function AvaDeskPanelInner() {
   const [connectionStatus, setConnectionStatus] = useState('');
   const [anamSessionToken, setAnamSessionToken] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState('');
   const [latestVoiceDiagnostic, setLatestVoiceDiagnostic] = useState<VoiceDiagnosticEvent | null>(null);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -337,6 +338,21 @@ function AvaDeskPanelInner() {
       approvalSummary: pendingApprovals.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
     },
   });
+
+  const { messages, setMessages, sendMessage } = avaChatResult;
+
+  // Append a local message to the chat display (voice transcripts, file uploads, approvals)
+  const appendLocalMessage = useCallback((role: 'user' | 'assistant', content: string) => {
+    setMessages((prev: any[]) => [
+      ...prev,
+      {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        role,
+        content,
+        createdAt: new Date(),
+      },
+    ]);
+  }, [setMessages]);
 
   const handleCompanyPillPress = useCallback(async () => {
     if (latestVoiceDiagnostic?.stage === 'autoplay') {

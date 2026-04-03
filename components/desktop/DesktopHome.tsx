@@ -419,25 +419,27 @@ function DesktopHomeInner() {
                 </View>
 
                 <View style={[styles.rightCol, { width: rightWidth }]}>
-                  <CanvasTileWrapper
-                    tileId="finance_hub"
-                    mode={mode}
-                    onPress={handleTilePress}
-                    onHoverIn={handleTileHoverIn}
-                    onHoverOut={handleTileHoverOut}
-                    onContextMenu={handleContextMenu}
-                  >
-                    <View style={styles.section}>
-                      <SectionHeader title="Ops Snapshot" />
-                      <OpsSnapshotTabs
-                        cashData={liveCashData}
-                        pipelineStages={pipelineStages}
-                        businessScore={businessScore}
-                      />
-                    </View>
-                  </CanvasTileWrapper>
+                  <View style={{ flex: 1, overflow: 'hidden' }}>
+                    <CanvasTileWrapper
+                      tileId="finance_hub"
+                      mode={mode}
+                      onPress={handleTilePress}
+                      onHoverIn={handleTileHoverIn}
+                      onHoverOut={handleTileHoverOut}
+                      onContextMenu={handleContextMenu}
+                    >
+                      <View style={[styles.section, { flex: 1 }]}>
+                        <SectionHeader title="Ops Snapshot" />
+                        <OpsSnapshotTabs
+                          cashData={liveCashData}
+                          pipelineStages={pipelineStages}
+                          businessScore={businessScore}
+                        />
+                      </View>
+                    </CanvasTileWrapper>
+                  </View>
 
-                  <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E', padding: 16, flex: 1, overflow: 'hidden', height: '100%' }}>
+                  <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E', padding: 16, flex: 1, overflow: 'hidden' }}>
                     <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
                   </View>
                 </View>

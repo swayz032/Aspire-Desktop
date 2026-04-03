@@ -54,6 +54,8 @@ function mapOrchestratorError(rawMessage: string): string {
 // ---------------------------------------------------------------------------
 
 export interface UseAvaChatOptions {
+  /** Active voice session — passed to avoid double-hook overhead. */
+  avaVoice?: unknown;
   /** Called when response text arrives — pipe to Anam TTS. */
   onResponseText?: (text: string, media: unknown[]) => void;
   /** Additional body fields to merge (e.g. userProfile, pending approvals). */
