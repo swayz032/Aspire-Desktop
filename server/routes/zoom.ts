@@ -194,27 +194,14 @@ router.post('/api/zoom/token', async (req: Request, res: Response) => {
         .json({ error: 'Conference service not configured' });
     }
 
-    // Create a real Zoom meeting via the API, then generate a Meeting SDK signature
-    let meetingNumber: string;
-    let password = '';
+    // Generate a Video SDK JWT — no meeting creation needed.
+    // Video SDK uses topic-based sessions, not Zoom Meetings API.
+    const token = generateZoomJwt(roomName, participantName, 1, 7200);
 
-    if (ZOOM_API_KEY && ZOOM_API_SECRET) {
-      const meeting = await createZoomMeeting(roomName, participantName);
-      meetingNumber = meeting.meetingNumber;
-      password = meeting.password;
-      logger.info('Zoom meeting created', { meetingNumber, topic: roomName });
-    } else {
-      // Fallback: use room name as topic (won't work with Meeting SDK)
-      meetingNumber = roomName;
-      logger.warn('Zoom API keys not configured — cannot create real meetings');
-    }
-
-    const signature = generateMeetingSdkSignature(meetingNumber, 1);
+    logger.info('Zoom Video SDK token generated', { topic: roomName });
 
     res.json({
-      signature,
-      meetingNumber,
-      password,
+      token,
       topic: roomName,
     });
   } catch (error: unknown) {
@@ -1131,14 +1118,12 @@ router.patch('/api/conference/invite-internal/:id', async (req: Request, res: Re
       .single();
 
     const participantName = inviteeProfile?.owner_name || 'Participant';
-    // Use the stored meeting number (real Zoom meeting) or fall back to room name
-    const meetingNumber = invitation.zoom_session_id || invitation.room_name;
-    const signature = generateMeetingSdkSignature(meetingNumber, 0); // 0 = attendee
+    const participantIdentity = `${userId}-${invitation.invitee_suite_id}`;
+    // Video SDK JWT for the invitee to join the session
+    const token = generateZoomJwt(invitation.room_name, participantIdentity, 1, 7200);
 
     res.json({
-      signature,
-      meetingNumber,
-      password: '',
+      token,
       topic: invitation.room_name,
       roomName: invitation.room_name,
     });

@@ -121,7 +121,7 @@ export async function acceptVideoCall(
   invitationId: string,
   accessToken: string,
   suiteId?: string,
-): Promise<{ signature: string; meetingNumber: string; password: string; topic: string; roomName: string }> {
+): Promise<{ token: string; topic: string; roomName: string }> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${accessToken}`,
@@ -141,13 +141,7 @@ export async function acceptVideoCall(
 
   const data = await res.json();
   dismissIncomingVideoCall();
-  return {
-    signature: data.signature || data.token,
-    meetingNumber: data.meetingNumber || data.topic || data.roomName,
-    password: data.password || '',
-    topic: data.topic || data.roomName,
-    roomName: data.roomName,
-  };
+  return { token: data.token, topic: data.topic || data.roomName, roomName: data.roomName };
 }
 
 /**

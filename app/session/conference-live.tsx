@@ -16,82 +16,13 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { useKeepAwake } from '@/hooks/useKeepAwake';
 import { readSSEStream, extractResponseText } from '@/lib/sseStream';
-// Zoom Meeting SDK loaded via CDN at runtime (87MB package too large for Metro bundler).
-// ZoomMtgEmbedded is accessed from window after script injection.
+import { ZoomConferenceProvider, useZoomContext, useZoomParticipants, useZoomActiveSpeaker } from '@/components/session/ZoomConferenceProvider';
+import type { ZoomParticipant } from '@/components/session/ZoomConferenceProvider';
+import { ZoomVideoTile } from '@/components/session/ZoomVideoTile';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type ZoomClient = any;
-
-const ZOOM_SDK_CDN = 'https://source.zoom.us/5.1.4/zoom-meeting-embedded-5.1.4.min.js';
-const REACT_18_CDN = 'https://unpkg.com/react@18.2.0/umd/react.production.min.js';
-const REACT_DOM_18_CDN = 'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js';
-let _zoomSdkPromise: Promise<any> | null = null;
-
-/** Load a script from URL and return a promise. */
-function loadScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.async = false; // Preserve load order
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`Failed to load: ${src}`));
-    document.head.appendChild(s);
-  });
-}
-
-/**
- * Load Zoom Meeting SDK from CDN.
- *
- * The SDK was built with React 18. Our app runs React 19 (Expo SDK 54).
- * React 19 removed/restructured internals like ReactCurrentOwner, causing
- * "Cannot read properties of undefined" when the SDK initializes.
- *
- * Solution: Load React 18 + ReactDOM 18 from CDN for the SDK, then
- * restore our React 19 after the SDK has initialized.
- */
-function loadZoomMeetingSdk(): Promise<any> {
-  if (_zoomSdkPromise) return _zoomSdkPromise;
-
-  if (typeof window !== 'undefined' && (window as any).ZoomMtgEmbedded?.createClient) {
-    return Promise.resolve((window as any).ZoomMtgEmbedded);
-  }
-
-  _zoomSdkPromise = (async () => {
-    if (typeof document === 'undefined') throw new Error('Not in browser');
-
-    // Save our React 19 references
-    const ourReact = (window as any).React;
-    const ourReactDOM = (window as any).ReactDOM;
-
-    try {
-      // Load React 18 from CDN (SDK requires it)
-      await loadScript(REACT_18_CDN);
-      await loadScript(REACT_DOM_18_CDN);
-
-      // Now load the Zoom SDK — it will use the React 18 globals
-      await loadScript(ZOOM_SDK_CDN);
-
-      const sdk = (window as any).ZoomMtgEmbedded;
-      if (!sdk?.createClient) {
-        const type = typeof sdk;
-        const keys = sdk ? Object.keys(sdk).slice(0, 10).join(', ') : 'undefined';
-        throw new Error(`Zoom SDK loaded but createClient not found. Type: ${type}, keys: [${keys}]`);
-      }
-
-      return sdk;
-    } finally {
-      // Restore our React 19 for the rest of the app
-      // The Zoom SDK keeps its own React 18 reference internally
-      if (ourReact) (window as any).React = ourReact;
-      if (ourReactDOM) (window as any).ReactDOM = ourReactDOM;
-    }
-  })();
-
-  return _zoomSdkPromise;
-}
 
 interface ChatMessage {
   id: string;
@@ -121,6 +52,35 @@ interface AuthorityItem {
   requestedBy: string;
   recipients?: string[];
   timestamp: Date;
+}
+
+// ---------------------------------------------------------------------------
+// ConferenceGrid — child of ZoomConferenceProvider, uses Zoom hooks
+// ---------------------------------------------------------------------------
+
+function ConferenceGrid() {
+  const participants = useZoomParticipants();
+  const { stream } = useZoomContext();
+  const activeSpeaker = useZoomActiveSpeaker();
+
+  return (
+    <View style={styles.videoGrid}>
+      {participants.map((p: ZoomParticipant) => (
+        <View key={p.userId} style={styles.videoTileWrapper}>
+          <ZoomVideoTile
+            participant={p}
+            stream={stream as any}
+            isActiveSpeaker={p.userId === activeSpeaker}
+          />
+        </View>
+      ))}
+      {participants.length === 0 && (
+        <View style={styles.emptyGrid}>
+          <Text style={styles.emptyGridText}>Waiting for participants...</Text>
+        </View>
+      )}
+    </View>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -229,12 +189,14 @@ function ConferenceLive() {
   const { authenticatedFetch } = useAuthFetch();
 
   // ---------------------------------------------------------------------------
-  // Zoom Meeting SDK state
+  // Zoom Video SDK state
   // ---------------------------------------------------------------------------
-  const [zoomStatus, setZoomStatus] = useState<'loading' | 'joining' | 'joined' | 'error'>('loading');
+  const [zoomStatus, setZoomStatus] = useState<'loading' | 'joined' | 'error'>('loading');
   const [zoomError, setZoomError] = useState<string | null>(null);
-  const zoomContainerRef = useRef<HTMLDivElement | null>(null);
-  const zoomClientRef = useRef<ZoomClient | null>(null);
+  const [zoomToken, setZoomToken] = useState<string | null>(null);
+  const [zoomTopic, setZoomTopic] = useState<string>('');
+
+  const participantName = (params.participantName as string) || tenant?.ownerName || session?.user?.user_metadata?.full_name || 'You';
 
   // ---------------------------------------------------------------------------
   // Chat, materials, authority state
@@ -306,220 +268,44 @@ function ConferenceLive() {
     trackInteraction('session_end', 'conference-live', { agent: 'nora' });
     setShowEndModal(false);
 
-    // Leave Zoom meeting
-    try {
-      if (zoomClientRef.current) {
-        await zoomClientRef.current.leaveMeeting();
-      }
-    } catch (_e) {
-      // Best-effort leave
-    }
-
+    // ZoomConferenceProvider handles leave on unmount
     showToast('Session ended. Generating receipt...', 'success');
     setTimeout(() => router.replace('/(tabs)'), 1500);
   }, [router]);
 
   // ---------------------------------------------------------------------------
-  // Zoom Meeting SDK: init + join
+  // Zoom Video SDK: fetch token
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-
     const controller = new AbortController();
     const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
-    const participantName = (params.participantName as string) || tenant?.ownerName || session?.user?.user_metadata?.full_name || 'You';
-
-    // Check if joining via accepted invite (signature + meetingNumber in params)
-    const paramSignature = params.signature as string | undefined;
-    const paramMeetingNumber = params.meetingNumber as string | undefined;
-    const paramPassword = (params.password as string) || '';
-
-    let client: ZoomClient | null = null;
 
     (async () => {
       try {
         setZoomStatus('loading');
-
-        let signature: string;
-        let meetingNumber: string;
-        let password: string;
-
-        if (paramSignature && paramMeetingNumber) {
-          // Joining via accepted invite — signature already provided
-          signature = paramSignature;
-          meetingNumber = paramMeetingNumber;
-          password = paramPassword;
-        } else {
-          // Host starting session — fetch from server (creates real Zoom meeting)
-          const res = await authenticatedFetch('/api/zoom/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roomName, participantName, suiteId }),
-            signal: controller.signal,
-          });
-
-          if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
-          const data = await res.json();
-          if (controller.signal.aborted) return;
-          signature = data.signature || data.token;
-          meetingNumber = data.meetingNumber || data.topic || roomName;
-          password = data.password || '';
-        }
-
-        // 2. Load Meeting SDK via CDN (too large for Metro bundler at 87MB)
-        const ZoomMtgEmbedded = await loadZoomMeetingSdk();
-        if (controller.signal.aborted || !ZoomMtgEmbedded) throw new Error('Failed to load Zoom Meeting SDK');
-
-        // 3. Create client and init
-        client = ZoomMtgEmbedded.createClient();
-        zoomClientRef.current = client;
-
-        const container = zoomContainerRef.current;
-        if (!container) throw new Error('Zoom container element not found');
-
-        // Use viewport dimensions if container hasn't laid out yet
-        const viewWidth = container.clientWidth || window.innerWidth || 1280;
-        const viewHeight = container.clientHeight || window.innerHeight || 720;
-
-        await client.init({
-          zoomAppRoot: container,
-          language: 'en-US',
-          patchJsMedia: true,
-          leaveOnPageUnload: true,
-
-          // ── Video Quality ──────────────────────────────────────────
-          // 25 simultaneous video tiles in gallery (Zoom SDK max)
-          maximumVideosInGalleryView: 25,
-
-          // ── Virtual Background ─────────────────────────────────────
-          // Enable virtual background support (blur, custom images)
-          enforceVirtualBackground: false,
-
-          // ── UI Customization ───────────────────────────────────────
-          customize: {
-            // Video panel: resizable, 1080p default, gallery view
-            video: {
-              isResizable: true,
-              viewSizes: {
-                default: {
-                  width: Math.min(viewWidth, 1920),
-                  height: Math.min(viewHeight, 1080),
-                },
-                ribbon: {
-                  width: Math.min(viewWidth, 1920),
-                  height: 180,
-                },
-              },
-              defaultViewType: 'gallery',
-              popper: {
-                disableDraggable: true,
-              },
-            },
-
-            // Screen sharing options
-            sharing: {
-              options: {
-                hideShareAudioOption: false,
-              },
-            },
-
-            // Meeting info bar
-            meetingInfo: ['topic', 'host', 'mn', 'participant', 'dc', 'enctype'],
-
-            // Chat panel position (right side, non-draggable for consistent UX)
-            chat: {
-              popper: {
-                placement: 'right',
-                disableDraggable: true,
-              },
-            },
-
-            // Participants panel position
-            participants: {
-              popper: {
-                placement: 'right',
-              },
-            },
-
-            // Settings panel position
-            setting: {
-              popper: {
-                placement: 'bottom-end',
-              },
-            },
-          },
+        const res = await authenticatedFetch('/api/zoom/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomName, participantName, suiteId }),
+          signal: controller.signal,
         });
+        if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
+        const data = await res.json();
         if (controller.signal.aborted) return;
-
-        // 4. Join meeting
-        setZoomStatus('joining');
-
-        // sdkKey removed from joinOptions since v4.0.0 — appKey is in the signature JWT
-        await client.join({
-          signature,
-          meetingNumber,
-          password,
-          userName: participantName,
-        });
-
-        if (controller.signal.aborted) return;
+        setZoomToken(data.token);
+        setZoomTopic(data.topic || roomName);
         setZoomStatus('joined');
         trackInteraction('session_start', 'conference-live', { agent: 'nora', roomName });
-
-        // 5. Event listeners — meeting end, connection, participants
-        client.on('connection-change', (payload: any) => {
-          if (payload?.state === 'Closed' || payload?.state === 'Fail') {
-            showToast('Meeting has ended.', 'info');
-            setTimeout(() => router.replace('/(tabs)'), 2000);
-          }
-        });
-
-        client.on('user-added', (user: any) => {
-          if (user?.displayName) {
-            showToast(`${user.displayName} joined`, 'info');
-          }
-        });
-
-        client.on('user-removed', (user: any) => {
-          if (user?.displayName) {
-            showToast(`${user.displayName} left`, 'info');
-          }
-        });
-
-        client.on('active-speaker', (speakers: any) => {
-          // Zoom handles speaker highlight in its own UI
-        });
-
-        client.on('network-quality-change', (payload: any) => {
-          if (payload?.level !== undefined && payload.level <= 1) {
-            showToast('Poor network connection detected', 'error');
-          }
-        });
-
-      } catch (err: unknown) {
+      } catch (err) {
         if (controller.signal.aborted) return;
-        const message = err instanceof Error ? err.message : 'Conference service unavailable';
-        setZoomError(message);
+        setZoomError(err instanceof Error ? err.message : 'Conference service unavailable');
         setZoomStatus('error');
       }
     })();
 
-    return () => {
-      controller.abort();
-      if (client) {
-        // Remove event listeners before leaving
-        try {
-          client.off('connection-change');
-          client.off('user-added');
-          client.off('user-removed');
-          client.off('active-speaker');
-          client.off('network-quality-change');
-        } catch {}
-        client.leaveMeeting().catch(() => {});
-      }
-      zoomClientRef.current = null;
-    };
-  }, [suiteId, params.roomName, params.participantName, authenticatedFetch]);
+    return () => controller.abort();
+  }, [suiteId, params.roomName, authenticatedFetch]);
 
   // ---------------------------------------------------------------------------
   // Chat handler (same SSE streaming to orchestrator)
@@ -601,16 +387,12 @@ function ConferenceLive() {
   const handleRetry = useCallback(() => {
     setZoomError(null);
     setZoomStatus('loading');
-    // Re-trigger the effect by forcing a re-mount — simplest approach
-    // The useEffect depends on authenticatedFetch which is stable, so we
-    // navigate to the same route to force remount.
     const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
-    const participantName = (params.participantName as string) || tenant?.ownerName || session?.user?.user_metadata?.full_name || 'You';
     router.replace({
       pathname: '/session/conference-live',
       params: { roomName, participantName },
     });
-  }, [router, params, suiteId]);
+  }, [router, params, suiteId, participantName]);
 
   // ---------------------------------------------------------------------------
   // Keyboard shortcut: Alt+H toggles chat
@@ -668,30 +450,17 @@ function ConferenceLive() {
         )}
 
         {/* Loading state */}
-        {(zoomStatus === 'loading' || zoomStatus === 'joining') && (
+        {zoomStatus === 'loading' && (
           <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>
-              {zoomStatus === 'loading' ? 'Connecting to conference...' : 'Joining meeting...'}
-            </Text>
+            <Text style={styles.loadingText}>Connecting to conference...</Text>
           </View>
         )}
 
-        {/* Zoom Meeting SDK container — always mounted so ref is available */}
-        {Platform.OS === 'web' && (
-          <div
-            ref={(el) => { zoomContainerRef.current = el; }}
-            id="meetingSDKElement"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              overflow: 'hidden',
-              display: zoomStatus === 'error' ? 'none' : 'block',
-              background: '#0a0a0c',
-            }}
-          />
+        {/* Zoom Video SDK — rendered via ZoomConferenceProvider + tile grid */}
+        {zoomStatus === 'joined' && zoomToken && (
+          <ZoomConferenceProvider token={zoomToken} topic={zoomTopic} userName={participantName}>
+            <ConferenceGrid />
+          </ZoomConferenceProvider>
         )}
 
         {/* Nora tile overlay — bottom-left corner on top of Zoom UI */}
@@ -784,6 +553,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0a0c',
+  },
+  // Video grid
+  videoGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    padding: 4,
+    alignContent: 'center',
+    justifyContent: 'center',
+  },
+  videoTileWrapper: {
+    width: '49%',
+    aspectRatio: 16 / 9,
+    minWidth: 280,
+    maxHeight: '49%',
+  },
+  emptyGrid: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyGridText: {
+    color: '#6e6e73',
+    fontSize: 14,
   },
   // Error state
   errorContainer: {
