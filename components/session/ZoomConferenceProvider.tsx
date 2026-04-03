@@ -170,9 +170,10 @@ function ZoomConferenceProviderWeb({
         await client.join(topic, token as string, userName);
 
         if (destroyed) return;
+        setConnectionState('connected');
 
         // Capture local user ID for isLocal detection
-        const currentUser = client.getCurrentUserInfo();
+        const currentUser = client.getCurrentUserInfo?.();
         if (currentUser) {
           localUserIdRef.current = currentUser.userId;
         }
@@ -195,33 +196,46 @@ function ZoomConferenceProviderWeb({
           }
         }
 
-        // Build initial participants list
-        const allUsers = client.getAllUser();
-        const mapped = allUsers.map((u: ZoomUserPayload) =>
-          toParticipant(u, localUserIdRef.current),
-        );
+        // Build initial participants list (retry after 1s if empty — SDK may still be syncing)
+        const buildParticipants = () => {
+          const allUsers = client.getAllUser?.() || [];
+          return allUsers.map((u: ZoomUserPayload) =>
+            toParticipant(u, localUserIdRef.current),
+          );
+        };
+        let mapped = buildParticipants();
         setParticipants(mapped);
+        if (mapped.length === 0 && !destroyed) {
+          // Retry — sometimes getAllUser returns empty right after join
+          setTimeout(() => {
+            if (destroyed || !mountedRef.current) return;
+            mapped = buildParticipants();
+            if (mapped.length > 0) setParticipants(mapped);
+          }, 1500);
+        }
 
         // ── Event listeners ─────────────────────────────────────────────
 
         client.on('user-added', (...args: unknown[]) => {
           if (!mountedRef.current) return;
-          const payload = args[0] as ZoomUserPayload[];
+          // Zoom SDK may send a single user or an array depending on version
+          const raw = args[0];
+          const payload: ZoomUserPayload[] = Array.isArray(raw) ? raw : [raw as ZoomUserPayload];
           setParticipants((prev) => {
             const existing = new Set(prev.map((p) => p.userId));
             const added = payload
-              .filter((u) => !existing.has(u.userId))
+              .filter((u) => u && u.userId && !existing.has(u.userId))
               .map((u) => toParticipant(u, localUserIdRef.current));
-            return [...prev, ...added];
+            return added.length > 0 ? [...prev, ...added] : prev;
           });
         });
 
         client.on('user-removed', (...args: unknown[]) => {
           if (!mountedRef.current) return;
-          const payload = args[0] as ZoomUserPayload[];
-          const removedIds = new Set(payload.map((u) => u.userId));
+          const raw = args[0];
+          const payload: ZoomUserPayload[] = Array.isArray(raw) ? raw : [raw as ZoomUserPayload];
+          const removedIds = new Set(payload.filter(u => u && u.userId).map((u) => u.userId));
           setParticipants((prev) => prev.filter((p) => !removedIds.has(p.userId)));
-          // Clear active speaker if they left
           setActiveSpeakerId((prev) =>
             prev !== null && removedIds.has(prev) ? null : prev,
           );
@@ -229,9 +243,10 @@ function ZoomConferenceProviderWeb({
 
         client.on('user-updated', (...args: unknown[]) => {
           if (!mountedRef.current) return;
-          const payload = args[0] as ZoomUserPayload[];
+          const raw = args[0];
+          const payload: ZoomUserPayload[] = Array.isArray(raw) ? raw : [raw as ZoomUserPayload];
           setParticipants((prev) => {
-            const updateMap = new Map(payload.map((u) => [u.userId, u]));
+            const updateMap = new Map(payload.filter(u => u && u.userId).map((u) => [u.userId, u]));
             return prev.map((p) => {
               const update = updateMap.get(p.userId);
               if (!update) return p;
