@@ -256,8 +256,12 @@ function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
         style={({ pressed }) => [s.openButton, pressed && { opacity: 0.8 }]}
         onPress={() => { playClickSound(); router.push('/calendar' as any); }}
       >
-        <Text style={s.openButtonText}>Open Calendar</Text>
-        <Ionicons name="arrow-forward" size={16} color="#FFF" />
+        <View style={s.openButtonInner}>
+          <Text style={s.openButtonText}>Open Calendar</Text>
+          <View style={s.openButtonIcon}>
+            <Ionicons name="arrow-forward" size={14} color="rgba(255,255,255,0.7)" />
+          </View>
+        </View>
       </Pressable>
     </View>
   );
@@ -266,7 +270,9 @@ function CalendarWidgetInner({ suiteId, officeId }: CalendarWidgetProps) {
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   navRow: {
     flexDirection: 'row',
@@ -425,25 +431,38 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
   openButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
     marginHorizontal: 16,
     marginBottom: 16,
     marginTop: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(79, 172, 254, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(79, 172, 254, 0.25)',
     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+  },
+  openButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 8,
   },
   openButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FFF',
+    color: 'rgba(255, 255, 255, 0.85)',
+    letterSpacing: 0.2,
   } as any,
+  openButtonIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(79, 172, 254, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 export function CalendarWidget(props: any) {
