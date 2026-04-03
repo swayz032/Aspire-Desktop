@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/providers';
 import { playClickSound } from '@/lib/sounds';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { Colors, BorderRadius } from '@/constants/tokens';
 
 interface CalendarEvent {
   id: string;
@@ -281,7 +282,11 @@ function CalendarWidgetInner({ suiteId: propSuiteId, officeId }: CalendarWidgetP
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.surface.cardBorder,
+    overflow: 'hidden',
   },
   navRow: {
     flexDirection: 'row',

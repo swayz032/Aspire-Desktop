@@ -35,6 +35,7 @@ import { SessionTimeoutWarning } from '@/components/ui/SessionTimeoutWarning';
 import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
 import { IncomingCallOverlay } from '@/components/calls/IncomingCallOverlay';
 import { IncomingVideoCallOverlay } from '@/components/calls/IncomingVideoCallOverlay';
+import { CalendarNotificationOverlay } from '@/components/calendar/CalendarNotificationOverlay';
 import { useRealtimeConferenceInvitations } from '@/hooks/useRealtimeConferenceInvitations';
 import { useRealtimeApprovalRequests } from '@/hooks/useRealtimeApprovalRequests';
 import { useBackendConnectivity } from '@/hooks/useBackendConnectivity';
@@ -534,6 +535,7 @@ function AppNavigator() {
       </Stack>
       <IncomingCallOverlay />
       <IncomingVideoCallOverlay />
+      <CalendarNotificationOverlay />
       {!isDesktop && <AvaMiniPlayer />}
       {session && showWarning && (
         <SessionTimeoutWarning

@@ -478,7 +478,7 @@ function DesktopHomeInner() {
                     onHoverOut={handleTileHoverOut}
                     onContextMenu={handleContextMenu}
                   >
-                    <View style={[styles.section, styles.flexSection]}>
+                    <View style={styles.flexSection}>
                       <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
                     </View>
                   </CanvasTileWrapper>

@@ -16,6 +16,7 @@ import { useSupabase } from '@/providers';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { devLog, devWarn, devError } from '@/lib/devLog';
 import { getCalendarEvents } from '@/lib/api';
+import { showCalendarApproval, wasEventDismissed } from '@/lib/calendarNotificationStore';
 
 const LOG_PREFIX = '[CalendarEvents]';
 const POLL_INTERVAL_MS = 30_000;
@@ -111,7 +112,36 @@ export function useRealtimeCalendarEvents(): { events: CalendarEvent[]; loading:
           (payload) => {
             if (disposed) return;
             const row = payload.new as Record<string, unknown>;
-            devLog(`${LOG_PREFIX} Realtime INSERT:`, { id: row.id, title: row.title });
+            devLog(`${LOG_PREFIX} Realtime INSERT:`, { id: row.id, title: row.title, status: row.status });
+
+            // Trigger approval modal for pending_approval events from Ava
+            if (row.status === 'pending_approval' && row.source === 'ava') {
+              const eventId = row.id as string;
+              if (!wasEventDismissed(eventId)) {
+                showCalendarApproval({
+                  id: eventId,
+                  title: (row.title as string) || 'Calendar Event',
+                  startTime: (row.start_time as string) || '',
+                  duration: row.duration_minutes ? `${row.duration_minutes} min` : '30 min',
+                  location: (row.location as string) || undefined,
+                  eventType: (row.event_type as string) || 'meeting',
+                }).then((approved) => {
+                  if (approved) {
+                    // Update status to confirmed
+                    supabase.from('calendar_events').update({ status: 'confirmed' }).eq('id', eventId).then(() => {
+                      devLog(`${LOG_PREFIX} Event approved:`, eventId);
+                    });
+                  } else {
+                    // Delete the pending event
+                    supabase.from('calendar_events').delete().eq('id', eventId).then(() => {
+                      devLog(`${LOG_PREFIX} Event dismissed:`, eventId);
+                    });
+                  }
+                });
+              }
+              return; // Don't add pending_approval to the visible list yet
+            }
+
             const newEvent = rowToCalendarEvent(row);
             setEvents((prev) => {
               if (prev.some((e) => e.id === newEvent.id)) return prev;

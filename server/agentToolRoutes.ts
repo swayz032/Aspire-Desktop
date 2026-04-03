@@ -329,7 +329,7 @@ router.post('/v1/tools/draft', async (req: Request, res: Response) => {
           participants,
           source: 'ava',
           created_by: user_id || 'ava',
-          status: 'pending',
+          status: 'pending_approval',
         })
         .select()
         .single();
