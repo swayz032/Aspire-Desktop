@@ -79,49 +79,8 @@ function isBannerDismissed(): boolean {
 }
 
 function DesktopHomeInner() {
-  // Reset body/html styles that the landing page may have set (overflow: auto, height: auto)
-  // These persist after navigation and cause the homepage to stretch beyond viewport.
-  // Apply immediately, on next frame, AND on a short interval to win any race with
-  // landing-page cleanup or login-page unmount ordering.
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const applyAppStyles = () => {
-      const body = document.body;
-      const html = document.documentElement;
-      const root = document.getElementById('root');
-      
-      // Force app mode: viewport-locking
-      body.style.setProperty('overflow', 'hidden', 'important');
-      body.style.setProperty('height', '100%', 'important');
-      body.style.setProperty('margin', '0', 'important');
-      
-      html.style.setProperty('overflow', 'hidden', 'important');
-      html.style.setProperty('height', '100%', 'important');
-      html.style.setProperty('margin', '0', 'important');
-      
-      if (root) {
-        root.style.setProperty('overflow', 'hidden', 'important');
-        root.style.setProperty('height', '100%', 'important');
-        root.style.minHeight = '';
-        root.style.display = 'flex';
-      }
-    };
-    applyAppStyles();
-    // Multiple frames to ensure we win any cleanup race
-    const raf = requestAnimationFrame(applyAppStyles);
-    const t1 = setTimeout(applyAppStyles, 50);
-    const t2 = setTimeout(applyAppStyles, 150);
-    const t3 = setTimeout(applyAppStyles, 500);
-    const t4 = setTimeout(applyAppStyles, 1000);
-    
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
-    };
-  }, []);
+  // Viewport lock is handled structurally by _layout.tsx persistent <style> tag
+  // and DesktopShell's 100vh container. No DOM hacks needed here.
 
   const router = useRouter();
   const { mode, stageOpen, runwayState } = useImmersion();
@@ -399,7 +358,7 @@ function DesktopHomeInner() {
               <ImmersionLayer depth={1}>
               <View style={[styles.threeColWrapper, { gap: columnGap, height: 840 }]}>
                 {showThreeCol && (
-                <View style={[styles.leftCol, { width: leftWidth, height: '100%' }]}>
+                <View style={[styles.leftCol, { width: leftWidth }]}>
                   <CanvasTileWrapper
                     tileId="conference_call"
                     mode={mode}
@@ -454,12 +413,12 @@ function DesktopHomeInner() {
                   </View>
                 )}
 
-                <View style={[styles.centerCol, { height: '100%', flex: 1 }]}>
+                <View style={styles.centerCol}>
                   {/* Ava is the brain — NOT wrapped as a tile */}
                   <AvaDeskPanel />
                 </View>
 
-                <View style={[styles.rightCol, { width: rightWidth, height: '100%' }]}>
+                <View style={[styles.rightCol, { width: rightWidth }]}>
                   <CanvasTileWrapper
                     tileId="finance_hub"
                     mode={mode}
@@ -620,11 +579,13 @@ const styles = StyleSheet.create({
     flex: 1,
     overflow: 'hidden',
   },
-  scroll: { 
+  scroll: {
     flex: 1,
+    minHeight: 0,
   },
   scrollContent: {
     paddingBottom: Spacing.xxl,
+    flexGrow: 1,
   },
   grid: {
     flexDirection: 'column',
@@ -638,7 +599,7 @@ const styles = StyleSheet.create({
   threeColWrapper: {
     flexDirection: 'row',
     gap: Spacing.lg,
-    alignItems: 'stretch',
+    overflow: 'hidden',
   },
   leftCol: {
     width: Canvas.layout.leftColDesktop,

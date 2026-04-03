@@ -51,19 +51,16 @@ function IndexContent() {
     document.head.appendChild(scrollStyle);
     return () => {
       document.getElementById('hide-scrollbar')?.remove();
-      // Reset to neutral — don't set app-mode styles here.
-      // DesktopHome's useEffect handles setting overflow:hidden + height:100%.
-      // Setting them here causes a race condition where this cleanup
-      // fires AFTER DesktopHome mounts, overriding its styles.
-      body.style.overflow = '';
-      body.style.height = '';
-      html.style.overflow = '';
-      html.style.height = '';
+      // Restore app-mode viewport lock (matches _layout.tsx persistent <style>)
+      body.style.setProperty('overflow', 'hidden', 'important');
+      body.style.setProperty('height', '100%', 'important');
+      html.style.setProperty('overflow', 'hidden', 'important');
+      html.style.setProperty('height', '100%', 'important');
       if (root) {
-        root.style.overflow = '';
-        root.style.height = '';
-        root.style.minHeight = '';
-        root.style.display = '';
+        root.style.setProperty('overflow', 'hidden', 'important');
+        root.style.setProperty('height', '100%', 'important');
+        root.style.minHeight = '0';
+        root.style.display = 'flex';
       }
     };
   }, [showLanding]);
