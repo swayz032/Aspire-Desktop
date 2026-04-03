@@ -776,7 +776,7 @@ function FinanceHubContent() {
   return (
     <>
     <FinanceHubShell>
-      <View testID="smoke-finance-hub-root" style={{ flex: 1 }}>
+      <View testID="smoke-finance-hub-root">
       {Platform.OS === 'web' ? (
         (isTablet || isMobile) ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
@@ -789,16 +789,16 @@ function FinanceHubContent() {
             {rightRailNode}
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', gap: 16 }}>
-                <div style={{ flex: 3, minWidth: 0, overflow: 'hidden', borderRadius: 12 }}>
+              <div style={{ display: 'flex', gap: 16, height: 560 }}>
+                <div style={{ flex: 3, minWidth: 0, overflow: 'hidden', borderRadius: 12, height: '100%' }}>
                   <StoryModeCarousel
                     activeMode={activeStoryMode}
                     onSelectMode={(mode) => handleModeSwitch(mode.id)}
                   />
                 </div>
-                <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
                   {finnPanelNode}
                 </div>
               </div>
