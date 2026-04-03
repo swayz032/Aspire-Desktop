@@ -419,7 +419,7 @@ function DesktopHomeInner() {
                 </View>
 
                 <View style={[styles.rightCol, { width: rightWidth }]}>
-                  <View style={{ flex: 1, overflow: 'hidden' }}>
+                  <View style={{ height: 260, overflow: 'hidden', flexShrink: 0 }}>
                     <CanvasTileWrapper
                       tileId="finance_hub"
                       mode={mode}
@@ -428,7 +428,7 @@ function DesktopHomeInner() {
                       onHoverOut={handleTileHoverOut}
                       onContextMenu={handleContextMenu}
                     >
-                      <View style={[styles.section, { flex: 1 }]}>
+                      <View style={styles.section}>
                         <SectionHeader title="Ops Snapshot" />
                         <OpsSnapshotTabs
                           cashData={liveCashData}
