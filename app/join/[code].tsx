@@ -225,18 +225,21 @@ function ZoomUIToolkitSession({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const uitoolkitRef = useRef<any>(null);
   const mountedRef = useRef(true);
+  const onSessionEndRef = useRef(onSessionEnd);
+  onSessionEndRef.current = onSessionEnd;
+  // Track if user actually joined (not just preview)
+  const hasJoinedRef = useRef(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     mountedRef.current = true;
+    hasJoinedRef.current = false;
 
     let destroyed = false;
 
     const init = async () => {
       try {
-        // Load UI Toolkit via <script> tag — bypasses Metro bundler entirely.
-        // The 6MB UMD bundle crashes Metro's heap if imported/required.
-        // Files served from public/: videosdk-ui-toolkit.js + videosdk-ui-toolkit.css
+        // Load CSS
         if (!document.getElementById('zoom-uitoolkit-css')) {
           const link = document.createElement('link');
           link.id = 'zoom-uitoolkit-css';
@@ -249,6 +252,13 @@ function ZoomUIToolkitSession({
         let uitoolkit = (window as any).UIToolkit;
         if (!uitoolkit) {
           await new Promise<void>((resolve, reject) => {
+            // Check if script tag already exists but hasn't loaded
+            const existing = document.getElementById('zoom-uitoolkit-script');
+            if (existing) {
+              existing.addEventListener('load', () => resolve());
+              existing.addEventListener('error', () => reject(new Error('Failed to load Zoom UI Toolkit')));
+              return;
+            }
             const script = document.createElement('script');
             script.id = 'zoom-uitoolkit-script';
             script.src = '/videosdk-ui-toolkit.js';
@@ -275,7 +285,7 @@ function ZoomUIToolkitSession({
             chat: { enable: true, enableEmoji: true },
             users: { enable: true },
             settings: { enable: true },
-            recording: { enable: false }, // guests can't start recording
+            recording: { enable: false },
             virtualBackground: {
               enable: true,
               allowVirtualBackgroundUpload: true,
@@ -290,29 +300,34 @@ function ZoomUIToolkitSession({
               viewModes: ['gallery', 'speaker', 'ribbon'] as any[],
             },
             leave: { enable: true },
-            invite: { enable: false }, // guests don't invite
+            invite: { enable: false },
             theme: { enable: false, defaultTheme: 'dark' as const },
             header: { enable: true },
             footer: { enable: true },
           },
         };
 
-        // Register session destroy callback
+        // Only trigger "session ended" if user actually joined (not just preview)
         uitoolkit.onSessionDestroyed(() => {
-          if (mountedRef.current) onSessionEnd();
+          if (mountedRef.current && hasJoinedRef.current) {
+            onSessionEndRef.current();
+          }
         });
 
         // Open preview first (PreJoin screen)
         uitoolkit.openPreview(containerRef.current, config, {
           onClickJoin: () => {
             if (!containerRef.current || destroyed) return;
+            hasJoinedRef.current = true;
             uitoolkit.closePreview(containerRef.current);
             uitoolkit.joinSession(containerRef.current, config);
           },
         });
       } catch (err) {
         reportProviderError({ provider: 'zoom-uitoolkit', action: 'init', error: err, component: 'GuestJoinPage' });
-        if (mountedRef.current) onSessionEnd();
+        // DON'T call onSessionEnd on init errors — show the error in console,
+        // the user can see the loading state and retry via page refresh.
+        // Calling onSessionEnd shows "Session Ended" which is wrong.
       }
     };
 
@@ -326,7 +341,8 @@ function ZoomUIToolkitSession({
         try { uitoolkit.destroy(); } catch (_e) { /* best-effort */ }
       }
     };
-  }, [token, topic, guestName, onSessionEnd]);
+  // Stable deps only — onSessionEnd captured via ref to prevent re-init
+  }, [token, topic, guestName]);
 
   if (Platform.OS !== 'web') {
     return (
