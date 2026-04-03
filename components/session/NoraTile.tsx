@@ -123,9 +123,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   photo: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
   },
   labelBar: {
     position: 'absolute',
