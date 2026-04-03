@@ -393,7 +393,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://esm.sh", "https://source.zoom.us", "https://zoom.us", "https://*.zoom.us"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://esm.sh", "https://source.zoom.us", "https://zoom.us", "https://*.zoom.us"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://source.zoom.us", "https://zoom.us"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [

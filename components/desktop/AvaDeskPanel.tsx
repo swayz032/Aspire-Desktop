@@ -516,7 +516,7 @@ function AvaDeskPanelInner() {
   }, [isSessionActive]);
 
   // Show thinking indicator when submitted but no reasoning/text chunks yet
-  const hasPendingChat = chatStatus === 'submitted';
+  const hasPendingChat = avaChatResult.status === 'submitted';
 
   useEffect(() => {
     return () => {

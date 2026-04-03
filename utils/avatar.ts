@@ -12,6 +12,7 @@ export function hashSeed(seed: string): number {
 
 /** Extract up to 2 initials from a display name. */
 export function getInitials(name: string): string {
+  if (!name) return '';
   return name
     .trim()
     .split(/\s+/)

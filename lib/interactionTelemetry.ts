@@ -135,6 +135,33 @@ function deriveInteractionSeverity(event: InteractionEvent): string {
 }
 
 // ---------------------------------------------------------------------------
+// Tenant ID resolution — cached lookup from tenant_memberships
+// ---------------------------------------------------------------------------
+
+let _cachedTenantId: string | null = null;
+let _cachedUserId: string | null = null;
+
+async function resolveTenantId(userId: string): Promise<string> {
+  if (_cachedTenantId && _cachedUserId === userId) return _cachedTenantId;
+
+  const { data, error } = await supabase
+    .from('tenant_memberships')
+    .select('tenant_id')
+    .eq('user_id', userId)
+    .limit(1)
+    .single();
+
+  if (error || !data?.tenant_id) {
+    devWarn('[telemetry] Could not resolve tenant_id for user', userId, error?.message);
+    return 'unknown';
+  }
+
+  _cachedTenantId = data.tenant_id;
+  _cachedUserId = userId;
+  return data.tenant_id;
+}
+
+// ---------------------------------------------------------------------------
 // Flush — batch insert to Supabase client_events
 // ---------------------------------------------------------------------------
 
@@ -175,7 +202,7 @@ async function flushQueue(): Promise<void> {
       }
     }
 
-    const tenantId = session.user?.user_metadata?.suite_id || session.user?.id || 'unknown';
+    const tenantId = await resolveTenantId(session.user.id);
 
     const { correlationId } = buildTraceHeaders();
     const rows = batch.map((evt) => ({
