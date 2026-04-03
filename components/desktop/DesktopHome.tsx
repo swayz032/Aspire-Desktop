@@ -89,29 +89,37 @@ function DesktopHomeInner() {
       const body = document.body;
       const html = document.documentElement;
       const root = document.getElementById('root');
-      body.style.overflow = 'hidden';
-      body.style.height = '100%';
-      body.style.margin = '0';
-      html.style.overflow = 'hidden';
-      html.style.height = '100%';
-      html.style.margin = '0';
+      
+      // Force app mode: viewport-locking
+      body.style.setProperty('overflow', 'hidden', 'important');
+      body.style.setProperty('height', '100%', 'important');
+      body.style.setProperty('margin', '0', 'important');
+      
+      html.style.setProperty('overflow', 'hidden', 'important');
+      html.style.setProperty('height', '100%', 'important');
+      html.style.setProperty('margin', '0', 'important');
+      
       if (root) {
-        root.style.overflow = 'hidden';
-        root.style.height = '100%';
+        root.style.setProperty('overflow', 'hidden', 'important');
+        root.style.setProperty('height', '100%', 'important');
         root.style.minHeight = '';
         root.style.display = 'flex';
       }
     };
     applyAppStyles();
-    // Re-apply on next frame to win race with landing-page cleanup
+    // Multiple frames to ensure we win any cleanup race
     const raf = requestAnimationFrame(applyAppStyles);
-    // Re-apply after 100ms and 500ms to catch delayed cleanup from other pages
-    const t1 = setTimeout(applyAppStyles, 100);
-    const t2 = setTimeout(applyAppStyles, 500);
+    const t1 = setTimeout(applyAppStyles, 50);
+    const t2 = setTimeout(applyAppStyles, 150);
+    const t3 = setTimeout(applyAppStyles, 500);
+    const t4 = setTimeout(applyAppStyles, 1000);
+    
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
     };
   }, []);
 
