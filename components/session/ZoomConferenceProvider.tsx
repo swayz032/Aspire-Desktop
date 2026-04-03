@@ -384,7 +384,6 @@ function ZoomConferenceProviderWeb({
             // Session may already be ended
           }
           try {
-            // @ts-expect-error — @zoom/videosdk types resolved at runtime
             const ZoomVideo = (await import('@zoom/videosdk')).default as {
               destroyClient: () => void;
             };

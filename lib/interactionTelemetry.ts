@@ -203,6 +203,10 @@ async function flushQueue(): Promise<void> {
     }
 
     const tenantId = await resolveTenantId(session.user.id);
+    if (tenantId === 'unknown') {
+      devWarn('[telemetry] Could not resolve tenant — dropping', batch.length, 'events');
+      return;
+    }
 
     const { correlationId } = buildTraceHeaders();
     const rows = batch.map((evt) => ({

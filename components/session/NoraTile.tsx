@@ -22,6 +22,7 @@ interface NoraTileProps {
 export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const ringAnim = useRef(new Animated.Value(1)).current;
+  const baseOpacity = useRef(new Animated.Value(0.6)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const ringLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
@@ -90,7 +91,7 @@ export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
               : `0 0 12px ${glowColor}33`,
           } as any,
         ]}>
-          <Animated.View style={[styles.avatarContainer, { opacity: Animated.add(0.6, pulseAnim) }]}>
+          <Animated.View style={[styles.avatarContainer, { opacity: Animated.add(baseOpacity, pulseAnim) }]}>
             <Image source={noraAvatar} style={styles.avatar} contentFit="contain" />
           </Animated.View>
         </Animated.View>
