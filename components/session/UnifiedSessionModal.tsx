@@ -291,39 +291,7 @@ function UnifiedSessionModalInner({
               </Pressable>
             </View>
 
-            {/* Step Indicator — each step is a column (dot + label) connected by a line */}
-            <View style={styles.stepIndicatorRow} accessibilityRole="progressbar" accessibilityLabel={`Step ${step} of 2`}>
-              {/* Step 1 column */}
-              <View style={styles.stepColumn}>
-                <View style={[
-                  styles.stepDot,
-                  step1Active && styles.stepDotActive,
-                  step === 2 && styles.stepDotComplete,
-                ]}>
-                  {step === 2 && (
-                    <Ionicons name="checkmark" size={7} color="#FFFFFF" accessibilityElementsHidden />
-                  )}
-                </View>
-                <Text style={[styles.stepLabel, step1Active && styles.stepLabelActive]}>Configure</Text>
-              </View>
-
-              {/* Connector line */}
-              <View style={[
-                styles.stepConnector,
-                step === 2 && styles.stepConnectorActive,
-              ]} />
-
-              {/* Step 2 column */}
-              <View style={styles.stepColumn}>
-                <View style={[
-                  styles.stepDot,
-                  step2Active && styles.stepDotActive,
-                ]} />
-                <Text style={[styles.stepLabel, step2Active && styles.stepLabelActive]}>Invite</Text>
-              </View>
-            </View>
-
-            {/* Step Content — clipped horizontal slide with crossfade */}
+            {/* Step Content */}
             <View style={styles.contentClip}>
               {/* Step 1: Configure */}
               {step === 1 && (
@@ -367,40 +335,6 @@ function UnifiedSessionModalInner({
                           ]}>
                             {option.label}
                           </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-
-                  {/* Session Mode */}
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Session Mode</Text>
-                    <View style={styles.modeRow}>
-                      {MODE_OPTIONS.map((m) => (
-                        <Pressable
-                          key={m.id}
-                          style={({ pressed }) => [
-                            styles.modeOption,
-                            sessionMode === m.id && styles.modeOptionActive,
-                            pressed && styles.pressedOpacity,
-                          ]}
-                          onPress={() => onSessionModeChange(m.id)}
-                          accessibilityLabel={`${m.label} mode: ${m.description}`}
-                          accessibilityRole="radio"
-                          accessibilityState={{ selected: sessionMode === m.id }}
-                        >
-                          <Ionicons
-                            name={m.icon}
-                            size={20}
-                            color={sessionMode === m.id ? '#FFFFFF' : Colors.text.muted}
-                          />
-                          <Text style={[
-                            styles.modeLabel,
-                            sessionMode === m.id && styles.modeLabelActive,
-                          ]}>
-                            {m.label}
-                          </Text>
-                          <Text style={styles.modeDescription}>{m.description}</Text>
                         </Pressable>
                       ))}
                     </View>
@@ -800,19 +734,19 @@ const styles = StyleSheet.create({
   // Purpose grid
   purposeGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
+    flexWrap: 'nowrap',
+    gap: Spacing.sm,
   },
   purposeOption: {
+    flex: 1,
     alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: 16,
-    paddingHorizontal: 22,
+    gap: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.background.tertiary,
     borderWidth: 1,
     borderColor: Colors.border.subtle,
-    minWidth: 110,
     ...(Platform.OS === 'web' ? { transition: 'all 0.15s ease', cursor: 'pointer' } as unknown as ViewStyle : {}),
   },
   purposeOptionActive: {
