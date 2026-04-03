@@ -79,6 +79,9 @@ export interface ZoomContextValue {
   isConnected: boolean;
   connectionState: ConnectionState;
   error: string | null;
+  isRecording: boolean;
+  networkQuality: { uplink: number; downlink: number };
+  screenShareUserId: number | null;
 }
 
 const DEFAULT_CONTEXT: ZoomContextValue = {
@@ -89,6 +92,9 @@ const DEFAULT_CONTEXT: ZoomContextValue = {
   isConnected: false,
   connectionState: 'idle',
   error: null,
+  isRecording: false,
+  networkQuality: { uplink: 5, downlink: 5 },
+  screenShareUserId: null,
 };
 
 const ZoomContext = createContext<ZoomContextValue>(DEFAULT_CONTEXT);
@@ -134,6 +140,9 @@ function ZoomConferenceProviderWeb({
   const [participants, setParticipants] = useState<ZoomParticipant[]>([]);
   const [activeSpeakerId, setActiveSpeakerId] = useState<number | null>(null);
   const [stream, setStream] = useState<ZoomMediaStream | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [networkQuality, setNetworkQuality] = useState({ uplink: 5, downlink: 5 });
+  const [screenShareUserId, setScreenShareUserId] = useState<number | null>(null);
 
   // Refs to avoid stale closures in event handlers
   const clientRef = useRef<ZoomClient | null>(null);
@@ -324,6 +333,24 @@ function ZoomConferenceProviderWeb({
           }
         });
 
+        client.on('recording-change', (...args: unknown[]) => {
+          if (!mountedRef.current) return;
+          const payload = args[0] as { state: string };
+          setIsRecording(payload.state === 'Recording');
+        });
+
+        client.on('active-share-change', (...args: unknown[]) => {
+          if (!mountedRef.current) return;
+          const payload = args[0] as { state: string; userId: number };
+          setScreenShareUserId(payload.state === 'Active' ? payload.userId : null);
+        });
+
+        client.on('network-quality-change', (...args: unknown[]) => {
+          if (!mountedRef.current) return;
+          const payload = args[0] as { level: number; type: 'uplink' | 'downlink' };
+          setNetworkQuality(prev => ({ ...prev, [payload.type]: payload.level }));
+        });
+
         setConnectionState('connected');
         setError(null);
       } catch (err) {
@@ -381,6 +408,9 @@ function ZoomConferenceProviderWeb({
     isConnected: connectionState === 'connected',
     connectionState,
     error,
+    isRecording,
+    networkQuality,
+    screenShareUserId,
   };
 
   return (

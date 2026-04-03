@@ -1,5 +1,18 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, Platform } from 'react-native';
+/**
+ * Conference Live — Production video conference page.
+ *
+ * Composes Zoom SDK components + Aspire UI:
+ * - ConferenceHeader: room name, timer, participants, recording, network
+ * - Video Grid: ZoomVideoTile (Zoom SDK) + NoraTile (AI participant)
+ * - ConferenceControlBar: mic, camera, share, record, chat, people, view, leave
+ * - ConferenceChatDrawer: existing 3-tab chat (Room/Materials/Ava)
+ * - ConferenceParticipantsPanel: participant list with status
+ *
+ * Keyboard shortcuts: Alt+M (mic), Alt+V (camera), Alt+S (share),
+ * Alt+R (record), Alt+H (chat), Alt+P (people), Alt+L (view layout).
+ */
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors } from '@/constants/tokens';
@@ -7,8 +20,12 @@ import { Toast } from '@/components/session/Toast';
 import { ConfirmationModal } from '@/components/session/ConfirmationModal';
 import { FullscreenSessionShell } from '@/components/desktop/FullscreenSessionShell';
 import type { RoomAvaState } from '@/components/session/RoomAvaTile';
-import { ConferenceChatDrawer, ChatMessage as DrawerChatMessage, MaterialItem as DrawerMaterialItem, AuthorityItem as DrawerAuthorityItem } from '@/components/session/ConferenceChatDrawer';
-import { Image } from 'expo-image';
+import {
+  ConferenceChatDrawer,
+  ChatMessage as DrawerChatMessage,
+  MaterialItem as DrawerMaterialItem,
+  AuthorityItem as DrawerAuthorityItem,
+} from '@/components/session/ConferenceChatDrawer';
 import { useVoice } from '@/hooks/useVoice';
 import { useSupabase, useTenant } from '@/providers';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
@@ -16,9 +33,26 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { useKeepAwake } from '@/hooks/useKeepAwake';
 import { readSSEStream, extractResponseText } from '@/lib/sseStream';
-import { ZoomConferenceProvider, useZoomContext, useZoomParticipants, useZoomActiveSpeaker } from '@/components/session/ZoomConferenceProvider';
+
+// Zoom SDK components
+import {
+  ZoomConferenceProvider,
+  useZoomContext,
+  useZoomParticipants,
+  useZoomActiveSpeaker,
+} from '@/components/session/ZoomConferenceProvider';
 import type { ZoomParticipant } from '@/components/session/ZoomConferenceProvider';
 import { ZoomVideoTile } from '@/components/session/ZoomVideoTile';
+
+// Conference UI components
+import { ConferenceHeader } from '@/components/session/ConferenceHeader';
+import { ConferenceControlBar } from '@/components/session/ConferenceControlBar';
+import { NoraTile } from '@/components/session/NoraTile';
+import { ConferenceParticipantsPanel } from '@/components/session/ConferenceParticipantsPanel';
+
+// Hooks
+import { useConferenceTimer } from '@/hooks/useConferenceTimer';
+import { useConferenceControls } from '@/hooks/useConferenceControls';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,114 +89,228 @@ interface AuthorityItem {
 }
 
 // ---------------------------------------------------------------------------
-// ConferenceGrid — child of ZoomConferenceProvider, uses Zoom hooks
+// ConferenceContent — child of ZoomConferenceProvider, uses Zoom hooks
 // ---------------------------------------------------------------------------
 
-function ConferenceGrid() {
-  const participants = useZoomParticipants();
-  const { stream } = useZoomContext();
-  const activeSpeaker = useZoomActiveSpeaker();
-
-  return (
-    <View style={styles.videoGrid}>
-      {participants.map((p: ZoomParticipant) => (
-        <View key={p.userId} style={styles.videoTileWrapper}>
-          <ZoomVideoTile
-            participant={p}
-            stream={stream as any}
-            isActiveSpeaker={p.userId === activeSpeaker}
-          />
-        </View>
-      ))}
-      {participants.length === 0 && (
-        <View style={styles.emptyGrid}>
-          <Text style={styles.emptyGridText}>Waiting for participants...</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Nora Tile (overlaid on Zoom UI)
-// ---------------------------------------------------------------------------
-
-const avaLogo = require('../../assets/images/ava-logo.png');
-
-function NoraTileOverlay({
+function ConferenceContent({
+  roomName,
   avaState,
   isNoraSpeaking,
-  onInnerBoxPress,
+  onToggleNora,
+  chatVisible,
+  participantsVisible,
+  messages,
+  materials,
+  authorityQueue,
+  avaThinking,
+  viewMode,
+  onToggleChat,
+  onToggleParticipants,
+  onToggleView,
+  onSendMessage,
+  onSaveMaterial,
+  onApproveAuthority,
+  onDenyAuthority,
+  onLeave,
 }: {
+  roomName: string;
   avaState: RoomAvaState;
   isNoraSpeaking: boolean;
-  onInnerBoxPress: () => void;
+  onToggleNora: () => void;
+  chatVisible: boolean;
+  participantsVisible: boolean;
+  messages: ChatMessage[];
+  materials: MaterialItem[];
+  authorityQueue: AuthorityItem[];
+  avaThinking: boolean;
+  viewMode: 'gallery' | 'speaker';
+  onToggleChat: () => void;
+  onToggleParticipants: () => void;
+  onToggleView: () => void;
+  onSendMessage: (text: string, isPrivate: boolean) => void;
+  onSaveMaterial: (id: string) => void;
+  onApproveAuthority: (id: string) => void;
+  onDenyAuthority: (id: string) => void;
+  onLeave: () => void;
 }) {
-  const isActive = avaState === 'listening' || avaState === 'thinking' || avaState === 'speaking';
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const participants = useZoomParticipants();
+  const { stream, client, isRecording, networkQuality, screenShareUserId } = useZoomContext();
+  const activeSpeaker = useZoomActiveSpeaker();
+  const { formatted: duration } = useConferenceTimer();
 
+  const controls = useConferenceControls({ stream, client });
+
+  // Sync recording state from provider
   useEffect(() => {
-    if (isActive) {
-      pulseLoopRef.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.08, duration: 1200, useNativeDriver: false }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 1200, useNativeDriver: false }),
-        ])
-      );
-      pulseLoopRef.current.start();
-    } else {
-      if (pulseLoopRef.current) {
-        pulseLoopRef.current.stop();
-        pulseLoopRef.current = null;
-      }
-      pulseAnim.setValue(1);
-    }
-    return () => { if (pulseLoopRef.current) pulseLoopRef.current.stop(); };
-  }, [isActive]);
+    controls.setIsRecording(isRecording);
+  }, [isRecording]);
 
-  const getStatusColor = () => {
-    switch (avaState) {
-      case 'listening': return '#3B82F6';
-      case 'speaking': return '#4ade80';
-      case 'thinking': return '#A78BFA';
-      default: return '#4ade80';
+  // Sync screen share state from provider
+  useEffect(() => {
+    controls.setIsScreenSharing(screenShareUserId !== null);
+  }, [screenShareUserId]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      const actions: Record<string, () => void> = {
+        m: controls.toggleMic,
+        v: controls.toggleCamera,
+        s: controls.toggleScreenShare,
+        r: controls.toggleRecording,
+        h: onToggleChat,
+        p: onToggleParticipants,
+        l: onToggleView,
+      };
+      if (actions[key]) {
+        e.preventDefault();
+        actions[key]();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [controls, onToggleChat, onToggleParticipants, onToggleView]);
+
+  // Video grid — gallery or speaker view
+  const renderGrid = () => {
+    const allTiles = participants.length + 1; // +1 for Nora
+    const isGallery = viewMode === 'gallery';
+
+    if (!isGallery && activeSpeaker !== null) {
+      // Speaker view: spotlight active speaker, filmstrip for rest + Nora
+      const spotlight = participants.find(p => p.userId === activeSpeaker);
+      const filmstrip = participants.filter(p => p.userId !== activeSpeaker);
+
+      return (
+        <View style={styles.speakerLayout}>
+          <View style={styles.spotlightArea}>
+            {spotlight ? (
+              <ZoomVideoTile
+                participant={spotlight}
+                stream={stream as any}
+                isActiveSpeaker={true}
+                size="spotlight"
+              />
+            ) : (
+              <NoraTile avaState={avaState} isNoraSpeaking={isNoraSpeaking} onPress={onToggleNora} />
+            )}
+          </View>
+          <View style={styles.filmstrip}>
+            {!spotlight && null /* Nora is in spotlight */}
+            {spotlight && (
+              <View style={styles.filmstripTile}>
+                <NoraTile avaState={avaState} isNoraSpeaking={isNoraSpeaking} onPress={onToggleNora} />
+              </View>
+            )}
+            {filmstrip.map(p => (
+              <View key={p.userId} style={styles.filmstripTile}>
+                <ZoomVideoTile
+                  participant={p}
+                  stream={stream as any}
+                  isActiveSpeaker={false}
+                  size="small"
+                />
+              </View>
+            ))}
+          </View>
+        </View>
+      );
     }
+
+    // Gallery view: adaptive grid — compute cols and tile width %
+    const cols = allTiles <= 1 ? 1 : allTiles <= 2 ? 2 : allTiles <= 4 ? 2 : allTiles <= 6 ? 3 : allTiles <= 9 ? 3 : 4;
+    const tileWidthPct = `${Math.floor(100 / cols) - 1}%`;
+
+    const gridStyle = allTiles <= 1 ? styles.grid1
+      : allTiles <= 2 ? styles.grid2
+      : allTiles <= 4 ? styles.grid4
+      : allTiles <= 6 ? styles.grid6
+      : allTiles <= 9 ? styles.grid9
+      : styles.grid12;
+
+    return (
+      <View style={[styles.videoGrid, gridStyle]}>
+        {/* Nora tile — always first in grid */}
+        <View style={[styles.videoTileWrapper, { width: tileWidthPct as any }]}>
+          <NoraTile avaState={avaState} isNoraSpeaking={isNoraSpeaking} onPress={onToggleNora} />
+        </View>
+
+        {/* Zoom participant tiles */}
+        {participants.map((p: ZoomParticipant) => (
+          <View key={p.userId} style={[styles.videoTileWrapper, { width: tileWidthPct as any }]}>
+            <ZoomVideoTile
+              participant={p}
+              stream={stream as any}
+              isActiveSpeaker={p.userId === activeSpeaker}
+            />
+          </View>
+        ))}
+
+        {participants.length === 0 && (
+          <View style={[styles.emptyTile, { width: tileWidthPct as any }]}>
+            <Text style={styles.emptyText}>Waiting for participants...</Text>
+          </View>
+        )}
+      </View>
+    );
   };
 
   return (
-    <View style={styles.noraTileOverlay}>
-      <Pressable
-        onPress={onInnerBoxPress}
-        style={styles.noraTileContent}
-        accessibilityRole="button"
-        accessibilityLabel={isNoraSpeaking ? 'Nora is speaking. Tap to stop.' : 'Start Nora voice assistant'}
-      >
-        <Animated.View
-          style={[
-            styles.noraInnerGlow,
-            {
-              transform: [{ scale: pulseAnim }],
-              borderColor: isNoraSpeaking ? '#3B82F6' : '#3B82F6',
-            },
-            Platform.OS === 'web' && {
-              boxShadow: isNoraSpeaking
-                ? '0 0 12px 4px rgba(0, 255, 255, 0.8), 0 0 25px 8px rgba(79, 172, 254, 0.6)'
-                : '0 0 8px 2px rgba(79, 172, 254, 0.6), 0 0 15px 3px rgba(0, 242, 254, 0.4)',
-              cursor: 'pointer',
-            } as any,
-          ]}
-        >
-          <Image source={avaLogo} style={styles.noraLogo} contentFit="contain" />
-        </Animated.View>
-        <View style={styles.noraLabelRow}>
-          <Text style={styles.noraLabel}>
-            {isNoraSpeaking ? 'Nora Speaking...' : 'Nora'}
-          </Text>
-          <View style={[styles.noraStatusDot, { backgroundColor: isNoraSpeaking ? '#3B82F6' : getStatusColor() }]} />
-        </View>
-      </Pressable>
-    </View>
+    <>
+      <ConferenceHeader
+        roomName={roomName}
+        participantCount={participants.length + 1}
+        duration={duration}
+        isRecording={controls.isRecording}
+        networkQuality={networkQuality}
+      />
+
+      <View style={styles.gridContainer}>
+        {renderGrid()}
+      </View>
+
+      <ConferenceControlBar
+        isMuted={controls.isMuted}
+        isCameraOff={controls.isCameraOff}
+        isScreenSharing={controls.isScreenSharing}
+        isRecording={controls.isRecording}
+        isChatOpen={chatVisible}
+        isParticipantsOpen={participantsVisible}
+        viewMode={viewMode}
+        unreadCount={messages.length}
+        onToggleMic={controls.toggleMic}
+        onToggleCamera={controls.toggleCamera}
+        onToggleScreenShare={controls.toggleScreenShare}
+        onToggleRecording={controls.toggleRecording}
+        onToggleChat={onToggleChat}
+        onToggleParticipants={onToggleParticipants}
+        onToggleView={onToggleView}
+        onLeave={onLeave}
+      />
+
+      {/* Slide-in panels */}
+      <ConferenceParticipantsPanel
+        visible={participantsVisible}
+        participants={participants}
+        onClose={onToggleParticipants}
+      />
+
+      <ConferenceChatDrawer
+        visible={chatVisible}
+        onClose={onToggleChat}
+        messages={messages as DrawerChatMessage[]}
+        materials={materials as DrawerMaterialItem[]}
+        avaThinking={avaThinking}
+        onSendMessage={onSendMessage}
+        onSaveMaterial={onSaveMaterial}
+        authorityQueue={authorityQueue as DrawerAuthorityItem[]}
+        onApproveAuthority={onApproveAuthority}
+        onDenyAuthority={onDenyAuthority}
+      />
+    </>
   );
 }
 
@@ -188,28 +336,25 @@ function ConferenceLive() {
   const { tenant } = useTenant();
   const { authenticatedFetch } = useAuthFetch();
 
-  // ---------------------------------------------------------------------------
   // Zoom Video SDK state
-  // ---------------------------------------------------------------------------
   const [zoomStatus, setZoomStatus] = useState<'loading' | 'joined' | 'error'>('loading');
   const [zoomError, setZoomError] = useState<string | null>(null);
   const [zoomToken, setZoomToken] = useState<string | null>(null);
   const [zoomTopic, setZoomTopic] = useState<string>('');
 
   const participantName = (params.participantName as string) || tenant?.ownerName || session?.user?.user_metadata?.full_name || 'You';
+  const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
 
-  // ---------------------------------------------------------------------------
-  // Chat, materials, authority state
-  // ---------------------------------------------------------------------------
+  // UI state
   const [chatVisible, setChatVisible] = useState(false);
+  const [participantsVisible, setParticipantsVisible] = useState(false);
+  const [viewMode, setViewMode] = useState<'gallery' | 'speaker'>('gallery');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
   const [authorityQueue, setAuthorityQueue] = useState<AuthorityItem[]>([]);
   const [avaThinking, setAvaThinking] = useState(false);
 
-  // ---------------------------------------------------------------------------
   // Nora voice
-  // ---------------------------------------------------------------------------
   const [avaState, setAvaState] = useState<RoomAvaState>('idle');
 
   const noraVoice = useVoice({
@@ -234,7 +379,7 @@ function ConferenceLive() {
 
   const isNoraSpeaking = noraVoice.status === 'speaking';
 
-  const handleInnerBoxPress = useCallback(async () => {
+  const handleToggleNora = useCallback(async () => {
     if (noraVoice.isActive) {
       noraVoice.endSession();
     } else {
@@ -246,9 +391,7 @@ function ConferenceLive() {
     }
   }, [noraVoice]);
 
-  // ---------------------------------------------------------------------------
   // Toast
-  // ---------------------------------------------------------------------------
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info');
@@ -259,27 +402,20 @@ function ConferenceLive() {
     setToastVisible(true);
   };
 
-  // ---------------------------------------------------------------------------
   // End call
-  // ---------------------------------------------------------------------------
   const [showEndModal, setShowEndModal] = useState(false);
 
   const handleEndCall = useCallback(async () => {
     trackInteraction('session_end', 'conference-live', { agent: 'nora' });
     setShowEndModal(false);
-
-    // ZoomConferenceProvider handles leave on unmount
     showToast('Session ended. Generating receipt...', 'success');
     setTimeout(() => router.replace('/(tabs)'), 1500);
   }, [router]);
 
-  // ---------------------------------------------------------------------------
-  // Zoom Video SDK: fetch token
-  // ---------------------------------------------------------------------------
+  // Zoom token fetch
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const controller = new AbortController();
-    const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
 
     (async () => {
       try {
@@ -305,11 +441,9 @@ function ConferenceLive() {
     })();
 
     return () => controller.abort();
-  }, [suiteId, params.roomName, authenticatedFetch]);
+  }, [suiteId, roomName, authenticatedFetch]);
 
-  // ---------------------------------------------------------------------------
-  // Chat handler (same SSE streaming to orchestrator)
-  // ---------------------------------------------------------------------------
+  // Chat handler (SSE streaming to orchestrator)
   const handleSendMessage = useCallback(async (text: string, isPrivate: boolean) => {
     const newMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -321,7 +455,7 @@ function ConferenceLive() {
     };
     setMessages(prev => [...prev, newMessage]);
 
-    if (!isPrivate) return; // Room messages stay local
+    if (!isPrivate) return;
 
     setAvaThinking(true);
     try {
@@ -332,86 +466,64 @@ function ConferenceLive() {
           ...(suiteId ? { 'X-Suite-Id': suiteId } : {}),
           ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
         },
-        body: JSON.stringify({
-          agent: 'ava',
-          text,
-          channel: 'conference_private',
-        }),
+        body: JSON.stringify({ agent: 'ava', text, channel: 'conference_private' }),
       });
 
       if (!resp.ok || !resp.body) {
         const data = await resp.json().catch(() => ({}));
-        const avaReply: ChatMessage = {
-          id: `msg-ava-${Date.now()}`,
-          senderId: 'ava',
-          senderName: 'Ava',
+        setMessages(prev => [...prev, {
+          id: `msg-ava-${Date.now()}`, senderId: 'ava', senderName: 'Ava',
           text: data.response || data.text || "I'm having trouble connecting. Try again in a moment.",
-          timestamp: new Date(),
-          isPrivate: true,
-        };
-        setMessages(prev => [...prev, avaReply]);
+          timestamp: new Date(), isPrivate: true,
+        }]);
         return;
       }
 
       await readSSEStream(resp.body, (evt) => {
         if (evt.type === 'response') {
-          const avaReply: ChatMessage = {
-            id: `msg-ava-${Date.now()}`,
-            senderId: 'ava',
-            senderName: 'Ava',
-            text: extractResponseText(evt),
-            timestamp: new Date(),
-            isPrivate: true,
-          };
-          setMessages(prev => [...prev, avaReply]);
+          setMessages(prev => [...prev, {
+            id: `msg-ava-${Date.now()}`, senderId: 'ava', senderName: 'Ava',
+            text: extractResponseText(evt), timestamp: new Date(), isPrivate: true,
+          }]);
         }
       });
     } catch (_err) {
-      const avaReply: ChatMessage = {
-        id: `msg-ava-err-${Date.now()}`,
-        senderId: 'ava',
-        senderName: 'Ava',
+      setMessages(prev => [...prev, {
+        id: `msg-ava-err-${Date.now()}`, senderId: 'ava', senderName: 'Ava',
         text: "I'm having trouble connecting. Let me try again.",
-        timestamp: new Date(),
-        isPrivate: true,
-      };
-      setMessages(prev => [...prev, avaReply]);
+        timestamp: new Date(), isPrivate: true,
+      }]);
     } finally {
       setAvaThinking(false);
     }
   }, [suiteId, session?.access_token]);
 
-  // ---------------------------------------------------------------------------
-  // Retry handler
-  // ---------------------------------------------------------------------------
+  // Retry
   const handleRetry = useCallback(() => {
     setZoomError(null);
     setZoomStatus('loading');
-    const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
     router.replace({
       pathname: '/session/conference-live',
       params: { roomName, participantName },
-    });
-  }, [router, params, suiteId, participantName]);
+    } as any);
+  }, [router, roomName, participantName]);
 
-  // ---------------------------------------------------------------------------
-  // Keyboard shortcut: Alt+H toggles chat
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'h') {
-        e.preventDefault();
-        setChatVisible(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+  // Panel toggles
+  const toggleChat = useCallback(() => {
+    setChatVisible(prev => !prev);
+    if (participantsVisible) setParticipantsVisible(false);
+  }, [participantsVisible]);
+
+  const toggleParticipants = useCallback(() => {
+    setParticipantsVisible(prev => !prev);
+    if (chatVisible) setChatVisible(false);
+  }, [chatVisible]);
+
+  const toggleView = useCallback(() => {
+    setViewMode(prev => prev === 'gallery' ? 'speaker' : 'gallery');
   }, []);
 
-  // ---------------------------------------------------------------------------
   // Render
-  // ---------------------------------------------------------------------------
   return (
     <FullscreenSessionShell showBackButton={false} backLabel="Exit Conference">
       <View style={styles.container}>
@@ -422,29 +534,19 @@ function ConferenceLive() {
           onHide={() => setToastVisible(false)}
         />
 
-        {/* Error state (Law #3: Fail Closed) */}
+        {/* Error state */}
         {zoomStatus === 'error' && (
           <View style={styles.errorContainer}>
             <Ionicons name="videocam-off-outline" size={48} color="#ef4444" />
             <Text style={styles.errorTitle}>Conference Service Unavailable</Text>
             <Text style={styles.errorMessage}>{zoomError}</Text>
             <View style={styles.errorActions}>
-              <Pressable
-                onPress={handleRetry}
-                style={styles.retryButton}
-                accessibilityRole="button"
-                accessibilityLabel="Retry connection"
-              >
-                <Text style={styles.retryButtonText}>Retry Connection</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => router.back()}
-                style={styles.backButton}
-                accessibilityRole="button"
-                accessibilityLabel="Return to lobby"
-              >
-                <Text style={styles.backButtonText}>Return to Lobby</Text>
-              </Pressable>
+              <View style={styles.retryButton}>
+                <Text style={styles.retryButtonText} onPress={handleRetry}>Retry Connection</Text>
+              </View>
+              <View style={styles.backButton}>
+                <Text style={styles.backButtonText} onPress={() => router.back()}>Return to Lobby</Text>
+              </View>
             </View>
           </View>
         )}
@@ -456,78 +558,32 @@ function ConferenceLive() {
           </View>
         )}
 
-        {/* Zoom Video SDK — rendered via ZoomConferenceProvider + tile grid */}
+        {/* Conference — Zoom SDK + full UI */}
         {zoomStatus === 'joined' && zoomToken && (
           <ZoomConferenceProvider token={zoomToken} topic={zoomTopic} userName={participantName}>
-            <ConferenceGrid />
+            <ConferenceContent
+              roomName={roomName}
+              avaState={avaState}
+              isNoraSpeaking={isNoraSpeaking}
+              onToggleNora={handleToggleNora}
+              chatVisible={chatVisible}
+              participantsVisible={participantsVisible}
+              messages={messages}
+              materials={materials}
+              authorityQueue={authorityQueue}
+              avaThinking={avaThinking}
+              viewMode={viewMode}
+              onToggleChat={toggleChat}
+              onToggleParticipants={toggleParticipants}
+              onToggleView={toggleView}
+              onSendMessage={handleSendMessage}
+              onSaveMaterial={(id) => setMaterials(prev => prev.map(m => m.id === id ? { ...m, saved: true } : m))}
+              onApproveAuthority={(id) => setAuthorityQueue(prev => prev.filter(a => a.id !== id))}
+              onDenyAuthority={(id) => setAuthorityQueue(prev => prev.filter(a => a.id !== id))}
+              onLeave={() => setShowEndModal(true)}
+            />
           </ZoomConferenceProvider>
         )}
-
-        {/* Nora tile overlay — bottom-left corner on top of Zoom UI */}
-        {zoomStatus === 'joined' && (
-          <NoraTileOverlay
-            avaState={avaState}
-            isNoraSpeaking={isNoraSpeaking}
-            onInnerBoxPress={handleInnerBoxPress}
-          />
-        )}
-
-        {/* Chat toggle button — top-right overlay */}
-        {zoomStatus === 'joined' && (
-          <View style={styles.chatToggleOverlay}>
-            <Pressable
-              style={[styles.chatToggleButton, chatVisible && styles.chatToggleButtonActive]}
-              onPress={() => setChatVisible(!chatVisible)}
-              accessibilityRole="button"
-              accessibilityLabel={chatVisible ? 'Close chat' : 'Open chat'}
-            >
-              <Ionicons
-                name="chatbubble"
-                size={20}
-                color={chatVisible ? Colors.accent.cyan : '#fff'}
-              />
-              {messages.length > 0 && (
-                <View style={styles.chatBadge}>
-                  <Text style={styles.chatBadgeText}>{messages.length}</Text>
-                </View>
-              )}
-            </Pressable>
-          </View>
-        )}
-
-        {/* Leave button — bottom-right overlay */}
-        {zoomStatus === 'joined' && (
-          <View style={styles.leaveOverlay}>
-            <Pressable
-              style={styles.leaveButton}
-              onPress={() => setShowEndModal(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Leave conference"
-            >
-              <Text style={styles.leaveButtonText}>Leave</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* Chat drawer */}
-        <ConferenceChatDrawer
-          visible={chatVisible}
-          onClose={() => setChatVisible(false)}
-          messages={messages as DrawerChatMessage[]}
-          materials={materials as DrawerMaterialItem[]}
-          avaThinking={avaThinking}
-          onSendMessage={handleSendMessage}
-          onSaveMaterial={(id: string) => {
-            setMaterials(prev => prev.map(m => m.id === id ? { ...m, saved: true } : m));
-          }}
-          authorityQueue={authorityQueue as DrawerAuthorityItem[]}
-          onApproveAuthority={(id: string) => {
-            setAuthorityQueue(prev => prev.filter(a => a.id !== id));
-          }}
-          onDenyAuthority={(id: string) => {
-            setAuthorityQueue(prev => prev.filter(a => a.id !== id));
-          }}
-        />
 
         {/* End session confirmation */}
         <ConfirmationModal
@@ -554,7 +610,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0a0c',
   },
-  // Video grid
+
+  // Grid container (between header and footer)
+  gridContainer: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+
+  // Gallery view grids — adaptive
   videoGrid: {
     flex: 1,
     flexDirection: 'row',
@@ -565,20 +628,51 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   videoTileWrapper: {
-    width: '49%',
     aspectRatio: 16 / 9,
-    minWidth: 280,
-    maxHeight: '49%',
   },
-  emptyGrid: {
+  // Grid configs — videoTileWrapper width set via getGridStyle in renderGrid
+  grid1: { padding: 32 },
+  grid2: { padding: 16 },
+  grid4: { padding: 8 },
+  grid6: { padding: 6 },
+  grid9: { padding: 4 },
+  grid12: { padding: 4 },
+
+  emptyTile: {
     flex: 1,
+    minWidth: 280,
+    aspectRatio: 16 / 9,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#141414',
+    borderRadius: 10,
   },
-  emptyGridText: {
+  emptyText: {
     color: '#6e6e73',
     fontSize: 14,
   },
+
+  // Speaker view
+  speakerLayout: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  spotlightArea: {
+    flex: 1,
+    padding: 4,
+  },
+  filmstrip: {
+    height: 120,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+  },
+  filmstripTile: {
+    width: 180,
+    height: '100%',
+  },
+
   // Error state
   errorContainer: {
     flex: 1,
@@ -627,6 +721,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+
   // Loading state
   loadingContainer: {
     flex: 1,
@@ -636,113 +731,5 @@ const styles = StyleSheet.create({
   loadingText: {
     color: '#9ca3af',
     fontSize: 16,
-  },
-  // Nora tile overlay
-  noraTileOverlay: {
-    position: 'absolute',
-    bottom: 80,
-    left: 16,
-    zIndex: 100,
-  },
-  noraTileContent: {
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-    ...Platform.select({
-      web: {
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-      } as any,
-      default: {},
-    }),
-  },
-  noraInnerGlow: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-  },
-  noraLogo: {
-    width: 56,
-    height: 56,
-  },
-  noraLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  noraLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.9)',
-    letterSpacing: 0.3,
-  },
-  noraStatusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  // Chat toggle overlay
-  chatToggleOverlay: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    zIndex: 100,
-  },
-  chatToggleButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(28, 28, 30, 0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  chatToggleButtonActive: {
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    borderColor: 'rgba(59, 130, 246, 0.4)',
-  },
-  chatBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: Colors.accent.cyan,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  chatBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#000',
-  },
-  // Leave overlay
-  leaveOverlay: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    zIndex: 100,
-  },
-  leaveButton: {
-    backgroundColor: Colors.semantic.error,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  leaveButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
 });
