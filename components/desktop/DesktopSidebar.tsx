@@ -364,8 +364,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
-    height: 100,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    minHeight: 80,
     position: 'relative',
   },
   logoCenter: {
@@ -374,8 +375,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoImageFull: {
-    height: 90,
-    width: 210,
+    height: 140,
+    width: '100%' as unknown as number,
+    maxWidth: 200,
   },
   collapseToggle: {
     position: 'absolute',
