@@ -470,18 +470,9 @@ function DesktopHomeInner() {
                     </View>
                   </CanvasTileWrapper>
 
-                  <CanvasTileWrapper
-                    tileId="calendar"
-                    mode={mode}
-                    onPress={handleTilePress}
-                    onHoverIn={handleTileHoverIn}
-                    onHoverOut={handleTileHoverOut}
-                    onContextMenu={handleContextMenu}
-                  >
-                    <View style={[styles.section, styles.flexSection]}>
-                      <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
-                    </View>
-                  </CanvasTileWrapper>
+                  <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E', padding: 16, flex: 1, overflow: 'hidden' }}>
+                    <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
+                  </View>
                 </View>
               </View>
               </ImmersionLayer>
