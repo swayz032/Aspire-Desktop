@@ -713,13 +713,16 @@ function FinanceHubContent() {
     </View>
   );
 
+  const topRowHeight = isDesktop ? 560 : isLaptop ? 512 : 480;
+  const dashHeight = isDesktop ? 320 : isLaptop ? 300 : 280;
+
   const dashboardNode = (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
       gap: 12,
       position: 'relative',
-      height: 320,
+      height: dashHeight,
       flexShrink: 0,
     }}>
       <div className={dashCardClass(0)} style={{ position: 'relative', zIndex: 1 }}>
@@ -737,12 +740,13 @@ function FinanceHubContent() {
       <div style={{
         display: 'flex',
         gap: 12,
-        flexWrap: (isTablet || isMobile) ? 'wrap' : 'nowrap' as const,
+        flexWrap: isMobile ? 'wrap' : 'nowrap' as const,
         position: 'relative',
         zIndex: 1,
         alignItems: 'stretch',
+        flex: 1,
       }}>
-        <div className={dashCardClass(1)} style={{ flex: 1, minWidth: (isTablet || isMobile) ? '100%' : 0, display: 'flex' }}>
+        <div className={dashCardClass(1)} style={{ flex: 1, minWidth: isMobile ? '100%' : 0, display: 'flex' }}>
           <SegmentRingCard
             title={dashConfig.ring.title}
             centerValue={dashConfig.ring.centerValue}
@@ -753,7 +757,7 @@ function FinanceHubContent() {
             loading={loading}
           />
         </div>
-        <div className={dashCardClass(2)} style={{ flex: 1, minWidth: (isTablet || isMobile) ? '100%' : 0, display: 'flex' }}>
+        <div className={dashCardClass(2)} style={{ flex: 1, minWidth: isMobile ? '100%' : 0, display: 'flex' }}>
           <QueueInstrumentCard
             title={dashConfig.queue.title}
             items={dashConfig.queue.items}
@@ -762,7 +766,7 @@ function FinanceHubContent() {
             loading={loading}
           />
         </div>
-        <div className={dashCardClass(3)} style={{ flex: 1, minWidth: (isTablet || isMobile) ? '100%' : 0, display: 'flex' }}>
+        <div className={dashCardClass(3)} style={{ flex: 1, minWidth: isMobile ? '100%' : 0, display: 'flex' }}>
           <InsightOverlayCard
             quote={dashConfig.insight.quote}
             sparkData={sparkData}
@@ -780,12 +784,15 @@ function FinanceHubContent() {
     <FinanceHubShell>
       <View testID="smoke-finance-hub-root">
       {Platform.OS === 'web' ? (
-        (isTablet || isMobile) ? (
+        isMobile ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
-            <StoryModeCarousel
-              activeMode={activeStoryMode}
-              onSelectMode={(mode) => handleModeSwitch(mode.id)}
-            />
+            <div style={{ height: 440 }}>
+              <StoryModeCarousel
+                activeMode={activeStoryMode}
+                onSelectMode={(mode) => handleModeSwitch(mode.id)}
+                cardHeight={420}
+              />
+            </div>
             {finnPanelNode}
             {dashboardNode}
             {rightRailNode}
@@ -793,11 +800,12 @@ function FinanceHubContent() {
         ) : (
           <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', gap: 16, height: 560, alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', gap: 16, height: topRowHeight, alignItems: 'stretch' }}>
                 <div style={{ flex: 3, minWidth: 0, overflow: 'hidden', borderRadius: 12, height: '100%' }}>
                   <StoryModeCarousel
                     activeMode={activeStoryMode}
                     onSelectMode={(mode) => handleModeSwitch(mode.id)}
+                    cardHeight={topRowHeight - 24}
                   />
                 </div>
                 <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -806,9 +814,11 @@ function FinanceHubContent() {
               </div>
               {dashboardNode}
             </div>
-            <div style={{ flex: `0 0 ${isDesktop ? 260 : 220}px`, minWidth: 0 }}>
-              {rightRailNode}
-            </div>
+            {(isDesktop || isLaptop) && (
+              <div style={{ flex: `0 0 ${isDesktop ? 260 : 220}px`, minWidth: 0 }}>
+                {rightRailNode}
+              </div>
+            )}
           </div>
         )
       ) : (
@@ -827,6 +837,12 @@ function FinanceHubContent() {
             mode={activeStoryMode}
           />
         </View>
+      )}
+      {/* For tablet, if we don't show rail on side, show it at bottom */}
+      {Platform.OS === 'web' && isTablet && (
+        <div style={{ marginTop: 24 }}>
+          {rightRailNode}
+        </div>
       )}
       </View>
     </FinanceHubShell>
