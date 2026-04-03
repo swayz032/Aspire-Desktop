@@ -1,12 +1,12 @@
 /**
  * NoraTile — full-size Nora AI participant tile for the video conference grid.
- * Same dimensions as ZoomVideoTile. Shows animated avatar with state-based glow,
- * audio bars when speaking, and AI badge. Click toggles Nora voice session.
+ * Matches the original Nora design: black box with cyan glow border,
+ * inner black square with Ava logo, "Nora - Room Assistant" label.
+ * Click toggles Nora voice session.
  */
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Platform } from 'react-native';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '@/constants/tokens';
 import type { RoomAvaState } from '@/components/session/RoomAvaTile';
@@ -20,46 +20,30 @@ interface NoraTileProps {
 }
 
 export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
-  const pulseAnim = useRef(new Animated.Value(0.3)).current;
-  const ringAnim = useRef(new Animated.Value(1)).current;
-  const baseOpacity = useRef(new Animated.Value(0.6)).current;
-  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
-  const ringLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const glowAnim = useRef(new Animated.Value(0.4)).current;
+  const glowLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const isActive = avaState === 'listening' || avaState === 'thinking' || avaState === 'speaking';
 
   useEffect(() => {
     if (isActive) {
-      pulseLoopRef.current = Animated.loop(
+      glowLoopRef.current = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 0.7, duration: 1200, useNativeDriver: false }),
-          Animated.timing(pulseAnim, { toValue: 0.3, duration: 1200, useNativeDriver: false }),
+          Animated.timing(glowAnim, { toValue: 1, duration: 1400, useNativeDriver: false }),
+          Animated.timing(glowAnim, { toValue: 0.4, duration: 1400, useNativeDriver: false }),
         ])
       );
-      pulseLoopRef.current.start();
-
-      ringLoopRef.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(ringAnim, { toValue: 1.06, duration: 1600, useNativeDriver: false }),
-          Animated.timing(ringAnim, { toValue: 1, duration: 1600, useNativeDriver: false }),
-        ])
-      );
-      ringLoopRef.current.start();
+      glowLoopRef.current.start();
     } else {
-      pulseLoopRef.current?.stop();
-      ringLoopRef.current?.stop();
-      pulseAnim.setValue(0.3);
-      ringAnim.setValue(1);
+      glowLoopRef.current?.stop();
+      glowAnim.setValue(0.4);
     }
-    return () => {
-      pulseLoopRef.current?.stop();
-      ringLoopRef.current?.stop();
-    };
+    return () => { glowLoopRef.current?.stop(); };
   }, [isActive]);
 
   const glowColor = avaState === 'listening' ? '#3B82F6'
     : avaState === 'thinking' ? '#A78BFA'
-    : avaState === 'speaking' ? '#22C55E'
+    : avaState === 'speaking' ? '#4ade80'
     : '#3B82F6';
 
   const statusText = avaState === 'listening' ? 'Listening...'
@@ -67,70 +51,49 @@ export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
     : avaState === 'speaking' ? 'Speaking...'
     : 'Ready';
 
-  // Simple audio bar heights — animated via pulse
-  const barHeights = [12, 18, 24, 18, 12];
+  const statusDotColor = isNoraSpeaking ? '#4ade80' : glowColor;
+
+  // Outer border glow: cyan with animated intensity
+  const outerGlow = isActive
+    ? `0 0 12px 4px ${glowColor}80, 0 0 25px 8px ${glowColor}40, inset 0 0 6px ${glowColor}30`
+    : `0 0 8px 2px rgba(59,130,246,0.3), 0 0 15px 3px rgba(0,242,254,0.15)`;
+
+  // Inner box glow
+  const innerGlow = isActive
+    ? `0 0 10px 3px ${glowColor}60, 0 0 20px 6px ${glowColor}25`
+    : `0 0 6px 2px rgba(59,130,246,0.25), 0 0 12px 3px rgba(0,242,254,0.1)`;
 
   return (
     <Pressable
       onPress={onPress}
       style={styles.container}
       accessibilityRole="button"
-      accessibilityLabel={`Nora AI assistant, ${statusText}. Tap to ${isNoraSpeaking ? 'stop' : 'start'}.`}
+      accessibilityLabel={`Nora Room Assistant, ${statusText}. Tap to ${isNoraSpeaking ? 'stop' : 'start'}.`}
     >
-      <LinearGradient colors={['#0B1020', '#0F172A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradient}>
-        {/* Glow ring */}
-        <Animated.View style={[
-          styles.glowRing,
-          {
-            transform: [{ scale: ringAnim }],
-            borderColor: glowColor,
-          },
-          Platform.OS === 'web' && {
-            boxShadow: isActive
-              ? `0 0 24px ${glowColor}55, 0 0 48px ${glowColor}22`
-              : `0 0 12px ${glowColor}33`,
-          } as any,
+      {/* Outer tile — solid black with glow border */}
+      <Animated.View style={[
+        styles.outerBox,
+        {
+          borderColor: glowColor,
+          opacity: Animated.add(new Animated.Value(0.6), Animated.multiply(glowAnim, new Animated.Value(0.4))),
+        },
+        Platform.OS === 'web' && { boxShadow: outerGlow } as any,
+      ]}>
+        {/* Inner box — smaller black square with glow border + logo */}
+        <View style={[
+          styles.innerBox,
+          { borderColor: glowColor },
+          Platform.OS === 'web' && { boxShadow: innerGlow } as any,
         ]}>
-          <Animated.View style={[styles.avatarContainer, { opacity: Animated.add(baseOpacity, pulseAnim) }]}>
-            <Image source={noraAvatar} style={styles.avatar} contentFit="contain" />
-          </Animated.View>
-        </Animated.View>
+          <Image source={noraAvatar} style={styles.logo} contentFit="contain" />
+        </View>
+      </Animated.View>
 
-        {/* Audio bars when speaking */}
-        {isNoraSpeaking && (
-          <View style={styles.audioBars}>
-            {barHeights.map((h, i) => (
-              <Animated.View
-                key={i}
-                style={[
-                  styles.audioBar,
-                  {
-                    height: h,
-                    backgroundColor: glowColor,
-                    opacity: pulseAnim,
-                  },
-                ]}
-              />
-            ))}
-          </View>
-        )}
-
-        {/* Bottom label overlay */}
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.7)']}
-          style={styles.bottomOverlay}
-        >
-          <View style={styles.labelRow}>
-            <Text style={styles.name}>Nora</Text>
-            <View style={styles.aiBadge}>
-              <Ionicons name="sparkles" size={8} color="#3B82F6" />
-              <Text style={styles.aiBadgeText}>AI</Text>
-            </View>
-            <View style={[styles.statusDot, { backgroundColor: glowColor }]} />
-            <Text style={styles.statusText}>{statusText}</Text>
-          </View>
-        </LinearGradient>
-      </LinearGradient>
+      {/* Bottom label — outside the glow box, at bottom of tile */}
+      <View style={styles.labelBar}>
+        <Text style={styles.nameLabel}>Nora - Room Assistant</Text>
+        <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
+      </View>
     </Pressable>
   );
 }
@@ -138,86 +101,55 @@ export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#000000',
     borderRadius: 10,
     overflow: 'hidden',
-    backgroundColor: '#0a0a0c',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  gradient: {
+  outerBox: {
     flex: 1,
-    alignItems: 'center',
+    width: '100%',
     justifyContent: 'center',
-  },
-  glowRing: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    alignItems: 'center',
     borderWidth: 2,
-    alignItems: 'center',
+    borderRadius: 10,
+    backgroundColor: '#000000',
+  },
+  innerBox: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    borderWidth: 2,
+    backgroundColor: '#000000',
     justifyContent: 'center',
-  },
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
   },
-  avatar: {
-    width: 56,
-    height: 56,
+  logo: {
+    width: 64,
+    height: 64,
   },
-  audioBars: {
-    flexDirection: 'row',
-    gap: 3,
-    marginTop: 12,
-    alignItems: 'flex-end',
-    height: 24,
-  },
-  audioBar: {
-    width: 4,
-    borderRadius: 2,
-  },
-  bottomOverlay: {
+  labelBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 10,
-    paddingVertical: Spacing.sm,
-    paddingTop: Spacing.xl,
-  },
-  labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
-  name: {
+  nameLabel: {
     fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text.secondary,
-  },
-  aiBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(59,130,246,0.15)',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  aiBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#3B82F6',
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: 0.3,
   },
   statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 11,
-    color: Colors.text.muted,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });

@@ -220,9 +220,12 @@ function ConferenceContent({
       );
     }
 
-    // Gallery view: adaptive grid — compute cols and tile width %
+    // Gallery view: adaptive grid — compute cols AND rows so tiles fill the screen
     const cols = allTiles <= 1 ? 1 : allTiles <= 2 ? 2 : allTiles <= 4 ? 2 : allTiles <= 6 ? 3 : allTiles <= 9 ? 3 : 4;
-    const tileWidthPct = `${Math.floor(100 / cols) - 1}%`;
+    const rows = Math.ceil(allTiles / cols);
+    // Percentage-based sizing so tiles fill the entire grid area
+    const tileWidth = `${Math.floor(100 / cols) - 1}%` as any;
+    const tileHeight = `${Math.floor(100 / rows) - 1}%` as any;
 
     const gridStyle = allTiles <= 1 ? styles.grid1
       : allTiles <= 2 ? styles.grid2
@@ -231,16 +234,18 @@ function ConferenceContent({
       : allTiles <= 9 ? styles.grid9
       : styles.grid12;
 
+    const tileStyle = { width: tileWidth, height: tileHeight };
+
     return (
       <View style={[styles.videoGrid, gridStyle]}>
         {/* Nora tile — always first in grid */}
-        <View style={[styles.videoTileWrapper, { width: tileWidthPct as any }]}>
+        <View style={[styles.videoTileWrapper, tileStyle]}>
           <NoraTile avaState={avaState} isNoraSpeaking={isNoraSpeaking} onPress={onToggleNora} />
         </View>
 
         {/* Zoom participant tiles */}
         {participants.map((p: ZoomParticipant) => (
-          <View key={p.userId} style={[styles.videoTileWrapper, { width: tileWidthPct as any }]}>
+          <View key={p.userId} style={[styles.videoTileWrapper, tileStyle]}>
             <ZoomVideoTile
               participant={p}
               stream={stream as any}
@@ -250,7 +255,7 @@ function ConferenceContent({
         ))}
 
         {participants.length === 0 && (
-          <View style={[styles.emptyTile, { width: tileWidthPct as any }]}>
+          <View style={[styles.emptyTile, tileStyle]}>
             <Text style={styles.emptyText}>Waiting for participants...</Text>
           </View>
         )}
@@ -621,26 +626,24 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // Gallery view grids — adaptive
+  // Gallery view grids — tiles must fill the entire space between header and footer
   videoGrid: {
     flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 4,
     padding: 4,
-    alignContent: 'center',
-    justifyContent: 'center',
   },
   videoTileWrapper: {
-    aspectRatio: 16 / 9,
+    // Height computed from row count, width from col count
+    // Both set inline in renderGrid
   },
-  // Grid configs — videoTileWrapper width set via getGridStyle in renderGrid
-  grid1: { padding: 32 },
-  grid2: { padding: 16 },
-  grid4: { padding: 8 },
-  grid6: { padding: 6 },
-  grid9: { padding: 4 },
-  grid12: { padding: 4 },
+  grid1: { padding: 8 },
+  grid2: { padding: 4 },
+  grid4: { padding: 4 },
+  grid6: { padding: 3 },
+  grid9: { padding: 2 },
+  grid12: { padding: 2 },
 
   emptyTile: {
     flex: 1,
