@@ -82,12 +82,20 @@ function ZoomCanvasView({
 
     const canvas = canvasRef.current;
 
+    // HiDPI: set canvas buffer to device pixel ratio for crisp rendering
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const renderWidth = Math.round((rect.width || 1280) * dpr);
+    const renderHeight = Math.round((rect.height || 720) * dpr);
+    canvas.width = renderWidth;
+    canvas.height = renderHeight;
+
     // Zoom rotation: 0 = normal, 2 = mirror (for local camera)
     stream.renderVideo(
       canvas,
       participant.userId,
-      canvas.width,
-      canvas.height,
+      renderWidth,
+      renderHeight,
       0,
       0,
       participant.isLocal ? 2 : 0,
@@ -125,12 +133,8 @@ function ZoomCanvasView({
       style={styles.canvasContainer}
       accessibilityElementsHidden
     >
-      {/* Canvas element rendered via dangerouslySetInnerHTML is not available in RN.
-          Instead, use a ref-based approach with a raw DOM element on web. */}
       <canvas
         ref={canvasRef as React.RefObject<HTMLCanvasElement>}
-        width={1280}
-        height={720}
         style={canvasStyle as unknown as React.CSSProperties}
       />
     </View>

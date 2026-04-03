@@ -18,7 +18,7 @@ import React, {
   useState,
 } from 'react';
 import { Platform } from 'react-native';
-import { ZOOM_INIT_OPTIONS, SESSION_CONFIG, VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
+import { ZOOM_INIT_OPTIONS, SESSION_CONFIG, VIDEO_CAPTURE_DEFAULTS, AUDIO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -201,21 +201,40 @@ function ZoomConferenceProviderWeb({
           }
         }
 
-        // Auto-start video per config
+        // Auto-start video per config — 1080p (fullHd) with 720p fallback
         if (SESSION_CONFIG.autoStartVideo) {
           try {
             await mediaStream.startVideo({
-              hd: VIDEO_CAPTURE_DEFAULTS.width >= 1280,
-              fps: VIDEO_CAPTURE_DEFAULTS.frameRate,
+              fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
+              hd: VIDEO_CAPTURE_DEFAULTS.hd,
               facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
             });
+          } catch (videoErr) {
+            // Fallback: try 720p if 1080p fails (device/bandwidth constraint)
+            try {
+              await mediaStream.startVideo({
+                hd: true,
+                facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
+              });
+            } catch (_fallbackErr) {
+              reportProviderError({
+                provider: 'zoom',
+                action: 'auto_start_video',
+                error: videoErr,
+                component: 'ZoomConferenceProvider',
+              });
+            }
+          }
+        }
+
+        // Enable Zoom SDK background noise suppression for crystal clear audio
+        if (SESSION_CONFIG.autoEnableNoiseSuppression) {
+          try {
+            if (typeof mediaStream.enableBackgroundNoiseSuppression === 'function') {
+              await mediaStream.enableBackgroundNoiseSuppression(true);
+            }
           } catch (_e) {
-            reportProviderError({
-              provider: 'zoom',
-              action: 'auto_start_video',
-              error: _e,
-              component: 'ZoomConferenceProvider',
-            });
+            // Non-critical — built-in WebRTC noise suppression still active
           }
         }
 
