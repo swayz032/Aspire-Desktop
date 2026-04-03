@@ -14,7 +14,7 @@
  * spring-interpolated step slide with opacity crossfade, premium layered box shadows,
  * subtle inner glow on active step, web-only CSS transitions for hover states.
  */
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -193,6 +193,16 @@ function UnifiedSessionModalInner({
       stepOffset.value = 0;
     }
   }, [visible]);
+
+  // Auto-return to Step 1 when a participant is added on Step 2
+  const prevParticipantCount = useRef(participants.length);
+  useEffect(() => {
+    if (step === 2 && participants.length > prevParticipantCount.current) {
+      // New participant added — go back to Step 1 to review
+      goToStep(1);
+    }
+    prevParticipantCount.current = participants.length;
+  }, [participants.length, step, goToStep]);
 
   // Step 1 slides left and fades out as stepOffset goes 0 -> 1
   const step1Style = useAnimatedStyle(() => ({
@@ -455,26 +465,15 @@ function UnifiedSessionModalInner({
                   >
                     <Text style={styles.cancelBtnText}>Cancel</Text>
                   </Pressable>
-                  <PressableScale
-                    style={styles.nextBtn}
-                    onPress={() => goToStep(2)}
-                    accessibilityLabel="Continue to add participants"
-                  >
-                    <Text style={styles.nextBtnText}>Add Participants</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#FFFFFF" accessibilityElementsHidden />
-                  </PressableScale>
-                </>
-              ) : (
-                <>
                   <Pressable
                     style={styles.backBtn}
-                    onPress={() => goToStep(1)}
-                    accessibilityLabel="Back to configure"
+                    onPress={() => goToStep(2)}
+                    accessibilityLabel="Add participants"
                     accessibilityRole="button"
                     {...(Platform.OS === 'web' ? { className: 'modal-back-btn' } as Record<string, string> : {})}
                   >
-                    <Ionicons name="arrow-back" size={16} color={Colors.text.secondary} accessibilityElementsHidden />
-                    <Text style={styles.backBtnText}>Back</Text>
+                    <Ionicons name="person-add" size={16} color={Colors.text.secondary} accessibilityElementsHidden />
+                    <Text style={styles.backBtnText}>Add People</Text>
                   </Pressable>
                   <PressableScale
                     style={[styles.startBtn, isJoining && styles.startBtnDisabled]}
@@ -492,6 +491,19 @@ function UnifiedSessionModalInner({
                       {isJoining ? 'Checking...' : 'Start Session'}
                     </Text>
                   </PressableScale>
+                </>
+              ) : (
+                <>
+                  <Pressable
+                    style={styles.backBtn}
+                    onPress={() => goToStep(1)}
+                    accessibilityLabel="Back to review"
+                    accessibilityRole="button"
+                    {...(Platform.OS === 'web' ? { className: 'modal-back-btn' } as Record<string, string> : {})}
+                  >
+                    <Ionicons name="arrow-back" size={16} color={Colors.text.secondary} accessibilityElementsHidden />
+                    <Text style={styles.backBtnText}>Done</Text>
+                  </Pressable>
                 </>
               )}
             </View>
