@@ -18,7 +18,7 @@ import React, {
   useState,
 } from 'react';
 import { Platform } from 'react-native';
-import { ZOOM_INIT_OPTIONS, SESSION_CONFIG } from '@/lib/zoom-config';
+import { ZOOM_INIT_OPTIONS, SESSION_CONFIG, VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -54,6 +54,11 @@ type ZoomClient = {
 
 type ZoomMediaStream = {
   startAudio: () => Promise<void>;
+  startVideo: (options?: Record<string, unknown>) => Promise<void>;
+  stopVideo: () => Promise<void>;
+  renderVideo: (canvas: HTMLCanvasElement, userId: number, width: number, height: number, x: number, y: number, rotation: number) => void;
+  stopRenderVideo: (canvas: HTMLCanvasElement, userId: number) => void;
+  enableBackgroundNoiseSuppression?: (enable: boolean) => Promise<void>;
 };
 
 export interface ZoomParticipant {
@@ -190,6 +195,24 @@ function ZoomConferenceProviderWeb({
             reportProviderError({
               provider: 'zoom',
               action: 'auto_start_audio',
+              error: _e,
+              component: 'ZoomConferenceProvider',
+            });
+          }
+        }
+
+        // Auto-start video per config
+        if (SESSION_CONFIG.autoStartVideo) {
+          try {
+            await mediaStream.startVideo({
+              hd: VIDEO_CAPTURE_DEFAULTS.width >= 1280,
+              fps: VIDEO_CAPTURE_DEFAULTS.frameRate,
+              facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
+            });
+          } catch (_e) {
+            reportProviderError({
+              provider: 'zoom',
+              action: 'auto_start_video',
               error: _e,
               component: 'ZoomConferenceProvider',
             });
