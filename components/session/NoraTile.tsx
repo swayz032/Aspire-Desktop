@@ -1,10 +1,9 @@
 /**
  * NoraTile — Nora AI participant tile for the video conference grid.
  *
- * Design: Pure black (#000) tile. Large inner black box fills ~85% of tile.
- * Nora's real photo in a circle centered in the box — NO ring, NO border,
- * seamlessly blends into the black. Ambient glow breathes continuously
- * even when idle (color shifts by state). "Nora - Room Assistant" label.
+ * Design: Pure black tile. Nora's real photo (small circle, ~90px, no border/ring)
+ * centered. Bright ambient glow cycles through Aspire brand colors continuously
+ * (blue → amber → cyan → green → purple) even when idle. Intensifies on active.
  */
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Platform } from 'react-native';
@@ -14,6 +13,15 @@ import type { RoomAvaState } from '@/components/session/RoomAvaTile';
 
 const noraPhoto = require('../../assets/images/nora-avatar-photo.png');
 
+// Aspire brand color cycle — blue, amber, cyan, green, purple
+const GLOW_COLORS = [
+  '59,130,246',   // Aspire blue
+  '245,158,11',   // Amber yellow
+  '6,182,212',    // Cyan
+  '74,222,128',   // Green
+  '167,139,250',  // Purple
+];
+
 interface NoraTileProps {
   avaState: RoomAvaState;
   isNoraSpeaking: boolean;
@@ -21,31 +29,38 @@ interface NoraTileProps {
 }
 
 export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
-  const glowAnim = useRef(new Animated.Value(0)).current;
-
-  // Ambient glow breathes ALWAYS — even when idle
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 2400, useNativeDriver: false }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 2400, useNativeDriver: false }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, []);
-
-  // Glow color changes by state
-  const glowColor = avaState === 'listening' ? '59,130,246'    // blue
-    : avaState === 'thinking' ? '167,139,250'                   // purple
-    : avaState === 'speaking' ? '74,222,128'                     // green
-    : '59,130,246';                                               // blue (idle)
+  const colorIndexRef = useRef(0);
+  const containerRef = useRef<any>(null);
 
   const isActive = avaState === 'listening' || avaState === 'thinking' || avaState === 'speaking';
 
-  // Stronger glow when active, subtle when idle
-  const idleGlow = `0 0 40px rgba(${glowColor},0.08), 0 0 80px rgba(${glowColor},0.04)`;
-  const activeGlow = `0 0 50px rgba(${glowColor},0.2), 0 0 100px rgba(${glowColor},0.1), 0 0 150px rgba(${glowColor},0.05)`;
+  // Cycle glow colors continuously via CSS animation on web
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !containerRef.current) return;
+
+    // Inject keyframes for color-cycling glow
+    if (!document.getElementById('nora-glow-keyframes')) {
+      const style = document.createElement('style');
+      style.id = 'nora-glow-keyframes';
+      style.textContent = `
+        @keyframes noraGlowCycle {
+          0%, 100% { box-shadow: 0 0 30px rgba(59,130,246,0.35), 0 0 60px rgba(59,130,246,0.15), 0 0 90px rgba(59,130,246,0.05); }
+          20% { box-shadow: 0 0 30px rgba(245,158,11,0.35), 0 0 60px rgba(245,158,11,0.15), 0 0 90px rgba(245,158,11,0.05); }
+          40% { box-shadow: 0 0 30px rgba(6,182,212,0.35), 0 0 60px rgba(6,182,212,0.15), 0 0 90px rgba(6,182,212,0.05); }
+          60% { box-shadow: 0 0 30px rgba(74,222,128,0.35), 0 0 60px rgba(74,222,128,0.15), 0 0 90px rgba(74,222,128,0.05); }
+          80% { box-shadow: 0 0 30px rgba(167,139,250,0.35), 0 0 60px rgba(167,139,250,0.15), 0 0 90px rgba(167,139,250,0.05); }
+        }
+        @keyframes noraGlowCycleActive {
+          0%, 100% { box-shadow: 0 0 40px rgba(59,130,246,0.5), 0 0 80px rgba(59,130,246,0.25), 0 0 120px rgba(59,130,246,0.1); }
+          20% { box-shadow: 0 0 40px rgba(245,158,11,0.5), 0 0 80px rgba(245,158,11,0.25), 0 0 120px rgba(245,158,11,0.1); }
+          40% { box-shadow: 0 0 40px rgba(6,182,212,0.5), 0 0 80px rgba(6,182,212,0.25), 0 0 120px rgba(6,182,212,0.1); }
+          60% { box-shadow: 0 0 40px rgba(74,222,128,0.5), 0 0 80px rgba(74,222,128,0.25), 0 0 120px rgba(74,222,128,0.1); }
+          80% { box-shadow: 0 0 40px rgba(167,139,250,0.5), 0 0 80px rgba(167,139,250,0.25), 0 0 120px rgba(167,139,250,0.1); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
 
   const statusText = avaState === 'listening' ? 'Listening...'
     : avaState === 'thinking' ? 'Thinking...'
@@ -64,21 +79,26 @@ export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
       accessibilityRole="button"
       accessibilityLabel={`Nora Room Assistant, ${statusText}`}
     >
-      {/* Pure black background */}
-      <Animated.View style={[
-        styles.innerBox,
-        Platform.OS === 'web' && {
-          boxShadow: isActive ? activeGlow : idleGlow,
-          transition: 'box-shadow 1.2s ease',
-        } as any,
-      ]}>
-        {/* Nora photo — circle, no border, no ring, seamless on black */}
+      {/* Inner box — ambient glow cycles through brand colors */}
+      <View
+        ref={containerRef}
+        style={[
+          styles.innerBox,
+          Platform.OS === 'web' && {
+            animationName: isActive ? 'noraGlowCycleActive' : 'noraGlowCycle',
+            animationDuration: '8s',
+            animationIterationCount: 'infinite',
+            animationTimingFunction: 'ease-in-out',
+          } as any,
+        ]}
+      >
+        {/* Nora photo — small circle, no ring, no border */}
         <Image
           source={noraPhoto}
           style={styles.photo}
           contentFit="cover"
         />
-      </Animated.View>
+      </View>
 
       {/* Bottom label */}
       <View style={styles.labelBar}>
@@ -98,17 +118,14 @@ const styles = StyleSheet.create({
   },
   innerBox: {
     flex: 1,
-    margin: '7%' as any,
     backgroundColor: '#000000',
-    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   photo: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    // No border, no ring — seamless circle on black
+    width: 90,
+    height: 90,
+    borderRadius: 45,
   },
   labelBar: {
     position: 'absolute',
