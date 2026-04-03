@@ -334,9 +334,15 @@ function useAuthGate() {
       navigate('/(auth)/login');
     } else if (session && onboardingChecked && !onboardingComplete && !onOnboarding && !inPublicGroup) {
       navigate('/(auth)/onboarding');
-    } else if (session && onboardingChecked && onboardingComplete && inAuthGroup) {
-      // Auto-redirect from auth group (login, onboarding) to tabs.
-      // Login page no longer navigates itself — auth gate handles all redirects.
+    } else if (session && inAuthGroup) {
+      // User has a session and is on login/onboarding page — redirect to tabs.
+      // Don't wait for onboardingChecked — the homepage can handle onboarding redirect
+      // if needed. Waiting caused the "Please wait" freeze where the login button
+      // stayed loading indefinitely because the onboarding check was async.
+      if (onOnboarding && !onboardingChecked) {
+        // Exception: if we're already on onboarding page and check isn't done, wait.
+        return;
+      }
       if (Platform.OS === 'web' && typeof document !== 'undefined') {
         document.body.style.overflow = 'hidden';
         document.body.style.height = '100%';

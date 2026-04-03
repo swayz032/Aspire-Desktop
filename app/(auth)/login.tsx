@@ -290,16 +290,17 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
     setLoading(true); setError(null);
     try {
       const { error: ae } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (ae) { setError(ae.message); return; }
-      // Sign-in succeeded. The session change triggers _layout.tsx useAuthGate
-      // which handles onboarding check + redirect to /(tabs) or /(auth)/onboarding.
-      // Do NOT navigate here — it races with the auth gate and causes double-redirect.
-      // Just keep loading=true and let the auth gate take over.
+      if (ae) { setError(ae.message); setLoading(false); return; }
+      // Sign-in succeeded. Auth gate in _layout.tsx redirects to /(tabs).
+      // Safety timeout: if auth gate hasn't redirected after 5s, reset button
+      // and try navigating directly (prevents permanent "Please wait" freeze).
+      setTimeout(() => {
+        setLoading(false);
+        router.replace('/(tabs)' as any);
+      }, 5000);
     } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
       setLoading(false);
     }
-    // NOTE: No finally { setLoading(false) } — we want the button to stay
-    // in loading state until the auth gate redirects away from this page.
   };
 
   const handleSignUp = async () => {
@@ -772,7 +773,12 @@ function NativeLoginScreen() {
     try {
       const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (authError) { setError(authError.message); setLoading(false); return; }
-      // Auth gate in _layout.tsx handles redirect after session change
+      // Auth gate in _layout.tsx handles redirect after session change.
+      // Safety timeout prevents permanent freeze.
+      setTimeout(() => {
+        setLoading(false);
+        router.replace('/(tabs)' as any);
+      }, 5000);
     } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
       setLoading(false);
     }
