@@ -101,6 +101,7 @@ function generateMeetingSdkSignature(
 
   return jwt.sign(
     {
+      appKey: ZOOM_SDK_KEY,
       sdkKey: ZOOM_SDK_KEY,
       mn: meetingNumber,
       role,

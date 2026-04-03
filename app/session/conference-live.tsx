@@ -435,14 +435,13 @@ function ConferenceLive() {
         // 4. Join meeting
         setZoomStatus('joining');
 
-        const sdkKey = data.sdkKey || process.env.EXPO_PUBLIC_ZOOM_SDK_KEY || '';
         const meetingNumber = data.meetingNumber || data.topic || roomName;
         const signature = data.signature || data.token;
         const password = data.password || '';
 
+        // sdkKey removed from joinOptions since v4.0.0 — appKey is in the signature JWT
         await client.join({
           signature,
-          sdkKey,
           meetingNumber,
           password,
           userName: participantName,
