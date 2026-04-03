@@ -238,8 +238,15 @@ function ZoomUIToolkitSession({
         const uitoolkit = (await import('@zoom/videosdk-ui-toolkit')).default;
         uitoolkitRef.current = uitoolkit;
 
-        // Import CSS
-        await import('@zoom/videosdk-ui-toolkit/dist/videosdk-ui-toolkit.css');
+        // Inject CSS via <link> tag (Expo/Metro can't import CSS directly)
+        // CSS file copied from node_modules to public/ at build time
+        if (!document.getElementById('zoom-uitoolkit-css')) {
+          const link = document.createElement('link');
+          link.id = 'zoom-uitoolkit-css';
+          link.rel = 'stylesheet';
+          link.href = '/videosdk-ui-toolkit.css';
+          document.head.appendChild(link);
+        }
 
         if (destroyed || !containerRef.current) return;
 
@@ -278,7 +285,7 @@ function ZoomUIToolkitSession({
         };
 
         // Register session destroy callback
-        uitoolkit.onSessionDestroy(() => {
+        uitoolkit.onSessionDestroyed(() => {
           if (mountedRef.current) onSessionEnd();
         });
 
@@ -521,7 +528,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   errorTitle: {
-    ...Typography.h3,
+    ...Typography.title,
     color: Colors.text.primary,
     textAlign: 'center',
   },
