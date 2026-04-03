@@ -812,7 +812,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 router.post('/api/conference/invite-internal', async (req: Request, res: Response) => {
   try {
-    const { invitee_suite_id, invitee_user_id, room_name } = req.body;
+    const { invitee_suite_id, invitee_user_id, room_name, meeting_number, meeting_password } = req.body;
     // Prefer X-Suite-Id header (active suite selection) over JWT metadata suite_id
     const headerSuiteId = typeof req.headers['x-suite-id'] === 'string' ? req.headers['x-suite-id'].trim() : '';
     const suiteId = headerSuiteId || (req as any).authenticatedSuiteId as string | undefined;
@@ -934,7 +934,7 @@ router.post('/api/conference/invite-internal', async (req: Request, res: Respons
         invitee_suite_id,
         invitee_user_id,
         room_name,
-        zoom_session_id: room_name,
+        zoom_session_id: meeting_number || room_name,
         expires_at: expiresAt,
       })
       .select('id, expires_at')
@@ -1130,13 +1130,15 @@ router.patch('/api/conference/invite-internal/:id', async (req: Request, res: Re
       .eq('suite_id', invitation.invitee_suite_id)
       .single();
 
-    const participantIdentity = `${userId}-${invitation.invitee_suite_id}`;
     const participantName = inviteeProfile?.owner_name || 'Participant';
-    // role_type 1 = host for accepted internal invitees (full participant rights)
-    const token = generateZoomJwt(invitation.room_name, participantIdentity, 1, 7200);
+    // Use the stored meeting number (real Zoom meeting) or fall back to room name
+    const meetingNumber = invitation.zoom_session_id || invitation.room_name;
+    const signature = generateMeetingSdkSignature(meetingNumber, 0); // 0 = attendee
 
     res.json({
-      token,
+      signature,
+      meetingNumber,
+      password: '',
       topic: invitation.room_name,
       roomName: invitation.room_name,
     });

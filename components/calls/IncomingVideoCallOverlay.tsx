@@ -318,8 +318,9 @@ function IncomingVideoCallOverlayInner(): React.ReactElement | null {
         pathname: '/session/conference-live' as any,
         params: {
           roomName: result.roomName,
-          token: result.token,
-          topic: result.topic,
+          signature: result.signature,
+          meetingNumber: result.meetingNumber,
+          password: result.password,
           participantName: myName,
         },
       });

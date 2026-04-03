@@ -329,23 +329,42 @@ function ConferenceLive() {
     const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
     const participantName = (params.participantName as string) || tenant?.ownerName || session?.user?.user_metadata?.full_name || 'You';
 
+    // Check if joining via accepted invite (signature + meetingNumber in params)
+    const paramSignature = params.signature as string | undefined;
+    const paramMeetingNumber = params.meetingNumber as string | undefined;
+    const paramPassword = (params.password as string) || '';
+
     let client: ZoomClient | null = null;
 
     (async () => {
       try {
-        // 1. Fetch signature from server
         setZoomStatus('loading');
-        const res = await authenticatedFetch('/api/zoom/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roomName, participantName, suiteId }),
-          signal: controller.signal,
-        });
 
-        if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
-        const data = await res.json();
-        if (!data.token) throw new Error(data.error || 'No token returned');
-        if (controller.signal.aborted) return;
+        let signature: string;
+        let meetingNumber: string;
+        let password: string;
+
+        if (paramSignature && paramMeetingNumber) {
+          // Joining via accepted invite — signature already provided
+          signature = paramSignature;
+          meetingNumber = paramMeetingNumber;
+          password = paramPassword;
+        } else {
+          // Host starting session — fetch from server (creates real Zoom meeting)
+          const res = await authenticatedFetch('/api/zoom/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomName, participantName, suiteId }),
+            signal: controller.signal,
+          });
+
+          if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
+          const data = await res.json();
+          if (controller.signal.aborted) return;
+          signature = data.signature || data.token;
+          meetingNumber = data.meetingNumber || data.topic || roomName;
+          password = data.password || '';
+        }
 
         // 2. Load Meeting SDK via CDN (too large for Metro bundler at 87MB)
         const ZoomMtgEmbedded = await loadZoomMeetingSdk();
@@ -434,10 +453,6 @@ function ConferenceLive() {
 
         // 4. Join meeting
         setZoomStatus('joining');
-
-        const meetingNumber = data.meetingNumber || data.topic || roomName;
-        const signature = data.signature || data.token;
-        const password = data.password || '';
 
         // sdkKey removed from joinOptions since v4.0.0 — appKey is in the signature JWT
         await client.join({
