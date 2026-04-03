@@ -98,6 +98,17 @@ http.Server.prototype.listen = function (...args) {
   return originalListen.apply(this, args);
 };
 
+// Exclude @zoom/videosdk-ui-toolkit from Metro bundling.
+// The 6MB UMD bundle crashes Metro's heap. We load it via <script> tag
+// from public/ at runtime instead (guest join page only).
+config.resolver = {
+  ...config.resolver,
+  blockList: [
+    ...(config.resolver?.blockList ? [config.resolver.blockList] : []).flat(),
+    /node_modules\/@zoom\/videosdk-ui-toolkit\/.*/,
+  ],
+};
+
 config.watcher = {
   ...config.watcher,
   watchman: {

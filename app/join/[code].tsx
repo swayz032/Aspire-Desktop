@@ -234,12 +234,9 @@ function ZoomUIToolkitSession({
 
     const init = async () => {
       try {
-        // Dynamic import — UI Toolkit is large, only load when needed
-        const uitoolkit = (await import('@zoom/videosdk-ui-toolkit')).default;
-        uitoolkitRef.current = uitoolkit;
-
-        // Inject CSS via <link> tag (Expo/Metro can't import CSS directly)
-        // CSS file copied from node_modules to public/ at build time
+        // Load UI Toolkit via <script> tag — bypasses Metro bundler entirely.
+        // The 6MB UMD bundle crashes Metro's heap if imported/required.
+        // Files served from public/: videosdk-ui-toolkit.js + videosdk-ui-toolkit.css
         if (!document.getElementById('zoom-uitoolkit-css')) {
           const link = document.createElement('link');
           link.id = 'zoom-uitoolkit-css';
@@ -247,6 +244,22 @@ function ZoomUIToolkitSession({
           link.href = '/videosdk-ui-toolkit.css';
           document.head.appendChild(link);
         }
+
+        // Load UMD script if not already loaded
+        let uitoolkit = (window as any).UIToolkit;
+        if (!uitoolkit) {
+          await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.id = 'zoom-uitoolkit-script';
+            script.src = '/videosdk-ui-toolkit.js';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Failed to load Zoom UI Toolkit'));
+            document.head.appendChild(script);
+          });
+          uitoolkit = (window as any).UIToolkit;
+          if (!uitoolkit) throw new Error('Zoom UI Toolkit not found on window after load');
+        }
+        uitoolkitRef.current = uitoolkit;
 
         if (destroyed || !containerRef.current) return;
 
