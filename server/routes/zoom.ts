@@ -29,8 +29,54 @@ const router = Router();
 
 const ZOOM_SDK_KEY = process.env.ZOOM_SDK_KEY || '';
 const ZOOM_SDK_SECRET = process.env.ZOOM_SDK_SECRET || '';
+const ZOOM_API_KEY = process.env.ZOOM_API_KEY || '';
+const ZOOM_API_SECRET = process.env.ZOOM_API_SECRET || '';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://www.aspireos.app';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+/**
+ * Create a real Zoom meeting via the Zoom REST API.
+ * Returns the meeting number and password needed for the Meeting SDK.
+ */
+async function createZoomMeeting(topic: string, hostName: string): Promise<{ meetingNumber: string; password: string }> {
+  // Generate a Server-to-Server JWT for the Zoom API
+  const apiToken = jwt.sign(
+    { iss: ZOOM_API_KEY, exp: Math.floor(Date.now() / 1000) + 60 },
+    ZOOM_API_SECRET,
+  );
+
+  const response = await fetch('https://api.zoom.us/v2/users/me/meetings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      topic: topic || 'Aspire Conference',
+      type: 1, // Instant meeting
+      settings: {
+        host_video: true,
+        participant_video: true,
+        join_before_host: true,
+        mute_upon_entry: false,
+        auto_recording: 'none',
+        waiting_room: false,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    logger.error('Zoom API create meeting failed', { status: response.status, error: err });
+    throw new Error(err.message || `Zoom API error: ${response.status}`);
+  }
+
+  const meeting = await response.json();
+  return {
+    meetingNumber: String(meeting.id),
+    password: meeting.password || '',
+  };
+}
 
 /**
  * Format an email local part into a readable name.
@@ -148,21 +194,27 @@ router.post('/api/zoom/token', async (req: Request, res: Response) => {
         .json({ error: 'Conference service not configured' });
     }
 
-    // Generate Meeting SDK signature for embedded component view.
-    // The roomName is used as the meeting number identifier.
-    // For production: create a real Zoom meeting via API and use its meeting number.
-    const meetingNumber = roomName;
-    const signature = generateMeetingSdkSignature(meetingNumber, 1);
+    // Create a real Zoom meeting via the API, then generate a Meeting SDK signature
+    let meetingNumber: string;
+    let password = '';
 
-    // Also generate a Video SDK JWT for fallback/guest usage
-    const participantIdentity = `${(req as any).authenticatedUserId || participantName}-${suiteId || 'default'}`;
-    const videoSdkToken = generateZoomJwt(roomName, participantIdentity, 1, 7200);
+    if (ZOOM_API_KEY && ZOOM_API_SECRET) {
+      const meeting = await createZoomMeeting(roomName, participantName);
+      meetingNumber = meeting.meetingNumber;
+      password = meeting.password;
+      logger.info('Zoom meeting created', { meetingNumber, topic: roomName });
+    } else {
+      // Fallback: use room name as topic (won't work with Meeting SDK)
+      meetingNumber = roomName;
+      logger.warn('Zoom API keys not configured — cannot create real meetings');
+    }
+
+    const signature = generateMeetingSdkSignature(meetingNumber, 1);
 
     res.json({
       signature,
-      sdkKey: ZOOM_SDK_KEY,
       meetingNumber,
-      token: videoSdkToken,
+      password,
       topic: roomName,
     });
   } catch (error: unknown) {
