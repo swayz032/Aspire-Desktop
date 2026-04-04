@@ -266,6 +266,9 @@ function ZoomConferenceProviderWeb({
   // Refs to avoid stale closures in event handlers
   const clientRef = useRef<ZoomClient | null>(null);
   const localUserIdRef = useRef<number | null>(null);
+  // Persist local user info so the self-tile NEVER disappears from the grid.
+  // getAllUser() and getCurrentUserInfo() can return empty during transitions.
+  const localUserInfoRef = useRef<ZoomUserPayload | null>(null);
   const mountedRef = useRef(true);
 
   // ── Init + Join ─────────────────────────────────────────────────────────
@@ -309,7 +312,17 @@ function ZoomConferenceProviderWeb({
         // Capture local user ID for isLocal detection
         const currentUser = client.getCurrentUserInfo?.();
         if (currentUser) {
-          localUserIdRef.current = currentUser.userId;
+          const id = normalizeZoomUserId(currentUser.userId);
+          if (id !== null) {
+            localUserIdRef.current = id;
+            localUserInfoRef.current = { ...currentUser, userId: id };
+          }
+        }
+
+        // Show local tile INSTANTLY — don't wait for media or SDK events.
+        // This prevents the self-tile from appearing seconds late.
+        if (localUserInfoRef.current && localUserIdRef.current !== null) {
+          setParticipants([toParticipant(localUserInfoRef.current, localUserIdRef.current)]);
         }
 
         // Get media stream handle
@@ -324,6 +337,8 @@ function ZoomConferenceProviderWeb({
           const currentId = normalizeZoomUserId(current?.userId);
           if (currentId !== null) {
             localUserIdRef.current = currentId;
+            // Update persisted local user info with latest SDK state
+            if (current) localUserInfoRef.current = { ...current, userId: currentId };
           }
 
           for (const user of allUsers) {
@@ -331,22 +346,23 @@ function ZoomConferenceProviderWeb({
             if (userId !== null) usersById.set(userId, { ...user, userId });
           }
 
-          // Some SDK timing paths omit local user in early getAllUser snapshots.
-          // Always include current user so self-view tile cannot disappear.
-          if (currentId !== null && current && !usersById.has(currentId)) {
-            usersById.set(currentId, { ...current, userId: currentId });
+          // UNCONDITIONAL: local user MUST always be in the participants list.
+          // The SDK's getAllUser() and getCurrentUserInfo() can return empty
+          // during video stop/start transitions, but the tile must never vanish.
+          const localId = localUserIdRef.current;
+          const localInfo = localUserInfoRef.current;
+          if (localId !== null && localInfo && !usersById.has(localId)) {
+            usersById.set(localId, localInfo);
           }
 
-          setParticipants(() => {
-            if (usersById.size === 0) return [];
-            return Array.from(usersById.values()).map((u) =>
+          setParticipants(
+            Array.from(usersById.values()).map((u) =>
               toParticipant(u, localUserIdRef.current),
-            );
-          });
+            ),
+          );
         };
 
-        // Prime participant state immediately after join so local tile appears
-        // without waiting for media startup or late user-updated events.
+        // Also sync from SDK in case other participants joined before us
         syncParticipantsFromClient();
 
         // Start audio and video in PARALLEL — no delay between them.

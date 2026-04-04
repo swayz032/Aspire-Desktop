@@ -287,11 +287,7 @@ function ConferenceContent({
           </View>
         ))}
 
-        {participants.length === 0 && (
-          <View style={[styles.emptyTile, tileStyle]}>
-            <Text style={styles.emptyText}>Waiting for participants...</Text>
-          </View>
-        )}
+        {/* No empty state — local tile always exists via provider safety net */}
       </View>
     );
   };
