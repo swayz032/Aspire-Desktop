@@ -34,6 +34,10 @@ interface ZoomUserPayload {
   isHost?: boolean;
 }
 
+function isValidZoomUserId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 /**
  * Opaque handle for the Zoom Video SDK client instance.
  * Actual type is `ReturnType<typeof ZoomVideo.createClient>` but we avoid
@@ -301,13 +305,17 @@ function ZoomConferenceProviderWeb({
           const current = client.getCurrentUserInfo?.();
           const usersById = new Map<number, ZoomUserPayload>();
 
+          if (isValidZoomUserId(current?.userId)) {
+            localUserIdRef.current = current.userId;
+          }
+
           for (const user of allUsers) {
-            if (user?.userId) usersById.set(user.userId, user);
+            if (isValidZoomUserId(user?.userId)) usersById.set(user.userId, user);
           }
 
           // Some SDK timing paths omit local user in early getAllUser snapshots.
           // Always include current user so self-view tile cannot disappear.
-          if (current?.userId && !usersById.has(current.userId)) {
+          if (isValidZoomUserId(current?.userId) && !usersById.has(current.userId)) {
             usersById.set(current.userId, current);
           }
 
@@ -377,6 +385,15 @@ function ZoomConferenceProviderWeb({
 
         await Promise.all(mediaPromises);
         if (destroyed) return;
+        // Run immediate post-media sync + short follow-up retries because
+        // Zoom may publish local participant/video state a little after join.
+        syncParticipantsFromClient();
+        for (const delayMs of [400, 1000, 2200]) {
+          setTimeout(() => {
+            if (destroyed || !mountedRef.current) return;
+            syncParticipantsFromClient();
+          }, delayMs);
+        }
 
         // Enable Zoom SDK background noise suppression for crystal clear audio
         if (SESSION_CONFIG.autoEnableNoiseSuppression) {
@@ -471,7 +488,11 @@ function ZoomConferenceProviderWeb({
           if (!mountedRef.current) return;
           const raw = args[0];
           const payload: ZoomUserPayload[] = Array.isArray(raw) ? raw : [raw as ZoomUserPayload];
-          const removedIds = new Set(payload.filter(u => u && u.userId).map((u) => u.userId));
+          const removedIds = new Set(
+            payload
+              .filter((u) => isValidZoomUserId(u?.userId))
+              .map((u) => u.userId),
+          );
           syncParticipantsFromClient();
           setActiveSpeakerId((prev) =>
             prev !== null && removedIds.has(prev) ? null : prev,
