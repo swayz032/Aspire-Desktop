@@ -1,13 +1,17 @@
 /**
  * Browser audio unlock helper for voice features.
  *
- * Modern browsers can block audio output until a user gesture occurs.
- * This helper is intended to be called directly inside a click/tap handler
- * before starting a voice session.
+ * Modern browsers block audio output until a user gesture occurs.
+ * This helper plays a silent audio clip inside a click/tap handler
+ * to satisfy the autoplay policy before starting a voice session.
+ *
+ * IMPORTANT: We intentionally do NOT create an AudioContext here.
+ * The ElevenLabs SDK creates its own AudioContext — having a second
+ * one open causes hardware audio contention and crackling artifacts.
+ * The HTML5 Audio probe alone is sufficient to unlock autoplay.
  */
 
 let unlocked = false;
-let sharedAudioContext: AudioContext | null = null;
 
 const SILENT_WAV_DATA_URL =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAABCxAgAEABAAZGF0YQAAAAA=';
@@ -15,9 +19,6 @@ const SILENT_WAV_DATA_URL =
 export async function unlockBrowserAudioPlayback(): Promise<boolean> {
   if (typeof window === 'undefined') return true;
   if (unlocked) return true;
-
-  let htmlUnlocked = false;
-  let contextUnlocked = false;
 
   try {
     const probe = new Audio(SILENT_WAV_DATA_URL);
@@ -27,60 +28,12 @@ export async function unlockBrowserAudioPlayback(): Promise<boolean> {
     await probe.play();
     probe.pause();
     probe.currentTime = 0;
-    probe.src = '';  // Release audio resource immediately
-    probe.remove();
-    htmlUnlocked = true;
+    unlocked = true;
   } catch {
-    // Keep going: some browsers unlock via AudioContext only.
+    // Browser blocked autoplay — user may need to interact first.
+    // The ElevenLabs SDK will handle its own unlock attempt.
+    unlocked = false;
   }
 
-  try {
-    const AudioContextClass =
-      window.AudioContext
-      || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-
-    if (AudioContextClass) {
-      if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
-        sharedAudioContext = new AudioContextClass();
-      }
-
-      if (sharedAudioContext.state === 'suspended') {
-        await sharedAudioContext.resume();
-      }
-
-      if (sharedAudioContext.state === 'running') {
-        const oscillator = sharedAudioContext.createOscillator();
-        const gainNode = sharedAudioContext.createGain();
-        gainNode.gain.value = 0.00001;
-        oscillator.connect(gainNode);
-        gainNode.connect(sharedAudioContext.destination);
-        oscillator.start();
-        oscillator.stop(sharedAudioContext.currentTime + 0.02);
-        contextUnlocked = true;
-      }
-
-      // Close immediately after unlock probe — keeping it open competes with
-      // the ElevenLabs SDK's own AudioContext for hardware output, causing crackling.
-      if (sharedAudioContext && sharedAudioContext.state !== 'closed') {
-        sharedAudioContext.close().catch(() => {});
-        sharedAudioContext = null;
-      }
-    }
-  } catch {
-    // Some environments do not expose AudioContext.
-  }
-
-  unlocked = htmlUnlocked || contextUnlocked;
   return unlocked;
-}
-
-/**
- * Close the shared AudioContext to release browser audio resources.
- * Call on session end to prevent memory leaks over long-running sessions.
- */
-export function closeAudioContext(): void {
-  if (sharedAudioContext && sharedAudioContext.state !== 'closed') {
-    sharedAudioContext.close().catch(() => {});
-    sharedAudioContext = null;
-  }
 }
