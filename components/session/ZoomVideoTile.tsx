@@ -72,6 +72,49 @@ interface ZoomVideoTileProps {
   isActiveSpeaker?: boolean;
   /** Size variant */
   size?: 'normal' | 'small' | 'spotlight';
+  /** Current network quality levels from provider (1..5 from Zoom SDK) */
+  networkQuality?: { uplink: number; downlink: number };
+  /** Optional SDK-reported max receive quality capability */
+  maxVideoQuality?: number;
+}
+
+function resolveVideoQuality({
+  participant,
+  size,
+  isActiveSpeaker,
+  networkQuality,
+  maxVideoQuality,
+}: {
+  participant: ZoomParticipant;
+  size: 'normal' | 'small' | 'spotlight';
+  isActiveSpeaker: boolean;
+  networkQuality?: { uplink: number; downlink: number };
+  maxVideoQuality?: number;
+}) {
+  const requested =
+    isActiveSpeaker || size === 'spotlight' || participant.isLocal
+      ? VIDEO_RECEIVE_QUALITY.spotlight
+      : size === 'small'
+        ? VIDEO_RECEIVE_QUALITY.filmstrip
+        : VIDEO_RECEIVE_QUALITY.galleryLarge;
+
+  // Zoom network level is typically 1..5. Cap receive quality under weak links.
+  const level = networkQuality ? Math.min(networkQuality.uplink, networkQuality.downlink) : 5;
+  const networkCap =
+    level <= 1
+      ? VIDEO_RECEIVE_QUALITY.filmstrip
+      : level <= 2
+        ? VIDEO_RECEIVE_QUALITY.gallerySmall
+        : level <= 3
+          ? VIDEO_RECEIVE_QUALITY.galleryLarge
+          : VIDEO_RECEIVE_QUALITY.spotlight;
+
+  const streamCap =
+    typeof maxVideoQuality === 'number' && maxVideoQuality >= 0
+      ? Math.min(maxVideoQuality, VIDEO_RECEIVE_QUALITY.spotlight)
+      : VIDEO_RECEIVE_QUALITY.spotlight;
+
+  return Math.min(requested, networkCap, streamCap);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -83,11 +126,15 @@ function ZoomCanvasView({
   stream,
   size,
   isActiveSpeaker,
+  networkQuality,
+  maxVideoQuality,
 }: {
   participant: ZoomParticipant;
   stream: ZoomVideoTileProps['stream'];
   size: 'normal' | 'small' | 'spotlight';
   isActiveSpeaker: boolean;
+  networkQuality?: { uplink: number; downlink: number };
+  maxVideoQuality?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -97,19 +144,22 @@ function ZoomCanvasView({
 
     const canvas = canvasRef.current;
 
-    const quality =
-      isActiveSpeaker || size === 'spotlight' || participant.isLocal
-        ? VIDEO_RECEIVE_QUALITY.spotlight
-        : size === 'small'
-          ? VIDEO_RECEIVE_QUALITY.filmstrip
-          : VIDEO_RECEIVE_QUALITY.galleryLarge;
+    const quality = resolveVideoQuality({
+      participant,
+      size,
+      isActiveSpeaker,
+      networkQuality,
+      maxVideoQuality,
+    });
 
     const dimensions =
       quality >= VIDEO_RECEIVE_QUALITY.spotlight
         ? { width: 1920, height: 1080 }
         : quality >= VIDEO_RECEIVE_QUALITY.galleryLarge
           ? { width: 1280, height: 720 }
-          : { width: 640, height: 360 };
+          : quality >= VIDEO_RECEIVE_QUALITY.gallerySmall
+            ? { width: 640, height: 360 }
+            : { width: 320, height: 180 };
 
     // Fixed render dimensions — canvas CSS handles display scaling
     canvas.width = dimensions.width;
@@ -134,7 +184,7 @@ function ZoomCanvasView({
         // Zoom SDK may throw if canvas already detached
       }
     };
-  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, size, isActiveSpeaker]);
+  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, size, isActiveSpeaker, networkQuality, maxVideoQuality]);
 
   if (Platform.OS !== 'web') return null;
 
@@ -170,12 +220,16 @@ function ZoomSelfVideoView({
   onAttachFailed,
   size,
   isActiveSpeaker,
+  networkQuality,
+  maxVideoQuality,
 }: {
   participant: ZoomParticipant;
   stream: ZoomVideoTileProps['stream'];
   onAttachFailed: () => void;
   size: 'normal' | 'small' | 'spotlight';
   isActiveSpeaker: boolean;
+  networkQuality?: { uplink: number; downlink: number };
+  maxVideoQuality?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -189,12 +243,13 @@ function ZoomSelfVideoView({
 
     const videoEl = videoRef.current;
     let disposed = false;
-    const quality =
-      isActiveSpeaker || size === 'spotlight' || participant.isLocal
-        ? VIDEO_RECEIVE_QUALITY.spotlight
-        : size === 'small'
-          ? VIDEO_RECEIVE_QUALITY.filmstrip
-          : VIDEO_RECEIVE_QUALITY.galleryLarge;
+    const quality = resolveVideoQuality({
+      participant,
+      size,
+      isActiveSpeaker,
+      networkQuality,
+      maxVideoQuality,
+    });
 
     const attach = async () => {
       try {
@@ -214,7 +269,7 @@ function ZoomSelfVideoView({
         // Zoom SDK may throw if video is already detached
       }
     };
-  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, onAttachFailed, size, isActiveSpeaker]);
+  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, onAttachFailed, size, isActiveSpeaker, networkQuality, maxVideoQuality]);
 
   if (Platform.OS !== 'web') return null;
 
@@ -373,11 +428,15 @@ function ZoomVideoTileContent({
   stream,
   isActiveSpeaker = false,
   size = 'normal',
+  networkQuality,
+  maxVideoQuality,
 }: {
   participant: ZoomParticipant;
   stream: ZoomVideoTileProps['stream'];
   isActiveSpeaker: boolean;
   size: 'normal' | 'small' | 'spotlight';
+  networkQuality?: { uplink: number; downlink: number };
+  maxVideoQuality?: number;
 }) {
   const isSmall = size === 'small';
   const isSpotlight = size === 'spotlight';
@@ -428,6 +487,8 @@ function ZoomVideoTileContent({
             onAttachFailed={() => setLocalAttachFailed(true)}
             size={size}
             isActiveSpeaker={isActiveSpeaker}
+            networkQuality={networkQuality}
+            maxVideoQuality={maxVideoQuality}
           />
         ) : (
           <ZoomCanvasView
@@ -435,6 +496,8 @@ function ZoomVideoTileContent({
             stream={stream}
             size={size}
             isActiveSpeaker={isActiveSpeaker}
+            networkQuality={networkQuality}
+            maxVideoQuality={maxVideoQuality}
           />
         )
       ) : (
@@ -502,6 +565,8 @@ function ZoomVideoTileInner({
   stream,
   isActiveSpeaker = false,
   size = 'normal',
+  networkQuality,
+  maxVideoQuality,
 }: ZoomVideoTileProps) {
   const displayName = participant?.displayName ?? 'Unknown';
 
@@ -521,6 +586,8 @@ function ZoomVideoTileInner({
       stream={stream}
       isActiveSpeaker={isActiveSpeaker}
       size={size}
+      networkQuality={networkQuality}
+      maxVideoQuality={maxVideoQuality}
     />
   );
 }

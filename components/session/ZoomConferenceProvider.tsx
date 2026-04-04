@@ -19,7 +19,7 @@ import React, {
   useState,
 } from 'react';
 import { Platform } from 'react-native';
-import { ZOOM_INIT_OPTIONS, SESSION_CONFIG, VIDEO_CAPTURE_DEFAULTS, AUDIO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
+import { ZOOM_INIT_OPTIONS, SESSION_CONFIG, VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 
 // ── Types ───────────────────────────────────────────────────────────────────

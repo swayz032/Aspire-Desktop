@@ -11,7 +11,7 @@
  * Keyboard shortcuts: Alt+M (mic), Alt+V (camera), Alt+S (share),
  * Alt+R (record), Alt+H (chat), Alt+P (people), Alt+L (view layout).
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -141,6 +141,14 @@ function ConferenceContent({
   } = useZoomContext();
   const activeSpeaker = useZoomActiveSpeaker();
   const { formatted: duration } = useConferenceTimer();
+  const maxVideoQuality = useMemo(() => {
+    try {
+      const value = stream?.getVideoMaxQuality?.();
+      return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+    } catch (_e) {
+      return undefined;
+    }
+  }, [stream]);
 
   const controls = useConferenceControls({ stream, client });
 
@@ -212,6 +220,8 @@ function ConferenceContent({
                 stream={stream as any}
                 isActiveSpeaker={true}
                 size="spotlight"
+                networkQuality={networkQuality}
+                maxVideoQuality={maxVideoQuality}
               />
             ) : (
               <NoraTile avaState={avaState} isNoraSpeaking={isNoraSpeaking} onPress={onToggleNora} />
@@ -231,6 +241,8 @@ function ConferenceContent({
                   stream={stream as any}
                   isActiveSpeaker={false}
                   size="small"
+                  networkQuality={networkQuality}
+                  maxVideoQuality={maxVideoQuality}
                 />
               </View>
             ))}
@@ -270,6 +282,8 @@ function ConferenceContent({
               participant={p}
               stream={stream as any}
               isActiveSpeaker={p.userId === activeSpeaker}
+              networkQuality={networkQuality}
+              maxVideoQuality={maxVideoQuality}
             />
           </View>
         ))}
