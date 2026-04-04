@@ -53,9 +53,10 @@ interface ZoomVideoTileProps {
       quality: number,
       element: HTMLVideoElement,
     ) => Promise<unknown> | unknown;
+    isRenderSelfViewWithVideoElement?: () => boolean;
     detachVideo?: (
       userId: number,
-      element?: HTMLVideoElement,
+      element?: HTMLVideoElement | HTMLElement,
     ) => Promise<unknown> | unknown;
     renderVideo: (
       target: HTMLCanvasElement | HTMLVideoElement,
@@ -76,6 +77,10 @@ interface ZoomVideoTileProps {
   networkQuality?: { uplink: number; downlink: number };
   /** Optional SDK-reported max receive quality capability */
   maxVideoQuality?: number;
+}
+
+function isValidParticipantId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function resolveVideoQuality({
@@ -140,7 +145,7 @@ function ZoomCanvasView({
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    if (!canvasRef.current || !participant.userId || !participant.isVideoOn || !stream) return;
+    if (!canvasRef.current || !isValidParticipantId(participant.userId) || !participant.isVideoOn || !stream) return;
 
     const canvas = canvasRef.current;
 
@@ -232,6 +237,7 @@ function ZoomSelfVideoView({
   maxVideoQuality?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -239,10 +245,13 @@ function ZoomSelfVideoView({
       onAttachFailed();
       return;
     }
-    if (!videoRef.current || !participant.userId || !participant.isVideoOn || !participant.isLocal) return;
+    if (!isValidParticipantId(participant.userId) || !participant.isVideoOn || !participant.isLocal) return;
 
     const videoEl = videoRef.current;
+    const containerEl = containerRef.current;
     let disposed = false;
+    let attachedElement: HTMLElement | null = null;
+    let usedLegacyAttach = false;
     const quality = resolveVideoQuality({
       participant,
       size,
@@ -253,7 +262,33 @@ function ZoomSelfVideoView({
 
     const attach = async () => {
       try {
+        // Zoom SDK newer path: attachVideo(userId, quality) returns a player element.
+        // Keep legacy path as fallback for environments expecting a target <video>.
+        const preferElementAttach = stream.isRenderSelfViewWithVideoElement?.() ?? true;
+        if (preferElementAttach) {
+          const maybeElement = await (stream.attachVideo as unknown as (userId: number, quality: number) => Promise<unknown> | unknown)(
+            participant.userId,
+            quality,
+          );
+          if (maybeElement instanceof HTMLElement && containerEl) {
+            containerEl.innerHTML = '';
+            maybeElement.style.width = '100%';
+            maybeElement.style.height = '100%';
+            maybeElement.style.position = 'absolute';
+            maybeElement.style.top = '0';
+            maybeElement.style.left = '0';
+            maybeElement.style.objectFit = 'cover';
+            maybeElement.style.background = '#0a0a0c';
+            maybeElement.style.transform = 'scaleX(-1)';
+            containerEl.appendChild(maybeElement);
+            attachedElement = maybeElement;
+            return;
+          }
+        }
+
+        if (!videoEl) throw new Error('Self video element unavailable');
         await stream.attachVideo?.(participant.userId, quality, videoEl);
+        usedLegacyAttach = true;
       } catch (_e) {
         if (!disposed) onAttachFailed();
       }
@@ -264,7 +299,16 @@ function ZoomSelfVideoView({
     return () => {
       disposed = true;
       try {
-        void stream.detachVideo?.(participant.userId, videoEl);
+        if (usedLegacyAttach && videoEl) {
+          void stream.detachVideo?.(participant.userId, videoEl);
+        } else if (attachedElement) {
+          void stream.detachVideo?.(participant.userId, attachedElement);
+          if (attachedElement.parentElement) {
+            attachedElement.parentElement.removeChild(attachedElement);
+          }
+        } else {
+          void stream.detachVideo?.(participant.userId);
+        }
       } catch (_e) {
         // Zoom SDK may throw if video is already detached
       }
@@ -275,6 +319,19 @@ function ZoomSelfVideoView({
 
   return (
     <View style={styles.canvasContainer}>
+      <div
+        ref={containerRef as React.RefObject<HTMLDivElement>}
+        style={
+          {
+            width: '100%',
+            height: '100%',
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            background: '#0a0a0c',
+          } as React.CSSProperties
+        }
+      />
       <video
         ref={videoRef}
         style={
