@@ -339,6 +339,10 @@ function ZoomConferenceProviderWeb({
           });
         };
 
+        // Prime participant state immediately after join so local tile appears
+        // without waiting for media startup or late user-updated events.
+        syncParticipantsFromClient();
+
         // Start audio and video in PARALLEL — no delay between them.
         // Both use separate device streams (mic vs camera), no permission race.
         const mediaPromises: Promise<void>[] = [];
@@ -376,6 +380,7 @@ function ZoomConferenceProviderWeb({
               facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
             }).then(() => {
               localVideoStarted = true;
+              syncParticipantsFromClient();
             }).catch(() =>
               // Fallback: try HD only if fullHd fails
               mediaStream.startVideo({
@@ -384,6 +389,7 @@ function ZoomConferenceProviderWeb({
                 facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
               }).then(() => {
                 localVideoStarted = true;
+                syncParticipantsFromClient();
               }).catch((_e: unknown) => {
                 reportProviderError({ provider: 'zoom', action: 'auto_start_video', error: _e, component: 'ZoomConferenceProvider' });
               })
