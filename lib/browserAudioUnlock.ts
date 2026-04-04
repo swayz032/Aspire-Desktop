@@ -64,3 +64,14 @@ export async function unlockBrowserAudioPlayback(): Promise<boolean> {
   unlocked = htmlUnlocked || contextUnlocked;
   return unlocked;
 }
+
+/**
+ * Close the shared AudioContext to release browser audio resources.
+ * Call on session end to prevent memory leaks over long-running sessions.
+ */
+export function closeAudioContext(): void {
+  if (sharedAudioContext && sharedAudioContext.state !== 'closed') {
+    sharedAudioContext.close().catch(() => {});
+    sharedAudioContext = null;
+  }
+}

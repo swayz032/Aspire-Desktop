@@ -6660,16 +6660,31 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
       }));
     }
 
-    // Fetch signed URL from ElevenLabs API
-    const elResp = await fetch(
-      `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`,
-      {
-        method: 'GET',
-        headers: {
-          'xi-api-key': ELEVENLABS_API_KEY,
+    // Fetch signed URL from ElevenLabs API (8s timeout to prevent server hang)
+    const elAbort = new AbortController();
+    const elTimeoutId = setTimeout(() => elAbort.abort(), 8_000);
+    let elResp: Response;
+    try {
+      elResp = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`,
+        {
+          method: 'GET',
+          headers: {
+            'xi-api-key': ELEVENLABS_API_KEY,
+          },
+          signal: elAbort.signal,
         },
-      },
-    );
+      );
+    } catch (err) {
+      clearTimeout(elTimeoutId);
+      if (err instanceof Error && err.name === 'AbortError') {
+        logger.error('[AgentSession] ElevenLabs API timed out after 8s', { agent });
+        emitTraceEvent({ traceId, correlationId, suiteId, agent, stage: 'tts', status: 'error', errorCode: 'ELEVENLABS_TIMEOUT', message: 'ElevenLabs API timed out', latencyMs: Date.now() - startedAt });
+        return res.status(504).json(voiceErrorPayload({ correlationId, traceId, errorCode: 'ELEVENLABS_TIMEOUT', errorStage: 'agent_session', message: 'Voice service timed out — please try again' }));
+      }
+      throw err;
+    }
+    clearTimeout(elTimeoutId);
 
     if (!elResp.ok) {
       const errorBody = await elResp.text().catch(() => '');

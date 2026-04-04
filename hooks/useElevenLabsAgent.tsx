@@ -31,7 +31,7 @@ import { Sentry } from '@/lib/sentry';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 import type { AgentName } from '@/lib/elevenlabs';
 import { getTimeOfDay } from '@/lib/elevenlabs-agents';
-import { unlockBrowserAudioPlayback } from '@/lib/browserAudioUnlock';
+import { unlockBrowserAudioPlayback, closeAudioContext } from '@/lib/browserAudioUnlock';
 import { supabase } from '@/lib/supabase';
 
 const AUTH_COOLDOWN_MS = 60_000;
@@ -119,11 +119,23 @@ async function fetchSignedUrl(
   const doFetch = async (token?: string) => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    return fetch('/api/elevenlabs/agent-session', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ agent }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12_000);
+    try {
+      return await fetch('/api/elevenlabs/agent-session', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ agent }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('Voice service timed out. Please try again.');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   };
 
   let resp = await doFetch(accessToken);
@@ -185,7 +197,7 @@ export function ElevenLabsAgentProvider({ children }: { children: React.ReactNod
       connectionDelay={{
         android: 3000,
         ios: 500,
-        default: 200,
+        default: 0,
       }}
       useWakeLock={true}
     >
@@ -214,6 +226,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   } = options;
 
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
+  const [isSessionActiveState, setIsSessionActiveState] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [lastResponse, setLastResponse] = useState('');
 
@@ -239,6 +252,9 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   const authBlockedUntilRef = useRef(0);
 
   const sessionActiveRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startSessionRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     authBlockedUntilRef.current = 0;
@@ -298,15 +314,31 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     onConnect: ({ conversationId }) => {
       devLog(`[ElevenLabsAgent] Connected: ${conversationId} (agent: ${agent})`);
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session connected', level: 'info', data: { agent, conversationId } });
+      reconnectAttemptsRef.current = 0;
       updateStatus('listening');
     },
     onDisconnect: (details) => {
       devLog(`[ElevenLabsAgent] Disconnected:`, details.reason);
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session disconnected', level: 'info', data: { agent, reason: details.reason } });
       sessionActiveRef.current = false;
-      updateStatus('idle');
-      if (details.reason === 'error') {
-        handleError(new Error(`Session disconnected: ${'message' in details ? details.message : 'unknown error'}`));
+      setIsSessionActiveState(false);
+
+      if (details.reason === 'error' && reconnectAttemptsRef.current < 3) {
+        // Auto-reconnect with exponential backoff (1s, 2s, 4s)
+        const attempt = reconnectAttemptsRef.current;
+        const delayMs = Math.min(1000 * Math.pow(2, attempt), 4000);
+        reconnectAttemptsRef.current = attempt + 1;
+        devLog(`[ElevenLabsAgent] Auto-reconnect attempt ${attempt + 1}/3 in ${delayMs}ms`);
+        updateStatus('thinking');
+        reconnectTimerRef.current = setTimeout(() => {
+          // startSession is defined below — use the ref pattern to avoid stale closure
+          startSessionRef.current?.();
+        }, delayMs);
+      } else {
+        updateStatus('idle');
+        if (details.reason === 'error') {
+          handleError(new Error(`Session disconnected: ${'message' in details ? details.message : 'unknown error'}`));
+        }
       }
     },
     onError: (message: string) => {
@@ -346,11 +378,28 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
 
     try {
       sessionActiveRef.current = true;
+      setIsSessionActiveState(true);
       updateStatus('thinking');
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session starting', level: 'info', data: { agent } });
 
-      await unlockBrowserAudioPlayback();
-      await ensureMicrophoneReady();
+      const audioUnlocked = await unlockBrowserAudioPlayback();
+      if (!audioUnlocked) {
+        devWarn('[ElevenLabsAgent] Browser audio unlock returned false — proceeding anyway (may unlock lazily)');
+      }
+
+      try {
+        await ensureMicrophoneReady();
+      } catch (micErr) {
+        if (micErr instanceof DOMException) {
+          if (micErr.name === 'NotAllowedError') {
+            throw new Error('Microphone permission denied. Please allow access in browser settings.');
+          }
+          if (micErr.name === 'NotFoundError') {
+            throw new Error('No microphone detected. Please connect a microphone and try again.');
+          }
+        }
+        throw micErr;
+      }
 
       const { signed_url, dynamic_variables: serverVars } = await fetchSignedUrl(agent, accessTokenRef.current);
 
@@ -381,6 +430,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       devLog(`[ElevenLabsAgent] Session started for agent "${agent}"`);
     } catch (err) {
       sessionActiveRef.current = false;
+      setIsSessionActiveState(false);
       if (err instanceof AgentSessionHttpError && (err.status === 401 || err.status === 403)) {
         authBlockedUntilRef.current = Date.now() + AUTH_COOLDOWN_MS;
       }
@@ -389,11 +439,22 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     }
   }, [agent, suiteId, userId, userProfile, conversation, updateStatus, handleError]);
 
+  // Keep ref in sync for reconnect callback (avoids stale closure in onDisconnect)
+  startSessionRef.current = startSession;
+
   const endSession = useCallback(async () => {
     if (!sessionActiveRef.current) return;
+    // Cancel any pending reconnect
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectAttemptsRef.current = 0;
     try {
       conversation.endSession();
+      closeAudioContext();
       sessionActiveRef.current = false;
+      setIsSessionActiveState(false);
       updateStatus('idle');
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session ended', level: 'info', data: { agent } });
       devLog(`[ElevenLabsAgent] Session ended for agent "${agent}"`);
@@ -401,6 +462,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       const error = err instanceof Error ? err : new Error(String(err));
       devError('[ElevenLabsAgent] Error ending session:', error.message);
       sessionActiveRef.current = false;
+      setIsSessionActiveState(false);
       updateStatus('idle');
     }
   }, [agent, conversation, updateStatus]);
@@ -422,9 +484,30 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     conversation.sendContextualUpdate(text);
   }, [conversation]);
 
+  // Mute mic when tab is hidden, unmute when visible (prevents background capture)
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleVisibility = () => {
+      if (!sessionActiveRef.current) return;
+      if (document.hidden) {
+        conversation.setMuted(true);
+        devLog('[ElevenLabsAgent] Tab hidden — mic muted');
+      } else {
+        conversation.setMuted(false);
+        devLog('[ElevenLabsAgent] Tab visible — mic unmuted');
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [conversation]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       if (sessionActiveRef.current) {
         try { conversation.endSession(); } catch (_e) { /* swallow */ }
         sessionActiveRef.current = false;
@@ -442,7 +525,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     lastResponse,
     sendTextMessage,
     sendContextualUpdate,
-    isSessionActive: sessionActiveRef.current,
+    isSessionActive: isSessionActiveState,
     isSpeaking: conversation.isSpeaking,
     isListening: conversation.isListening,
     canSendFeedback: conversation.canSendFeedback,

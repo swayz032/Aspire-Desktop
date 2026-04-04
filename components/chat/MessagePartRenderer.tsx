@@ -98,17 +98,21 @@ function MessagePartRendererInner({
     }).start();
   }, [fadeAnim]);
 
-  // Gather reasoning and text from parts
+  // Gather reasoning and text from parts (guard against missing parts array from local messages)
+  const parts = message.parts ?? [];
   const reasoningParts = useMemo(
-    () => message.parts.filter((p): p is Extract<typeof p, { type: 'reasoning' }> => p.type === 'reasoning'),
-    [message.parts],
+    () => parts.filter((p): p is Extract<typeof p, { type: 'reasoning' }> => p.type === 'reasoning'),
+    [parts],
   );
   const textParts = useMemo(
-    () => message.parts.filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text'),
-    [message.parts],
+    () => parts.filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text'),
+    [parts],
   );
 
-  const fullText = textParts.map((p) => p.text).join('\n');
+  // Fallback: if parts is empty but message has content string, use that
+  const fullText = textParts.length > 0
+    ? textParts.map((p) => p.text).join('\n')
+    : (message as any).content || '';
   const reasoningText = reasoningParts.map((p) => p.text).join('\n');
   const hasReasoning = reasoningParts.length > 0 && reasoningText.length > 0;
   const isStreaming = reasoningParts.some((p) => (p as any).state === 'streaming') || textParts.some((p) => (p as any).state === 'streaming');

@@ -351,6 +351,7 @@ function AvaDeskPanelInner() {
         id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         role,
         content,
+        parts: [{ type: 'text' as const, text: content }],
         createdAt: new Date(),
       },
     ]);
@@ -406,6 +407,10 @@ function AvaDeskPanelInner() {
     }
   }, [videoState]);
 
+  // Use refs to avoid stale closures in animation loop callbacks
+  const isConversingRef = useRef(isConversing);
+  isConversingRef.current = isConversing;
+
   useEffect(() => {
     if (isConversing) {
       const randomPulse = () => {
@@ -415,7 +420,7 @@ function AvaDeskPanelInner() {
           Animated.timing(voiceLineAnim, { toValue, duration, useNativeDriver: false }),
           Animated.timing(voiceLineAnim, { toValue: 1, duration: duration * 0.8, useNativeDriver: false }),
         ]).start(() => {
-          if (isConversing) randomPulse();
+          if (isConversingRef.current) randomPulse();
         });
       };
       randomPulse();
@@ -432,6 +437,8 @@ function AvaDeskPanelInner() {
   }, []);
 
   const isAvaSpeaking = avaVoice.status === 'speaking';
+  const isAvaSpeakingRef = useRef(isAvaSpeaking);
+  isAvaSpeakingRef.current = isAvaSpeaking;
 
   useEffect(() => {
     if (isAvaSpeaking) {
@@ -441,7 +448,7 @@ function AvaDeskPanelInner() {
           Animated.timing(dotPulseAnim, { toValue: 1.8, duration: 200, useNativeDriver: false }),
           Animated.timing(dotPulseAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
         ]).start(() => {
-          if (isAvaSpeaking) pulseAnimation();
+          if (isAvaSpeakingRef.current) pulseAnimation();
         });
       };
       pulseAnimation();
@@ -530,8 +537,20 @@ function AvaDeskPanelInner() {
   }, [clearConnectionTimeouts]);
 
   const voiceStatusLabel = useMemo(() => {
-    return isSessionActive ? 'Listening...' : 'Listening...';
-  }, [isSessionActive]);
+    if (!isSessionActive) return companyPillLabel || 'Tap to start';
+    if (avaVoice.status === 'speaking') return 'Ava is speaking...';
+    if (avaVoice.status === 'thinking') return 'Thinking...';
+    return 'Listening...';
+  }, [isSessionActive, avaVoice.status, companyPillLabel]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      });
+    }
+  }, [messages.length]);
 
   // Show thinking indicator when submitted but no reasoning/text chunks yet
   const hasPendingChat = avaChatResult.status === 'submitted';
@@ -584,8 +603,6 @@ function AvaDeskPanelInner() {
     }
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [chatInput, sendMessage, avaVoice, appendLocalMessage]);
-
-  const handleStartSession = () => setIsSessionActive(!isSessionActive);
 
   return (
     <View style={styles.card} testID="ava-desk-panel">
