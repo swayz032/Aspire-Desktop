@@ -1,6 +1,8 @@
 /**
- * useConferenceControls — mic/camera/share/record toggle state via Zoom SDK stream.
- * All actions go through Zoom SDK directly. Error handling is graceful degradation.
+ * useConferenceControls — mic/camera/share/record toggle actions via Zoom SDK.
+ *
+ * Camera/mic state comes from the provider (single source of truth via participant data).
+ * This hook only manages screen share and recording state internally.
  */
 import { useState, useCallback, useEffect } from 'react';
 import { VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
@@ -9,11 +11,13 @@ import { reportProviderError } from '@/lib/providerErrorReporter';
 interface ConferenceControlsOptions {
   stream: any | null;
   client: any | null;
+  /** Current mute state from provider (derived from participant data) */
+  isMuted: boolean;
+  /** Current camera-off state from provider (derived from participant data) */
+  isCameraOff: boolean;
 }
 
-export function useConferenceControls({ stream, client }: ConferenceControlsOptions) {
-  const [isMuted, setIsMuted] = useState(false);
-  const [isCameraOff, setIsCameraOff] = useState(false);
+export function useConferenceControls({ stream, client, isMuted, isCameraOff }: ConferenceControlsOptions) {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
@@ -25,7 +29,7 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
       } else {
         await stream.muteAudio();
       }
-      setIsMuted(prev => !prev);
+      // No local state — provider re-syncs via participant data
     } catch (e) {
       reportProviderError({ provider: 'zoom', action: 'toggle_mic', error: e, component: 'ConferenceControls' });
     }
@@ -43,7 +47,6 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
             facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
           });
         } catch {
-          // Fallback path for devices/browsers that reject fullHd.
           await stream.startVideo({
             hd: VIDEO_CAPTURE_DEFAULTS.hd,
             fps: VIDEO_CAPTURE_DEFAULTS.fps,
@@ -53,7 +56,7 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
       } else {
         await stream.stopVideo();
       }
-      setIsCameraOff(prev => !prev);
+      // No local state — provider re-syncs via participant data
     } catch (e) {
       reportProviderError({ provider: 'zoom', action: 'toggle_camera', error: e, component: 'ConferenceControls' });
     }
@@ -64,27 +67,34 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
     try {
       if (isScreenSharing) {
         await stream.stopShareScreen();
-        // Clean up the hidden video element created for screen share
         if (typeof document !== 'undefined') {
           document.getElementById('zoom-share-canvas')?.remove();
         }
+        setIsScreenSharing(false);
       } else {
-        // Zoom SDK startShareScreen requires a canvas/video element.
-        // Create a temporary video element — SDK renders share into it.
         if (typeof document !== 'undefined') {
           let shareEl = document.getElementById('zoom-share-canvas') as HTMLVideoElement;
-          if (!shareEl) {
+          const isNew = !shareEl;
+          if (isNew) {
             shareEl = document.createElement('video');
             shareEl.id = 'zoom-share-canvas';
             shareEl.style.display = 'none';
             document.body.appendChild(shareEl);
           }
-          await stream.startShareScreen(shareEl as any);
+          try {
+            await stream.startShareScreen(shareEl as any);
+            setIsScreenSharing(true);
+          } catch (e: any) {
+            // Clean up element on failure
+            if (isNew) shareEl.remove();
+            if (e?.type === 'USER_FORBIDDEN' || e?.message?.includes('Permission denied')) {
+              return;
+            }
+            throw e;
+          }
         }
       }
-      setIsScreenSharing(prev => !prev);
     } catch (e: any) {
-      // USER_FORBIDDEN = user cancelled the share picker — not an error
       if (e?.type === 'USER_FORBIDDEN' || e?.message?.includes('Permission denied')) {
         return;
       }
@@ -125,8 +135,8 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
   }, []);
 
   return {
-    isMuted, isCameraOff, isScreenSharing, isRecording,
+    isScreenSharing, isRecording,
     toggleMic, toggleCamera, toggleScreenShare, toggleRecording,
-    setIsRecording, setIsScreenSharing, setIsCameraOff, setIsMuted,
+    setIsRecording, setIsScreenSharing,
   };
 }

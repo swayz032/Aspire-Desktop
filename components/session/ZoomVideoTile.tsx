@@ -31,6 +31,19 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { VIDEO_RECEIVE_QUALITY } from '@/lib/zoom-config';
 
 /* -------------------------------------------------------------------------- */
+/*  Utilities                                                                 */
+/* -------------------------------------------------------------------------- */
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Types                                                                     */
 /* -------------------------------------------------------------------------- */
 
@@ -166,63 +179,68 @@ function ZoomVideoView({
       maxVideoQuality,
     });
 
+    const styleVideoPlayer = (el: HTMLElement) => {
+      el.style.width = '100%';
+      el.style.height = '100%';
+      el.style.objectFit = 'cover';
+      if (participant.isLocal) el.style.transform = 'scaleX(-1)';
+
+      // Pierce shadow DOM — object-fit on outer element may not reach internals
+      const applyInternalStyles = () => {
+        const shadow = (el as any).shadowRoot;
+        if (shadow) {
+          shadow.querySelectorAll('video, canvas').forEach((child: HTMLElement) => {
+            child.style.width = '100%';
+            child.style.height = '100%';
+            child.style.objectFit = 'cover';
+          });
+        }
+        el.querySelectorAll('video, canvas').forEach((child: Element) => {
+          (child as HTMLElement).style.width = '100%';
+          (child as HTMLElement).style.height = '100%';
+          (child as HTMLElement).style.objectFit = 'cover';
+        });
+      };
+      applyInternalStyles();
+      setTimeout(applyInternalStyles, 200);
+    };
+
+    const tryAttach = async (): Promise<HTMLElement | null> => {
+      const result = await withTimeout(
+        stream.attachVideo(participant.userId, quality),
+        10_000,
+        'attachVideo',
+      );
+      if (result instanceof HTMLElement) return result;
+      return null;
+    };
+
     const attach = async () => {
       try {
-        const result = await stream.attachVideo(participant.userId, quality);
+        let el = await tryAttach();
+
+        // Retry once after 500ms if first attempt returned ExecutedFailure
+        if (!el && !disposed) {
+          await new Promise(r => setTimeout(r, 500));
+          if (disposed) return;
+          el = await tryAttach();
+        }
 
         if (disposed) {
-          if (result instanceof HTMLElement) {
-            try { await stream.detachVideo(participant.userId, result); } catch (_e) { /* */ }
-            result.remove();
+          if (el) {
+            try { await stream.detachVideo(participant.userId, el); } catch (_e) { /* */ }
+            el.remove();
           }
           return;
         }
 
-        if (!(result instanceof HTMLElement)) {
-          return;
-        }
+        if (!el) return; // Avatar fallback
 
-        // Style the SDK's VideoPlayer element for cover-fill
-        result.style.width = '100%';
-        result.style.height = '100%';
-        result.style.objectFit = 'cover';
-
-        // Mirror self-view (like regular Zoom)
-        if (participant.isLocal) {
-          result.style.transform = 'scaleX(-1)';
-        }
-
-        vpc.appendChild(result);
-        videoPlayerRef.current = result;
-
-        // The VideoPlayer is a web component with shadow DOM — object-fit on the
-        // outer element doesn't reach the internal <video>/<canvas>. Pierce it.
-        const applyInternalStyles = () => {
-          // Try shadow DOM first (open shadow root)
-          const shadow = (result as any).shadowRoot;
-          if (shadow) {
-            const internals = shadow.querySelectorAll('video, canvas');
-            internals.forEach((el: HTMLElement) => {
-              el.style.width = '100%';
-              el.style.height = '100%';
-              el.style.objectFit = 'cover';
-            });
-          }
-          // Also style any direct child video/canvas (no shadow DOM fallback)
-          const children = result.querySelectorAll('video, canvas');
-          children.forEach((el: Element) => {
-            (el as HTMLElement).style.width = '100%';
-            (el as HTMLElement).style.height = '100%';
-            (el as HTMLElement).style.objectFit = 'cover';
-          });
-        };
-
-        // Apply immediately + after a short delay (SDK may insert internal elements async)
-        applyInternalStyles();
-        setTimeout(applyInternalStyles, 100);
-        setTimeout(applyInternalStyles, 500);
+        styleVideoPlayer(el);
+        vpc.appendChild(el);
+        videoPlayerRef.current = el;
       } catch (_e) {
-        // attachVideo threw — avatar fallback will show
+        // Timeout or SDK error — avatar fallback shows
       }
     };
 

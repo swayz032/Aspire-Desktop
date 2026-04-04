@@ -22,6 +22,15 @@ import { Platform } from 'react-native';
 import { ZOOM_INIT_OPTIONS, SESSION_CONFIG, VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -201,8 +210,9 @@ interface ZoomConferenceProviderProps {
 function toParticipant(
   user: ZoomUserPayload,
   localUserId: number | null,
-): ZoomParticipant {
-  const normalizedId = normalizeZoomUserId(user.userId) ?? -1;
+): ZoomParticipant | null {
+  const normalizedId = normalizeZoomUserId(user.userId);
+  if (normalizedId === null) return null;
   return {
     userId: normalizedId,
     displayName: user.displayName,
@@ -297,14 +307,14 @@ function ZoomConferenceProviderWeb({
         if (!mountedRef.current) return;
         setConnectionState('connecting');
 
-        // Init with project-wide config
+        // Init with project-wide config (15s timeout — init loads WASM/WebRTC modules)
         const { language, region, ...restOptions } = ZOOM_INIT_OPTIONS;
-        await client.init(language, region, restOptions);
+        await withTimeout(client.init(language, region, restOptions), 15_000, 'zoom.init');
 
         if (destroyed) return;
 
-        // Join session (token guaranteed non-null by guard at top of effect)
-        await client.join(topic, token as string, userName);
+        // Join session (15s timeout — network dependent)
+        await withTimeout(client.join(topic, token as string, userName), 15_000, 'zoom.join');
 
         if (destroyed) return;
         setConnectionState('connected');
@@ -320,9 +330,9 @@ function ZoomConferenceProviderWeb({
         }
 
         // Show local tile INSTANTLY — don't wait for media or SDK events.
-        // This prevents the self-tile from appearing seconds late.
         if (localUserInfoRef.current && localUserIdRef.current !== null) {
-          setParticipants([toParticipant(localUserInfoRef.current, localUserIdRef.current)]);
+          const localP = toParticipant(localUserInfoRef.current, localUserIdRef.current);
+          if (localP) setParticipants([localP]);
         }
 
         // Get media stream handle
@@ -356,9 +366,9 @@ function ZoomConferenceProviderWeb({
           }
 
           setParticipants(
-            Array.from(usersById.values()).map((u) =>
-              toParticipant(u, localUserIdRef.current),
-            ),
+            Array.from(usersById.values())
+              .map((u) => toParticipant(u, localUserIdRef.current))
+              .filter((p): p is ZoomParticipant => p !== null),
           );
         };
 
@@ -373,7 +383,7 @@ function ZoomConferenceProviderWeb({
           const startAudio = async () => {
             if (destroyed || !mountedRef.current) return;
             try {
-              await mediaStream.startAudio();
+              await withTimeout(mediaStream.startAudio(), 10_000, 'startAudio');
             } catch (_e: unknown) {
               reportProviderError({ provider: 'zoom', action: 'auto_start_audio', error: _e, component: 'ZoomConferenceProvider' });
             }
@@ -395,20 +405,20 @@ function ZoomConferenceProviderWeb({
 
         if (SESSION_CONFIG.autoStartVideo && startVideoProp) {
           mediaPromises.push(
-            mediaStream.startVideo({
+            withTimeout(mediaStream.startVideo({
               fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
               hd: VIDEO_CAPTURE_DEFAULTS.hd,
               fps: VIDEO_CAPTURE_DEFAULTS.fps,
               facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
-            }).then(() => {
+            }), 10_000, 'startVideo').then(() => {
               syncParticipantsFromClient();
             }).catch(() =>
               // Fallback: try HD only if fullHd fails
-              mediaStream.startVideo({
+              withTimeout(mediaStream.startVideo({
                 hd: VIDEO_CAPTURE_DEFAULTS.hd,
                 fps: VIDEO_CAPTURE_DEFAULTS.fps,
                 facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
-              }).then(() => {
+              }), 10_000, 'startVideo-hd').then(() => {
                 syncParticipantsFromClient();
               }).catch((_e: unknown) => {
                 reportProviderError({ provider: 'zoom', action: 'auto_start_video', error: _e, component: 'ZoomConferenceProvider' });
@@ -547,6 +557,38 @@ function ZoomConferenceProviderWeb({
           }
         });
 
+        // More reliable video state change (fires specifically for video on/off)
+        client.on('peer-video-state-change', (..._args: unknown[]) => {
+          if (!mountedRef.current) return;
+          syncParticipantsFromClient();
+        });
+
+        // Screen share passively stopped (host stopped or another share replaced ours)
+        client.on('passively-stop-share', (..._args: unknown[]) => {
+          if (!mountedRef.current) return;
+          setScreenShareUserId(null);
+        });
+
+        // Camera/mic device hot-swap (plugged in or removed mid-call)
+        client.on('device-change', (..._args: unknown[]) => {
+          if (!mountedRef.current) return;
+          syncParticipantsFromClient();
+        });
+
+        // Fatal SDK media errors
+        client.on('media-sdk-change', (...args: unknown[]) => {
+          if (!mountedRef.current) return;
+          const payload = args[0] as { action?: string; type?: string; result?: string };
+          if (payload?.result === 'error') {
+            reportProviderError({
+              provider: 'zoom',
+              action: `media_sdk_${payload.action}_${payload.type}`,
+              error: new Error(`SDK media error: ${payload.action} ${payload.type}`),
+              component: 'ZoomConferenceProvider',
+            });
+          }
+        });
+
         client.on('connection-change', (...args: unknown[]) => {
           if (!mountedRef.current) return;
           const payload = args[0] as { state: string };
@@ -554,6 +596,13 @@ function ZoomConferenceProviderWeb({
             case 'Connected':
               setConnectionState('connected');
               syncParticipantsFromClient();
+              // After reconnection, SDK needs time to restore media streams.
+              for (const delayMs of [500, 1500, 3000]) {
+                setTimeout(() => {
+                  if (!mountedRef.current) return;
+                  syncParticipantsFromClient();
+                }, delayMs);
+              }
               break;
             case 'Reconnecting':
               setConnectionState('connecting');
@@ -608,6 +657,15 @@ function ZoomConferenceProviderWeb({
     return () => {
       destroyed = true;
       mountedRef.current = false;
+      // Reset all refs to prevent stale data on remount
+      localUserIdRef.current = null;
+      localUserInfoRef.current = null;
+      chatClientRef.current = null;
+      transcriptionClientRef.current = null;
+      setParticipants([]);
+      setStream(null);
+      setActiveSpeakerId(null);
+      setScreenShareUserId(null);
       if (releaseDeferredAudioStart) {
         releaseDeferredAudioStart();
         releaseDeferredAudioStart = null;

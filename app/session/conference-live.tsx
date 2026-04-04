@@ -151,30 +151,20 @@ function ConferenceContent({
     }
   }, [stream]);
 
-  const controls = useConferenceControls({ stream, client });
-
-  // Sync recording state from provider
-  useEffect(() => {
-    controls.setIsRecording(isRecording);
-  }, [isRecording]);
-
-  // Sync screen share state from provider
-  useEffect(() => {
-    controls.setIsScreenSharing(screenShareUserId !== null);
-  }, [screenShareUserId]);
-
-  // Derive camera/mic display state from provider (single source of truth).
-  // Controls hook keeps internal state for toggle logic, but display comes
-  // from the SDK participant data to avoid bidirectional sync flicker.
+  // Single source of truth: derive camera/mic state from SDK participant data
   const localParticipant = participants.find((p) => p.isLocal);
   const derivedCameraOff = localParticipant ? !localParticipant.isVideoOn : true;
   const derivedMuted = localParticipant ? !!localParticipant.isMuted : false;
 
-  // Keep controls hook in sync so toggle functions call the correct SDK method
-  useEffect(() => {
-    controls.setIsCameraOff(derivedCameraOff);
-    controls.setIsMuted(derivedMuted);
-  }, [derivedCameraOff, derivedMuted]);
+  const controls = useConferenceControls({
+    stream, client,
+    isMuted: derivedMuted,
+    isCameraOff: derivedCameraOff,
+  });
+
+  // Sync recording/share state from provider (these aren't in participant data)
+  useEffect(() => { controls.setIsRecording(isRecording); }, [isRecording]);
+  useEffect(() => { controls.setIsScreenSharing(screenShareUserId !== null); }, [screenShareUserId]);
 
   // Keyboard shortcuts
   useEffect(() => {
