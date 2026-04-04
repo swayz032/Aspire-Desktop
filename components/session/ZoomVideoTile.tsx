@@ -57,7 +57,7 @@ interface ZoomVideoTileProps {
       element?: HTMLVideoElement,
     ) => Promise<unknown> | unknown;
     renderVideo: (
-      canvas: HTMLCanvasElement,
+      target: HTMLCanvasElement | HTMLVideoElement,
       userId: number,
       width: number,
       height: number,
@@ -65,7 +65,7 @@ interface ZoomVideoTileProps {
       y: number,
       rotation: number,
     ) => void;
-    stopRenderVideo: (canvas: HTMLCanvasElement, userId: number) => void;
+    stopRenderVideo: (target: HTMLCanvasElement | HTMLVideoElement, userId: number) => void;
   } | null;
   /** Whether this participant is the active speaker */
   isActiveSpeaker?: boolean;
@@ -85,46 +85,24 @@ function ZoomCanvasView({
   stream: ZoomVideoTileProps['stream'];
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const useVideoElement = participant.isLocal && typeof stream?.attachVideo === 'function';
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    if (!participant.userId || !participant.isVideoOn || !stream) return;
-
-    if (useVideoElement) {
-      if (!videoRef.current) return;
-      const videoElement = videoRef.current;
-
-      stream.attachVideo?.(participant.userId, 3, videoElement);
-
-      return () => {
-        try {
-          stream.detachVideo?.(participant.userId, videoElement);
-        } catch (_e) {
-          // Zoom SDK may throw if element already detached.
-        }
-      };
-    }
-
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || !participant.userId || !participant.isVideoOn || !stream) return;
 
     const canvas = canvasRef.current;
 
-    // HiDPI: set canvas buffer to device pixel ratio for crisp rendering
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const renderWidth = Math.round((rect.width || 1280) * dpr);
-    const renderHeight = Math.round((rect.height || 720) * dpr);
-    canvas.width = renderWidth;
-    canvas.height = renderHeight;
+    // Fixed render dimensions — canvas CSS handles display scaling
+    canvas.width = 1280;
+    canvas.height = 720;
 
-    // Zoom rotation: 0 = normal, 2 = mirror (for local camera)
+    // Zoom renderVideo: all participants use canvas (local + remote)
+    // rotation 2 = mirror for local self-view
     stream.renderVideo(
       canvas,
       participant.userId,
-      renderWidth,
-      renderHeight,
+      1280,
+      720,
       0,
       0,
       participant.isLocal ? 2 : 0,
@@ -134,10 +112,10 @@ function ZoomCanvasView({
       try {
         stream.stopRenderVideo(canvas, participant.userId);
       } catch (_e) {
-        // Zoom SDK may throw if canvas already detached — safe to ignore
+        // Zoom SDK may throw if canvas already detached
       }
     };
-  }, [participant.userId, participant.isVideoOn, stream, useVideoElement]);
+  }, [participant.userId, participant.isVideoOn, stream]);
 
   if (Platform.OS !== 'web') return null;
 
@@ -158,24 +136,11 @@ function ZoomCanvasView({
   }
 
   return (
-    <View
-      style={styles.canvasContainer}
-      accessibilityElementsHidden
-    >
-      {useVideoElement ? (
-        <video
-          ref={videoRef as React.RefObject<HTMLVideoElement>}
-          autoPlay
-          muted={participant.isLocal}
-          playsInline
-          style={canvasStyle as unknown as React.CSSProperties}
-        />
-      ) : (
-        <canvas
-          ref={canvasRef as React.RefObject<HTMLCanvasElement>}
-          style={canvasStyle as unknown as React.CSSProperties}
-        />
-      )}
+    <View style={styles.canvasContainer}>
+      <canvas
+        ref={canvasRef as React.RefObject<HTMLCanvasElement>}
+        style={canvasStyle as unknown as React.CSSProperties}
+      />
     </View>
   );
 }

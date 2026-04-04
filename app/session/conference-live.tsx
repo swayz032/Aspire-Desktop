@@ -228,9 +228,10 @@ function ConferenceContent({
     // Gallery view: adaptive grid — compute cols AND rows so tiles fill the screen
     const cols = allTiles <= 1 ? 1 : allTiles <= 2 ? 2 : allTiles <= 4 ? 2 : allTiles <= 6 ? 3 : allTiles <= 9 ? 3 : 4;
     const rows = Math.ceil(allTiles / cols);
-    // Percentage-based sizing so tiles fill the entire grid area
-    const tileWidth = `${Math.floor(100 / cols) - 1}%` as any;
-    const tileHeight = `${Math.floor(100 / rows) - 1}%` as any;
+    // Use calc() to account for gap (4px) so tiles fill exactly
+    const gap = 4;
+    const tileWidth = `calc(${100 / cols}% - ${gap}px)` as any;
+    const tileHeight = `calc(${100 / rows}% - ${gap}px)` as any;
 
     const gridStyle = allTiles <= 1 ? styles.grid1
       : allTiles <= 2 ? styles.grid2
