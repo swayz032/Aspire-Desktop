@@ -335,17 +335,8 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         signedUrl: signed_url,
         dynamicVariables,
         ...(userId ? { userId } : {}),
-        overrides: {
-          tts: {
-            stability: 0.6,
-            similarityBoost: 0.8,
-          },
-          agent: {
-            prompt: {
-              prompt: "You are Ava. Be extremely concise, natural, and business-efficient. 1 short sentence per response unless absolutely necessary. No filler.",
-            },
-          },
-        },
+        // No TTS/agent overrides — server-side agent config controls voice settings.
+        // Passing stability/similarityBoost causes "Override for field not allowed by config" disconnect.
       });
 
       devLog(`[ElevenLabsAgent] Session started for agent "${agent}"`);
