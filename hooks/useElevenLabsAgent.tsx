@@ -132,15 +132,33 @@ async function fetchSignedUrl(
  * v1.0 requirement: useConversation needs ConversationProvider ancestor.
  */
 export function ElevenLabsAgentProvider({ children }: { children: React.ReactNode }) {
+  // Unlock browser audio on first user interaction (click/tap/keydown)
+  // so ElevenLabs SDK can play audio without "touch anywhere" error
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const unlock = () => {
+      unlockBrowserAudioPlayback();
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('touchstart', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('click', unlock, { once: true });
+    window.addEventListener('touchstart', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('touchstart', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
   return (
     <ConversationProvider
-      // Allow mic audio mode to settle before connecting
       connectionDelay={{
         android: 3000,
         ios: 500,
         default: 200,
       }}
-      // Prevent device sleep during voice sessions
       useWakeLock={true}
     >
       {children}
