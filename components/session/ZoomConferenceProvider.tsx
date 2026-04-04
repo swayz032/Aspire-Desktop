@@ -27,15 +27,20 @@ import { reportProviderError } from '@/lib/providerErrorReporter';
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
 interface ZoomUserPayload {
-  userId: number;
+  userId: number | string;
   displayName: string;
   bVideoOn?: boolean;
   muted?: boolean;
   isHost?: boolean;
 }
 
-function isValidZoomUserId(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
+function normalizeZoomUserId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 /**
@@ -187,12 +192,13 @@ function toParticipant(
   user: ZoomUserPayload,
   localUserId: number | null,
 ): ZoomParticipant {
+  const normalizedId = normalizeZoomUserId(user.userId) ?? -1;
   return {
-    userId: user.userId,
+    userId: normalizedId,
     displayName: user.displayName,
     isVideoOn: user.bVideoOn ?? false,
     isMuted: user.muted ?? true,
-    isLocal: user.userId === localUserId,
+    isLocal: normalizedId === localUserId,
   };
 }
 
@@ -305,18 +311,20 @@ function ZoomConferenceProviderWeb({
           const current = client.getCurrentUserInfo?.();
           const usersById = new Map<number, ZoomUserPayload>();
 
-          if (isValidZoomUserId(current?.userId)) {
-            localUserIdRef.current = current.userId;
+          const currentId = normalizeZoomUserId(current?.userId);
+          if (currentId !== null) {
+            localUserIdRef.current = currentId;
           }
 
           for (const user of allUsers) {
-            if (isValidZoomUserId(user?.userId)) usersById.set(user.userId, user);
+            const userId = normalizeZoomUserId(user?.userId);
+            if (userId !== null) usersById.set(userId, { ...user, userId });
           }
 
           // Some SDK timing paths omit local user in early getAllUser snapshots.
           // Always include current user so self-view tile cannot disappear.
-          if (isValidZoomUserId(current?.userId) && !usersById.has(current.userId)) {
-            usersById.set(current.userId, current);
+          if (currentId !== null && current && !usersById.has(currentId)) {
+            usersById.set(currentId, { ...current, userId: currentId });
           }
 
           setParticipants(() => {
@@ -490,8 +498,8 @@ function ZoomConferenceProviderWeb({
           const payload: ZoomUserPayload[] = Array.isArray(raw) ? raw : [raw as ZoomUserPayload];
           const removedIds = new Set(
             payload
-              .filter((u) => isValidZoomUserId(u?.userId))
-              .map((u) => u.userId),
+              .map((u) => normalizeZoomUserId(u?.userId))
+              .filter((id): id is number => id !== null),
           );
           syncParticipantsFromClient();
           setActiveSpeakerId((prev) =>
