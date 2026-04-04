@@ -96,8 +96,9 @@ function ZoomCanvasView({
     canvas.width = 1280;
     canvas.height = 720;
 
-    // Zoom renderVideo: all participants use canvas (local + remote)
-    // rotation 2 = mirror for local self-view
+    // Zoom renderVideo 7th param is VideoQuality, NOT rotation:
+    // 0=90p, 1=180p, 2=360p, 3=720p, 4=1080p
+    // Use 3 (720p) for all participants
     stream.renderVideo(
       canvas,
       participant.userId,
@@ -105,7 +106,7 @@ function ZoomCanvasView({
       720,
       0,
       0,
-      participant.isLocal ? 2 : 0,
+      3, // VideoQuality.Video_720P
     );
 
     return () => {

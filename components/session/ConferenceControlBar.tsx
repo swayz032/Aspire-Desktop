@@ -102,7 +102,7 @@ export function ConferenceControlBar(props: ControlBarProps) {
           onPress={props.onToggleCamera}
         />
         <ControlButton
-          icon={props.isScreenSharing ? 'share' : 'share-outline'}
+          icon={props.isScreenSharing ? 'desktop' : 'desktop-outline'}
           label={props.isScreenSharing ? 'Stop Share' : 'Share'}
           isActive={props.isScreenSharing}
           onPress={props.onToggleScreenShare}
