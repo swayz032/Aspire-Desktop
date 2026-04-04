@@ -10,8 +10,10 @@
  * GET  /api/conference/join/:code   — Resolve join code to Zoom token (PUBLIC)
  * POST /api/conference/invite-internal     — Create FaceTime-style video call invitation
  * PATCH /api/conference/invite-internal/:id — Accept or decline a video call invitation
+ * POST /api/conference/nora-state/:roomName — Host broadcasts Nora state (AUTHENTICATED)
+ * GET  /api/conference/nora-state/:roomName — Guest subscribes to Nora state SSE (PUBLIC)
  *
- * All endpoints require JWT auth (not in PUBLIC_PATHS) except /join/:code.
+ * All endpoints require JWT auth (not in PUBLIC_PATHS) except /join/:code and nora-state GET.
  * Law #3: Fail Closed — no unauthenticated access to conference infrastructure.
  * Law #6: Tenant Isolation — member search is RLS-scoped by suite_id.
  * Law #9: Join codes replace raw JWTs in URLs — tokens never exposed in links.
@@ -447,6 +449,99 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
     logger.error('Join code resolution error', { error: msg });
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// ─── Nora State Broadcast (In-Memory Per-Room) ─────────────────────────────
+// Host POSTs state changes. Guest clients subscribe via SSE.
+// In-memory store is fine — state is ephemeral (room lifetime only).
+
+interface NoraRoomState {
+  state: 'idle' | 'listening' | 'thinking' | 'speaking';
+  isSpeaking: boolean;
+  updatedAt: number;
+}
+
+const noraStateMap = new Map<string, NoraRoomState>();
+const noraSSEClients = new Map<string, Set<Response>>();
+
+// POST /api/conference/nora-state/:roomName — Host broadcasts Nora state (AUTHENTICATED)
+router.post('/api/conference/nora-state/:roomName', (req: Request, res: Response) => {
+  const userId = (req as any).authenticatedUserId as string | undefined;
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const { roomName } = req.params;
+  const { state, isSpeaking } = req.body as { state?: string; isSpeaking?: boolean };
+
+  const validStates = ['idle', 'listening', 'thinking', 'speaking'];
+  if (!state || !validStates.includes(state)) {
+    return res.status(400).json({ error: 'Invalid state. Must be one of: idle, listening, thinking, speaking' });
+  }
+
+  const noraState: NoraRoomState = {
+    state: state as NoraRoomState['state'],
+    isSpeaking: !!isSpeaking,
+    updatedAt: Date.now(),
+  };
+
+  noraStateMap.set(roomName, noraState);
+
+  // Push to all SSE clients subscribed to this room
+  const clients = noraSSEClients.get(roomName);
+  if (clients) {
+    const payload = `data: ${JSON.stringify(noraState)}\n\n`;
+    for (const client of clients) {
+      try { client.write(payload); } catch (_e) { clients.delete(client); }
+    }
+  }
+
+  res.json({ ok: true });
+});
+
+// GET /api/conference/nora-state/:roomName — Guest subscribes to Nora state SSE (PUBLIC)
+router.get('/api/conference/nora-state/:roomName', (req: Request, res: Response) => {
+  const { roomName } = req.params;
+
+  // Set SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no', // Disable nginx buffering
+  });
+
+  // Send current state immediately
+  const currentState = noraStateMap.get(roomName) || {
+    state: 'idle',
+    isSpeaking: false,
+    updatedAt: Date.now(),
+  };
+  res.write(`data: ${JSON.stringify(currentState)}\n\n`);
+
+  // Register client
+  if (!noraSSEClients.has(roomName)) {
+    noraSSEClients.set(roomName, new Set());
+  }
+  noraSSEClients.get(roomName)!.add(res);
+
+  // Heartbeat every 30s to keep connection alive
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n'); } catch (_e) { clearInterval(heartbeat); }
+  }, 30000);
+
+  // Cleanup on disconnect
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    const clients = noraSSEClients.get(roomName);
+    if (clients) {
+      clients.delete(res);
+      if (clients.size === 0) {
+        noraSSEClients.delete(roomName);
+        noraStateMap.delete(roomName);
+      }
+    }
+  });
 });
 
 router.get('/api/conference/lookup', async (req: Request, res: Response) => {

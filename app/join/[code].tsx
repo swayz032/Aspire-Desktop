@@ -29,6 +29,7 @@ import { reportProviderError } from '@/lib/providerErrorReporter';
 import { VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
 import { injectGuestTheme, injectGuestBranding } from '@/lib/zoom-guest-theme';
 import { GuestConferenceLayout } from '@/components/session/GuestConferenceLayout';
+import { useGuestNoraState } from '@/hooks/useGuestNoraState';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,8 +79,16 @@ function injectGuestStyles() {
       to { opacity: 1; transform: translateY(0); }
     }
     @keyframes guestBreatheDot {
-      0%, 100% { opacity: 0.3; }
-      50% { opacity: 1; }
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.3); }
+    }
+    @keyframes guestCardEntrance {
+      from { opacity: 0; transform: translateY(16px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes guestGlowPulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.08); }
+      50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.15), 0 0 80px rgba(59, 130, 246, 0.05); }
     }
     /* iOS Safari overscroll prevention */
     html, body { overscroll-behavior: none; }
@@ -414,6 +423,9 @@ function GuestJoinContent() {
   const [joinData, setJoinData] = useState<JoinResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Live Nora state from SSE — subscribes by room name once join data is available
+  const { noraState, isNoraSpeaking } = useGuestNoraState(joinData?.roomName);
+
   // Inject styles + mobile viewport on mount
   useEffect(() => {
     ensureMobileViewport();
@@ -487,7 +499,11 @@ function GuestJoinContent() {
       {pageState === 'loading' && <LoadingView />}
 
       {(pageState === 'ready' || pageState === 'active') && joinData && (
-        <GuestConferenceLayout roomName={joinData.roomName}>
+        <GuestConferenceLayout
+          roomName={joinData.roomName}
+          noraState={noraState}
+          isNoraSpeaking={isNoraSpeaking}
+        >
           <ZoomUIToolkitSession
             token={joinData.token}
             topic={joinData.topic || joinData.roomName}
@@ -568,11 +584,18 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(59, 130, 246, 0.06)',
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.12)',
+    borderColor: 'rgba(59, 130, 246, 0.15)',
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 0 30px rgba(59, 130, 246, 0.12), inset 0 0 20px rgba(59, 130, 246, 0.04)',
+      animationName: 'guestGlowPulse',
+      animationDuration: '3s',
+      animationIterationCount: 'infinite',
+      animationTimingFunction: 'ease-in-out',
+    } as unknown as ViewStyle : {}),
   },
   loadingTitle: {
     ...Typography.headline, // 18px/600 — the hero text of loading state
@@ -606,6 +629,13 @@ const styles = StyleSheet.create({
     gap: Spacing.md, // 12px — more breathing room between elements
     maxWidth: 400,
     width: '100%',
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+      animationName: 'guestCardEntrance',
+      animationDuration: '0.5s',
+      animationTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      animationFillMode: 'backwards',
+    } as unknown as ViewStyle : {}),
   },
   disconnectedCard: {
     borderColor: 'rgba(52, 199, 89, 0.20)', // Success green tint
@@ -617,6 +647,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.xs, // 4px
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 0 24px var(--icon-glow, rgba(59, 130, 246, 0.15))',
+    } as unknown as ViewStyle : {}),
   },
   errorTitle: {
     ...Typography.headline, // 18px/600
@@ -642,9 +675,15 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm, // 8px
     minHeight: 44, // A11y: minimum 44pt tap target
     minWidth: 120,
+    ...(Platform.OS === 'web' ? {
+      background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+      boxShadow: '0 2px 12px rgba(59, 130, 246, 0.35), 0 0 0 1px rgba(59, 130, 246, 0.1)',
+      transition: 'all 0.2s ease',
+    } as unknown as ViewStyle : {}),
   },
   retryButtonPressed: {
     opacity: 0.85,
+    transform: [{ scale: 0.97 }],
   },
   retryText: {
     ...Typography.captionMedium, // 14px/500

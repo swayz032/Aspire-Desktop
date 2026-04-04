@@ -415,6 +415,22 @@ function ConferenceLive() {
 
   const isNoraSpeaking = noraVoice.status === 'speaking';
 
+  // Broadcast Nora state to guest clients via SSE endpoint
+  useEffect(() => {
+    if (!session?.access_token || !roomName) return;
+    const controller = new AbortController();
+    fetch('/api/conference/nora-state/' + encodeURIComponent(roomName), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ state: avaState, isSpeaking: isNoraSpeaking }),
+      signal: controller.signal,
+    }).catch(() => { /* Best-effort broadcast — guest sees stale state if this fails */ });
+    return () => controller.abort();
+  }, [avaState, isNoraSpeaking, roomName, session?.access_token]);
+
   const handleToggleNora = useCallback(async () => {
     if (noraVoice.isActive) {
       noraVoice.endSession();
