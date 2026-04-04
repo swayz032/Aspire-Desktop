@@ -130,7 +130,6 @@ function ZoomVideoView({
   networkQuality?: { uplink: number; downlink: number };
   maxVideoQuality?: number;
 }) {
-  const containerRef = useRef<HTMLElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const videoPlayerRef = useRef<HTMLElement | null>(null);
 
@@ -140,11 +139,15 @@ function ZoomVideoView({
   uplinkRef.current = networkQuality?.uplink ?? 5;
   downlinkRef.current = networkQuality?.downlink ?? 5;
 
-  // Create <video-player-container> custom element on mount
-  // (Expo/RN Web JSX can't render custom HTML tags directly)
+  // Single effect: create <video-player-container>, attach video, clean up on unmount.
+  // Merged into one effect to avoid race between container creation and video attach.
   useEffect(() => {
     if (Platform.OS !== 'web' || !wrapperRef.current) return;
+    if (!isValidParticipantId(participant.userId) || !participant.isVideoOn) return;
 
+    let disposed = false;
+
+    // Create <video-player-container> (Expo/RN Web can't render custom HTML tags in JSX)
     const vpc = document.createElement('video-player-container') as HTMLElement;
     vpc.style.width = '100%';
     vpc.style.height = '100%';
@@ -154,22 +157,6 @@ function ZoomVideoView({
     vpc.style.left = '0';
     vpc.style.overflow = 'hidden';
     wrapperRef.current.appendChild(vpc);
-    containerRef.current = vpc;
-
-    return () => {
-      while (vpc.firstChild) vpc.removeChild(vpc.firstChild);
-      vpc.remove();
-      containerRef.current = null;
-    };
-  }, []);
-
-  // Attach/detach video when participant state changes
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const container = containerRef.current;
-    if (!container || !isValidParticipantId(participant.userId) || !participant.isVideoOn) return;
-
-    let disposed = false;
 
     const quality = resolveVideoQuality({
       participant,
@@ -184,7 +171,6 @@ function ZoomVideoView({
         const result = await stream.attachVideo(participant.userId, quality);
 
         if (disposed) {
-          // Component unmounted while awaiting — clean up
           if (result instanceof HTMLElement) {
             try { await stream.detachVideo(participant.userId, result); } catch (_e) { /* */ }
             result.remove();
@@ -193,7 +179,6 @@ function ZoomVideoView({
         }
 
         if (!(result instanceof HTMLElement)) {
-          // ExecutedFailure — avatar fallback will show
           return;
         }
 
@@ -207,7 +192,7 @@ function ZoomVideoView({
           result.style.transform = 'scaleX(-1)';
         }
 
-        container.appendChild(result);
+        vpc.appendChild(result);
         videoPlayerRef.current = result;
       } catch (_e) {
         // attachVideo threw — avatar fallback will show
@@ -226,6 +211,9 @@ function ZoomVideoView({
           el.remove();
         })();
       }
+      // Remove the container
+      while (vpc.firstChild) vpc.removeChild(vpc.firstChild);
+      vpc.remove();
     };
   }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, size, isActiveSpeaker, maxVideoQuality]);
 
