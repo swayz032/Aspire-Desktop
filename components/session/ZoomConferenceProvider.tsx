@@ -306,7 +306,6 @@ function ZoomConferenceProviderWeb({
         // Get media stream handle
         const mediaStream = client.getMediaStream();
         setStream(mediaStream);
-        let localVideoStarted = false;
 
         const syncParticipantsFromClient = () => {
           const allUsers = client.getAllUser?.() || [];
@@ -331,13 +330,9 @@ function ZoomConferenceProviderWeb({
 
           setParticipants(() => {
             if (usersById.size === 0) return [];
-            return Array.from(usersById.values()).map((u) => {
-              const mapped = toParticipant(u, localUserIdRef.current);
-              if (localVideoStarted && u.userId === localUserIdRef.current) {
-                return { ...mapped, isVideoOn: true };
-              }
-              return mapped;
-            });
+            return Array.from(usersById.values()).map((u) =>
+              toParticipant(u, localUserIdRef.current),
+            );
           });
         };
 
@@ -381,7 +376,6 @@ function ZoomConferenceProviderWeb({
               fps: VIDEO_CAPTURE_DEFAULTS.fps,
               facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
             }).then(() => {
-              localVideoStarted = true;
               syncParticipantsFromClient();
             }).catch(() =>
               // Fallback: try HD only if fullHd fails
@@ -390,7 +384,6 @@ function ZoomConferenceProviderWeb({
                 fps: VIDEO_CAPTURE_DEFAULTS.fps,
                 facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
               }).then(() => {
-                localVideoStarted = true;
                 syncParticipantsFromClient();
               }).catch((_e: unknown) => {
                 reportProviderError({ provider: 'zoom', action: 'auto_start_video', error: _e, component: 'ZoomConferenceProvider' });

@@ -142,18 +142,26 @@ function ZoomCanvasView({
   maxVideoQuality?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Stabilize networkQuality to avoid re-renders on every object reference change
+  const uplinkRef = useRef(networkQuality?.uplink ?? 5);
+  const downlinkRef = useRef(networkQuality?.downlink ?? 5);
+  uplinkRef.current = networkQuality?.uplink ?? 5;
+  downlinkRef.current = networkQuality?.downlink ?? 5;
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     if (!canvasRef.current || !isValidParticipantId(participant.userId) || !participant.isVideoOn || !stream) return;
 
     const canvas = canvasRef.current;
+    const container = containerRef.current;
 
     const quality = resolveVideoQuality({
       participant,
       size,
       isActiveSpeaker,
-      networkQuality,
+      networkQuality: { uplink: uplinkRef.current, downlink: downlinkRef.current },
       maxVideoQuality,
     });
 
@@ -166,12 +174,47 @@ function ZoomCanvasView({
             ? { width: 640, height: 360 }
             : { width: 320, height: 180 };
 
-    // Fixed render dimensions — canvas CSS handles display scaling
     canvas.width = dimensions.width;
     canvas.height = dimensions.height;
 
-    // Zoom renderVideo 7th param is VideoQuality, NOT rotation:
-    // 0=90p, 1=180p, 2=360p, 3=720p, 4=1080p
+    // Apply cover-crop scaling: canvas elements don't support object-fit,
+    // so we compute a CSS transform that scales the canvas to fill and crop.
+    const applyCoverTransform = () => {
+      if (!container || !canvas) return;
+      const cw = container.clientWidth;
+      const ch = container.clientHeight;
+      if (cw === 0 || ch === 0) return;
+
+      const videoAspect = dimensions.width / dimensions.height;
+      const containerAspect = cw / ch;
+
+      // Scale so the video covers the container (like object-fit: cover)
+      const scale = containerAspect > videoAspect
+        ? cw / dimensions.width
+        : ch / dimensions.height;
+
+      const scaledW = dimensions.width * scale;
+      const scaledH = dimensions.height * scale;
+
+      canvas.style.width = `${scaledW}px`;
+      canvas.style.height = `${scaledH}px`;
+      canvas.style.left = `${(cw - scaledW) / 2}px`;
+      canvas.style.top = `${(ch - scaledH) / 2}px`;
+    };
+
+    applyCoverTransform();
+
+    // Re-apply on container resize
+    const resizeObserver = new ResizeObserver(applyCoverTransform);
+    if (container) resizeObserver.observe(container);
+
+    // Mirror local camera
+    if (participant.isLocal) {
+      canvas.style.transform = 'scaleX(-1)';
+    } else {
+      canvas.style.transform = '';
+    }
+
     stream.renderVideo(
       canvas,
       participant.userId,
@@ -183,38 +226,38 @@ function ZoomCanvasView({
     );
 
     return () => {
+      resizeObserver.disconnect();
       try {
         stream.stopRenderVideo(canvas, participant.userId);
       } catch (_e) {
         // Zoom SDK may throw if canvas already detached
       }
     };
-  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, size, isActiveSpeaker, networkQuality, maxVideoQuality]);
+  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, size, isActiveSpeaker, maxVideoQuality]);
 
   if (Platform.OS !== 'web') return null;
 
-  // Mirror local camera via CSS transform as fallback (rotation=2 handles SDK-level mirror,
-  // but scaleX(-1) ensures consistent mirroring even if SDK rotation is not applied)
-  const canvasStyle: Record<string, string> = {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-    top: '0',
-    left: '0',
-    objectFit: 'cover',
-    background: '#0a0a0c',
-  };
-
-  if (participant.isLocal) {
-    canvasStyle.transform = 'scaleX(-1)';
-  }
-
   return (
     <View style={styles.canvasContainer}>
-      <canvas
-        ref={canvasRef as React.RefObject<HTMLCanvasElement>}
-        style={canvasStyle as unknown as React.CSSProperties}
-      />
+      <div
+        ref={containerRef as React.RefObject<HTMLDivElement>}
+        style={{
+          width: '100%',
+          height: '100%',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          overflow: 'hidden',
+        } as React.CSSProperties}
+      >
+        <canvas
+          ref={canvasRef as React.RefObject<HTMLCanvasElement>}
+          style={{
+            position: 'absolute',
+            background: '#0a0a0c',
+          } as React.CSSProperties}
+        />
+      </div>
     </View>
   );
 }

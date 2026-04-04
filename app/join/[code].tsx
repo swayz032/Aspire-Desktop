@@ -217,19 +217,23 @@ function ZoomUIToolkitSession({
   topic,
   guestName,
   onSessionEnd,
+  onError,
 }: {
   token: string;
   topic: string;
   guestName: string;
   onSessionEnd: () => void;
+  onError: (message: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const uitoolkitRef = useRef<any>(null);
   const mountedRef = useRef(true);
   const onSessionEndRef = useRef(onSessionEnd);
   onSessionEndRef.current = onSessionEnd;
-  // Track if user actually joined (not just preview)
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
   const hasJoinedRef = useRef(false);
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -237,38 +241,68 @@ function ZoomUIToolkitSession({
     hasJoinedRef.current = false;
 
     let destroyed = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    // Timeout: if toolkit doesn't render within 20s, surface error
+    timeoutId = setTimeout(() => {
+      if (!destroyed && mountedRef.current && !hasJoinedRef.current) {
+        onErrorRef.current('Conference took too long to connect. Please refresh and try again.');
+      }
+    }, 20000);
+
+    const loadStylesheet = (): Promise<void> => {
+      const existingLink = document.getElementById('zoom-uitoolkit-css') as HTMLLinkElement | null;
+      if (existingLink?.sheet) return Promise.resolve();
+
+      return new Promise((resolve) => {
+        if (existingLink) {
+          // Already inserted but not loaded yet — wait for it
+          existingLink.addEventListener('load', () => resolve(), { once: true });
+          existingLink.addEventListener('error', () => resolve(), { once: true });
+          // Resolve after 3s even if CSS fails — toolkit may still work with defaults
+          setTimeout(resolve, 3000);
+          return;
+        }
+        const link = document.createElement('link');
+        link.id = 'zoom-uitoolkit-css';
+        link.rel = 'stylesheet';
+        link.href = '/videosdk-ui-toolkit.css';
+        link.onload = () => resolve();
+        link.onerror = () => resolve(); // Don't block on CSS failure
+        document.head.appendChild(link);
+        // Resolve after 3s even if CSS fails
+        setTimeout(resolve, 3000);
+      });
+    };
 
     const init = async () => {
       try {
-        // Load CSS
-        if (!document.getElementById('zoom-uitoolkit-css')) {
-          const link = document.createElement('link');
-          link.id = 'zoom-uitoolkit-css';
-          link.rel = 'stylesheet';
-          link.href = '/videosdk-ui-toolkit.css';
-          document.head.appendChild(link);
-        }
+        // Wait for CSS to fully load BEFORE rendering toolkit
+        await loadStylesheet();
+
+        if (destroyed) return;
 
         // Load UMD script if not already loaded
         let uitoolkit = (window as any).UIToolkit;
         if (!uitoolkit) {
           await new Promise<void>((resolve, reject) => {
-            // Check if script tag already exists but hasn't loaded
             const existing = document.getElementById('zoom-uitoolkit-script');
             if (existing) {
+              // Script tag exists — check if already loaded
+              if ((window as any).UIToolkit) { resolve(); return; }
               existing.addEventListener('load', () => resolve());
-              existing.addEventListener('error', () => reject(new Error('Failed to load Zoom UI Toolkit')));
+              existing.addEventListener('error', () => reject(new Error('Failed to load Zoom UI Toolkit script')));
               return;
             }
             const script = document.createElement('script');
             script.id = 'zoom-uitoolkit-script';
             script.src = '/videosdk-ui-toolkit.js';
             script.onload = () => resolve();
-            script.onerror = () => reject(new Error('Failed to load Zoom UI Toolkit'));
+            script.onerror = () => reject(new Error('Failed to load Zoom UI Toolkit script'));
             document.head.appendChild(script);
           });
           uitoolkit = (window as any).UIToolkit;
-          if (!uitoolkit) throw new Error('Zoom UI Toolkit not found on window after load');
+          if (!uitoolkit) throw new Error('Zoom UI Toolkit not available after script load');
         }
         uitoolkitRef.current = uitoolkit;
 
@@ -283,7 +317,6 @@ function ZoomUIToolkitSession({
             video: {
               enable: true,
               enforceMultipleVideos: true,
-              // Keep guest path aligned with conference capture targets.
               fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
               hd: VIDEO_CAPTURE_DEFAULTS.hd,
             },
@@ -314,23 +347,29 @@ function ZoomUIToolkitSession({
           },
         };
 
-        // Register session destroy callback
-        hasJoinedRef.current = true;
+        // Register session lifecycle callbacks
         uitoolkit.onSessionDestroyed(() => {
           if (mountedRef.current && hasJoinedRef.current) {
             onSessionEndRef.current();
           }
         });
 
-        // Join session directly — the UI Toolkit renders its own full UI
-        // (video grid, controls, chat, settings) into the container.
-        // Skip openPreview — it causes blank screen when transitioning to joinSession.
+        // joinSession renders the full Zoom UI into the container
         await uitoolkit.joinSession(containerRef.current, config);
+
+        // If we reach here, toolkit successfully initialized
+        if (!destroyed && mountedRef.current) {
+          hasJoinedRef.current = true;
+          setInitializing(false);
+          if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+        }
       } catch (err) {
         reportProviderError({ provider: 'zoom-uitoolkit', action: 'init', error: err, component: 'GuestJoinPage' });
-        // DON'T call onSessionEnd on init errors — show the error in console,
-        // the user can see the loading state and retry via page refresh.
-        // Calling onSessionEnd shows "Session Ended" which is wrong.
+        if (!destroyed && mountedRef.current) {
+          if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+          const message = err instanceof Error ? err.message : 'Failed to initialize conference';
+          onErrorRef.current(message);
+        }
       }
     };
 
@@ -339,12 +378,12 @@ function ZoomUIToolkitSession({
     return () => {
       destroyed = true;
       mountedRef.current = false;
+      if (timeoutId) clearTimeout(timeoutId);
       const uitoolkit = uitoolkitRef.current;
       if (uitoolkit) {
         try { uitoolkit.destroy(); } catch (_e) { /* best-effort */ }
       }
     };
-  // Stable deps only — onSessionEnd captured via ref to prevent re-init
   }, [token, topic, guestName]);
 
   if (Platform.OS !== 'web') {
@@ -356,17 +395,31 @@ function ZoomUIToolkitSession({
   }
 
   return (
-    <div
-      ref={containerRef}
-      id="zoom-uitoolkit-container"
-      className="aspire-guest-conference-root"
-      style={{
-        height: '100dvh',
-        width: '100vw',
-        background: Colors.background.primary,
-        overflow: 'hidden',
-      }}
-    />
+    <View style={{ flex: 1, position: 'relative' as const }}>
+      <div
+        ref={containerRef}
+        id="zoom-uitoolkit-container"
+        className="aspire-guest-conference-root"
+        style={{
+          height: '100dvh',
+          width: '100vw',
+          background: Colors.background.primary,
+          overflow: 'hidden',
+        }}
+      />
+      {/* Loading overlay — shown while toolkit initializes, hides once joined */}
+      {initializing && (
+        <View style={styles.toolkitLoadingOverlay} pointerEvents="none">
+          <View style={styles.ringContainer}>
+            <View style={styles.ringOuter} />
+            <View style={styles.logoContainer}>
+              <Ionicons name="videocam" size={28} color={Colors.accent.cyan} />
+            </View>
+          </View>
+          <Text style={styles.loadingTitle}>Starting Conference...</Text>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -432,6 +485,11 @@ function GuestJoinContent() {
     setPageState('disconnected');
   }, []);
 
+  const handleToolkitError = useCallback((message: string) => {
+    setErrorMessage(message);
+    setPageState('error');
+  }, []);
+
   const handleRejoin = useCallback(() => {
     if (joinData) setPageState('ready');
   }, [joinData]);
@@ -450,6 +508,7 @@ function GuestJoinContent() {
           topic={joinData.topic || joinData.roomName}
           guestName={joinData.guestName}
           onSessionEnd={handleSessionEnd}
+          onError={handleToolkitError}
         />
       )}
 
@@ -600,5 +659,15 @@ const styles = StyleSheet.create({
   brandingText: {
     color: Colors.text.muted,
     fontSize: 11,
+  },
+  toolkitLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.background.primary,
   },
 });
