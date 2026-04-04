@@ -31,7 +31,7 @@ import { Sentry } from '@/lib/sentry';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 import type { AgentName } from '@/lib/elevenlabs';
 import { getTimeOfDay } from '@/lib/elevenlabs-agents';
-import { unlockBrowserAudioPlayback } from '@/lib/browserAudioUnlock';
+// browserAudioUnlock removed — ElevenLabs SDK v1.0 handles its own audio unlock
 import { supabase } from '@/lib/supabase';
 
 const AUTH_COOLDOWN_MS = 60_000;
@@ -172,25 +172,8 @@ async function fetchSignedUrl(
  * v1.0 requirement: useConversation needs ConversationProvider ancestor.
  */
 export function ElevenLabsAgentProvider({ children }: { children: React.ReactNode }) {
-  // Unlock browser audio on first user interaction (click/tap/keydown)
-  // so ElevenLabs SDK can play audio without "touch anywhere" error
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const unlock = () => {
-      unlockBrowserAudioPlayback();
-      window.removeEventListener('click', unlock);
-      window.removeEventListener('touchstart', unlock);
-      window.removeEventListener('keydown', unlock);
-    };
-    window.addEventListener('click', unlock, { once: true });
-    window.addEventListener('touchstart', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
-    return () => {
-      window.removeEventListener('click', unlock);
-      window.removeEventListener('touchstart', unlock);
-      window.removeEventListener('keydown', unlock);
-    };
-  }, []);
+  // ElevenLabs SDK v1.0 handles browser audio unlock internally via
+  // ConversationProvider — no manual unlock listeners needed.
 
   return (
     <ConversationProvider
@@ -260,12 +243,9 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     authBlockedUntilRef.current = 0;
   }, [accessToken]);
 
-  const ensureMicrophoneReady = useCallback(async () => {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((track) => track.stop());
-  }, []);
+  // ensureMicrophoneReady removed — ElevenLabs SDK v1.0 acquires the mic
+  // internally. Pre-acquiring via getUserMedia then stopping tracks causes
+  // hardware audio contention and crackling on some browsers/devices.
 
   const updateStatus = useCallback((newStatus: VoiceStatus) => {
     setVoiceStatus(prev => {
@@ -382,24 +362,10 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       updateStatus('thinking');
       Sentry.addBreadcrumb({ category: 'voice', message: 'ElevenLabs session starting', level: 'info', data: { agent } });
 
-      const audioUnlocked = await unlockBrowserAudioPlayback();
-      if (!audioUnlocked) {
-        devWarn('[ElevenLabsAgent] Browser audio unlock returned false — proceeding anyway (may unlock lazily)');
-      }
-
-      try {
-        await ensureMicrophoneReady();
-      } catch (micErr) {
-        if (micErr instanceof DOMException) {
-          if (micErr.name === 'NotAllowedError') {
-            throw new Error('Microphone permission denied. Please allow access in browser settings.');
-          }
-          if (micErr.name === 'NotFoundError') {
-            throw new Error('No microphone detected. Please connect a microphone and try again.');
-          }
-        }
-        throw micErr;
-      }
+      // ElevenLabs SDK v1.0 manages its own AudioContext, mic acquisition,
+      // and browser autoplay unlock via ConversationProvider. Pre-acquiring the
+      // mic via getUserMedia or creating AudioContexts before the SDK causes
+      // hardware audio contention and crackling artifacts. Let the SDK handle it.
 
       const { signed_url, dynamic_variables: serverVars } = await fetchSignedUrl(agent, accessTokenRef.current);
 
