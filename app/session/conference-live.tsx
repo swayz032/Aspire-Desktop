@@ -33,6 +33,7 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { useKeepAwake } from '@/hooks/useKeepAwake';
 import { readSSEStream, extractResponseText } from '@/lib/sseStream';
+import { injectZoomStyles } from '@/lib/zoom-styles';
 
 // Zoom SDK components
 import {
@@ -367,6 +368,8 @@ export default function ConferenceLivePage() {
 
 function ConferenceLive() {
   useKeepAwake();
+  // Inject Zoom SDK CSS rules (video-player cover-fill, dark theme)
+  useEffect(() => { injectZoomStyles(); }, []);
   const router = useRouter();
   const params = useLocalSearchParams();
 

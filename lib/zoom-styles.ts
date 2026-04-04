@@ -45,7 +45,34 @@ const ZOOM_ASPIRE_CSS = `
   --aspire-transition-normal: 0.3s ease;
 }
 
-/* ── Video Canvas Container ───────────────────────────────────────────────── */
+/* ── Zoom SDK VideoPlayer Elements ────────────────────────────────────────── */
+/* The SDK's attachVideo() returns <video-player> custom elements.            */
+/* These rules ensure video covers the tile (like native Zoom) at all levels. */
+
+video-player-container {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+video-player {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+/* Pierce into VideoPlayer internals — the SDK may render a <video> or        */
+/* <canvas> inside the custom element or its shadow DOM.                       */
+video-player video,
+video-player canvas {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+/* ── Video Canvas Container (legacy) ─────────────────────────────────────── */
 
 .zoom-video-canvas {
   width: 100%;

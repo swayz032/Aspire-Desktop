@@ -194,6 +194,33 @@ function ZoomVideoView({
 
         vpc.appendChild(result);
         videoPlayerRef.current = result;
+
+        // The VideoPlayer is a web component with shadow DOM — object-fit on the
+        // outer element doesn't reach the internal <video>/<canvas>. Pierce it.
+        const applyInternalStyles = () => {
+          // Try shadow DOM first (open shadow root)
+          const shadow = (result as any).shadowRoot;
+          if (shadow) {
+            const internals = shadow.querySelectorAll('video, canvas');
+            internals.forEach((el: HTMLElement) => {
+              el.style.width = '100%';
+              el.style.height = '100%';
+              el.style.objectFit = 'cover';
+            });
+          }
+          // Also style any direct child video/canvas (no shadow DOM fallback)
+          const children = result.querySelectorAll('video, canvas');
+          children.forEach((el: Element) => {
+            (el as HTMLElement).style.width = '100%';
+            (el as HTMLElement).style.height = '100%';
+            (el as HTMLElement).style.objectFit = 'cover';
+          });
+        };
+
+        // Apply immediately + after a short delay (SDK may insert internal elements async)
+        applyInternalStyles();
+        setTimeout(applyInternalStyles, 100);
+        setTimeout(applyInternalStyles, 500);
       } catch (_e) {
         // attachVideo threw — avatar fallback will show
       }
