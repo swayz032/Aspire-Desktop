@@ -347,14 +347,8 @@ function ZoomUIToolkitSession({
           },
         };
 
-        // Register session lifecycle callbacks
-        uitoolkit.onSessionDestroyed(() => {
-          if (mountedRef.current && hasJoinedRef.current) {
-            onSessionEndRef.current();
-          }
-        });
-
-        // joinSession renders the full Zoom UI into the container
+        // joinSession renders the full Zoom UI into the container.
+        // MUST be called before registering any event callbacks (SDK requirement).
         await uitoolkit.joinSession(containerRef.current, config);
 
         // If we reach here, toolkit successfully initialized
@@ -363,6 +357,13 @@ function ZoomUIToolkitSession({
           setInitializing(false);
           if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
         }
+
+        // Register session lifecycle callbacks AFTER joinSession (SDK requires this order)
+        uitoolkit.onSessionDestroyed(() => {
+          if (mountedRef.current && hasJoinedRef.current) {
+            onSessionEndRef.current();
+          }
+        });
       } catch (err) {
         reportProviderError({ provider: 'zoom-uitoolkit', action: 'init', error: err, component: 'GuestJoinPage' });
         if (!destroyed && mountedRef.current) {
