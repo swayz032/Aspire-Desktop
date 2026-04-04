@@ -345,26 +345,16 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   });
 
   const startSession = useCallback(async () => {
-    if (sessionActiveRef.current) {
-      // A previous session is still active — end it first and wait for the
-      // SDK to fully release WebRTC/audio resources before starting a new one.
-      // Without this delay, the new session's audio pipeline inherits stale
-      // resources from the previous session, causing crackling.
-      devLog('[ElevenLabsAgent] Ending previous session before starting new one');
+    // If a previous session is still active (same hook or lingering SDK connection
+    // from a different agent page), end it and wait briefly for WebRTC teardown.
+    const needsCleanup = sessionActiveRef.current || conversation.status === 'connected';
+    if (needsCleanup) {
+      devLog('[ElevenLabsAgent] Cleaning up previous session before starting new one');
       try { conversation.endSession(); } catch (_e) { /* swallow */ }
       sessionActiveRef.current = false;
       setIsSessionActiveState(false);
-      // Give the SDK time to tear down WebRTC connections and release audio hardware
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-
-    // Also check if the SDK still has a lingering connection from a different
-    // hook instance (e.g., navigating from Ava to Finn). The shared
-    // ConversationProvider may still be connected from the previous page.
-    if (!sessionActiveRef.current && conversation.status === 'connected') {
-      devLog('[ElevenLabsAgent] SDK still connected from previous session — ending first');
-      try { conversation.endSession(); } catch (_e) { /* swallow */ }
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Brief wait for SDK to release WebRTC connections and audio hardware
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
 
     if (Date.now() < authBlockedUntilRef.current) {
