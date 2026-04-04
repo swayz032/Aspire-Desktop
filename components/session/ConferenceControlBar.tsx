@@ -102,7 +102,7 @@ export function ConferenceControlBar(props: ControlBarProps) {
           onPress={props.onToggleCamera}
         />
         <ControlButton
-          icon={props.isScreenSharing ? 'desktop' : 'desktop-outline'}
+          icon={props.isScreenSharing ? 'tv' : 'tv-outline'}
           label={props.isScreenSharing ? 'Stop Share' : 'Share'}
           isActive={props.isScreenSharing}
           onPress={props.onToggleScreenShare}
@@ -143,7 +143,7 @@ export function ConferenceControlBar(props: ControlBarProps) {
       </View>
 
       <ControlButton
-        icon="call"
+        icon="log-out-outline"
         label="Leave"
         isDestructive
         onPress={props.onLeave}
