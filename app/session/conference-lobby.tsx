@@ -446,13 +446,17 @@ function ConferenceLobby() {
         signal: controller.signal,
       });
       if (!resp.ok) {
+        if (resp.status === 401 || resp.status === 403) {
+          showToast('Session expired. Please sign in again.', 'error');
+          return false;
+        }
         showToast('Conference service is not available', 'error');
         return false;
       }
       const data = await resp.json();
       setIsConferenceReady(data.configured);
       if (!data.configured) {
-        showToast('Conference service is not available', 'error');
+        showToast('Zoom server config missing (SDK key/secret).', 'error');
         return false;
       }
       return true;

@@ -102,6 +102,6 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
   return {
     isMuted, isCameraOff, isScreenSharing, isRecording,
     toggleMic, toggleCamera, toggleScreenShare, toggleRecording,
-    setIsRecording, setIsScreenSharing,
+    setIsRecording, setIsScreenSharing, setIsCameraOff, setIsMuted,
   };
 }

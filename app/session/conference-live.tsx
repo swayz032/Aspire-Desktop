@@ -154,6 +154,20 @@ function ConferenceContent({
     controls.setIsScreenSharing(screenShareUserId !== null);
   }, [screenShareUserId]);
 
+  // Keep control bar state aligned with actual local participant media state.
+  // This prevents the first camera toggle from calling stopVideo() when
+  // auto-start failed and local video never actually turned on.
+  useEffect(() => {
+    const local = participants.find((p) => p.isLocal);
+    if (!local) {
+      controls.setIsCameraOff(true);
+      controls.setIsMuted(false);
+      return;
+    }
+    controls.setIsCameraOff(!local.isVideoOn);
+    controls.setIsMuted(!!local.isMuted);
+  }, [participants, controls.setIsCameraOff, controls.setIsMuted]);
+
   // Keyboard shortcuts
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -452,7 +466,15 @@ function ConferenceLive() {
               body: JSON.stringify({ roomName, participantName, suiteId }),
               signal: controller.signal,
             });
-            if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
+            if (!res.ok) {
+              if (res.status === 401 || res.status === 403) {
+                throw new Error('Session expired. Please sign in again.');
+              }
+              if (res.status === 500 || res.status === 503) {
+                throw new Error('Zoom server is not configured (SDK key/secret).');
+              }
+              throw new Error(`Token endpoint returned ${res.status}`);
+            }
             data = await res.json();
             break;
           } catch (err) {
