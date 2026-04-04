@@ -5,6 +5,10 @@
 import { supabase } from './supabase';
 import { devWarn } from '@/lib/devLog';
 
+const AUTH_COOLDOWN_MS = 60_000;
+let authorityQueueAuthBlockedUntil = 0;
+let tenantIdentityAuthBlockedUntil = 0;
+
 // ── Receipts ────────────────────────────────────────────────────────────────
 export async function getReceipts(limit = 50) {
   const { data, error } = await supabase
@@ -32,6 +36,10 @@ export interface AuthorityQueueItem {
 }
 
 export async function getAuthorityQueue(accessToken?: string, suiteId?: string): Promise<AuthorityQueueItem[]> {
+  if (Date.now() < authorityQueueAuthBlockedUntil) {
+    return [];
+  }
+
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (!accessToken) {
     const { data: { session } } = await supabase.auth.getSession();
@@ -43,9 +51,13 @@ export async function getAuthorityQueue(accessToken?: string, suiteId?: string):
 
   const resp = await fetch('/api/authority-queue', { headers });
   if (!resp.ok) {
+    if (resp.status === 401 || resp.status === 403) {
+      authorityQueueAuthBlockedUntil = Date.now() + AUTH_COOLDOWN_MS;
+    }
     devWarn(`[AuthorityQueue] API returned ${resp.status}`);
     return [];
   }
+  authorityQueueAuthBlockedUntil = 0;
   const data = await resp.json();
   return data.pendingApprovals ?? [];
 }
@@ -84,12 +96,21 @@ export async function getSuiteProfile() {
 }
 
 export async function getTenantIdentity() {
+  if (Date.now() < tenantIdentityAuthBlockedUntil) return null;
+
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch('/api/tenant/identity', { headers });
-  if (!res.ok) throw new Error('Failed to resolve tenant identity');
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      tenantIdentityAuthBlockedUntil = Date.now() + AUTH_COOLDOWN_MS;
+      return null;
+    }
+    throw new Error('Failed to resolve tenant identity');
+  }
+  tenantIdentityAuthBlockedUntil = 0;
   return res.json();
 }
 

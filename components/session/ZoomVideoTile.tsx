@@ -14,7 +14,7 @@
  * - Smooth speaking border opacity transition (fade in/out, not hard cut)
  * - Muted indicator + name label overlay
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Platform, ViewStyle } from 'react-native';
 import ReAnimated, {
   useSharedValue,
@@ -141,6 +141,74 @@ function ZoomCanvasView({
       <canvas
         ref={canvasRef as React.RefObject<HTMLCanvasElement>}
         style={canvasStyle as unknown as React.CSSProperties}
+      />
+    </View>
+  );
+}
+
+function ZoomSelfVideoView({
+  participant,
+  stream,
+  onAttachFailed,
+}: {
+  participant: ZoomParticipant;
+  stream: ZoomVideoTileProps['stream'];
+  onAttachFailed: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (!stream?.attachVideo || !stream?.detachVideo) {
+      onAttachFailed();
+      return;
+    }
+    if (!videoRef.current || !participant.userId || !participant.isVideoOn || !participant.isLocal) return;
+
+    const videoEl = videoRef.current;
+    let disposed = false;
+
+    const attach = async () => {
+      try {
+        await stream.attachVideo?.(participant.userId, 3, videoEl);
+      } catch (_e) {
+        if (!disposed) onAttachFailed();
+      }
+    };
+
+    void attach();
+
+    return () => {
+      disposed = true;
+      try {
+        void stream.detachVideo?.(participant.userId, videoEl);
+      } catch (_e) {
+        // Zoom SDK may throw if video is already detached
+      }
+    };
+  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, onAttachFailed]);
+
+  if (Platform.OS !== 'web') return null;
+
+  return (
+    <View style={styles.canvasContainer}>
+      <video
+        ref={videoRef}
+        style={
+          {
+            width: '100%',
+            height: '100%',
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            objectFit: 'cover',
+            background: '#0a0a0c',
+            transform: 'scaleX(-1)',
+          } as React.CSSProperties
+        }
+        autoPlay
+        muted
+        playsInline
       />
     </View>
   );
@@ -285,7 +353,18 @@ function ZoomVideoTileContent({
 }) {
   const isSmall = size === 'small';
   const isSpotlight = size === 'spotlight';
+  const [localAttachFailed, setLocalAttachFailed] = useState(false);
   const hasVideo = participant.isVideoOn && Platform.OS === 'web';
+  const shouldUseLocalVideoElement =
+    hasVideo
+    && participant.isLocal
+    && !localAttachFailed
+    && typeof stream?.attachVideo === 'function'
+    && typeof stream?.detachVideo === 'function';
+
+  useEffect(() => {
+    setLocalAttachFailed(false);
+  }, [participant.userId, stream]);
 
   // Smooth speaking border opacity — fades in over 200ms, fades out over 300ms
   const speakingOpacity = useSharedValue(0 as number);
@@ -312,7 +391,15 @@ function ZoomVideoTileContent({
     >
       {/* Video canvas or avatar fallback */}
       {hasVideo ? (
-        <ZoomCanvasView participant={participant} stream={stream} />
+        shouldUseLocalVideoElement ? (
+          <ZoomSelfVideoView
+            participant={participant}
+            stream={stream}
+            onAttachFailed={() => setLocalAttachFailed(true)}
+          />
+        ) : (
+          <ZoomCanvasView participant={participant} stream={stream} />
+        )
       ) : (
         <AvatarTileSurface
           name={participant.displayName}

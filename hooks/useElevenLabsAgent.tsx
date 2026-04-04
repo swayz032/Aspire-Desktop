@@ -32,6 +32,18 @@ import { reportProviderError } from '@/lib/providerErrorReporter';
 import type { AgentName } from '@/lib/elevenlabs';
 import { getTimeOfDay } from '@/lib/elevenlabs-agents';
 import { unlockBrowserAudioPlayback } from '@/lib/browserAudioUnlock';
+import { supabase } from '@/lib/supabase';
+
+const AUTH_COOLDOWN_MS = 60_000;
+
+class AgentSessionHttpError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
 
 // Re-export VoiceStatus so consumers can import from either hook
 export type VoiceStatus = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
@@ -104,18 +116,34 @@ async function fetchSignedUrl(
   agent: AgentName,
   accessToken?: string,
 ): Promise<{ signed_url: string; dynamic_variables?: Record<string, string | number | boolean> }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+  const doFetch = async (token?: string) => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return fetch('/api/elevenlabs/agent-session', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ agent }),
+    });
+  };
 
-  const resp = await fetch('/api/elevenlabs/agent-session', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ agent }),
-  });
+  let resp = await doFetch(accessToken);
+
+  // If JWT expired, refresh once and retry.
+  if (resp.status === 401 || resp.status === 403) {
+    try {
+      const { data } = await supabase.auth.refreshSession();
+      const refreshedToken = data.session?.access_token;
+      if (refreshedToken) {
+        resp = await doFetch(refreshedToken);
+      }
+    } catch (_e) {
+      // fall through to structured error below
+    }
+  }
 
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
-    throw new Error(`Agent session request failed: HTTP ${resp.status} — ${body}`);
+    throw new AgentSessionHttpError(resp.status, `Agent session request failed: HTTP ${resp.status} — ${body}`);
   }
 
   const data = await resp.json();
@@ -208,8 +236,13 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   onShowNotificationRef.current = onShowNotification;
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
+  const authBlockedUntilRef = useRef(0);
 
   const sessionActiveRef = useRef(false);
+
+  useEffect(() => {
+    authBlockedUntilRef.current = 0;
+  }, [accessToken]);
 
   const ensureMicrophoneReady = useCallback(async () => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
@@ -305,6 +338,12 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       return;
     }
 
+    if (Date.now() < authBlockedUntilRef.current) {
+      const waitSeconds = Math.ceil((authBlockedUntilRef.current - Date.now()) / 1000);
+      handleError(new Error(`Authentication expired. Please re-authenticate and retry in ${waitSeconds}s.`));
+      return;
+    }
+
     try {
       sessionActiveRef.current = true;
       updateStatus('thinking');
@@ -342,6 +381,9 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       devLog(`[ElevenLabsAgent] Session started for agent "${agent}"`);
     } catch (err) {
       sessionActiveRef.current = false;
+      if (err instanceof AgentSessionHttpError && (err.status === 401 || err.status === 403)) {
+        authBlockedUntilRef.current = Date.now() + AUTH_COOLDOWN_MS;
+      }
       const error = err instanceof Error ? err : new Error(String(err));
       handleError(error);
     }

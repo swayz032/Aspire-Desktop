@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { resolvePublicAssetUrl } from '@/lib/publicAssetUrl';
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -41,6 +42,7 @@ function injectVideoCss() {
 function AvaOrbVideoInner({ state, size = 300 }: AvaOrbVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const config = stateConfig[state];
+  const orbSrc = resolvePublicAssetUrl('ava-orb.mp4');
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -81,7 +83,7 @@ function AvaOrbVideoInner({ state, size = 300 }: AvaOrbVideoProps) {
         <video
           ref={videoRef}
           className="ava-orb-video"
-          src="/ava-orb.mp4"
+          src={orbSrc}
           autoPlay
           loop
           muted

@@ -434,18 +434,39 @@ function ConferenceLive() {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const controller = new AbortController();
+    const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
     (async () => {
       try {
         setZoomStatus('loading');
-        const res = await authenticatedFetch('/api/zoom/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roomName, participantName, suiteId }),
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
-        const data = await res.json();
+        let data: any = null;
+        let lastError: unknown = null;
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          if (controller.signal.aborted) return;
+
+          try {
+            const res = await authenticatedFetch('/api/zoom/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ roomName, participantName, suiteId }),
+              signal: controller.signal,
+            });
+            if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
+            data = await res.json();
+            break;
+          } catch (err) {
+            lastError = err;
+            if (attempt < 2 && !controller.signal.aborted) {
+              await wait(400 * (attempt + 1));
+            }
+          }
+        }
+
+        if (!data) {
+          throw lastError instanceof Error ? lastError : new Error('Unable to fetch Zoom token');
+        }
+
         if (controller.signal.aborted) return;
         setZoomToken(data.token);
         setZoomTopic(data.topic || roomName);

@@ -56,9 +56,20 @@ function PulsingDot({ color }: { color: string }) {
   return (
     <Animated.View
       style={[{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }, animStyle]}
-      accessibilityElementsHidden
     />
   );
+}
+
+function blurWebActiveElement() {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  const active = document.activeElement as HTMLElement | null;
+  if (!active) return;
+  if (active === document.body) return;
+  try {
+    active.blur();
+  } catch {
+    // Best effort for RN web accessibility edge cases.
+  }
 }
 
 // ─── Web-only hover & animation CSS ─────────────────────────────────────────
@@ -466,6 +477,7 @@ function ConferenceLobby() {
 
   const handleStartNewSession = () => {
     trackInteraction('session_start', 'conference-lobby', { trigger: 'start-button' });
+    blurWebActiveElement();
     setShowStartSessionModal(true);
   };
 
@@ -635,7 +647,10 @@ function ConferenceLobby() {
         <View style={styles.headerActions}>
           <Pressable
             style={({ pressed }) => [styles.menuButton, pressed && styles.pressedOpacity]}
-            onPress={() => setMenuVisible(true)}
+            onPress={() => {
+              blurWebActiveElement();
+              setMenuVisible(true);
+            }}
             accessibilityLabel="Open room options"
             accessibilityRole="button"
             {...(Platform.OS === 'web' ? { className: 'lobby-menu-btn' } as Record<string, string> : {})}
@@ -866,7 +881,7 @@ function ConferenceLobby() {
           {/* Authority Queue - Horizontal Scrollable */}
           {authorityItems.length === 0 ? (
             <View style={styles.authorityEmptyState}>
-              <Ionicons name="checkmark-circle-outline" size={28} color={Colors.accent.cyan} style={{ marginBottom: Spacing.sm }} accessibilityElementsHidden />
+              <Ionicons name="checkmark-circle-outline" size={28} color={Colors.accent.cyan} style={{ marginBottom: Spacing.sm }} />
               <Text style={styles.authorityEmptyTitle}>No approvals needed</Text>
               <Text style={styles.authorityEmptySubtitle}>
                 When documents or actions need your sign-off before the session, they'll appear here.

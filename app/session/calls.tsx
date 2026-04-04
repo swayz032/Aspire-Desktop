@@ -55,14 +55,20 @@ const getAudioContext = (): AudioContext | null => {
       sharedAudioContext = new AudioContextClass();
     }
 
-    const ctx = sharedAudioContext;
-    if (ctx && ctx.state === 'suspended') {
-      ctx.resume();
-    }
-
     return sharedAudioContext;
   } catch (e) {
     return null;
+  }
+};
+
+const resumeAudioContextFromGesture = async (): Promise<void> => {
+  const audioCtx = getAudioContext();
+  if (!audioCtx) return;
+  if (audioCtx.state !== 'suspended') return;
+  try {
+    await audioCtx.resume();
+  } catch {
+    // Browser may still block audio until explicit gesture.
   }
 };
 
@@ -71,7 +77,7 @@ const playDTMFTone = (digit: string) => {
   if (!frequencies) return;
 
   const audioCtx = getAudioContext();
-  if (!audioCtx) return;
+  if (!audioCtx || audioCtx.state !== 'running') return;
 
   try {
     const gainNode = audioCtx.createGain();
@@ -96,7 +102,7 @@ let ringingInterval: ReturnType<typeof setInterval> | null = null;
 
 const playRingingTone = () => {
   const audioCtx = getAudioContext();
-  if (!audioCtx) return;
+  if (!audioCtx || audioCtx.state !== 'running') return;
 
   try {
     const gainNode = audioCtx.createGain();
@@ -500,6 +506,7 @@ function CallsScreen() {
   // ---------------------------------------------------------------------------
 
   const handleDigitPress = (digit: string) => {
+    void resumeAudioContextFromGesture();
     playDTMFTone(digit);
     if (phoneNumber.length < 15) {
       setPhoneNumber(prev => prev + digit);
@@ -516,6 +523,7 @@ function CallsScreen() {
 
   const handleCall = async () => {
     if (phoneNumber.length === 0) return;
+    void resumeAudioContextFromGesture();
     setCallError(null);
     setOutboundBlocked(false);
     setCallingName(null);
@@ -554,6 +562,7 @@ function CallsScreen() {
   // ---------------------------------------------------------------------------
 
   const handleReturnCall = async (call: FormattedCall) => {
+    void resumeAudioContextFromGesture();
     setCallError(null);
     setOutboundBlocked(false);
     setCallingName(call.name);

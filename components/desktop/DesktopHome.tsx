@@ -27,7 +27,7 @@ import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useBreakpoint } from '@/lib/useDesktop';
 import { playSound } from '@/lib/soundManager';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
-import { getCalendarEvents } from '@/lib/api';
+import { getAuthorityQueue, getCalendarEvents } from '@/lib/api';
 import { useDynamicAuthorityQueue, removeAuthorityItem } from '@/lib/authorityQueueStore';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { supabase as supabaseClient } from '@/lib/supabase';
@@ -87,7 +87,7 @@ function DesktopHomeInner() {
   const { isTablet, isLaptop, width, mounted: bpMounted } = useBreakpoint();
   useGlobalKeyboard();
   const { tenant } = useTenant();
-  const { session } = useSupabase();
+  const { session, suiteId } = useSupabase();
   const [liveCashData, setLiveCashData] = useState<CashPosition>(EMPTY_CASH);
   const [planItems, setPlanItems] = useState<any[]>([]);
   const [pipelineStages, setPipelineStages] = useState<any[]>([]);
@@ -169,11 +169,11 @@ function DesktopHomeInner() {
 
   useEffect(() => {
     if (isLocalSyntheticAuthBypass()) return;
+    if (!session?.access_token) return;
 
-    const headers: Record<string, string> = {};
-    if (session?.access_token) {
-      headers.Authorization = `Bearer ${session.access_token}`;
-    }
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${session.access_token}`,
+    };
 
     // Fetch live cash position from ops-snapshot
     (async () => {
@@ -233,11 +233,11 @@ function DesktopHomeInner() {
     // Fetch Today's Plan: merge calendar events + pending approvals
     (async () => {
       try {
-        const [calRes, authRes] = await Promise.all([
+        const [calRes, authItemsFromApi] = await Promise.all([
           fetch('/api/calendar/today', {
             headers: { 'Content-Type': 'application/json', ...headers },
           }).catch(() => null),
-          fetch('/api/authority-queue', { headers }).catch(() => null),
+          getAuthorityQueue(session?.access_token ?? undefined, suiteId ?? undefined).catch(() => []),
         ]);
 
         const calItems: any[] = [];
@@ -259,9 +259,8 @@ function DesktopHomeInner() {
         }
 
         const authItems: any[] = [];
-        if (authRes?.ok) {
-          const authData = await authRes.json();
-          const pending = authData.pendingApprovals || [];
+        if (Array.isArray(authItemsFromApi)) {
+          const pending = authItemsFromApi || [];
           pending.slice(0, 4).forEach((p: any, idx: number) => {
             authItems.push({
               id: p.id || `plan-${idx}`,
@@ -289,7 +288,7 @@ function DesktopHomeInner() {
     return () => {
       if (calChannel) supabaseClient.removeChannel(calChannel);
     };
-  }, [session?.access_token]);
+  }, [session?.access_token, suiteId]);
 
   // ── Responsive column widths (spec p13 viewport matrix, Canvas.layout tokens) ──
   const leftWidth = isTablet ? 0 : isLaptop ? Canvas.layout.leftColLaptop : Canvas.layout.leftColDesktop;
@@ -757,3 +756,4 @@ export function DesktopHome() {
     </PageErrorBoundary>
   );
 }
+

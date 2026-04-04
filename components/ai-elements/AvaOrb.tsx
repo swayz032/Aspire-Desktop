@@ -11,6 +11,7 @@ import { View, Platform, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/tokens';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { resolvePublicAssetUrl } from '@/lib/publicAssetUrl';
 
 interface AvaOrbProps {
   size?: number;
@@ -18,6 +19,7 @@ interface AvaOrbProps {
 
 function AvaOrbInner({ size = 320 }: AvaOrbProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const orbSrc = resolvePublicAssetUrl('ava-orb.mp4');
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -63,7 +65,7 @@ function AvaOrbInner({ size = 320 }: AvaOrbProps) {
       <video
         ref={videoRef as any}
         className="ava-orb-shared"
-        src="/ava-orb.mp4"
+        src={orbSrc}
         autoPlay
         loop
         muted

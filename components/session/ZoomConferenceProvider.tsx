@@ -192,6 +192,32 @@ function toParticipant(
   };
 }
 
+function bindOneTimeUserGesture(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  const events: Array<keyof WindowEventMap> = ['pointerdown', 'touchstart', 'mousedown', 'keydown'];
+  let fired = false;
+
+  const cleanup = () => {
+    for (const eventName of events) {
+      window.removeEventListener(eventName, onGesture, true);
+    }
+  };
+
+  const onGesture = () => {
+    if (fired) return;
+    fired = true;
+    cleanup();
+    callback();
+  };
+
+  for (const eventName of events) {
+    window.addEventListener(eventName, onGesture, { capture: true, passive: true, once: true });
+  }
+
+  return cleanup;
+}
+
 // ── Provider (web-only internals) ───────────────────────────────────────────
 
 function ZoomConferenceProviderWeb({
@@ -228,6 +254,7 @@ function ZoomConferenceProviderWeb({
 
     mountedRef.current = true;
     let destroyed = false;
+    let releaseDeferredAudioStart: (() => void) | null = null;
 
     async function initAndJoin() {
       try {
@@ -274,11 +301,27 @@ function ZoomConferenceProviderWeb({
         const mediaPromises: Promise<void>[] = [];
 
         if (SESSION_CONFIG.autoStartAudio) {
-          mediaPromises.push(
-            mediaStream.startAudio().catch((_e: unknown) => {
+          const startAudio = async () => {
+            if (destroyed || !mountedRef.current) return;
+            try {
+              await mediaStream.startAudio();
+            } catch (_e: unknown) {
               reportProviderError({ provider: 'zoom', action: 'auto_start_audio', error: _e, component: 'ZoomConferenceProvider' });
-            })
-          );
+            }
+          };
+
+          const hasUserActivation =
+            typeof navigator !== 'undefined'
+            && !!(navigator as Navigator & { userActivation?: { hasBeenActive?: boolean } }).userActivation?.hasBeenActive;
+
+          if (hasUserActivation || typeof window === 'undefined') {
+            mediaPromises.push(startAudio());
+          } else {
+            // Delay auto-audio start until the first user gesture to satisfy browser autoplay policy.
+            releaseDeferredAudioStart = bindOneTimeUserGesture(() => {
+              void startAudio();
+            });
+          }
         }
 
         if (SESSION_CONFIG.autoStartVideo && startVideoProp) {
@@ -510,6 +553,10 @@ function ZoomConferenceProviderWeb({
     return () => {
       destroyed = true;
       mountedRef.current = false;
+      if (releaseDeferredAudioStart) {
+        releaseDeferredAudioStart();
+        releaseDeferredAudioStart = null;
+      }
 
       const client = clientRef.current;
       if (client) {

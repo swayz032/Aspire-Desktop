@@ -63,11 +63,23 @@ export function useFrontdeskCalls(options: UseFrontdeskCallsOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextDelayRef = useRef(normalizedPollInterval);
+  const authBlockedRef = useRef(false);
+
+  useEffect(() => {
+    authBlockedRef.current = false;
+  }, [session?.access_token]);
 
   const fetchCalls = useCallback(async () => {
     if (isLocalSyntheticAuthBypass()) {
       setCalls([]);
       setError(null);
+      setLoading(false);
+      nextDelayRef.current = MAX_POLL_INTERVAL_MS;
+      return;
+    }
+
+    if (authBlockedRef.current) {
+      setError('AUTH_REQUIRED');
       setLoading(false);
       nextDelayRef.current = MAX_POLL_INTERVAL_MS;
       return;
@@ -88,6 +100,7 @@ export function useFrontdeskCalls(options: UseFrontdeskCallsOptions = {}) {
       setError(message);
       const isAuth = /AUTH_REQUIRED|HTTP 401|HTTP 403/i.test(message);
       if (isAuth) {
+        authBlockedRef.current = true;
         nextDelayRef.current = MAX_POLL_INTERVAL_MS;
       } else {
         // Back off aggressively on transient server/network failures.

@@ -11,6 +11,23 @@ import {
 } from '@/lib/incomingCallOverlayStore';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
+let ringAudioUnlocked = false;
+const RING_UNLOCK_EVENTS = ['click', 'touchstart', 'keydown', 'scroll'] as const;
+
+function unlockRingAudio(): void {
+  if (ringAudioUnlocked || Platform.OS !== 'web' || typeof window === 'undefined') return;
+  ringAudioUnlocked = true;
+  for (const eventName of RING_UNLOCK_EVENTS) {
+    document.removeEventListener(eventName, unlockRingAudio, true);
+  }
+}
+
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  for (const eventName of RING_UNLOCK_EVENTS) {
+    document.addEventListener(eventName, unlockRingAudio, { capture: true, passive: true });
+  }
+}
+
 function formatDisplayNumber(number: string | null): string {
   if (!number) return 'Unknown number';
   const cleaned = number.replace(/\D/g, '');
@@ -25,6 +42,7 @@ function formatDisplayNumber(number: string | null): string {
 
 function playRingTone(): void {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  if (!ringAudioUnlocked) return;
 
   try {
     const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -122,6 +140,7 @@ function IncomingCallOverlayInner(): React.ReactElement | null {
   };
 
   const handleReject = (): void => {
+    unlockRingAudio();
     if (overlayState.call) {
       suppressedCallIds.current.add(overlayState.call.call_session_id);
     }
@@ -129,6 +148,7 @@ function IncomingCallOverlayInner(): React.ReactElement | null {
   };
 
   const handleAccept = (): void => {
+    unlockRingAudio();
     if (overlayState.call) {
       suppressedCallIds.current.add(overlayState.call.call_session_id);
     }

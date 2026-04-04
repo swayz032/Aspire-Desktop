@@ -31,6 +31,7 @@ import {
   playMicActivateSound,
   playMessageSentSound,
 } from '@/lib/sounds';
+import { resolvePublicAssetUrl } from '@/lib/publicAssetUrl';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type ViewMode = 'voice' | 'chat';
@@ -77,7 +78,7 @@ const AGENT_META: Record<string, {
   ava: {
     name: 'Ava',
     subtitle: 'Executive AI Assistant',
-    videoSrc: '/ava-orb.mp4',
+    videoSrc: 'ava-orb.mp4',
     glow: 'rgba(96,165,250,0.22)',
     micGrad: ['#60A5FA', '#8B5CF6'],
     chatGrad: ['#60A5FA', '#8B5CF6'],
@@ -86,7 +87,7 @@ const AGENT_META: Record<string, {
   eli: {
     name: 'Eli',
     subtitle: 'Communications & Inbox',
-    videoSrc: '/eli-orb.mp4',
+    videoSrc: 'eli-orb.mp4',
     glow: 'rgba(217,119,6,0.22)',
     micGrad: ['#D97706', '#B45309'],
     chatGrad: ['#D97706', '#F59E0B'],
@@ -95,7 +96,7 @@ const AGENT_META: Record<string, {
   finn: {
     name: 'Finn',
     subtitle: 'Finance & Accounting',
-    videoSrc: '/finn-orb.mp4',
+    videoSrc: 'finn-orb.mp4',
     glow: 'rgba(56,189,248,0.22)',
     micGrad: ['#38BDF8', '#6366F1'],
     chatGrad: ['#38BDF8', '#6366F1'],
@@ -341,6 +342,7 @@ function AgentWidgetInner({
   isThinking,
 }: AgentWidgetProps) {
   const meta = AGENT_META[agentId] || AGENT_META.ava;
+  const resolvedVideoSrc = resolvePublicAssetUrl(meta.videoSrc);
   const [view, setView] = useState<ViewMode>('voice');
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -431,7 +433,7 @@ function AgentWidgetInner({
             ]}
           >
             {!isUser && isFirstInGroup && (
-              <MiniOrbThumb src={meta.videoSrc} size={26} />
+              <MiniOrbThumb src={resolvedVideoSrc} size={26} />
             )}
             {!isUser && !isFirstInGroup && (
               <View style={{ width: 26 }} />
@@ -484,7 +486,7 @@ function AgentWidgetInner({
         {/* Real video orb — 280px, centered, video already has built-in glow */}
         <View style={s.orbContainer}>
           <OrbVideo
-            src={meta.videoSrc}
+            src={resolvedVideoSrc}
             size={280}
             glow={meta.glow}
             voiceStatus={voiceStatus}
@@ -588,7 +590,7 @@ function AgentWidgetInner({
             color="rgba(255,255,255,0.75)"
           />
         </Pressable>
-        <MiniOrbThumb src={meta.videoSrc} size={32} />
+        <MiniOrbThumb src={resolvedVideoSrc} size={32} />
         <View style={{ flex: 1 }}>
           <Text style={s.chatName}>{meta.name}</Text>
           <Text style={s.chatSub}>AI Chat</Text>
@@ -611,7 +613,7 @@ function AgentWidgetInner({
         ListEmptyComponent={
           <View style={s.emptyState}>
             <OrbVideo
-              src={meta.videoSrc}
+              src={resolvedVideoSrc}
               size={72}
               glow={meta.glow}
             />
@@ -626,7 +628,7 @@ function AgentWidgetInner({
       {/* Thinking indicator — shown while agent processes */}
       {isThinking && (
         <View style={s.thinkingRow}>
-          <MiniOrbThumb src={meta.videoSrc} size={24} />
+          <MiniOrbThumb src={resolvedVideoSrc} size={24} />
           <Text style={s.thinkingText}>{meta.name} is thinking…</Text>
         </View>
       )}
@@ -966,3 +968,4 @@ export function AgentWidget(props: any) {
     </PageErrorBoundary>
   );
 }
+

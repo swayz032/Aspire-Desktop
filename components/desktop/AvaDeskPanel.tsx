@@ -12,6 +12,7 @@ import {
   ThinkingIndicator,
   MessagePartRenderer,
 } from '@/components/chat';
+import { resolvePublicAssetUrl } from '@/lib/publicAssetUrl';
 import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
@@ -128,6 +129,7 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
 
 function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const orbSrc = resolvePublicAssetUrl('ava-orb.mp4');
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -167,7 +169,7 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
       <video
         ref={videoRef as any}
         className="ava-orb-video"
-        src="/ava-orb.mp4"
+        src={orbSrc}
         autoPlay
         loop
         muted

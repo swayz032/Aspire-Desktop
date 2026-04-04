@@ -273,7 +273,12 @@ function useAuthGate() {
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
     })
-      .then(r => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          throw new Error(`onboarding_status_${r.status}`);
+        }
+        return r.json();
+      })
       .then(({ complete }) => {
         clearTimeout(timeoutId);
         if (complete) onboardingConfirmedRef.current = true;
