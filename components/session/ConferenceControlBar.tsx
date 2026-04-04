@@ -136,7 +136,7 @@ export function ConferenceControlBar(props: ControlBarProps) {
           onPress={props.onToggleParticipants}
         />
         <ControlButton
-          icon={props.viewMode === 'gallery' ? 'expand' : 'grid'}
+          icon={props.viewMode === 'gallery' ? 'person' : 'grid'}
           label={props.viewMode === 'gallery' ? 'Speaker' : 'Gallery'}
           onPress={props.onToggleView}
         />

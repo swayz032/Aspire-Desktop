@@ -206,10 +206,11 @@ function ConferenceContent({
     const allTiles = participants.length + 1; // +1 for Nora
     const isGallery = viewMode === 'gallery';
 
-    if (!isGallery && activeSpeaker !== null) {
-      // Speaker view: spotlight active speaker, filmstrip for rest + Nora
-      const spotlight = participants.find(p => p.userId === activeSpeaker);
-      const filmstrip = participants.filter(p => p.userId !== activeSpeaker);
+    if (!isGallery) {
+      // Speaker view: spotlight the active speaker (or local user if no one speaking)
+      const spotlightUserId = activeSpeaker ?? participants.find(p => p.isLocal)?.userId ?? null;
+      const spotlight = spotlightUserId !== null ? participants.find(p => p.userId === spotlightUserId) : null;
+      const filmstrip = participants.filter(p => p.userId !== spotlightUserId);
 
       return (
         <View style={styles.speakerLayout}>
@@ -218,7 +219,7 @@ function ConferenceContent({
               <ZoomVideoTile
                 participant={spotlight}
                 stream={stream as any}
-                isActiveSpeaker={true}
+                isActiveSpeaker={spotlight.userId === activeSpeaker}
                 size="spotlight"
                 networkQuality={networkQuality}
                 maxVideoQuality={maxVideoQuality}
@@ -228,7 +229,6 @@ function ConferenceContent({
             )}
           </View>
           <View style={styles.filmstrip}>
-            {!spotlight && null /* Nora is in spotlight */}
             {spotlight && (
               <View style={styles.filmstripTile}>
                 <NoraTile avaState={avaState} isNoraSpeaking={isNoraSpeaking} onPress={onToggleNora} />
@@ -710,20 +710,6 @@ const styles = StyleSheet.create({
   grid6: { padding: 3 },
   grid9: { padding: 2 },
   grid12: { padding: 2 },
-
-  emptyTile: {
-    flex: 1,
-    minWidth: 280,
-    aspectRatio: 16 / 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#141414',
-    borderRadius: 10,
-  },
-  emptyText: {
-    color: '#6e6e73',
-    fontSize: 14,
-  },
 
   // Speaker view
   speakerLayout: {
