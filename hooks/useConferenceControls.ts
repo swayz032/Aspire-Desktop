@@ -2,7 +2,7 @@
  * useConferenceControls — mic/camera/share/record toggle state via Zoom SDK stream.
  * All actions go through Zoom SDK directly. Error handling is graceful degradation.
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 
@@ -64,6 +64,10 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
     try {
       if (isScreenSharing) {
         await stream.stopShareScreen();
+        // Clean up the hidden video element created for screen share
+        if (typeof document !== 'undefined') {
+          document.getElementById('zoom-share-canvas')?.remove();
+        }
       } else {
         // Zoom SDK startShareScreen requires a canvas/video element.
         // Create a temporary video element — SDK renders share into it.
@@ -88,26 +92,37 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
     }
   }, [stream, isScreenSharing]);
 
-  const toggleRecording = useCallback(async () => {
-    if (!client) return;
+  const toggleRecording = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (!client) return { success: false, error: 'Conference client not available' };
     try {
       const rc = client.getRecordingClient();
-      if (!rc) return;
+      if (!rc) return { success: false, error: 'Recording is not available for this session' };
       if (isRecording) {
         await rc.stopCloudRecording();
+        setIsRecording(false);
+        return { success: true };
       } else {
-        // Check if recording is available (host/co-host only)
         if (typeof rc.canStartRecording === 'function' && !rc.canStartRecording()) {
-          console.warn('[ConferenceControls] Recording not available — may require host role');
-          return;
+          return { success: false, error: 'Only the host can start recording' };
         }
         await rc.startCloudRecording();
+        setIsRecording(true);
+        return { success: true };
       }
-      setIsRecording(prev => !prev);
     } catch (e) {
       reportProviderError({ provider: 'zoom', action: 'toggle_recording', error: e, component: 'ConferenceControls' });
+      return { success: false, error: 'Recording failed — please try again' };
     }
   }, [client, isRecording]);
+
+  // Clean up orphaned screen share element on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.getElementById('zoom-share-canvas')?.remove();
+      }
+    };
+  }, []);
 
   return {
     isMuted, isCameraOff, isScreenSharing, isRecording,

@@ -162,19 +162,18 @@ function ConferenceContent({
     controls.setIsScreenSharing(screenShareUserId !== null);
   }, [screenShareUserId]);
 
-  // Keep control bar state aligned with actual local participant media state.
-  // This prevents the first camera toggle from calling stopVideo() when
-  // auto-start failed and local video never actually turned on.
+  // Derive camera/mic display state from provider (single source of truth).
+  // Controls hook keeps internal state for toggle logic, but display comes
+  // from the SDK participant data to avoid bidirectional sync flicker.
+  const localParticipant = participants.find((p) => p.isLocal);
+  const derivedCameraOff = localParticipant ? !localParticipant.isVideoOn : true;
+  const derivedMuted = localParticipant ? !!localParticipant.isMuted : false;
+
+  // Keep controls hook in sync so toggle functions call the correct SDK method
   useEffect(() => {
-    const local = participants.find((p) => p.isLocal);
-    if (!local) {
-      controls.setIsCameraOff(true);
-      controls.setIsMuted(false);
-      return;
-    }
-    controls.setIsCameraOff(!local.isVideoOn);
-    controls.setIsMuted(!!local.isMuted);
-  }, [participants, controls.setIsCameraOff, controls.setIsMuted]);
+    controls.setIsCameraOff(derivedCameraOff);
+    controls.setIsMuted(derivedMuted);
+  }, [derivedCameraOff, derivedMuted]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -313,8 +312,8 @@ function ConferenceContent({
       </View>
 
       <ConferenceControlBar
-        isMuted={controls.isMuted}
-        isCameraOff={controls.isCameraOff}
+        isMuted={derivedMuted}
+        isCameraOff={derivedCameraOff}
         isScreenSharing={controls.isScreenSharing}
         isRecording={controls.isRecording}
         isTranscribing={isTranscribing}
@@ -337,6 +336,8 @@ function ConferenceContent({
       <ConferenceParticipantsPanel
         visible={participantsVisible}
         participants={participants}
+        activeSpeakerId={activeSpeaker}
+        networkQuality={networkQuality}
         onClose={onToggleParticipants}
       />
 
@@ -521,7 +522,7 @@ function ConferenceLive() {
   // Chat handler (SSE streaming to orchestrator)
   const handleSendMessage = useCallback(async (text: string, isPrivate: boolean) => {
     const newMessage: ChatMessage = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${crypto.randomUUID()}`,
       senderId: 'you',
       senderName: 'You',
       text,
@@ -547,7 +548,7 @@ function ConferenceLive() {
       if (!resp.ok || !resp.body) {
         const data = await resp.json().catch(() => ({}));
         setMessages(prev => [...prev, {
-          id: `msg-ava-${Date.now()}`, senderId: 'ava', senderName: 'Ava',
+          id: `msg-ava-${crypto.randomUUID()}`, senderId: 'ava', senderName: 'Ava',
           text: data.response || data.text || "I'm having trouble connecting. Try again in a moment.",
           timestamp: new Date(), isPrivate: true,
         }]);
@@ -557,14 +558,14 @@ function ConferenceLive() {
       await readSSEStream(resp.body, (evt) => {
         if (evt.type === 'response') {
           setMessages(prev => [...prev, {
-            id: `msg-ava-${Date.now()}`, senderId: 'ava', senderName: 'Ava',
+            id: `msg-ava-${crypto.randomUUID()}`, senderId: 'ava', senderName: 'Ava',
             text: extractResponseText(evt), timestamp: new Date(), isPrivate: true,
           }]);
         }
       });
     } catch (_err) {
       setMessages(prev => [...prev, {
-        id: `msg-ava-err-${Date.now()}`, senderId: 'ava', senderName: 'Ava',
+        id: `msg-ava-err-${crypto.randomUUID()}`, senderId: 'ava', senderName: 'Ava',
         text: "I'm having trouble connecting. Let me try again.",
         timestamp: new Date(), isPrivate: true,
       }]);

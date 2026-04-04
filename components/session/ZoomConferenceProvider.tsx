@@ -107,6 +107,7 @@ export interface ZoomParticipant {
   isVideoOn: boolean;
   isMuted: boolean;
   isLocal: boolean;
+  isHost: boolean;
 }
 
 export interface ZoomChatMessage {
@@ -199,6 +200,7 @@ function toParticipant(
     isVideoOn: user.bVideoOn ?? false,
     isMuted: user.muted ?? true,
     isLocal: normalizedId === localUserId,
+    isHost: user.isHost ?? false,
   };
 }
 
@@ -426,7 +428,8 @@ function ZoomConferenceProviderWeb({
             const rc = (client as any).getRecordingClient?.();
             if (rc && typeof rc.startCloudRecording === 'function') {
               await rc.startCloudRecording();
-              setIsRecording(true);
+              // Don't set isRecording here — let the 'recording-change' event
+              // handler (line ~549) be the sole authoritative writer.
             }
           } catch (_e) {
             reportProviderError({

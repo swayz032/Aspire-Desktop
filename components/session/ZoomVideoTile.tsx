@@ -238,6 +238,7 @@ function ZoomSelfVideoView({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [showLegacyVideo, setShowLegacyVideo] = useState(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -247,6 +248,7 @@ function ZoomSelfVideoView({
     }
     if (!isValidParticipantId(participant.userId) || !participant.isVideoOn || !participant.isLocal) return;
 
+    setShowLegacyVideo(false);
     const videoEl = videoRef.current;
     const containerEl = containerRef.current;
     let disposed = false;
@@ -289,6 +291,7 @@ function ZoomSelfVideoView({
         if (!videoEl) throw new Error('Self video element unavailable');
         await stream.attachVideo?.(participant.userId, quality, videoEl);
         usedLegacyAttach = true;
+        if (!disposed) setShowLegacyVideo(true);
       } catch (_e) {
         if (!disposed) onAttachFailed();
       }
@@ -344,6 +347,10 @@ function ZoomSelfVideoView({
             objectFit: 'cover',
             background: '#0a0a0c',
             transform: 'scaleX(-1)',
+            // Hide the legacy <video> element when the modern element-attach path
+            // succeeds — otherwise it sits on top of the container div and obscures
+            // the actual SDK video player with its opaque background.
+            display: showLegacyVideo ? undefined : 'none',
           } as React.CSSProperties
         }
         autoPlay
