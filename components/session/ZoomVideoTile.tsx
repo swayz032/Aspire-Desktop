@@ -1,17 +1,16 @@
 /**
  * ZoomVideoTile
  *
- * Renders a Zoom Video SDK participant into a DOM video/canvas target.
+ * Renders a Zoom Video SDK participant using the modern `attachVideo()` API.
  * Falls back to AvatarTileSurface when video is off or on non-web platforms.
  *
- * Critical difference from LiveKitVideoTile: Zoom renders video via
- * `stream.renderVideo(canvas, userId, width, height, x, y, rotation)` for
- * remote tiles, but some Chromium self-view paths require a `<video>` target
- * via `attachVideo(...)`.
+ * The SDK's `attachVideo(userId, quality)` returns a managed `VideoPlayer`
+ * custom element that supports standard CSS (object-fit, transform, etc.).
+ * This replaces the deprecated `renderVideo()` canvas-based approach.
  *
- * Animation patterns ported from LiveKitVideoTile:
- * - Multi-layer breathing ring (inner border + outer glow with offset timing)
- * - Smooth speaking border opacity transition (fade in/out, not hard cut)
+ * Animation patterns:
+ * - Multi-layer breathing ring for connecting state
+ * - Smooth speaking border opacity transition
  * - Muted indicator + name label overlay
  */
 import React, { useEffect, useRef, useState } from 'react';
@@ -46,28 +45,17 @@ interface ZoomParticipant {
 interface ZoomVideoTileProps {
   /** Zoom participant data. Null before session connects — shows avatar. */
   participant: ZoomParticipant | null;
-  /** MediaStream from ZoomConferenceProvider — exposes renderVideo/stopRenderVideo */
+  /** MediaStream from ZoomConferenceProvider — exposes attachVideo/detachVideo */
   stream: {
-    attachVideo?: (
+    attachVideo: (
       userId: number,
-      quality: number,
-      element: HTMLVideoElement,
-    ) => Promise<unknown> | unknown;
-    isRenderSelfViewWithVideoElement?: () => boolean;
-    detachVideo?: (
+      videoQuality: number,
+      element?: string | HTMLElement,
+    ) => Promise<HTMLElement | { type: string; reason: string }>;
+    detachVideo: (
       userId: number,
-      element?: HTMLVideoElement | HTMLElement,
-    ) => Promise<unknown> | unknown;
-    renderVideo: (
-      target: HTMLCanvasElement | HTMLVideoElement,
-      userId: number,
-      width: number,
-      height: number,
-      x: number,
-      y: number,
-      rotation: number,
-    ) => void;
-    stopRenderVideo: (target: HTMLCanvasElement | HTMLVideoElement, userId: number) => void;
+      element?: string | HTMLElement,
+    ) => Promise<HTMLElement | HTMLElement[]>;
   } | null;
   /** Whether this participant is the active speaker */
   isActiveSpeaker?: boolean;
@@ -103,7 +91,6 @@ function resolveVideoQuality({
         ? VIDEO_RECEIVE_QUALITY.filmstrip
         : VIDEO_RECEIVE_QUALITY.galleryLarge;
 
-  // Zoom network level is typically 1..5. Cap receive quality under weak links.
   const level = networkQuality ? Math.min(networkQuality.uplink, networkQuality.downlink) : 5;
   const networkCap =
     level <= 1
@@ -123,10 +110,12 @@ function resolveVideoQuality({
 }
 
 /* -------------------------------------------------------------------------- */
-/*  ZoomCanvasView — web-only canvas rendering                                */
+/*  ZoomVideoView — unified video rendering via attachVideo()                 */
+/*  Works for ALL participants (local + remote). The SDK returns a managed    */
+/*  VideoPlayer element that supports object-fit: cover natively.             */
 /* -------------------------------------------------------------------------- */
 
-function ZoomCanvasView({
+function ZoomVideoView({
   participant,
   stream,
   size,
@@ -135,14 +124,15 @@ function ZoomCanvasView({
   maxVideoQuality,
 }: {
   participant: ZoomParticipant;
-  stream: ZoomVideoTileProps['stream'];
+  stream: NonNullable<ZoomVideoTileProps['stream']>;
   size: 'normal' | 'small' | 'spotlight';
   isActiveSpeaker: boolean;
   networkQuality?: { uplink: number; downlink: number };
   maxVideoQuality?: number;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLElement | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const videoPlayerRef = useRef<HTMLElement | null>(null);
 
   // Stabilize networkQuality to avoid re-renders on every object reference change
   const uplinkRef = useRef(networkQuality?.uplink ?? 5);
@@ -150,12 +140,36 @@ function ZoomCanvasView({
   uplinkRef.current = networkQuality?.uplink ?? 5;
   downlinkRef.current = networkQuality?.downlink ?? 5;
 
+  // Create <video-player-container> custom element on mount
+  // (Expo/RN Web JSX can't render custom HTML tags directly)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !wrapperRef.current) return;
+
+    const vpc = document.createElement('video-player-container') as HTMLElement;
+    vpc.style.width = '100%';
+    vpc.style.height = '100%';
+    vpc.style.display = 'block';
+    vpc.style.position = 'absolute';
+    vpc.style.top = '0';
+    vpc.style.left = '0';
+    vpc.style.overflow = 'hidden';
+    wrapperRef.current.appendChild(vpc);
+    containerRef.current = vpc;
+
+    return () => {
+      while (vpc.firstChild) vpc.removeChild(vpc.firstChild);
+      vpc.remove();
+      containerRef.current = null;
+    };
+  }, []);
+
+  // Attach/detach video when participant state changes
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    if (!canvasRef.current || !isValidParticipantId(participant.userId) || !participant.isVideoOn || !stream) return;
-
-    const canvas = canvasRef.current;
     const container = containerRef.current;
+    if (!container || !isValidParticipantId(participant.userId) || !participant.isVideoOn) return;
+
+    let disposed = false;
 
     const quality = resolveVideoQuality({
       participant,
@@ -165,72 +179,52 @@ function ZoomCanvasView({
       maxVideoQuality,
     });
 
-    const dimensions =
-      quality >= VIDEO_RECEIVE_QUALITY.spotlight
-        ? { width: 1920, height: 1080 }
-        : quality >= VIDEO_RECEIVE_QUALITY.galleryLarge
-          ? { width: 1280, height: 720 }
-          : quality >= VIDEO_RECEIVE_QUALITY.gallerySmall
-            ? { width: 640, height: 360 }
-            : { width: 320, height: 180 };
+    const attach = async () => {
+      try {
+        const result = await stream.attachVideo(participant.userId, quality);
 
-    canvas.width = dimensions.width;
-    canvas.height = dimensions.height;
+        if (disposed) {
+          // Component unmounted while awaiting — clean up
+          if (result instanceof HTMLElement) {
+            try { await stream.detachVideo(participant.userId, result); } catch (_e) { /* */ }
+            result.remove();
+          }
+          return;
+        }
 
-    // Apply cover-crop scaling: canvas elements don't support object-fit,
-    // so we compute a CSS transform that scales the canvas to fill and crop.
-    const applyCoverTransform = () => {
-      if (!container || !canvas) return;
-      const cw = container.clientWidth;
-      const ch = container.clientHeight;
-      if (cw === 0 || ch === 0) return;
+        if (!(result instanceof HTMLElement)) {
+          // ExecutedFailure — avatar fallback will show
+          return;
+        }
 
-      const videoAspect = dimensions.width / dimensions.height;
-      const containerAspect = cw / ch;
+        // Style the SDK's VideoPlayer element for cover-fill
+        result.style.width = '100%';
+        result.style.height = '100%';
+        result.style.objectFit = 'cover';
 
-      // Scale so the video covers the container (like object-fit: cover)
-      const scale = containerAspect > videoAspect
-        ? cw / dimensions.width
-        : ch / dimensions.height;
+        // Mirror self-view (like regular Zoom)
+        if (participant.isLocal) {
+          result.style.transform = 'scaleX(-1)';
+        }
 
-      const scaledW = dimensions.width * scale;
-      const scaledH = dimensions.height * scale;
-
-      canvas.style.width = `${scaledW}px`;
-      canvas.style.height = `${scaledH}px`;
-      canvas.style.left = `${(cw - scaledW) / 2}px`;
-      canvas.style.top = `${(ch - scaledH) / 2}px`;
+        container.appendChild(result);
+        videoPlayerRef.current = result;
+      } catch (_e) {
+        // attachVideo threw — avatar fallback will show
+      }
     };
 
-    applyCoverTransform();
-
-    // Re-apply on container resize
-    const resizeObserver = new ResizeObserver(applyCoverTransform);
-    if (container) resizeObserver.observe(container);
-
-    // Mirror local camera
-    if (participant.isLocal) {
-      canvas.style.transform = 'scaleX(-1)';
-    } else {
-      canvas.style.transform = '';
-    }
-
-    stream.renderVideo(
-      canvas,
-      participant.userId,
-      dimensions.width,
-      dimensions.height,
-      0,
-      0,
-      quality,
-    );
+    void attach();
 
     return () => {
-      resizeObserver.disconnect();
-      try {
-        stream.stopRenderVideo(canvas, participant.userId);
-      } catch (_e) {
-        // Zoom SDK may throw if canvas already detached
+      disposed = true;
+      const el = videoPlayerRef.current;
+      if (el) {
+        videoPlayerRef.current = null;
+        (async () => {
+          try { await stream.detachVideo(participant.userId, el); } catch (_e) { /* */ }
+          el.remove();
+        })();
       }
     };
   }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, size, isActiveSpeaker, maxVideoQuality]);
@@ -240,7 +234,7 @@ function ZoomCanvasView({
   return (
     <View style={styles.canvasContainer}>
       <div
-        ref={containerRef as React.RefObject<HTMLDivElement>}
+        ref={wrapperRef as React.RefObject<HTMLDivElement>}
         style={{
           width: '100%',
           height: '100%',
@@ -248,157 +242,8 @@ function ZoomCanvasView({
           top: 0,
           left: 0,
           overflow: 'hidden',
+          background: '#0a0a0c',
         } as React.CSSProperties}
-      >
-        <canvas
-          ref={canvasRef as React.RefObject<HTMLCanvasElement>}
-          style={{
-            position: 'absolute',
-            background: '#0a0a0c',
-          } as React.CSSProperties}
-        />
-      </div>
-    </View>
-  );
-}
-
-function ZoomSelfVideoView({
-  participant,
-  stream,
-  onAttachFailed,
-  size,
-  isActiveSpeaker,
-  networkQuality,
-  maxVideoQuality,
-}: {
-  participant: ZoomParticipant;
-  stream: ZoomVideoTileProps['stream'];
-  onAttachFailed: () => void;
-  size: 'normal' | 'small' | 'spotlight';
-  isActiveSpeaker: boolean;
-  networkQuality?: { uplink: number; downlink: number };
-  maxVideoQuality?: number;
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [showLegacyVideo, setShowLegacyVideo] = useState(false);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    if (!stream?.attachVideo || !stream?.detachVideo) {
-      onAttachFailed();
-      return;
-    }
-    if (!isValidParticipantId(participant.userId) || !participant.isVideoOn || !participant.isLocal) return;
-
-    setShowLegacyVideo(false);
-    const videoEl = videoRef.current;
-    const containerEl = containerRef.current;
-    let disposed = false;
-    let attachedElement: HTMLElement | null = null;
-    let usedLegacyAttach = false;
-    const quality = resolveVideoQuality({
-      participant,
-      size,
-      isActiveSpeaker,
-      networkQuality,
-      maxVideoQuality,
-    });
-
-    const attach = async () => {
-      try {
-        // Zoom SDK newer path: attachVideo(userId, quality) returns a player element.
-        // Keep legacy path as fallback for environments expecting a target <video>.
-        const preferElementAttach = stream.isRenderSelfViewWithVideoElement?.() ?? true;
-        if (preferElementAttach) {
-          const maybeElement = await (stream.attachVideo as unknown as (userId: number, quality: number) => Promise<unknown> | unknown)(
-            participant.userId,
-            quality,
-          );
-          if (maybeElement instanceof HTMLElement && containerEl) {
-            containerEl.innerHTML = '';
-            maybeElement.style.width = '100%';
-            maybeElement.style.height = '100%';
-            maybeElement.style.position = 'absolute';
-            maybeElement.style.top = '0';
-            maybeElement.style.left = '0';
-            maybeElement.style.objectFit = 'cover';
-            maybeElement.style.background = '#0a0a0c';
-            maybeElement.style.transform = 'scaleX(-1)';
-            containerEl.appendChild(maybeElement);
-            attachedElement = maybeElement;
-            return;
-          }
-        }
-
-        if (!videoEl) throw new Error('Self video element unavailable');
-        await stream.attachVideo?.(participant.userId, quality, videoEl);
-        usedLegacyAttach = true;
-        if (!disposed) setShowLegacyVideo(true);
-      } catch (_e) {
-        if (!disposed) onAttachFailed();
-      }
-    };
-
-    void attach();
-
-    return () => {
-      disposed = true;
-      try {
-        if (usedLegacyAttach && videoEl) {
-          void stream.detachVideo?.(participant.userId, videoEl);
-        } else if (attachedElement) {
-          void stream.detachVideo?.(participant.userId, attachedElement);
-          if (attachedElement.parentElement) {
-            attachedElement.parentElement.removeChild(attachedElement);
-          }
-        } else {
-          void stream.detachVideo?.(participant.userId);
-        }
-      } catch (_e) {
-        // Zoom SDK may throw if video is already detached
-      }
-    };
-  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, onAttachFailed, size, isActiveSpeaker, networkQuality, maxVideoQuality]);
-
-  if (Platform.OS !== 'web') return null;
-
-  return (
-    <View style={styles.canvasContainer}>
-      <div
-        ref={containerRef as React.RefObject<HTMLDivElement>}
-        style={
-          {
-            width: '100%',
-            height: '100%',
-            position: 'absolute',
-            top: '0',
-            left: '0',
-            background: '#0a0a0c',
-          } as React.CSSProperties
-        }
-      />
-      <video
-        ref={videoRef}
-        style={
-          {
-            width: '100%',
-            height: '100%',
-            position: 'absolute',
-            top: '0',
-            left: '0',
-            objectFit: 'cover',
-            background: '#0a0a0c',
-            transform: 'scaleX(-1)',
-            // Hide the legacy <video> element when the modern element-attach path
-            // succeeds — otherwise it sits on top of the container div and obscures
-            // the actual SDK video player with its opaque background.
-            display: showLegacyVideo ? undefined : 'none',
-          } as React.CSSProperties
-        }
-        autoPlay
-        muted
-        playsInline
       />
     </View>
   );
@@ -407,8 +252,6 @@ function ZoomSelfVideoView({
 /* -------------------------------------------------------------------------- */
 /*  ConnectingFallback                                                        */
 /*  Premium avatar tile shown while participant is null (session connecting).  */
-/*  Multi-layer breathing ring: inner border pulse + outer glow ring          */
-/*  with offset timing for organic depth.                                     */
 /* -------------------------------------------------------------------------- */
 
 function ConnectingFallback({
@@ -418,11 +261,8 @@ function ConnectingFallback({
   name: string;
   size: 'normal' | 'small' | 'spotlight';
 }) {
-  // Inner ring: 0.35 -> 0.7 opacity, 1600ms cycle
   const innerOpacity = useSharedValue(0.35 as number);
-  // Outer ring: 0.15 -> 0.45 opacity, 2000ms cycle (offset phase for organic feel)
   const outerOpacity = useSharedValue(0.15 as number);
-  // Connecting status dot
   const dotOpacity = useSharedValue(0.3 as number);
 
   useEffect(() => {
@@ -479,7 +319,6 @@ function ConnectingFallback({
         style={styles.avatarFill}
       />
 
-      {/* Outer breathing ring */}
       <ReAnimated.View
         style={[
           fallbackStyles.outerBreathRing,
@@ -489,7 +328,6 @@ function ConnectingFallback({
         accessibilityElementsHidden
       />
 
-      {/* Inner breathing ring */}
       <ReAnimated.View
         style={[
           fallbackStyles.innerBreathRing,
@@ -499,7 +337,6 @@ function ConnectingFallback({
         accessibilityElementsHidden
       />
 
-      {/* Bottom gradient with name + connecting status */}
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.7)']}
         style={styles.bottomOverlay}
@@ -527,7 +364,6 @@ function ConnectingFallback({
 
 /* -------------------------------------------------------------------------- */
 /*  ZoomVideoTileContent                                                      */
-/*  Inner component with guaranteed non-null participant.                     */
 /* -------------------------------------------------------------------------- */
 
 function ZoomVideoTileContent({
@@ -547,22 +383,9 @@ function ZoomVideoTileContent({
 }) {
   const isSmall = size === 'small';
   const isSpotlight = size === 'spotlight';
-  const [localAttachFailed, setLocalAttachFailed] = useState(false);
-  // Treat stream readiness as part of "has video" so we show avatar fallback
-  // instead of a blank tile when participant metadata flips before stream exists.
   const hasVideo = participant.isVideoOn && Platform.OS === 'web' && !!stream;
-  const shouldUseLocalVideoElement =
-    hasVideo
-    && participant.isLocal
-    && !localAttachFailed
-    && typeof stream?.attachVideo === 'function'
-    && typeof stream?.detachVideo === 'function';
 
-  useEffect(() => {
-    setLocalAttachFailed(false);
-  }, [participant.userId, stream]);
-
-  // Smooth speaking border opacity — fades in over 200ms, fades out over 300ms
+  // Smooth speaking border opacity
   const speakingOpacity = useSharedValue(0 as number);
   useEffect(() => {
     speakingOpacity.value = withTiming(
@@ -585,28 +408,15 @@ function ZoomVideoTileContent({
       accessibilityLabel={`${participant.displayName}${isActiveSpeaker ? ', speaking' : ''}${participant.isMuted ? ', muted' : ''}`}
       accessibilityRole="image"
     >
-      {/* Video canvas or avatar fallback */}
       {hasVideo ? (
-        shouldUseLocalVideoElement ? (
-          <ZoomSelfVideoView
-            participant={participant}
-            stream={stream}
-            onAttachFailed={() => setLocalAttachFailed(true)}
-            size={size}
-            isActiveSpeaker={isActiveSpeaker}
-            networkQuality={networkQuality}
-            maxVideoQuality={maxVideoQuality}
-          />
-        ) : (
-          <ZoomCanvasView
-            participant={participant}
-            stream={stream}
-            size={size}
-            isActiveSpeaker={isActiveSpeaker}
-            networkQuality={networkQuality}
-            maxVideoQuality={maxVideoQuality}
-          />
-        )
+        <ZoomVideoView
+          participant={participant}
+          stream={stream}
+          size={size}
+          isActiveSpeaker={isActiveSpeaker}
+          networkQuality={networkQuality}
+          maxVideoQuality={maxVideoQuality}
+        />
       ) : (
         <AvatarTileSurface
           name={participant.displayName}
@@ -618,7 +428,7 @@ function ZoomVideoTileContent({
         />
       )}
 
-      {/* Speaking glow overlay — animated opacity for smooth transition */}
+      {/* Speaking glow overlay */}
       <ReAnimated.View
         style={[styles.speakingBorder, speakingBorderStyle]}
         pointerEvents="none"
@@ -645,7 +455,6 @@ function ZoomVideoTileContent({
             )}
           </View>
           <View style={styles.indicators}>
-            {/* Muted indicator */}
             {participant.isMuted && (
               <View
                 style={styles.mutedBadge}
@@ -663,8 +472,7 @@ function ZoomVideoTileContent({
 }
 
 /* -------------------------------------------------------------------------- */
-/*  ZoomVideoTile (exported guard)                                            */
-/*  Checks participant existence BEFORE rendering content.                    */
+/*  ZoomVideoTile (exported)                                                  */
 /* -------------------------------------------------------------------------- */
 
 function ZoomVideoTileInner({
@@ -677,14 +485,8 @@ function ZoomVideoTileInner({
 }: ZoomVideoTileProps) {
   const displayName = participant?.displayName ?? 'Unknown';
 
-  // Guard: no participant means session hasn't connected this peer yet
   if (!participant) {
-    return (
-      <ConnectingFallback
-        name={displayName}
-        size={size}
-      />
-    );
+    return <ConnectingFallback name={displayName} size={size} />;
   }
 
   return (
@@ -745,7 +547,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 2,
     borderColor: Colors.semantic.success,
-    // Web-only outer glow for speaking state
     boxShadow: 'inset 0 0 8px rgba(52, 199, 89, 0.2), 0 0 12px rgba(52, 199, 89, 0.15)',
   } as ViewStyle,
   bottomOverlay: {

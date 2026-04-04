@@ -81,10 +81,19 @@ type ZoomMediaStream = {
   // Video
   startVideo: (options?: Record<string, unknown>) => Promise<void>;
   stopVideo: () => Promise<void>;
-  attachVideo?: (userId: number, quality: number, element: HTMLVideoElement) => Promise<unknown> | unknown;
-  detachVideo?: (userId: number, element?: HTMLVideoElement) => Promise<unknown> | unknown;
-  renderVideo: (canvas: HTMLCanvasElement, userId: number, width: number, height: number, x: number, y: number, rotation: number) => void;
-  stopRenderVideo: (canvas: HTMLCanvasElement, userId: number) => void;
+  attachVideo: (
+    userId: number,
+    videoQuality: number,
+    element?: string | HTMLElement,
+  ) => Promise<HTMLElement | { type: string; reason: string }>;
+  detachVideo: (
+    userId: number,
+    element?: string | HTMLElement,
+  ) => Promise<HTMLElement | HTMLElement[]>;
+  /** @deprecated Use attachVideo instead */
+  renderVideo?: (canvas: HTMLCanvasElement, userId: number, width: number, height: number, x: number, y: number, rotation: number) => void;
+  /** @deprecated Use detachVideo instead */
+  stopRenderVideo?: (canvas: HTMLCanvasElement, userId: number) => void;
   getCameraList: () => MediaDevice[];
   switchCamera: (deviceId: string) => Promise<void>;
   enableHardwareAcceleration?: (enable: boolean) => Promise<void>;
