@@ -26,9 +26,11 @@ interface NoraTileProps {
   avaState: RoomAvaState;
   isNoraSpeaking: boolean;
   onPress: () => void;
+  /** Compact mode for mobile guest view — horizontal layout, smaller photo */
+  compact?: boolean;
 }
 
-export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
+export function NoraTile({ avaState, isNoraSpeaking, onPress, compact = false }: NoraTileProps) {
   const colorIndexRef = useRef(0);
   const containerRef = useRef<any>(null);
 
@@ -71,6 +73,39 @@ export function NoraTile({ avaState, isNoraSpeaking, onPress }: NoraTileProps) {
     : avaState === 'listening' ? '#3B82F6'
     : avaState === 'thinking' ? '#A78BFA'
     : '#4ade80';
+
+  if (compact) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={styles.compactContainer}
+        accessibilityRole="button"
+        accessibilityLabel={`Nora Room Assistant, ${statusText}`}
+      >
+        <View
+          ref={containerRef}
+          style={[
+            styles.compactPhotoWrap,
+            Platform.OS === 'web' && {
+              animationName: isActive ? 'noraGlowCycleActive' : 'noraGlowCycle',
+              animationDuration: '8s',
+              animationIterationCount: 'infinite',
+              animationTimingFunction: 'ease-in-out',
+            } as any,
+          ]}
+        >
+          <Image source={noraPhoto} style={styles.compactPhoto} contentFit="cover" />
+        </View>
+        <View style={styles.compactInfo}>
+          <Text style={styles.compactName}>Nora</Text>
+          <View style={styles.compactStatusRow}>
+            <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
+            <Text style={styles.compactStatus}>{statusText}</Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
@@ -154,5 +189,49 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+
+  // ── Compact mode (mobile guest view) ────────────────────────────
+  compactContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    borderRadius: 10,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  compactPhotoWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  compactPhoto: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  compactInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  compactName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.95)',
+    letterSpacing: 0.2,
+  },
+  compactStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compactStatus: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.6)',
   },
 });

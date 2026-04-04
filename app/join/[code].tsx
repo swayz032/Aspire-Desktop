@@ -17,10 +17,9 @@ import {
   View,
   Text,
   StyleSheet,
-  Animated,
   Platform,
   Pressable,
-  ViewStyle,
+  type ViewStyle,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +27,8 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 import { VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
+import { injectGuestTheme, injectGuestBranding } from '@/lib/zoom-guest-theme';
+import { GuestConferenceLayout } from '@/components/session/GuestConferenceLayout';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,42 +106,29 @@ function injectGuestStyles() {
 // ── Loading State ────────────────────────────────────────────────────────────
 
 function LoadingView() {
-  const breatheAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(breatheAnim, { toValue: 0.5, duration: 1200, useNativeDriver: false }),
-        Animated.timing(breatheAnim, { toValue: 1, duration: 1200, useNativeDriver: false }),
-      ]),
-    ).start();
-  }, []);
-
   return (
     <View style={styles.centerContainer} accessibilityRole="progressbar" accessibilityLabel="Loading conference">
       <View style={styles.ringContainer}>
         <View style={styles.ringOuter} />
         <View style={styles.ringDashed} />
         <View style={styles.logoContainer}>
-          <Animated.View style={[styles.logoInner, { opacity: breatheAnim }]}>
-            <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
-          </Animated.View>
+          <Ionicons name="videocam" size={32} color={Colors.accent.cyan} />
         </View>
       </View>
       <Text style={styles.loadingTitle}>Joining Conference</Text>
+      <Text style={styles.loadingSubtitle}>Preparing your secure connection</Text>
       <View style={styles.dotsRow}>
         {[0, 1, 2].map(i => (
-          <Animated.View
+          <View
             key={i}
-            style={[styles.breatheDot, {
-              opacity: breatheAnim,
-              ...(Platform.OS === 'web' ? {
+            style={[styles.breatheDot,
+              Platform.OS === 'web' ? {
                 animationName: 'guestBreatheDot',
                 animationDuration: '1.2s',
                 animationIterationCount: 'infinite',
                 animationDelay: `${i * 0.2}s`,
-              } : {}),
-            }]}
+              } as unknown as ViewStyle : {},
+            ]}
           />
         ))}
       </View>
@@ -160,19 +148,47 @@ function ErrorView({
   onRetry: () => void;
 }) {
   const config = {
-    expired: { icon: 'time-outline' as const, title: 'Link Expired', desc: 'This conference link has expired. Links are valid for 60 minutes.', color: Colors.semantic.warning },
-    invalid: { icon: 'close-circle-outline' as const, title: 'Link Not Found', desc: 'This conference link is invalid or has already been used.', color: Colors.semantic.error },
-    error: { icon: 'cloud-offline-outline' as const, title: 'Connection Error', desc: message || 'Unable to connect. Please check your network.', color: Colors.semantic.error },
+    expired: {
+      icon: 'time-outline' as const,
+      title: 'Link Expired',
+      desc: 'This conference link has expired. Links are valid for 60 minutes.',
+      color: Colors.semantic.warning,
+      borderColor: Colors.semantic.warningLight,
+      bgColor: 'rgba(212, 160, 23, 0.08)',
+    },
+    invalid: {
+      icon: 'close-circle-outline' as const,
+      title: 'Link Not Found',
+      desc: 'This conference link is invalid or has already been used.',
+      color: Colors.semantic.error,
+      borderColor: Colors.semantic.errorLight,
+      bgColor: 'rgba(255, 59, 48, 0.08)',
+    },
+    error: {
+      icon: 'cloud-offline-outline' as const,
+      title: 'Connection Error',
+      desc: message || 'Unable to connect. Please check your network.',
+      color: Colors.semantic.error,
+      borderColor: Colors.semantic.errorLight,
+      bgColor: 'rgba(255, 59, 48, 0.08)',
+    },
   }[state];
 
   return (
     <View style={styles.centerContainer} accessibilityRole="alert">
-      <View style={[styles.errorCard, { borderColor: config.color + '40' }]}>
-        <Ionicons name={config.icon} size={40} color={config.color} />
+      <View style={[styles.errorCard, { borderColor: config.borderColor }]}>
+        <View style={[styles.errorIconCircle, { backgroundColor: config.bgColor }]}>
+          <Ionicons name={config.icon} size={32} color={config.color} />
+        </View>
         <Text style={styles.errorTitle}>{config.title}</Text>
         <Text style={styles.errorDesc}>{config.desc}</Text>
         {state === 'error' && (
-          <Pressable style={styles.retryButton} onPress={onRetry} accessibilityRole="button" accessibilityLabel="Retry connection">
+          <Pressable
+            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+            onPress={onRetry}
+            accessibilityRole="button"
+            accessibilityLabel="Retry connection"
+          >
             <Ionicons name="refresh" size={16} color="#fff" />
             <Text style={styles.retryText}>Try Again</Text>
           </Pressable>
@@ -190,13 +206,20 @@ function ErrorView({
 
 function DisconnectedView({ onRejoin }: { onRejoin: (() => void) | null }) {
   return (
-    <View style={styles.centerContainer} accessibilityRole="alert" accessibilityLabel="Call ended">
-      <View style={[styles.errorCard, { borderColor: Colors.accent.cyanMedium }]}>
-        <Ionicons name="checkmark-circle-outline" size={40} color={Colors.accent.cyan} />
+    <View style={styles.centerContainer} accessibilityLabel="Conference ended">
+      <View style={[styles.errorCard, styles.disconnectedCard]}>
+        <View style={[styles.errorIconCircle, { backgroundColor: 'rgba(52, 199, 89, 0.10)' }]}>
+          <Ionicons name="checkmark-circle-outline" size={32} color={Colors.semantic.success} />
+        </View>
         <Text style={styles.errorTitle}>Session Ended</Text>
-        <Text style={styles.errorDesc}>You have left the conference.</Text>
+        <Text style={styles.errorDesc}>You have left the conference. Thank you for joining.</Text>
         {onRejoin && (
-          <Pressable style={styles.retryButton} onPress={onRejoin} accessibilityRole="button" accessibilityLabel="Rejoin conference">
+          <Pressable
+            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+            onPress={onRejoin}
+            accessibilityRole="button"
+            accessibilityLabel="Rejoin conference"
+          >
             <Ionicons name="arrow-forward-circle-outline" size={16} color="#fff" />
             <Text style={styles.retryText}>Rejoin</Text>
           </Pressable>
@@ -310,7 +333,7 @@ function ZoomUIToolkitSession({
             },
             leave: { enable: true },
             invite: { enable: false },
-            theme: { enable: false, defaultTheme: 'dark' as const },
+            theme: { enable: true, defaultTheme: 'dark' as const },
             header: { enable: true },
             footer: { enable: true },
           },
@@ -320,6 +343,11 @@ function ZoomUIToolkitSession({
         // The toolkit handles its own loading state, preview, and error UI.
         // MUST be called before registering event callbacks.
         await uitoolkit.joinSession(containerRef.current, config);
+
+        // Inject Aspire branding (logo + footer) into the toolkit DOM
+        if (containerRef.current) {
+          injectGuestBranding(containerRef.current);
+        }
 
         if (!destroyed && mountedRef.current) {
           hasJoinedRef.current = true;
@@ -368,10 +396,11 @@ function ZoomUIToolkitSession({
       id="zoom-uitoolkit-container"
       className="aspire-guest-conference-root"
       style={{
-        height: '100dvh',
-        width: '100vw',
+        height: '100%',
+        width: '100%',
         background: Colors.background.primary,
         overflow: 'hidden',
+        borderRadius: 12,
       }}
     />
   );
@@ -389,6 +418,7 @@ function GuestJoinContent() {
   useEffect(() => {
     ensureMobileViewport();
     injectGuestStyles();
+    injectGuestTheme();
   }, []);
 
   // Validate join code → fetch token
@@ -457,13 +487,15 @@ function GuestJoinContent() {
       {pageState === 'loading' && <LoadingView />}
 
       {(pageState === 'ready' || pageState === 'active') && joinData && (
-        <ZoomUIToolkitSession
-          token={joinData.token}
-          topic={joinData.topic || joinData.roomName}
-          guestName={joinData.guestName}
-          onSessionEnd={handleSessionEnd}
-          onError={handleToolkitError}
-        />
+        <GuestConferenceLayout roomName={joinData.roomName}>
+          <ZoomUIToolkitSession
+            token={joinData.token}
+            topic={joinData.topic || joinData.roomName}
+            guestName={joinData.guestName}
+            onSessionEnd={handleSessionEnd}
+            onError={handleToolkitError}
+          />
+        </GuestConferenceLayout>
       )}
 
       {pageState === 'disconnected' && (
@@ -501,13 +533,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.xxxl,
   },
-  // Loading rings
+
+  // ── Loading rings ─────────────────────────────────────────────────
   ringContainer: {
     width: 150,
     height: 150,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.xxl, // 24px
   },
   ringOuter: {
     position: 'absolute',
@@ -520,98 +553,119 @@ const styles = StyleSheet.create({
       animationName: 'guestRingPulse',
       animationDuration: '2.4s',
       animationIterationCount: 'infinite',
-    } : {}),
-  } as any,
+    } as unknown as ViewStyle : {}),
+  },
   ringDashed: {
     position: 'absolute',
     width: 150,
     height: 150,
     borderRadius: 75,
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.08)',
+    borderColor: 'rgba(59, 130, 246, 0.06)',
     borderStyle: 'dashed',
   },
   logoContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    backgroundColor: 'rgba(59, 130, 246, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.15)',
-  },
-  logoInner: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: 'rgba(59, 130, 246, 0.12)',
   },
   loadingTitle: {
-    ...Typography.body,
-    color: Colors.text.secondary,
-    fontWeight: '600',
-    marginBottom: Spacing.sm,
+    ...Typography.headline, // 18px/600 — the hero text of loading state
+    color: Colors.text.primary,
+    marginBottom: Spacing.xs, // 4px
+  },
+  loadingSubtitle: {
+    ...Typography.caption, // 14px — secondary, not 12px small
+    color: Colors.text.tertiary, // #a1a1a6 — readable, not muted
+    marginBottom: Spacing.lg, // 16px
   },
   dotsRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: Spacing.sm, // 8px
   },
   breatheDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: Colors.accent.cyan,
   },
-  // Error states
+
+  // ── Error / Disconnected states ───────────────────────────────────
   errorCard: {
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.surface.card, // #1C1C1E
+    borderRadius: BorderRadius.xl, // 16px
     borderWidth: 1,
-    padding: Spacing.xxxl,
+    borderColor: Colors.border.default, // fallback — overridden per state
+    padding: Spacing.xxxl, // 32px
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: Spacing.md, // 12px — more breathing room between elements
     maxWidth: 400,
     width: '100%',
   },
+  disconnectedCard: {
+    borderColor: 'rgba(52, 199, 89, 0.20)', // Success green tint
+  },
+  errorIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xs, // 4px
+  },
   errorTitle: {
-    ...Typography.title,
+    ...Typography.headline, // 18px/600
     color: Colors.text.primary,
     textAlign: 'center',
   },
   errorDesc: {
-    ...Typography.body,
-    color: Colors.text.muted,
+    ...Typography.caption, // 14px/400
+    color: Colors.text.tertiary, // #a1a1a6 — contrast ratio 4.6:1 against #1C1C1E
     textAlign: 'center',
     maxWidth: 320,
+    lineHeight: 20,
   },
   retryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: Spacing.sm, // 8px
     backgroundColor: Colors.accent.cyan,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.xxl, // 24px
+    paddingVertical: Spacing.md, // 12px
+    borderRadius: BorderRadius.md, // 8px
+    marginTop: Spacing.sm, // 8px
+    minHeight: 44, // A11y: minimum 44pt tap target
+    minWidth: 120,
+  },
+  retryButtonPressed: {
+    opacity: 0.85,
   },
   retryText: {
-    color: '#fff',
+    ...Typography.captionMedium, // 14px/500
+    color: Colors.text.primary,
     fontWeight: '600',
-    fontSize: 14,
   },
   brandingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: Spacing.lg,
+    gap: Spacing.sm, // 8px
+    marginTop: Spacing.lg, // 16px
   },
   brandingDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: Colors.accent.cyan,
+    opacity: 0.5,
   },
   brandingText: {
-    color: Colors.text.muted,
-    fontSize: 11,
+    ...Typography.small, // 12px
+    color: Colors.text.muted, // #6e6e73 — subtle but not invisible
   },
 });
