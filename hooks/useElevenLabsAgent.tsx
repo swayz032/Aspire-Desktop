@@ -31,7 +31,7 @@ import { Sentry } from '@/lib/sentry';
 import { reportProviderError } from '@/lib/providerErrorReporter';
 import type { AgentName } from '@/lib/elevenlabs';
 import { getTimeOfDay } from '@/lib/elevenlabs-agents';
-import { unlockBrowserAudioPlayback, closeAudioContext } from '@/lib/browserAudioUnlock';
+import { unlockBrowserAudioPlayback } from '@/lib/browserAudioUnlock';
 import { supabase } from '@/lib/supabase';
 
 const AUTH_COOLDOWN_MS = 60_000;
@@ -452,7 +452,6 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     reconnectAttemptsRef.current = 0;
     try {
       conversation.endSession();
-      closeAudioContext();
       sessionActiveRef.current = false;
       setIsSessionActiveState(false);
       updateStatus('idle');

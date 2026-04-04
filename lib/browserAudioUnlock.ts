@@ -27,6 +27,8 @@ export async function unlockBrowserAudioPlayback(): Promise<boolean> {
     await probe.play();
     probe.pause();
     probe.currentTime = 0;
+    probe.src = '';  // Release audio resource immediately
+    probe.remove();
     htmlUnlocked = true;
   } catch {
     // Keep going: some browsers unlock via AudioContext only.
@@ -55,6 +57,13 @@ export async function unlockBrowserAudioPlayback(): Promise<boolean> {
         oscillator.start();
         oscillator.stop(sharedAudioContext.currentTime + 0.02);
         contextUnlocked = true;
+      }
+
+      // Close immediately after unlock probe — keeping it open competes with
+      // the ElevenLabs SDK's own AudioContext for hardware output, causing crackling.
+      if (sharedAudioContext && sharedAudioContext.state !== 'closed') {
+        sharedAudioContext.close().catch(() => {});
+        sharedAudioContext = null;
       }
     }
   } catch {
