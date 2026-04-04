@@ -296,6 +296,33 @@ function ZoomConferenceProviderWeb({
         setStream(mediaStream);
         let localVideoStarted = false;
 
+        const syncParticipantsFromClient = () => {
+          const allUsers = client.getAllUser?.() || [];
+          const current = client.getCurrentUserInfo?.();
+          const usersById = new Map<number, ZoomUserPayload>();
+
+          for (const user of allUsers) {
+            if (user?.userId) usersById.set(user.userId, user);
+          }
+
+          // Some SDK timing paths omit local user in early getAllUser snapshots.
+          // Always include current user so self-view tile cannot disappear.
+          if (current?.userId && !usersById.has(current.userId)) {
+            usersById.set(current.userId, current);
+          }
+
+          setParticipants(() => {
+            if (usersById.size === 0) return [];
+            return Array.from(usersById.values()).map((u) => {
+              const mapped = toParticipant(u, localUserIdRef.current);
+              if (localVideoStarted && u.userId === localUserIdRef.current) {
+                return { ...mapped, isVideoOn: true };
+              }
+              return mapped;
+            });
+          });
+        };
+
         // Start audio and video in PARALLEL — no delay between them.
         // Both use separate device streams (mic vs camera), no permission race.
         const mediaPromises: Promise<void>[] = [];
@@ -329,12 +356,17 @@ function ZoomConferenceProviderWeb({
             mediaStream.startVideo({
               fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
               hd: VIDEO_CAPTURE_DEFAULTS.hd,
+              fps: VIDEO_CAPTURE_DEFAULTS.fps,
               facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
             }).then(() => {
               localVideoStarted = true;
             }).catch(() =>
               // Fallback: try HD only if fullHd fails
-              mediaStream.startVideo({ hd: true }).then(() => {
+              mediaStream.startVideo({
+                hd: VIDEO_CAPTURE_DEFAULTS.hd,
+                fps: VIDEO_CAPTURE_DEFAULTS.fps,
+                facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
+              }).then(() => {
                 localVideoStarted = true;
               }).catch((_e: unknown) => {
                 reportProviderError({ provider: 'zoom', action: 'auto_start_video', error: _e, component: 'ZoomConferenceProvider' });
@@ -419,24 +451,12 @@ function ZoomConferenceProviderWeb({
         });
 
         // Build initial participants list (retry after 1s if empty — SDK may still be syncing)
-        const buildParticipants = () => {
-          const allUsers = client.getAllUser?.() || [];
-          return allUsers.map((u: ZoomUserPayload) => {
-            const participant = toParticipant(u, localUserIdRef.current);
-            if (localVideoStarted && u.userId === localUserIdRef.current) {
-              return { ...participant, isVideoOn: true };
-            }
-            return participant;
-          });
-        };
-        let mapped = buildParticipants();
-        setParticipants(mapped);
-        if (mapped.length === 0 && !destroyed) {
+        syncParticipantsFromClient();
+        if ((client.getAllUser?.() || []).length === 0 && !destroyed) {
           // Retry — sometimes getAllUser returns empty right after join
           setTimeout(() => {
             if (destroyed || !mountedRef.current) return;
-            mapped = buildParticipants();
-            if (mapped.length > 0) setParticipants(mapped);
+            syncParticipantsFromClient();
           }, 1500);
         }
 
@@ -444,16 +464,7 @@ function ZoomConferenceProviderWeb({
 
         client.on('user-added', (...args: unknown[]) => {
           if (!mountedRef.current) return;
-          // Zoom SDK may send a single user or an array depending on version
-          const raw = args[0];
-          const payload: ZoomUserPayload[] = Array.isArray(raw) ? raw : [raw as ZoomUserPayload];
-          setParticipants((prev) => {
-            const existing = new Set(prev.map((p) => p.userId));
-            const added = payload
-              .filter((u) => u && u.userId && !existing.has(u.userId))
-              .map((u) => toParticipant(u, localUserIdRef.current));
-            return added.length > 0 ? [...prev, ...added] : prev;
-          });
+          syncParticipantsFromClient();
         });
 
         client.on('user-removed', (...args: unknown[]) => {
@@ -461,7 +472,7 @@ function ZoomConferenceProviderWeb({
           const raw = args[0];
           const payload: ZoomUserPayload[] = Array.isArray(raw) ? raw : [raw as ZoomUserPayload];
           const removedIds = new Set(payload.filter(u => u && u.userId).map((u) => u.userId));
-          setParticipants((prev) => prev.filter((p) => !removedIds.has(p.userId)));
+          syncParticipantsFromClient();
           setActiveSpeakerId((prev) =>
             prev !== null && removedIds.has(prev) ? null : prev,
           );
@@ -469,20 +480,7 @@ function ZoomConferenceProviderWeb({
 
         client.on('user-updated', (...args: unknown[]) => {
           if (!mountedRef.current) return;
-          const raw = args[0];
-          const payload: ZoomUserPayload[] = Array.isArray(raw) ? raw : [raw as ZoomUserPayload];
-          setParticipants((prev) => {
-            const updateMap = new Map(payload.filter(u => u && u.userId).map((u) => [u.userId, u]));
-            return prev.map((p) => {
-              const update = updateMap.get(p.userId);
-              if (!update) return p;
-              const participant = toParticipant(update, localUserIdRef.current);
-              if (localVideoStarted && update.userId === localUserIdRef.current) {
-                return { ...participant, isVideoOn: true };
-              }
-              return participant;
-            });
-          });
+          syncParticipantsFromClient();
         });
 
         client.on('active-speaker', (...args: unknown[]) => {
@@ -499,6 +497,7 @@ function ZoomConferenceProviderWeb({
           switch (payload.state) {
             case 'Connected':
               setConnectionState('connected');
+              syncParticipantsFromClient();
               break;
             case 'Reconnecting':
               setConnectionState('connecting');

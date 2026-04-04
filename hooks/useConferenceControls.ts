@@ -35,11 +35,21 @@ export function useConferenceControls({ stream, client }: ConferenceControlsOpti
     if (!stream || typeof stream.startVideo !== 'function') return;
     try {
       if (isCameraOff) {
-        await stream.startVideo({
-          fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
-          hd: VIDEO_CAPTURE_DEFAULTS.hd,
-          facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
-        });
+        try {
+          await stream.startVideo({
+            fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
+            hd: VIDEO_CAPTURE_DEFAULTS.hd,
+            fps: VIDEO_CAPTURE_DEFAULTS.fps,
+            facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
+          });
+        } catch {
+          // Fallback path for devices/browsers that reject fullHd.
+          await stream.startVideo({
+            hd: VIDEO_CAPTURE_DEFAULTS.hd,
+            fps: VIDEO_CAPTURE_DEFAULTS.fps,
+            facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
+          });
+        }
       } else {
         await stream.stopVideo();
       }

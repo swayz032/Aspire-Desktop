@@ -29,6 +29,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Animation } from '@/constants/tokens';
 import { AvatarTileSurface } from '@/components/session/AvatarTileSurface';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { VIDEO_RECEIVE_QUALITY } from '@/lib/zoom-config';
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                     */
@@ -80,9 +81,13 @@ interface ZoomVideoTileProps {
 function ZoomCanvasView({
   participant,
   stream,
+  size,
+  isActiveSpeaker,
 }: {
   participant: ZoomParticipant;
   stream: ZoomVideoTileProps['stream'];
+  size: 'normal' | 'small' | 'spotlight';
+  isActiveSpeaker: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -92,21 +97,34 @@ function ZoomCanvasView({
 
     const canvas = canvasRef.current;
 
+    const quality =
+      isActiveSpeaker || size === 'spotlight' || participant.isLocal
+        ? VIDEO_RECEIVE_QUALITY.spotlight
+        : size === 'small'
+          ? VIDEO_RECEIVE_QUALITY.filmstrip
+          : VIDEO_RECEIVE_QUALITY.galleryLarge;
+
+    const dimensions =
+      quality >= VIDEO_RECEIVE_QUALITY.spotlight
+        ? { width: 1920, height: 1080 }
+        : quality >= VIDEO_RECEIVE_QUALITY.galleryLarge
+          ? { width: 1280, height: 720 }
+          : { width: 640, height: 360 };
+
     // Fixed render dimensions — canvas CSS handles display scaling
-    canvas.width = 1280;
-    canvas.height = 720;
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
 
     // Zoom renderVideo 7th param is VideoQuality, NOT rotation:
     // 0=90p, 1=180p, 2=360p, 3=720p, 4=1080p
-    // Use 3 (720p) for all participants
     stream.renderVideo(
       canvas,
       participant.userId,
-      1280,
-      720,
+      dimensions.width,
+      dimensions.height,
       0,
       0,
-      3, // VideoQuality.Video_720P
+      quality,
     );
 
     return () => {
@@ -116,7 +134,7 @@ function ZoomCanvasView({
         // Zoom SDK may throw if canvas already detached
       }
     };
-  }, [participant.userId, participant.isVideoOn, stream]);
+  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, size, isActiveSpeaker]);
 
   if (Platform.OS !== 'web') return null;
 
@@ -150,10 +168,14 @@ function ZoomSelfVideoView({
   participant,
   stream,
   onAttachFailed,
+  size,
+  isActiveSpeaker,
 }: {
   participant: ZoomParticipant;
   stream: ZoomVideoTileProps['stream'];
   onAttachFailed: () => void;
+  size: 'normal' | 'small' | 'spotlight';
+  isActiveSpeaker: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -167,10 +189,16 @@ function ZoomSelfVideoView({
 
     const videoEl = videoRef.current;
     let disposed = false;
+    const quality =
+      isActiveSpeaker || size === 'spotlight' || participant.isLocal
+        ? VIDEO_RECEIVE_QUALITY.spotlight
+        : size === 'small'
+          ? VIDEO_RECEIVE_QUALITY.filmstrip
+          : VIDEO_RECEIVE_QUALITY.galleryLarge;
 
     const attach = async () => {
       try {
-        await stream.attachVideo?.(participant.userId, 3, videoEl);
+        await stream.attachVideo?.(participant.userId, quality, videoEl);
       } catch (_e) {
         if (!disposed) onAttachFailed();
       }
@@ -186,7 +214,7 @@ function ZoomSelfVideoView({
         // Zoom SDK may throw if video is already detached
       }
     };
-  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, onAttachFailed]);
+  }, [participant.userId, participant.isVideoOn, participant.isLocal, stream, onAttachFailed, size, isActiveSpeaker]);
 
   if (Platform.OS !== 'web') return null;
 
@@ -354,7 +382,9 @@ function ZoomVideoTileContent({
   const isSmall = size === 'small';
   const isSpotlight = size === 'spotlight';
   const [localAttachFailed, setLocalAttachFailed] = useState(false);
-  const hasVideo = participant.isVideoOn && Platform.OS === 'web';
+  // Treat stream readiness as part of "has video" so we show avatar fallback
+  // instead of a blank tile when participant metadata flips before stream exists.
+  const hasVideo = participant.isVideoOn && Platform.OS === 'web' && !!stream;
   const shouldUseLocalVideoElement =
     hasVideo
     && participant.isLocal
@@ -396,9 +426,16 @@ function ZoomVideoTileContent({
             participant={participant}
             stream={stream}
             onAttachFailed={() => setLocalAttachFailed(true)}
+            size={size}
+            isActiveSpeaker={isActiveSpeaker}
           />
         ) : (
-          <ZoomCanvasView participant={participant} stream={stream} />
+          <ZoomCanvasView
+            participant={participant}
+            stream={stream}
+            size={size}
+            isActiveSpeaker={isActiveSpeaker}
+          />
         )
       ) : (
         <AvatarTileSurface

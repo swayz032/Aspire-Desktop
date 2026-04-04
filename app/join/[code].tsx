@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { reportProviderError } from '@/lib/providerErrorReporter';
+import { VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -279,7 +280,13 @@ function ZoomUIToolkitSession({
           userName: guestName,
           featuresOptions: {
             preview: { enable: true, isAllowModifyName: true },
-            video: { enable: true, enforceMultipleVideos: true },
+            video: {
+              enable: true,
+              enforceMultipleVideos: true,
+              // Keep guest path aligned with conference capture targets.
+              fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
+              hd: VIDEO_CAPTURE_DEFAULTS.hd,
+            },
             audio: { enable: true, backgroundNoiseSuppression: true },
             share: { enable: true },
             chat: { enable: true, enableEmoji: true },
