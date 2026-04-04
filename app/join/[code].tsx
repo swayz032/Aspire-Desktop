@@ -307,22 +307,18 @@ function ZoomUIToolkitSession({
           },
         };
 
-        // Only trigger "session ended" if user actually joined (not just preview)
+        // Register session destroy callback
+        hasJoinedRef.current = true;
         uitoolkit.onSessionDestroyed(() => {
           if (mountedRef.current && hasJoinedRef.current) {
             onSessionEndRef.current();
           }
         });
 
-        // Open preview first (PreJoin screen)
-        uitoolkit.openPreview(containerRef.current, config, {
-          onClickJoin: () => {
-            if (!containerRef.current || destroyed) return;
-            hasJoinedRef.current = true;
-            uitoolkit.closePreview(containerRef.current);
-            uitoolkit.joinSession(containerRef.current, config);
-          },
-        });
+        // Join session directly — the UI Toolkit renders its own full UI
+        // (video grid, controls, chat, settings) into the container.
+        // Skip openPreview — it causes blank screen when transitioning to joinSession.
+        await uitoolkit.joinSession(containerRef.current, config);
       } catch (err) {
         reportProviderError({ provider: 'zoom-uitoolkit', action: 'init', error: err, component: 'GuestJoinPage' });
         // DON'T call onSessionEnd on init errors — show the error in console,
