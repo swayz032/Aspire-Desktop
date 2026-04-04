@@ -355,7 +355,7 @@ function DesktopHomeInner() {
               )}
 
               <ImmersionLayer depth={1}>
-              <View style={[styles.threeColWrapper, { gap: columnGap, height: 840 }]}>
+              <View style={[styles.threeColWrapper, { gap: columnGap, minHeight: 840 }]}>
                 {showThreeCol && (
                 <View style={[styles.leftCol, { width: leftWidth }]}>
                   <CanvasTileWrapper
@@ -418,27 +418,25 @@ function DesktopHomeInner() {
                 </View>
 
                 <View style={[styles.rightCol, { width: rightWidth }]}>
-                  <View style={{ height: 260, overflow: 'hidden', flexShrink: 0 }}>
-                    <CanvasTileWrapper
-                      tileId="finance_hub"
-                      mode={mode}
-                      onPress={handleTilePress}
-                      onHoverIn={handleTileHoverIn}
-                      onHoverOut={handleTileHoverOut}
-                      onContextMenu={handleContextMenu}
-                    >
-                      <View style={styles.section}>
-                        <SectionHeader title="Ops Snapshot" />
-                        <OpsSnapshotTabs
-                          cashData={liveCashData}
-                          pipelineStages={pipelineStages}
-                          businessScore={businessScore}
-                        />
-                      </View>
-                    </CanvasTileWrapper>
-                  </View>
+                  <CanvasTileWrapper
+                    tileId="finance_hub"
+                    mode={mode}
+                    onPress={handleTilePress}
+                    onHoverIn={handleTileHoverIn}
+                    onHoverOut={handleTileHoverOut}
+                    onContextMenu={handleContextMenu}
+                  >
+                    <View style={styles.section}>
+                      <SectionHeader title="Ops Snapshot" />
+                      <OpsSnapshotTabs
+                        cashData={liveCashData}
+                        pipelineStages={pipelineStages}
+                        businessScore={businessScore}
+                      />
+                    </View>
+                  </CanvasTileWrapper>
 
-                  <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E', padding: 16, flex: 1, overflow: 'hidden' }}>
+                  <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E', padding: 16, maxHeight: 300, overflow: 'hidden' }}>
                     <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
                   </View>
                 </View>
