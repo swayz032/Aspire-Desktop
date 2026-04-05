@@ -6,7 +6,7 @@
  * Persistence: Mode persists to localStorage (Wave 8)
  */
 
-export type CanvasMode = 'chat' | 'canvas';
+export type CanvasMode = 'flow' | 'canvas';
 export type PersonaState = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type AgentName = 'ava' | 'finn' | 'eli';
 
@@ -30,14 +30,14 @@ type Listener = (state: ChatCanvasState) => void;
 // Wave 8: Load mode from localStorage on startup
 const STORAGE_KEY = 'canvas_mode_preference';
 function loadModeFromStorage(): CanvasMode {
-  if (typeof window === 'undefined') return 'chat';
+  if (typeof window === 'undefined') return 'flow';
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'chat' || stored === 'canvas') return stored;
+    if (stored === 'flow' || stored === 'canvas') return stored;
   } catch {
     // localStorage access failed (private browsing, etc.)
   }
-  return 'chat';
+  return 'flow';
 }
 
 // State
@@ -132,7 +132,7 @@ export function setActiveAgent(agent: AgentName) {
 // Reset (for testing)
 export function resetState() {
   state = {
-    mode: 'chat',
+    mode: 'flow',
     activityEvents: [],
     personaState: 'idle',
     activeAgent: 'ava',

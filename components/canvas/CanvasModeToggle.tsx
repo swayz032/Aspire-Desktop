@@ -37,8 +37,7 @@ interface TabConfig {
 }
 
 const TABS: TabConfig[] = [
-  { mode: 'chat', icon: 'chatbubble-outline', label: 'Chat' },
-  { mode: 'canvas', icon: 'grid-outline', label: 'Canvas' },
+  { mode: 'flow', icon: 'chatbubble-outline', label: 'Flow' },
 ];
 
 // ---------------------------------------------------------------------------

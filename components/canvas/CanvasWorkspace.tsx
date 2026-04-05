@@ -226,7 +226,7 @@ function CanvasWorkspaceInner(): React.ReactElement {
 
   // Auto-start voice session when entering chat mode
   useEffect(() => {
-    if (subMode === 'chat' && !avaVoice.isListening && !avaVoice.isProcessing && avaVoice.status === 'idle') {
+    if (subMode === 'flow' && !avaVoice.isListening && !avaVoice.isProcessing && avaVoice.status === 'idle') {
       // Voice session starts on user interaction (browser autoplay policy)
       // We don't auto-start — user taps the Persona orb or control bar
     }
@@ -518,8 +518,8 @@ function CanvasWorkspaceInner(): React.ReactElement {
             />
           )}
 
-          {/* Content layer — ScrollView for chat, overflow visible for canvas drag */}
-          {subMode === 'chat' ? (
+          {/* Content layer — Flow mode (formerly Chat Canvas) */}
+          {(
             <ScrollView
               style={ws.scrollLayer}
               contentContainerStyle={[
@@ -551,9 +551,8 @@ function CanvasWorkspaceInner(): React.ReactElement {
                   <View style={[ws.headerRow, { maxWidth: isWide ? 1200 : CanvasTokens.workspace.gridMaxWidth }]}>
                     <View style={ws.headerLeft}>
                       <View style={ws.headerDot} />
-                      <Text style={ws.headerTitle}>CANVAS</Text>
+                      <Text style={ws.headerTitle}>FLOW</Text>
                     </View>
-                    <CanvasModeToggle />
                   </View>
                   <Text style={ws.headerSub}>
                     Governed execution workspace
@@ -630,75 +629,6 @@ function CanvasWorkspaceInner(): React.ReactElement {
                 </View>
               </View>
             </ScrollView>
-          ) : (
-            <View style={[
-              ws.contentCanvas,
-              {
-                paddingHorizontal: isWide ? 64 : isDesktop ? 48 : isLaptop ? 32 : 20,
-                paddingTop: isDesktop ? 36 : 24,
-                maxWidth: contentMaxWidth,
-                alignSelf: contentMaxWidth ? 'center' : undefined,
-                width: contentMaxWidth ? '100%' : undefined,
-              },
-            ]}>
-              <Animated.View
-                style={[
-                  ws.header,
-                  {
-                    opacity: headerOpacity,
-                    transform: [{ translateY: headerTranslateY }],
-                  },
-                ]}
-              >
-                <View style={[ws.headerRow, { maxWidth: isWide ? 1200 : CanvasTokens.workspace.gridMaxWidth }]}>
-                  <View style={ws.headerLeft}>
-                    <View style={ws.headerDot} />
-                    <Text style={ws.headerTitle}>CANVAS</Text>
-                  </View>
-                  <CanvasModeToggle />
-                </View>
-                <Text style={ws.headerSub}>
-                  Governed execution workspace
-                </Text>
-              </Animated.View>
-
-              <View
-                style={ws.canvasArea}
-                {...(Platform.OS === 'web' ? { dataSet: { canvasDrop: 'true' } } as any : {})}
-              >
-                {placedWidgets.map((pw) => {
-                  const widgetDef = WIDGET_CONTENT[pw.id];
-                  if (!widgetDef) return null;
-                  return (
-                    <WidgetIconTile
-                      key={pw.instanceId}
-                      title={widgetDef.title}
-                      accent={widgetDef.accent}
-                      icon={widgetDef.icon}
-                      position={pw.position}
-                      onPress={() => setOpenModalInstanceId(pw.instanceId)}
-                      onRemove={() => handleWidgetClose(pw.instanceId)}
-                      onPositionChange={(pos) => handlePositionChange(pw.instanceId, pos)}
-                    />
-                  );
-                })}
-
-                {placedWidgets.length === 0 && (
-                  <View style={ws.emptyState}>
-                    <View style={ws.emptyIcon}>
-                      <View style={ws.emptyIconPulse} />
-                      <View style={ws.emptyIconInner} />
-                    </View>
-                    <Text style={ws.emptyTitle}>Your workspace is empty</Text>
-                    <Text style={ws.emptySub}>
-                      {isTablet
-                        ? 'Tap widgets from the dock below to get started'
-                        : 'Drag or tap widgets from the dock below'}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
           )}
         </View>
       </Animated.View>
@@ -706,92 +636,7 @@ function CanvasWorkspaceInner(): React.ReactElement {
 
 
 
-      {/* WidgetDock — macOS-style dock at bottom (canvas mode only) */}
-      {subMode === 'canvas' && (
-        <WidgetDock
-          widgets={DEFAULT_WIDGETS}
-          onWidgetSelect={handleWidgetSelect}
-          onWidgetDrop={handleWidgetDrop}
-          onAgentSelect={handleWidgetSelect}
-          position="bottom"
-          activeWidgetIds={placedWidgets.map(pw => pw.id)}
-          activeAgentId={activeAgentVoiceId}
-        />
-      )}
 
-      {/* Trash can for drag-to-delete */}
-      {subMode === 'canvas' && dragState.isDragging && (
-        <CanvasTrashCan state="active" />
-      )}
-
-      {/* Snap ghost */}
-      {dragState.isDragging && dragState.previewPosition && (
-        <SnapGhost
-          position={dragState.previewPosition}
-          size={defaultWidgetSize}
-          isValid={snapIsValid}
-        />
-      )}
-
-      {/* Drag preview */}
-      <DragPreview
-        widgetId={dragState.activeWidgetId}
-        isDragging={dragState.isDragging}
-      />
-
-      {/* Widget Modals / Panels — open when a canvas tile is tapped */}
-      {(() => {
-        const openWidget = openModalInstanceId
-          ? placedWidgets.find((pw) => pw.instanceId === openModalInstanceId)
-          : null;
-        const widgetDef = openWidget ? WIDGET_CONTENT[openWidget.id] : null;
-
-        if (!openWidget || !widgetDef) return null;
-
-        // Agent widgets (Ava / Eli / Finn) — keep WidgetModal unchanged
-        if (widgetDef.kind === 'agent') {
-          const voiceStatus = voiceHooks[openWidget.id as keyof typeof voiceHooks]?.status;
-          const AgentComp = widgetDef.component;
-          return (
-            <WidgetModal
-              visible
-              size={widgetDef.size}
-              accent={widgetDef.accent}
-              onClose={() => setOpenModalInstanceId(null)}
-            >
-              <AgentComp
-                suiteId={suiteId || ''}
-                officeId={tenant?.officeId || ''}
-                agentId={openWidget.id}
-                voiceStatus={voiceStatus}
-                onPrimaryAction={() => handleAgentVoiceToggle(openWidget.id)}
-              />
-            </WidgetModal>
-          );
-        }
-
-        // All other widgets — CanvasPeekPanel with dedicated panel content
-        const PanelComp = widgetDef.panelContent;
-        return (
-          <CanvasPeekPanel
-            visible
-            onClose={() => setOpenModalInstanceId(null)}
-            onOpenFullPage={() => {
-              setOpenModalInstanceId(null);
-              router.push(widgetDef.pageRoute as any);
-            }}
-            accent={widgetDef.accent}
-            icon={widgetDef.icon}
-            title={widgetDef.title}
-            subtitle={widgetDef.subtitle}
-          >
-            <PanelComp
-              suiteId={suiteId || ''}
-              officeId={tenant?.officeId || ''}
-            />
-          </CanvasPeekPanel>
-        );
-      })()}
 
       {/* Stage overlay */}
       <Stage />
