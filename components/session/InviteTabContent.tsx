@@ -173,6 +173,8 @@ function StaggeredMemberRow({
 
 export interface InviteTabContentProps {
   roomName: string;
+  /** Human-readable room label (e.g. "Suite A-1234 • Room CR-A1234") for join code display */
+  displayName?: string;
   hostName: string;
   purpose: string;
   correlationId?: string;
@@ -205,6 +207,7 @@ interface LookupResult {
 
 export function InviteTabContent({
   roomName,
+  displayName,
   hostName,
   purpose,
   correlationId,
@@ -409,6 +412,7 @@ export function InviteTabContent({
           email: guestEmail.trim(),
           guestName: guestName.trim(),
           roomName,
+          displayName,
           hostName,
           purpose,
         }),
@@ -442,7 +446,7 @@ export function InviteTabContent({
           'Content-Type': 'application/json',
           ...(correlationId ? { 'X-Correlation-Id': correlationId } : {}),
         },
-        body: JSON.stringify({ roomName }),
+        body: JSON.stringify({ roomName, displayName }),
       });
       if (resp.ok) {
         const data = await resp.json();

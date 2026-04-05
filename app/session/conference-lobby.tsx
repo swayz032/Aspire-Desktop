@@ -1075,6 +1075,7 @@ function ConferenceLobby() {
         }}
         onRemoveParticipant={handleRemoveParticipant}
         roomName={roomName}
+        displayName={`${suiteLabel} • Room ${roomNumber}`}
         hostName={userName}
         correlationId={correlationId}
       />

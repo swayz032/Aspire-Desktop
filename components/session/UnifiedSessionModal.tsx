@@ -167,6 +167,7 @@ interface UnifiedSessionModalProps {
   onAddGuest: (name: string, contact: string) => void;
   onRemoveParticipant: (id: string) => void;
   roomName: string;
+  displayName?: string;
   hostName: string;
   correlationId?: string;
 }
@@ -191,6 +192,7 @@ function UnifiedSessionModalInner({
   onAddGuest,
   onRemoveParticipant,
   roomName,
+  displayName,
   hostName,
   correlationId,
 }: UnifiedSessionModalProps) {
@@ -471,6 +473,7 @@ function UnifiedSessionModalInner({
                   {/* Inline invite tabs */}
                   <InviteTabContent
                     roomName={roomName}
+                    displayName={displayName}
                     hostName={hostName}
                     purpose={purpose}
                     correlationId={correlationId}

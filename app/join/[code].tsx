@@ -59,6 +59,7 @@ interface JoinResponse {
   topic?: string;
   roomName: string;
   guestName: string;
+  displayName?: string;
 }
 
 type PageState = 'loading' | 'ready' | 'joining' | 'joined' | 'disconnected' | 'expired' | 'invalid' | 'error';
@@ -460,7 +461,7 @@ function GuestConferenceContent({
   return (
     <>
       <ConferenceHeader
-        roomName="Conference Room"
+        roomName={roomName}
         participantCount={participants.length + 1}
         duration={duration}
         isRecording={isRecording}
@@ -615,7 +616,7 @@ function GuestJoinContent() {
       {pageState === 'ready' && joinData && (
         <NameEntryView
           defaultName={guestName}
-          roomName={joinData.roomName}
+          roomName={joinData.displayName || 'Conference Room'}
           onJoin={handleJoinWithName}
         />
       )}
@@ -629,7 +630,7 @@ function GuestJoinContent() {
           autoRecord={false}
         >
           <GuestConferenceContent
-            roomName={joinData.roomName}
+            roomName={joinData.displayName || 'Conference Room'}
             noraState={noraState}
             isNoraSpeaking={isNoraSpeaking}
             onLeave={handleLeave}

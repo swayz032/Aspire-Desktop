@@ -31,6 +31,7 @@ interface InviteSheetProps {
   visible: boolean;
   onClose: () => void;
   roomName: string;
+  displayName?: string;
   hostName: string;
   purpose: string;
   correlationId?: string;
@@ -44,6 +45,7 @@ function InviteSheetInner({
   visible,
   onClose,
   roomName,
+  displayName,
   hostName,
   purpose,
   correlationId,
@@ -82,6 +84,7 @@ function InviteSheetInner({
           <InviteTabContent
             key={resetKey}
             roomName={roomName}
+            displayName={displayName}
             hostName={hostName}
             purpose={purpose}
             correlationId={correlationId}

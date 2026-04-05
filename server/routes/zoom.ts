@@ -354,7 +354,7 @@ function generateJoinCode(): string {
   return code;
 }
 
-async function createJoinCode(token: string, roomName: string, guestName: string, createdBy: string): Promise<string> {
+async function createJoinCode(token: string, roomName: string, guestName: string, createdBy: string, displayName?: string): Promise<string> {
   if (!supabaseAdmin) {
     // Fallback: in-memory if Supabase unavailable (dev mode)
     logger.warn('Supabase unavailable for join codes — using ephemeral code');
@@ -381,6 +381,7 @@ async function createJoinCode(token: string, roomName: string, guestName: string
       created_by: createdBy,
       server_url: 'zoom',
       expires_at: expiresAt,
+      ...(displayName ? { display_name: displayName } : {}),
     });
 
   if (error) {
@@ -407,7 +408,7 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
 
     const { data: entry, error: dbError } = await supabaseAdmin
       .from('conference_join_codes')
-      .select('token, room_name, guest_name, server_url, expires_at')
+      .select('token, room_name, guest_name, server_url, expires_at, display_name')
       .eq('code', code.toUpperCase())
       .maybeSingle();
 
@@ -443,6 +444,7 @@ router.get('/api/conference/join/:code', async (req: Request, res: Response) => 
       topic: entry.room_name,
       roomName: entry.room_name,
       guestName,
+      displayName: entry.display_name || undefined,
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown';
@@ -703,7 +705,8 @@ router.post('/api/conference/invite-external', async (req: Request, res: Respons
     const guestJwt = generateZoomJwt(roomName, guestName, 0, 3600);
 
     // Law #9: Never expose raw tokens in URLs — use short join codes
-    const joinCode = await createJoinCode(guestJwt, roomName, guestName, userId || 'external');
+    const { displayName } = req.body;
+    const joinCode = await createJoinCode(guestJwt, roomName, guestName, userId || 'external', displayName);
     const joinUrl = `${PUBLIC_BASE_URL}/join/${joinCode}`;
     const tokenExpiresAt = new Date(Date.now() + JOIN_CODE_TTL_MS).toISOString();
 
@@ -848,7 +851,8 @@ router.post('/api/conference/room-link', async (req: Request, res: Response) => 
 
     // Law #9: Never expose raw tokens in URLs — use short join codes
     // Persisted in Supabase — survives deploys
-    const joinCode = await createJoinCode(guestJwt, roomName, guestIdentity, userId || 'room-link');
+    const { displayName } = req.body;
+    const joinCode = await createJoinCode(guestJwt, roomName, guestIdentity, userId || 'room-link', displayName);
     const link = `${PUBLIC_BASE_URL}/join/${joinCode}`;
 
     // Law #2: Receipt for guest token minting (capability grant audit trail)
