@@ -4,15 +4,18 @@
  * External guests receive a link like /join/{code} and land on this page.
  * Join code resolved via GET /api/conference/join/:code (PUBLIC endpoint).
  *
- * Uses Zoom Video SDK UI Toolkit (@zoom/videosdk-ui-toolkit) for the full
- * conference experience: PreJoin preview, video grid, controls, chat,
- * screen share, virtual background, captions, recording indicator — all
- * production-grade, mobile/tablet/laptop optimized by Zoom.
+ * Uses the SAME custom Aspire conference components as the internal host view:
+ * ZoomConferenceProvider, ZoomVideoTile, NoraTile, ConferenceHeader,
+ * ConferenceControlBar, ConferenceCaptions.
  *
- * Flow: loading → uitoolkit (preview + session) → disconnected
+ * Nora is a full video grid tile — NOT a sidebar.
+ * Recording is hidden (guests can't record).
+ * Auto-joins when token is ready (no pre-join step).
+ *
+ * Flow: loading → conference (auto-join) → disconnected
  * Error states: expired (410) | invalid (404) | error
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -26,10 +29,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { reportProviderError } from '@/lib/providerErrorReporter';
-import { VIDEO_CAPTURE_DEFAULTS } from '@/lib/zoom-config';
-import { injectGuestTheme, injectGuestBranding } from '@/lib/zoom-guest-theme';
-import { GuestConferenceLayout } from '@/components/session/GuestConferenceLayout';
+import { injectZoomStyles } from '@/lib/zoom-styles';
+import { injectGuestTheme } from '@/lib/zoom-guest-theme';
 import { useGuestNoraState } from '@/hooks/useGuestNoraState';
+
+// Zoom SDK components — same as host internal conference
+import {
+  ZoomConferenceProvider,
+  useZoomContext,
+  useZoomParticipants,
+  useZoomActiveSpeaker,
+} from '@/components/session/ZoomConferenceProvider';
+import type { ZoomParticipant } from '@/components/session/ZoomConferenceProvider';
+import { ZoomVideoTile } from '@/components/session/ZoomVideoTile';
+import { ConferenceHeader } from '@/components/session/ConferenceHeader';
+import { ConferenceControlBar } from '@/components/session/ConferenceControlBar';
+import { NoraTile } from '@/components/session/NoraTile';
+import { ConferenceCaptions } from '@/components/session/ConferenceCaptions';
+import { ConferenceSettingsPanel } from '@/components/session/ConferenceSettingsPanel';
+
+// Hooks
+import { useConferenceTimer } from '@/hooks/useConferenceTimer';
+import { useConferenceControls } from '@/hooks/useConferenceControls';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,16 +61,11 @@ interface JoinResponse {
   guestName: string;
 }
 
-type PageState = 'loading' | 'ready' | 'active' | 'disconnected' | 'expired' | 'invalid' | 'error';
+type PageState = 'loading' | 'joined' | 'disconnected' | 'expired' | 'invalid' | 'error';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
-
-const GuestColors = {
-  canvas: Colors.background.primary,
-  ringPulse: 'rgba(59, 130, 246, 0.25)',
-};
 
 // ── Web Setup ────────────────────────────────────────────────────────────────
 
@@ -64,19 +80,15 @@ function ensureMobileViewport() {
   viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
 }
 
-function injectGuestStyles() {
+function injectGuestKeyframes() {
   if (Platform.OS !== 'web') return;
-  if (document.getElementById('aspire-guest-styles')) return;
+  if (document.getElementById('aspire-guest-keyframes')) return;
   const style = document.createElement('style');
-  style.id = 'aspire-guest-styles';
+  style.id = 'aspire-guest-keyframes';
   style.textContent = `
     @keyframes guestRingPulse {
       0%, 100% { transform: scale(1); opacity: 0.6; }
       50% { transform: scale(1.18); opacity: 0.15; }
-    }
-    @keyframes guestFadeInUp {
-      from { opacity: 0; transform: translateY(12px); }
-      to { opacity: 1; transform: translateY(0); }
     }
     @keyframes guestBreatheDot {
       0%, 100% { opacity: 0.3; transform: scale(1); }
@@ -90,24 +102,7 @@ function injectGuestStyles() {
       0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.08); }
       50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.15), 0 0 80px rgba(59, 130, 246, 0.05); }
     }
-    /* iOS Safari overscroll prevention */
     html, body { overscroll-behavior: none; }
-    .aspire-guest-conference-root button,
-    .aspire-guest-conference-root [role="button"] {
-      -webkit-user-select: none;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-    /* Zoom UI Toolkit dark theme override for Aspire branding */
-    #zoom-uitoolkit-container {
-      height: 100dvh !important;
-      width: 100vw !important;
-    }
-    @supports not (height: 100dvh) {
-      #zoom-uitoolkit-container {
-        height: -webkit-fill-available !important;
-      }
-    }
   `;
   document.head.appendChild(style);
 }
@@ -116,7 +111,7 @@ function injectGuestStyles() {
 
 function LoadingView() {
   return (
-    <View style={styles.centerContainer} accessibilityRole="progressbar" accessibilityLabel="Loading conference">
+    <View style={styles.centerContainer} accessibilityRole="progressbar" accessibilityLabel="Joining conference">
       <View style={styles.ringContainer}>
         <View style={styles.ringOuter} />
         <View style={styles.ringDashed} />
@@ -162,31 +157,25 @@ function ErrorView({
       title: 'Link Expired',
       desc: 'This conference link has expired. Links are valid for 60 minutes.',
       color: Colors.semantic.warning,
-      borderColor: Colors.semantic.warningLight,
-      bgColor: 'rgba(212, 160, 23, 0.08)',
     },
     invalid: {
       icon: 'close-circle-outline' as const,
       title: 'Link Not Found',
       desc: 'This conference link is invalid or has already been used.',
       color: Colors.semantic.error,
-      borderColor: Colors.semantic.errorLight,
-      bgColor: 'rgba(255, 59, 48, 0.08)',
     },
     error: {
       icon: 'cloud-offline-outline' as const,
       title: 'Connection Error',
       desc: message || 'Unable to connect. Please check your network.',
       color: Colors.semantic.error,
-      borderColor: Colors.semantic.errorLight,
-      bgColor: 'rgba(255, 59, 48, 0.08)',
     },
   }[state];
 
   return (
     <View style={styles.centerContainer} accessibilityRole="alert">
-      <View style={[styles.errorCard, { borderColor: config.borderColor }]}>
-        <View style={[styles.errorIconCircle, { backgroundColor: config.bgColor }]}>
+      <View style={styles.errorCard}>
+        <View style={[styles.errorIconCircle, { backgroundColor: config.color + '14' }]}>
           <Ionicons name={config.icon} size={32} color={config.color} />
         </View>
         <Text style={styles.errorTitle}>{config.title}</Text>
@@ -216,7 +205,7 @@ function ErrorView({
 function DisconnectedView({ onRejoin }: { onRejoin: (() => void) | null }) {
   return (
     <View style={styles.centerContainer} accessibilityLabel="Conference ended">
-      <View style={[styles.errorCard, styles.disconnectedCard]}>
+      <View style={[styles.errorCard, { borderColor: 'rgba(52, 199, 89, 0.20)' }]}>
         <View style={[styles.errorIconCircle, { backgroundColor: 'rgba(52, 199, 89, 0.10)' }]}>
           <Ionicons name="checkmark-circle-outline" size={32} color={Colors.semantic.success} />
         </View>
@@ -242,176 +231,185 @@ function DisconnectedView({ onRejoin }: { onRejoin: (() => void) | null }) {
   );
 }
 
-// ── Zoom UI Toolkit Conference ───────────────────────────────────────────────
+// ── Guest Conference Content (inside ZoomConferenceProvider) ─────────────────
+// Mirrors the host's ConferenceContent but without auth-dependent features.
 
-function ZoomUIToolkitSession({
-  token,
-  topic,
-  guestName,
-  onSessionEnd,
-  onError,
+function GuestConferenceContent({
+  roomName,
+  noraState,
+  isNoraSpeaking,
+  onLeave,
 }: {
-  token: string;
-  topic: string;
-  guestName: string;
-  onSessionEnd: () => void;
-  onError: (message: string) => void;
+  roomName: string;
+  noraState: 'idle' | 'listening' | 'thinking' | 'speaking';
+  isNoraSpeaking: boolean;
+  onLeave: () => void;
 }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const uitoolkitRef = useRef<any>(null);
-  const mountedRef = useRef(true);
-  const onSessionEndRef = useRef(onSessionEnd);
-  onSessionEndRef.current = onSessionEnd;
-  const onErrorRef = useRef(onError);
-  onErrorRef.current = onError;
-  const hasJoinedRef = useRef(false);
+  const participants = useZoomParticipants();
+  const {
+    stream, client, isRecording, networkQuality,
+    transcriptEntries, isTranscribing, toggleTranscription,
+  } = useZoomContext();
+  const activeSpeaker = useZoomActiveSpeaker();
+  const { formatted: duration } = useConferenceTimer();
+  const maxVideoQuality = useMemo(() => {
+    try {
+      const value = stream?.getVideoMaxQuality?.();
+      return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+    } catch (_e) { return undefined; }
+  }, [stream]);
 
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    mountedRef.current = true;
-    hasJoinedRef.current = false;
+  // Derive camera/mic state from SDK participant data
+  const localParticipant = participants.find((p) => p.isLocal);
+  const derivedCameraOff = localParticipant ? !localParticipant.isVideoOn : true;
+  const derivedMuted = localParticipant ? !!localParticipant.isMuted : false;
 
-    let destroyed = false;
+  const controls = useConferenceControls({
+    stream, client,
+    isMuted: derivedMuted,
+    isCameraOff: derivedCameraOff,
+  });
 
-    // Ensure CSS is in the <head> before anything else
-    if (!document.getElementById('zoom-uitoolkit-css')) {
-      const link = document.createElement('link');
-      link.id = 'zoom-uitoolkit-css';
-      link.rel = 'stylesheet';
-      link.href = '/videosdk-ui-toolkit.css';
-      document.head.appendChild(link);
+  useEffect(() => { controls.setIsRecording(isRecording); }, [isRecording]);
+
+  const [viewMode, setViewMode] = useState<'gallery' | 'speaker'>('gallery');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const handleNoraTap = useCallback(() => {
+    // Guest can't control Nora voice — view only
+  }, []);
+
+  // ── Video grid — same as host ──────────────────────────────────────────────
+  const renderGrid = () => {
+    const allTiles = participants.length + 1; // +1 for Nora
+    const isGallery = viewMode === 'gallery';
+
+    if (!isGallery) {
+      const spotlightUserId = activeSpeaker ?? participants.find(p => p.isLocal)?.userId ?? null;
+      const spotlight = spotlightUserId !== null ? participants.find(p => p.userId === spotlightUserId) : null;
+      const filmstrip = participants.filter(p => p.userId !== spotlightUserId);
+
+      return (
+        <View style={gridStyles.speakerLayout}>
+          <View style={gridStyles.spotlightArea}>
+            {spotlight ? (
+              <ZoomVideoTile
+                participant={spotlight}
+                stream={stream as any}
+                isActiveSpeaker={spotlight.userId === activeSpeaker}
+                size="spotlight"
+                networkQuality={networkQuality}
+                maxVideoQuality={maxVideoQuality}
+              />
+            ) : (
+              <NoraTile avaState={noraState} isNoraSpeaking={isNoraSpeaking} onPress={handleNoraTap} />
+            )}
+          </View>
+          <View style={gridStyles.filmstrip}>
+            {spotlight && (
+              <View style={gridStyles.filmstripTile}>
+                <NoraTile avaState={noraState} isNoraSpeaking={isNoraSpeaking} onPress={handleNoraTap} />
+              </View>
+            )}
+            {filmstrip.map(p => (
+              <View key={p.userId} style={gridStyles.filmstripTile}>
+                <ZoomVideoTile
+                  participant={p}
+                  stream={stream as any}
+                  isActiveSpeaker={false}
+                  size="small"
+                  networkQuality={networkQuality}
+                  maxVideoQuality={maxVideoQuality}
+                />
+              </View>
+            ))}
+          </View>
+        </View>
+      );
     }
 
-    const init = async () => {
-      try {
-        // Load UMD script if not already loaded
-        let uitoolkit = (window as any).UIToolkit;
-        if (!uitoolkit) {
-          await new Promise<void>((resolve, reject) => {
-            const existing = document.getElementById('zoom-uitoolkit-script');
-            if (existing) {
-              if ((window as any).UIToolkit) { resolve(); return; }
-              existing.addEventListener('load', () => resolve());
-              existing.addEventListener('error', () => reject(new Error('Failed to load Zoom UI Toolkit script')));
-              return;
-            }
-            const script = document.createElement('script');
-            script.id = 'zoom-uitoolkit-script';
-            script.src = '/videosdk-ui-toolkit.js';
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error('Failed to load Zoom UI Toolkit script'));
-            document.head.appendChild(script);
-          });
-          uitoolkit = (window as any).UIToolkit;
-          if (!uitoolkit) throw new Error('Zoom UI Toolkit not available after script load');
-        }
-        uitoolkitRef.current = uitoolkit;
+    // Gallery view — adaptive grid
+    const cols = allTiles <= 1 ? 1 : allTiles <= 2 ? 2 : allTiles <= 4 ? 2 : allTiles <= 6 ? 3 : allTiles <= 9 ? 3 : 4;
+    const rows = Math.ceil(allTiles / cols);
+    const gap = 4;
+    const tileWidth = `calc(${100 / cols}% - ${gap}px)` as any;
+    const tileHeight = `calc(${100 / rows}% - ${gap}px)` as any;
 
-        if (destroyed || !containerRef.current) return;
+    const gridStyle = allTiles <= 1 ? gridStyles.grid1
+      : allTiles <= 2 ? gridStyles.grid2
+      : allTiles <= 4 ? gridStyles.grid4
+      : allTiles <= 6 ? gridStyles.grid6
+      : allTiles <= 9 ? gridStyles.grid9
+      : gridStyles.grid12;
 
-        const config = {
-          videoSDKJWT: token,
-          sessionName: topic,
-          userName: guestName,
-          featuresOptions: {
-            preview: { enable: true, isAllowModifyName: true },
-            video: {
-              enable: true,
-              enforceMultipleVideos: true,
-              fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
-              hd: VIDEO_CAPTURE_DEFAULTS.hd,
-            },
-            audio: { enable: true, backgroundNoiseSuppression: true },
-            share: { enable: true },
-            chat: { enable: true, enableEmoji: true },
-            users: { enable: true },
-            settings: { enable: true },
-            recording: { enable: false },
-            virtualBackground: {
-              enable: true,
-              allowVirtualBackgroundUpload: true,
-              virtualBackgrounds: [
-                { url: 'blur', displayName: 'Blur' },
-              ],
-            },
-            caption: { enable: true },
-            viewMode: {
-              enable: true,
-              defaultViewMode: 'gallery' as any,
-              viewModes: ['gallery', 'speaker', 'ribbon'] as any[],
-            },
-            leave: { enable: true },
-            invite: { enable: false },
-            theme: { enable: true, defaultTheme: 'dark' as const },
-            header: { enable: true },
-            footer: { enable: true },
-          },
-        };
+    const tileStyle = { width: tileWidth, height: tileHeight };
 
-        // joinSession renders the full Zoom UI Toolkit into the container.
-        // The toolkit handles its own loading state, preview, and error UI.
-        // MUST be called before registering event callbacks.
-        await uitoolkit.joinSession(containerRef.current, config);
-
-        // Inject Aspire branding (logo + footer) into the toolkit DOM
-        if (containerRef.current) {
-          injectGuestBranding(containerRef.current);
-        }
-
-        if (!destroyed && mountedRef.current) {
-          hasJoinedRef.current = true;
-        }
-
-        // Register session lifecycle callbacks AFTER joinSession
-        uitoolkit.onSessionDestroyed(() => {
-          if (mountedRef.current && hasJoinedRef.current) {
-            onSessionEndRef.current();
-          }
-        });
-      } catch (err) {
-        reportProviderError({ provider: 'zoom-uitoolkit', action: 'init', error: err, component: 'GuestJoinPage' });
-        if (!destroyed && mountedRef.current) {
-          const message = err instanceof Error ? err.message : 'Failed to initialize conference';
-          onErrorRef.current(message);
-        }
-      }
-    };
-
-    init();
-
-    return () => {
-      destroyed = true;
-      mountedRef.current = false;
-      const uitoolkit = uitoolkitRef.current;
-      if (uitoolkit) {
-        try { uitoolkit.destroy(); } catch (_e) { /* best-effort */ }
-      }
-    };
-  }, [token, topic, guestName]);
-
-  if (Platform.OS !== 'web') {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorDesc}>Video conferencing is only available in a web browser.</Text>
+      <View style={[gridStyles.videoGrid, gridStyle]}>
+        {/* Nora tile — always first in grid */}
+        <View style={[gridStyles.videoTileWrapper, tileStyle]}>
+          <NoraTile avaState={noraState} isNoraSpeaking={isNoraSpeaking} onPress={handleNoraTap} />
+        </View>
+        {/* Zoom participant tiles */}
+        {participants.map((p: ZoomParticipant) => (
+          <View key={p.userId} style={[gridStyles.videoTileWrapper, tileStyle]}>
+            <ZoomVideoTile
+              participant={p}
+              stream={stream as any}
+              isActiveSpeaker={p.userId === activeSpeaker}
+              networkQuality={networkQuality}
+              maxVideoQuality={maxVideoQuality}
+            />
+          </View>
+        ))}
       </View>
     );
-  }
+  };
 
-  // No custom overlay — the UI Toolkit renders its own preview/loading/error UI.
-  // Our container just needs to be full-screen for the toolkit to render into.
   return (
-    <div
-      ref={containerRef}
-      id="zoom-uitoolkit-container"
-      className="aspire-guest-conference-root"
-      style={{
-        height: '100%',
-        width: '100%',
-        background: Colors.background.primary,
-        overflow: 'hidden',
-        borderRadius: 12,
-      }}
-    />
+    <>
+      <ConferenceHeader
+        roomName={roomName}
+        participantCount={participants.length + 1}
+        duration={duration}
+        isRecording={isRecording}
+        networkQuality={networkQuality}
+      />
+
+      <View style={gridStyles.gridContainer}>
+        {renderGrid()}
+        <ConferenceCaptions entries={transcriptEntries} visible={isTranscribing} />
+      </View>
+
+      <ConferenceControlBar
+        isMuted={derivedMuted}
+        isCameraOff={derivedCameraOff}
+        isScreenSharing={controls.isScreenSharing}
+        isRecording={isRecording}
+        isTranscribing={isTranscribing}
+        isChatOpen={false}
+        isParticipantsOpen={false}
+        viewMode={viewMode}
+        unreadCount={0}
+        onToggleMic={controls.toggleMic}
+        onToggleCamera={controls.toggleCamera}
+        onToggleScreenShare={controls.toggleScreenShare}
+        onToggleRecording={() => { /* Guests can't record */ }}
+        onToggleTranscription={toggleTranscription}
+        onToggleChat={() => { /* Future: guest chat */ }}
+        onToggleParticipants={() => { /* Future: guest participant list */ }}
+        onToggleView={() => setViewMode(v => v === 'gallery' ? 'speaker' : 'gallery')}
+        onLeave={onLeave}
+        hideRecording
+        isSettingsOpen={settingsOpen}
+        onToggleSettings={() => setSettingsOpen(v => !v)}
+      />
+
+      <ConferenceSettingsPanel
+        visible={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+    </>
   );
 }
 
@@ -423,17 +421,18 @@ function GuestJoinContent() {
   const [joinData, setJoinData] = useState<JoinResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Live Nora state from SSE — subscribes by room name once join data is available
+  // Live Nora state from SSE
   const { noraState, isNoraSpeaking } = useGuestNoraState(joinData?.roomName);
 
-  // Inject styles + mobile viewport on mount
+  // Inject styles on mount
   useEffect(() => {
     ensureMobileViewport();
-    injectGuestStyles();
+    injectGuestKeyframes();
+    injectZoomStyles();
     injectGuestTheme();
   }, []);
 
-  // Validate join code → fetch token
+  // Fetch join token from public endpoint
   useEffect(() => {
     if (!code) {
       setPageState('invalid');
@@ -462,7 +461,7 @@ function GuestJoinContent() {
           return;
         }
         setJoinData(data);
-        setPageState('ready');
+        setPageState('joined');
       })
       .catch((err: Error) => {
         clearTimeout(timeoutId);
@@ -477,17 +476,12 @@ function GuestJoinContent() {
     return () => { clearTimeout(timeoutId); controller.abort(); };
   }, [code]);
 
-  const handleSessionEnd = useCallback(() => {
+  const handleLeave = useCallback(() => {
     setPageState('disconnected');
   }, []);
 
-  const handleToolkitError = useCallback((message: string) => {
-    setErrorMessage(message);
-    setPageState('error');
-  }, []);
-
   const handleRejoin = useCallback(() => {
-    if (joinData) setPageState('ready');
+    if (joinData) setPageState('joined');
   }, [joinData]);
 
   const handleRetry = useCallback(() => {
@@ -498,20 +492,21 @@ function GuestJoinContent() {
     <View style={styles.page}>
       {pageState === 'loading' && <LoadingView />}
 
-      {(pageState === 'ready' || pageState === 'active') && joinData && (
-        <GuestConferenceLayout
-          roomName={joinData.roomName}
-          noraState={noraState}
-          isNoraSpeaking={isNoraSpeaking}
+      {pageState === 'joined' && joinData && (
+        <ZoomConferenceProvider
+          token={joinData.token}
+          topic={joinData.topic || joinData.roomName}
+          userName={joinData.guestName}
+          startVideo
+          autoRecord={false}
         >
-          <ZoomUIToolkitSession
-            token={joinData.token}
-            topic={joinData.topic || joinData.roomName}
-            guestName={joinData.guestName}
-            onSessionEnd={handleSessionEnd}
-            onError={handleToolkitError}
+          <GuestConferenceContent
+            roomName={joinData.roomName}
+            noraState={noraState}
+            isNoraSpeaking={isNoraSpeaking}
+            onLeave={handleLeave}
           />
-        </GuestConferenceLayout>
+        </ZoomConferenceProvider>
       )}
 
       {pageState === 'disconnected' && (
@@ -535,28 +530,72 @@ export default function GuestJoinPage() {
   );
 }
 
+// ── Grid styles (same as host conference-live.tsx) ───────────────────────────
+
+const gridStyles = StyleSheet.create({
+  gridContainer: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  videoGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    padding: 4,
+  },
+  videoTileWrapper: {},
+  grid1: { padding: 8 },
+  grid2: { padding: 4 },
+  grid4: { padding: 4 },
+  grid6: { padding: 3 },
+  grid9: { padding: 2 },
+  grid12: { padding: 2 },
+  speakerLayout: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  spotlightArea: {
+    flex: 1,
+    padding: 4,
+  },
+  filmstrip: {
+    height: 120,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+  },
+  filmstripTile: {
+    width: 180,
+    height: '100%' as any,
+  },
+});
+
+// ── Page styles ─────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: GuestColors.canvas,
-    ...(Platform.OS === 'web' ? {
-      backgroundImage: 'radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.4) 100%)',
-    } as unknown as ViewStyle : {}),
+    backgroundColor: '#0a0a0c',
   },
   centerContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.xxxl,
+    ...(Platform.OS === 'web' ? {
+      backgroundImage: 'radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.4) 100%)',
+    } as unknown as ViewStyle : {}),
   },
 
-  // ── Loading rings ─────────────────────────────────────────────────
+  // Loading
   ringContainer: {
     width: 150,
     height: 150,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.xxl, // 24px
+    marginBottom: Spacing.xxl,
   },
   ringOuter: {
     position: 'absolute',
@@ -564,7 +603,7 @@ const styles = StyleSheet.create({
     height: 130,
     borderRadius: 65,
     borderWidth: 2,
-    borderColor: GuestColors.ringPulse,
+    borderColor: 'rgba(59, 130, 246, 0.25)',
     ...(Platform.OS === 'web' ? {
       animationName: 'guestRingPulse',
       animationDuration: '2.4s',
@@ -590,7 +629,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(59, 130, 246, 0.15)',
     ...(Platform.OS === 'web' ? {
-      boxShadow: '0 0 30px rgba(59, 130, 246, 0.12), inset 0 0 20px rgba(59, 130, 246, 0.04)',
+      boxShadow: '0 0 30px rgba(59, 130, 246, 0.12)',
       animationName: 'guestGlowPulse',
       animationDuration: '3s',
       animationIterationCount: 'infinite',
@@ -598,18 +637,18 @@ const styles = StyleSheet.create({
     } as unknown as ViewStyle : {}),
   },
   loadingTitle: {
-    ...Typography.headline, // 18px/600 — the hero text of loading state
+    ...Typography.headline,
     color: Colors.text.primary,
-    marginBottom: Spacing.xs, // 4px
+    marginBottom: Spacing.xs,
   },
   loadingSubtitle: {
-    ...Typography.caption, // 14px — secondary, not 12px small
-    color: Colors.text.tertiary, // #a1a1a6 — readable, not muted
-    marginBottom: Spacing.lg, // 16px
+    ...Typography.caption,
+    color: Colors.text.tertiary,
+    marginBottom: Spacing.lg,
   },
   dotsRow: {
     flexDirection: 'row',
-    gap: Spacing.sm, // 8px
+    gap: Spacing.sm,
   },
   breatheDot: {
     width: 6,
@@ -618,15 +657,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent.cyan,
   },
 
-  // ── Error / Disconnected states ───────────────────────────────────
+  // Error / Disconnected
   errorCard: {
-    backgroundColor: Colors.surface.card, // #1C1C1E
-    borderRadius: BorderRadius.xl, // 16px
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.xl,
     borderWidth: 1,
-    borderColor: Colors.border.default, // fallback — overridden per state
-    padding: Spacing.xxxl, // 32px
+    borderColor: Colors.border.default,
+    padding: Spacing.xxxl,
     alignItems: 'center',
-    gap: Spacing.md, // 12px — more breathing room between elements
+    gap: Spacing.md,
     maxWidth: 400,
     width: '100%',
     ...(Platform.OS === 'web' ? {
@@ -637,28 +676,22 @@ const styles = StyleSheet.create({
       animationFillMode: 'backwards',
     } as unknown as ViewStyle : {}),
   },
-  disconnectedCard: {
-    borderColor: 'rgba(52, 199, 89, 0.20)', // Success green tint
-  },
   errorIconCircle: {
     width: 64,
     height: 64,
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.xs, // 4px
-    ...(Platform.OS === 'web' ? {
-      boxShadow: '0 0 24px var(--icon-glow, rgba(59, 130, 246, 0.15))',
-    } as unknown as ViewStyle : {}),
+    marginBottom: Spacing.xs,
   },
   errorTitle: {
-    ...Typography.headline, // 18px/600
+    ...Typography.headline,
     color: Colors.text.primary,
     textAlign: 'center',
   },
   errorDesc: {
-    ...Typography.caption, // 14px/400
-    color: Colors.text.tertiary, // #a1a1a6 — contrast ratio 4.6:1 against #1C1C1E
+    ...Typography.caption,
+    color: Colors.text.tertiary,
     textAlign: 'center',
     maxWidth: 320,
     lineHeight: 20,
@@ -667,17 +700,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.sm, // 8px
+    gap: Spacing.sm,
     backgroundColor: Colors.accent.cyan,
-    paddingHorizontal: Spacing.xxl, // 24px
-    paddingVertical: Spacing.md, // 12px
-    borderRadius: BorderRadius.md, // 8px
-    marginTop: Spacing.sm, // 8px
-    minHeight: 44, // A11y: minimum 44pt tap target
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.sm,
+    minHeight: 44,
     minWidth: 120,
     ...(Platform.OS === 'web' ? {
       background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
-      boxShadow: '0 2px 12px rgba(59, 130, 246, 0.35), 0 0 0 1px rgba(59, 130, 246, 0.1)',
+      boxShadow: '0 2px 12px rgba(59, 130, 246, 0.35)',
       transition: 'all 0.2s ease',
     } as unknown as ViewStyle : {}),
   },
@@ -686,15 +719,15 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.97 }],
   },
   retryText: {
-    ...Typography.captionMedium, // 14px/500
+    ...Typography.captionMedium,
     color: Colors.text.primary,
     fontWeight: '600',
   },
   brandingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm, // 8px
-    marginTop: Spacing.lg, // 16px
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
   },
   brandingDot: {
     width: 6,
@@ -704,7 +737,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   brandingText: {
-    ...Typography.small, // 12px
-    color: Colors.text.muted, // #6e6e73 — subtle but not invisible
+    ...Typography.small,
+    color: Colors.text.muted,
   },
 });

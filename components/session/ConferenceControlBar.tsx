@@ -26,6 +26,11 @@ interface ControlBarProps {
   onToggleParticipants: () => void;
   onToggleView: () => void;
   onLeave: () => void;
+  /** Hide recording button for guests */
+  hideRecording?: boolean;
+  /** Settings panel toggle */
+  isSettingsOpen?: boolean;
+  onToggleSettings?: () => void;
 }
 
 function ControlButton({
@@ -107,12 +112,14 @@ export function ConferenceControlBar(props: ControlBarProps) {
           isActive={props.isScreenSharing}
           onPress={props.onToggleScreenShare}
         />
-        <ControlButton
-          icon="radio-button-on"
-          label={props.isRecording ? 'Stop Rec' : 'Record'}
-          isActive={props.isRecording}
-          onPress={props.onToggleRecording}
-        />
+        {!props.hideRecording && (
+          <ControlButton
+            icon="radio-button-on"
+            label={props.isRecording ? 'Stop Rec' : 'Record'}
+            isActive={props.isRecording}
+            onPress={props.onToggleRecording}
+          />
+        )}
         <ControlButton
           icon="text"
           label={props.isTranscribing ? 'CC On' : 'CC'}
@@ -141,6 +148,15 @@ export function ConferenceControlBar(props: ControlBarProps) {
           onPress={props.onToggleView}
         />
       </View>
+
+      {props.onToggleSettings && (
+        <ControlButton
+          icon="settings-outline"
+          label="Settings"
+          isActive={props.isSettingsOpen}
+          onPress={props.onToggleSettings}
+        />
+      )}
 
       <ControlButton
         icon="log-out-outline"
