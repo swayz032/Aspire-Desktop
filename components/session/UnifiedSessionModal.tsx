@@ -607,7 +607,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: Spacing.xxl,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.06)',
   },
@@ -652,8 +653,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'center',
-    paddingVertical: Spacing.lg,
-    paddingBottom: Spacing.md,
+    paddingVertical: Spacing.md,
+    paddingBottom: Spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.04)',
   },
@@ -705,14 +706,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollBodyContent: {
-    padding: Spacing.xxl + 4,
-    paddingBottom: Spacing.xxl + 12,
-    gap: Spacing.xxl,
+    padding: Spacing.xl,
+    paddingBottom: Spacing.xl,
+    gap: Spacing.lg, // Tighter section gaps — everything visible without scroll
   },
 
   // Section layout
   section: {
-    gap: Spacing.md,
+    gap: Spacing.sm, // 8px — compact sections
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -741,8 +742,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     gap: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.background.tertiary,
     borderWidth: 1,
@@ -990,7 +991,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: Spacing.md,
-    padding: Spacing.xxl,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.06)',
     backgroundColor: '#0E0E10',
