@@ -43,6 +43,22 @@ const INTERACTION_MODES = [
 
 const EMPTY_CASH: CashPosition = { availableCash: 0, upcomingOutflows7d: 0, expectedInflows7d: 0, accountsConnected: 0 };
 
+const CASH_CACHE_KEY = 'aspire.cache.cashPosition';
+
+function readCachedCash(): CashPosition | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(CASH_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as CashPosition;
+  } catch { return null; }
+}
+
+function writeCachedCash(data: CashPosition) {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(CASH_CACHE_KEY, JSON.stringify(data)); } catch { /* */ }
+}
+
 const HEADER_HEIGHT = 72;
 
 // Time-of-day greeting (aligned with genesis-gate spec)
@@ -88,7 +104,7 @@ function DesktopHomeInner() {
   useGlobalKeyboard();
   const { tenant } = useTenant();
   const { session, suiteId } = useSupabase();
-  const [liveCashData, setLiveCashData] = useState<CashPosition>(EMPTY_CASH);
+  const [liveCashData, setLiveCashData] = useState<CashPosition>(() => readCachedCash() || EMPTY_CASH);
   const [planItems, setPlanItems] = useState<any[]>([]);
   const [pipelineStages, setPipelineStages] = useState<any[]>([]);
   const [businessScore, setBusinessScore] = useState<any>(null);
@@ -184,12 +200,14 @@ function DesktopHomeInner() {
           const data = await res.json();
           const cp = data.cashPosition;
           if (cp && (data.providers?.plaid || data.providers?.stripe)) {
-            setLiveCashData({
+            const cashData: CashPosition = {
               availableCash: cp.availableCash || 0,
               upcomingOutflows7d: cp.upcomingOutflows7d || 0,
               expectedInflows7d: cp.expectedInflows7d || 0,
               accountsConnected: cp.accountsConnected || 0,
-            });
+            };
+            setLiveCashData(cashData);
+            writeCachedCash(cashData);
           }
         }
       } catch (e) { /* ops-snapshot not available */ }
