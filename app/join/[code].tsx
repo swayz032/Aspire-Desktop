@@ -61,7 +61,7 @@ interface JoinResponse {
   guestName: string;
 }
 
-type PageState = 'loading' | 'joined' | 'disconnected' | 'expired' | 'invalid' | 'error';
+type PageState = 'loading' | 'ready' | 'joining' | 'joined' | 'disconnected' | 'expired' | 'invalid' | 'error';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -222,6 +222,97 @@ function DisconnectedView({ onRejoin }: { onRejoin: (() => void) | null }) {
             <Text style={styles.retryText}>Rejoin</Text>
           </Pressable>
         )}
+        <View style={styles.brandingRow}>
+          <View style={styles.brandingDot} />
+          <Text style={styles.brandingText}>Aspire Conference</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ── Name Entry (Pre-Join) ────────────────────────────────────────────────────
+
+function NameEntryView({
+  defaultName,
+  roomName,
+  onJoin,
+}: {
+  defaultName: string;
+  roomName: string;
+  onJoin: (name: string) => void;
+}) {
+  const [name, setName] = useState(defaultName);
+  const isValid = name.trim().length >= 1;
+
+  const handleSubmit = () => {
+    if (isValid) onJoin(name.trim());
+  };
+
+  return (
+    <View style={styles.centerContainer}>
+      <View style={styles.nameEntryCard}>
+        {/* Header */}
+        <View style={styles.nameEntryHeader}>
+          <View style={styles.nameEntryIcon}>
+            <Ionicons name="videocam" size={24} color={Colors.accent.cyan} />
+          </View>
+          <Text style={styles.nameEntryTitle}>Join Conference</Text>
+          <Text style={styles.nameEntrySubtitle}>{roomName}</Text>
+        </View>
+
+        {/* Name input */}
+        <View style={styles.nameInputSection}>
+          <Text style={styles.nameInputLabel}>Your Name</Text>
+          {Platform.OS === 'web' ? (
+            <input
+              type="text"
+              value={name}
+              onChange={(e: any) => setName(e.target.value)}
+              onKeyDown={(e: any) => { if (e.key === 'Enter' && isValid) handleSubmit(); }}
+              placeholder="Enter your name"
+              maxLength={50}
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '14px 16px',
+                backgroundColor: '#1C1C1E',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '10px',
+                color: '#ffffff',
+                fontSize: '16px',
+                fontWeight: '500',
+                outline: 'none',
+                fontFamily: 'inherit',
+                boxSizing: 'border-box' as const,
+              }}
+              onFocus={(e: any) => { e.target.style.borderColor = '#3B82F6'; e.target.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.15)'; }}
+              onBlur={(e: any) => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; e.target.style.boxShadow = 'none'; }}
+            />
+          ) : (
+            <View style={styles.nameInputFallback}>
+              <Text style={styles.nameInputFallbackText}>{name}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Join button */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.joinButton,
+            !isValid && styles.joinButtonDisabled,
+            pressed && isValid && styles.joinButtonPressed,
+          ]}
+          onPress={handleSubmit}
+          disabled={!isValid}
+          accessibilityRole="button"
+          accessibilityLabel="Join conference"
+        >
+          <Ionicons name="arrow-forward" size={18} color="#fff" />
+          <Text style={styles.joinButtonText}>Join Conference</Text>
+        </Pressable>
+
+        {/* Branding */}
         <View style={styles.brandingRow}>
           <View style={styles.brandingDot} />
           <Text style={styles.brandingText}>Aspire Conference</Text>
@@ -419,6 +510,7 @@ function GuestJoinContent() {
   const { code } = useLocalSearchParams<{ code: string }>();
   const [pageState, setPageState] = useState<PageState>('loading');
   const [joinData, setJoinData] = useState<JoinResponse | null>(null);
+  const [guestName, setGuestName] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
   // Live Nora state from SSE
@@ -461,7 +553,8 @@ function GuestJoinContent() {
           return;
         }
         setJoinData(data);
-        setPageState('joined');
+        setGuestName(data.guestName || '');
+        setPageState('ready');
       })
       .catch((err: Error) => {
         clearTimeout(timeoutId);
@@ -475,6 +568,33 @@ function GuestJoinContent() {
 
     return () => { clearTimeout(timeoutId); controller.abort(); };
   }, [code]);
+
+  // Guest enters name and clicks Join — re-fetch token with chosen name
+  const handleJoinWithName = useCallback(async (chosenName: string) => {
+    if (!code) return;
+    setGuestName(chosenName);
+    setPageState('joining');
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/conference/join/${encodeURIComponent(code)}?name=${encodeURIComponent(chosenName)}`,
+      );
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data: JoinResponse = await res.json();
+      if (!data.token) throw new Error('Invalid response');
+      setJoinData(data);
+      setGuestName(data.guestName || chosenName);
+      setPageState('joined');
+    } catch (_e) {
+      // Fallback: use original token with the new name (server may not support ?name=)
+      if (joinData) {
+        setPageState('joined');
+      } else {
+        setPageState('error');
+        setErrorMessage('Failed to join conference');
+      }
+    }
+  }, [code, joinData]);
 
   const handleLeave = useCallback(() => {
     setPageState('disconnected');
@@ -490,13 +610,21 @@ function GuestJoinContent() {
 
   return (
     <View style={styles.page}>
-      {pageState === 'loading' && <LoadingView />}
+      {(pageState === 'loading' || pageState === 'joining') && <LoadingView />}
+
+      {pageState === 'ready' && joinData && (
+        <NameEntryView
+          defaultName={guestName}
+          roomName={joinData.roomName}
+          onJoin={handleJoinWithName}
+        />
+      )}
 
       {pageState === 'joined' && joinData && (
         <ZoomConferenceProvider
           token={joinData.token}
           topic={joinData.topic || joinData.roomName}
-          userName={joinData.guestName}
+          userName={guestName || joinData.guestName}
           startVideo
           autoRecord={false}
         >
@@ -739,5 +867,105 @@ const styles = StyleSheet.create({
   brandingText: {
     ...Typography.small,
     color: Colors.text.muted,
+  },
+
+  // ── Name Entry (Pre-Join) ───────────────────────────────────────
+  nameEntryCard: {
+    backgroundColor: Colors.surface.card,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    padding: Spacing.xxxl,
+    alignItems: 'center',
+    gap: Spacing.lg,
+    maxWidth: 420,
+    width: '100%',
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+      animationName: 'guestCardEntrance',
+      animationDuration: '0.5s',
+      animationTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      animationFillMode: 'backwards',
+    } as unknown as ViewStyle : {}),
+  },
+  nameEntryHeader: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  nameEntryIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.15)',
+    marginBottom: Spacing.xs,
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 0 24px rgba(59, 130, 246, 0.12)',
+    } as unknown as ViewStyle : {}),
+  },
+  nameEntryTitle: {
+    ...Typography.headline,
+    color: Colors.text.primary,
+  },
+  nameEntrySubtitle: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    maxWidth: 280,
+    textAlign: 'center',
+  },
+  nameInputSection: {
+    width: '100%',
+    gap: Spacing.sm,
+  },
+  nameInputLabel: {
+    ...Typography.small,
+    fontWeight: '600',
+    color: Colors.text.secondary,
+    letterSpacing: 0.3,
+  },
+  nameInputFallback: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    backgroundColor: '#1C1C1E',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  nameInputFallbackText: {
+    ...Typography.body,
+    color: Colors.text.primary,
+  },
+  joinButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: 16,
+    borderRadius: BorderRadius.lg,
+    ...(Platform.OS === 'web' ? {
+      background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+      boxShadow: '0 4px 16px rgba(59, 130, 246, 0.35), 0 0 0 1px rgba(59, 130, 246, 0.1)',
+      transition: 'all 0.2s ease',
+      cursor: 'pointer',
+    } as unknown as ViewStyle : {
+      backgroundColor: Colors.accent.cyan,
+    }),
+  },
+  joinButtonDisabled: {
+    opacity: 0.4,
+    ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } as unknown as ViewStyle : {}),
+  },
+  joinButtonPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
+  joinButtonText: {
+    ...Typography.body,
+    fontWeight: '600',
+    color: '#ffffff',
   },
 });
