@@ -1,7 +1,7 @@
 /**
  * CalendarWidget — Premium month-view calendar for the homepage right column.
  *
- * Design: Aspire 2-tone gray (#2A2A2A surface, #1E1E1E card bg).
+ * Design: Aspire 2-tone gray (Colors.surface.card + Colors.surface.cardBorder).
  * Only calendar grid + "Open Calendar" button. No event list.
  * Nav arrows are Aspire blue. Today circle is Aspire blue.
  * Fills available height via flex:1 so bottom aligns with Today's Plan.
@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/providers';
 import { playClickSound } from '@/lib/sounds';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { Colors, BorderRadius, Spacing } from '@/constants/tokens';
 
 interface CalendarEvent {
   id: string;
@@ -191,6 +192,11 @@ const s = StyleSheet.create({
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
+    backgroundColor: Colors.surface.card,         // #1C1C1E — 2-tone gray base
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.surface.cardBorder,        // #2C2C2E — 2-tone gray border
+    overflow: 'hidden',
   },
 
   // ── Month nav ─────────────────────────────────────────────────────
