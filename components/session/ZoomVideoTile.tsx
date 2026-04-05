@@ -97,22 +97,22 @@ function resolveVideoQuality({
   networkQuality?: { uplink: number; downlink: number };
   maxVideoQuality?: number;
 }) {
+  // Request highest quality possible — prefer 1080p for most tiles
   const requested =
     isActiveSpeaker || size === 'spotlight' || participant.isLocal
-      ? VIDEO_RECEIVE_QUALITY.spotlight
+      ? VIDEO_RECEIVE_QUALITY.spotlight      // 1080p
       : size === 'small'
-        ? VIDEO_RECEIVE_QUALITY.filmstrip
-        : VIDEO_RECEIVE_QUALITY.galleryLarge;
+        ? VIDEO_RECEIVE_QUALITY.gallerySmall  // 360p for filmstrip
+        : VIDEO_RECEIVE_QUALITY.spotlight;    // 1080p for gallery tiles too
 
+  // Only cap quality on truly poor network — keep HD as long as possible
   const level = networkQuality ? Math.min(networkQuality.uplink, networkQuality.downlink) : 5;
   const networkCap =
     level <= 1
-      ? VIDEO_RECEIVE_QUALITY.filmstrip
+      ? VIDEO_RECEIVE_QUALITY.gallerySmall   // 360p only on terrible network
       : level <= 2
-        ? VIDEO_RECEIVE_QUALITY.gallerySmall
-        : level <= 3
-          ? VIDEO_RECEIVE_QUALITY.galleryLarge
-          : VIDEO_RECEIVE_QUALITY.spotlight;
+        ? VIDEO_RECEIVE_QUALITY.galleryLarge  // 720p on poor
+        : VIDEO_RECEIVE_QUALITY.spotlight;    // 1080p on fair or better
 
   const streamCap =
     typeof maxVideoQuality === 'number' && maxVideoQuality >= 0
@@ -193,16 +193,35 @@ function ZoomVideoView({
             child.style.width = '100%';
             child.style.height = '100%';
             child.style.objectFit = 'cover';
+            // HiDPI: scale canvas to device pixel ratio for sharp rendering
+            if (child.tagName === 'CANVAS') {
+              const dpr = window.devicePixelRatio || 1;
+              const rect = child.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) {
+                (child as HTMLCanvasElement).width = Math.floor(rect.width * dpr);
+                (child as HTMLCanvasElement).height = Math.floor(rect.height * dpr);
+              }
+            }
           });
         }
         el.querySelectorAll('video, canvas').forEach((child: Element) => {
           (child as HTMLElement).style.width = '100%';
           (child as HTMLElement).style.height = '100%';
           (child as HTMLElement).style.objectFit = 'cover';
+          if (child.tagName === 'CANVAS') {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = child.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              (child as HTMLCanvasElement).width = Math.floor(rect.width * dpr);
+              (child as HTMLCanvasElement).height = Math.floor(rect.height * dpr);
+            }
+          }
         });
       };
       applyInternalStyles();
-      setTimeout(applyInternalStyles, 200);
+      // Re-apply after SDK finishes internal rendering
+      setTimeout(applyInternalStyles, 300);
+      setTimeout(applyInternalStyles, 1000);
     };
 
     const tryAttach = async (): Promise<HTMLElement | null> => {
