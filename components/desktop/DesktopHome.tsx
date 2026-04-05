@@ -648,10 +648,10 @@ const styles = StyleSheet.create({
   },
   calendarContainer: {
     flex: 1,
-    backgroundColor: '#1E1E1E',
+    backgroundColor: Colors.surface.card,       // #1C1C1E — matches all other sections
     borderRadius: BorderRadius.xl,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: Colors.surface.cardBorder,      // #2C2C2E — matches all other sections
     overflow: 'hidden',
   },
   flexSection: {
