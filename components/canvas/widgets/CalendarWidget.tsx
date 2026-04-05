@@ -1,32 +1,35 @@
+/**
+ * CalendarWidget — Premium month-view calendar for the homepage right column.
+ *
+ * Design: Aspire 2-tone gray (#2A2A2A surface, #1E1E1E card bg).
+ * Only calendar grid + "Open Calendar" button. No event list.
+ * Nav arrows are Aspire blue. Today circle is Aspire blue.
+ * Fills available height via flex:1 so bottom aligns with Today's Plan.
+ */
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/providers';
 import { playClickSound } from '@/lib/sounds';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
-import { Colors, BorderRadius } from '@/constants/tokens';
 
 interface CalendarEvent {
   id: string;
   title: string;
   start_time: string;
   end_time: string;
-  agent_id?: string;
-  location?: string | null;
 }
 
 interface CalendarWidgetProps {
   suiteId: string;
   officeId: string;
-  date?: Date;
-  onEventClick?: (eventId: string) => void;
-  onAddEventClick?: () => void;
 }
 
 const WEEK_DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
 const EVENT_COLORS = ['#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#0EA5E9', '#10B981'];
 
 function colorFromId(id: string): string {
@@ -38,14 +41,6 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
-}
-
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? 'pm' : 'am';
-  return `${h % 12 || 12}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''}${ampm}`;
 }
 
 function getDaysInMonth(year: number, month: number): Date[] {
@@ -65,16 +60,7 @@ function getDaysInMonth(year: number, month: number): Date[] {
   return days;
 }
 
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'];
-
-const DEMO_EVENTS: CalendarEvent[] = [
-  { id: '1', title: 'Board Meeting', start_time: new Date().toISOString(), end_time: new Date(Date.now() + 3600000).toISOString() },
-  { id: '2', title: 'Product Review', start_time: new Date(Date.now() + 86400000).toISOString(), end_time: new Date(Date.now() + 90000000).toISOString() },
-  { id: '3', title: 'Investor Call', start_time: new Date(Date.now() + 2 * 86400000).toISOString(), end_time: new Date(Date.now() + 2 * 86400000 + 3600000).toISOString() },
-];
-
-function CalendarWidgetInner({ suiteId: propSuiteId, officeId }: CalendarWidgetProps) {
+function CalendarWidgetInner({ suiteId: propSuiteId }: CalendarWidgetProps) {
   const router = useRouter();
   const { suiteId: authSuiteId } = useSupabase();
   const suiteId = propSuiteId || authSuiteId || '';
@@ -82,97 +68,56 @@ function CalendarWidgetInner({ suiteId: propSuiteId, officeId }: CalendarWidgetP
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(today);
-  const [loading, setLoading] = useState(true);
 
   const fetchEvents = useCallback(async () => {
-    if (!suiteId) { setLoading(false); return; }
+    if (!suiteId) return;
     try {
-      setLoading(true);
       const start = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).toISOString();
       const end = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59).toISOString();
       const { data, error } = await supabase
         .from('calendar_events')
-        .select('*')
+        .select('id, title, start_time, end_time')
         .eq('suite_id', suiteId)
         .gte('start_time', start)
         .lte('start_time', end)
         .order('start_time', { ascending: true });
-      if (error) {
-        console.warn('[CalendarWidget] fetch error:', error.message);
-        setEvents([]);
-      } else {
-        setEvents(data ?? []);
-      }
-    } catch (err) {
-      console.warn('[CalendarWidget] fetch exception:', err);
-      setEvents([]);
-    } finally {
-      setLoading(false);
-    }
+      if (!error) setEvents(data ?? []);
+    } catch (_e) { /* calendar not available */ }
   }, [suiteId, currentMonth]);
 
-  // Realtime subscription for instant updates
   useEffect(() => {
     if (!suiteId) return;
-
     const channel = supabase
       .channel(`calendar-widget-${suiteId.slice(0, 8)}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'calendar_events', filter: `suite_id=eq.${suiteId}` },
-        () => { fetchEvents(); },
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_events', filter: `suite_id=eq.${suiteId}` }, () => { fetchEvents(); })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [suiteId, fetchEvents]);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
-  const days = useMemo(() =>
-    getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()),
-    [currentMonth]
-  );
-
-  const eventsOnDay = useCallback((day: Date) =>
-    events.filter(e => sameDay(new Date(e.start_time), day)),
-    [events]
-  );
-
-  const selectedEvents = useMemo(() =>
-    events.filter(e => sameDay(new Date(e.start_time), selectedDate)),
-    [events, selectedDate]
-  );
-
-  const prevMonth = () => {
-    setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
-  };
-
-  const nextMonth = () => {
-    setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
-  };
-
-  const isCurrentMonth = (day: Date) =>
-    day.getMonth() === currentMonth.getMonth();
+  const days = useMemo(() => getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()), [currentMonth]);
+  const eventsOnDay = useCallback((day: Date) => events.filter(e => sameDay(new Date(e.start_time), day)), [events]);
+  const isCurrentMonth = (day: Date) => day.getMonth() === currentMonth.getMonth();
 
   return (
     <View style={s.root}>
-      {/* Month nav */}
+      {/* Month nav — Aspire blue arrows */}
       <View style={s.navRow}>
-        <Pressable 
-          style={({ pressed }) => [s.navBtn, pressed && { backgroundColor: 'rgba(255,255,255,0.1)' }]} 
-          onPress={prevMonth}
+        <Pressable
+          style={({ pressed }) => [s.navBtn, pressed && s.navBtnPressed]}
+          onPress={() => setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
         >
-          <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.6)" />
+          <Ionicons name="chevron-back" size={18} color="#3B82F6" />
         </Pressable>
         <Text style={s.monthLabel}>
           {MONTH_NAMES[currentMonth.getMonth()]} {currentMonth.getFullYear()}
         </Text>
-        <Pressable 
-          style={({ pressed }) => [s.navBtn, pressed && { backgroundColor: 'rgba(255,255,255,0.1)' }]} 
-          onPress={nextMonth}
+        <Pressable
+          style={({ pressed }) => [s.navBtn, pressed && s.navBtnPressed]}
+          onPress={() => setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
         >
-          <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.6)" />
+          <Ionicons name="chevron-forward" size={18} color="#3B82F6" />
         </Pressable>
       </View>
 
@@ -213,10 +158,7 @@ function CalendarWidgetInner({ suiteId: propSuiteId, officeId }: CalendarWidgetP
               {dayEvents.length > 0 && (
                 <View style={s.dotRow}>
                   {dayEvents.slice(0, 3).map(e => (
-                    <View
-                      key={e.id}
-                      style={[s.eventDot, { backgroundColor: colorFromId(e.id) }]}
-                    />
+                    <View key={e.id} style={[s.eventDot, { backgroundColor: colorFromId(e.id) }]} />
                   ))}
                 </View>
               )}
@@ -225,45 +167,10 @@ function CalendarWidgetInner({ suiteId: propSuiteId, officeId }: CalendarWidgetP
         })}
       </View>
 
-      {/* Divider */}
-      <View style={s.divider} />
+      {/* Spacer pushes button to bottom */}
+      <View style={s.spacer} />
 
-      {/* Selected day events */}
-      <ScrollView style={s.eventList} showsVerticalScrollIndicator={false}>
-        <Text style={s.eventListTitle}>
-          {sameDay(selectedDate, today) ? "Today's Events" : selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-        </Text>
-        {selectedEvents.length === 0 ? (
-          <View style={s.noEventsContainer}>
-            <View style={s.noEvents}>
-              <Text style={s.noEventsText}>No events this day</Text>
-            </View>
-          </View>
-        ) : (
-          selectedEvents.map(event => {
-            const color = colorFromId(event.id);
-            return (
-              <View key={event.id} style={s.eventCard}>
-                <View style={[s.eventBar, { backgroundColor: color }]} />
-                <View style={s.eventInfo}>
-                  <Text style={s.eventTitle} numberOfLines={1}>{event.title}</Text>
-                  <View style={s.eventTimeRow}>
-                    <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.35)" style={{ marginRight: 4 }} />
-                    <Text style={s.eventTime}>
-                      {formatTime(event.start_time)} – {formatTime(event.end_time)}
-                    </Text>
-                  </View>
-                  {event.location ? (
-                    <Text style={s.eventLocation} numberOfLines={1}>{event.location}</Text>
-                  ) : null}
-                </View>
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
-
-      {/* Open Calendar button — matches Finance Hub "Open Dashboard" pattern */}
+      {/* Open Calendar button */}
       <Pressable
         style={({ pressed }) => [s.openButton, pressed && { opacity: 0.8 }]}
         onPress={() => { playClickSound(); router.push('/calendar' as any); }}
@@ -282,58 +189,72 @@ function CalendarWidgetInner({ suiteId: propSuiteId, officeId }: CalendarWidgetP
 const s = StyleSheet.create({
   root: {
     flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
   },
+
+  // ── Month nav ─────────────────────────────────────────────────────
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 8,
+    paddingBottom: 10,
   },
   navBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
+  navBtnPressed: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+  },
   monthLabel: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#FFF',
+    color: '#FFFFFF',
     letterSpacing: -0.3,
   } as any,
+
+  // ── Week day headers ──────────────────────────────────────────────
   weekRow: {
     flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingBottom: 4,
+    paddingHorizontal: 10,
+    paddingBottom: 6,
   },
   weekDay: {
     flex: 1,
     textAlign: 'center',
     fontSize: 10,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.3)',
-    letterSpacing: 0.5,
+    color: 'rgba(255,255,255,0.35)',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   } as any,
+
+  // ── Day grid ──────────────────────────────────────────────────────
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
   },
   dayCell: {
     width: `${100 / 7}%` as any,
     alignItems: 'center',
-    paddingVertical: 3,
+    paddingVertical: 4,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   dayInner: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -342,15 +263,16 @@ const s = StyleSheet.create({
   },
   daySelected: {
     borderWidth: 1.5,
-    borderColor: '#3B82F6',
+    borderColor: 'rgba(59, 130, 246, 0.5)',
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
   },
   dayNum: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.75)',
+    color: 'rgba(255,255,255,0.7)',
     fontWeight: '500',
   } as any,
   dayNumOther: {
-    color: 'rgba(255,255,255,0.2)',
+    color: 'rgba(255,255,255,0.18)',
   },
   dayNumToday: {
     color: '#FFF',
@@ -371,90 +293,27 @@ const s = StyleSheet.create({
     height: 4,
     borderRadius: 2,
   },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    marginTop: 8,
-  },
-  eventList: {
+
+  // ── Spacer + Button ───────────────────────────────────────────────
+  spacer: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  eventListTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: 10,
-    letterSpacing: 0.3,
-  } as any,
-  noEventsContainer: {
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    marginTop: 4,
-  },
-  noEvents: {
-    paddingVertical: 32,
-    alignItems: 'center',
-  },
-  noEventsText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.4)',
-  },
-  eventCard: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    padding: 12,
-    marginBottom: 8,
-    gap: 10,
-  },
-  eventBar: {
-    width: 3,
-    borderRadius: 2,
-    minHeight: 36,
-  },
-  eventInfo: { flex: 1 },
-  eventTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFF',
-  } as any,
-  eventTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  eventTime: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.4)',
-  },
-  eventLocation: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.3)',
-    marginTop: 4,
+    minHeight: 12,
   },
   openButton: {
     marginHorizontal: 16,
     marginBottom: 16,
-    marginTop: 8,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: 'rgba(79, 172, 254, 0.12)',
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(79, 172, 254, 0.25)',
+    borderColor: 'rgba(59, 130, 246, 0.2)',
     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
   },
   openButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 20,
     gap: 8,
   },
@@ -468,7 +327,7 @@ const s = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: 'rgba(79, 172, 254, 0.2)',
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },

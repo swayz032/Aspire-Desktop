@@ -454,7 +454,7 @@ function DesktopHomeInner() {
                     </View>
                   </CanvasTileWrapper>
 
-                  <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E', padding: 16, maxHeight: 300, overflow: 'hidden' }}>
+                  <View style={styles.calendarContainer}>
                     <CalendarWidget suiteId={tenant?.suiteId || ''} officeId="" />
                   </View>
                 </View>
@@ -645,6 +645,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.surface.cardBorder,
     backgroundColor: Colors.surface.card,
+  },
+  calendarContainer: {
+    flex: 1,
+    backgroundColor: '#1E1E1E',
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    overflow: 'hidden',
   },
   flexSection: {
     flex: 1,
