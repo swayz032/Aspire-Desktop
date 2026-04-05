@@ -15,6 +15,7 @@ import { useSupabase } from '@/providers';
 import { playClickSound } from '@/lib/sounds';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { Card } from '@/components/ui/Card';
+import { Colors } from '@/constants/tokens';
 
 interface CalendarEvent {
   id: string;
@@ -193,6 +194,8 @@ const s = StyleSheet.create({
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.surface.cardBorder,  // #2C2C2E — visible lighter border (2-tone)
   },
 
   // ── Month nav ─────────────────────────────────────────────────────
