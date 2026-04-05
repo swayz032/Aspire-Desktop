@@ -460,7 +460,7 @@ function GuestConferenceContent({
   return (
     <>
       <ConferenceHeader
-        roomName={roomName}
+        roomName="Conference Room"
         participantCount={participants.length + 1}
         duration={duration}
         isRecording={isRecording}

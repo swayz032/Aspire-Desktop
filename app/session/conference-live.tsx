@@ -286,7 +286,7 @@ function ConferenceContent({
   return (
     <>
       <ConferenceHeader
-        roomName={roomName}
+        roomName={displayName}
         participantCount={participants.length + 1}
         duration={duration}
         isRecording={controls.isRecording}
@@ -376,6 +376,13 @@ function ConferenceLive() {
 
   const participantName = (params.participantName as string) || tenant?.ownerName || session?.user?.user_metadata?.full_name || 'You';
   const roomName = (params.roomName as string) || `suite-${suiteId || 'dev'}-conference`;
+  // Display name for the header — use passed param, or derive from tenant display IDs
+  const suiteDisplay = tenant?.displayId || '';
+  const officeDisplay = tenant?.officeDisplayId || '';
+  const derivedRoomLabel = suiteDisplay
+    ? `${officeDisplay ? `Suite ${suiteDisplay} • Office ${officeDisplay}` : `Suite ${suiteDisplay}`} • Room CR-${suiteDisplay}`
+    : 'Conference Room';
+  const displayName = (params.displayName as string) || derivedRoomLabel;
   const purpose = (params.purpose as string) || 'Internal';
   const sessionMode = (params.sessionMode as string) || 'conference';
   const autoRecord = params.isRecording === '1' || params.isRecording === undefined; // default on
@@ -643,7 +650,7 @@ function ConferenceLive() {
         {zoomStatus === 'joined' && zoomToken && (
           <ZoomConferenceProvider token={zoomToken} topic={zoomTopic} userName={participantName} startVideo={!isVoiceOnly} autoRecord={autoRecord}>
             <ConferenceContent
-              roomName={roomName}
+              roomName={displayName}
               avaState={avaState}
               isNoraSpeaking={isNoraSpeaking}
               onToggleNora={handleToggleNora}

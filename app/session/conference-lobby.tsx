@@ -614,6 +614,7 @@ function ConferenceLobby() {
         sessionMode,
         isRecording: isRecording ? '1' : '0',
         roomName,
+        displayName: `${suiteLabel} • Room ${roomNumber}`,
         participantName: userName,
         participantIds: participants.map(p => p.id).join(','),
       }
