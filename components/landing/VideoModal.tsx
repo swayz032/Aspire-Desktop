@@ -114,7 +114,7 @@ function VideoModalInner({ isOpen, onClose, videoPath, memberName }: VideoModalP
                 objectFit: 'cover',
                 background: '#000',
               }}
-              preload="metadata"
+              preload="auto"
             />
           </motion.div>
         </motion.div>

@@ -165,6 +165,7 @@ function VideoPlayerModal({
                 src={videoUrl}
                 controls
                 autoPlay
+                preload="auto"
                 style={{
                   width: '100%',
                   height: '100%',

@@ -401,6 +401,7 @@ function FinanceMemoryContent() {
                 loop
                 muted
                 playsInline
+                preload="auto"
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             </div>

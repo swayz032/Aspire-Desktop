@@ -174,6 +174,7 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
         loop
         muted
         playsInline
+        preload="auto"
         controls={false}
         style={{
           width: size,

@@ -70,6 +70,7 @@ function AvaOrbInner({ size = 320 }: AvaOrbProps) {
         loop
         muted
         playsInline
+        preload="auto"
         controls={false}
         style={{
           width: size,

@@ -1093,6 +1093,7 @@ function FinnDeskPanelInner({ initialTab, templateContext, isInOverlay, videoOnl
                     loop
                     muted
                     playsInline
+                    preload="auto"
                     style={{ width: 260, height: 260, objectFit: 'contain', background: 'transparent' }}
                   />
                 </Animated.View>

@@ -51,6 +51,7 @@ function HeroSectionInner() {
         muted
         loop
         playsInline
+        preload="auto"
         style={{
           position: 'absolute',
           inset: 0,

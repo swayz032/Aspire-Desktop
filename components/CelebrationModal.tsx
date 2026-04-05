@@ -449,6 +449,7 @@ function CelebrationWeb({
         loop
         muted
         playsInline
+        preload="auto"
         style={{
           position: 'absolute',
           inset: 0,

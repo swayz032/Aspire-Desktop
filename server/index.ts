@@ -475,10 +475,13 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-Id', 'X-Suite-Id'],
 }));
+// No-cache for API routes only — static assets get their own cache headers below
 app.use((req, res, next) => {
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+  if (req.path.startsWith('/api')) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
   next();
 });
 app.use(express.json({
@@ -931,12 +934,19 @@ app.use('/_expo', express.static(path.join(distPath, '_expo'), {
   immutable: true,
 }));
 
-// Non-hashed static files (favicon, public/) — short cache with revalidation
+// Non-hashed static files (favicon, public/)
+// Videos, images, audio, fonts = long cache (content rarely changes, saves bandwidth)
+// Everything else = short cache with revalidation
 app.use(express.static(publicPath, {
-  maxAge: 0,
   etag: true,
-  setHeaders: (res) => {
-    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  setHeaders: (res, filePath) => {
+    const ext = path.extname(filePath).toLowerCase();
+    const longCacheExts = ['.mp4', '.webm', '.mov', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.mp3', '.wav', '.ogg', '.ttf', '.woff', '.woff2'];
+    if (longCacheExts.includes(ext)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
   },
 }));
 

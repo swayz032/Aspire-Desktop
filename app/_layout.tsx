@@ -50,9 +50,13 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { getBiometricPreference, authenticateWithBiometrics } from '@/lib/biometrics';
 import { useSupabaseDevTools } from '@/lib/devtools/supabasePlugin';
 import { useStoreDevTools } from '@/lib/devtools/storePlugin';
+import { prefetchCriticalAssets } from '@/lib/assetPrefetch';
 
 // Initialize Sentry before any component renders
 configureSentry();
+
+// Start prefetching critical assets immediately (before any component mounts)
+prefetchCriticalAssets();
 
 /**
  * Global Error Boundary — prevents white screen on uncaught errors.
@@ -626,7 +630,8 @@ function RootLayout() {
   }, []);
 
   if (!fontsLoaded) {
-    return null;
+    // Dark splash instead of null — prevents white flash during font load
+    return <View style={{ flex: 1, backgroundColor: '#0a0a0a' }} />;
   }
 
   return (
