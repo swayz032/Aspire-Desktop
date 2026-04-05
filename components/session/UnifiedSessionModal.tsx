@@ -600,6 +600,7 @@ const styles = StyleSheet.create({
     width: MODAL_WIDTH,
     maxWidth: '90%' as unknown as number,
     maxHeight: '92%' as unknown as number,
+    minHeight: 560,
     backgroundColor: '#111113',
     borderRadius: MODAL_BORDER_RADIUS,
     overflow: 'hidden',
@@ -711,12 +712,12 @@ const styles = StyleSheet.create({
   scrollBodyContent: {
     padding: Spacing.xl,
     paddingBottom: Spacing.xl,
-    gap: Spacing.lg, // Tighter section gaps — everything visible without scroll
+    gap: Spacing.xxl, // Comfortable section spacing within taller modal
   },
 
   // Section layout
   section: {
-    gap: Spacing.sm, // 8px — compact sections
+    gap: Spacing.md, // 12px — comfortable section internals
   },
   sectionHeader: {
     flexDirection: 'row',
