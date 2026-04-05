@@ -199,7 +199,7 @@ function DesktopHomeInner() {
         if (res.ok) {
           const data = await res.json();
           const cp = data.cashPosition;
-          if (cp && (data.providers?.plaid || data.providers?.stripe)) {
+          if (cp) {
             const cashData: CashPosition = {
               availableCash: cp.availableCash || 0,
               upcomingOutflows7d: cp.upcomingOutflows7d || 0,
@@ -617,6 +617,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.lg,
     overflow: 'hidden',
+    alignItems: 'stretch',
   },
   leftCol: {
     width: Canvas.layout.leftColDesktop,
@@ -628,6 +629,8 @@ const styles = StyleSheet.create({
   centerCol: {
     flex: 1,
     minWidth: 440,
+    display: 'flex',
+    flexDirection: 'column',
     ...(Platform.OS === 'web' ? {
       position: 'relative',
     } : {}),

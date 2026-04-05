@@ -876,7 +876,8 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: '#1C1C1E',
-    height: 840,
+    flex: 1,
+    minHeight: 840,
   } as any,
   header: {
     paddingHorizontal: 16,

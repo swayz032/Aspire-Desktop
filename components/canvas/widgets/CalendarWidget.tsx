@@ -1,7 +1,7 @@
 /**
  * CalendarWidget — Premium month-view calendar for the homepage right column.
  *
- * Design: Aspire 2-tone gray (Colors.surface.card + Colors.surface.cardBorder).
+ * Design: Aspire 2-tone gray via Card variant="elevated" (matches TodayPlanTabs).
  * Only calendar grid + "Open Calendar" button. No event list.
  * Nav arrows are Aspire blue. Today circle is Aspire blue.
  * Fills available height via flex:1 so bottom aligns with Today's Plan.
@@ -14,7 +14,7 @@ import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/providers';
 import { playClickSound } from '@/lib/sounds';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
-import { Colors, BorderRadius, Spacing } from '@/constants/tokens';
+import { Card } from '@/components/ui/Card';
 
 interface CalendarEvent {
   id: string;
@@ -102,7 +102,7 @@ function CalendarWidgetInner({ suiteId: propSuiteId }: CalendarWidgetProps) {
   const isCurrentMonth = (day: Date) => day.getMonth() === currentMonth.getMonth();
 
   return (
-    <View style={s.root}>
+    <Card variant="elevated" padding="none" style={s.root}>
       {/* Month nav — Aspire blue arrows */}
       <View style={s.navRow}>
         <Pressable
@@ -183,7 +183,7 @@ function CalendarWidgetInner({ suiteId: propSuiteId }: CalendarWidgetProps) {
           </View>
         </View>
       </Pressable>
-    </View>
+    </Card>
   );
 }
 
@@ -192,10 +192,6 @@ const s = StyleSheet.create({
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: Colors.surface.card,         // #1C1C1E — 2-tone gray base
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,        // #2C2C2E — 2-tone gray border
     overflow: 'hidden',
   },
 
