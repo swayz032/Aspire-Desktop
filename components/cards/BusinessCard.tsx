@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -125,14 +126,14 @@ export function BusinessCard({ record, onAction, isActive }: CardProps) {
 
   const handleCall = useCallback(() => {
     if (phone) {
-      Linking.openURL(`tel:${phone}`).catch(() => {});
+      safeCallPhone(phone);
     }
     onAction('call', record);
   }, [phone, onAction, record]);
 
   const handleWebsite = useCallback(() => {
     if (website) {
-      Linking.openURL(website).catch(() => {});
+      safeOpenURL(website);
     }
     onAction('visit', record);
   }, [website, onAction, record]);
@@ -197,7 +198,7 @@ export function BusinessCard({ record, onAction, isActive }: CardProps) {
         {phone ? (
           <Pressable
             style={styles.infoRow}
-            onPress={() => Linking.openURL(`tel:${phone}`).catch(() => {})}
+            onPress={() => safeCallPhone(phone)}
             accessibilityRole="link"
             accessibilityLabel={`Call ${phone}`}
           >
@@ -210,7 +211,7 @@ export function BusinessCard({ record, onAction, isActive }: CardProps) {
         {website ? (
           <Pressable
             style={styles.infoRow}
-            onPress={() => Linking.openURL(website).catch(() => {})}
+            onPress={() => safeOpenURL(website)}
             accessibilityRole="link"
             accessibilityLabel={`Visit ${domain}`}
           >

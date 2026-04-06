@@ -12,6 +12,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { safeOpenURL } from '@/lib/safeOpenURL';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -110,7 +111,7 @@ export function ProductCard({ record, onAction, isActive }: CardProps) {
 
   const handleVisit = useCallback(() => {
     if (productUrl) {
-      Linking.openURL(productUrl).catch(() => {});
+      safeOpenURL(productUrl);
     }
     onAction('visit', record);
   }, [productUrl, onAction, record]);

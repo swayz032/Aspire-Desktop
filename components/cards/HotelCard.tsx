@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { SafetyBadge as SharedSafetyBadge } from './SafetyBadge';
+import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -156,7 +157,7 @@ export function HotelCard({ record, onAction, isActive }: CardProps) {
   // Handlers — keep pure, no side-effects
   const handleCall = useCallback(() => {
     if (phone) {
-      Linking.openURL(`tel:${phone}`).catch(() => {});
+      safeCallPhone(phone);
     }
     onAction('call', record);
   }, [phone, onAction, record]);
@@ -164,7 +165,7 @@ export function HotelCard({ record, onAction, isActive }: CardProps) {
   const handleVisit = useCallback(() => {
     const url = website || tripadvisor_url;
     if (url) {
-      Linking.openURL(url).catch(() => {});
+      safeOpenURL(url);
     }
     onAction('visit', record);
   }, [website, tripadvisor_url, onAction, record]);
