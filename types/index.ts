@@ -22,7 +22,7 @@ export interface LegacyTenant {
 }
 
 export interface AuthorityItemDocumentPreview {
-  type: 'meeting' | 'invoice' | 'contract' | 'email' | 'call';
+  type: 'meeting' | 'invoice' | 'quote' | 'contract' | 'email' | 'call';
   content: string;
   metadata?: {
     participants?: string[];
@@ -40,7 +40,7 @@ export interface AuthorityItem {
   id: string;
   title: string;
   subtitle: string;
-  type: 'session' | 'invoice' | 'contract' | 'call' | 'email' | 'approval';
+  type: 'session' | 'invoice' | 'quote' | 'contract' | 'call' | 'email' | 'approval';
   status: 'live' | 'pending' | 'blocked' | 'failed' | 'logged' | 'approved' | 'denied';
   priority: 'high' | 'medium' | 'low';
   timestamp: string;

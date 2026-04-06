@@ -8,7 +8,7 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 interface DocumentPreviewModalProps {
   visible: boolean;
   onClose: () => void;
-  type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording';
+  type: 'invoice' | 'quote' | 'contract' | 'report' | 'email' | 'document' | 'recording';
   documentName?: string;
   pandadocDocumentId?: string;
   /** Real data props — when provided, shown instead of hardcoded template content */
@@ -27,6 +27,7 @@ interface IdentityProps {
 
 const TYPE_META: Record<string, { title: string; icon: keyof typeof Ionicons.glyphMap; accent: string }> = {
   invoice: { title: 'Invoice', icon: 'receipt-outline', accent: '#3B82F6' },
+  quote: { title: 'Quote', icon: 'pricetag-outline', accent: '#8b5cf6' },
   contract: { title: 'Contract / NDA', icon: 'document-lock-outline', accent: '#8b5cf6' },
   report: { title: 'Financial Report', icon: 'bar-chart-outline', accent: '#06b6d4' },
   email: { title: 'Email', icon: 'mail-outline', accent: '#f59e0b' },

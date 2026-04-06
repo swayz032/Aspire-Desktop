@@ -3751,7 +3751,12 @@ router.get('/api/authority-queue', async (req: Request, res: Response) => {
              execution_payload->>'invoice_id' AS "stripeInvoiceId",
              execution_payload->>'customer_name' AS "customerName",
              execution_payload->>'document_id' AS "pandadocDocumentId",
-             payload_redacted->>'hosted_invoice_url' AS "hostedInvoiceUrl"
+             payload_redacted->>'hosted_invoice_url' AS "hostedInvoiceUrl",
+             tool,
+             operation,
+             execution_payload->>'due_date' AS "dueDate",
+             execution_payload->>'invoice_number' AS "invoiceNumber",
+             execution_payload->>'description' AS "invoiceDescription"
       FROM approval_requests
       WHERE status = 'pending' AND tenant_id = ${suiteId}
       ORDER BY created_at DESC

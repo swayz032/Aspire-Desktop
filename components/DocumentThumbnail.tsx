@@ -1,22 +1,24 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Platform, Pressable, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius } from '@/constants/tokens';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 interface DocumentThumbnailProps {
-  type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording';
+  type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording' | 'quote';
   size?: 'sm' | 'md' | 'lg' | 'xl';
   variant?: number;
   context?: 'todayplan' | 'authorityqueue' | 'conference' | 'financehub';
   documentName?: string;
   previewEnabled?: boolean;
   pandadocDocumentId?: string;
+  hostedInvoiceUrl?: string;
 }
 
 const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   invoice: { label: 'INVOICE', color: '#3B82F6' },
+  quote: { label: 'QUOTE', color: '#8b5cf6' },
   contract: { label: 'NDA', color: '#3B82F6' },
   report: { label: 'REPORT', color: '#3B82F6' },
   email: { label: 'EMAIL', color: '#3B82F6' },
@@ -36,6 +38,26 @@ function getLayout(type: string, scale: number): LayoutSpec {
 
   switch (type) {
     case 'invoice':
+      return {
+        header: [
+          { w: '50%', h: hBold, o: 0.45, bold: true },
+          { w: '40%', h: thin, o: 0.2, mb: gap },
+          { w: '35%', h: thin, o: 0.18 },
+          { w: '30%', h: thin, o: 0.15, align: 'right' },
+        ],
+        body: [
+          { w: '100%', h: thin * 0.6, o: 0.12, mb: gap },
+          { w: '70%', h: h, o: 0.25 },
+          { w: '22%', h: h, o: 0.3, align: 'right' },
+          { w: '60%', h: h, o: 0.2, mb: gap },
+          { w: '22%', h: h, o: 0.25, align: 'right' },
+          { w: '55%', h: h, o: 0.2 },
+          { w: '22%', h: h, o: 0.25, align: 'right' },
+          { w: '100%', h: thin * 0.5, o: 0.1, mb: gap },
+          { w: '35%', h: hBold, o: 0.4, align: 'right', bold: true },
+        ],
+      };
+    case 'quote':
       return {
         header: [
           { w: '50%', h: hBold, o: 0.45, bold: true },
@@ -185,6 +207,7 @@ function DocumentThumbnailInner({
   documentName,
   previewEnabled = true,
   pandadocDocumentId,
+  hostedInvoiceUrl,
 }: DocumentThumbnailProps) {
   const [hovered, setHovered] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -223,7 +246,9 @@ function DocumentThumbnailInner({
       </View>
 
       <View style={[styles.strip, { height: stripH }]}>
-        <View style={styles.stripGradient} />
+        <View style={[styles.stripGradient, Platform.OS === 'web' ? {
+          background: `linear-gradient(135deg, ${config.color}E6 0%, ${config.color} 45%, ${config.color}99 100%)`,
+        } as any : { backgroundColor: config.color }]} />
         <Text style={[styles.stripLabel, { fontSize: labelSize }]}>
           {config.label}
         </Text>
@@ -265,7 +290,13 @@ function DocumentThumbnailInner({
   return (
     <>
       <Pressable
-        onPress={() => setPreviewOpen(true)}
+        onPress={() => {
+          if (hostedInvoiceUrl) {
+            Linking.openURL(hostedInvoiceUrl);
+          } else {
+            setPreviewOpen(true);
+          }
+        }}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
         style={({ pressed }: any) => [
@@ -385,7 +416,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export function DocumentThumbnail(props: any) {
+export function DocumentThumbnail(props: DocumentThumbnailProps) {
   return (
     <PageErrorBoundary pageName="document-thumbnail">
       <DocumentThumbnailInner {...props} />

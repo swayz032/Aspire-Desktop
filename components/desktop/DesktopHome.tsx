@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform, Pressable, Linking } from 'react-native';
 import { DesktopShell } from './DesktopShell';
 import { AvaDeskPanel } from './AvaDeskPanel';
 import { InteractionModePanel } from '@/components/InteractionModePanel';
@@ -112,7 +112,7 @@ function DesktopHomeInner() {
   const [bannerDismissed, setBannerDismissed] = useState(isBannerDismissed);
   const [reviewPreview, setReviewPreview] = useState<{
     visible: boolean;
-    type: 'invoice' | 'contract' | 'report' | 'email' | 'document' | 'recording';
+    type: 'invoice' | 'quote' | 'contract' | 'report' | 'email' | 'document' | 'recording';
     documentName?: string;
     pandadocDocumentId?: string;
     draftSummary?: string;
@@ -238,7 +238,6 @@ function DesktopHomeInner() {
     loadCalendarEvents();
 
     // Realtime subscription — refresh calendar on any change
-    const suiteId = session?.user?.user_metadata?.suite_id;
     const calChannel = suiteId
       ? supabaseClient
           .channel(`home-calendar-${Date.now()}`)
@@ -248,16 +247,45 @@ function DesktopHomeInner() {
           .subscribe()
       : null;
 
-    // Fetch Today's Plan: merge calendar events + pending approvals
+    // Fetch Today's Plan: merge all 5 data sources
     (async () => {
       try {
-        const [calRes, authItemsFromApi] = await Promise.all([
+        const [calRes, authItemsFromApi, callsRes, inboxRes] = await Promise.all([
           fetch('/api/calendar/today', {
             headers: { 'Content-Type': 'application/json', ...headers },
           }).catch(() => null),
           getAuthorityQueue(session?.access_token ?? undefined, suiteId ?? undefined).catch(() => []),
+          fetch('/api/frontdesk/calls?limit=10', { headers }).catch(() => null),
+          fetch('/api/inbox/items', { headers }).catch(() => null),
         ]);
 
+        // Helper: format currency
+        const fmtCurrency = (amt: number | string | undefined, cur = 'usd'): string => {
+          const n = typeof amt === 'string' ? parseFloat(amt) : amt;
+          if (n == null || isNaN(n)) return '';
+          try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: (cur || 'usd').toUpperCase() }).format(n); }
+          catch { return `$${n.toFixed(2)}`; }
+        };
+
+        // Helper: "Due in X days" or "Due now"
+        const dueLabel = (dateStr: string | undefined): string => {
+          if (!dateStr) return 'Due now';
+          const diff = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000);
+          if (diff <= 0) return 'Due now';
+          if (diff === 1) return 'Due 1d';
+          return `Due ${diff}d`;
+        };
+
+        // Helper: detect doc type from tool.operation string
+        const detectDocType = (typeStr: string): string => {
+          const t = (typeStr || '').split('.')[0].toLowerCase();
+          if (t === 'invoice') return 'invoice';
+          if (t === 'quote') return 'quote';
+          if (t === 'contract' || t === 'nda') return 'contract';
+          return 'document';
+        };
+
+        // 1. Calendar events
         const calItems: any[] = [];
         if (calRes?.ok) {
           const calData = await calRes.json();
@@ -265,38 +293,97 @@ function DesktopHomeInner() {
             const startDate = new Date(evt.start_time);
             calItems.push({
               id: evt.id || `cal-${idx}`,
-              time: startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              time: startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
               action: evt.title || 'Calendar Event',
               details: evt.location || (evt.participants?.length ? evt.participants.join(', ') : evt.event_type || ''),
               status: 'upcoming',
               staffRole: evt._source === 'booking' ? 'booking' : (evt.source || 'calendar'),
               _sortTime: startDate.getTime(),
               _type: 'calendar',
+              documents: [{ type: 'calendar', name: evt.title || 'Event' }],
             });
           });
         }
 
+        // 2. Invoices, quotes, contracts (from authority queue)
         const authItems: any[] = [];
         if (Array.isArray(authItemsFromApi)) {
-          const pending = authItemsFromApi || [];
-          pending.slice(0, 4).forEach((p: any, idx: number) => {
+          (authItemsFromApi || []).slice(0, 4).forEach((p: any, idx: number) => {
+            const docType = detectDocType(p.type);
+            const amountStr = p.amount ? fmtCurrency(p.amount, p.currency) : '';
             authItems.push({
               id: p.id || `plan-${idx}`,
-              time: new Date(p.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              time: dueLabel(p.dueDate),
               action: `Review: ${p.title || p.type || 'Approval Request'}`,
-              details: p.amount ? `$${p.amount.toLocaleString()} ${p.currency?.toUpperCase() || 'USD'} — ${p.requestedBy || 'System'}` : (p.requestedBy || 'Pending approval'),
+              details: amountStr
+                ? `${amountStr} — ${p.customerName || p.requestedBy || 'Pending approval'}`
+                : (p.customerName || p.requestedBy || 'Pending approval'),
               status: 'upcoming',
-              staffRole: p.requestedBy || '',
-              _sortTime: new Date(p.createdAt || Date.now()).getTime(),
+              staffRole: p.assignedAgent || p.requestedBy || '',
+              _sortTime: new Date(p.dueDate || p.createdAt || Date.now()).getTime(),
               _type: 'approval',
+              documents: [{
+                type: docType,
+                name: p.customerName || p.title || 'Document',
+                amount: amountStr || undefined,
+              }],
             });
           });
         }
 
-        // Merge and sort by time, mark first as "next"
-        const merged = [...calItems, ...authItems]
+        // 3. Phone calls (missed/inbound today)
+        const callItems: any[] = [];
+        if (callsRes?.ok) {
+          try {
+            const callsData = await callsRes.json();
+            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+            (callsData.calls || [])
+              .filter((c: any) => c.direction === 'inbound' && new Date(c.started_at) >= todayStart)
+              .slice(0, 3)
+              .forEach((c: any, idx: number) => {
+                callItems.push({
+                  id: c.call_session_id || `call-${idx}`,
+                  time: new Date(c.started_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+                  action: `Return call: ${c.caller_name || c.from_number || 'Unknown'}`,
+                  details: c.voicemail_url ? 'Voicemail left' : 'Missed call',
+                  status: 'upcoming',
+                  staffRole: 'Sarah',
+                  _sortTime: new Date(c.started_at).getTime(),
+                  _type: 'call' as const,
+                  documents: [{ type: 'call', name: c.caller_name || c.from_number || 'Caller' }],
+                });
+              });
+          } catch { /* calls not available */ }
+        }
+
+        // 4. Important emails (high priority + unread)
+        const emailItems: any[] = [];
+        if (inboxRes?.ok) {
+          try {
+            const inboxData = await inboxRes.json();
+            (inboxData.items || [])
+              .filter((e: any) => e.priority === 'high' && e.unread)
+              .slice(0, 2)
+              .forEach((e: any, idx: number) => {
+                emailItems.push({
+                  id: e.id || `email-${idx}`,
+                  time: new Date(e.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+                  action: e.subject || 'Important email',
+                  details: `From: ${e.from || 'Unknown'}`,
+                  status: 'upcoming',
+                  staffRole: 'Eli',
+                  _sortTime: new Date(e.timestamp).getTime(),
+                  _type: 'email' as const,
+                  documents: [{ type: 'email', name: e.from || 'Sender', value: e.subject }],
+                });
+              });
+          } catch { /* inbox not available */ }
+        }
+
+        // Merge all sources, sort chronologically, cap at 6
+        const merged = [...calItems, ...authItems, ...callItems, ...emailItems]
           .sort((a, b) => (a._sortTime || 0) - (b._sortTime || 0))
-          .slice(0, 4);
+          .slice(0, 6);
         if (merged.length > 0) merged[0].status = 'next';
 
         setPlanItems(merged);
@@ -506,17 +593,27 @@ function DesktopHomeInner() {
                                 }
                               } catch (e) { /* deny failed — user can retry */ }
                             } else if (action === 'review') {
-                              // Open real PandaDoc preview for contracts, static preview for others
-                              const docType = item.type === 'invoice' ? 'invoice' as const
-                                : item.type === 'contract' ? 'contract' as const
-                                : 'document' as const;
-                              setReviewPreview({
-                                visible: true,
-                                type: docType,
-                                documentName: item.title,
-                                pandadocDocumentId: item.pandadocDocumentId,
-                                draftSummary: item.draftSummary,
-                              });
+                              // Open real Stripe invoice for invoices/quotes with hosted URL
+                              if (item.hostedInvoiceUrl && (item.type === 'invoice' || item.type === 'quote')) {
+                                Linking.openURL(item.hostedInvoiceUrl);
+                              } else {
+                                // Open preview modal with real data when available
+                                const docType = item.type === 'invoice' ? 'invoice' as const
+                                  : item.type === 'quote' ? 'quote' as const
+                                  : item.type === 'contract' ? 'contract' as const
+                                  : 'document' as const;
+                                const meta = item.documentPreview?.metadata;
+                                setReviewPreview({
+                                  visible: true,
+                                  type: docType,
+                                  documentName: item.title,
+                                  pandadocDocumentId: item.pandadocDocumentId,
+                                  draftSummary: item.draftSummary,
+                                  amount: meta?.amount ? parseFloat(meta.amount.replace(/[^0-9.-]/g, '')) : undefined,
+                                  customerName: meta?.counterparty,
+                                  currency: 'USD',
+                                });
+                              }
                             }
                           }}
                         />

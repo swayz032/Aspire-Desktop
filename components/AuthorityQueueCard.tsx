@@ -35,21 +35,37 @@ const AGENT_AVATARS: Record<string, { icon: keyof typeof Ionicons.glyphMap; colo
   ava: { icon: 'sparkles', color: '#3b82f6' },
 };
 
+const AGENT_AVATAR_IMAGES: Record<string, any> = {
+  quinn: require('@/assets/avatars/quinn.png'),
+  finn: require('@/assets/avatars/finn.png'),
+  eli: require('@/assets/avatars/eli.png'),
+  sarah: require('@/assets/avatars/sarah.png'),
+  nora: require('@/assets/avatars/nora.png'),
+  clara: require('@/assets/avatars/clara.png'),
+  cole: require('@/assets/avatars/cole.png'),
+  ava: require('@/assets/avatars/ava.png'),
+};
+
 function useExpiryCountdown(expiresAt?: string): string | null {
   const [label, setLabel] = React.useState<string | null>(null);
   React.useEffect(() => {
     if (!expiresAt) { setLabel(null); return; }
+    let interval: ReturnType<typeof setInterval> | null = null;
     const update = () => {
       const diff = new Date(expiresAt).getTime() - Date.now();
-      if (diff <= 0) { setLabel('Expired'); return; }
+      if (diff <= 0) {
+        setLabel('Expired');
+        if (interval) { clearInterval(interval); interval = null; }
+        return;
+      }
       const mins = Math.floor(diff / 60000);
       const hrs = Math.floor(mins / 60);
       if (hrs > 0) setLabel(`${hrs}h ${mins % 60}m left`);
       else setLabel(`${mins}m left`);
     };
     update();
-    const interval = setInterval(update, 30000);
-    return () => clearInterval(interval);
+    interval = setInterval(update, 30000);
+    return () => { if (interval) clearInterval(interval); };
   }, [expiresAt]);
   return label;
 }
@@ -86,9 +102,16 @@ function AuthorityQueueCardInner({ item, onAction }: AuthorityQueueCardProps) {
         )}
         <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
         {agentConfig && (
-          <View style={[styles.agentBadge, { backgroundColor: `${agentConfig.color}20` }]}>
-            <Ionicons name={agentConfig.icon} size={12} color={agentConfig.color} />
-          </View>
+          AGENT_AVATAR_IMAGES[item.assignedAgent || ''] ? (
+            <Image
+              source={AGENT_AVATAR_IMAGES[item.assignedAgent || '']}
+              style={styles.agentAvatarImage}
+            />
+          ) : (
+            <View style={[styles.agentBadge, { backgroundColor: `${agentConfig.color}20` }]}>
+              <Ionicons name={agentConfig.icon} size={12} color={agentConfig.color} />
+            </View>
+          )
         )}
         <Pressable style={styles.moreButton}>
           <Ionicons name="ellipsis-horizontal" size={18} color={Colors.text.muted} />
@@ -175,11 +198,12 @@ function AuthorityQueueCardInner({ item, onAction }: AuthorityQueueCardProps) {
         <View style={styles.documentPreviewContainer}>
           <View style={styles.docHeader}>
             <DocumentThumbnail
-              type={item.type === 'invoice' ? 'invoice' : item.type === 'contract' ? 'contract' : 'document'}
+              type={item.type === 'invoice' ? 'invoice' : item.type === 'quote' ? 'quote' : item.type === 'contract' ? 'contract' : 'document'}
               size="xl"
               variant={0}
               context="authorityqueue"
               pandadocDocumentId={item.pandadocDocumentId}
+              hostedInvoiceUrl={item.hostedInvoiceUrl}
             />
             <View style={styles.docMeta}>
               {item.documentPreview.metadata?.amount && (
@@ -194,16 +218,20 @@ function AuthorityQueueCardInner({ item, onAction }: AuthorityQueueCardProps) {
             </View>
             <Badge label={item.status} variant={statusVariant} size="md" />
           </View>
-          
+
           <View style={styles.docContentPreview}>
             <Text style={styles.docContent} numberOfLines={6}>
               {item.documentPreview.content}
             </Text>
           </View>
-          
+
           {item.staffRole && (
             <View style={styles.staffInfo}>
-              <Ionicons name="person-circle" size={16} color={Colors.text.muted} />
+              {AGENT_AVATAR_IMAGES[item.assignedAgent || ''] ? (
+                <Image source={AGENT_AVATAR_IMAGES[item.assignedAgent || '']} style={styles.staffAvatarImage} />
+              ) : (
+                <Ionicons name="person-circle" size={16} color={Colors.text.muted} />
+              )}
               <Text style={styles.staffText}>Prepared by {item.staffRole}</Text>
             </View>
           )}
@@ -213,19 +241,27 @@ function AuthorityQueueCardInner({ item, onAction }: AuthorityQueueCardProps) {
       {!isSession && !item.documentPreview && (
         <View style={styles.documentRow}>
           <DocumentThumbnail
-            type={item.type === 'invoice' ? 'invoice' : item.type === 'contract' ? 'contract' : 'document'}
+            type={item.type === 'invoice' ? 'invoice' : item.type === 'quote' ? 'quote' : item.type === 'contract' ? 'contract' : 'document'}
             size="xl"
             variant={0}
             context="authorityqueue"
             pandadocDocumentId={item.pandadocDocumentId}
+            hostedInvoiceUrl={item.hostedInvoiceUrl}
           />
-          
+
           <View style={styles.docInfo}>
             {item.dueDate && (
               <Text style={styles.dueText}>Due: {item.dueDate}</Text>
             )}
             {item.staffRole && (
-              <Text style={styles.staffText}>Staff: {item.staffRole}</Text>
+              <View style={styles.staffInfo}>
+                {AGENT_AVATAR_IMAGES[item.assignedAgent || ''] ? (
+                  <Image source={AGENT_AVATAR_IMAGES[item.assignedAgent || '']} style={styles.staffAvatarImage} />
+                ) : (
+                  <Ionicons name="person-circle" size={16} color={Colors.text.muted} />
+                )}
+                <Text style={styles.staffText}>Prepared by {item.staffRole}</Text>
+              </View>
             )}
           </View>
 
@@ -488,6 +524,16 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  agentAvatarImage: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
+  staffAvatarImage: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   draftSummaryRow: {
     flexDirection: 'row',

@@ -1,15 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from './ui/Card';
-import { Badge } from './ui/Badge';
 import { DocumentThumbnail } from './DocumentThumbnail';
 import { useRouter } from 'expo-router';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useSupabase } from '@/providers';
 
-const calendarHero = require('../assets/images/calendar-hero.jpg');
+// Photo thumbnails for non-document item types
+const PHOTO_THUMBNAILS: Record<string, any> = {
+  calendar: require('../assets/images/calendar-hero.jpg'),
+  call: require('../assets/images/plan-call.jpg'),
+  email: require('../assets/images/calls-hero.jpg'),
+};
+
+// Document types rendered by DocumentThumbnail (procedural)
+const DOC_TYPES = new Set(['invoice', 'quote', 'contract', 'document', 'report']);
 
 interface TodayPlanItem {
   id: string;
@@ -19,18 +26,17 @@ interface TodayPlanItem {
   status: string;
   staffRole: string;
   documents?: any[];
-  _type?: 'calendar' | 'approval';
+  _type?: 'calendar' | 'approval' | 'call' | 'email';
 }
 
 
 function TodayPlanTabsInner({ planItems }: { planItems: TodayPlanItem[] }) {
   const router = useRouter();
   const { session } = useSupabase();
-  const displayedPlan = planItems.slice(0, 4);
+  const displayedPlan = planItems.slice(0, 6);
   const [isInboxSetup, setIsInboxSetup] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Wait for session to be available before checking onboarding status
     if (!session?.access_token) return;
     const checkOnboarding = async () => {
       try {
@@ -54,10 +60,10 @@ function TodayPlanTabsInner({ planItems }: { planItems: TodayPlanItem[] }) {
         <TodayPlanContent items={displayedPlan} router={router} />
       ) : isInboxSetup ? (
         <View style={styles.emptyContainer}>
-          <Ionicons name="sunny-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
-          <Text style={styles.emptyHeadline}>Your plan builds as your day progresses</Text>
+          <Ionicons name="checkmark-circle-outline" size={24} color={Colors.accent.cyan} style={styles.emptyStateIcon} />
+          <Text style={styles.emptyHeadline}>All caught up</Text>
           <Text style={styles.emptyBody}>
-            Incoming emails, calls, and invoices will populate your action list here.
+            No pending items right now. New emails, calls, and invoices will appear here automatically.
           </Text>
         </View>
       ) : (
@@ -84,77 +90,85 @@ function TodayPlanContent({ items, router }: { items: TodayPlanItem[]; router: a
   const getBarColor = (item: TodayPlanItem) => {
     if (item.status === 'next') return Colors.accent.cyan;
     if (item._type === 'approval') return Colors.semantic.warning;
-    return '#8B5CF6';
+    if (item._type === 'call') return '#22c55e';
+    if (item._type === 'email') return '#3b82f6';
+    return '#8B5CF6'; // calendar
   };
 
   return (
     <View style={styles.planContainer}>
       {items.map((planItem, index) => {
-        const isCalendar = planItem._type === 'calendar';
-        const isApproval = planItem._type === 'approval';
         const barColor = getBarColor(planItem);
-        const timeNum = planItem.time.split(':')[0].replace(/^0/, '') + ':' + (planItem.time.split(':')[1] || '00').replace(/ .*/,'');
-        const timePeriod = planItem.time.includes('PM') ? 'PM' : planItem.time.includes('AM') ? 'AM' : '';
+        const doc = planItem.documents?.[0];
+        const docType = doc?.type || 'document';
+
+        // Determine thumbnail: photo or DocumentThumbnail
+        const isPhotoType = !DOC_TYPES.has(docType);
+        const photoSource = isPhotoType ? PHOTO_THUMBNAILS[docType] : null;
+
+        // Time column: clock time vs due-date label
+        const isDueLabel = !planItem.time.includes(':');
+        const timeNum = isDueLabel
+          ? ''
+          : planItem.time.split(':')[0].replace(/^0/, '') + ':' + (planItem.time.split(':')[1] || '00').replace(/ .*/, '');
+        const timePeriod = isDueLabel
+          ? ''
+          : planItem.time.includes('PM') ? 'PM' : planItem.time.includes('AM') ? 'AM' : '';
 
         return (
           <View key={planItem.id} style={[styles.planItem, index > 0 && styles.planItemBorder]}>
-            {/* Time slot on the left */}
+            {/* Time column */}
             <View style={styles.timeCol}>
-              <Text style={[styles.timeNum, planItem.status === 'next' && styles.timeNumActive]}>
-                {timeNum}
-              </Text>
-              <Text style={styles.timePeriod}>{timePeriod}</Text>
+              {isDueLabel ? (
+                <Text style={[
+                  styles.dueLabel,
+                  planItem.status === 'next' && styles.dueLabelActive,
+                  planItem.time === 'Due now' && styles.dueLabelUrgent,
+                ]}>
+                  {planItem.time}
+                </Text>
+              ) : (
+                <>
+                  <Text style={[styles.timeNum, planItem.status === 'next' && styles.timeNumActive]}>
+                    {timeNum}
+                  </Text>
+                  <Text style={styles.timePeriod}>{timePeriod}</Text>
+                </>
+              )}
             </View>
 
             {/* Colored bar */}
             <View style={[styles.itemBar, { backgroundColor: barColor }]} />
 
-            {/* Content card */}
+            {/* Content card — UNIFIED for all types */}
             <View style={styles.itemContent}>
-              {/* Hero image for calendar tasks */}
-              {isCalendar && (
-                <View style={styles.heroImageContainer}>
-                  <Image source={calendarHero} style={styles.heroImage} resizeMode="cover" />
-                  <View style={styles.heroOverlay} />
-                  <View style={styles.heroTextOverlay}>
-                    <Text style={styles.heroTitle} numberOfLines={1}>{planItem.action}</Text>
-                    {planItem.details ? (
-                      <Text style={styles.heroSubtitle} numberOfLines={1}>{planItem.details}</Text>
-                    ) : null}
-                  </View>
-                </View>
-              )}
+              <View style={styles.cardRow}>
+                {/* Thumbnail */}
+                {isPhotoType && photoSource ? (
+                  <Image source={photoSource} style={styles.photoThumbnail} resizeMode="cover" />
+                ) : (
+                  <DocumentThumbnail
+                    type={docType as any}
+                    size="xl"
+                    variant={0}
+                    context="todayplan"
+                    previewEnabled={false}
+                  />
+                )}
 
-              {/* Document card for approvals */}
-              {isApproval && planItem.documents && planItem.documents.length > 0 && (
-                <View style={styles.docRow}>
-                  {planItem.documents.slice(0, 1).map((doc: any, docIndex: number) => (
-                    <View key={docIndex} style={styles.docPreviewCard}>
-                      <DocumentThumbnail
-                        type={doc.type || 'invoice'}
-                        size="xl"
-                        variant={docIndex}
-                        context="todayplan"
-                      />
-                      <View style={styles.docPreviewMeta}>
-                        <Text style={styles.docName} numberOfLines={1}>{doc.name?.split(' - ')[0]}</Text>
-                        {doc.amount && <Text style={styles.docAmount}>{doc.amount}</Text>}
-                        {doc.value && <Text style={styles.docValue}>{doc.value}</Text>}
-                      </View>
-                    </View>
-                  ))}
+                {/* Text metadata */}
+                <View style={styles.cardMeta}>
+                  <Text style={styles.cardTitle} numberOfLines={1}>{planItem.action}</Text>
+                  <Text style={styles.cardSubtitle} numberOfLines={2}>{planItem.details}</Text>
+                  {doc?.amount ? <Text style={styles.cardAmount}>{doc.amount}</Text> : null}
+                  {doc?.value ? <Text style={styles.cardValue} numberOfLines={1}>{doc.value}</Text> : null}
+                  {planItem.staffRole ? (
+                    <Text style={styles.cardStaff}>{planItem.staffRole}</Text>
+                  ) : null}
                 </View>
-              )}
+              </View>
 
-              {/* Text details (always shown for approvals, shown below hero for calendar without image) */}
-              {!isCalendar && (
-                <View style={styles.textDetails}>
-                  <Text style={styles.planAction}>{planItem.action}</Text>
-                  <Text style={styles.planSubAction} numberOfLines={2}>{planItem.details}</Text>
-                </View>
-              )}
-
-              {/* Status badge */}
+              {/* NEXT badge */}
               {planItem.status === 'next' && (
                 <View style={styles.nextBadge}>
                   <Text style={styles.nextBadgeText}>NEXT</Text>
@@ -221,7 +235,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     minHeight: 80,
   },
-  planItemBorder: {},
+  planItemBorder: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.04)',
+    paddingTop: Spacing.sm,
+  },
   timeCol: {
     width: 44,
     alignItems: 'center',
@@ -244,6 +262,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginTop: 1,
   },
+  dueLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.text.muted,
+    textAlign: 'center',
+    letterSpacing: 0.3,
+  },
+  dueLabelActive: {
+    color: Colors.accent.cyan,
+  },
+  dueLabelUrgent: {
+    color: Colors.semantic.warning,
+  },
   itemBar: {
     width: 3,
     borderRadius: 2,
@@ -256,53 +287,50 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
-  },
-  heroImageContainer: {
-    height: 100,
     position: 'relative',
-    overflow: 'hidden',
   },
-  heroImage: {
-    width: '100%',
-    height: '100%',
-  },
-  heroOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  heroTextOverlay: {
-    position: 'absolute',
-    bottom: 10,
-    left: 12,
-    right: 12,
-  },
-  heroTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFF',
-  },
-  heroSubtitle: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 2,
-  },
-  textDetails: {
+  cardRow: {
+    flexDirection: 'row',
     padding: Spacing.sm,
+    gap: Spacing.sm,
   },
-  planAction: {
+  photoThumbnail: {
+    width: 100,
+    height: 130,
+    borderRadius: BorderRadius.xs + 1,
+  },
+  cardMeta: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  cardTitle: {
     color: Colors.text.primary,
     fontSize: Typography.bodyMedium.fontSize,
     fontWeight: '600',
+    marginBottom: 2,
   },
-  planSubAction: {
+  cardSubtitle: {
     color: Colors.text.muted,
     fontSize: Typography.small.fontSize,
-    marginTop: Spacing.xs,
     lineHeight: 16,
+    marginBottom: 4,
+  },
+  cardAmount: {
+    color: Colors.semantic.success,
+    fontSize: Typography.small.fontSize,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  cardValue: {
+    color: Colors.accent.cyan,
+    fontSize: Typography.micro.fontSize,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  cardStaff: {
+    color: Colors.text.tertiary,
+    fontSize: Typography.micro.fontSize,
+    marginTop: 4,
   },
   nextBadge: {
     position: 'absolute',
@@ -319,41 +347,9 @@ const styles = StyleSheet.create({
     color: '#FFF',
     letterSpacing: 0.8,
   },
-  docRow: {
-    padding: Spacing.sm,
-  },
-  docPreviewCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.background.tertiary,
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.xs,
-    paddingRight: Spacing.sm,
-  },
-  docPreviewMeta: {
-    maxWidth: 80,
-  },
-  docName: {
-    color: Colors.text.secondary,
-    fontSize: Typography.micro.fontSize,
-    fontWeight: '500',
-  },
-  docAmount: {
-    color: Colors.semantic.success,
-    fontSize: Typography.micro.fontSize,
-    fontWeight: '600',
-    marginTop: 1,
-  },
-  docValue: {
-    color: Colors.accent.cyan,
-    fontSize: Typography.micro.fontSize,
-    fontWeight: '500',
-    marginTop: 1,
-  },
 });
 
-export function TodayPlanTabs(props: any) {
+export function TodayPlanTabs(props: { planItems: TodayPlanItem[] }) {
   return (
     <PageErrorBoundary pageName="today-plan-tabs">
       <TodayPlanTabsInner {...props} />
