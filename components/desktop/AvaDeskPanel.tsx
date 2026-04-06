@@ -17,6 +17,7 @@ import { playConnectionSound, playSuccessSound } from '@/lib/soundEffects';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { isLocalSyntheticAuthBypass } from '@/lib/supabaseRuntime';
 import { useAvaChat } from '@/hooks/useAvaChat';
+import { useAvaPresentsContext } from '@/contexts/AvaPresentsContext';
 import type { UIMessage } from 'ai';
 
 type AvaMode = 'voice' | 'video';
@@ -200,6 +201,7 @@ function AvaDeskPanelInner() {
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [latestVoiceDiagnostic, setLatestVoiceDiagnostic] = useState<VoiceDiagnosticEvent | null>(null);
+  const avaPresents = useAvaPresentsContext();
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const connectingAnim = useRef(new Animated.Value(0)).current;
@@ -322,6 +324,14 @@ function AvaDeskPanelInner() {
       } else {
         showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
       }
+    },
+    onShowCards: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => {
+      avaPresents.showCards({
+        artifactType: data.artifact_type,
+        records: data.records,
+        summary: data.summary,
+        confidence: data.confidence,
+      });
     },
     onDiagnostic: (diag) => {
       setLatestVoiceDiagnostic(diag);

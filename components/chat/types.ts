@@ -190,4 +190,17 @@ export interface OrchestratorResponse {
     receipt_ids?: string[];
   };
   media?: ChatMediaItem[];
+  /** Structured research results from Adam for visual card rendering */
+  structured_results?: {
+    artifact_type: string;
+    records: Record<string, any>[];
+    summary: string;
+    confidence?: { status: string; score: number } | null;
+    missing_fields?: string[];
+    next_queries?: string[];
+    providers_called?: string[];
+    segment?: string;
+    intent?: string;
+    playbook?: string;
+  } | null;
 }

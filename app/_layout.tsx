@@ -37,6 +37,8 @@ import { AvaMiniPlayer } from '@/components/AvaMiniPlayer';
 import { IncomingCallOverlay } from '@/components/calls/IncomingCallOverlay';
 import { IncomingVideoCallOverlay } from '@/components/calls/IncomingVideoCallOverlay';
 import { CalendarNotificationOverlay } from '@/components/calendar/CalendarNotificationOverlay';
+import { AvaPresentsProvider, useAvaPresentsContext } from '@/contexts/AvaPresentsContext';
+import { ResearchModal } from '@/components/cards/ResearchModal';
 import { useRealtimeConferenceInvitations } from '@/hooks/useRealtimeConferenceInvitations';
 import { useRealtimeApprovalRequests } from '@/hooks/useRealtimeApprovalRequests';
 import { useBackendConnectivity } from '@/hooks/useBackendConnectivity';
@@ -392,6 +394,13 @@ function useBiometricLock(isAuthenticated: boolean) {
   return locked;
 }
 
+/** Thin wrapper — reads AvaPresents context and renders the modal */
+function ResearchModalOverlay() {
+  const avaPresents = useAvaPresentsContext();
+  if (!avaPresents.visible) return null;
+  return <ResearchModal {...avaPresents} />;
+}
+
 function AppNavigator() {
   const isDesktop = useDesktop();
   const colorScheme = useColorScheme();
@@ -538,6 +547,7 @@ function AppNavigator() {
       <IncomingCallOverlay />
       <IncomingVideoCallOverlay />
       <CalendarNotificationOverlay />
+      <ResearchModalOverlay />
       {!isDesktop && <AvaMiniPlayer />}
       {session && showWarning && (
         <SessionTimeoutWarning
@@ -643,9 +653,11 @@ function RootLayout() {
             <AvaDockProvider>
               <MicStateProvider>
                 <ElevenLabsAgentProvider>
+                <AvaPresentsProvider>
                 <CanvasDragDropProvider>
                   <AppNavigator />
                 </CanvasDragDropProvider>
+                </AvaPresentsProvider>
                 </ElevenLabsAgentProvider>
               </MicStateProvider>
             </AvaDockProvider>

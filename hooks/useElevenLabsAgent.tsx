@@ -68,6 +68,8 @@ export interface UseElevenLabsAgentOptions {
   onShowReceipt?: (receiptId: string) => void;
   onNavigate?: (path: string) => void;
   onShowNotification?: (message: string, type: 'success' | 'warning' | 'error') => void;
+  /** Called when Adam research results should be displayed as visual cards. */
+  onShowCards?: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => void;
 }
 
 export interface UseElevenLabsAgentReturn {
@@ -206,6 +208,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     onShowReceipt,
     onNavigate,
     onShowNotification,
+    onShowCards,
   } = options;
 
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
@@ -230,6 +233,8 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
   onNavigateRef.current = onNavigate;
   const onShowNotificationRef = useRef(onShowNotification);
   onShowNotificationRef.current = onShowNotification;
+  const onShowCardsRef = useRef(onShowCards);
+  onShowCardsRef.current = onShowCards;
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
   const authBlockedUntilRef = useRef(0);
@@ -285,6 +290,11 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       devLog(`[ElevenLabsAgent] show_notification:`, params);
       onShowNotificationRef.current?.(params.message, params.type);
       return JSON.stringify({ shown: true });
+    },
+    show_cards: async (params: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => {
+      devLog(`[ElevenLabsAgent] show_cards:`, params.artifact_type, `${params.records?.length ?? 0} records`);
+      onShowCardsRef.current?.(params);
+      return JSON.stringify({ shown: true, count: params.records?.length ?? 0 });
     },
   }).current;
 

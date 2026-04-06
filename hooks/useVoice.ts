@@ -132,6 +132,7 @@ function useElevenLabsAgentAdapter(options: Parameters<typeof useAgentVoice>[0])
     onResponse: options.onResponse ? (text: string) => options.onResponse!(text) : undefined,
     onStatusChange: options.onStatusChange,
     onError: options.onError,
+    onShowCards: (options as any).onShowCards,
   });
 
   const isActive = result.status !== 'idle' && result.status !== 'error';
