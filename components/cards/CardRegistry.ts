@@ -83,13 +83,14 @@ KNOWN_TYPES.forEach((type) => {
 // ─── Wave 1 Card Registrations ──────────────────────────────────────────────
 // Lazy imports to avoid circular deps — cards self-register on first import.
 
+// Wave 1 card registrations — cards implement the CardProps interface above
 import { HotelCard } from './HotelCard';
 import { ProductCard } from './ProductCard';
 import { BusinessCard } from './BusinessCard';
 
-registerCard('HotelShortlist', HotelCard as unknown as React.ComponentType<CardProps>);
-registerCard('PriceComparison', ProductCard as unknown as React.ComponentType<CardProps>);
-registerCard('VendorShortlist', BusinessCard as unknown as React.ComponentType<CardProps>);
-registerCard('ProspectList', BusinessCard as unknown as React.ComponentType<CardProps>);
-registerCard('CompetitorBrief', BusinessCard as unknown as React.ComponentType<CardProps>);
-registerCard('EstimateResearchPack', ProductCard as unknown as React.ComponentType<CardProps>);
+registerCard('HotelShortlist', HotelCard);
+registerCard('PriceComparison', ProductCard);
+registerCard('VendorShortlist', BusinessCard);
+registerCard('ProspectList', BusinessCard);
+registerCard('CompetitorBrief', BusinessCard);
+registerCard('EstimateResearchPack', ProductCard);

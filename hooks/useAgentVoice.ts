@@ -82,6 +82,8 @@ interface UseAgentVoiceOptions {
   onActivityEvent?: (event: AgentActivityEvent) => void;
   /** Optional structured diagnostics callback for root-cause visibility. */
   onDiagnostic?: (event: VoiceDiagnosticEvent) => void;
+  /** Ava Presents: called when Adam research results should be shown as visual cards. */
+  onShowCards?: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => void;
 }
 
 interface UseAgentVoiceReturn {

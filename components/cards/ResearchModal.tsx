@@ -250,18 +250,31 @@ export function ResearchModal(props: ResearchModalProps) {
   // ── Card renderer ──
   const CardComponent = useMemo(() => resolveCard(artifactType), [artifactType]);
 
+  const handleCardAction = useCallback(
+    (action: 'call' | 'visit' | 'book' | 'details' | 'tell_more', record: Record<string, unknown>) => {
+      if (action === 'details') {
+        openDetail(record);
+      }
+      // call/visit/book handled inside card components via Linking.openURL
+    },
+    [openDetail],
+  );
+
   const renderCard = useCallback(
     ({ item, index }: ListRenderItemInfo<Record<string, unknown>>) => (
       <View style={[styles.cardSlide, { width: CARD_WIDTH }]}>
         <CardComponent
           record={item}
+          artifactType={artifactType}
           index={index}
           total={records.length}
-          onOpenDetail={openDetail}
+          confidence={confidence}
+          onAction={handleCardAction}
+          isActive={index === activeIndex}
         />
       </View>
     ),
-    [CardComponent, records.length, openDetail],
+    [CardComponent, artifactType, records.length, confidence, activeIndex, handleCardAction],
   );
 
   const keyExtractor = useCallback(

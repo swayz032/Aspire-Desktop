@@ -12,6 +12,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { SafetyBadge as SharedSafetyBadge } from './SafetyBadge';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,12 +47,6 @@ function renderStars(rating: number): string {
   );
 }
 
-/** Safety badge color based on verdict or score */
-function safetyColor(score: number): string {
-  if (score >= 8) return Colors.semantic.success;
-  if (score >= 6) return Colors.accent.amber;
-  return Colors.semantic.error;
-}
 
 /** Abbreviate large numbers: 3227 -> "3.2K" */
 function fmtCount(n: number | undefined): string {
@@ -74,18 +69,6 @@ function domainOf(url: string | undefined): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function SafetyBadge({ score }: { score: number }) {
-  const bg = safetyColor(score);
-  return (
-    <View
-      style={[styles.safetyBadge, { backgroundColor: bg }]}
-      accessibilityLabel={`Safety score ${score.toFixed(1)} out of 10`}
-      accessibilityRole="text"
-    >
-      <Text style={styles.safetyScore}>{score.toFixed(1)}</Text>
-    </View>
-  );
-}
 
 function SubratingBar({
   label,
@@ -236,7 +219,7 @@ export function HotelCard({ record, onAction, isActive }: CardProps) {
         )}
 
         {/* Safety badge — top-right, overlapping hero edge */}
-        {safety_score != null && <SafetyBadge score={safety_score} />}
+        {safety_score != null && <SharedSafetyBadge score={safety_score} />}
       </View>
 
       {/* ---- Content ---- */}
