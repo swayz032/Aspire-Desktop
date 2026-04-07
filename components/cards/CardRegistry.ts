@@ -41,7 +41,7 @@ export function registerCard(artifactType: string, component: React.ComponentTyp
  * Returns GenericCard if no specific card is registered (fail-closed, never null).
  */
 export function resolveCard(artifactType: string): React.ComponentType<CardProps> {
-  return CARD_MAP.get(artifactType) ?? GenericCardPlaceholder;
+  return CARD_MAP.get(artifactType) ?? GenericCard;
 }
 
 /**
@@ -53,13 +53,8 @@ export function registeredTypes(): string[] {
 
 // ─── Built-in Mappings (placeholder until individual cards are built) ────────
 
-/**
- * GenericCardPlaceholder -- Renders a minimal card for unregistered types.
- * Another agent will replace this with a full GenericCard component.
- * This placeholder ensures resolveCard never returns null (Law #3).
- */
-const GenericCardPlaceholder: React.FC<CardProps> = () => null;
-GenericCardPlaceholder.displayName = 'GenericCardPlaceholder';
+// GenericCard — real fallback that renders record name + type label (Law #3: never null)
+import { GenericCard } from './GenericCard';
 
 // Pre-register known artifact types that will be implemented by other agents.
 // They all resolve to the placeholder until real card components call registerCard().
@@ -76,7 +71,7 @@ const KNOWN_TYPES = [
 
 KNOWN_TYPES.forEach((type) => {
   if (!CARD_MAP.has(type)) {
-    CARD_MAP.set(type, GenericCardPlaceholder);
+    CARD_MAP.set(type, GenericCard);
   }
 });
 

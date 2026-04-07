@@ -14,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { SafetyBadge as SharedSafetyBadge } from './SafetyBadge';
 import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
+import { renderStars, fmtCount, domainOf } from './helpers';
+import { ActionButton } from './ActionButton';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,39 +35,6 @@ interface CardProps {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Render rating stars from a numeric score (0-5). Half stars at >= .25 */
-function renderStars(rating: number): string {
-  const full = Math.floor(rating);
-  const hasHalf = rating - full >= 0.25;
-  const empty = 5 - full - (hasHalf ? 1 : 0);
-  return (
-    '\u2605'.repeat(full) +
-    (hasHalf ? '\u00BD' : '') +
-    '\u2606'.repeat(empty)
-  );
-}
-
-
-/** Abbreviate large numbers: 3227 -> "3.2K" */
-function fmtCount(n: number | undefined): string {
-  if (!n) return '0';
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return String(n);
-}
-
-/** Clamp text to a domain for display */
-function domainOf(url: string | undefined): string {
-  if (!url) return '';
-  try {
-    return new URL(url).hostname.replace('www.', '');
-  } catch {
-    return url;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -192,7 +161,7 @@ export function HotelCard({ record, onAction, isActive }: CardProps) {
           />
         ) : (
           <LinearGradient
-            colors={['#1a2332', '#0f1923']}
+            colors={Colors.gradient.cardHeroCool as unknown as string[]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.heroFallback}

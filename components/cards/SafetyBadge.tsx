@@ -33,9 +33,9 @@ export function deriveTier(score: number): SafetyTier {
 }
 
 const TIER_CONFIG: Record<SafetyTier, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  recommended:     { label: 'Recommended',     color: '#10B981', icon: 'shield-checkmark' },
-  caution:         { label: 'Use Caution',     color: '#F59E0B', icon: 'warning' },
-  not_recommended: { label: 'Not Recommended', color: '#EF4444', icon: 'close-circle' },
+  recommended:     { label: 'Recommended',     color: Colors.safety.recommended, icon: 'shield-checkmark' },
+  caution:         { label: 'Use Caution',     color: Colors.safety.caution, icon: 'warning' },
+  not_recommended: { label: 'Not Recommended', color: Colors.safety.notRecommended, icon: 'close-circle' },
 };
 
 /** Map safety tier to ambient glow hex for the ResearchModal backdrop. */

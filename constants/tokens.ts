@@ -100,6 +100,25 @@ export const Colors = {
     premium: '#343436',
   },
 
+  // Ava Presents — safety verdict glow + badge colors
+  safety: {
+    recommended: '#10B981',       // Green — "Recommended for business travel"
+    recommendedLight: 'rgba(16, 185, 129, 0.15)',
+    caution: '#F59E0B',           // Amber — "Use caution"
+    cautionLight: 'rgba(245, 158, 11, 0.15)',
+    notRecommended: '#EF4444',    // Red — "Not recommended"
+    notRecommendedLight: 'rgba(239, 68, 68, 0.15)',
+    neutral: '#3B82F6',           // Blue — default / no verdict
+    neutralLight: 'rgba(59, 130, 246, 0.15)',
+  },
+
+  // Card hero fallback gradients (when no image available)
+  gradient: {
+    cardHero: ['#1a1e24', '#12151a'] as readonly [string, string],
+    cardHeroCool: ['#1a2332', '#0f1923'] as readonly [string, string],
+    cardHeroWarm: ['#221a1a', '#1a1214'] as readonly [string, string],
+  },
+
   desktop: {
     cardPadding: 16,
     sectionGap: 14,

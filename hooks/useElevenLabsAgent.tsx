@@ -293,8 +293,27 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     },
     show_cards: async (params: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => {
       devLog(`[ElevenLabsAgent] show_cards:`, params.artifact_type, `${params.records?.length ?? 0} records`);
-      onShowCardsRef.current?.(params);
-      return JSON.stringify({ shown: true, count: params.records?.length ?? 0 });
+
+      // THREAT-004: Validate payload before rendering (Law #3: fail closed)
+      if (!params.artifact_type || typeof params.artifact_type !== 'string') {
+        devLog(`[ElevenLabsAgent] show_cards BLOCKED: missing artifact_type`);
+        return JSON.stringify({ shown: false, reason: 'invalid_artifact_type' });
+      }
+      if (!Array.isArray(params.records) || params.records.length === 0) {
+        devLog(`[ElevenLabsAgent] show_cards BLOCKED: empty records`);
+        return JSON.stringify({ shown: false, reason: 'empty_records' });
+      }
+      // Cap records at 20 to prevent DoS (THREAT-008)
+      const safeRecords = params.records.slice(0, 20);
+      // Cap summary length
+      const safeSummary = typeof params.summary === 'string' ? params.summary.slice(0, 500) : '';
+
+      onShowCardsRef.current?.({
+        ...params,
+        records: safeRecords,
+        summary: safeSummary,
+      });
+      return JSON.stringify({ shown: true, count: safeRecords.length });
     },
   }).current;
 

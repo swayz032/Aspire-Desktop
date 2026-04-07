@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
+import { renderStars, domainOf } from './helpers';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,28 +32,8 @@ interface CardProps {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers (renderStars, domainOf imported from ./helpers)
 // ---------------------------------------------------------------------------
-
-function renderStars(rating: number): string {
-  const full = Math.floor(rating);
-  const hasHalf = rating - full >= 0.25;
-  const empty = 5 - full - (hasHalf ? 1 : 0);
-  return (
-    '\u2605'.repeat(full) +
-    (hasHalf ? '\u00BD' : '') +
-    '\u2606'.repeat(empty)
-  );
-}
-
-function domainOf(url: string | undefined): string {
-  if (!url) return '';
-  try {
-    return new URL(url).hostname.replace('www.', '');
-  } catch {
-    return url;
-  }
-}
 
 /** Pick an icon for the business category */
 function categoryIcon(category: string | undefined): keyof typeof Ionicons.glyphMap {
@@ -150,7 +131,7 @@ export function BusinessCard({ record, onAction, isActive }: CardProps) {
     >
       {/* ---- Hero Area ---- */}
       <LinearGradient
-        colors={['#161b22', '#0f1318']}
+        colors={Colors.gradient.cardHero as unknown as string[]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.hero}
