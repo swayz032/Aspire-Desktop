@@ -92,6 +92,7 @@ const PUBLIC_PATHS = [
   '/api/auth/signup',               // Private beta signup — rate-limited, invite code validated server-side
   '/api/config/public',             // Public client config (Google Places key) — no secrets, referrer-restricted
   '/api/geolocation',               // Server-side geolocation proxy (ipapi.co blocks browser CORS)
+  '/api/card-data/',                 // Card records cache — PII-stripped data, served in-memory, short TTL
   // Places API requires auth to prevent quota exhaustion
 ];
 
