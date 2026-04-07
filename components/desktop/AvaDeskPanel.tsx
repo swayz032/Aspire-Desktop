@@ -718,31 +718,26 @@ function AvaDeskPanelInner() {
           </View>
         ) : (
           <View style={styles.videoSurface}>
-            {anamSessionToken && Platform.OS === 'web' ? (
-              <div style={{ width: '100%', height: '100%', position: 'relative', backgroundColor: '#000', overflow: 'hidden', borderRadius: 12 } as any}>
+            {/* Anam iframe — loads hidden, fades in when SDK fires SESSION_READY */}
+            {anamSessionToken && Platform.OS === 'web' && (
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: videoState === 'connected' ? 2 : 0,
+                overflow: 'hidden', borderRadius: 12,
+              } as any}>
                 <iframe
                   key={anamSessionToken}
                   title="Ava video"
                   srcDoc={avaVideoFrameDoc || undefined}
                   allow="microphone; autoplay"
-                  style={{ width: '100%', height: '100%', border: '0', display: 'block', backgroundColor: '#000' }}
+                  style={{
+                    width: '100%', height: '100%', border: '0', display: 'block', backgroundColor: '#000',
+                    opacity: videoState === 'connected' ? 1 : 0,
+                    transition: 'opacity 0.5s ease-in',
+                  }}
                 />
-                {videoState === 'connecting' ? (
-                  <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#94A3B8',
-                    background: 'linear-gradient(180deg, rgba(2,6,23,0.55), rgba(0,0,0,0.28))',
-                    fontSize: 14,
-                  } as any}>
-                    {connectionStatus || 'Starting Ava video...'}
-                  </div>
-                ) : null}
               </div>
-            ) : (
+            )}
+            {videoState !== 'connected' ? (
               <ImageBackground
                 source={{ uri: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=800' }}
                 style={styles.videoIdleContainer}
@@ -801,7 +796,7 @@ function AvaDeskPanelInner() {
                   )}
                 </View>
               </ImageBackground>
-            )}
+            ) : null}
           </View>
         )}
       </View>
