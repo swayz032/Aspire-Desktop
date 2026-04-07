@@ -394,10 +394,11 @@ function useBiometricLock(isAuthenticated: boolean) {
   return locked;
 }
 
-/** Thin wrapper — reads AvaPresents context and renders the modal */
+/** Thin wrapper — reads AvaPresents context and renders the modal.
+ *  Always renders so exit animations can play before unmount. The modal
+ *  itself returns null when !visible after animations complete. */
 function ResearchModalOverlay() {
   const avaPresents = useAvaPresentsContext();
-  if (!avaPresents.visible) return null;
   return <ResearchModal {...avaPresents} />;
 }
 

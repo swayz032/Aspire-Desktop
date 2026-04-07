@@ -22,6 +22,8 @@ export interface CardProps {
   confidence: { status: string; score: number } | null;
   onAction: (action: 'call' | 'visit' | 'book' | 'details' | 'tell_more', record: any) => void;
   isActive: boolean;
+  /** Staggered entrance delay in ms. Passed from ResearchModal's renderCard. */
+  enterDelay?: number;
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────────

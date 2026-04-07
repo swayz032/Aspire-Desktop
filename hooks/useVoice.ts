@@ -42,6 +42,7 @@ type ElevenLabsHookFn = (options: {
   onResponse?: (text: string) => void;
   onStatusChange?: (status: VoiceStatus) => void;
   onError?: (error: Error) => void;
+  onShowCards?: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => void;
 }) => {
   status: VoiceStatus;
   startSession: () => Promise<void>;

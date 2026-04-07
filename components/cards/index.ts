@@ -22,4 +22,7 @@ export { GenericCard } from './GenericCard';
 
 // Shared helpers
 export { ActionButton } from './ActionButton';
+export type { ActionButtonVariant } from './ActionButton';
+export { AnimatedDot } from './AnimatedDot';
+export { ImageSkeleton } from './ImageSkeleton';
 export { renderStars, fmtCount, domainOf, fmtPrice } from './helpers';

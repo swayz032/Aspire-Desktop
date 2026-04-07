@@ -1,21 +1,14 @@
-import React, { useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Linking,
-  Platform,
-  ViewStyle,
-} from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
-import { SafetyBadge as SharedSafetyBadge } from './SafetyBadge';
 import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
 import { renderStars, fmtCount, domainOf } from './helpers';
 import { ActionButton } from './ActionButton';
+import { BaseCard } from './BaseCard';
+import { ImageSkeleton } from './ImageSkeleton';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,13 +25,12 @@ interface CardProps {
     record: any,
   ) => void;
   isActive: boolean;
+  enterDelay?: number;
 }
 
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
-
 
 function SubratingBar({
   label,
@@ -71,34 +63,11 @@ function AmenityChip({ label }: { label: string }) {
   );
 }
 
-function ActionButton({
-  label,
-  icon,
-  onPress,
-}: {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-    >
-      <Ionicons name={icon} size={16} color={Colors.accent.cyan} />
-      <Text style={styles.actionBtnText}>{label}</Text>
-    </Pressable>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function HotelCard({ record, onAction, isActive }: CardProps) {
+export function HotelCard({ record, onAction, isActive, enterDelay }: CardProps) {
   const {
     name = 'Unknown Hotel',
     normalized_address,
@@ -123,19 +92,17 @@ export function HotelCard({ record, onAction, isActive }: CardProps) {
   const visibleAmenities = amenityList.slice(0, 5);
   const extraAmenityCount = amenityList.length - 5;
 
-  // Handlers — keep pure, no side-effects
+  // Image loading state for skeleton shimmer
+  const [imageLoaded, setImageLoaded] = useState(false);
+
   const handleCall = useCallback(() => {
-    if (phone) {
-      safeCallPhone(phone);
-    }
+    if (phone) safeCallPhone(phone);
     onAction('call', record);
   }, [phone, onAction, record]);
 
   const handleVisit = useCallback(() => {
     const url = website || tripadvisor_url;
-    if (url) {
-      safeOpenURL(url);
-    }
+    if (url) safeOpenURL(url);
     onAction('visit', record);
   }, [website, tripadvisor_url, onAction, record]);
 
@@ -143,187 +110,165 @@ export function HotelCard({ record, onAction, isActive }: CardProps) {
     onAction('details', record);
   }, [onAction, record]);
 
-  return (
-    <View
-      style={[styles.card, isActive && styles.cardActive]}
-      accessibilityRole="summary"
-      accessibilityLabel={`${name} hotel card`}
-    >
-      {/* ---- Hero Image / Fallback ---- */}
-      <View style={styles.heroContainer}>
-        {heroUrl ? (
+  // ---- Hero content ----
+  const heroContent = (
+    <>
+      {heroUrl ? (
+        <>
+          <ImageSkeleton loaded={imageLoaded} />
           <Image
             source={{ uri: heroUrl }}
-            style={styles.heroImage}
+            style={StyleSheet.absoluteFillObject}
             contentFit="cover"
             transition={200}
             accessibilityLabel={`Photo of ${name}`}
+            onLoad={() => setImageLoaded(true)}
           />
-        ) : (
-          <LinearGradient
-            colors={Colors.gradient.cardHeroCool as unknown as string[]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroFallback}
-          >
+        </>
+      ) : (
+        <LinearGradient
+          colors={Colors.gradient.cardHeroCool}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        >
+          <View style={styles.heroFallback}>
             <Ionicons name="bed-outline" size={32} color={Colors.text.muted} />
             <Text style={styles.heroFallbackText} numberOfLines={2}>
               {name}
             </Text>
-          </LinearGradient>
-        )}
-
-        {/* Gradient scrim for text legibility over image */}
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.6)']}
-          style={styles.heroScrim}
-        />
-
-        {/* Star rating overlay — bottom-left of hero */}
-        {star_rating != null && star_rating > 0 && (
-          <View style={styles.starOverlay}>
-            <Text style={styles.starOverlayText}>
-              {'\u2605'.repeat(Math.round(star_rating))}
-            </Text>
           </View>
-        )}
+        </LinearGradient>
+      )}
 
-        {/* Safety badge — top-right, overlapping hero edge */}
-        {safety_score != null && <SharedSafetyBadge score={safety_score} />}
-      </View>
+      {/* Gradient scrim for text legibility over image */}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.6)']}
+        style={styles.heroScrim}
+      />
 
-      {/* ---- Content ---- */}
-      <View style={styles.content}>
-        {/* Name + Address */}
-        <Text style={styles.hotelName} numberOfLines={2} accessibilityRole="header">
-          {name}
-        </Text>
-        {normalized_address ? (
-          <Text style={styles.address} numberOfLines={1}>
-            {normalized_address}
+      {/* Star rating overlay — bottom-left */}
+      {star_rating != null && star_rating > 0 && (
+        <View style={styles.starOverlay}>
+          <Text style={styles.starOverlayText}>
+            {'\u2605'.repeat(Math.round(star_rating))}
           </Text>
-        ) : null}
-
-        {/* Dual Ratings Row */}
-        {(traveler_rating || ta_rating) && (
-          <View style={styles.ratingsRow}>
-            {traveler_rating != null && (
-              <View style={styles.ratingBlock}>
-                <Text style={styles.ratingStars}>
-                  {renderStars(traveler_rating)}
-                </Text>
-                <Text style={styles.ratingDetail}>
-                  {' '}
-                  {traveler_rating.toFixed(1)}
-                  {review_count ? ` (${fmtCount(review_count)})` : ''}
-                </Text>
-              </View>
-            )}
-            {traveler_rating != null && ta_rating != null && (
-              <Text style={styles.ratingDivider}>|</Text>
-            )}
-            {ta_rating != null && (
-              <View style={styles.ratingBlock}>
-                <Text style={styles.ratingLabel}>TA </Text>
-                <Text style={styles.ratingStars}>
-                  {renderStars(ta_rating)}
-                </Text>
-                <Text style={styles.ratingDetail}>
-                  {' '}
-                  {ta_rating.toFixed(1)}
-                  {ta_review_count ? ` (${fmtCount(ta_review_count)})` : ''}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Subrating Bars */}
-        {hasSubratings && (
-          <View style={styles.subratings}>
-            {Object.entries(subratings as Record<string, number>)
-              .slice(0, 3)
-              .map(([key, val]) => (
-                <SubratingBar key={key} label={key} value={val} />
-              ))}
-          </View>
-        )}
-
-        {/* Amenity Chips */}
-        {visibleAmenities.length > 0 && (
-          <View style={styles.amenityRow}>
-            {visibleAmenities.map((a, i) => (
-              <AmenityChip key={i} label={a} />
-            ))}
-            {extraAmenityCount > 0 && (
-              <View style={styles.amenityChipMore}>
-                <Text style={styles.amenityMoreText}>+{extraAmenityCount} more</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Ranking */}
-        {ranking_string ? (
-          <Text style={styles.ranking} numberOfLines={1}>
-            {ranking_string}
-          </Text>
-        ) : null}
-
-        {/* Action Buttons */}
-        <View style={styles.actions}>
-          {phone ? (
-            <ActionButton label="Call" icon="call-outline" onPress={handleCall} />
-          ) : null}
-          {(website || tripadvisor_url) ? (
-            <ActionButton label="Visit" icon="open-outline" onPress={handleVisit} />
-          ) : null}
-          <ActionButton label="Details" icon="chevron-forward" onPress={handleDetails} />
         </View>
-      </View>
-    </View>
+      )}
+    </>
+  );
+
+  // ---- Action buttons ----
+  const actionContent = (
+    <>
+      {phone ? (
+        <ActionButton label="Call" icon="call-outline" onPress={handleCall} variant="primary" />
+      ) : null}
+      {(website || tripadvisor_url) ? (
+        <ActionButton label="Visit" icon="open-outline" onPress={handleVisit} variant="primary" />
+      ) : null}
+      <ActionButton label="Details" icon="chevron-forward" onPress={handleDetails} variant="secondary" />
+    </>
+  );
+
+  return (
+    <BaseCard
+      safety={safety_score != null ? { score: safety_score } : null}
+      isActive={isActive}
+      heroSlot={heroContent}
+      heroStyle={HERO_STYLE}
+      actionSlot={actionContent}
+      accessibilityLabel={`${name} hotel card`}
+      enterDelay={enterDelay}
+    >
+      {/* Name + Address */}
+      <Text style={styles.hotelName} numberOfLines={2} accessibilityRole="header">
+        {name}
+      </Text>
+      {normalized_address ? (
+        <Text style={styles.address} numberOfLines={1}>
+          {normalized_address}
+        </Text>
+      ) : null}
+
+      {/* Dual Ratings Row — section divider above */}
+      {(traveler_rating || ta_rating) && (
+        <View style={[styles.ratingsRow, styles.sectionDivider]}>
+          {traveler_rating != null && (
+            <View style={styles.ratingBlock}>
+              <Text style={styles.ratingStars}>
+                {renderStars(traveler_rating)}
+              </Text>
+              <Text style={styles.ratingDetail}>
+                {' '}
+                {traveler_rating.toFixed(1)}
+                {review_count ? ` (${fmtCount(review_count)})` : ''}
+              </Text>
+            </View>
+          )}
+          {traveler_rating != null && ta_rating != null && (
+            <Text style={styles.ratingDivider}>|</Text>
+          )}
+          {ta_rating != null && (
+            <View style={styles.ratingBlock}>
+              <Text style={styles.ratingLabel}>TA </Text>
+              <Text style={styles.ratingStars}>
+                {renderStars(ta_rating)}
+              </Text>
+              <Text style={styles.ratingDetail}>
+                {' '}
+                {ta_rating.toFixed(1)}
+                {ta_review_count ? ` (${fmtCount(ta_review_count)})` : ''}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Subrating Bars */}
+      {hasSubratings && (
+        <View style={styles.subratings}>
+          {Object.entries(subratings as Record<string, number>)
+            .slice(0, 3)
+            .map(([key, val]) => (
+              <SubratingBar key={key} label={key} value={val} />
+            ))}
+        </View>
+      )}
+
+      {/* Amenity Chips — section divider above */}
+      {visibleAmenities.length > 0 && (
+        <View style={[styles.amenityRow, styles.sectionDivider]}>
+          {visibleAmenities.map((a, i) => (
+            <AmenityChip key={i} label={a} />
+          ))}
+          {extraAmenityCount > 0 && (
+            <View style={styles.amenityChipMore}>
+              <Text style={styles.amenityMoreText}>+{extraAmenityCount} more</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Ranking */}
+      {ranking_string ? (
+        <Text style={styles.ranking} numberOfLines={1}>
+          {ranking_string}
+        </Text>
+      ) : null}
+    </BaseCard>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Styles
+// Styles (card-specific only — shell/actions owned by BaseCard)
 // ---------------------------------------------------------------------------
 
-const CARD_WIDTH = 500;
 const HERO_HEIGHT = 200;
+const HERO_STYLE: ViewStyle = { height: HERO_HEIGHT, aspectRatio: undefined };
 
 const styles = StyleSheet.create({
-  // Card shell
-  card: {
-    width: CARD_WIDTH,
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,
-    overflow: 'hidden',
-  },
-  cardActive: {
-    borderColor: Colors.accent.cyan,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 0 0 1px rgba(59,130,246,0.3), 0 4px 16px rgba(0,0,0,0.25)',
-      } as unknown as ViewStyle,
-      default: {},
-    }),
-  },
-
-  // Hero
-  heroContainer: {
-    width: '100%' as unknown as number,
-    height: HERO_HEIGHT,
-    position: 'relative',
-  },
-  heroImage: {
-    width: '100%' as unknown as number,
-    height: '100%' as unknown as number,
-    borderTopLeftRadius: BorderRadius.lg,
-    borderTopRightRadius: BorderRadius.lg,
-  },
+  // Hero internals
   heroFallback: {
     flex: 1,
     alignItems: 'center',
@@ -354,42 +299,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Safety badge
-  safetyBadge: {
-    position: 'absolute',
-    top: Spacing.md,
-    right: Spacing.md,
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      web: {
-        boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-      } as unknown as ViewStyle,
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.4,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  safetyScore: {
-    ...Typography.captionMedium,
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-
   // Content
-  content: {
-    padding: Spacing.lg,
-    gap: Spacing.md,
-  },
   hotelName: {
     fontSize: 20,
     fontWeight: '700',
@@ -409,6 +319,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: Spacing.sm,
+    marginTop: Spacing.sm,
   },
   ratingBlock: {
     flexDirection: 'row',
@@ -436,6 +347,7 @@ const styles = StyleSheet.create({
   // Subratings
   subratings: {
     gap: Spacing.sm,
+    marginTop: Spacing.sm,
   },
   subratingRow: {
     flexDirection: 'row',
@@ -471,6 +383,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.xs,
+    marginTop: Spacing.sm,
   },
   amenityChip: {
     paddingHorizontal: Spacing.sm,
@@ -497,33 +410,15 @@ const styles = StyleSheet.create({
   ranking: {
     ...Typography.small,
     color: Colors.text.muted,
+    marginTop: Spacing.sm,
   },
 
-  // Actions
-  actions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.xs,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    height: 40,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.accent.cyan,
-    minWidth: 44,
-    justifyContent: 'center',
-  },
-  actionBtnPressed: {
-    opacity: 0.7,
-    backgroundColor: Colors.accent.cyanLight,
-  },
-  actionBtnText: {
-    ...Typography.captionMedium,
-    color: Colors.accent.cyan,
+  // Section divider — hairline separator between logical content blocks
+  sectionDivider: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.surface.cardBorder,
   },
 });
 

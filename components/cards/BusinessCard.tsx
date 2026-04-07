@@ -1,18 +1,12 @@
 import React, { useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Linking,
-  Platform,
-  ViewStyle,
-} from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
 import { renderStars, domainOf } from './helpers';
+import { ActionButton } from './ActionButton';
+import { BaseCard } from './BaseCard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,13 +23,13 @@ interface CardProps {
     record: any,
   ) => void;
   isActive: boolean;
+  enterDelay?: number;
 }
 
 // ---------------------------------------------------------------------------
-// Helpers (renderStars, domainOf imported from ./helpers)
+// Helpers
 // ---------------------------------------------------------------------------
 
-/** Pick an icon for the business category */
 function categoryIcon(category: string | undefined): keyof typeof Ionicons.glyphMap {
   if (!category) return 'business-outline';
   const lower = category.toLowerCase();
@@ -61,34 +55,11 @@ function categoryIcon(category: string | undefined): keyof typeof Ionicons.glyph
   return 'business-outline';
 }
 
-function ActionButton({
-  label,
-  icon,
-  onPress,
-}: {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-    >
-      <Ionicons name={icon} size={16} color={Colors.accent.cyan} />
-      <Text style={styles.actionBtnText}>{label}</Text>
-    </Pressable>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function BusinessCard({ record, onAction, isActive }: CardProps) {
+export function BusinessCard({ record, onAction, isActive, enterDelay }: CardProps) {
   const {
     name = 'Unknown Business',
     normalized_address,
@@ -106,16 +77,12 @@ export function BusinessCard({ record, onAction, isActive }: CardProps) {
   const icon = categoryIcon(category);
 
   const handleCall = useCallback(() => {
-    if (phone) {
-      safeCallPhone(phone);
-    }
+    if (phone) safeCallPhone(phone);
     onAction('call', record);
   }, [phone, onAction, record]);
 
   const handleWebsite = useCallback(() => {
-    if (website) {
-      safeOpenURL(website);
-    }
+    if (website) safeOpenURL(website);
     onAction('visit', record);
   }, [website, onAction, record]);
 
@@ -123,209 +90,192 @@ export function BusinessCard({ record, onAction, isActive }: CardProps) {
     onAction('details', record);
   }, [onAction, record]);
 
-  return (
-    <View
-      style={[styles.card, isActive && styles.cardActive]}
-      accessibilityRole="summary"
-      accessibilityLabel={`${name} business card`}
+  // ---- Hero content ----
+  const heroContent = (
+    <LinearGradient
+      colors={Colors.gradient.cardHero}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.heroGradient}
     >
-      {/* ---- Hero Area ---- */}
-      <LinearGradient
-        colors={Colors.gradient.cardHero as unknown as string[]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hero}
-      >
-        <View style={styles.heroIcon}>
-          <Ionicons name={icon} size={32} color={Colors.accent.cyan} />
-        </View>
-        <Text style={styles.heroName} numberOfLines={2} accessibilityRole="header">
-          {name}
-        </Text>
-        {rating != null && (
-          <View style={styles.heroRatingRow}>
-            <Text style={styles.heroStars}>{renderStars(rating)}</Text>
-            <Text style={styles.heroRatingNum}>
+      <View style={styles.heroIcon}>
+        <Ionicons name={icon} size={32} color={Colors.accent.cyan} />
+      </View>
+      <Text style={styles.heroName} numberOfLines={2} accessibilityRole="header">
+        {name}
+      </Text>
+      {rating != null && (
+        <View style={styles.heroRatingRow}>
+          <Text style={styles.heroStars}>{renderStars(rating)}</Text>
+          <Text style={styles.heroRatingNum}>
+            {' '}
+            {typeof rating === 'number' ? rating.toFixed(1) : rating}
+          </Text>
+          {review_count != null && (
+            <Text style={styles.heroReviewCount}>
               {' '}
-              {typeof rating === 'number' ? rating.toFixed(1) : rating}
+              ({review_count} reviews)
             </Text>
-            {review_count != null && (
-              <Text style={styles.heroReviewCount}>
-                {' '}
-                ({review_count} reviews)
-              </Text>
-            )}
-          </View>
-        )}
-      </LinearGradient>
+          )}
+        </View>
+      )}
+    </LinearGradient>
+  );
 
-      {/* ---- Content ---- */}
-      <View style={styles.content}>
-        {/* Address */}
-        {normalized_address ? (
-          <View style={styles.infoRow}>
-            <Ionicons
-              name="location-outline"
-              size={16}
-              color={Colors.text.muted}
-            />
-            <Text style={styles.infoText} numberOfLines={2}>
-              {normalized_address}
-            </Text>
-          </View>
-        ) : null}
+  // ---- Action buttons ----
+  const actionContent = (
+    <>
+      {phone ? (
+        <ActionButton label="Call" icon="call-outline" onPress={handleCall} variant="primary" />
+      ) : null}
+      {website ? (
+        <ActionButton
+          label="Website"
+          icon="globe-outline"
+          onPress={handleWebsite}
+          variant="primary"
+        />
+      ) : null}
+      <ActionButton
+        label="Details"
+        icon="chevron-forward"
+        onPress={handleDetails}
+        variant="secondary"
+      />
+    </>
+  );
 
-        {/* Phone */}
-        {phone ? (
-          <Pressable
-            style={styles.infoRow}
-            onPress={() => safeCallPhone(phone)}
-            accessibilityRole="link"
-            accessibilityLabel={`Call ${phone}`}
-          >
-            <Ionicons name="call-outline" size={16} color={Colors.accent.cyan} />
-            <Text style={[styles.infoText, styles.infoLink]}>{phone}</Text>
-          </Pressable>
-        ) : null}
+  return (
+    <BaseCard
+      safety={null}
+      isActive={isActive}
+      heroSlot={heroContent}
+      heroStyle={HERO_STYLE}
+      actionSlot={actionContent}
+      accessibilityLabel={`${name} business card`}
+      enterDelay={enterDelay}
+    >
+      {/* Address */}
+      {normalized_address ? (
+        <View style={styles.infoRow}>
+          <Ionicons name="location-outline" size={16} color={Colors.text.muted} />
+          <Text style={styles.infoText} numberOfLines={2}>
+            {normalized_address}
+          </Text>
+        </View>
+      ) : null}
 
-        {/* Website */}
-        {website ? (
-          <Pressable
-            style={styles.infoRow}
-            onPress={() => safeOpenURL(website)}
-            accessibilityRole="link"
-            accessibilityLabel={`Visit ${domain}`}
-          >
-            <Ionicons name="globe-outline" size={16} color={Colors.accent.cyan} />
-            <Text style={[styles.infoText, styles.infoLink]} numberOfLines={1}>
-              {domain}
-            </Text>
-          </Pressable>
-        ) : null}
+      {/* Phone */}
+      {phone ? (
+        <Pressable
+          style={styles.infoRow}
+          onPress={() => safeCallPhone(phone)}
+          accessibilityRole="link"
+          accessibilityLabel={`Call ${phone}`}
+        >
+          <Ionicons name="call-outline" size={16} color={Colors.accent.cyan} />
+          <Text style={[styles.infoText, styles.infoLink]}>{phone}</Text>
+        </Pressable>
+      ) : null}
 
-        {/* Status pills row: Open/Closed + Distance */}
-        {(open_now != null || distance_miles != null) && (
-          <View style={styles.pillsRow}>
-            {open_now != null && (
+      {/* Website */}
+      {website ? (
+        <Pressable
+          style={styles.infoRow}
+          onPress={() => safeOpenURL(website)}
+          accessibilityRole="link"
+          accessibilityLabel={`Visit ${domain}`}
+        >
+          <Ionicons name="globe-outline" size={16} color={Colors.accent.cyan} />
+          <Text style={[styles.infoText, styles.infoLink]} numberOfLines={1}>
+            {domain}
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {/* Status pills: Open/Closed + Distance — section divider above */}
+      {(open_now != null || distance_miles != null) && (
+        <View style={[styles.pillsRow, styles.sectionDivider]}>
+          {open_now != null && (
+            <View
+              style={[
+                styles.statusPill,
+                {
+                  backgroundColor: open_now
+                    ? Colors.semantic.successLight
+                    : Colors.semantic.errorLight,
+                },
+              ]}
+            >
               <View
                 style={[
-                  styles.statusPill,
+                  styles.statusDot,
                   {
                     backgroundColor: open_now
-                      ? Colors.semantic.successLight
-                      : Colors.semantic.errorLight,
+                      ? Colors.semantic.success
+                      : Colors.semantic.error,
+                  },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.statusPillText,
+                  {
+                    color: open_now
+                      ? Colors.semantic.success
+                      : Colors.semantic.error,
                   },
                 ]}
               >
-                <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor: open_now
-                        ? Colors.semantic.success
-                        : Colors.semantic.error,
-                    },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.statusPillText,
-                    {
-                      color: open_now
-                        ? Colors.semantic.success
-                        : Colors.semantic.error,
-                    },
-                  ]}
-                >
-                  {open_now ? 'Open now' : 'Closed'}
-                </Text>
-              </View>
-            )}
-            {distance_miles != null && (
-              <View style={styles.distancePill}>
-                <Ionicons
-                  name="navigate-outline"
-                  size={12}
-                  color={Colors.text.tertiary}
-                />
-                <Text style={styles.distanceText}>
-                  {typeof distance_miles === 'number'
-                    ? `${distance_miles.toFixed(1)} mi`
-                    : `${distance_miles} mi`}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Category */}
-        {category ? (
-          <Text style={styles.category} numberOfLines={1}>
-            {category}
-          </Text>
-        ) : null}
-
-        {/* Hours */}
-        {hours && typeof hours === 'string' ? (
-          <Text style={styles.hours} numberOfLines={1}>
-            {hours}
-          </Text>
-        ) : null}
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          {phone ? (
-            <ActionButton label="Call" icon="call-outline" onPress={handleCall} />
-          ) : null}
-          {website ? (
-            <ActionButton
-              label="Website"
-              icon="globe-outline"
-              onPress={handleWebsite}
-            />
-          ) : null}
-          <ActionButton
-            label="Details"
-            icon="chevron-forward"
-            onPress={handleDetails}
-          />
+                {open_now ? 'Open now' : 'Closed'}
+              </Text>
+            </View>
+          )}
+          {distance_miles != null && (
+            <View style={styles.distancePill}>
+              <Ionicons
+                name="navigate-outline"
+                size={12}
+                color={Colors.text.tertiary}
+              />
+              <Text style={styles.distanceText}>
+                {typeof distance_miles === 'number'
+                  ? `${distance_miles.toFixed(1)} mi`
+                  : `${distance_miles} mi`}
+              </Text>
+            </View>
+          )}
         </View>
-      </View>
-    </View>
+      )}
+
+      {/* Category */}
+      {category ? (
+        <Text style={styles.category} numberOfLines={1}>
+          {category}
+        </Text>
+      ) : null}
+
+      {/* Hours */}
+      {hours && typeof hours === 'string' ? (
+        <Text style={styles.hours} numberOfLines={1}>
+          {hours}
+        </Text>
+      ) : null}
+    </BaseCard>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Styles
+// Styles (card-specific only — shell/actions owned by BaseCard)
 // ---------------------------------------------------------------------------
 
-const CARD_WIDTH = 500;
 const HERO_HEIGHT = 160;
+const HERO_STYLE = { height: HERO_HEIGHT, aspectRatio: undefined };
 
 const styles = StyleSheet.create({
-  // Card shell
-  card: {
-    width: CARD_WIDTH,
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,
-    overflow: 'hidden',
-  },
-  cardActive: {
-    borderColor: Colors.accent.cyan,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 0 0 1px rgba(59,130,246,0.3), 0 4px 16px rgba(0,0,0,0.25)',
-      } as unknown as ViewStyle,
-      default: {},
-    }),
-  },
-
-  // Hero
-  hero: {
-    width: '100%' as unknown as number,
-    height: HERO_HEIGHT,
+  // Hero internals
+  heroGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.xxl,
@@ -365,18 +315,13 @@ const styles = StyleSheet.create({
     color: Colors.text.tertiary,
   },
 
-  // Content
-  content: {
-    padding: Spacing.lg,
-    gap: Spacing.md,
-  },
-
   // Info rows
   infoRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Spacing.sm,
     minHeight: 24,
+    marginTop: Spacing.xs,
   },
   infoText: {
     ...Typography.caption,
@@ -392,6 +337,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.sm,
     flexWrap: 'wrap',
+    marginTop: Spacing.xs,
   },
   statusPill: {
     flexDirection: 'row',
@@ -427,6 +373,7 @@ const styles = StyleSheet.create({
   category: {
     ...Typography.small,
     color: Colors.text.muted,
+    marginTop: Spacing.xs,
   },
   hours: {
     ...Typography.small,
@@ -434,31 +381,12 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // Actions
-  actions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.xs,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    height: 40,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.accent.cyan,
-    minWidth: 44,
-    justifyContent: 'center',
-  },
-  actionBtnPressed: {
-    opacity: 0.7,
-    backgroundColor: Colors.accent.cyanLight,
-  },
-  actionBtnText: {
-    ...Typography.captionMedium,
-    color: Colors.accent.cyan,
+  // Section divider — hairline separator between logical content blocks
+  sectionDivider: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.surface.cardBorder,
   },
 });
 

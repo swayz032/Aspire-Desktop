@@ -58,6 +58,14 @@ export interface UseAvaChatOptions {
   avaVoice?: unknown;
   /** Called when response text arrives — pipe to Anam TTS. */
   onResponseText?: (text: string, media: unknown[]) => void;
+  /** Called when response contains structured_results (Adam research data).
+   *  Fallback for when ElevenLabs show_cards client tool isn't called. */
+  onStructuredResults?: (data: {
+    artifact_type: string;
+    records: Record<string, unknown>[];
+    summary: string;
+    confidence?: { status: string; score: number } | null;
+  }) => void;
   /** Additional body fields to merge (e.g. userProfile, pending approvals). */
   extraBody?: Record<string, unknown>;
 }
@@ -67,6 +75,9 @@ export function useAvaChat(options: UseAvaChatOptions = {}) {
   const { tenant } = useTenant();
   const onResponseTextRef = useRef(options.onResponseText);
   onResponseTextRef.current = options.onResponseText;
+
+  const onStructuredResultsRef = useRef(options.onStructuredResults);
+  onStructuredResultsRef.current = options.onStructuredResults;
 
   const extraBodyRef = useRef(options.extraBody);
   extraBodyRef.current = options.extraBody;
@@ -104,6 +115,9 @@ export function useAvaChat(options: UseAvaChatOptions = {}) {
       },
       onResponseText: (text, media) => {
         onResponseTextRef.current?.(text, media);
+      },
+      onStructuredResults: (data) => {
+        onStructuredResultsRef.current?.(data);
       },
       mapError: mapOrchestratorError,
     });

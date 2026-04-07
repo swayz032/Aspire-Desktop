@@ -30,6 +30,14 @@ export interface AspireChatTransportOptions {
   onResponseText?: (text: string, media: unknown[]) => void;
   /** Called on orchestrator error with the raw message — return user-friendly text. */
   mapError?: (rawMessage: string) => string;
+  /** Called when response contains structured_results (Adam research data).
+   *  Fallback for when ElevenLabs show_cards client tool isn't called. */
+  onStructuredResults?: (data: {
+    artifact_type: string;
+    records: Record<string, unknown>[];
+    summary: string;
+    confidence?: { status: string; score: number } | null;
+  }) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +69,7 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
   private fetchFn: typeof globalThis.fetch;
   private onResponseText?: (text: string, media: unknown[]) => void;
   private mapError?: (rawMessage: string) => string;
+  private onStructuredResults?: AspireChatTransportOptions['onStructuredResults'];
 
   constructor(options: AspireChatTransportOptions = {}) {
     this.api = options.api ?? '/api/orchestrator/intent?stream=true';
@@ -69,6 +78,7 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
     this.fetchFn = options.fetch ?? globalThis.fetch;
     this.onResponseText = options.onResponseText;
     this.mapError = options.mapError;
+    this.onStructuredResults = options.onStructuredResults;
   }
 
   async sendMessages(options: {
@@ -187,6 +197,7 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
   ): ReadableStream<UIMessageChunk> {
     const onResponseText = this.onResponseText;
     const mapError = this.mapError;
+    const onStructuredResults = this.onStructuredResults;
 
     return new ReadableStream<UIMessageChunk>({
       async start(controller) {
@@ -227,6 +238,18 @@ export class AspireChatTransport implements ChatTransport<UIMessage> {
 
               // Pipe to Anam TTS if configured
               onResponseText?.(responseText, mediaItems);
+            }
+
+            // Fallback: detect structured_results in HTTP response
+            // (belt-and-suspenders when ElevenLabs show_cards isn't called)
+            const sr = event.data?.structured_results;
+            if (sr && typeof sr === 'object' && sr.artifact_type && Array.isArray(sr.records) && sr.records.length > 0) {
+              onStructuredResults?.(sr as {
+                artifact_type: string;
+                records: Record<string, unknown>[];
+                summary: string;
+                confidence?: { status: string; score: number } | null;
+              });
             }
           } else if (event.type === 'error') {
             // Close reasoning before emitting error

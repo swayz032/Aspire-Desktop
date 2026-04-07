@@ -7,16 +7,22 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Typography } from '@/constants/tokens';
+import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import type { CardProps } from './CardRegistry';
+import { BaseCard } from './BaseCard';
 
-export function GenericCard({ record, artifactType }: CardProps) {
+export function GenericCard({ record, artifactType, isActive, enterDelay }: CardProps) {
   const name = record.name || record.product_name || record.title || 'Unknown';
   const address = record.normalized_address || record.address || '';
   const summary = record.summary || record.description || '';
 
   return (
-    <View style={styles.card} accessibilityRole="summary" accessibilityLabel={`${name} research card`}>
+    <BaseCard
+      safety={null}
+      isActive={isActive}
+      accessibilityLabel={`${name} research card`}
+      enterDelay={enterDelay}
+    >
       <View style={styles.header}>
         <Ionicons name="document-text-outline" size={32} color={Colors.text.muted} />
         <View style={styles.typeBadge}>
@@ -38,20 +44,11 @@ export function GenericCard({ record, artifactType }: CardProps) {
         <Ionicons name="information-circle-outline" size={14} color={Colors.text.muted} />
         <Text style={styles.footerText}>No specialized card for this result type</Text>
       </View>
-    </View>
+    </BaseCard>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-    backgroundColor: Colors.surface.card,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.surface.cardBorder,
-    padding: Spacing.xl,
-    justifyContent: 'center',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

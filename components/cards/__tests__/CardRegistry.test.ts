@@ -13,11 +13,12 @@ describe('CardRegistry', () => {
     expect(typeof card).toBe('function');
   });
 
-  it('resolveCard returns GenericCardPlaceholder for unknown types (Law #3)', () => {
+  it('resolveCard returns GenericCard for unknown types (Law #3)', () => {
     const card = resolveCard('CompletelyUnknownType_XYZ');
     expect(card).toBeDefined();
     expect(typeof card).toBe('function');
-    expect(card.displayName).toBe('GenericCardPlaceholder');
+    // GenericCard is a real component (not a placeholder) — Law #3: never null
+    expect(card.name).toBe('GenericCard');
   });
 
   it('registeredTypes includes all known types', () => {

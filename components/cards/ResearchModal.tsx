@@ -16,7 +16,7 @@
  * Matches the Aspire "Command Center Glass" aesthetic.
  */
 
-import React, { useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useCallback, useRef, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -36,17 +36,13 @@ import Animated, {
   withSequence,
   withSpring,
   interpolate,
-  interpolateColor,
   Extrapolation,
-  FadeIn,
-  FadeOut,
   SlideInRight,
   SlideOutRight,
-  runOnJS,
-  useAnimatedReaction,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, BorderRadius, Shadows, Animation } from '@/constants/tokens';
+import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
+import { AnimatedDot } from './AnimatedDot';
 import { playOpenSound, playClickSound } from '@/lib/sounds';
 import { resolveCard, type CardProps } from './CardRegistry';
 import { deriveTier, tierToGlowColor, type SafetyTier } from './SafetyBadge';
@@ -68,7 +64,9 @@ export interface ResearchModalProps extends AvaPresentsState, AvaPresentsActions
 // ─── Glow Color Helpers ──────────────────────────────────────────────────────
 
 function getGlowColorForRecord(record: Record<string, unknown>): string {
-  const score = typeof record.score === 'number' ? record.score : null;
+  // Hotels use safety_score, other types may use score or confidence.score
+  const raw = record.safety_score ?? record.score;
+  const score = typeof raw === 'number' ? raw : null;
   if (score === null) return DEFAULT_GLOW_COLOR;
   return tierToGlowColor(deriveTier(score));
 }
@@ -104,6 +102,14 @@ function injectResearchModalStyles() {
     }
     /* Hide scrollbar on the card list */
     .ava-presents-list::-webkit-scrollbar { display: none; }
+    /* Card hover lift on desktop */
+    .ava-card {
+      transition: transform 200ms ease, box-shadow 200ms ease;
+    }
+    .ava-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5) !important;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -131,6 +137,18 @@ export function ResearchModal(props: ResearchModalProps) {
   const { width: screenW, height: screenH } = useWindowDimensions();
   const flatListRef = useRef<FlatList>(null);
 
+  // Delayed unmount — keep rendering during exit animation
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+    } else if (mounted) {
+      // Delay unmount until exit animation completes
+      const timer = setTimeout(() => setMounted(false), BACKDROP_FADE_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
+
   // ── Inject web styles once ──
   useEffect(() => { injectResearchModalStyles(); }, []);
 
@@ -143,27 +161,12 @@ export function ResearchModal(props: ResearchModalProps) {
   const modalOpacity = useSharedValue(0);
   const breathe = useSharedValue(0);
 
-  // Glow color index: 0 = blue, 1 = green, 2 = amber, 3 = red
-  const glowColorProgress = useSharedValue(0);
-
   // ── Derive glow color target from active record ──
+  // Color transition on web is handled by CSS: transition: background 0.6s ease-out
   const activeGlowColor = useMemo(() => {
     if (!records.length) return DEFAULT_GLOW_COLOR;
     return getGlowColorForRecord(records[activeIndex] ?? {});
   }, [records, activeIndex]);
-
-  // Map color hex to index for interpolation
-  const COLOR_MAP: Record<string, number> = {
-    '#3B82F6': 0,
-    '#10B981': 1,
-    '#F59E0B': 2,
-    '#EF4444': 3,
-  };
-
-  useEffect(() => {
-    const target = COLOR_MAP[activeGlowColor] ?? 0;
-    glowColorProgress.value = withTiming(target, { duration: 600 });
-  }, [activeGlowColor]);
 
   // ── Entry / exit animations ──
   useEffect(() => {
@@ -216,8 +219,7 @@ export function ResearchModal(props: ResearchModalProps) {
     };
   });
 
-  // ── Derived glow color for web radial gradient ──
-  const glowBgColor = useMemo(() => activeGlowColor, [activeGlowColor]);
+  const glowBgColor = activeGlowColor;
 
   // ── Keyboard handler ──
   useEffect(() => {
@@ -261,19 +263,30 @@ export function ResearchModal(props: ResearchModalProps) {
   );
 
   const renderCard = useCallback(
-    ({ item, index }: ListRenderItemInfo<Record<string, unknown>>) => (
-      <View style={[styles.cardSlide, { width: CARD_WIDTH }]}>
-        <CardComponent
-          record={item}
-          artifactType={artifactType}
-          index={index}
-          total={records.length}
-          confidence={confidence}
-          onAction={handleCardAction}
-          isActive={index === activeIndex}
-        />
-      </View>
-    ),
+    ({ item, index }: ListRenderItemInfo<Record<string, unknown>>) => {
+      const isCardActive = index === activeIndex;
+      return (
+        <View
+          style={[
+            styles.cardSlide,
+            { width: CARD_WIDTH },
+            // Item 1: Non-active cards scale down for visual depth
+            !isCardActive && styles.cardSlideInactive,
+          ]}
+        >
+          <CardComponent
+            record={item}
+            artifactType={artifactType}
+            index={index}
+            total={records.length}
+            confidence={confidence}
+            onAction={handleCardAction}
+            isActive={isCardActive}
+            enterDelay={index * 80}
+          />
+        </View>
+      );
+    },
     [CardComponent, artifactType, records.length, confidence, activeIndex, handleCardAction],
   );
 
@@ -282,17 +295,20 @@ export function ResearchModal(props: ResearchModalProps) {
     [],
   );
 
-  // ── Don't render if not visible ──
-  if (!visible) return null;
+  // ── Don't render if fully unmounted (after exit animation completes) ──
+  if (!mounted) return null;
 
   const isFirstCard = activeIndex === 0;
   const isLastCard = activeIndex === records.length - 1;
+
+  // ── Responsive glow orb sizing (Item 7) ──
+  const glowSize = Math.min(screenW * 0.5, 600);
 
   // ── Compute content padding to center the card list ──
   const listPaddingH = Math.max(0, (screenW - CARD_WIDTH) / 2);
 
   return (
-    <View style={styles.root} testID="research-modal">
+    <View style={styles.root} testID="research-modal" pointerEvents={visible ? 'auto' : 'none'}>
       {/* Backdrop */}
       <Animated.View style={[styles.backdrop, backdropStyle]}>
         <Pressable
@@ -300,16 +316,24 @@ export function ResearchModal(props: ResearchModalProps) {
           onPress={detailMode ? closeDetail : dismiss}
           accessibilityRole="button"
           accessibilityLabel="Close research results"
-          // @ts-expect-error -- web className for backdrop-filter
           className="ava-presents-backdrop"
         />
       </Animated.View>
 
-      {/* Ambient Glow */}
+      {/* Ambient Glow — responsive sizing capped at 600px */}
       <Animated.View
-        style={[styles.glowOrb, glowStyle, { backgroundColor: glowBgColor }]}
+        style={[
+          styles.glowOrb,
+          glowStyle,
+          {
+            backgroundColor: glowBgColor,
+            width: glowSize,
+            height: glowSize,
+            borderRadius: glowSize / 2,
+          },
+        ]}
         pointerEvents="none"
-        // @ts-expect-error -- web className
+
         className="ava-presents-glow"
       />
 
@@ -324,7 +348,7 @@ export function ResearchModal(props: ResearchModalProps) {
                 style={styles.backButton}
                 accessibilityRole="button"
                 accessibilityLabel="Back to card list"
-                // @ts-expect-error -- web className
+        
                 className="ava-presents-back"
               >
                 <Ionicons name="arrow-back" size={18} color={Colors.text.secondary} />
@@ -332,7 +356,14 @@ export function ResearchModal(props: ResearchModalProps) {
               </Pressable>
             )}
             {!detailMode && summary ? (
-              <Text style={styles.summary} numberOfLines={2}>{summary}</Text>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summary} numberOfLines={2}>{summary}</Text>
+                {records.length > 1 && (
+                  <View style={styles.resultCountBadge} accessibilityLabel={`${records.length} results`}>
+                    <Text style={styles.resultCountText}>{records.length} results</Text>
+                  </View>
+                )}
+              </View>
             ) : null}
           </View>
 
@@ -341,7 +372,7 @@ export function ResearchModal(props: ResearchModalProps) {
             style={styles.closeButton}
             accessibilityRole="button"
             accessibilityLabel="Dismiss research results"
-            // @ts-expect-error -- web className
+    
             className="ava-presents-close"
           >
             <Ionicons name="close" size={22} color={Colors.text.secondary} />
@@ -357,8 +388,12 @@ export function ResearchModal(props: ResearchModalProps) {
           >
             <CardComponent
               record={detailRecord}
+              artifactType={artifactType}
               index={activeIndex}
               total={records.length}
+              confidence={confidence}
+              onAction={handleCardAction}
+              isActive
             />
           </Animated.View>
         ) : (
@@ -383,7 +418,7 @@ export function ResearchModal(props: ResearchModalProps) {
                   alignItems: 'center',
                 }}
                 style={styles.flatList}
-                // @ts-expect-error -- web className
+        
                 className="ava-presents-list"
               />
 
@@ -394,7 +429,7 @@ export function ResearchModal(props: ResearchModalProps) {
                   style={[styles.navArrow, styles.navArrowLeft]}
                   accessibilityRole="button"
                   accessibilityLabel="Previous card"
-                  // @ts-expect-error -- web className
+          
                   className="ava-presents-nav"
                 >
                   <Ionicons name="chevron-back" size={24} color={Colors.text.primary} />
@@ -406,7 +441,7 @@ export function ResearchModal(props: ResearchModalProps) {
                   style={[styles.navArrow, styles.navArrowRight]}
                   accessibilityRole="button"
                   accessibilityLabel="Next card"
-                  // @ts-expect-error -- web className
+          
                   className="ava-presents-nav"
                 >
                   <Ionicons name="chevron-forward" size={24} color={Colors.text.primary} />
@@ -414,25 +449,16 @@ export function ResearchModal(props: ResearchModalProps) {
               )}
             </View>
 
-            {/* Pagination: Dots + Counter */}
+            {/* Pagination: Animated Dots + Counter */}
             <View style={styles.pagination}>
               <View style={styles.dots}>
                 {records.map((_, i) => (
-                  <Pressable
+                  <AnimatedDot
                     key={i}
+                    isActive={i === activeIndex}
                     onPress={() => goToCard(i)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Go to card ${i + 1}`}
-                    // @ts-expect-error -- web className
-                    className="ava-presents-dot"
-                  >
-                    <View
-                      style={[
-                        styles.dot,
-                        i === activeIndex ? styles.dotActive : styles.dotInactive,
-                      ]}
-                    />
-                  </Pressable>
+                    index={i}
+                  />
                 ))}
               </View>
               <Text style={styles.counter}>
@@ -476,9 +502,7 @@ const styles = StyleSheet.create({
   },
   glowOrb: {
     position: 'absolute',
-    width: 480,
-    height: 480,
-    borderRadius: 240,
+    // Width, height, borderRadius set dynamically for responsive sizing
     alignSelf: 'center',
     // Web blur for the radial glow effect
     ...(Platform.OS === 'web'
@@ -505,10 +529,28 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: Spacing.lg,
   },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    flex: 1,
+  },
   summary: {
     ...Typography.headline,
     color: Colors.text.primary,
     letterSpacing: -0.3,
+    flexShrink: 1,
+  },
+  resultCountBadge: {
+    backgroundColor: Colors.accent.cyanLight,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    flexShrink: 0,
+  },
+  resultCountText: {
+    ...Typography.smallMedium,
+    color: Colors.accent.cyan,
   },
   closeButton: {
     width: 40,
@@ -541,6 +583,14 @@ const styles = StyleSheet.create({
   },
   cardSlide: {
     justifyContent: 'center',
+    // Active card is full scale/opacity; transition handled by web CSS or inline
+    ...(Platform.OS === 'web'
+      ? { transition: 'transform 250ms ease, opacity 250ms ease' } as unknown as ViewStyle
+      : {}),
+  },
+  cardSlideInactive: {
+    opacity: 0.6,
+    transform: [{ scale: 0.92 }],
   },
 
   // Nav arrows
@@ -575,18 +625,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  dotActive: {
-    backgroundColor: Colors.text.primary,
-  },
-  dotInactive: {
-    backgroundColor: Colors.text.muted,
-    opacity: 0.4,
   },
   counter: {
     ...Typography.small,

@@ -346,6 +346,18 @@ function AvaDeskPanelInner() {
     onResponseText: (_text) => {
       // Anam hosted embed handles TTS internally — no SDK talk() needed
     },
+    // Fallback: if ElevenLabs show_cards client tool isn't called (text-only chat path),
+    // detect structured_results in the HTTP SSE response and trigger the card modal
+    onStructuredResults: (data) => {
+      if (!avaPresents.visible) {
+        avaPresents.showCards({
+          artifactType: data.artifact_type,
+          records: data.records,
+          summary: data.summary ?? '',
+          confidence: data.confidence as { status: 'verified' | 'partial' | 'unverified'; score: number } | null | undefined,
+        });
+      }
+    },
     extraBody: {
       pendingApprovals: pendingApprovals.length,
       approvalSummary: pendingApprovals.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
