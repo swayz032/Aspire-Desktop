@@ -85,6 +85,14 @@ export interface ResearchModalProps extends AvaPresentsState, AvaPresentsActions
 
 // ─── Glow Color Helpers ──────────────────────────────────────────────────────
 
+/** Convert hex color to rgba() string for CSS box-shadow */
+function hexToRgba(hex: string, opacity: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${opacity})`;
+}
+
 function getGlowColorForRecord(record: Record<string, unknown>, artifactType?: string): string {
   // Hotels use safety_score
   const raw = record.safety_score ?? record.score;
@@ -317,7 +325,7 @@ export function ResearchModal(props: ResearchModalProps) {
       const cardGlowStyle: ViewStyle | undefined =
         isCardActive && Platform.OS === 'web' && glowColor
           ? {
-              boxShadow: `0 0 30px ${glowColor}59, 0 0 60px ${glowColor}26, 0 0 90px ${glowColor}0D`,
+              boxShadow: `0 0 30px ${hexToRgba(glowColor, 0.35)}, 0 0 60px ${hexToRgba(glowColor, 0.15)}, 0 0 90px ${hexToRgba(glowColor, 0.05)}`,
             } as unknown as ViewStyle
           : undefined;
       return (
@@ -380,13 +388,12 @@ export function ResearchModal(props: ResearchModalProps) {
       <Animated.View
         style={[
           styles.glowOrb,
-          glowStyle,
           {
             backgroundColor: glowBgColor,
-            width: glowSize * 0.5,
-            height: glowSize * 0.5,
-            borderRadius: (glowSize * 0.5) / 2,
-            opacity: 0.15,
+            width: glowSize * 0.4,
+            height: glowSize * 0.4,
+            borderRadius: (glowSize * 0.4) / 2,
+            opacity: 0.12,
           },
         ]}
         pointerEvents="none"
@@ -639,9 +646,12 @@ const styles = StyleSheet.create({
   },
   cardSlide: {
     justifyContent: 'center',
+    minHeight: 580, // Enforce consistent card height across all types
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
     // Active card is full scale/opacity; transition handled by web CSS or inline
     ...(Platform.OS === 'web'
-      ? { transition: 'transform 250ms ease, opacity 250ms ease' } as unknown as ViewStyle
+      ? { transition: 'transform 250ms ease, opacity 250ms ease, box-shadow 600ms ease-out' } as unknown as ViewStyle
       : {}),
   },
   cardSlideInactive: {

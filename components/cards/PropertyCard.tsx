@@ -417,7 +417,7 @@ export function PropertyCard({ record, onAction, isActive, enterDelay }: CardPro
         <DataRow label="Parcel APN" value={r.parcel_apn} />
         <DataRow label="FIPS" value={r.parcel_fips} />
         <DataRow label="ATTOM ID" value={r.attom_id} />
-        {r.latitude && r.longitude && (
+        {typeof r.latitude === 'number' && typeof r.longitude === 'number' && (
           <DataRow label="Coordinates" value={`${r.latitude.toFixed(5)}, ${r.longitude.toFixed(5)}`} />
         )}
         <DataRow label="Source Updated" value={r.source_last_modified} />
@@ -442,9 +442,9 @@ export function PropertyCard({ record, onAction, isActive, enterDelay }: CardPro
 // Styles
 // ---------------------------------------------------------------------------
 
-const HERO_HEIGHT = 180;
+const HERO_HEIGHT = 200; // Matches HotelCard/ProductCard for consistent card sizing
 const HERO_STYLE: ViewStyle = { height: HERO_HEIGHT, aspectRatio: undefined };
-const SCROLL_MAX_HEIGHT = 420; // Keeps card consistent size; content scrolls within
+const SCROLL_MAX_HEIGHT = 400; // Content scrolls within card; total card ~700px
 
 const s = StyleSheet.create({
   // Hero

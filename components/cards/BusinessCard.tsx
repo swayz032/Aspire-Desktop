@@ -269,7 +269,7 @@ export function BusinessCard({ record, onAction, isActive, enterDelay }: CardPro
 // Styles (card-specific only — shell/actions owned by BaseCard)
 // ---------------------------------------------------------------------------
 
-const HERO_HEIGHT = 160;
+const HERO_HEIGHT = 200; // Matches all card types for consistent sizing
 const HERO_STYLE = { height: HERO_HEIGHT, aspectRatio: undefined };
 
 const styles = StyleSheet.create({
