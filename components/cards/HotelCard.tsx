@@ -256,6 +256,18 @@ export function HotelCard({ record, onAction, isActive, enterDelay }: CardProps)
           {ranking_string}
         </Text>
       ) : null}
+
+      {/* Consistent height spacer — ensures all cards are the same visual size */}
+      {!hasSubratings && (
+        <View style={styles.placeholderSection}>
+          <Text style={styles.placeholderText}>No detailed ratings available</Text>
+        </View>
+      )}
+      {visibleAmenities.length === 0 && (
+        <View style={styles.placeholderSection}>
+          <Text style={styles.placeholderText}>Amenities not listed</Text>
+        </View>
+      )}
     </BaseCard>
   );
 }
@@ -419,6 +431,19 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.surface.cardBorder,
+  },
+
+  // Placeholder for missing sections — maintains consistent card height
+  placeholderSection: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.surface.cardBorder,
+  },
+  placeholderText: {
+    ...Typography.small,
+    color: Colors.text.disabled,
+    fontStyle: 'italic',
   },
 });
 

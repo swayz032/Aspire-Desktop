@@ -14,10 +14,11 @@ export type { SafetyTier, SafetyBadgeProps } from './SafetyBadge';
 export { resolveCard, registerCard, registeredTypes } from './CardRegistry';
 export type { CardProps } from './CardRegistry';
 
-// Wave 1 content cards
+// Content cards
 export { HotelCard } from './HotelCard';
 export { ProductCard } from './ProductCard';
 export { BusinessCard } from './BusinessCard';
+export { PropertyCard } from './PropertyCard';
 export { GenericCard } from './GenericCard';
 
 // Shared helpers
@@ -25,4 +26,4 @@ export { ActionButton } from './ActionButton';
 export type { ActionButtonVariant } from './ActionButton';
 export { AnimatedDot } from './AnimatedDot';
 export { ImageSkeleton } from './ImageSkeleton';
-export { renderStars, fmtCount, domainOf, fmtPrice } from './helpers';
+export { renderStars, fmtCount, domainOf, fmtPrice, fmtDollar, fmtSqft, fmtPercent } from './helpers';

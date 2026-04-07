@@ -80,14 +80,29 @@ KNOWN_TYPES.forEach((type) => {
 // ─── Wave 1 Card Registrations ──────────────────────────────────────────────
 // Lazy imports to avoid circular deps — cards self-register on first import.
 
-// Wave 1 card registrations — cards implement the CardProps interface above
+// Card registrations — cards implement the CardProps interface above
 import { HotelCard } from './HotelCard';
 import { ProductCard } from './ProductCard';
 import { BusinessCard } from './BusinessCard';
+import { PropertyCard } from './PropertyCard';
 
+// Hotels
 registerCard('HotelShortlist', HotelCard);
+
+// Products / Pricing
 registerCard('PriceComparison', ProductCard);
+registerCard('EstimateResearchPack', ProductCard);
+
+// Vendors / Business
 registerCard('VendorShortlist', BusinessCard);
 registerCard('ProspectList', BusinessCard);
 registerCard('CompetitorBrief', BusinessCard);
-registerCard('EstimateResearchPack', ProductCard);
+
+// Property / Landlord (all ATTOM property data types)
+registerCard('LandlordPropertyPack', PropertyCard);
+registerCard('PropertyFactPack', PropertyCard);
+registerCard('RentCompPack', PropertyCard);
+registerCard('PermitContextPack', PropertyCard);
+registerCard('NeighborhoodDemandBrief', PropertyCard);
+registerCard('ScreeningComplianceBrief', PropertyCard);
+registerCard('InvestmentOpportunityPack', PropertyCard);

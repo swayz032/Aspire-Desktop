@@ -39,3 +39,26 @@ export function fmtPrice(price: number | string | undefined, currency = '$'): st
   if (isNaN(num)) return String(price);
   return `${currency}${num.toFixed(2)}`;
 }
+
+/** Format dollar amounts with commas, no cents for values >= $1000 */
+export function fmtDollar(value: number | string | undefined | null): string {
+  if (value == null) return '';
+  const num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]/g, '')) : value;
+  if (isNaN(num)) return String(value);
+  if (Math.abs(num) >= 1000) {
+    return `$${Math.round(num).toLocaleString('en-US')}`;
+  }
+  return `$${num.toFixed(2)}`;
+}
+
+/** Format square footage: 2635 → "2,635 sqft" */
+export function fmtSqft(sqft: number | undefined | null): string {
+  if (sqft == null) return '';
+  return `${Math.round(sqft).toLocaleString('en-US')} sqft`;
+}
+
+/** Format percentage: 12.5 → "12.5%" */
+export function fmtPercent(pct: number | undefined | null): string {
+  if (pct == null) return '';
+  return `${pct.toFixed(1)}%`;
+}

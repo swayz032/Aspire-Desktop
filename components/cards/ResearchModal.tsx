@@ -57,18 +57,59 @@ const MODAL_SPRING = { damping: 22, stiffness: 260, mass: 0.9 };
 const CARD_WIDTH = 500;
 const CARD_GAP = 24;
 
+/** Map raw artifact_type to a clean, user-friendly display name for the modal header. */
+const DISPLAY_NAMES: Record<string, string> = {
+  HotelShortlist: 'Hotels Found',
+  PriceComparison: 'Price Results',
+  VendorShortlist: 'Vendors',
+  ProspectList: 'Prospects',
+  CompetitorBrief: 'Competitors',
+  EstimateResearchPack: 'Estimate Research',
+  LandlordPropertyPack: 'Property Details',
+  PropertyFactPack: 'Property Details',
+  RentCompPack: 'Rental Comps',
+  PermitContextPack: 'Permits & Renovation',
+  NeighborhoodDemandBrief: 'Neighborhood Analysis',
+  ScreeningComplianceBrief: 'Screening Compliance',
+  InvestmentOpportunityPack: 'Investment Opportunities',
+  GenericResearch: 'Research Results',
+};
+
+function displayName(artifactType: string): string {
+  return DISPLAY_NAMES[artifactType] || 'Research Results';
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface ResearchModalProps extends AvaPresentsState, AvaPresentsActions {}
 
 // ─── Glow Color Helpers ──────────────────────────────────────────────────────
 
-function getGlowColorForRecord(record: Record<string, unknown>): string {
-  // Hotels use safety_score, other types may use score or confidence.score
+function getGlowColorForRecord(record: Record<string, unknown>, artifactType?: string): string {
+  // Hotels use safety_score
   const raw = record.safety_score ?? record.score;
   const score = typeof raw === 'number' ? raw : null;
-  if (score === null) return DEFAULT_GLOW_COLOR;
-  return tierToGlowColor(deriveTier(score));
+  if (score !== null) return tierToGlowColor(deriveTier(score));
+
+  // Property/landlord types → blue glow
+  const at = artifactType || '';
+  if (at.includes('Property') || at.includes('Landlord') || at.includes('Rent') || at.includes('Permit') || at.includes('Neighborhood') || at.includes('Screening')) {
+    return '#3B82F6'; // Aspire blue
+  }
+  // Investment/distressed → amber glow
+  if (at.includes('Investment') || record.foreclosure_stage !== 'none' && record.foreclosure_stage) {
+    return '#F59E0B'; // Amber
+  }
+  // Products → cyan
+  if (at.includes('Price') || at.includes('Estimate')) {
+    return '#06B6D4'; // Cyan
+  }
+  // Vendors/Business → purple
+  if (at.includes('Vendor') || at.includes('Prospect') || at.includes('Competitor')) {
+    return '#A78BFA'; // Purple
+  }
+
+  return DEFAULT_GLOW_COLOR;
 }
 
 // ─── Web-only CSS for backdrop-filter + radial glow ──────────────────────────
@@ -109,6 +150,10 @@ function injectResearchModalStyles() {
     .ava-card:hover {
       transform: translateY(-4px);
       box-shadow: 0 12px 40px rgba(0,0,0,0.5) !important;
+    }
+    /* Nora-style card glow aura on active card — 3-layer box-shadow */
+    .ava-card-glow {
+      transition: box-shadow 600ms ease-out;
     }
   `;
   document.head.appendChild(style);
@@ -165,8 +210,8 @@ export function ResearchModal(props: ResearchModalProps) {
   // Color transition on web is handled by CSS: transition: background 0.6s ease-out
   const activeGlowColor = useMemo(() => {
     if (!records.length) return DEFAULT_GLOW_COLOR;
-    return getGlowColorForRecord(records[activeIndex] ?? {});
-  }, [records, activeIndex]);
+    return getGlowColorForRecord(records[activeIndex] ?? {}, artifactType);
+  }, [records, activeIndex, artifactType]);
 
   // ── Entry / exit animations ──
   useEffect(() => {
@@ -265,14 +310,25 @@ export function ResearchModal(props: ResearchModalProps) {
   const renderCard = useCallback(
     ({ item, index }: ListRenderItemInfo<Record<string, unknown>>) => {
       const isCardActive = index === activeIndex;
+      // Nora-style 3-layer box-shadow glow on active card (web only)
+      const glowColor = isCardActive
+        ? getGlowColorForRecord(item, artifactType)
+        : undefined;
+      const cardGlowStyle: ViewStyle | undefined =
+        isCardActive && Platform.OS === 'web' && glowColor
+          ? {
+              boxShadow: `0 0 30px ${glowColor}59, 0 0 60px ${glowColor}26, 0 0 90px ${glowColor}0D`,
+            } as unknown as ViewStyle
+          : undefined;
       return (
         <View
           style={[
             styles.cardSlide,
             { width: CARD_WIDTH },
-            // Item 1: Non-active cards scale down for visual depth
             !isCardActive && styles.cardSlideInactive,
+            cardGlowStyle,
           ]}
+          className={isCardActive ? 'ava-card-glow' : undefined}
         >
           <CardComponent
             record={item}
@@ -320,20 +376,20 @@ export function ResearchModal(props: ResearchModalProps) {
         />
       </Animated.View>
 
-      {/* Ambient Glow — responsive sizing capped at 600px */}
+      {/* Subtle ambient tint — very dim, just for atmosphere. Main glow is on the card. */}
       <Animated.View
         style={[
           styles.glowOrb,
           glowStyle,
           {
             backgroundColor: glowBgColor,
-            width: glowSize,
-            height: glowSize,
-            borderRadius: glowSize / 2,
+            width: glowSize * 0.5,
+            height: glowSize * 0.5,
+            borderRadius: (glowSize * 0.5) / 2,
+            opacity: 0.15,
           },
         ]}
         pointerEvents="none"
-
         className="ava-presents-glow"
       />
 
@@ -355,9 +411,9 @@ export function ResearchModal(props: ResearchModalProps) {
                 <Text style={styles.backText}>Back</Text>
               </Pressable>
             )}
-            {!detailMode && summary ? (
+            {!detailMode ? (
               <View style={styles.summaryRow}>
-                <Text style={styles.summary} numberOfLines={2}>{summary}</Text>
+                <Text style={styles.summary} numberOfLines={2}>{displayName(artifactType)}</Text>
                 {records.length > 1 && (
                   <View style={styles.resultCountBadge} accessibilityLabel={`${records.length} results`}>
                     <Text style={styles.resultCountText}>{records.length} results</Text>
