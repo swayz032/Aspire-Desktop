@@ -48,39 +48,51 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
       #anam-video {
         width: 100%;
         height: 100%;
-        max-width: 100%;
-        max-height: 100%;
         display: block;
-        object-fit: contain;
-        object-position: center center;
+        object-fit: cover;
+        object-position: center top;
         background: transparent;
-        image-rendering: auto;
       }
       #anam-audio {
-        display: none;
+        position: absolute;
+        left: -9999px;
+        width: 1px;
+        height: 1px;
       }
       #status {
         position: absolute;
         inset: 0;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         color: #94a3b8;
         font-size: 14px;
-        background: #000;
+        gap: 16px;
+        background: radial-gradient(circle at top, #111827 0%, #020617 45%, #000 100%);
       }
+      .spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid rgba(59,130,246,0.15);
+        border-top-color: #3B82F6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
     <video id="anam-video" autoplay playsinline muted></video>
     <audio id="anam-audio" autoplay></audio>
-    <div id="status">Starting Ava video...</div>
+    <div id="status"><div class="spinner"></div><div id="status-text">Connecting to Ava...</div></div>
     <script type="module">
       const sessionToken = ${encodedSessionToken};
       const statusEl = document.getElementById('status');
       const post = (payload) => window.parent.postMessage({ source: 'ava-anam-frame', ...payload }, '*');
+      const statusTextEl = document.getElementById('status-text');
       const setStatus = (message) => {
-        if (statusEl) statusEl.textContent = message;
+        if (statusTextEl) statusTextEl.textContent = message;
       };
 
       let client = null;
@@ -707,7 +719,7 @@ function AvaDeskPanelInner() {
         ) : (
           <View style={styles.videoSurface}>
             {anamSessionToken && Platform.OS === 'web' ? (
-              <div style={{ width: '100%', height: '100%', minHeight: 480, position: 'relative', backgroundColor: '#000' } as any}>
+              <div style={{ width: '100%', height: '100%', position: 'relative', backgroundColor: '#000', overflow: 'hidden', borderRadius: 12 } as any}>
                 <iframe
                   key={anamSessionToken}
                   title="Ava video"
