@@ -67,7 +67,7 @@ function LocalCameraPreview() {
     <View style={styles.localPreviewContainer}>
       {hasPermission === false ? (
         <View style={styles.localPreviewPlaceholder}>
-          <Ionicons name="videocam-off" size={20} color={Colors.text.tertiary} />
+          <Ionicons name="videocam-off" size={16} color={Colors.text.tertiary} />
         </View>
       ) : (
         <video
@@ -79,7 +79,7 @@ function LocalCameraPreview() {
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            borderRadius: 12,
+            borderRadius: 8,
             backgroundColor: '#000',
             transform: [{ scaleX: -1 }] as any, // Mirror effect
           }}
@@ -167,7 +167,7 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
     </style>
   </head>
   <body>
-    <video id="anam-video" autoplay playsinline muted></video>
+    <video id="anam-video" autoplay playsinline></video>
     <audio id="anam-audio" autoplay></audio>
     <div id="status"><div class="spinner"></div><div id="status-text">Connecting to Ava...</div></div>
     <div id="resume-hint">Tap anywhere to hear Ava</div>
@@ -857,7 +857,15 @@ function AvaDeskPanelInner() {
             
             {/* FaceTime style local camera preview */}
             {videoState === 'connected' && mode === 'video' && (
-              <LocalCameraPreview />
+              <>
+                <LocalCameraPreview />
+                <Pressable 
+                  style={styles.exitSessionBtn} 
+                  onPress={handleEndSession}
+                >
+                  <Ionicons name="log-out-outline" size={24} color="#fff" />
+                </Pressable>
+              </>
             )}
             
             {videoState !== 'connected' ? (
@@ -1513,11 +1521,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 16,
     right: 16,
-    width: 100,
-    height: 140,
-    borderRadius: 14,
+    width: 80,
+    height: 110,
+    borderRadius: 10,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: Colors.accent.cyan,
     overflow: 'hidden',
     backgroundColor: '#000',
     zIndex: 30,
@@ -1538,6 +1546,24 @@ const styles = StyleSheet.create({
     inset: 0,
     backgroundColor: 'rgba(59,130,246,0.05)',
   },
+  exitSessionBtn: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(59,130,246,0.25)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 40,
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
+      backdropFilter: 'blur(8px)',
+    } : {}),
+  } as any,
 });
 
 export function AvaDeskPanel() {
