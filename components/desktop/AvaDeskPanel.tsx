@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { trackInteraction } from '@/lib/interactionTelemetry';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Animated, Linking, Alert, Image, ImageBackground } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +23,73 @@ import type { UIMessage } from 'ai';
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
 
+/**
+ * Local Camera Preview Component (FaceTime style)
+ * Requests camera permission and renders a small local video stream.
+ */
+function LocalCameraPreview() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    let stream: MediaStream | null = null;
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 320, height: 240, facingMode: 'user' },
+          audio: false 
+        });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        setHasPermission(true);
+      } catch (err) {
+        console.warn('Camera preview permission denied or unavailable', err);
+        setHasPermission(false);
+      }
+    }
+
+    startCamera();
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  if (Platform.OS !== 'web') return null;
+
+  return (
+    <View style={styles.localPreviewContainer}>
+      {hasPermission === false ? (
+        <View style={styles.localPreviewPlaceholder}>
+          <Ionicons name="videocam-off" size={20} color={Colors.text.tertiary} />
+        </View>
+      ) : (
+        <video
+          ref={videoRef as any}
+          autoPlay
+          playsInline
+          muted
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            borderRadius: 12,
+            backgroundColor: '#000',
+            transform: [{ scaleX: -1 }] as any, // Mirror effect
+          }}
+        />
+      )}
+      <View style={styles.localPreviewOverlay} />
+    </View>
+  );
+}
+
 function buildAvaVideoFrameDoc(sessionToken: string) {
   const encodedSessionToken = JSON.stringify(sessionToken);
   return `<!DOCTYPE html>
@@ -44,6 +111,7 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
         justify-content: center;
         position: relative;
         font-family: Arial, sans-serif;
+        cursor: pointer;
       }
       #anam-video {
         width: 100%;
@@ -70,6 +138,7 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
         font-size: 14px;
         gap: 16px;
         background: radial-gradient(circle at top, #111827 0%, #020617 45%, #000 100%);
+        z-index: 10;
       }
       .spinner {
         width: 36px;
@@ -80,15 +149,33 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
         animation: spin 1s linear infinite;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
+      
+      #resume-hint {
+        position: absolute;
+        bottom: 20px;
+        background: rgba(0,0,0,0.6);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s;
+        border: 1px solid rgba(255,255,255,0.2);
+        z-index: 20;
+      }
     </style>
   </head>
   <body>
     <video id="anam-video" autoplay playsinline muted></video>
     <audio id="anam-audio" autoplay></audio>
     <div id="status"><div class="spinner"></div><div id="status-text">Connecting to Ava...</div></div>
+    <div id="resume-hint">Tap anywhere to hear Ava</div>
+    
     <script type="module">
       const sessionToken = ${encodedSessionToken};
       const statusEl = document.getElementById('status');
+      const hintEl = document.getElementById('resume-hint');
       const post = (payload) => window.parent.postMessage({ source: 'ava-anam-frame', ...payload }, '*');
       const statusTextEl = document.getElementById('status-text');
       const setStatus = (message) => {
@@ -97,18 +184,21 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
 
       let client = null;
 
-      // Unblock audio on user gesture within the iframe (fallback)
       const playAudio = async () => {
         const audio = document.getElementById('anam-audio');
-        if (audio && audio.paused) {
+        if (audio) {
           try {
             await audio.play();
+            if (hintEl) hintEl.style.opacity = '0';
           } catch (e) {
             console.warn('Manual audio play failed', e);
           }
         }
       };
+      
       document.body.addEventListener('click', playAudio);
+      document.body.addEventListener('mousedown', playAudio);
+      document.body.addEventListener('touchstart', playAudio);
 
       const start = async () => {
         try {
@@ -120,13 +210,19 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
           client.addListener(AnamEvent.SESSION_READY, () => {
             if (statusEl) statusEl.remove();
             post({ type: 'connected' });
-            playAudio(); // Try to unblock sound immediately
+            
+            // Check if audio is likely blocked after a short delay
+            setTimeout(() => {
+               const audio = document.getElementById('anam-audio');
+               if (audio && audio.paused && hintEl) {
+                 hintEl.style.opacity = '1';
+               }
+            }, 1000);
           });
 
           client.addListener(AnamEvent.CONNECTION_ESTABLISHED, () => {
             if (statusEl) statusEl.remove();
             post({ type: 'connected' });
-            playAudio();
           });
 
           client.addListener(AnamEvent.AUDIO_STREAM_STARTED, () => {
@@ -749,7 +845,7 @@ function AvaDeskPanelInner() {
                   key={anamSessionToken}
                   title="Ava video"
                   srcDoc={avaVideoFrameDoc || undefined}
-                  allow="microphone; autoplay"
+                  allow="microphone; camera; autoplay; display-capture; encrypted-media"
                   style={{
                     width: '100%', height: '100%', border: '0', display: 'block', backgroundColor: '#000',
                     opacity: videoState === 'connected' ? 1 : 0,
@@ -758,6 +854,12 @@ function AvaDeskPanelInner() {
                 />
               </div>
             )}
+            
+            {/* FaceTime style local camera preview */}
+            {videoState === 'connected' && mode === 'video' && (
+              <LocalCameraPreview />
+            )}
+            
             {videoState !== 'connected' ? (
               <ImageBackground
                 source={{ uri: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=800' }}
@@ -1406,6 +1508,35 @@ const styles = StyleSheet.create({
     color: Colors.accent.cyan,
     fontWeight: '500',
     marginTop: 16,
+  },
+  localPreviewContainer: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    width: 100,
+    height: 140,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.2)',
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    zIndex: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  localPreviewPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1C1C1E',
+  },
+  localPreviewOverlay: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: 'rgba(59,130,246,0.05)',
   },
 });
 
