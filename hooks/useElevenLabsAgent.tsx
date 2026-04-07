@@ -303,15 +303,43 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         devLog(`[ElevenLabsAgent] show_cards BLOCKED: empty records`);
         return JSON.stringify({ shown: false, reason: 'empty_records' });
       }
+
+      let finalRecords = params.records;
+      let artifactType = params.artifact_type;
+
+      // Always try to fetch full records from gateway cache.
+      // The records ElevenLabs passes are slim (heavy arrays stripped to keep LLM fast).
+      // The gateway caches full records (sale_history, foreclosure_records, permits,
+      // schools, comps) when invoke_adam returns card_records.
+      // Fetch /api/card-data/latest — single-user desktop app, latest is always correct.
+      try {
+        const resp = await fetch('/api/card-data/latest');
+        if (resp.ok) {
+          const cached = await resp.json();
+          if (cached.records && Array.isArray(cached.records) && cached.records.length > 0) {
+            devLog(`[ElevenLabsAgent] show_cards: upgraded to ${cached.records.length} full records from gateway cache`);
+            finalRecords = cached.records;
+            if (cached.artifactType) {
+              artifactType = cached.artifactType;
+            }
+          }
+        } else {
+          devLog(`[ElevenLabsAgent] show_cards: no cached full records (${resp.status}), using LLM records`);
+        }
+      } catch (err) {
+        devLog(`[ElevenLabsAgent] show_cards: cache fetch failed, using LLM records`, err);
+      }
+
       // Cap records at 20 to prevent DoS (THREAT-008)
-      const safeRecords = params.records.slice(0, 20);
+      const safeRecords = finalRecords.slice(0, 20);
       // Cap summary length
       const safeSummary = typeof params.summary === 'string' ? params.summary.slice(0, 500) : '';
 
       onShowCardsRef.current?.({
-        ...params,
+        artifact_type: artifactType,
         records: safeRecords,
         summary: safeSummary,
+        confidence: params.confidence,
       });
       return JSON.stringify({ shown: true, count: safeRecords.length });
     },

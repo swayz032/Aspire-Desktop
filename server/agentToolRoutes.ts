@@ -18,6 +18,24 @@ import { logger } from './logger';
 
 const router = Router();
 
+// ─── Card Records Cache ─────────────────────────────────────────────────────
+// Stores full property records from invoke_adam responses. The gateway strips
+// card_records before forwarding to ElevenLabs (keeps LLM payload small).
+// Desktop fetches full records via GET /v1/tools/card-data/:id when show_cards fires.
+const cardRecordsCache = new Map<string, { records: any[]; artifactType: string; timestamp: number }>();
+let latestCardCacheId: string | null = null; // Most recent cache entry — single-user desktop app
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function cleanCardCache() {
+  const now = Date.now();
+  for (const [key, val] of cardRecordsCache) {
+    if (now - val.timestamp > CACHE_TTL_MS) {
+      cardRecordsCache.delete(key);
+      if (latestCardCacheId === key) latestCardCacheId = null;
+    }
+  }
+}
+
 const ELEVENLABS_TOOL_SECRET = process.env.ELEVENLABS_TOOL_SECRET
   || '67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6';
 
@@ -543,11 +561,32 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     const a2aResult = await a2aResp.json();
     logger.info('[AgentTool] A2A dispatch result', { agent, success: a2aResult.success, taskId: a2aResult.task_id });
 
+    // ── Card Records Intercept ──
+    // If Adam returned card_records (full property data), store them on the
+    // gateway and strip from the ElevenLabs response. Desktop fetches full
+    // records from GET /v1/tools/card-data/:id when show_cards fires.
+    let responseData = a2aResult.data || null;
+    if (agent === 'adam' && responseData?.card_records) {
+      const cacheId = correlationId;
+      cardRecordsCache.set(cacheId, {
+        records: responseData.card_records,
+        artifactType: responseData.artifact_type || '',
+        timestamp: Date.now(),
+      });
+      latestCardCacheId = cacheId;
+      cleanCardCache();
+      logger.info('[AgentTool] Cached card_records', { cacheId, count: responseData.card_records.length });
+
+      // Strip card_records from ElevenLabs response (keeps LLM payload small)
+      const { card_records, ...slimData } = responseData;
+      responseData = { ...slimData, _card_cache_id: cacheId };
+    }
+
     return res.json({
       agent,
       task,
       result: a2aResult.result || a2aResult.message || `${agent} has processed your request.`,
-      data: a2aResult.data || null,
+      data: responseData,
       receipt_id: a2aResult.receipt_id || null,
       status: a2aResult.success ? 'completed' : 'error',
     });
@@ -839,6 +878,35 @@ router.post('/v1/tools/analyze-document', async (req: Request, res: Response) =>
       status: 'error',
     });
   }
+});
+
+// ─── Card Data Endpoint ──────────────────────────────────────────────────────
+// Desktop fetches full property records from this endpoint when show_cards fires.
+// The gateway stores card_records in memory when invoke_adam returns them, strips
+// them from the ElevenLabs payload, and serves them here.
+// Path starts with /api/ so Metro dev proxy forwards it (only /api + /objects are proxied).
+
+router.get('/api/card-data/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  // "latest" returns the most recent cached entry — single-user desktop app
+  const resolvedId = id === 'latest' ? latestCardCacheId : id;
+  if (!resolvedId) {
+    logger.warn('[CardData] No cached card data', { id });
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'No card data available.' });
+  }
+
+  const cached = cardRecordsCache.get(resolvedId);
+  if (!cached) {
+    logger.warn('[CardData] Cache miss', { id: resolvedId });
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Card data expired or not found.' });
+  }
+
+  logger.info('[CardData] Serving cached records', { id: resolvedId, count: cached.records.length, artifactType: cached.artifactType });
+  return res.json({
+    records: cached.records,
+    artifactType: cached.artifactType,
+  });
 });
 
 export default router;
