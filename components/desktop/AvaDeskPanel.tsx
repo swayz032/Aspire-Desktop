@@ -523,6 +523,7 @@ function AvaDeskPanelInner() {
     clearConnectionTimeouts();
     setVideoState('connecting');
     setConnectionStatus('Connecting to Ava...');
+    playConnectionSound();
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
@@ -561,6 +562,7 @@ function AvaDeskPanelInner() {
         clearConnectionTimeouts();
         setVideoState('connected');
         setConnectionStatus('');
+        playSuccessSound();
         return;
       }
       if (event.data.type === 'error') {
