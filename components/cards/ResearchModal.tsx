@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: Colors.background.overlay,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
   },
   glowOrb: {
     position: 'absolute',

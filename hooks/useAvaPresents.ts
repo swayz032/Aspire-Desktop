@@ -4,12 +4,8 @@
  * Manages the full lifecycle of the card modal: showing/hiding, card navigation,
  * and Level 2 detail drill-down. Pure UI state -- no backend calls, no governance.
  *
- * Usage:
- *   const ava = useAvaPresents();
- *   ava.showCards({ artifactType: 'HotelShortlist', records: [...], summary: '...' });
- *   ava.nextCard();
- *   ava.openDetail(record);
- *   ava.dismiss();
+ * For property lookups: splits 1 record into multiple section cards so the user
+ * swipes through Overview → Ownership → Mortgage → Tax → Sale History → etc.
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -65,6 +61,45 @@ const INITIAL_STATE: AvaPresentsState = {
   detailRecord: null,
 };
 
+// ─── Property Section Splitter ──────────────────────────────────────────────
+// Single property record → multiple swipeable section cards.
+// Each card shows one aspect of the property dossier.
+// Cards with no data are skipped — no empty cards in the carousel.
+
+const PROPERTY_TYPES = new Set([
+  'LandlordPropertyPack', 'PropertyFactPack', 'RentCompPack',
+  'PermitContextPack', 'NeighborhoodDemandBrief', 'ScreeningComplianceBrief',
+]);
+
+const PROPERTY_SECTIONS: { key: string; label: string; requires: string[] }[] = [
+  { key: 'overview',     label: 'Property Overview',      requires: ['normalized_address'] },
+  { key: 'ownership',    label: 'Ownership',              requires: ['owner_name', 'owner_type', 'absentee_owner_indicator'] },
+  { key: 'mortgage',     label: 'Mortgage & Equity',      requires: ['mortgage_lender', 'mortgage_amount', 'ltv_ratio', 'available_equity', 'current_loan_balance'] },
+  { key: 'valuation',    label: 'Valuation & Tax',        requires: ['tax_market_value', 'tax_assessed_total', 'estimated_value', 'annual_tax_amount'] },
+  { key: 'sale_history', label: 'Sale History',           requires: ['last_sale_date', 'last_sale_amount', 'sale_history'] },
+  { key: 'rental',       label: 'Rental Intelligence',    requires: ['estimated_rent'] },
+  { key: 'permits',      label: 'Permits & Improvements', requires: ['permit_signals'] },
+  { key: 'schools',      label: 'Schools & Location',     requires: ['school_district_name', 'nearby_schools', 'neighborhood'] },
+  { key: 'foreclosure',  label: 'Distress & Foreclosure', requires: ['foreclosure_stage', 'in_foreclosure', 'foreclosure_records'] },
+];
+
+function splitPropertyRecord(record: Record<string, unknown>): Record<string, unknown>[] {
+  const cards: Record<string, unknown>[] = [];
+  for (const section of PROPERTY_SECTIONS) {
+    const hasData = section.requires.some((field) => {
+      const val = record[field];
+      if (val == null || val === '' || val === 0 || val === 'none') return false;
+      if (Array.isArray(val)) return val.length > 0;
+      return true;
+    });
+    // Overview always shows; others only if they have data
+    if (section.key === 'overview' || hasData) {
+      cards.push({ ...record, _cardSection: section.key, _sectionLabel: section.label });
+    }
+  }
+  return cards;
+}
+
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useAvaPresents(): UseAvaPresentReturn {
@@ -72,10 +107,18 @@ export function useAvaPresents(): UseAvaPresentReturn {
 
   const showCards = useCallback((data: ShowCardsPayload) => {
     if (!data.records || data.records.length === 0) return;
+
+    let records = data.records;
+
+    // Property types: split single record into multiple section cards
+    if (PROPERTY_TYPES.has(data.artifactType) && records.length === 1) {
+      records = splitPropertyRecord(records[0]);
+    }
+
     setState({
       visible: true,
       artifactType: data.artifactType,
-      records: data.records,
+      records,
       summary: data.summary,
       confidence: data.confidence ?? null,
       activeIndex: 0,
