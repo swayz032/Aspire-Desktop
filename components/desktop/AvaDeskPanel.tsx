@@ -97,6 +97,19 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
 
       let client = null;
 
+      // Unblock audio on user gesture within the iframe (fallback)
+      const playAudio = async () => {
+        const audio = document.getElementById('anam-audio');
+        if (audio && audio.paused) {
+          try {
+            await audio.play();
+          } catch (e) {
+            console.warn('Manual audio play failed', e);
+          }
+        }
+      };
+      document.body.addEventListener('click', playAudio);
+
       const start = async () => {
         try {
           const sdk = await import('https://esm.sh/@anam-ai/js-sdk@latest');
@@ -107,11 +120,17 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
           client.addListener(AnamEvent.SESSION_READY, () => {
             if (statusEl) statusEl.remove();
             post({ type: 'connected' });
+            playAudio(); // Try to unblock sound immediately
           });
 
           client.addListener(AnamEvent.CONNECTION_ESTABLISHED, () => {
             if (statusEl) statusEl.remove();
             post({ type: 'connected' });
+            playAudio();
+          });
+
+          client.addListener(AnamEvent.AUDIO_STREAM_STARTED, () => {
+            playAudio();
           });
 
           client.addListener(AnamEvent.CONNECTION_CLOSED, (code) => {
