@@ -21,6 +21,14 @@ import { BaseCard } from './BaseCard';
 import type { CardProps } from './CardRegistry';
 import { fmtDollar, fmtSqft, fmtPercent } from './helpers';
 
+/** Convert hex to rgba for cross-platform color opacity */
+function rgba(hex: string, opacity: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${opacity})`;
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -356,8 +364,8 @@ export function PropertyCard({ record, onAction, isActive, enterDelay }: CardPro
       style={StyleSheet.absoluteFillObject}
     >
       <View style={s.heroInner}>
-        <Ionicons name={config.icon as any} size={36} color={`${config.accent}40`} />
-        <View style={[s.heroBadge, { backgroundColor: `${config.accent}30` }]}>
+        <Ionicons name={config.icon as any} size={36} color={rgba(config.accent, 0.25)} />
+        <View style={[s.heroBadge, { backgroundColor: rgba(config.accent, 0.2) }]}>
           <Text style={[s.heroBadgeText, { color: config.accent }]}>{propTypeLabel(r.property_type)}</Text>
         </View>
       </View>

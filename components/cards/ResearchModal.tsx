@@ -93,7 +93,26 @@ function hexToRgba(hex: string, opacity: number): string {
   return `rgba(${r},${g},${b},${opacity})`;
 }
 
+// Section-specific glow colors for split property cards
+const SECTION_GLOW: Record<string, string> = {
+  overview: '#3B82F6',      // Blue
+  ownership: '#A78BFA',     // Purple
+  mortgage: '#10B981',      // Green
+  valuation: '#F59E0B',     // Amber
+  sale_history: '#EC4899',  // Pink
+  rental: '#06B6D4',        // Cyan
+  permits: '#F97316',       // Orange
+  schools: '#6366F1',       // Indigo
+  foreclosure: '#EF4444',   // Red
+};
+
 function getGlowColorForRecord(record: Record<string, unknown>, artifactType?: string): string {
+  // Split property cards: glow matches section
+  const cardSection = record._cardSection as string | undefined;
+  if (cardSection && SECTION_GLOW[cardSection]) {
+    return SECTION_GLOW[cardSection];
+  }
+
   // Hotels use safety_score
   const raw = record.safety_score ?? record.score;
   const score = typeof raw === 'number' ? raw : null;
@@ -102,20 +121,11 @@ function getGlowColorForRecord(record: Record<string, unknown>, artifactType?: s
   // Property/landlord types → blue glow
   const at = artifactType || '';
   if (at.includes('Property') || at.includes('Landlord') || at.includes('Rent') || at.includes('Permit') || at.includes('Neighborhood') || at.includes('Screening')) {
-    return '#3B82F6'; // Aspire blue
+    return '#3B82F6';
   }
-  // Investment/distressed → amber glow
-  if (at.includes('Investment') || record.foreclosure_stage !== 'none' && record.foreclosure_stage) {
-    return '#F59E0B'; // Amber
-  }
-  // Products → cyan
-  if (at.includes('Price') || at.includes('Estimate')) {
-    return '#06B6D4'; // Cyan
-  }
-  // Vendors/Business → purple
-  if (at.includes('Vendor') || at.includes('Prospect') || at.includes('Competitor')) {
-    return '#A78BFA'; // Purple
-  }
+  if (at.includes('Investment')) return '#F59E0B';
+  if (at.includes('Price') || at.includes('Estimate')) return '#06B6D4';
+  if (at.includes('Vendor') || at.includes('Prospect') || at.includes('Competitor')) return '#A78BFA';
 
   return DEFAULT_GLOW_COLOR;
 }
@@ -420,7 +430,9 @@ export function ResearchModal(props: ResearchModalProps) {
             )}
             {!detailMode ? (
               <View style={styles.summaryRow}>
-                <Text style={styles.summary} numberOfLines={2}>{displayName(artifactType)}</Text>
+                <Text style={styles.summary} numberOfLines={2}>
+                  {(records[activeIndex]?._sectionLabel as string) || displayName(artifactType)}
+                </Text>
                 {records.length > 1 && (
                   <View style={styles.resultCountBadge} accessibilityLabel={`${records.length} results`}>
                     <Text style={styles.resultCountText}>{records.length} results</Text>
