@@ -4114,7 +4114,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     const AVA_CONFIG = {
       name: 'Ava',
-      personaId: '58f82b89-8ae7-43cc-930d-be8def14dff3', 
+      personaId: '76853278-07ac-435e-9d3e-3f75e8f36a46', 
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
       llmId: 'b4f89001-9638-4879-a9c3-02cc9f9f2004',      // Anam hosted GPT-4.1
@@ -4123,19 +4123,20 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       avatarModel: 'cara-3',
       maxSessionLengthSeconds: 1800,
       toolIds: [
-        'b4e8d177-1984-4eb8-b562-92edcfad2559', // ava_get_context
-        '9f4c49d2-60bf-44d0-aac2-524f2682ad37', // ava_search
-        'e08834ac-ed09-4c0b-9a9b-e29b76fba8d1', // ava_create_draft
-        '8d925efc-8cb0-4a7e-ab19-a7965be80d74', // ava_request_approval
-        'efe24b75-2740-4fb5-a412-af8ca82b4dda', // invoke_quinn
-        'd8da6349-7183-4191-a6e5-c5c32a51044b', // invoke_clara
-        'f99f8362-ac9b-4558-8a1e-7efb41245185', // invoke_adam
-        'd905a594-5344-40de-a608-7b2ea98295f6', // show_cards
+        '60b91b28-6784-43a9-a11d-abe0aa99be52', // ava_get_context
+        'f8ea0f4b-2dc9-4c53-a132-1a26e9328196', // search
+        '0995c0e7-ba7f-409b-bf7e-1dc5f338b197', // ava_create_draft
+        '35edb699-f2b0-4439-88a3-b692dc807d8a', // ava_request_approval
+        '9f682b31-6e56-4877-b935-f8d1f84097ad', // invoke_quinn
+        'a0ed6e15-3c29-4633-8f13-8bf1f16369a0', // invoke_clara
+        '46537211-c912-4b3e-9bd4-2df880000749', // invoke_adam
+        '886c7d47-9e8c-4f0f-b6f6-dc8ae6391582', // show_cards
+        '5532e67b-d06d-4814-9460-03a0a3dcf29b', // invoke_tec
+        '5e32e106-63e1-47b1-bc75-34e3208ca9f9', // save_office_note
       ],
       documentIds: [
-        '922536fd-dcbd-4baf-be92-d507b812f4fc', // Ava_Rules_v5.txt
-        '3740dd8d-b955-46bb-a4cd-084e9c25b01d', // Strategic_Playbook_v5.txt
-        'e0477af2-2870-4f73-8a3a-53d551729a98', // Task_Workflows_v5.txt
+        'dd6be6c1-698b-4910-a93b-3b69d1601b31', // Ava Rules & Task Workflows
+        '0c254d18-0aac-46d6-b669-cf4483eb99b8', // Strategic Playbook
       ],
       voiceDetectionOptions: {
         endOfSpeechSensitivity: 0.7,
