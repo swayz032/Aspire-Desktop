@@ -385,8 +385,10 @@ function AvaDeskPanelInner() {
       salutation: lastName ? 'Mr.' : undefined,
       businessName: resolvedBusinessName || undefined,
       industry: tenant?.industry || undefined,
+      gender: tenant?.gender || undefined,
+      hasCamera: true,
     };
-  }, [resolvedBusinessName, resolvedOwnerName, tenant?.industry]);
+  }, [resolvedBusinessName, resolvedOwnerName, tenant?.industry, tenant?.gender]);
   const avaVideoFrameDoc = useMemo(
     () => (anamSessionToken ? buildAvaVideoFrameDoc(anamSessionToken) : null),
     [anamSessionToken],

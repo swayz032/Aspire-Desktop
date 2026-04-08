@@ -4053,18 +4053,22 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     let salutation = sanitizeText(requestedProfile.salutation) || '';
     let lastName = sanitizeText(requestedProfile.lastName) || '';
     let industry = sanitizeText(requestedProfile.industry) || '';
+    let gender = sanitizeText(requestedProfile.gender) || '';
+    const hasCamera = !!requestedProfile.hasCamera;
     const fallbackFirstName = sanitizeText(requestedProfile.firstName) || '';
+
     try {
       if (supabaseAdmin) {
         const { data: profile } = await supabaseAdmin
           .from('suite_profiles')
-          .select('owner_name, business_name, industry')
+          .select('owner_name, business_name, industry, gender')
           .eq('suite_id', suiteId)
           .maybeSingle();
         if (profile) {
           ownerName = profile.owner_name || ownerName;
           businessName = profile.business_name || businessName;
           industry = profile.industry || industry;
+          gender = profile.gender || gender;
         }
       }
     } catch { /* profile fetch is non-fatal */ }
@@ -4072,7 +4076,13 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     const parts = ownerName.trim().split(/\s+/).filter(Boolean);
     const firstName = parts[0] || fallbackFirstName || '';
     if (!lastName) lastName = parts.length > 1 ? parts[parts.length - 1] : '';
-    if (!salutation && lastName) salutation = 'Mr.';
+    
+    // Improved salutation logic based on gender
+    if (!salutation && lastName) {
+      if (gender?.toLowerCase() === 'male') salutation = 'Mr.';
+      else if (gender?.toLowerCase() === 'female') salutation = 'Ms.';
+      else salutation = 'Mr.'; // Default to Mr. if unknown but lastName exists
+    }
 
     // Load the video prompt from file, with user info baked in
     const fs = require('fs');
@@ -4086,6 +4096,9 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       videoPrompt = `You are Ava, the executive assistant and chief of staff. You are on a live video call. Keep responses to one to three sentences. Help the user get things done quickly.`;
     }
 
+    const now = new Date();
+    const fullDate = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
     // Replace template variables with actual user info
     videoPrompt = videoPrompt
       .replace(/\{\{business_name\}\}/g, businessName || 'your company')
@@ -4093,8 +4106,11 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       .replace(/\{\{last_name\}\}/g, lastName)
       .replace(/\{\{first_name\}\}/g, firstName)
       .replace(/\{\{owner_name\}\}/g, ownerName)
+      .replace(/\{\{gender\}\}/g, gender || 'unknown')
       .replace(/\{\{industry\}\}/g, industry || 'General')
-      .replace(/\{\{time_of_day\}\}/g, new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening');
+      .replace(/\{\{date\}\}/g, fullDate)
+      .replace(/\{\{has_camera\}\}/g, hasCamera ? 'true' : 'false')
+      .replace(/\{\{time_of_day\}\}/g, now.getHours() < 12 ? 'morning' : now.getHours() < 17 ? 'afternoon' : 'evening');
 
     const AVA_CONFIG = {
       name: 'Ava',
@@ -4105,16 +4121,26 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       skipGreeting: false,     // Anam generates greeting with user's name from prompt
       avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
       maxSessionLengthSeconds: 1800,
+      toolIds: [
+        '695b933c-784e-47c7-b1a2-2af04637ea65', // ava_get_context
+        '907e96fd-5234-4db3-87e1-25dcf9552a54', // ava_search
+        'aeec1dc3-b69f-446a-b04e-ceaab1457d53', // ava_create_draft
+        'b72d6b5e-aa27-4e43-a582-0a407a2340b1', // ava_request_approval
+        'e3a1b7aa-4fa2-422c-8c98-a48a590bdc3e', // invoke_quinn
+        '9369b6cc-24da-44b3-9637-f237f692ece9', // invoke_clara
+        'bd43342b-18bc-45ff-b84a-0abb33c61069', // invoke_adam
+        'bf6f01ad-f5bb-4563-9ab8-7c44ab3cae9c', // show_cards
+      ],
       voiceDetectionOptions: {
-        endOfSpeechSensitivity: 0.7,        // Moderately eager — faster response, minimal false triggers
+        endOfSpeechSensitivity: 0.7,        // Moderately eager
         silenceBeforeSkipTurnSeconds: 8,
-        silenceBeforeAutoEndTurnSeconds: 1.5, // Respond after 1.5s pause (was 6s — major latency win)
-        speechEnhancementLevel: 0.5,         // Noise filtering for better STT accuracy
+        silenceBeforeAutoEndTurnSeconds: 1.5, // Respond after 1.5s pause
+        speechEnhancementLevel: 0.5,
       },
       voiceGenerationOptions: {
         speed: 1.05,
-        stability: 0.5,         // Natural variation for warmth — not robotic
-        similarityBoost: 0.75,  // Strong voice identity consistency
+        stability: 0.5,
+        similarityBoost: 0.75,
       },
     };
     const finnCtx = `[ASPIRE_CTX:suite_id=${suiteId},user_id=${userId},office_id=${officeId},agent=finn]`;
