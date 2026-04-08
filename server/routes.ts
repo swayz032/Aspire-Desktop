@@ -4114,6 +4114,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     const AVA_CONFIG = {
       name: 'Ava',
+      personaId: '58f82b89-8ae7-43cc-930d-be8def14dff3', 
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
       llmId: 'b4f89001-9638-4879-a9c3-02cc9f9f2004',      // Anam hosted GPT-4.1
@@ -4122,19 +4123,19 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       avatarModel: 'cara-3',
       maxSessionLengthSeconds: 1800,
       toolIds: [
-        '5e9a8e69-91cf-417c-9852-f3556dba4182', // ava_get_context
-        'a775ff4a-0e6a-486d-873c-4f5c0040c785', // ava_search
-        '2f3e4199-f196-4b70-b8de-4f6f0f07f751', // ava_create_draft
-        '7bb30ca4-1928-44b8-8df3-ee9c9488ede9', // ava_request_approval
-        'a4c60534-9e09-4a0f-84bc-868b55fd6dc7', // invoke_quinn
-        '86faaf10-701f-4ff2-9302-aae5a57bc08f', // invoke_clara
-        'c6f82561-47ca-4913-9f10-3a55a7b59975', // invoke_adam
-        'd1c15734-cac3-4b96-8dd2-3291541818c8', // show_cards
+        'b4e8d177-1984-4eb8-b562-92edcfad2559', // ava_get_context
+        '9f4c49d2-60bf-44d0-aac2-524f2682ad37', // ava_search
+        'e08834ac-ed09-4c0b-9a9b-e29b76fba8d1', // ava_create_draft
+        '8d925efc-8cb0-4a7e-ab19-a7965be80d74', // ava_request_approval
+        'efe24b75-2740-4fb5-a412-af8ca82b4dda', // invoke_quinn
+        'd8da6349-7183-4191-a6e5-c5c32a51044b', // invoke_clara
+        'f99f8362-ac9b-4558-8a1e-7efb41245185', // invoke_adam
+        'd905a594-5344-40de-a608-7b2ea98295f6', // show_cards
       ],
       documentIds: [
-        'cc9c60f2-76f6-402c-b7a9-f610888d022f', // Ava_Rules_Tone.txt
-        'b921ca10-1a23-41b0-b966-52ad740d11cf', // Strategic_Playbook.txt
-        'a99b2233-4963-4dbd-a518-7cac6aadbb30', // Task_Workflows.txt
+        '922536fd-dcbd-4baf-be92-d507b812f4fc', // Ava_Rules_v5.txt
+        '3740dd8d-b955-46bb-a4cd-084e9c25b01d', // Strategic_Playbook_v5.txt
+        'e0477af2-2870-4f73-8a3a-53d551729a98', // Task_Workflows_v5.txt
       ],
       voiceDetectionOptions: {
         endOfSpeechSensitivity: 0.7,
