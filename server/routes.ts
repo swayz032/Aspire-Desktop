@@ -4116,25 +4116,30 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       name: 'Ava',
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
-      llmId: ANAM_HOSTED_LLM_ID,                         // Anam hosted GPT-4.1 mini
+      brainType: 'ANAM_GPT_4O_MINI_V1',
       systemPrompt: videoPrompt,
-      skipGreeting: false,     // Anam generates greeting with user's name from prompt
-      avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
+      skipGreeting: false,
+      avatarModel: 'cara-3',
       maxSessionLengthSeconds: 1800,
       toolIds: [
-        '695b933c-784e-47c7-b1a2-2af04637ea65', // ava_get_context
-        '907e96fd-5234-4db3-87e1-25dcf9552a54', // ava_search
-        'aeec1dc3-b69f-446a-b04e-ceaab1457d53', // ava_create_draft
-        'b72d6b5e-aa27-4e43-a582-0a407a2340b1', // ava_request_approval
-        'e3a1b7aa-4fa2-422c-8c98-a48a590bdc3e', // invoke_quinn
-        '9369b6cc-24da-44b3-9637-f237f692ece9', // invoke_clara
-        'bd43342b-18bc-45ff-b84a-0abb33c61069', // invoke_adam
-        'bf6f01ad-f5bb-4563-9ab8-7c44ab3cae9c', // show_cards
+        '5e9a8e69-91cf-417c-9852-f3556dba4182', // ava_get_context
+        'a775ff4a-0e6a-486d-873c-4f5c0040c785', // ava_search
+        '2f3e4199-f196-4b70-b8de-4f6f0f07f751', // ava_create_draft
+        '7bb30ca4-1928-44b8-8df3-ee9c9488ede9', // ava_request_approval
+        'a4c60534-9e09-4a0f-84bc-868b55fd6dc7', // invoke_quinn
+        '86faaf10-701f-4ff2-9302-aae5a57bc08f', // invoke_clara
+        'c6f82561-47ca-4913-9f10-3a55a7b59975', // invoke_adam
+        'd1c15734-cac3-4b96-8dd2-3291541818c8', // show_cards
+      ],
+      documentIds: [
+        'cc9c60f2-76f6-402c-b7a9-f610888d022f', // Ava_Rules_Tone.txt
+        'b921ca10-1a23-41b0-b966-52ad740d11cf', // Strategic_Playbook.txt
+        'a99b2233-4963-4dbd-a518-7cac6aadbb30', // Task_Workflows.txt
       ],
       voiceDetectionOptions: {
-        endOfSpeechSensitivity: 0.7,        // Moderately eager
+        endOfSpeechSensitivity: 0.7,
         silenceBeforeSkipTurnSeconds: 8,
-        silenceBeforeAutoEndTurnSeconds: 1.5, // Respond after 1.5s pause
+        silenceBeforeAutoEndTurnSeconds: 1.5,
         speechEnhancementLevel: 0.5,
       },
       voiceGenerationOptions: {
