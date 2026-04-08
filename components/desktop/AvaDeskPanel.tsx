@@ -233,7 +233,7 @@ function buildAvaVideoFrameDoc(sessionToken: string) {
             post({ type: 'closed', code });
           });
 
-          await client.streamToVideoAndAudioElements('anam-video', 'anam-audio');
+          await client.streamToVideoElement('anam-video');
         } catch (error) {
           console.error('Ava video bootstrap failed', error);
           setStatus('Unable to start Ava video');

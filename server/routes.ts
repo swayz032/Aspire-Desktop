@@ -4041,7 +4041,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     // Ava: Cara avatar + Hope voice, Finn: custom avatar + voice
     // llmId: Custom LLM registered with Anam → routes to /v1/chat/completions (Law #1: Single Brain)
     // Fallback stays server-side/hosted only; there is no client-side SDK brain routing fallback.
-    const ANAM_HOSTED_LLM_ID = '0934d97d-0c3a-4f33-91b0-5e136a0ef466';
+    const ANAM_HOSTED_LLM_ID = 'b4f89001-9638-4879-a9c3-02cc9f9f2004';
     const ANAM_CUSTOM_LLM_ID = process.env.ANAM_CUSTOM_LLM_ID || ANAM_HOSTED_LLM_ID;
     const suiteId = (req as any).authenticatedSuiteId || '';
     const officeId = getDefaultOfficeId() || suiteId;
@@ -4116,7 +4116,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       name: 'Ava',
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
-      brainType: 'ANAM_GPT_4O_MINI_V1',
+      llmId: 'b4f89001-9638-4879-a9c3-02cc9f9f2004',      // Anam hosted GPT-4.1
       systemPrompt: videoPrompt,
       skipGreeting: false,
       avatarModel: 'cara-3',
