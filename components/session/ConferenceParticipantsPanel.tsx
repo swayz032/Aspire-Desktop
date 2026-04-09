@@ -63,7 +63,7 @@ export function ConferenceParticipantsPanel({ visible, participants, activeSpeak
               </View>
               <View style={styles.participantInfo}>
                 <View style={styles.nameRow}>
-                  <Text style={[styles.participantName, isSpeaking && styles.speakingName]} numberOfLines={1}>{p.displayName}</Text>
+                  <Text style={[styles.participantName, isSpeaking && styles.speakingName]} numberOfLines={1}>{p.displayName || 'Unknown Participant'}</Text>
                   {p.isLocal && <View style={styles.roleBadge}><Text style={styles.roleBadgeText}>You</Text></View>}
                   {p.isHost && <View style={[styles.roleBadge, styles.hostBadge]}><Text style={[styles.roleBadgeText, styles.hostBadgeText]}>Host</Text></View>}
                 </View>
