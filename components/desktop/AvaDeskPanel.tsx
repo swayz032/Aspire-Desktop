@@ -243,11 +243,11 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
                 client.triggerGreeting();
               } else if (typeof client.talk === 'function') {
                 // Fallback for older/middle versions of SDK
-                const greeting = \`Good \${timeOfDay}, \${profile.salutation || ''} \${profile.lastName || ''}.\`;
+                const greeting = "Good " + timeOfDay + ", " + (profile.salutation || "") + " " + (profile.lastName || "") + ".";
                 client.talk(greeting);
               } else {
                 // Ultra-fallback: send as user message to prime
-                const primeMsg = \`Note to AI: The user is \${profile.salutation || ''} \${profile.lastName || ''}. Business: \${profile.businessName}. Date: \${fullDate}. Camera: \${profile.hasCamera}. Please greet the user now.\`;
+                const primeMsg = "Note to AI: The user is " + (profile.salutation || "") + " " + (profile.lastName || "") + ". Business: " + (profile.businessName || "") + ". Date: " + fullDate + ". Camera: " + (profile.hasCamera ? "true" : "false") + ". Please greet the user now.";
                 client.sendUserMessage(primeMsg);
               }
             }
@@ -284,7 +284,7 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
       start();
     </script>
   </body>
-</html>\`;
+</html>`;
 }
 
 
@@ -295,7 +295,7 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
   useEffect(() => {
     if (Platform.OS === 'web') {
       const style = document.createElement('style');
-      style.textContent = \`
+      style.textContent = `
         video.ava-orb-video::-webkit-media-controls,
         video.ava-orb-video::-webkit-media-controls-enclosure,
         video.ava-orb-video::-webkit-media-controls-panel,
@@ -308,7 +308,7 @@ function AvaOrbVideoInline({ size = 320 }: { size?: number }) {
         }
         video.ava-orb-video::-moz-media-controls { display: none !important; }
         video.ava-orb-video { object-fit: contain; }
-      \`;
+      `;
       document.head.appendChild(style);
 
       const vid = videoRef.current;
@@ -409,7 +409,7 @@ function AvaDeskPanelInner() {
   
   const avaProfileFallback = useMemo(() => {
     const ownerName = resolvedOwnerName.trim();
-    const nameParts = ownerName ? ownerName.split(/\\s+/) : [];
+    const nameParts = ownerName ? ownerName.split(/\s+/) : [];
     const firstName = nameParts[0] || '';
     const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
     
@@ -484,7 +484,7 @@ function AvaDeskPanelInner() {
         showVoiceError('Ava Brain is warming back up. Try again in a few seconds.');
       } else if (/orchestrator_timeout|timeout/i.test(msg)) {
         showVoiceError('Ava took too long to respond. Please try again.');
-      } else if (/autoplay|not allowed|play\\(\\)/i.test(msg)) {
+      } else if (/autoplay|not allowed|play\(\)/i.test(msg)) {
         showVoiceError('Tap anywhere on the page, then try again.');
       } else if (/permission|denied|not found.*microphone|getUserMedia/i.test(msg)) {
         showVoiceError('Microphone access denied. Check browser permissions.');
@@ -505,7 +505,7 @@ function AvaDeskPanelInner() {
     onDiagnostic: (diag) => {
       setLatestVoiceDiagnostic(diag);
       if (diag.stage === 'autoplay') {
-        showVoiceError(\`Audio blocked by browser. Tap voice again to retry. Trace: \${diag.traceId}\`);
+        showVoiceError(`Audio blocked by browser. Tap voice again to retry. Trace: ${diag.traceId}`);
       }
     },
   });
@@ -540,7 +540,7 @@ function AvaDeskPanelInner() {
     setMessages((prev: any[]) => [
       ...prev,
       {
-        id: \`local-\${Date.now()}-\${Math.random().toString(36).slice(2, 6)}\`,
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         role,
         content,
         parts: [{ type: 'text' as const, text: content }],
@@ -570,7 +570,7 @@ function AvaDeskPanelInner() {
         } else if (/permission|denied|getUserMedia/i.test(msg)) {
           showVoiceError('Microphone access denied. Check browser permissions.');
         } else {
-          showVoiceError(\`Voice session failed: \${msg.length > 60 ? msg.slice(0, 60) + '...' : msg}\`);
+          showVoiceError(`Voice session failed: ${msg.length > 60 ? msg.slice(0, 60) + '...' : msg}`);
         }
       }
     }
@@ -664,7 +664,7 @@ function AvaDeskPanelInner() {
     playConnectionSound();
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (session?.access_token) headers['Authorization'] = \`Bearer \${session.access_token}\`;
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
       const resp = await fetch('/api/anam/session', {
         method: 'POST',
         headers,
@@ -673,7 +673,7 @@ function AvaDeskPanelInner() {
           profile: avaProfileFallback,
         }),
       });
-      if (!resp.ok) throw new Error(\`Session failed: \${resp.status}\`);
+      if (!resp.ok) throw new Error(`Session failed: ${resp.status}`);
       const data = await resp.json();
       if (!data.sessionToken) throw new Error('No session token returned');
       setAnamSessionToken(data.sessionToken);
@@ -761,14 +761,14 @@ function AvaDeskPanelInner() {
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (session?.access_token) headers['Authorization'] = \`Bearer \${session.access_token}\`;
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
 
-      const res = await fetch(\`/api/authority-queue/\${approvalId}/approve\`, {
+      const res = await fetch(`/api/authority-queue/${approvalId}/approve`, {
         method: 'POST',
         headers,
       });
 
-      if (!res.ok) throw new Error(\`Approve returned \${res.status}\`);
+      if (!res.ok) throw new Error(`Approve returned ${res.status}`);
       const data = await res.json();
       const narrationText = data.narration || data.user_message || (data.executed ? 'Approved and executed successfully.' : 'Approved. Execution will follow.');
       appendLocalMessage('assistant', narrationText);
@@ -1018,23 +1018,23 @@ function AvaDeskPanelInner() {
               fileInput.onchange = async (e: any) => {
                 const file = e.target?.files?.[0];
                 if (!file) return;
-                appendLocalMessage('user', \`Attached: \${file.name}\`);
+                appendLocalMessage('user', `Attached: ${file.name}`);
                 try {
                   const formData = new FormData();
                   formData.append('file', file);
                   formData.append('suite_id', suiteId || '');
                   const headers: Record<string, string> = {};
-                  if (session?.access_token) headers['Authorization'] = \`Bearer \${session.access_token}\`;
+                  if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
                   const resp = await fetch('/v1/tools/analyze-document', { method: 'POST', headers, body: formData });
                   if (resp.ok) {
                     const result = await resp.json();
                     const preview = result.extracted_text || 'Document received but text extraction is pending.';
-                    appendLocalMessage('assistant', \`I received \${file.name}. \${preview}\`);
+                    appendLocalMessage('assistant', `I received ${file.name}. ${preview}`);
                   } else {
-                    appendLocalMessage('assistant', \`I received \${file.name} but could not analyze it right now. I have it saved for review.\`);
+                    appendLocalMessage('assistant', `I received ${file.name} but could not analyze it right now. I have it saved for review.`);
                   }
                 } catch {
-                  appendLocalMessage('assistant', \`I received \${file.name} but had trouble processing it. It has been saved.\`);
+                  appendLocalMessage('assistant', `I received ${file.name} but had trouble processing it. It has been saved.`);
                 }
               };
               fileInput.click();
