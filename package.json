@@ -33,7 +33,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@elevenlabs/client": "^1.1.1",
     "@elevenlabs/react": "^1.0.2",
-    "@expo/cli": "^54.0.23",
+    "@expo/cli": "^55.0.21",
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.0.2",
     "@google-cloud/storage": "^7.18.0",
