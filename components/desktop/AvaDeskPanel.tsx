@@ -434,16 +434,19 @@ function AvaDeskPanelInner() {
     [anamSessionToken, avaProfileFallback],
   );
 
-  // W4: Authority queue polling — provides context to orchestrator (approvals shown in Authority Queue, not chat)
-  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+  const [authorityQueue, setAuthorityQueue] = useState<any[]>([]);
 
-  // Vercel AI SDK chat — source of truth for all Aspire chat (Law #1)
+  // Ref to break circular dependency: useVoice needs appendLocalMessage, 
+  // but appendLocalMessage needs setMessages from useAvaChat, 
+  // and useAvaChat usually needs avaVoice from useVoice.
+  const appendLocalMessageRef = useRef<(role: 'user' | 'assistant', content: string) => void>(() => {});
+
+  // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const videoStateRef = useRef(videoState);
   videoStateRef.current = videoState;
 
-  // Orchestrator-routed voice: STT → Orchestrator → TTS (Law #1: Single Brain)
   const avaVoice = useVoice({
     agent: 'ava',
     suiteId: suiteId ?? undefined,
@@ -464,59 +467,25 @@ function AvaDeskPanelInner() {
     },
     onTranscript: (text: string) => {
       // Show user speech in chat panel for visibility
-      if (text.trim()) appendLocalMessage('user', text);
+      if (text.trim()) appendLocalMessageRef.current('user', text);
     },
     onResponse: (text: string) => {
       // Show agent response in chat panel
       if (text.trim()) {
-        appendLocalMessage('assistant', text);
+        appendLocalMessageRef.current('assistant', text);
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
       }
     },
     onError: (error) => {
-      console.error('Ava voice error:', error);
-      setIsSessionActive(false);
-      // Classify and surface the error to the user
-      const msg = error.message || String(error);
-      if (/auth_required/i.test(msg)) {
-        showVoiceError('Session expired. Please sign in again.');
-      } else if (/circuit_open/i.test(msg)) {
-        showVoiceError('Ava Brain is warming back up. Try again in a few seconds.');
-      } else if (/orchestrator_timeout|timeout/i.test(msg)) {
-        showVoiceError('Ava took too long to respond. Please try again.');
-      } else if (/autoplay|not allowed|play\(\)/i.test(msg)) {
-        showVoiceError('Tap anywhere on the page, then try again.');
-      } else if (/permission|denied|not found.*microphone|getUserMedia/i.test(msg)) {
-        showVoiceError('Microphone access denied. Check browser permissions.');
-      } else if (/tts|voice.*unavailable|synthesis|elevenlabs/i.test(msg)) {
-        showVoiceError('Voice unavailable — responses shown in chat.');
-      } else {
-        showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
-      }
-    },
-    onShowCards: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => {
-      avaPresents.showCards({
-        artifactType: data.artifact_type,
-        records: data.records,
-        summary: data.summary,
-        confidence: data.confidence,
-      });
-    },
-    onDiagnostic: (diag) => {
-      setLatestVoiceDiagnostic(diag);
-      if (diag.stage === 'autoplay') {
-        showVoiceError(`Audio blocked by browser. Tap voice again to retry. Trace: ${diag.traceId}`);
-      }
+...
     },
   });
 
   const avaChatResult = useAvaChat({
-    avaVoice, // Pass the active voice session to useAvaChat to prevent double-hook overhead
+    avaVoice, 
     onResponseText: (_text) => {
       // Anam hosted embed handles TTS internally — no SDK talk() needed
     },
-    // Fallback: if ElevenLabs show_cards client tool isn't called (text-only chat path),
-    // detect structured_results in the HTTP SSE response and trigger the card modal
     onStructuredResults: (data) => {
       if (!avaPresents.visible) {
         avaPresents.showCards({
@@ -548,6 +517,9 @@ function AvaDeskPanelInner() {
       },
     ]);
   }, [setMessages]);
+
+  // Sync the ref
+  appendLocalMessageRef.current = appendLocalMessage;
 
   const handleCompanyPillPress = useCallback(async () => {
     if (latestVoiceDiagnostic?.stage === 'autoplay') {

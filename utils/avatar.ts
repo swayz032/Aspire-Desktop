@@ -5,14 +5,15 @@
 
 /** Stable numeric hash from a seed string (for deterministic color selection). */
 export function hashSeed(seed: string): number {
+  const safeSeed = seed || 'default';
   let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < safeSeed.length; i++) h = (h * 31 + safeSeed.charCodeAt(i)) >>> 0;
   return h;
 }
 
 /** Extract up to 2 initials from a display name. */
 export function getInitials(name: string): string {
-  if (!name) return '';
+  if (!name) return 'U';
   return name
     .trim()
     .split(/\s+/)
@@ -40,5 +41,5 @@ const AVATAR_COLORS = [
 
 /** Pick a deterministic color from a name string. */
 export function getAvatarColor(name: string): string {
-  return AVATAR_COLORS[hashSeed(name) % AVATAR_COLORS.length];
+  return AVATAR_COLORS[hashSeed(name || 'default') % AVATAR_COLORS.length];
 }
