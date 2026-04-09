@@ -286,7 +286,7 @@ function ConferenceContent({
   return (
     <>
       <ConferenceHeader
-        roomName={displayName}
+        roomName={roomName}
         participantCount={participants.length + 1}
         duration={duration}
         isRecording={controls.isRecording}
