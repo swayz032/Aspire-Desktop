@@ -4114,7 +4114,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     const AVA_CONFIG = {
       name: 'Ava',
-      personaId: '76853278-07ac-435e-9d3e-3f75e8f36a46', 
+      personaId: '489aebd4-3ed8-4c4c-8cd1-f0de1c55efcd', 
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
       llmId: 'b4f89001-9638-4879-a9c3-02cc9f9f2004',      // Anam hosted GPT-4.1
@@ -4123,16 +4123,16 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       avatarModel: 'cara-3',
       maxSessionLengthSeconds: 1800,
       toolIds: [
-        '60b91b28-6784-43a9-a11d-abe0aa99be52', // ava_get_context
-        'f8ea0f4b-2dc9-4c53-a132-1a26e9328196', // search
-        '0995c0e7-ba7f-409b-bf7e-1dc5f338b197', // ava_create_draft
-        '35edb699-f2b0-4439-88a3-b692dc807d8a', // ava_request_approval
-        '9f682b31-6e56-4877-b935-f8d1f84097ad', // invoke_quinn
-        'a0ed6e15-3c29-4633-8f13-8bf1f16369a0', // invoke_clara
-        '46537211-c912-4b3e-9bd4-2df880000749', // invoke_adam
-        '886c7d47-9e8c-4f0f-b6f6-dc8ae6391582', // show_cards
-        '5532e67b-d06d-4814-9460-03a0a3dcf29b', // invoke_tec
-        '5e32e106-63e1-47b1-bc75-34e3208ca9f9', // save_office_note
+        '773aa097-6072-4662-972d-57a339a80c1f', // ava_get_context
+        '0efe155d-bbdf-40cd-aa00-35fc3e7999db', // search
+        'f2a9f8e0-36bd-48da-9e74-e7a88bc86150', // ava_create_draft
+        '4508f61a-a560-4a97-aea6-5e1892cc2c01', // ava_request_approval
+        '1af84812-92c3-4db1-a683-59a41df21e6a', // invoke_quinn
+        '3759dbde-4a9d-46f1-b398-bd0cac97084d', // invoke_clara
+        'd4578d81-fb7a-46f6-8b30-27711e5aaf65', // invoke_adam
+        '0dda5031-cb77-4932-bc47-d84e72265bb8', // show_cards
+        '891fdf03-0648-450f-926b-6a2d5c9fda89', // invoke_tec
+        'ae1bc692-d25d-4838-8c02-3bb9d54ca19f', // save_office_note
       ],
       documentIds: [
         'dd6be6c1-698b-4910-a93b-3b69d1601b31', // Ava Rules & Task Workflows
