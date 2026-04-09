@@ -215,15 +215,41 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
                }
             }, 1000);
 
-            // PRIME THE AI WITH USER PROFILE DATA AND TRIGGER GREETING
+            // 2026 SDK OFFICIAL PATTERN: addContext and triggerGreeting
             if (profile) {
               const now = new Date();
               const fullDate = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
               const timeOfDay = now.getHours() < 12 ? 'morning' : now.getHours() < 17 ? 'afternoon' : 'evening';
               
-              const primeMsg = \`Note to AI: The user is \${profile.salutation || ''} \${profile.lastName || ''} (\${profile.gender || 'unknown'}), owner of \${profile.businessName || 'the company'} in the \${profile.industry || 'General'} industry. Today is \${fullDate}. You can see them via their camera (\${profile.hasCamera ? 'true' : 'false'}). Please greet them properly: \"Good \${timeOfDay}, \${profile.salutation || ''} \${profile.lastName || ''}.\"\`;
-              
-              client.sendUserMessage(primeMsg);
+              const context = {
+                salutation: profile.salutation || '',
+                lastName: profile.lastName || '',
+                firstName: profile.firstName || '',
+                businessName: profile.businessName || '',
+                industry: profile.industry || '',
+                gender: profile.gender || '',
+                hasCamera: !!profile.hasCamera,
+                currentDate: fullDate,
+                timeOfDay: timeOfDay
+              };
+
+              // Inject context into the persona brain
+              if (typeof client.addContext === 'function') {
+                client.addContext(context);
+              }
+
+              // Explicitly trigger the greeting sequence
+              if (typeof client.triggerGreeting === 'function') {
+                client.triggerGreeting();
+              } else if (typeof client.talk === 'function') {
+                // Fallback for older/middle versions of SDK
+                const greeting = \`Good \${timeOfDay}, \${profile.salutation || ''} \${profile.lastName || ''}.\`;
+                client.talk(greeting);
+              } else {
+                // Ultra-fallback: send as user message to prime
+                const primeMsg = \`Note to AI: The user is \${profile.salutation || ''} \${profile.lastName || ''}. Business: \${profile.businessName}. Date: \${fullDate}. Camera: \${profile.hasCamera}. Please greet the user now.\`;
+                client.sendUserMessage(primeMsg);
+              }
             }
           });
 
