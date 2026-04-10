@@ -18,6 +18,50 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
   : null;
 
 const router = Router();
+const CANONICAL_ANAM_AVA_PERSONA_ID = '58f82b89-8ae7-43cc-930d-be8def14dff3';
+const ANAM_AVA_REQUIRED_TOOL_IDS = [
+  '773aa097-6072-4662-972d-57a339a80c1f', // ava_get_context
+  '0efe155d-bbdf-40cd-aa00-35fc3e7999db', // search
+  'f2a9f8e0-36bd-48da-9e74-e7a88bc86150', // ava_create_draft
+  '4508f61a-a560-4a97-aea6-5e1892cc2c01', // ava_request_approval
+  '1af84812-92c3-4db1-a683-59a41df21e6a', // invoke_quinn
+  '3759dbde-4a9d-46f1-b398-bd0cac97084d', // invoke_clara
+  'd4578d81-fb7a-46f6-8b30-27711e5aaf65', // invoke_adam
+  '0dda5031-cb77-4932-bc47-d84e72265bb8', // show_cards
+  '891fdf03-0648-450f-926b-6a2d5c9fda89', // invoke_tec
+  'ae1bc692-d25d-4838-8c02-3bb9d54ca19f', // save_office_note
+] as const;
+
+function validateAnamAvaPromptAndConfig(prompt: string, personaId: string, toolIds: readonly string[]): string[] {
+  const errors: string[] = [];
+  const normalizedPrompt = String(prompt || '').toLowerCase();
+  const configuredTools = new Set(toolIds);
+
+  if (personaId !== CANONICAL_ANAM_AVA_PERSONA_ID) {
+    errors.push(`Ava personaId drift detected: expected ${CANONICAL_ANAM_AVA_PERSONA_ID}, got ${personaId}`);
+  }
+
+  for (const requiredToolId of ANAM_AVA_REQUIRED_TOOL_IDS) {
+    if (!configuredTools.has(requiredToolId)) {
+      errors.push(`Missing required Ava toolId: ${requiredToolId}`);
+    }
+  }
+
+  if (!normalizedPrompt.includes('## search')) {
+    errors.push('Anam Ava prompt missing search tool section.');
+  }
+  if (normalizedPrompt.includes('## ava_search')) {
+    errors.push('Anam Ava prompt contains deprecated ava_search section.');
+  }
+  if (normalizedPrompt.includes('transfer to specialist agents immediately')) {
+    errors.push('Anam Ava prompt contains transfer language incompatible with video tool-only routing.');
+  }
+  if (normalizedPrompt.includes('switch to voice mode')) {
+    errors.push('Anam Ava prompt contains voice-mode handoff language incompatible with Anam routing.');
+  }
+
+  return errors;
+}
 
 type SupportedAgent =
   | 'ava'
@@ -4114,7 +4158,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     const AVA_CONFIG = {
       name: 'Ava',
-      personaId: '489aebd4-3ed8-4c4c-8cd1-f0de1c55efcd', 
+      personaId: CANONICAL_ANAM_AVA_PERSONA_ID,
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
       llmId: 'b4f89001-9638-4879-a9c3-02cc9f9f2004',      // Anam hosted GPT-4.1
@@ -4150,6 +4194,25 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         similarityBoost: 0.75,
       },
     };
+    const avaConfigValidationErrors = validateAnamAvaPromptAndConfig(
+      AVA_CONFIG.systemPrompt,
+      AVA_CONFIG.personaId,
+      AVA_CONFIG.toolIds,
+    );
+    if (avaConfigValidationErrors.length > 0) {
+      const strictAnamPromptValidation = process.env.ANAM_PROMPT_STRICT_VALIDATION === 'true';
+      logger.error('Anam Ava prompt/config validation failed', {
+        strict: strictAnamPromptValidation,
+        errors: avaConfigValidationErrors,
+      });
+      if (strictAnamPromptValidation) {
+        return res.status(503).json({
+          error: 'ANAM_AVA_CONFIG_INVALID',
+          message: 'Ava video configuration validation failed',
+          details: avaConfigValidationErrors,
+        });
+      }
+    }
     const finnCtx = `[ASPIRE_CTX:suite_id=${suiteId},user_id=${userId},office_id=${officeId},agent=finn]`;
     const FINN_CONFIG = {
       name: 'Finn',
