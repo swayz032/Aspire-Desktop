@@ -4,15 +4,11 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
-import { safeOpenURL } from '@/lib/safeOpenURL';
+import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
 import { renderStars, fmtPrice } from './helpers';
 import { ActionButton } from './ActionButton';
 import { BaseCard } from './BaseCard';
 import { ImageSkeleton } from './ImageSkeleton';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 interface CardProps {
   record: Record<string, any>;
@@ -28,26 +24,27 @@ interface CardProps {
   enterDelay?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
-
 export function ProductCard({ record, onAction, isActive, enterDelay }: CardProps) {
-  const productName = record.product_name || record.title || 'Unknown Product';
+  const isStoreSummary = record.card_kind === 'store_summary';
+  const productName = isStoreSummary
+    ? (record.store_name || record.title || 'Home Depot Store')
+    : (record.product_name || record.title || 'Unknown Product');
+
   const {
     brand,
     model,
-    sku,
     price,
     price_was,
     percentage_off,
     retailer,
     thumbnail,
+    image_url,
     rating,
     reviews,
     link,
     url,
     delivery,
+    delivery_info,
     pickup_store,
     badges,
     in_store_stock,
@@ -55,14 +52,22 @@ export function ProductCard({ record, onAction, isActive, enterDelay }: CardProp
   } = record;
 
   const extra = record.extra || {};
-  const storeName = extra.store_name || pickup_store;
+  const storeName = extra.store_name || record.store_name || pickup_store;
+  const storeAddress = record.address || '';
+  const storePhone = record.phone || '';
+  const storeWebsite = record.website || '';
   const productUrl = link || url;
   const stockCount = in_store_stock ?? pickup_quantity;
   const hasDiscount = percentage_off != null && percentage_off > 0;
   const badgeList: string[] = Array.isArray(badges) ? badges : [];
 
-  // Image loading state for skeleton shimmer
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  const heroImage = image_url || thumbnail || '';
+  const storeAddressLine = [storeAddress, record.city, record.state, record.postal_code]
+    .filter(Boolean)
+    .join(', ');
+  const deliveryLabel = delivery_info || delivery || '';
 
   const handleVisit = useCallback(() => {
     if (productUrl) safeOpenURL(productUrl);
@@ -73,14 +78,23 @@ export function ProductCard({ record, onAction, isActive, enterDelay }: CardProp
     onAction('details', record);
   }, [onAction, record]);
 
-  // ---- Hero content ----
+  const handleStoreWebsite = useCallback(() => {
+    if (storeWebsite) safeOpenURL(storeWebsite);
+    onAction('visit', record);
+  }, [storeWebsite, onAction, record]);
+
+  const handleStoreCall = useCallback(() => {
+    if (storePhone) safeCallPhone(storePhone);
+    onAction('call', record);
+  }, [storePhone, onAction, record]);
+
   const heroContent = (
     <>
-      {thumbnail ? (
+      {heroImage ? (
         <View style={styles.heroImageWrap}>
           <ImageSkeleton loaded={imageLoaded} />
           <Image
-            source={{ uri: thumbnail }}
+            source={{ uri: heroImage }}
             style={styles.heroImage}
             contentFit="contain"
             transition={200}
@@ -96,31 +110,43 @@ export function ProductCard({ record, onAction, isActive, enterDelay }: CardProp
           style={StyleSheet.absoluteFillObject}
         >
           <View style={styles.heroFallback}>
-            <Ionicons name="cube-outline" size={40} color={Colors.text.muted} />
+            <Ionicons
+              name={isStoreSummary ? 'storefront-outline' : 'cube-outline'}
+              size={40}
+              color={Colors.text.muted}
+            />
           </View>
         </LinearGradient>
       )}
 
-      {/* Discount badge — top-left */}
-      {hasDiscount && (
+      {!isStoreSummary && hasDiscount && (
         <View style={styles.discountBadge}>
           <Text style={styles.discountText}>{Math.round(percentage_off)}% off</Text>
         </View>
       )}
 
-      {/* Retailer pill — top-right */}
-      {retailer && (
+      {(retailer || isStoreSummary) && (
         <View style={styles.retailerPill}>
           <Text style={styles.retailerText} numberOfLines={1}>
-            {retailer}
+            {retailer || 'Home Depot'}
           </Text>
         </View>
       )}
     </>
   );
 
-  // ---- Action buttons ----
-  const actionContent = (
+  const actionContent = isStoreSummary ? (
+    <>
+      {storePhone ? (
+        <ActionButton label="Call" icon="call-outline" onPress={handleStoreCall} variant="primary" />
+      ) : null}
+      {storeWebsite ? (
+        <ActionButton label="Website" icon="open-outline" onPress={handleStoreWebsite} variant="secondary" />
+      ) : (
+        <ActionButton label="Details" icon="chevron-forward" onPress={handleDetails} variant="secondary" />
+      )}
+    </>
+  ) : (
     <>
       {productUrl ? (
         <ActionButton label="Visit" icon="open-outline" onPress={handleVisit} variant="primary" />
@@ -139,115 +165,156 @@ export function ProductCard({ record, onAction, isActive, enterDelay }: CardProp
       accessibilityLabel={`${productName} product card`}
       enterDelay={enterDelay}
     >
-      {/* Product Name */}
-      <Text style={styles.productName} numberOfLines={2} accessibilityRole="header">
-        {productName}
-      </Text>
-
-      {/* Brand + Model */}
-      {(brand || model) && (
-        <Text style={styles.brandModel} numberOfLines={1}>
-          {brand || ''}
-          {brand && model ? ' \u2014 ' : ''}
-          {model ? `Model ${model}` : ''}
-        </Text>
-      )}
-
-      {/* Price Block */}
-      <View style={styles.priceRow}>
-        {price != null && (
-          <Text style={styles.priceMain}>{fmtPrice(price)}</Text>
-        )}
-        {price_was != null && hasDiscount && (
-          <Text style={styles.priceWas}>{fmtPrice(price_was)}</Text>
-        )}
-      </View>
-
-      {/* Stock Availability — section divider above */}
-      {stockCount != null && (
-        <View style={[styles.stockRow, styles.sectionDivider]}>
-          <View
-            style={[
-              styles.stockDot,
-              {
-                backgroundColor:
-                  stockCount > 0
-                    ? Colors.semantic.success
-                    : Colors.semantic.error,
-              },
-            ]}
-          />
-          <Text
-            style={[
-              styles.stockText,
-              {
-                color:
-                  stockCount > 0
-                    ? Colors.semantic.success
-                    : Colors.semantic.error,
-              },
-            ]}
-          >
-            {stockCount > 0 ? `${stockCount} in stock` : 'Out of stock'}
+      {isStoreSummary ? (
+        <>
+          <Text style={styles.productName} numberOfLines={2} accessibilityRole="header">
+            {productName}
           </Text>
-        </View>
-      )}
+          {storeAddressLine ? (
+            <Text style={styles.brandModel} numberOfLines={2}>
+              {storeAddressLine}
+            </Text>
+          ) : null}
 
-      {/* Store Info */}
-      {storeName && (
-        <View style={styles.infoRow}>
-          <Ionicons name="storefront-outline" size={14} color={Colors.text.muted} />
-          <Text style={styles.infoText} numberOfLines={1}>
-            {storeName}
-          </Text>
-        </View>
-      )}
-
-      {/* Delivery */}
-      {delivery && (
-        <View style={styles.infoRow}>
-          <Ionicons name="car-outline" size={14} color={Colors.text.muted} />
-          <Text style={styles.infoText} numberOfLines={1}>
-            {delivery}
-          </Text>
-        </View>
-      )}
-
-      {/* Rating — section divider above */}
-      {rating != null && (
-        <View style={[styles.ratingRow, styles.sectionDivider]}>
-          <Text style={styles.ratingStars}>{renderStars(rating)}</Text>
-          <Text style={styles.ratingDetail}>
-            {' '}
-            {typeof rating === 'number' ? rating.toFixed(1) : rating}
-            {reviews ? ` (${reviews} reviews)` : ''}
-          </Text>
-        </View>
-      )}
-
-      {/* Badges */}
-      {badgeList.length > 0 && (
-        <View style={styles.badgeRow}>
-          {badgeList.slice(0, 3).map((b, i) => (
-            <View key={i} style={styles.badge}>
-              <Text style={styles.badgeText}>{b}</Text>
+          {storePhone ? (
+            <View style={[styles.infoRow, styles.sectionDivider]}>
+              <Ionicons name="call-outline" size={14} color={Colors.text.muted} />
+              <Text style={styles.infoText} numberOfLines={1}>
+                {storePhone}
+              </Text>
             </View>
-          ))}
-        </View>
+          ) : null}
+
+          {storeWebsite ? (
+            <View style={styles.infoRow}>
+              <Ionicons name="globe-outline" size={14} color={Colors.text.muted} />
+              <Text style={styles.infoText} numberOfLines={1}>
+                {storeWebsite}
+              </Text>
+            </View>
+          ) : null}
+
+          {(record.open_now !== undefined || rating != null) ? (
+            <View style={[styles.ratingRow, styles.sectionDivider]}>
+              {record.open_now !== undefined ? (
+                <Text
+                  style={[
+                    styles.stockText,
+                    { color: record.open_now ? Colors.semantic.success : Colors.semantic.error },
+                  ]}
+                >
+                  {record.open_now ? 'Open now' : 'Closed'}
+                </Text>
+              ) : null}
+              {rating != null ? (
+                <Text style={styles.ratingDetail}>
+                  {record.open_now !== undefined ? ' • ' : ''}
+                  {typeof rating === 'number' ? rating.toFixed(1) : rating} rating
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Text style={styles.productName} numberOfLines={2} accessibilityRole="header">
+            {productName}
+          </Text>
+
+          {(brand || model) && (
+            <Text style={styles.brandModel} numberOfLines={1}>
+              {brand || ''}
+              {brand && model ? ' - ' : ''}
+              {model ? `Model ${model}` : ''}
+            </Text>
+          )}
+
+          <View style={styles.priceRow}>
+            {price != null && (
+              <Text style={styles.priceMain}>{fmtPrice(price)}</Text>
+            )}
+            {price_was != null && hasDiscount && (
+              <Text style={styles.priceWas}>{fmtPrice(price_was)}</Text>
+            )}
+          </View>
+
+          {stockCount != null && (
+            <View style={[styles.stockRow, styles.sectionDivider]}>
+              <View
+                style={[
+                  styles.stockDot,
+                  {
+                    backgroundColor:
+                      stockCount > 0
+                        ? Colors.semantic.success
+                        : Colors.semantic.error,
+                  },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.stockText,
+                  {
+                    color:
+                      stockCount > 0
+                        ? Colors.semantic.success
+                        : Colors.semantic.error,
+                  },
+                ]}
+              >
+                {stockCount > 0 ? `${stockCount} in stock` : 'Out of stock'}
+              </Text>
+            </View>
+          )}
+
+          {storeName && (
+            <View style={styles.infoRow}>
+              <Ionicons name="storefront-outline" size={14} color={Colors.text.muted} />
+              <Text style={styles.infoText} numberOfLines={1}>
+                {storeName}
+              </Text>
+            </View>
+          )}
+
+          {deliveryLabel && (
+            <View style={styles.infoRow}>
+              <Ionicons name="car-outline" size={14} color={Colors.text.muted} />
+              <Text style={styles.infoText} numberOfLines={1}>
+                {deliveryLabel}
+              </Text>
+            </View>
+          )}
+
+          {rating != null && (
+            <View style={[styles.ratingRow, styles.sectionDivider]}>
+              <Text style={styles.ratingStars}>{renderStars(rating)}</Text>
+              <Text style={styles.ratingDetail}>
+                {' '}
+                {typeof rating === 'number' ? rating.toFixed(1) : rating}
+                {reviews ? ` (${reviews} reviews)` : ''}
+              </Text>
+            </View>
+          )}
+
+          {badgeList.length > 0 && (
+            <View style={styles.badgeRow}>
+              {badgeList.slice(0, 3).map((b, i) => (
+                <View key={i} style={styles.badge}>
+                  <Text style={styles.badgeText}>{b}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </>
       )}
     </BaseCard>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles (card-specific only — shell/actions owned by BaseCard)
-// ---------------------------------------------------------------------------
-
 const HERO_HEIGHT = 200;
 const HERO_STYLE: ViewStyle = { height: HERO_HEIGHT, aspectRatio: undefined };
 
 const styles = StyleSheet.create({
-  // Hero internals
   heroImageWrap: {
     flex: 1,
     padding: Spacing.xl,
@@ -263,8 +330,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // Discount badge
   discountBadge: {
     position: 'absolute',
     top: Spacing.md,
@@ -279,8 +344,6 @@ const styles = StyleSheet.create({
     color: Colors.accent.amber,
     fontWeight: '700',
   },
-
-  // Retailer pill
   retailerPill: {
     position: 'absolute',
     top: Spacing.md,
@@ -295,8 +358,6 @@ const styles = StyleSheet.create({
     ...Typography.small,
     color: Colors.text.secondary,
   },
-
-  // Content
   productName: {
     fontSize: 20,
     fontWeight: '700',
@@ -309,8 +370,6 @@ const styles = StyleSheet.create({
     color: Colors.text.tertiary,
     marginTop: -Spacing.xs,
   },
-
-  // Price
   priceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -329,8 +388,6 @@ const styles = StyleSheet.create({
     color: Colors.text.muted,
     textDecorationLine: 'line-through',
   },
-
-  // Stock
   stockRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -345,8 +402,6 @@ const styles = StyleSheet.create({
   stockText: {
     ...Typography.captionMedium,
   },
-
-  // Info rows (store, delivery)
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -357,8 +412,6 @@ const styles = StyleSheet.create({
     ...Typography.small,
     color: Colors.text.muted,
   },
-
-  // Rating
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -373,8 +426,6 @@ const styles = StyleSheet.create({
     ...Typography.small,
     color: Colors.text.secondary,
   },
-
-  // Badges
   badgeRow: {
     flexDirection: 'row',
     gap: Spacing.xs,
@@ -391,8 +442,6 @@ const styles = StyleSheet.create({
     ...Typography.small,
     color: Colors.accent.cyan,
   },
-
-  // Section divider — hairline separator between logical content blocks
   sectionDivider: {
     marginTop: Spacing.md,
     paddingTop: Spacing.md,
@@ -402,3 +451,4 @@ const styles = StyleSheet.create({
 });
 
 export default ProductCard;
+

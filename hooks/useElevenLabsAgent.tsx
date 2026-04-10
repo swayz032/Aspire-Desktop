@@ -45,6 +45,10 @@ const PROPERTY_ARTIFACT_TYPES = new Set([
   'ScreeningComplianceBrief',
   'InvestmentOpportunityPack',
 ]);
+const TOOL_ARTIFACT_TYPES = new Set([
+  'PriceComparison',
+  'EstimateResearchPack',
+]);
 
 class AgentSessionHttpError extends Error {
   status: number;
@@ -99,6 +103,39 @@ function hasStrongPropertySignals(record: any): boolean {
     typeof record.tax_market_value === 'number' ||
     typeof record.property_value === 'number';
   return addressOk && hasCoreNumeric;
+}
+
+function hasStrongToolSignals(records: any[]): boolean {
+  if (!Array.isArray(records) || records.length === 0) return false;
+
+  const hasCompleteProduct = records.some((record) => {
+    if (!record || typeof record !== 'object' || record.card_kind === 'store_summary') return false;
+    const hasName = typeof record.product_name === 'string' && record.product_name.trim().length > 0;
+    const hasPrice = typeof record.price === 'number' && Number.isFinite(record.price);
+    const hasUrl = typeof record.url === 'string' && record.url.trim().length > 0;
+    const hasImage =
+      (typeof record.image_url === 'string' && record.image_url.trim().length > 0) ||
+      (typeof record.thumbnail === 'string' && record.thumbnail.trim().length > 0);
+    return hasName && hasPrice && hasUrl && hasImage;
+  });
+
+  if (!hasCompleteProduct) return false;
+
+  const hasHomeDepotProducts = records.some((record) => {
+    if (!record || typeof record !== 'object') return false;
+    return record.card_kind !== 'store_summary' && String(record.retailer || '').toLowerCase() === 'home depot';
+  });
+
+  if (!hasHomeDepotProducts) return true;
+
+  const storeSummary = records.find((record) => record?.card_kind === 'store_summary');
+  if (!storeSummary || typeof storeSummary !== 'object') return false;
+
+  const requiredStoreFields = ['store_name', 'address', 'phone', 'website'] as const;
+  return requiredStoreFields.every((field) => {
+    const value = storeSummary[field];
+    return typeof value === 'string' && value.trim().length > 0;
+  });
 }
 
 async function autoRefetchPropertyCards(payload: {
@@ -466,6 +503,19 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
           }];
           cacheSource = 'fallback_unavailable';
         }
+      }
+
+      const likelyToolFlow = TOOL_ARTIFACT_TYPES.has(artifactType);
+      const sparseToolPayload = likelyToolFlow && !hasStrongToolSignals(finalRecords);
+      if (sparseToolPayload) {
+        devWarn(`[ElevenLabsAgent] TOOL_RENDER_FALLBACK: tool data incomplete, fail-closed fallback`);
+        finalRecords = [{
+          card_kind: 'error',
+          retailer: 'Home Depot',
+          product_name: 'Tool data unavailable',
+          summary: 'Tool and store data are incomplete right now. Please retry in a moment.',
+        }];
+        cacheSource = 'fallback_tool_unavailable';
       }
 
       // Cap records at 20 to prevent DoS (THREAT-008)
