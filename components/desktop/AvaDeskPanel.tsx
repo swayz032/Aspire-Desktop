@@ -529,8 +529,8 @@ function AvaDeskPanelInner() {
       }
     },
     extraBody: {
-      pendingApprovals: pendingApprovals.length,
-      approvalSummary: pendingApprovals.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
+      pendingApprovals: authorityQueue.length,
+      approvalSummary: authorityQueue.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
     },
   });
 

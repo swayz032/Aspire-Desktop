@@ -39,18 +39,19 @@ export function useConferenceControls({ stream, client, isMuted, isCameraOff }: 
     if (!stream || typeof stream.startVideo !== 'function') return;
     try {
       if (isCameraOff) {
+        const options = {
+          fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
+          hd: VIDEO_CAPTURE_DEFAULTS.hd,
+          fps: VIDEO_CAPTURE_DEFAULTS.fps,
+          facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
+        };
         try {
-          await stream.startVideo({
-            fullHd: VIDEO_CAPTURE_DEFAULTS.fullHd,
-            hd: VIDEO_CAPTURE_DEFAULTS.hd,
-            fps: VIDEO_CAPTURE_DEFAULTS.fps,
-            facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
-          });
+          await stream.startVideo(options);
         } catch {
           await stream.startVideo({
-            hd: VIDEO_CAPTURE_DEFAULTS.hd,
-            fps: VIDEO_CAPTURE_DEFAULTS.fps,
-            facingMode: VIDEO_CAPTURE_DEFAULTS.facingMode,
+            hd: true,
+            fps: 24,
+            facingMode: 'user',
           });
         }
       } else {
