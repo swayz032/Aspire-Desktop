@@ -69,6 +69,7 @@ const INITIAL_STATE: AvaPresentsState = {
 const PROPERTY_TYPES = new Set([
   'LandlordPropertyPack', 'PropertyFactPack', 'RentCompPack',
   'PermitContextPack', 'NeighborhoodDemandBrief', 'ScreeningComplianceBrief',
+  'InvestmentOpportunityPack',
 ]);
 
 const PROPERTY_SECTIONS: { key: string; label: string; requires: string[] }[] = [
@@ -91,7 +92,7 @@ function isPlaceholderString(value: unknown): boolean {
 
 function hasValue(value: unknown): boolean {
   if (value == null) return false;
-  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value === 'string') return !isPlaceholderString(value);
   if (Array.isArray(value)) return value.length > 0;
   return true;
@@ -99,7 +100,7 @@ function hasValue(value: unknown): boolean {
 
 function isPropertyLikeRecord(record: Record<string, unknown>): boolean {
   const address = record.normalized_address || record.address;
-  if (!hasValue(address)) return false;
+  if (hasValue(address)) return true;
   return (
     hasValue(record.beds) ||
     hasValue(record.baths) ||
@@ -139,7 +140,7 @@ export function useAvaPresents(): UseAvaPresentReturn {
     // Property types: split canonical property records into multiple section cards.
     if (PROPERTY_TYPES.has(data.artifactType)) {
       const propertyLike = records.filter(isPropertyLikeRecord);
-      const candidates = propertyLike.length > 0 ? propertyLike : records.slice(0, 1);
+      const candidates = propertyLike.length > 0 ? propertyLike : records;
       records = candidates.flatMap((r) => splitPropertyRecord(r));
     }
 

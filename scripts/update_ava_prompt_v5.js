@@ -132,6 +132,7 @@ const newPrompt = [
   '',
   '- When to use: ALWAYS after invoke_adam returns results with records',
   '- Call show_cards with the artifact_type, records array, and a brief summary',
+  '- If invoke_adam returns _card_cache_id, include it as card_cache_id',
   '- Call this WHILE you are narrating the results \u2014 the user sees visual cards as you speak',
   '- Do not wait until you finish talking \u2014 show the cards immediately',
   '- After showing cards, deliver one headline and enter Browse Mode. The cards do the heavy lifting.',

@@ -156,4 +156,36 @@ describe('useAvaPresents', () => {
     act(() => result.current.showCards({ artifactType: 'Test', records: makeRecords(1), summary: 'x' }));
     expect(result.current.confidence).toBeNull();
   });
+
+  it('splits property cards into sections when address is present', () => {
+    const { result } = renderHook(() => useAvaPresents());
+    act(() => result.current.showCards({
+      artifactType: 'PropertyFactPack',
+      records: [{
+        normalized_address: '4863 Price St, Forest Park, GA 30297',
+        owner_name: 'Owner LLC',
+        tax_market_value: 316800,
+      }],
+      summary: 'Property details',
+    }));
+
+    expect(result.current.visible).toBe(true);
+    expect(result.current.records.length).toBeGreaterThan(1);
+    expect(result.current.records[0]._cardSection).toBe('overview');
+  });
+
+  it('treats InvestmentOpportunityPack as property-style cards', () => {
+    const { result } = renderHook(() => useAvaPresents());
+    act(() => result.current.showCards({
+      artifactType: 'InvestmentOpportunityPack',
+      records: [{
+        address: '4863 Price St, Forest Park, GA 30297',
+        estimated_rent: 2400,
+      }],
+      summary: 'Investment opportunity',
+    }));
+
+    expect(result.current.records.length).toBeGreaterThan(1);
+    expect(result.current.records[0]._cardSection).toBe('overview');
+  });
 });

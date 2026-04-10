@@ -42,7 +42,7 @@ function SectionHeader({ title }: { title: string }) {
 }
 
 function DataRow({ label, value, color }: { label: string; value: string | number | undefined | null; color?: string }) {
-  if (value == null || value === '' || value === 0) return null;
+  if (value == null || value === '') return null;
   return (
     <View style={s.dataRow}>
       <Text style={s.dataLabel} numberOfLines={1}>{label}</Text>
@@ -150,6 +150,9 @@ function OverviewSection({ r }: { r: Record<string, any> }) {
       <DataRow label="Zoning" value={r.zoning_type ? `${r.zoning_type}${r.zoning_code ? ` (${r.zoning_code})` : ''}` : null} />
       <DataRow label="County" value={r.county} />
       <DataRow label="Neighborhood" value={r.neighborhood || r.subdivision} />
+      {!propertyValue && !r.beds && !r.baths && !r.living_sqft && !r.year_built && r.summary && (
+        <DataRow label="Status" value={r.summary} />
+      )}
     </>
   );
 }

@@ -23,6 +23,30 @@ import type { UIMessage } from 'ai';
 type AvaMode = 'voice' | 'video';
 type VideoConnectionState = 'idle' | 'connecting' | 'connected';
 
+const PROPERTY_ARTIFACT_TYPES = new Set([
+  'LandlordPropertyPack',
+  'PropertyFactPack',
+  'RentCompPack',
+  'PermitContextPack',
+  'NeighborhoodDemandBrief',
+  'ScreeningComplianceBrief',
+  'InvestmentOpportunityPack',
+]);
+
+function hasStrongPropertySignals(record: any): boolean {
+  if (!record || typeof record !== 'object') return false;
+  const address = record.normalized_address || record.address;
+  const addressOk = typeof address === 'string' && address.trim() !== '' && address.toLowerCase() !== 'unknown address';
+  const hasCoreNumeric =
+    typeof record.beds === 'number' ||
+    typeof record.baths === 'number' ||
+    typeof record.living_sqft === 'number' ||
+    typeof record.year_built === 'number' ||
+    typeof record.tax_market_value === 'number' ||
+    typeof record.property_value === 'number';
+  return addressOk && hasCoreNumeric;
+}
+
 /**
  * Local Camera Preview Component (FaceTime style)
  * Requests camera permission and renders a small local video stream.
@@ -519,14 +543,41 @@ function AvaDeskPanelInner() {
       // Anam hosted embed handles TTS internally — no SDK talk() needed
     },
     onStructuredResults: (data) => {
-      if (!avaPresents.visible) {
+      if (avaPresents.visible) return;
+      const artifactType = data.artifact_type;
+      const incomingRecords = Array.isArray(data.records) ? data.records : [];
+      const likelyProperty = PROPERTY_ARTIFACT_TYPES.has(artifactType);
+      const sparseProperty = likelyProperty && !hasStrongPropertySignals(incomingRecords[0]);
+
+      const show = (records: Record<string, unknown>[]) => {
         avaPresents.showCards({
-          artifactType: data.artifact_type,
-          records: data.records,
+          artifactType,
+          records,
           summary: data.summary ?? '',
           confidence: data.confidence as { status: 'verified' | 'partial' | 'unverified'; score: number } | null | undefined,
         });
+      };
+
+      if (!sparseProperty || !suiteId) {
+        show(incomingRecords);
+        return;
       }
+
+      (async () => {
+        try {
+          const resp = await fetch(`/api/card-data/latest?suite_id=${encodeURIComponent(suiteId)}`);
+          if (resp.ok) {
+            const cached = await resp.json();
+            if (Array.isArray(cached?.records) && cached.records.length > 0) {
+              show(cached.records);
+              return;
+            }
+          }
+        } catch {
+          // fall through to raw records
+        }
+        show(incomingRecords);
+      })();
     },
     extraBody: {
       pendingApprovals: authorityQueue.length,

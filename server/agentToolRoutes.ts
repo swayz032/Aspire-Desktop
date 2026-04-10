@@ -22,8 +22,8 @@ const router = Router();
 // Stores full property records from invoke_adam responses. The gateway strips
 // card_records before forwarding to ElevenLabs (keeps LLM payload small).
 // Desktop fetches full records via GET /v1/tools/card-data/:id when show_cards fires.
-const cardRecordsCache = new Map<string, { records: any[]; artifactType: string; timestamp: number }>();
-let latestCardCacheId: string | null = null; // Most recent cache entry — single-user desktop app
+const cardRecordsCache = new Map<string, { records: any[]; artifactType: string; suiteId: string; timestamp: number }>();
+const latestCardCacheIdBySuite = new Map<string, string>(); // Per-suite most recent cache entry
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const PROPERTY_ARTIFACT_TYPES = new Set([
   'LandlordPropertyPack',
@@ -37,10 +37,18 @@ const PROPERTY_ARTIFACT_TYPES = new Set([
 
 function cleanCardCache() {
   const now = Date.now();
+  const evicted = new Set<string>();
   for (const [key, val] of cardRecordsCache) {
     if (now - val.timestamp > CACHE_TTL_MS) {
       cardRecordsCache.delete(key);
-      if (latestCardCacheId === key) latestCardCacheId = null;
+      evicted.add(key);
+    }
+  }
+  if (evicted.size > 0) {
+    for (const [suiteId, cacheId] of latestCardCacheIdBySuite) {
+      if (evicted.has(cacheId) || !cardRecordsCache.has(cacheId)) {
+        latestCardCacheIdBySuite.delete(suiteId);
+      }
     }
   }
 }
@@ -54,13 +62,17 @@ function buildPropertyRefetchTask(seedRecord: any): string | null {
   return `Pull property facts for ${address}`;
 }
 
-const ELEVENLABS_TOOL_SECRET = process.env.ELEVENLABS_TOOL_SECRET
-  || '67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6';
+const ELEVENLABS_TOOL_SECRET = process.env.ELEVENLABS_TOOL_SECRET?.trim() || '';
 
 /**
  * Verify the x-elevenlabs-secret header matches our configured secret.
  */
 function verifySecret(req: Request, res: Response): boolean {
+  if (!ELEVENLABS_TOOL_SECRET) {
+    logger.error('[AgentTool] ELEVENLABS_TOOL_SECRET missing; refusing webhook requests');
+    res.status(503).json({ error: 'Service unavailable' });
+    return false;
+  }
   const secret = req.headers['x-elevenlabs-secret'];
   if (!secret || secret !== ELEVENLABS_TOOL_SECRET) {
     logger.warn('[AgentTool] Invalid or missing secret', {
@@ -584,14 +596,16 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     // gateway and strip from the ElevenLabs response. Desktop fetches full
     // records from GET /v1/tools/card-data/:id when show_cards fires.
     let responseData = a2aResult.data || null;
-    if (agent === 'adam' && responseData?.card_records) {
+    if (agent === 'adam' && Array.isArray(responseData?.card_records) && responseData.card_records.length > 0) {
       const cacheId = correlationId;
+      const cacheSuiteId = typeof suite_id === 'string' && suite_id.trim() ? suite_id.trim() : 'default';
       cardRecordsCache.set(cacheId, {
         records: responseData.card_records,
         artifactType: responseData.artifact_type || '',
+        suiteId: cacheSuiteId,
         timestamp: Date.now(),
       });
-      latestCardCacheId = cacheId;
+      latestCardCacheIdBySuite.set(cacheSuiteId, cacheId);
       cleanCardCache();
       logger.info('[AgentTool] Cached card_records', { cacheId, count: responseData.card_records.length });
 
@@ -907,9 +921,12 @@ router.post('/v1/tools/analyze-document', async (req: Request, res: Response) =>
 router.post('/api/card-data/refetch', async (req: Request, res: Response) => {
   const { artifact_type, suite_id, seed_record } = req.body || {};
   const artifactType = typeof artifact_type === 'string' ? artifact_type : '';
-  const suiteId = typeof suite_id === 'string' && suite_id.trim() ? suite_id.trim() : 'default';
+  const suiteId = typeof suite_id === 'string' && suite_id.trim() ? suite_id.trim() : '';
   if (!PROPERTY_ARTIFACT_TYPES.has(artifactType)) {
     return res.status(400).json({ error: 'UNSUPPORTED_ARTIFACT', message: 'Auto-refetch supports property artifacts only.' });
+  }
+  if (!suiteId) {
+    return res.status(400).json({ error: 'MISSING_SUITE_ID', message: 'suite_id is required for refetch.' });
   }
 
   const task = buildPropertyRefetchTask(seed_record);
@@ -959,9 +976,10 @@ router.post('/api/card-data/refetch', async (req: Request, res: Response) => {
     cardRecordsCache.set(correlationId, {
       records: fullRecords,
       artifactType: responseData?.artifact_type || artifactType,
+      suiteId,
       timestamp: Date.now(),
     });
-    latestCardCacheId = correlationId;
+    latestCardCacheIdBySuite.set(suiteId, correlationId);
     cleanCardCache();
 
     logger.info('[CardData] Refetch recovered records', { cacheId: correlationId, count: fullRecords.length });
@@ -978,9 +996,14 @@ router.post('/api/card-data/refetch', async (req: Request, res: Response) => {
 
 router.get('/api/card-data/:id', (req: Request, res: Response) => {
   const id = String(req.params.id || '');
+  const suiteId = typeof req.query.suite_id === 'string' ? req.query.suite_id.trim() : '';
+  cleanCardCache();
+  if (!suiteId) {
+    return res.status(400).json({ error: 'MISSING_SUITE_ID', message: 'suite_id query param is required.' });
+  }
 
-  // "latest" returns the most recent cached entry — single-user desktop app
-  const resolvedId = id === 'latest' ? latestCardCacheId : id;
+  // "latest" resolves to the most recent cached entry for this suite.
+  const resolvedId = id === 'latest' ? (latestCardCacheIdBySuite.get(suiteId) || null) : id;
   if (!resolvedId) {
     logger.warn('[CardData] No cached card data', { id });
     return res.status(404).json({ error: 'NOT_FOUND', message: 'No card data available.' });
@@ -990,6 +1013,10 @@ router.get('/api/card-data/:id', (req: Request, res: Response) => {
   if (!cached) {
     logger.warn('[CardData] Cache miss', { id: resolvedId });
     return res.status(404).json({ error: 'NOT_FOUND', message: 'Card data expired or not found.' });
+  }
+  if (cached.suiteId !== suiteId) {
+    logger.warn('[CardData] Suite mismatch', { id: resolvedId, requestedSuite: suiteId, cachedSuite: cached.suiteId });
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Card data not found.' });
   }
 
   logger.info('[CardData] Serving cached records', { id: resolvedId, count: cached.records.length, artifactType: cached.artifactType });

@@ -55,11 +55,12 @@ class AgentSessionHttpError extends Error {
   }
 }
 
-async function fetchCardDataById(cacheId: string): Promise<{ records: any[]; artifactType?: string } | null> {
+async function fetchCardDataById(cacheId: string, suiteId?: string): Promise<{ records: any[]; artifactType?: string } | null> {
+  if (!suiteId) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CARD_FETCH_TIMEOUT_MS);
   try {
-    const resp = await fetch(`/api/card-data/${encodeURIComponent(cacheId)}`, { signal: controller.signal });
+    const resp = await fetch(`/api/card-data/${encodeURIComponent(cacheId)}?suite_id=${encodeURIComponent(suiteId)}`, { signal: controller.signal });
     if (!resp.ok) return null;
     const data = await resp.json();
     if (!Array.isArray(data?.records) || data.records.length === 0) return null;
@@ -69,6 +70,15 @@ async function fetchCardDataById(cacheId: string): Promise<{ records: any[]; art
   } finally {
     clearTimeout(timer);
   }
+}
+
+function normalizeAddressKey(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  return v.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function recordAddressKey(record: any): string {
+  return normalizeAddressKey(record?.normalized_address || record?.address || '');
 }
 
 function isPlaceholderValue(v: unknown): boolean {
@@ -96,6 +106,7 @@ async function autoRefetchPropertyCards(payload: {
   suiteId?: string;
   record?: any;
 }): Promise<{ records: any[]; artifactType?: string; cacheId?: string } | null> {
+  if (!payload.suiteId) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
   try {
@@ -104,7 +115,7 @@ async function autoRefetchPropertyCards(payload: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         artifact_type: payload.artifactType,
-        suite_id: payload.suiteId || 'default',
+        suite_id: payload.suiteId,
         seed_record: payload.record || {},
       }),
       signal: controller.signal,
@@ -368,65 +379,92 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
     },
     show_cards: async (params: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string }) => {
       devLog(`[ElevenLabsAgent] show_cards:`, params.artifact_type, `${params.records?.length ?? 0} records`);
-
-      // THREAT-004: Validate payload before rendering (Law #3: fail closed)
-      if (!params.artifact_type || typeof params.artifact_type !== 'string') {
-        devLog(`[ElevenLabsAgent] show_cards BLOCKED: missing artifact_type`);
-        return JSON.stringify({ shown: false, reason: 'invalid_artifact_type' });
-      }
-      if (!Array.isArray(params.records) || params.records.length === 0) {
-        devLog(`[ElevenLabsAgent] show_cards BLOCKED: empty records`);
-        return JSON.stringify({ shown: false, reason: 'empty_records' });
-      }
-
-      let finalRecords = params.records;
-      let artifactType = params.artifact_type;
+      let finalRecords = Array.isArray(params.records) ? params.records : [];
+      let artifactType = typeof params.artifact_type === 'string' ? params.artifact_type : '';
       let cacheSource = 'llm_records';
       const incomingCacheId =
         typeof params.card_cache_id === 'string' && params.card_cache_id.trim()
           ? params.card_cache_id.trim()
           : undefined;
+      const requestedAddressKey = recordAddressKey(finalRecords[0]);
+      const requestedPropertyFlow = PROPERTY_ARTIFACT_TYPES.has(artifactType);
+      const incomingSparseProperty = requestedPropertyFlow && !hasStrongPropertySignals(finalRecords[0]);
 
-      // Prefer deterministic cache-id fetch, then fallback to legacy latest cache.
+      // Prefer deterministic cache-id fetch.
       let cached: { records: any[]; artifactType?: string } | null = null;
       if (incomingCacheId) {
-        cached = await fetchCardDataById(incomingCacheId);
+        cached = await fetchCardDataById(incomingCacheId, suiteId);
         if (cached) {
           finalRecords = cached.records;
           if (cached.artifactType) artifactType = cached.artifactType;
           cacheSource = 'cache_id';
           devLog(`[ElevenLabsAgent] show_cards: loaded ${cached.records.length} full records using cache id`);
         } else {
-          devWarn(`[ElevenLabsAgent] show_cards: cache_id miss (${incomingCacheId}), trying latest cache`);
-        }
-      }
-      if (!cached) {
-        cached = await fetchCardDataById('latest');
-        if (cached) {
-          finalRecords = cached.records;
-          if (cached.artifactType) artifactType = cached.artifactType;
-          cacheSource = 'latest';
-          devLog(`[ElevenLabsAgent] show_cards: loaded ${cached.records.length} full records from latest cache`);
+          devWarn(`[ElevenLabsAgent] PROPERTY_CARD_CACHE_MISS: show_cards cache_id miss (${incomingCacheId})`);
         }
       }
 
+      // Fallback to latest cache only when safe.
+      const shouldTryLatest =
+        !cached &&
+        (!requestedPropertyFlow || requestedAddressKey !== '' || incomingSparseProperty);
+      if (shouldTryLatest) {
+        const latest = await fetchCardDataById('latest', suiteId);
+        if (latest) {
+          const latestArtifact = latest.artifactType || artifactType;
+          const latestAddressKey = recordAddressKey(latest.records?.[0]);
+          const latestStrongProperty = PROPERTY_ARTIFACT_TYPES.has(latestArtifact) && hasStrongPropertySignals(latest.records?.[0]);
+          const latestIsSafeForProperty =
+            !PROPERTY_ARTIFACT_TYPES.has(latestArtifact) ||
+            (requestedAddressKey !== '' && latestAddressKey !== '' && latestAddressKey === requestedAddressKey) ||
+            (requestedAddressKey === '' && incomingSparseProperty && latestStrongProperty);
+          if (latestIsSafeForProperty) {
+            finalRecords = latest.records;
+            if (latest.artifactType) artifactType = latest.artifactType;
+            cacheSource = 'latest';
+            devLog(`[ElevenLabsAgent] show_cards: loaded ${latest.records.length} full records from latest cache`);
+          } else {
+            devWarn(`[ElevenLabsAgent] PROPERTY_CARD_CACHE_MISS: skipped latest cache due to property address mismatch`);
+          }
+        }
+      }
+
+      // THREAT-004: Validate payload before rendering (Law #3: fail closed)
+      if (!artifactType) {
+        devLog(`[ElevenLabsAgent] show_cards BLOCKED: missing artifact_type`);
+        return JSON.stringify({ shown: false, reason: 'invalid_artifact_type' });
+      }
+      if (!Array.isArray(finalRecords) || finalRecords.length === 0) {
+        devLog(`[ElevenLabsAgent] show_cards BLOCKED: empty records`);
+        return JSON.stringify({ shown: false, reason: 'empty_records' });
+      }
+
       const likelyPropertyFlow = PROPERTY_ARTIFACT_TYPES.has(artifactType);
+      let resolvedCacheId = incomingCacheId;
       const sparsePropertyPayload = likelyPropertyFlow && !hasStrongPropertySignals(finalRecords[0]);
       if (sparsePropertyPayload) {
         devWarn(`[ElevenLabsAgent] show_cards: sparse property payload detected, attempting auto-refetch`);
         const refetched = await autoRefetchPropertyCards({
           artifactType,
           suiteId,
-          record: params.records?.[0],
+          record: finalRecords?.[0],
         });
         if (refetched) {
           finalRecords = refetched.records;
           if (refetched.artifactType) artifactType = refetched.artifactType;
+          if (refetched.cacheId) resolvedCacheId = refetched.cacheId;
           cacheSource = 'auto_refetch';
           devLog(`[ElevenLabsAgent] show_cards: auto-refetch recovered ${refetched.records.length} records`);
         } else {
-          devWarn(`[ElevenLabsAgent] show_cards BLOCKED: property data unavailable after auto-refetch`);
-          return JSON.stringify({ shown: false, reason: 'property_data_unavailable' });
+          devWarn(`[ElevenLabsAgent] PROPERTY_RENDER_FALLBACK: property data unavailable after auto-refetch`);
+          finalRecords = [{
+            normalized_address: finalRecords?.[0]?.normalized_address || finalRecords?.[0]?.address || 'Unknown Address',
+            address: finalRecords?.[0]?.address || finalRecords?.[0]?.normalized_address || 'Unknown Address',
+            _cardSection: 'overview',
+            _sectionLabel: 'Property Overview',
+            summary: 'Property data unavailable right now. Please retry in a moment.',
+          }];
+          cacheSource = 'fallback_unavailable';
         }
       }
 
@@ -440,7 +478,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         records: safeRecords,
         summary: safeSummary,
         confidence: params.confidence,
-        card_cache_id: incomingCacheId,
+        card_cache_id: resolvedCacheId,
       });
       devLog(`[ElevenLabsAgent] show_cards telemetry`, {
         artifactType,
