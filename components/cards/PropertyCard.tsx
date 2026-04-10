@@ -107,6 +107,8 @@ const HERO_CONFIG: Record<string, { icon: string; gradient: [string, string]; ac
 };
 
 function propTypeLabel(propType: string): string {
+  const raw = String(propType || '').trim();
+  if (!raw || raw.toLowerCase() === 'n/a' || raw.toLowerCase() === 'unknown') return 'Residential';
   const t = (propType || '').toLowerCase();
   if (t.includes('sfr') || t.includes('single')) return 'Single Family';
   if (t.includes('condo')) return 'Condo';
@@ -281,7 +283,12 @@ function SchoolsSection({ r }: { r: Record<string, any> }) {
     <>
       <DataRow label="School District" value={r.school_district_name} />
       {Array.isArray(r.nearby_schools) && r.nearby_schools.map((sch: any, i: number) => (
-        <MiniRow key={i} left={sch.name || '—'} right={sch.rating ? `${sch.rating}/10` : ''} sub={sch.distance || ''} />
+        <MiniRow
+          key={i}
+          left={sch.name || '—'}
+          right={sch.rating ? `${sch.rating}/10` : ''}
+          sub={sch.distance || (sch.distance_miles ? `${sch.distance_miles} mi` : '')}
+        />
       ))}
       <DataRow label="Neighborhood" value={r.neighborhood} />
       <DataRow label="Subdivision" value={r.subdivision} />

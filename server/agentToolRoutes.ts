@@ -25,6 +25,15 @@ const router = Router();
 const cardRecordsCache = new Map<string, { records: any[]; artifactType: string; timestamp: number }>();
 let latestCardCacheId: string | null = null; // Most recent cache entry — single-user desktop app
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const PROPERTY_ARTIFACT_TYPES = new Set([
+  'LandlordPropertyPack',
+  'PropertyFactPack',
+  'RentCompPack',
+  'PermitContextPack',
+  'NeighborhoodDemandBrief',
+  'ScreeningComplianceBrief',
+  'InvestmentOpportunityPack',
+]);
 
 function cleanCardCache() {
   const now = Date.now();
@@ -34,6 +43,15 @@ function cleanCardCache() {
       if (latestCardCacheId === key) latestCardCacheId = null;
     }
   }
+}
+
+function buildPropertyRefetchTask(seedRecord: any): string | null {
+  const address =
+    (typeof seedRecord?.normalized_address === 'string' && seedRecord.normalized_address.trim()) ||
+    (typeof seedRecord?.address === 'string' && seedRecord.address.trim()) ||
+    '';
+  if (!address) return null;
+  return `Pull property facts for ${address}`;
 }
 
 const ELEVENLABS_TOOL_SECRET = process.env.ELEVENLABS_TOOL_SECRET
@@ -886,8 +904,80 @@ router.post('/v1/tools/analyze-document', async (req: Request, res: Response) =>
 // them from the ElevenLabs payload, and serves them here.
 // Path starts with /api/ so Metro dev proxy forwards it (only /api + /objects are proxied).
 
+router.post('/api/card-data/refetch', async (req: Request, res: Response) => {
+  const { artifact_type, suite_id, seed_record } = req.body || {};
+  const artifactType = typeof artifact_type === 'string' ? artifact_type : '';
+  const suiteId = typeof suite_id === 'string' && suite_id.trim() ? suite_id.trim() : 'default';
+  if (!PROPERTY_ARTIFACT_TYPES.has(artifactType)) {
+    return res.status(400).json({ error: 'UNSUPPORTED_ARTIFACT', message: 'Auto-refetch supports property artifacts only.' });
+  }
+
+  const task = buildPropertyRefetchTask(seed_record);
+  if (!task) {
+    return res.status(400).json({ error: 'MISSING_ADDRESS', message: 'Seed record missing address for refetch.' });
+  }
+
+  const orchestratorUrl = process.env.ORCHESTRATOR_URL?.trim();
+  if (!orchestratorUrl) {
+    logger.warn('[CardData] Refetch unavailable: ORCHESTRATOR_URL missing');
+    return res.status(503).json({ error: 'UNAVAILABLE', message: 'Refetch unavailable.' });
+  }
+
+  const correlationId = `corr-refetch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45_000);
+    const invokeResp = await fetch(`${orchestratorUrl}/v1/agents/invoke-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        suite_id: suiteId,
+        office_id: suiteId,
+        correlation_id: correlationId,
+        agent: 'adam',
+        task,
+        details: '',
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!invokeResp.ok) {
+      const body = await invokeResp.text().catch(() => '');
+      logger.warn('[CardData] Refetch invoke-sync failed', { status: invokeResp.status, body: body.slice(0, 180) });
+      return res.status(502).json({ error: 'REFETCH_FAILED', message: 'Refetch failed.' });
+    }
+
+    const result = await invokeResp.json();
+    const responseData = result?.data || {};
+    const fullRecords = Array.isArray(responseData?.card_records) ? responseData.card_records : [];
+    if (fullRecords.length === 0) {
+      logger.warn('[CardData] Refetch returned no card_records', { artifactType, task: task.slice(0, 120) });
+      return res.status(404).json({ error: 'NO_DATA', message: 'No card data returned from refetch.' });
+    }
+
+    cardRecordsCache.set(correlationId, {
+      records: fullRecords,
+      artifactType: responseData?.artifact_type || artifactType,
+      timestamp: Date.now(),
+    });
+    latestCardCacheId = correlationId;
+    cleanCardCache();
+
+    logger.info('[CardData] Refetch recovered records', { cacheId: correlationId, count: fullRecords.length });
+    return res.json({
+      records: fullRecords,
+      artifactType: responseData?.artifact_type || artifactType,
+      cacheId: correlationId,
+    });
+  } catch (err) {
+    logger.warn('[CardData] Refetch error', { error: err instanceof Error ? err.message : 'unknown' });
+    return res.status(502).json({ error: 'REFETCH_ERROR', message: 'Failed to refetch property data.' });
+  }
+});
+
 router.get('/api/card-data/:id', (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = String(req.params.id || '');
 
   // "latest" returns the most recent cached entry — single-user desktop app
   const resolvedId = id === 'latest' ? latestCardCacheId : id;

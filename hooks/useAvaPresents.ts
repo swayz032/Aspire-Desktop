@@ -83,14 +83,40 @@ const PROPERTY_SECTIONS: { key: string; label: string; requires: string[] }[] = 
   { key: 'foreclosure',  label: 'Distress & Foreclosure', requires: ['foreclosure_stage', 'in_foreclosure', 'foreclosure_records'] },
 ];
 
+function isPlaceholderString(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const v = value.trim().toLowerCase();
+  return v === '' || v === 'n/a' || v === 'na' || v === 'unknown' || v === 'unknown address' || v === 'none';
+}
+
+function hasValue(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') return !isPlaceholderString(value);
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function isPropertyLikeRecord(record: Record<string, unknown>): boolean {
+  const address = record.normalized_address || record.address;
+  if (!hasValue(address)) return false;
+  return (
+    hasValue(record.beds) ||
+    hasValue(record.baths) ||
+    hasValue(record.living_sqft) ||
+    hasValue(record.year_built) ||
+    hasValue(record.property_value) ||
+    hasValue(record.tax_market_value) ||
+    hasValue(record.owner_name)
+  );
+}
+
 function splitPropertyRecord(record: Record<string, unknown>): Record<string, unknown>[] {
   const cards: Record<string, unknown>[] = [];
   for (const section of PROPERTY_SECTIONS) {
     const hasData = section.requires.some((field) => {
       const val = record[field];
-      if (val == null || val === '' || val === 0 || val === 'none') return false;
-      if (Array.isArray(val)) return val.length > 0;
-      return true;
+      return hasValue(val);
     });
     // Overview always shows; others only if they have data
     if (section.key === 'overview' || hasData) {
@@ -110,9 +136,11 @@ export function useAvaPresents(): UseAvaPresentReturn {
 
     let records = data.records;
 
-    // Property types: split single record into multiple section cards
-    if (PROPERTY_TYPES.has(data.artifactType) && records.length === 1) {
-      records = splitPropertyRecord(records[0]);
+    // Property types: split canonical property records into multiple section cards.
+    if (PROPERTY_TYPES.has(data.artifactType)) {
+      const propertyLike = records.filter(isPropertyLikeRecord);
+      const candidates = propertyLike.length > 0 ? propertyLike : records.slice(0, 1);
+      records = candidates.flatMap((r) => splitPropertyRecord(r));
     }
 
     setState({

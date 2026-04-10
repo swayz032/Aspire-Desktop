@@ -497,7 +497,7 @@ function AvaDeskPanelInner() {
         showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
       }
     },
-    onShowCards: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => {
+    onShowCards: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string }) => {
       avaPresents.showCards({
         artifactType: data.artifact_type,
         records: data.records,

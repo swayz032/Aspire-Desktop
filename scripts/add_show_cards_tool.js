@@ -1,13 +1,15 @@
 /**
- * add_show_cards_tool.js — Adds the show_cards client tool to Ava's ElevenLabs agent.
+ * add_show_cards_tool.js — Robustly ensures Ava has show_cards configured.
  *
- * This script:
- * 1. GETs Ava's current agent config (preserving all existing tools + prompt)
- * 2. Adds show_cards as a client tool (if not already present)
- * 3. Appends show_cards instruction to the system prompt
- * 4. PATCHes the agent config
+ * This script uses the current ElevenLabs tool model:
+ * 1) Ensure a reusable show_cards tool exists in /v1/convai/tools
+ * 2) Update that tool definition
+ * 3) Sanitize the agent's prompt.tool_ids (drop stale ids)
+ * 4) Attach show_cards tool id to the agent prompt.tool_ids
+ * 5) Ensure prompt contains show_cards usage guidance
  *
- * Run: ELEVENLABS_API_KEY=... node scripts/add_show_cards_tool.js
+ * Run:
+ *   ELEVENLABS_API_KEY=... node scripts/add_show_cards_tool.js
  */
 
 const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -17,122 +19,166 @@ if (!apiKey) {
 }
 
 const AGENT_ID = 'agent_1201kmqdjgxvfxxteedpkvjej7er'; // Ava
-const API = `https://api.elevenlabs.io/v1/convai/agents/${AGENT_ID}`;
+const API_AGENT = `https://api.elevenlabs.io/v1/convai/agents/${AGENT_ID}`;
+const API_TOOLS = 'https://api.elevenlabs.io/v1/convai/tools';
 
-// The show_cards client tool definition
-const SHOW_CARDS_TOOL = {
+const headers = {
+  'xi-api-key': apiKey,
+  'Content-Type': 'application/json',
+};
+
+const SHOW_CARDS_TOOL_CONFIG = {
   type: 'client',
   name: 'show_cards',
-  description: 'Display visual research result cards on the user\'s screen. Call this IMMEDIATELY when Adam research completes with results. The user will see the cards while you narrate. Always include artifact_type, records array, and a brief summary.',
+  description:
+    "Display visual research result cards on the user's screen. Call this immediately after invoke_adam returns results. Pass artifact_type, records, summary, and card_cache_id when available.",
+  response_timeout_secs: 5,
+  disable_interruptions: false,
+  force_pre_tool_speech: false,
+  assignments: [],
+  tool_call_sound_behavior: 'auto',
+  tool_error_handling_mode: 'auto',
   parameters: {
     type: 'object',
+    required: ['artifact_type', 'records', 'summary'],
     properties: {
       artifact_type: {
         type: 'string',
-        description: 'The type of research results: HotelShortlist, PriceComparison, VendorShortlist, ProspectList, CompetitorBrief, PropertyFactPack, LandlordPropertyPack, InvestmentOpportunityPack, EstimateResearchPack, etc.',
+        description:
+          'Result type: HotelShortlist, PriceComparison, VendorShortlist, PropertyFactPack, LandlordPropertyPack, InvestmentOpportunityPack, etc.',
       },
       records: {
         type: 'array',
-        description: 'Array of research result records to display as cards. Pass the full records array from Adam\'s response.',
-        items: { type: 'object' },
+        description: "Records array from invoke_adam response data to display as cards",
+        items: { type: 'object', properties: {}, required: [] },
       },
       summary: {
         type: 'string',
-        description: 'Brief summary of the results (1-2 sentences). This appears as the modal header.',
+        description: 'Brief summary shown as card modal header',
+      },
+      card_cache_id: {
+        type: 'string',
+        description:
+          'Optional cache id from invoke_adam response (_card_cache_id). Pass when available to fetch exact full records.',
       },
     },
-    required: ['artifact_type', 'records', 'summary'],
   },
+  expects_response: false,
+  dynamic_variables: { dynamic_variable_placeholders: {} },
+  execution_mode: 'immediate',
 };
 
-// Prompt addition for show_cards
-const SHOW_CARDS_PROMPT_SECTION = [
+const SHOW_CARDS_PROMPT_SNIPPET = [
   '',
   '## show_cards',
   '',
   '- When to use: ALWAYS after invoke_adam returns results with records',
-  '- Call show_cards with the artifact_type, records array, and a brief summary',
-  '- Call this WHILE you are narrating the results \u2014 the user sees the visual cards as you speak',
-  '- Do not wait until you finish talking \u2014 show the cards immediately',
-  '- Example: After finding hotels, call show_cards({artifact_type: "HotelShortlist", records: [...], summary: "Found 16 hotels near Tucker GA"})',
+  '- Call show_cards with artifact_type, records array, and a brief summary',
+  '- If invoke_adam returns _card_cache_id, include it as card_cache_id',
+  '- Call this while narrating results so the cards appear immediately',
 ].join('\n');
 
+async function fetchJson(url, options = {}) {
+  const resp = await fetch(url, options);
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`HTTP ${resp.status} ${url} — ${body}`);
+  }
+  return resp.json();
+}
+
+async function safeGetTool(toolId) {
+  try {
+    const doc = await fetchJson(`${API_TOOLS}/${toolId}`, { headers: { 'xi-api-key': apiKey } });
+    return doc?.id || toolId;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureShowCardsTool() {
+  const list = await fetchJson(API_TOOLS, { headers: { 'xi-api-key': apiKey } });
+  const tools = Array.isArray(list.tools) ? list.tools : [];
+  const existing = tools.find((t) => t?.tool_config?.name === 'show_cards');
+  if (existing?.id) {
+    await fetchJson(`${API_TOOLS}/${existing.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ tool_config: SHOW_CARDS_TOOL_CONFIG }),
+    });
+    return existing.id;
+  }
+
+  const created = await fetchJson(API_TOOLS, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ tool_config: SHOW_CARDS_TOOL_CONFIG }),
+  });
+  if (!created?.id) throw new Error('Failed to create show_cards tool');
+  return created.id;
+}
+
 async function main() {
-  // Step 1: GET current config
-  console.log('Fetching current Ava agent config...');
-  const getResp = await fetch(API, { headers: { 'xi-api-key': apiKey } });
-  if (!getResp.ok) {
-    console.error('GET failed:', getResp.status, await getResp.text());
-    process.exit(1);
+  console.log('Fetching Ava agent...');
+  const agent = await fetchJson(API_AGENT, { headers: { 'xi-api-key': apiKey } });
+  const prompt = agent?.conversation_config?.agent?.prompt;
+  if (!prompt) throw new Error('Agent prompt config missing');
+
+  console.log('Ensuring show_cards tool exists...');
+  const showCardsToolId = await ensureShowCardsTool();
+  console.log(`show_cards tool id: ${showCardsToolId}`);
+
+  const currentIds = Array.isArray(prompt.tool_ids) ? prompt.tool_ids : [];
+  const verifiedIds = [];
+  for (const id of currentIds) {
+    const valid = await safeGetTool(id);
+    if (valid) verifiedIds.push(valid);
   }
-  const agent = await getResp.json();
-  const prompt = agent.conversation_config?.agent?.prompt;
-  const tools = prompt?.tools || [];
+  if (!verifiedIds.includes(showCardsToolId)) verifiedIds.push(showCardsToolId);
 
-  console.log('Current tools:', tools.map(t => t.name).join(', '));
-  console.log('Current prompt length:', prompt?.prompt?.length, 'chars');
-
-  // Step 2: Check if show_cards already exists
-  const existing = tools.find(t => t.name === 'show_cards');
-  if (existing) {
-    console.log('show_cards tool already exists! Updating definition...');
-    Object.assign(existing, SHOW_CARDS_TOOL);
-  } else {
-    console.log('Adding show_cards tool...');
-    tools.push(SHOW_CARDS_TOOL);
-  }
-
-  // Step 3: Add show_cards section to prompt (if not already there)
-  let updatedPrompt = prompt.prompt;
-  if (!updatedPrompt.includes('## show_cards')) {
-    // Insert before the "# Routing" section or at the end of the "# Tools" section
-    const routingIdx = updatedPrompt.indexOf('# Routing');
+  let updatedPromptText = prompt.prompt || '';
+  if (!updatedPromptText.includes('## show_cards')) {
+    const routingIdx = updatedPromptText.indexOf('# Routing');
     if (routingIdx > 0) {
-      updatedPrompt = updatedPrompt.slice(0, routingIdx) + SHOW_CARDS_PROMPT_SECTION + '\n\n' + updatedPrompt.slice(routingIdx);
+      updatedPromptText =
+        updatedPromptText.slice(0, routingIdx) +
+        SHOW_CARDS_PROMPT_SNIPPET +
+        '\n\n' +
+        updatedPromptText.slice(routingIdx);
     } else {
-      updatedPrompt += '\n' + SHOW_CARDS_PROMPT_SECTION;
+      updatedPromptText += '\n' + SHOW_CARDS_PROMPT_SNIPPET;
     }
-    console.log('Added show_cards section to prompt');
-  } else {
-    console.log('show_cards section already in prompt');
   }
 
-  // Step 4: PATCH the agent
-  console.log('Patching agent...');
-  const patchResp = await fetch(API, {
+  console.log('Patching agent prompt.tool_ids + prompt text...');
+  const patched = await fetchJson(API_AGENT, {
     method: 'PATCH',
-    headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       conversation_config: {
         agent: {
           prompt: {
-            prompt: updatedPrompt,
-            tools,
+            tool_ids: verifiedIds,
+            prompt: updatedPromptText,
           },
         },
       },
     }),
   });
 
-  if (patchResp.ok) {
-    const result = await patchResp.json();
-    const updatedTools = result.conversation_config?.agent?.prompt?.tools || [];
-    const updatedPromptLen = result.conversation_config?.agent?.prompt?.prompt?.length;
-
-    console.log('\n=== VERIFICATION ===');
-    console.log('Tools:', updatedTools.map(t => `${t.name} (${t.type})`).join(', '));
-    console.log('show_cards present:', updatedTools.some(t => t.name === 'show_cards'));
-    console.log('Prompt length:', updatedPromptLen, 'chars');
-    console.log('Prompt contains show_cards section:', result.conversation_config?.agent?.prompt?.prompt?.includes('## show_cards'));
-    console.log('\nDone! Ava will now call show_cards when Adam returns research results.');
-  } else {
-    console.error('PATCH failed:', patchResp.status);
-    console.error(await patchResp.text());
-    process.exit(1);
-  }
+  const finalIds = patched?.conversation_config?.agent?.prompt?.tool_ids || [];
+  console.log('\n=== VERIFICATION ===');
+  console.log(`tool_ids count: ${finalIds.length}`);
+  console.log(`show_cards attached: ${finalIds.includes(showCardsToolId)}`);
+  console.log(
+    `prompt has show_cards section: ${String(
+      patched?.conversation_config?.agent?.prompt?.prompt?.includes('## show_cards'),
+    )}`,
+  );
+  console.log('Done.');
 }
 
-main().catch((e) => {
-  console.error(e);
+main().catch((err) => {
+  console.error(err.message || err);
   process.exit(1);
 });

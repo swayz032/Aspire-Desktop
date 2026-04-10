@@ -35,6 +35,16 @@ import { getTimeOfDay } from '@/lib/elevenlabs-agents';
 import { supabase } from '@/lib/supabase';
 
 const AUTH_COOLDOWN_MS = 60_000;
+const CARD_FETCH_TIMEOUT_MS = 8_000;
+const PROPERTY_ARTIFACT_TYPES = new Set([
+  'LandlordPropertyPack',
+  'PropertyFactPack',
+  'RentCompPack',
+  'PermitContextPack',
+  'NeighborhoodDemandBrief',
+  'ScreeningComplianceBrief',
+  'InvestmentOpportunityPack',
+]);
 
 class AgentSessionHttpError extends Error {
   status: number;
@@ -42,6 +52,71 @@ class AgentSessionHttpError extends Error {
   constructor(status: number, message: string) {
     super(message);
     this.status = status;
+  }
+}
+
+async function fetchCardDataById(cacheId: string): Promise<{ records: any[]; artifactType?: string } | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CARD_FETCH_TIMEOUT_MS);
+  try {
+    const resp = await fetch(`/api/card-data/${encodeURIComponent(cacheId)}`, { signal: controller.signal });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!Array.isArray(data?.records) || data.records.length === 0) return null;
+    return data;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function isPlaceholderValue(v: unknown): boolean {
+  if (v == null) return true;
+  if (typeof v !== 'string') return false;
+  const s = v.trim().toLowerCase();
+  return s === '' || s === 'n/a' || s === 'na' || s === 'unknown' || s === 'unknown address' || s === 'none';
+}
+
+function hasStrongPropertySignals(record: any): boolean {
+  if (!record || typeof record !== 'object') return false;
+  const addressOk = !isPlaceholderValue(record.normalized_address || record.address);
+  const hasCoreNumeric =
+    typeof record.beds === 'number' ||
+    typeof record.baths === 'number' ||
+    typeof record.living_sqft === 'number' ||
+    typeof record.year_built === 'number' ||
+    typeof record.tax_market_value === 'number' ||
+    typeof record.property_value === 'number';
+  return addressOk && hasCoreNumeric;
+}
+
+async function autoRefetchPropertyCards(payload: {
+  artifactType: string;
+  suiteId?: string;
+  record?: any;
+}): Promise<{ records: any[]; artifactType?: string; cacheId?: string } | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const resp = await fetch('/api/card-data/refetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        artifact_type: payload.artifactType,
+        suite_id: payload.suiteId || 'default',
+        seed_record: payload.record || {},
+      }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!Array.isArray(data?.records) || data.records.length === 0) return null;
+    return { records: data.records, artifactType: data.artifactType, cacheId: data.cacheId };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -69,7 +144,7 @@ export interface UseElevenLabsAgentOptions {
   onNavigate?: (path: string) => void;
   onShowNotification?: (message: string, type: 'success' | 'warning' | 'error') => void;
   /** Called when Adam research results should be displayed as visual cards. */
-  onShowCards?: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => void;
+  onShowCards?: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string }) => void;
 }
 
 export interface UseElevenLabsAgentReturn {
@@ -291,7 +366,7 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       onShowNotificationRef.current?.(params.message, params.type);
       return JSON.stringify({ shown: true });
     },
-    show_cards: async (params: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => {
+    show_cards: async (params: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string }) => {
       devLog(`[ElevenLabsAgent] show_cards:`, params.artifact_type, `${params.records?.length ?? 0} records`);
 
       // THREAT-004: Validate payload before rendering (Law #3: fail closed)
@@ -306,28 +381,53 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
 
       let finalRecords = params.records;
       let artifactType = params.artifact_type;
+      let cacheSource = 'llm_records';
+      const incomingCacheId =
+        typeof params.card_cache_id === 'string' && params.card_cache_id.trim()
+          ? params.card_cache_id.trim()
+          : undefined;
 
-      // Always try to fetch full records from gateway cache.
-      // The records ElevenLabs passes are slim (heavy arrays stripped to keep LLM fast).
-      // The gateway caches full records (sale_history, foreclosure_records, permits,
-      // schools, comps) when invoke_adam returns card_records.
-      // Fetch /api/card-data/latest — single-user desktop app, latest is always correct.
-      try {
-        const resp = await fetch('/api/card-data/latest');
-        if (resp.ok) {
-          const cached = await resp.json();
-          if (cached.records && Array.isArray(cached.records) && cached.records.length > 0) {
-            devLog(`[ElevenLabsAgent] show_cards: upgraded to ${cached.records.length} full records from gateway cache`);
-            finalRecords = cached.records;
-            if (cached.artifactType) {
-              artifactType = cached.artifactType;
-            }
-          }
+      // Prefer deterministic cache-id fetch, then fallback to legacy latest cache.
+      let cached: { records: any[]; artifactType?: string } | null = null;
+      if (incomingCacheId) {
+        cached = await fetchCardDataById(incomingCacheId);
+        if (cached) {
+          finalRecords = cached.records;
+          if (cached.artifactType) artifactType = cached.artifactType;
+          cacheSource = 'cache_id';
+          devLog(`[ElevenLabsAgent] show_cards: loaded ${cached.records.length} full records using cache id`);
         } else {
-          devLog(`[ElevenLabsAgent] show_cards: no cached full records (${resp.status}), using LLM records`);
+          devWarn(`[ElevenLabsAgent] show_cards: cache_id miss (${incomingCacheId}), trying latest cache`);
         }
-      } catch (err) {
-        devLog(`[ElevenLabsAgent] show_cards: cache fetch failed, using LLM records`, err);
+      }
+      if (!cached) {
+        cached = await fetchCardDataById('latest');
+        if (cached) {
+          finalRecords = cached.records;
+          if (cached.artifactType) artifactType = cached.artifactType;
+          cacheSource = 'latest';
+          devLog(`[ElevenLabsAgent] show_cards: loaded ${cached.records.length} full records from latest cache`);
+        }
+      }
+
+      const likelyPropertyFlow = PROPERTY_ARTIFACT_TYPES.has(artifactType);
+      const sparsePropertyPayload = likelyPropertyFlow && !hasStrongPropertySignals(finalRecords[0]);
+      if (sparsePropertyPayload) {
+        devWarn(`[ElevenLabsAgent] show_cards: sparse property payload detected, attempting auto-refetch`);
+        const refetched = await autoRefetchPropertyCards({
+          artifactType,
+          suiteId,
+          record: params.records?.[0],
+        });
+        if (refetched) {
+          finalRecords = refetched.records;
+          if (refetched.artifactType) artifactType = refetched.artifactType;
+          cacheSource = 'auto_refetch';
+          devLog(`[ElevenLabsAgent] show_cards: auto-refetch recovered ${refetched.records.length} records`);
+        } else {
+          devWarn(`[ElevenLabsAgent] show_cards BLOCKED: property data unavailable after auto-refetch`);
+          return JSON.stringify({ shown: false, reason: 'property_data_unavailable' });
+        }
       }
 
       // Cap records at 20 to prevent DoS (THREAT-008)
@@ -340,8 +440,14 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         records: safeRecords,
         summary: safeSummary,
         confidence: params.confidence,
+        card_cache_id: incomingCacheId,
       });
-      return JSON.stringify({ shown: true, count: safeRecords.length });
+      devLog(`[ElevenLabsAgent] show_cards telemetry`, {
+        artifactType,
+        count: safeRecords.length,
+        source: cacheSource,
+      });
+      return JSON.stringify({ shown: true, count: safeRecords.length, source: cacheSource });
     },
   }).current;
 

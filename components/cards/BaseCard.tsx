@@ -110,10 +110,12 @@ export function BaseCard({
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const CARD_MAX_WIDTH = 500;
+const CARD_MIN_HEIGHT = 580;
 
 const styles = StyleSheet.create({
   card: {
     maxWidth: CARD_MAX_WIDTH,
+    minHeight: CARD_MIN_HEIGHT,
     width: '100%' as unknown as number,
     alignSelf: 'center',
     backgroundColor: Colors.surface.card,
