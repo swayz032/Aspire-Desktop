@@ -388,7 +388,6 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
           : undefined;
       const requestedAddressKey = recordAddressKey(finalRecords[0]);
       const requestedPropertyFlow = PROPERTY_ARTIFACT_TYPES.has(artifactType);
-      const incomingSparseProperty = requestedPropertyFlow && !hasStrongPropertySignals(finalRecords[0]);
 
       // Prefer deterministic cache-id fetch.
       let cached: { records: any[]; artifactType?: string } | null = null;
@@ -407,17 +406,18 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
       // Fallback to latest cache only when safe.
       const shouldTryLatest =
         !cached &&
-        (!requestedPropertyFlow || requestedAddressKey !== '' || incomingSparseProperty);
+        // Never use suite "latest" as a blind recovery path for property cards.
+        // Property lookups must be tied to the requested address (cache_id match,
+        // or explicit address match) to avoid cross-query record bleed.
+        (!requestedPropertyFlow || requestedAddressKey !== '');
       if (shouldTryLatest) {
         const latest = await fetchCardDataById('latest', suiteId);
         if (latest) {
           const latestArtifact = latest.artifactType || artifactType;
           const latestAddressKey = recordAddressKey(latest.records?.[0]);
-          const latestStrongProperty = PROPERTY_ARTIFACT_TYPES.has(latestArtifact) && hasStrongPropertySignals(latest.records?.[0]);
           const latestIsSafeForProperty =
             !PROPERTY_ARTIFACT_TYPES.has(latestArtifact) ||
-            (requestedAddressKey !== '' && latestAddressKey !== '' && latestAddressKey === requestedAddressKey) ||
-            (requestedAddressKey === '' && incomingSparseProperty && latestStrongProperty);
+            (requestedAddressKey !== '' && latestAddressKey !== '' && latestAddressKey === requestedAddressKey);
           if (latestIsSafeForProperty) {
             finalRecords = latest.records;
             if (latest.artifactType) artifactType = latest.artifactType;

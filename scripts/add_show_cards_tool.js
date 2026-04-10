@@ -34,7 +34,8 @@ const SHOW_CARDS_TOOL_CONFIG = {
     "Display visual research result cards on the user's screen. Call this immediately after invoke_adam returns results. Pass artifact_type, records, summary, and card_cache_id when available.",
   response_timeout_secs: 5,
   disable_interruptions: false,
-  force_pre_tool_speech: false,
+  // Prevent silent turns after card rendering by requiring spoken lead-in.
+  force_pre_tool_speech: true,
   assignments: [],
   tool_call_sound_behavior: 'auto',
   tool_error_handling_mode: 'auto',
@@ -63,7 +64,8 @@ const SHOW_CARDS_TOOL_CONFIG = {
       },
     },
   },
-  expects_response: false,
+  // Ensure the tool result is fed back into the agent turn so it can continue naturally.
+  expects_response: true,
   dynamic_variables: { dynamic_variable_placeholders: {} },
   execution_mode: 'immediate',
 };
@@ -75,6 +77,7 @@ const SHOW_CARDS_PROMPT_SNIPPET = [
   '- When to use: ALWAYS after invoke_adam returns results with records',
   '- Call show_cards with artifact_type, records array, and a brief summary',
   '- If invoke_adam returns _card_cache_id, include it as card_cache_id',
+  '- Your same turn must include one spoken headline sentence. Never send a tool-only turn.',
   '- Call this while narrating results so the cards appear immediately',
 ].join('\n');
 
@@ -148,6 +151,12 @@ async function main() {
     } else {
       updatedPromptText += '\n' + SHOW_CARDS_PROMPT_SNIPPET;
     }
+  }
+  if (!updatedPromptText.includes('Never send a tool-only turn.')) {
+    updatedPromptText = updatedPromptText.replace(
+      /## show_cards\s*/i,
+      (m) => `${m}\n- Your same turn must include one spoken headline sentence. Never send a tool-only turn.\n`,
+    );
   }
 
   console.log('Patching agent prompt.tool_ids + prompt text...');
