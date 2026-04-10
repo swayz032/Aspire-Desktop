@@ -477,7 +477,39 @@ function AvaDeskPanelInner() {
       }
     },
     onError: (error) => {
-...
+      console.error('Ava voice error:', error);
+      setIsSessionActive(false);
+      // Classify and surface the error to the user
+      const msg = error.message || String(error);
+      if (/auth_required/i.test(msg)) {
+        showVoiceError('Session expired. Please sign in again.');
+      } else if (/circuit_open/i.test(msg)) {
+        showVoiceError('Ava Brain is warming back up. Try again in a few seconds.');
+      } else if (/orchestrator_timeout|timeout/i.test(msg)) {
+        showVoiceError('Ava took too long to respond. Please try again.');
+      } else if (/autoplay|not allowed|play\(\)/i.test(msg)) {
+        showVoiceError('Tap anywhere on the page, then try again.');
+      } else if (/permission|denied|not found.*microphone|getUserMedia/i.test(msg)) {
+        showVoiceError('Microphone access denied. Check browser permissions.');
+      } else if (/tts|voice.*unavailable|synthesis|elevenlabs/i.test(msg)) {
+        showVoiceError('Voice unavailable — responses shown in chat.');
+      } else {
+        showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
+      }
+    },
+    onShowCards: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any }) => {
+      avaPresents.showCards({
+        artifactType: data.artifact_type,
+        records: data.records,
+        summary: data.summary,
+        confidence: data.confidence,
+      });
+    },
+    onDiagnostic: (diag) => {
+      setLatestVoiceDiagnostic(diag);
+      if (diag.stage === 'autoplay') {
+        showVoiceError(`Audio blocked by browser. Tap voice again to retry. Trace: ${diag.traceId}`);
+      }
     },
   });
 
