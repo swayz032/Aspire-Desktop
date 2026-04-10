@@ -78,6 +78,8 @@ const SHOW_CARDS_PROMPT_SNIPPET = [
   '- Call show_cards with artifact_type, records array, and a brief summary',
   '- If invoke_adam returns _card_cache_id, include it as card_cache_id',
   '- Your same turn must include one spoken headline sentence. Never send a tool-only turn.',
+  '- For property results, always speak this exact headline: "Here are the property details."',
+  '- Never say "let me pull up the numbers" for property lookups.',
   '- Call this while narrating results so the cards appear immediately',
 ].join('\n');
 

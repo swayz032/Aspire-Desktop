@@ -24,6 +24,7 @@ const router = Router();
 // Desktop fetches full records via GET /v1/tools/card-data/:id when show_cards fires.
 const cardRecordsCache = new Map<string, { records: any[]; artifactType: string; suiteId: string; timestamp: number }>();
 const latestCardCacheIdBySuite = new Map<string, string>(); // Per-suite most recent cache entry
+const latestPropertyAddressBySuite = new Map<string, { address: string; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const PROPERTY_ARTIFACT_TYPES = new Set([
   'LandlordPropertyPack',
@@ -51,13 +52,47 @@ function cleanCardCache() {
       }
     }
   }
+  for (const [suiteId, entry] of latestPropertyAddressBySuite) {
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      latestPropertyAddressBySuite.delete(suiteId);
+    }
+  }
 }
 
-function buildPropertyRefetchTask(seedRecord: any): string | null {
+function getLatestPropertyAddress(suiteId: string): string {
+  const entry = latestPropertyAddressBySuite.get(suiteId);
+  if (!entry) return '';
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    latestPropertyAddressBySuite.delete(suiteId);
+    return '';
+  }
+  return entry.address;
+}
+
+function maybeStoreLatestPropertyAddress(suiteId: string, records: any[]) {
+  if (!suiteId || !Array.isArray(records) || records.length === 0) return;
+  const first = records[0] || {};
+  const raw =
+    (typeof first?.normalized_address === 'string' && first.normalized_address.trim()) ||
+    (typeof first?.address === 'string' && first.address.trim()) ||
+    '';
+  if (!raw) return;
+  const lower = raw.toLowerCase();
+  if (lower === 'unknown address' || lower === 'n/a' || lower === 'na') return;
+  latestPropertyAddressBySuite.set(suiteId, { address: raw, timestamp: Date.now() });
+}
+
+function isLikelyPropertyIntent(task: string, details: string): boolean {
+  const text = `${task || ''} ${details || ''}`.toLowerCase();
+  if (!text.trim()) return false;
+  return /(property|owner|mortgage|equity|assessment|permit|zoning|school|address|house|parcel|valuation|tax)/.test(text);
+}
+
+function buildPropertyRefetchTask(seedRecord: any, suiteId: string): string | null {
   const address =
     (typeof seedRecord?.normalized_address === 'string' && seedRecord.normalized_address.trim()) ||
     (typeof seedRecord?.address === 'string' && seedRecord.address.trim()) ||
-    '';
+    getLatestPropertyAddress(suiteId);
   if (!address) return null;
   return `Pull property facts for ${address}`;
 }
@@ -561,6 +596,21 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 52000); // 52s — backend has 45s playbook timeout + 7s margin for network
 
+    const safeSuiteId = typeof suite_id === 'string' && suite_id.trim() ? suite_id.trim() : 'default';
+    const taskText = typeof task === 'string' ? task : '';
+    let detailsText = typeof details === 'string' ? details : '';
+    if (agent === 'adam' && !detailsText.trim() && isLikelyPropertyIntent(taskText, detailsText)) {
+      const pinned = getLatestPropertyAddress(safeSuiteId);
+      if (pinned) {
+        detailsText = pinned;
+        logger.info('[AgentTool] Reused latest property address for Adam invoke', {
+          suite_id: safeSuiteId,
+          task: taskText.slice(0, 80),
+          address: pinned,
+        });
+      }
+    }
+
     const a2aResp = await fetch(`${orchestratorUrl}/v1/agents/invoke-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -569,8 +619,8 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
         office_id: suite_id,
         correlation_id: correlationId,
         agent,
-        task,
-        details: details || '',
+        task: taskText,
+        details: detailsText,
         user_id,
       }),
       signal: controller.signal,
@@ -598,7 +648,7 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     let responseData = a2aResult.data || null;
     if (agent === 'adam' && Array.isArray(responseData?.card_records) && responseData.card_records.length > 0) {
       const cacheId = correlationId;
-      const cacheSuiteId = typeof suite_id === 'string' && suite_id.trim() ? suite_id.trim() : 'default';
+      const cacheSuiteId = safeSuiteId;
       cardRecordsCache.set(cacheId, {
         records: responseData.card_records,
         artifactType: responseData.artifact_type || '',
@@ -606,6 +656,9 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
         timestamp: Date.now(),
       });
       latestCardCacheIdBySuite.set(cacheSuiteId, cacheId);
+      if (PROPERTY_ARTIFACT_TYPES.has(responseData.artifact_type || '')) {
+        maybeStoreLatestPropertyAddress(cacheSuiteId, responseData.card_records);
+      }
       cleanCardCache();
       logger.info('[AgentTool] Cached card_records', { cacheId, count: responseData.card_records.length });
 
@@ -929,7 +982,7 @@ router.post('/api/card-data/refetch', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'MISSING_SUITE_ID', message: 'suite_id is required for refetch.' });
   }
 
-  const task = buildPropertyRefetchTask(seed_record);
+  const task = buildPropertyRefetchTask(seed_record, suiteId);
   if (!task) {
     return res.status(400).json({ error: 'MISSING_ADDRESS', message: 'Seed record missing address for refetch.' });
   }
