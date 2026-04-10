@@ -193,29 +193,12 @@ function ZoomVideoView({
             child.style.width = '100%';
             child.style.height = '100%';
             child.style.objectFit = 'cover';
-            // HiDPI: scale canvas to device pixel ratio for sharp rendering
-            if (child.tagName === 'CANVAS') {
-              const dpr = window.devicePixelRatio || 1;
-              const rect = child.getBoundingClientRect();
-              if (rect.width > 0 && rect.height > 0) {
-                (child as HTMLCanvasElement).width = Math.floor(rect.width * dpr);
-                (child as HTMLCanvasElement).height = Math.floor(rect.height * dpr);
-              }
-            }
           });
         }
         el.querySelectorAll('video, canvas').forEach((child: Element) => {
           (child as HTMLElement).style.width = '100%';
           (child as HTMLElement).style.height = '100%';
           (child as HTMLElement).style.objectFit = 'cover';
-          if (child.tagName === 'CANVAS') {
-            const dpr = window.devicePixelRatio || 1;
-            const rect = child.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-              (child as HTMLCanvasElement).width = Math.floor(rect.width * dpr);
-              (child as HTMLCanvasElement).height = Math.floor(rect.height * dpr);
-            }
-          }
         });
       };
       applyInternalStyles();

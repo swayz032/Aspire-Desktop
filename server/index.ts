@@ -438,6 +438,10 @@ app.use(helmet({
   },
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
   frameguard: { action: 'sameorigin' },
+  // Unlocks SharedArrayBuffer for high-performance Zoom video rendering in Chrome
+  crossOriginOpenerPolicy: { policy: 'same-origin' },
+  crossOriginEmbedderPolicy: { policy: 'credentialless' },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
 // Response compression (skip SSE streams)
