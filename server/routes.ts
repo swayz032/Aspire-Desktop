@@ -19,6 +19,7 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
 
 const router = Router();
 const CANONICAL_ANAM_AVA_PERSONA_ID = '58f82b89-8ae7-43cc-930d-be8def14dff3';
+const CONFIGURED_ANAM_AVA_PERSONA_ID = process.env.ANAM_AVA_PERSONA_ID?.trim() || CANONICAL_ANAM_AVA_PERSONA_ID;
 const ANAM_AVA_REQUIRED_TOOL_IDS = [
   '773aa097-6072-4662-972d-57a339a80c1f', // ava_get_context
   '0efe155d-bbdf-40cd-aa00-35fc3e7999db', // search
@@ -4158,7 +4159,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
     const AVA_CONFIG = {
       name: 'Ava',
-      personaId: CANONICAL_ANAM_AVA_PERSONA_ID,
+      personaId: CONFIGURED_ANAM_AVA_PERSONA_ID,
       avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
       voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
       llmId: 'b4f89001-9638-4879-a9c3-02cc9f9f2004',      // Anam hosted GPT-4.1
@@ -4267,22 +4268,51 @@ When giving tax guidance, always include confidence level: "This is well-establi
     const personaConfig = resolvedPersona === 'finn' ? FINN_CONFIG : AVA_CONFIG;
     const agent = resolvedPersona === 'finn' ? 'Finn' : 'Ava';
 
-    const response = await fetch('https://api.anam.ai/v1/auth/session-token', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${ANAM_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ personaConfig }),
-    });
+    const requestSessionToken = async (config: Record<string, unknown>) => {
+      const tokenResponse = await fetch('https://api.anam.ai/v1/auth/session-token', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${ANAM_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ personaConfig: config }),
+      });
+      const rawText = await tokenResponse.text();
+      return { tokenResponse, rawText };
+    };
+
+    let { tokenResponse: response, rawText: responseText } = await requestSessionToken(personaConfig as unknown as Record<string, unknown>);
+    if (!response.ok) {
+      const retriableByPersonaDrift = resolvedPersona === 'ava' && response.status >= 400 && response.status < 500;
+      if (retriableByPersonaDrift) {
+        const fallbackConfig = { ...(personaConfig as Record<string, unknown>) };
+        delete fallbackConfig.personaId;
+        const fallbackResult = await requestSessionToken(fallbackConfig);
+        if (fallbackResult.tokenResponse.ok) {
+          response = fallbackResult.tokenResponse;
+          responseText = fallbackResult.rawText;
+          logger.warn('Anam session token recovered after dropping personaId', {
+            persona: agent,
+            originalPersonaId: (personaConfig as Record<string, unknown>).personaId,
+            configuredPersonaId: CONFIGURED_ANAM_AVA_PERSONA_ID,
+          });
+        } else {
+          logger.error('Anam session token fallback failed', {
+            status: fallbackResult.tokenResponse.status,
+            persona: agent,
+            avatarId: (personaConfig as Record<string, unknown>).avatarId,
+            error: fallbackResult.rawText.substring(0, 500),
+          });
+        }
+      }
+    }
 
     if (!response.ok) {
-      const errorText = await response.text();
       logger.error('Anam session token API error', {
         status: response.status,
         persona: agent,
-        avatarId: personaConfig.avatarId,
-        error: errorText.substring(0, 500),
+        avatarId: (personaConfig as Record<string, unknown>).avatarId,
+        error: responseText.substring(0, 500),
       });
       return res.status(502).json({
         error: 'AVATAR_SESSION_FAILED',
@@ -4291,7 +4321,12 @@ When giving tax guidance, always include confidence level: "This is well-establi
       });
     }
 
-    const data = await response.json() as { sessionToken?: string };
+    let data: { sessionToken?: string } = {};
+    try {
+      data = JSON.parse(responseText || '{}') as { sessionToken?: string };
+    } catch {
+      data = {};
+    }
     if (!data.sessionToken) {
       logger.error('Anam returned no session token', { responseKeys: Object.keys(data), persona: resolvedPersona });
       return res.status(502).json({ error: 'AVATAR_NO_TOKEN', message: 'Avatar service returned invalid response' });
