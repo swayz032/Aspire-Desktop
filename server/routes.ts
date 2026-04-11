@@ -80,6 +80,118 @@ type CanonicalAnamToolSelection = {
   selected: Record<string, string>;
 };
 
+function normalizeToolName(value: unknown): string {
+  return String(value || '').trim();
+}
+
+function normalizeAnamToolType(rawType: unknown): string {
+  return String(rawType || '').trim().toLowerCase().replace(/^server_/, 'server-').replace(/^client_/, 'client-');
+}
+
+function getToolSubtype(tool: AnamPersonaTool): string {
+  const explicit = String(tool.subtype || '').trim().toLowerCase();
+  if (explicit) return explicit;
+  const normalizedType = normalizeAnamToolType(tool.type);
+  if (normalizedType.includes('webhook')) return 'webhook';
+  if (normalizedType.includes('knowledge') || normalizedType.includes('rag')) return 'knowledge';
+  return '';
+}
+
+function getToolHeaders(tool: AnamPersonaTool): Record<string, string> {
+  const raw = tool.headers ?? tool.config?.headers;
+  if (!raw) return {};
+  if (Array.isArray(raw)) {
+    const out: Record<string, string> = {};
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const name = String((item as any).name || '').trim();
+      const value = String((item as any).value || '').trim();
+      if (!name) continue;
+      out[name] = value;
+    }
+    return out;
+  }
+  if (typeof raw === 'object') {
+    return Object.entries(raw as Record<string, unknown>).reduce((acc, [k, v]) => {
+      acc[String(k)] = String(v ?? '');
+      return acc;
+    }, {} as Record<string, string>);
+  }
+  return {};
+}
+
+function getToolParameters(tool: AnamPersonaTool): Record<string, any> | null {
+  const raw = tool.parameters ?? tool.config?.parameters;
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, any>;
+  }
+  return null;
+}
+
+function getToolUrl(tool: AnamPersonaTool): string {
+  return String(tool.url || tool.config?.url || '').trim();
+}
+
+function getToolMethod(tool: AnamPersonaTool): string {
+  return String(tool.method || tool.config?.method || '').trim().toUpperCase();
+}
+
+function getToolAwaitResponse(tool: AnamPersonaTool): boolean | undefined {
+  if (typeof tool.awaitResponse === 'boolean') return tool.awaitResponse;
+  if (typeof tool.config?.awaitResponse === 'boolean') return tool.config.awaitResponse;
+  return undefined;
+}
+
+function validateRequiredSchemaFields(
+  name: string,
+  parameters: Record<string, any> | null,
+): string[] {
+  const issues: string[] = [];
+  if (!parameters || typeof parameters !== 'object') {
+    issues.push(`Tool ${name} missing parameters schema`);
+    return issues;
+  }
+  const required = Array.isArray(parameters.required)
+    ? new Set(parameters.required.map((x: unknown) => String(x)))
+    : new Set<string>();
+  const props = parameters.properties && typeof parameters.properties === 'object'
+    ? (parameters.properties as Record<string, any>)
+    : {};
+
+  const needsByTool: Record<string, string[]> = {
+    show_cards: ['artifact_type', 'records', 'summary'],
+    invoke_adam: ['agent', 'task', 'query'],
+    invoke_quinn: ['agent', 'task'],
+    invoke_tec: ['agent', 'task'],
+    invoke_clara: ['agent', 'task'],
+    ava_search: ['query'],
+    ava_create_draft: ['draft_type', 'details'],
+    ava_request_approval: ['draft_id'],
+  };
+  const needed = needsByTool[name] || [];
+  for (const field of needed) {
+    if (!required.has(field)) issues.push(`Tool ${name} missing required field: ${field}`);
+    if (!(field in props)) issues.push(`Tool ${name} schema missing property: ${field}`);
+  }
+  if (name === 'invoke_adam') {
+    const agentProp = props.agent;
+    const enumVals = Array.isArray(agentProp?.enum) ? agentProp.enum.map((v: unknown) => String(v).toLowerCase()) : [];
+    if (!enumVals.includes('adam')) {
+      issues.push('Tool invoke_adam agent enum must include adam');
+    }
+  }
+  return issues;
+}
+
 function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): string[] {
   const errors: string[] = [];
   const normalizedPrompt = String(prompt || '').toLowerCase();
@@ -116,7 +228,7 @@ function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
     invoke_tec: '/v1/tools/invoke',
     invoke_clara: '/v1/tools/invoke',
   };
-  const names = tools.map((tool) => String(tool?.name || '').trim()).filter(Boolean);
+  const names = tools.map((tool) => normalizeToolName(tool?.name)).filter(Boolean);
   const counts = new Map<string, number>();
   for (const name of names) counts.set(name, (counts.get(name) || 0) + 1);
   for (const [name, count] of counts.entries()) {
@@ -128,23 +240,37 @@ function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
   }
   if (!CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES.some((name) => counts.has(name))) {
     issues.push('Missing knowledge tool: expected Knowledge_Ava or ava_knowledge_search');
+  } else {
+    const kbTool = tools.find((tool) => CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES.includes(normalizeToolName(tool?.name) as any));
+    if (kbTool) {
+      const kbType = normalizeAnamToolType(kbTool.type);
+      const kbSubtype = getToolSubtype(kbTool);
+      if (!kbType.includes('server')) issues.push('Knowledge tool must be server type');
+      if (kbSubtype !== 'knowledge') issues.push('Knowledge tool subtype must be knowledge');
+    }
   }
 
   for (const tool of tools) {
-    const name = String(tool?.name || '');
+    const name = normalizeToolName(tool?.name);
     if (!name || !CANONICAL_ANAM_AVA_TOOL_NAMES.includes(name as (typeof CANONICAL_ANAM_AVA_TOOL_NAMES)[number])) {
       continue;
     }
-    if (name === 'show_cards') continue;
-    if (tool.type !== 'server' || tool.subtype !== 'webhook') {
+    const type = normalizeAnamToolType(tool.type);
+    const subtype = getToolSubtype(tool);
+    const url = getToolUrl(tool);
+    const method = getToolMethod(tool);
+    const awaitResponse = getToolAwaitResponse(tool);
+    const parameters = getToolParameters(tool);
+    const headers = getToolHeaders(tool);
+    if (name === 'show_cards') {
+      if (!type.includes('client')) issues.push('Tool show_cards must be client tool');
+      issues.push(...validateRequiredSchemaFields(name, parameters));
+      continue;
+    }
+    if (!type.includes('server') || subtype !== 'webhook') {
       issues.push(`Tool ${name} must be server webhook`);
       continue;
     }
-    const url = String(tool.url || tool.config?.url || '');
-    const method = String(tool.method || tool.config?.method || '').toUpperCase();
-    const awaitResponse = typeof tool.awaitResponse === 'boolean' ? tool.awaitResponse : tool.config?.awaitResponse;
-    const parameters = tool.parameters ?? tool.config?.parameters;
-    const headers = tool.headers || tool.config?.headers || {};
     if (!url || !url.startsWith('http')) issues.push(`Tool ${name} missing webhook url`);
     const expectedPath = expectedWebhookPathByTool[name];
     if (expectedPath && !url.includes(expectedPath)) {
@@ -152,7 +278,7 @@ function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
     }
     if (method !== 'POST') issues.push(`Tool ${name} must use POST`);
     if (awaitResponse !== true) issues.push(`Tool ${name} must set awaitResponse=true`);
-    if (!parameters || typeof parameters !== 'object') issues.push(`Tool ${name} missing parameters schema`);
+    issues.push(...validateRequiredSchemaFields(name, parameters));
     if (!headers['x-aspire-tool-secret']) issues.push(`Tool ${name} missing x-aspire-tool-secret header`);
   }
 
@@ -188,27 +314,25 @@ async function fetchAnamPersonaToolsForValidation(
   }
 }
 
-function normalizeAnamToolType(rawType: unknown): string {
-  return String(rawType || '').trim().toLowerCase().replace(/^server_/, 'server-').replace(/^client_/, 'client-');
-}
-
 function scoreCanonicalToolCandidate(
   name: string,
   tool: AnamPersonaTool,
   expectedWebhookPathByTool: Record<string, string>,
 ): number {
-  const url = String(tool.url || tool.config?.url || '');
-  const method = String(tool.method || tool.config?.method || '').toUpperCase();
-  const headers = tool.headers || tool.config?.headers || {};
-  const parameters = tool.parameters ?? tool.config?.parameters;
+  const url = getToolUrl(tool);
+  const method = getToolMethod(tool);
+  const headers = getToolHeaders(tool);
+  const parameters = getToolParameters(tool);
   const type = normalizeAnamToolType(tool.type);
-  const subtype = String(tool.subtype || '').trim().toLowerCase();
+  const subtype = getToolSubtype(tool);
   const expectedPath = expectedWebhookPathByTool[name];
 
   let score = 0;
   if (name === 'show_cards') {
     if (type.includes('client')) score += 6;
     if (parameters && typeof parameters === 'object') score += 2;
+    const schemaIssues = validateRequiredSchemaFields(name, parameters);
+    if (schemaIssues.length === 0) score += 4;
     return score;
   }
 
@@ -219,6 +343,8 @@ function scoreCanonicalToolCandidate(
   if (expectedPath && url.includes(expectedPath)) score += 4;
   if (headers['x-aspire-tool-secret']) score += 2;
   if (parameters && typeof parameters === 'object') score += 1;
+  const schemaIssues = validateRequiredSchemaFields(name, parameters);
+  if (schemaIssues.length === 0) score += 4;
   return score;
 }
 
@@ -289,13 +415,25 @@ async function fetchCanonicalAnamAvaToolIds(anamApiKey: string): Promise<Canonic
     }
 
     const knowledgeCandidates = tools
-      .filter((tool) => CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES.includes(String(tool?.name || '').trim() as any))
-      .map((tool) => String(tool.id || tool._toolId || '').trim())
-      .filter(Boolean);
+      .filter((tool) => CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES.includes(normalizeToolName(tool?.name) as any))
+      .map((tool) => {
+        const id = String(tool.id || tool._toolId || '').trim();
+        const type = normalizeAnamToolType(tool.type);
+        const subtype = getToolSubtype(tool);
+        let score = 0;
+        if (type.includes('server')) score += 2;
+        if (subtype === 'knowledge') score += 4;
+        return { id, score };
+      })
+      .filter((entry) => entry.id.length > 0)
+      .sort((a, b) => b.score - a.score);
     if (knowledgeCandidates.length > 0) {
-      const knowledgeId = knowledgeCandidates[0];
+      const knowledgeId = knowledgeCandidates[0].id;
       selected['knowledge_tool'] = knowledgeId;
       selectedIds.push(knowledgeId);
+      if (knowledgeCandidates[0].score < 4) {
+        issues.push('Knowledge tool selected weak candidate');
+      }
     }
 
     return {
