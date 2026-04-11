@@ -102,6 +102,7 @@ function buildPropertyRefetchTask(seedRecord: any, suiteId: string): string | nu
 function collectAcceptedSecrets(): string[] {
   const raw = [
     process.env.TOOL_WEBHOOK_SHARED_SECRET,
+    process.env.ASPIRE_TOOL_SECRET,
     process.env.ANAM_TOOL_SECRET,
     process.env.ELEVENLABS_TOOL_SECRET,
     process.env.ELEVENLABS_WORKSPACE_SECRET,
@@ -109,6 +110,11 @@ function collectAcceptedSecrets(): string[] {
     .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
     .flatMap((v) => v.split(',').map((s) => s.trim()).filter(Boolean));
   return Array.from(new Set(raw));
+}
+
+function getRequestBody(req: Request): Record<string, any> {
+  if (req.body && typeof req.body === 'object') return req.body as Record<string, any>;
+  return {};
 }
 
 function readHeaderString(value: string | string[] | undefined): string {
@@ -252,7 +258,8 @@ router.post('/v1/agents/invoke-sync', async (req: Request, res: Response) => {
 router.post('/v1/tools/context', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
-  const { suite_id, user_id, query } = req.body;
+  const body = getRequestBody(req);
+  const { suite_id, user_id, query } = body;
   logger.info('[AgentTool] context', { suite_id, query });
 
   try {
@@ -320,7 +327,8 @@ router.post('/v1/tools/context', async (req: Request, res: Response) => {
 router.post('/v1/tools/search', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
-  const { suite_id, user_id, query, search_type } = req.body;
+  const body = getRequestBody(req);
+  const { suite_id, user_id, query, search_type } = body;
   logger.info('[AgentTool] search', { suite_id, query, search_type });
 
   try {
@@ -443,7 +451,8 @@ router.post('/v1/tools/search', async (req: Request, res: Response) => {
 router.post('/v1/tools/draft', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
-  const { suite_id, user_id, draft_type, ...draftParams } = req.body;
+  const body = getRequestBody(req);
+  const { suite_id, user_id, draft_type, ...draftParams } = body;
   logger.info('[AgentTool] draft', { suite_id, draft_type, params: Object.keys(draftParams) });
 
   try {
@@ -593,7 +602,8 @@ router.post('/v1/tools/draft', async (req: Request, res: Response) => {
 router.post('/v1/tools/approve', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
-  const { suite_id, user_id, draft_id, action_type } = req.body;
+  const body = getRequestBody(req);
+  const { suite_id, user_id, draft_id, action_type } = body;
   logger.info('[AgentTool] approve', { suite_id, draft_id, action_type });
 
   try {
@@ -686,7 +696,8 @@ const VALID_INVOKE_AGENTS = ['quinn', 'adam', 'tec', 'clara'] as const;
 router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
-  const { suite_id, agent, task, details, user_id } = req.body;
+  const body = getRequestBody(req);
+  const { suite_id, agent, task, details, user_id } = body;
   logger.info('[AgentTool] invoke', { suite_id, agent, task });
 
   if (!agent || !VALID_INVOKE_AGENTS.includes(agent)) {
@@ -827,7 +838,8 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
 router.post('/v1/tools/execute', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
-  const { suite_id, approval_id, capability_token, action_type } = req.body;
+  const body = getRequestBody(req);
+  const { suite_id, approval_id, capability_token, action_type } = body;
   logger.info('[AgentTool] execute', { suite_id, approval_id, action_type });
 
   if (!approval_id) {
@@ -925,7 +937,8 @@ router.post('/v1/tools/execute', async (req: Request, res: Response) => {
 router.post('/v1/tools/office-note', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
-  const { suite_id, note_type, summary, next_step, entity } = req.body;
+  const body = getRequestBody(req);
+  const { suite_id, note_type, summary, next_step, entity } = body;
   logger.info('[AgentTool] office-note', { suite_id, note_type, entity });
 
   if (!summary || typeof summary !== 'string') {
@@ -997,7 +1010,8 @@ router.post('/v1/tools/office-note', async (req: Request, res: Response) => {
 router.post('/v1/tools/analyze-document', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
-  const { suite_id, document_id, file_name, file_content } = req.body;
+  const body = getRequestBody(req);
+  const { suite_id, document_id, file_name, file_content } = body;
   logger.info('[AgentTool] analyze-document', { suite_id, document_id, file_name });
 
   try {
