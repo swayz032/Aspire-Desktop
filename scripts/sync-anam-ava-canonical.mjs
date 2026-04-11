@@ -60,6 +60,16 @@ async function api(pathname, options = {}) {
   return data;
 }
 
+function parseMissingToolIdsFromErrorMessage(message) {
+  const text = String(message || '');
+  const match = text.match(/Tools not found:\s*([^\"]+)/i);
+  if (!match) return [];
+  return String(match[1] || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function toolUrl(pathname) {
   const cleanPath = String(pathname || '').replace(/^\/+/, '');
   return `${TOOL_API_BASE_URL}/${cleanPath}`;
@@ -350,22 +360,38 @@ async function main() {
     console.warn('No knowledge tool found (Knowledge_Ava / ava_knowledge_search). Continuing without it.');
   }
 
-  // Force-clear persona attachments first to avoid additive merge behavior
-  // that leaves stale duplicate tool bindings attached.
+  // Force-clear persona attachments first to avoid additive merge behavior.
+  // IMPORTANT: only use toolIds (not both toolIds + tools), otherwise Anam may
+  // append duplicates for the same tool names.
   await api(`/personas/${PERSONA_ID}`, {
     method: 'PUT',
-    body: JSON.stringify({ toolIds: [], tools: [] }),
+    body: JSON.stringify({ toolIds: [] }),
   });
-  console.log('Persona tools cleared via PUT (toolIds: [], tools: []).');
+  console.log('Persona tools cleared via PUT (toolIds: []).');
 
-  await api(`/personas/${PERSONA_ID}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      toolIds: createdToolIds,
-      tools: createdToolIds.map((id) => ({ _toolId: id })),
-    }),
-  });
-  console.log('Persona toolIds updated via PUT (toolIds + tools).');
+  let finalToolIds = [...createdToolIds];
+  try {
+    await api(`/personas/${PERSONA_ID}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        toolIds: finalToolIds,
+      }),
+    });
+    console.log('Persona toolIds updated via PUT (toolIds only).');
+  } catch (error) {
+    const msg = error?.message || String(error);
+    const missing = parseMissingToolIdsFromErrorMessage(msg);
+    if (missing.length === 0) throw error;
+    console.warn(`Dropping missing tool IDs and retrying: ${missing.join(', ')}`);
+    finalToolIds = finalToolIds.filter((id) => !missing.includes(id));
+    await api(`/personas/${PERSONA_ID}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        toolIds: finalToolIds,
+      }),
+    });
+    console.log('Persona toolIds updated after pruning missing IDs.');
+  }
 
   if (SHOULD_SYNC_PROMPT) {
     const prompt = loadAvaPromptTemplate();

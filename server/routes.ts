@@ -246,7 +246,7 @@ function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
       const kbType = normalizeAnamToolType(kbTool.type);
       const kbSubtype = getToolSubtype(kbTool);
       if (!kbType.includes('server')) issues.push('Knowledge tool must be server type');
-      if (kbSubtype !== 'knowledge') issues.push('Knowledge tool subtype must be knowledge');
+      if (!['knowledge', 'rag'].includes(kbSubtype)) issues.push('Knowledge tool subtype must be knowledge or rag');
     }
   }
 
