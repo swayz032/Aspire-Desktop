@@ -317,13 +317,23 @@ router.get('/api/frontdesk/setup', async (req: Request, res: Response) => {
 // =====================================================================
 // 1b. GET /api/frontdesk/config-by-number — resolve business config by phone number
 // Called by the gateway conversation-init webhook (internal, no JWT required)
-// Auth: x-elevenlabs-secret header (same as tool auth)
+// Auth: x-aspire-tool-secret header (same as tool auth)
+// Legacy x-elevenlabs-secret header accepted for backward compatibility.
 // =====================================================================
 router.get('/api/frontdesk/config-by-number', async (req: Request, res: Response) => {
   try {
     // Auth: verify tool secret
-    const toolSecret = process.env.ELEVENLABS_TOOL_SECRET;
-    const providedSecret = req.headers['x-elevenlabs-secret'];
+    const toolSecret =
+      process.env.TOOL_WEBHOOK_SHARED_SECRET ||
+      process.env.ANAM_TOOL_SECRET ||
+      process.env.ELEVENLABS_TOOL_SECRET;
+    const providedAspire = Array.isArray(req.headers['x-aspire-tool-secret'])
+      ? req.headers['x-aspire-tool-secret'][0]
+      : req.headers['x-aspire-tool-secret'];
+    const providedLegacy = Array.isArray(req.headers['x-elevenlabs-secret'])
+      ? req.headers['x-elevenlabs-secret'][0]
+      : req.headers['x-elevenlabs-secret'];
+    const providedSecret = (providedAspire || providedLegacy || '').toString();
     if (toolSecret && providedSecret !== toolSecret) {
       return res.status(401).json({ code: 'AUTH_FAILED', message: 'Invalid secret' });
     }

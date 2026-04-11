@@ -1,11 +1,12 @@
 /**
- * ElevenLabs Agent Tool Webhook Endpoints
+ * Aspire Agent Tool Webhook Endpoints
  *
  * These endpoints receive tool calls from ElevenLabs Conversational AI agents.
  * Each agent has webhook tools (get_context, search, draft, approve) that hit
  * these endpoints during live conversations.
  *
- * Auth: x-elevenlabs-secret header (shared secret configured on each tool).
+ * Auth: x-aspire-tool-secret header (shared secret configured on each tool).
+ * Legacy header x-elevenlabs-secret is still accepted for backward compatibility.
  * Body: { suite_id, user_id, query/... } — dynamic variables + LLM-generated params.
  *
  * Law #3: Fail closed — invalid secret = 401, missing params = 400.
@@ -97,25 +98,43 @@ function buildPropertyRefetchTask(seedRecord: any, suiteId: string): string | nu
   return `Pull property facts for ${address}`;
 }
 
-const ELEVENLABS_TOOL_SECRET = process.env.ELEVENLABS_TOOL_SECRET?.trim() || '';
+const TOOL_WEBHOOK_SHARED_SECRET =
+  process.env.TOOL_WEBHOOK_SHARED_SECRET?.trim() ||
+  process.env.ANAM_TOOL_SECRET?.trim() ||
+  process.env.ELEVENLABS_TOOL_SECRET?.trim() ||
+  '';
+
+function readHeaderString(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return String(value[0] || '').trim();
+  return String(value || '').trim();
+}
 
 /**
- * Verify the x-elevenlabs-secret header matches our configured secret.
+ * Verify tool auth header matches configured shared secret.
  */
 function verifySecret(req: Request, res: Response): boolean {
-  if (!ELEVENLABS_TOOL_SECRET) {
-    logger.error('[AgentTool] ELEVENLABS_TOOL_SECRET missing; refusing webhook requests');
+  if (!TOOL_WEBHOOK_SHARED_SECRET) {
+    logger.error('[AgentTool] TOOL_WEBHOOK_SHARED_SECRET missing; refusing webhook requests');
     res.status(503).json({ error: 'Service unavailable' });
     return false;
   }
-  const secret = req.headers['x-elevenlabs-secret'];
-  if (!secret || secret !== ELEVENLABS_TOOL_SECRET) {
+  const aspireSecret = readHeaderString(req.headers['x-aspire-tool-secret'] as string | string[] | undefined);
+  const legacySecret = readHeaderString(req.headers['x-elevenlabs-secret'] as string | string[] | undefined);
+  const secret = aspireSecret || legacySecret;
+  if (!secret || secret !== TOOL_WEBHOOK_SHARED_SECRET) {
     logger.warn('[AgentTool] Invalid or missing secret', {
       path: req.path,
       hasSecret: !!secret,
+      hasAspireHeader: !!aspireSecret,
+      hasLegacyHeader: !!legacySecret,
     });
     res.status(401).json({ error: 'Unauthorized' });
     return false;
+  }
+  if (!aspireSecret && legacySecret) {
+    logger.warn('[AgentTool] Legacy auth header used; migrate tool to x-aspire-tool-secret', {
+      path: req.path,
+    });
   }
   return true;
 }
