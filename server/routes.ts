@@ -369,6 +369,8 @@ type FetchRetryOptions = {
 type TraceStage = 'session' | 'mic' | 'stt' | 'orchestrator' | 'tts' | 'playback';
 type TraceStatus = 'start' | 'ok' | 'error';
 let traceTableEnsured = false;
+let inboxItemsTableEnsured = false;
+let inboxItemsTableEnsureAttempted = false;
 
 async function ensureTraceTable(): Promise<void> {
   if (traceTableEnsured) return;
@@ -392,6 +394,36 @@ async function ensureTraceTable(): Promise<void> {
     traceTableEnsured = true;
   } catch {
     // Best effort only; never block request path on telemetry.
+  }
+}
+
+async function ensureInboxItemsTable(): Promise<void> {
+  if (inboxItemsTableEnsured || inboxItemsTableEnsureAttempted) return;
+  inboxItemsTableEnsureAttempted = true;
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS inbox_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        suite_id UUID NOT NULL,
+        type TEXT NOT NULL,
+        sender_name TEXT,
+        subject TEXT,
+        preview TEXT,
+        priority TEXT NOT NULL DEFAULT 'Medium',
+        unread BOOLEAN NOT NULL DEFAULT TRUE,
+        tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_inbox_items_suite_created_at
+      ON inbox_items (suite_id, created_at DESC)
+    `);
+    inboxItemsTableEnsured = true;
+  } catch (error: unknown) {
+    logger.warn('inbox_items ensure failed; inbox API will degrade gracefully', {
+      error: error instanceof Error ? error.message : 'unknown',
+    });
   }
 }
 
@@ -4000,6 +4032,7 @@ router.get('/api/inbox/items', async (req: Request, res: Response) => {
   }
 
   try {
+    await ensureInboxItemsTable();
     const result = await db.execute(sql`
       SELECT id, type, sender_name AS "from", subject, preview, priority,
              unread, created_at AS timestamp, tags
@@ -4011,8 +4044,13 @@ router.get('/api/inbox/items', async (req: Request, res: Response) => {
     const rows = (result.rows || result) as any[];
     res.json({ items: rows });
   } catch (error: unknown) {
-    // Graceful degradation: table may not exist yet
-    logger.warn('inbox_items query failed, returning empty', { error: error instanceof Error ? error.message : 'unknown' });
+    const message = error instanceof Error ? error.message : 'unknown';
+    const isSchemaIssue = /inbox_items|relation .* does not exist|column .* does not exist/i.test(message);
+    if (isSchemaIssue) {
+      logger.info('inbox_items unavailable, returning empty', { error: message });
+    } else {
+      logger.warn('inbox_items query failed, returning empty', { error: message });
+    }
     res.json({ items: [] });
   }
 });

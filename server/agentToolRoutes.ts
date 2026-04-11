@@ -132,15 +132,24 @@ function verifySecret(req: Request, res: Response): boolean {
     res.status(503).json({ error: 'Service unavailable' });
     return false;
   }
+  const body = getRequestBody(req);
   const aspireSecret = readHeaderString(req.headers['x-aspire-tool-secret'] as string | string[] | undefined);
   const legacySecret = readHeaderString(req.headers['x-elevenlabs-secret'] as string | string[] | undefined);
-  const secret = aspireSecret || legacySecret;
+  const authHeader = readHeaderString(req.headers.authorization as string | string[] | undefined);
+  const authBearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
+  const bodySecret =
+    (typeof body.secret === 'string' && body.secret.trim()) ||
+    (typeof body.tool_secret === 'string' && body.tool_secret.trim()) ||
+    '';
+  const secret = aspireSecret || legacySecret || authBearer || bodySecret;
   if (!secret || !acceptedSecrets.includes(secret)) {
     logger.warn('[AgentTool] Invalid or missing secret', {
       path: req.path,
       hasSecret: !!secret,
       hasAspireHeader: !!aspireSecret,
       hasLegacyHeader: !!legacySecret,
+      hasAuthorizationBearer: !!authBearer,
+      hasBodySecret: !!bodySecret,
     });
     res.status(401).json({ error: 'Unauthorized' });
     return false;
@@ -718,16 +727,27 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   });
 
   if (!resolvedAgent || !VALID_INVOKE_AGENTS.includes(resolvedAgent as any)) {
-    return res.status(400).json({
+    return res.status(200).json({
       error: 'INVALID_AGENT',
+      status: 'error',
       message: `Agent must be one of: ${VALID_INVOKE_AGENTS.join(', ')}. Clara is handled through video mode.`,
     });
   }
 
-  if (!normalizedTask) {
-    return res.status(400).json({
+  // Anam may send sparse request bodies. Build a fallback task to avoid hard
+  // failing with HTTP 400 and keep voice sessions stable.
+  const fallbackTaskParts = [
+    typeof body.entity_type === 'string' ? body.entity_type.trim() : '',
+    typeof body.city === 'string' ? body.city.trim() : '',
+    typeof body.card_cache_id === 'string' ? `cache ${body.card_cache_id.trim()}` : '',
+  ].filter(Boolean);
+  const effectiveTask = normalizedTask || (fallbackTaskParts.length > 0 ? `Research ${fallbackTaskParts.join(' ')}` : '');
+
+  if (!effectiveTask) {
+    return res.status(200).json({
       error: 'MISSING_TASK',
-      message: 'Task description is required. Provide task or query.',
+      status: 'error',
+      message: 'I need a specific request to research. Tell me what to look up and I can run it now.',
     });
   }
 
@@ -737,15 +757,15 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     if (!orchestratorUrl) {
       logger.warn('[AgentTool] ORCHESTRATOR_URL not set — cannot reach agents');
       return res.json({
-        agent,
-        result: `I was not able to reach ${agent} right now because the backend service is not configured. Please try again later.`,
+        agent: resolvedAgent,
+        result: `I was not able to reach ${resolvedAgent} right now because the backend service is not configured. Please try again later.`,
         status: 'error',
       });
     }
 
     const correlationId = `corr-invoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    logger.info('[AgentTool] invoke -> invoke-sync', { agent, correlationId, url: `${orchestratorUrl}/v1/agents/invoke-sync` });
+    logger.info('[AgentTool] invoke -> invoke-sync', { agent: resolvedAgent, correlationId, url: `${orchestratorUrl}/v1/agents/invoke-sync` });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 52000); // 52s — backend has 45s playbook timeout + 7s margin for network
@@ -756,7 +776,7 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       process.env.DEFAULT_SUITE_ID ||
       '';
     const safeOfficeId = safeSuiteId;
-    const taskText = normalizedTask;
+    const taskText = effectiveTask;
     let detailsText = typeof details === 'string' ? details : '';
     if (resolvedAgent === 'adam' && !detailsText.trim() && isLikelyPropertyIntent(taskText, detailsText)) {
       const pinned = getLatestPropertyAddress(safeSuiteId);
@@ -828,7 +848,7 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
 
     return res.json({
       agent: resolvedAgent,
-      task: normalizedTask,
+      task: effectiveTask,
       result: a2aResult.result || a2aResult.message || `${resolvedAgent} has processed your request.`,
       data: responseData,
       receipt_id: a2aResult.receipt_id || null,
