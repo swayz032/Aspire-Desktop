@@ -55,7 +55,8 @@ function toolUrl(pathname) {
   return `${TOOL_API_BASE_URL}/${cleanPath}`;
 }
 
-function webhookTool(name, description, urlPath, properties, required = []) {
+function webhookTool(name, description, urlPath, properties, required = [], options = {}) {
+  const additionalProperties = options.additionalProperties ?? true;
   return {
     type: 'SERVER_WEBHOOK',
     name,
@@ -69,9 +70,10 @@ function webhookTool(name, description, urlPath, properties, required = []) {
       awaitResponse: true,
       parameters: {
         type: 'object',
+        strict: true,
         properties,
         ...(required.length > 0 ? { required } : {}),
-        additionalProperties: true,
+        additionalProperties,
       },
     },
   };
@@ -83,15 +85,27 @@ function buildCanonicalTools() {
       type: 'CLIENT',
       name: 'show_cards',
       description:
-        'Display visual cards on screen immediately after invoke_adam returns results. Provide artifact_type, records, and summary.',
+        "Use this tool to render structured visual cards in the UI immediately after invoke_adam returns data. Map Adam response fields into artifact_type, records, and summary so the user can browse results on screen.",
       config: {
         parameters: {
           type: 'object',
+          strict: true,
           required: ['artifact_type', 'records', 'summary'],
           properties: {
-            artifact_type: { type: 'string', description: 'Card artifact type from Adam response' },
-            records: { type: 'array', items: { type: 'object' }, description: 'Card records from Adam response' },
-            summary: { type: 'string', description: 'Short modal summary header' },
+            artifact_type: {
+              type: 'string',
+              description:
+                'Card schema/category identifier from Adam response metadata (for example LandlordPropertyPack or hotel/product pack type).',
+            },
+            records: {
+              type: 'array',
+              items: { type: 'object' },
+              description: 'List of Adam result objects to render as individual visual cards.',
+            },
+            summary: {
+              type: 'string',
+              description: 'Concise human-readable headline summarizing the card set being displayed.',
+            },
           },
           additionalProperties: false,
         },
@@ -133,24 +147,34 @@ function buildCanonicalTools() {
         details: { type: 'string', description: 'Optional details and constraints' },
       },
       ['agent', 'task'],
+      { additionalProperties: false },
     ),
     webhookTool(
       'invoke_adam',
-      'Route research tasks to Adam for properties, hotels, products, vendors, and strategic playbooks.',
+      'Use this tool to delegate specialized research to Adam for properties, hotels, products, vendors, or market analysis. Use task for the overall instruction and query for the specific address/name/search term.',
       'invoke',
       {
         suite_id: { type: 'string', description: 'Active suite ID' },
         user_id: { type: 'string', description: 'Optional user ID' },
         agent: { type: 'string', enum: ['adam'], description: 'Must be adam' },
-        task: { type: 'string', description: 'Primary research task text' },
-        query: { type: 'string', description: 'Search query or address' },
+        task: { type: 'string', description: 'Overall research instruction (for example: find paint sprayers in Tallahassee).' },
+        query: { type: 'string', description: 'Specific search term, address, or named entity to look up.' },
         city: { type: 'string', description: 'City or location context' },
         limit: { type: 'number', description: 'Optional result limit' },
-        entity_type: { type: 'string', description: 'Optional entity type (property|hotel|product|vendor|market)' },
-        filters: { type: 'object', description: 'Optional provider filters' },
+        entity_type: {
+          type: 'string',
+          enum: ['property', 'hotel', 'product', 'vendor', 'market'],
+          description: 'Category of entity being researched.',
+        },
+        filters: {
+          type: 'object',
+          description: 'Optional key-value filters to narrow results (for example price_range, rating, in_stock).',
+          additionalProperties: true,
+        },
         card_cache_id: { type: 'string', description: 'Optional cache continuation id' },
       },
       ['agent', 'task'],
+      { additionalProperties: false },
     ),
     webhookTool(
       'invoke_clara',

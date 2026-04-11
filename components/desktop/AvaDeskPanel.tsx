@@ -227,6 +227,26 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           client = sdk.createClient(sessionToken);
           const AnamEvent = types.AnamEvent;
 
+          if (typeof client.registerToolCallHandler === 'function') {
+            client.registerToolCallHandler('show_cards', {
+              onStart: async (payload) => {
+                const args = payload?.arguments || {};
+                post({ type: 'show_cards', payload: args });
+                return 'Cards displayed.';
+              },
+            });
+          }
+
+          client.addListener(AnamEvent.TOOL_CALL_STARTED, (event) => {
+            post({ type: 'tool_call_started', payload: { toolName: event?.toolName, arguments: event?.arguments } });
+          });
+          client.addListener(AnamEvent.TOOL_CALL_COMPLETED, (event) => {
+            post({ type: 'tool_call_completed', payload: { toolName: event?.toolName, executionTime: event?.executionTime } });
+          });
+          client.addListener(AnamEvent.TOOL_CALL_FAILED, (event) => {
+            post({ type: 'tool_call_failed', payload: { toolName: event?.toolName, errorMessage: event?.errorMessage } });
+          });
+
           client.addListener(AnamEvent.SESSION_READY, () => {
             if (statusEl) statusEl.remove();
             post({ type: 'connected' });
@@ -460,6 +480,44 @@ function AvaDeskPanelInner() {
 
   const [authorityQueue, setAuthorityQueue] = useState<any[]>([]);
 
+  const handleStructuredCards = useCallback((data: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string }) => {
+    if (avaPresents.visible) return;
+    const artifactType = data.artifact_type;
+    const incomingRecords = Array.isArray(data.records) ? data.records : [];
+    const likelyProperty = PROPERTY_ARTIFACT_TYPES.has(artifactType);
+    const sparseProperty = likelyProperty && !hasStrongPropertySignals(incomingRecords[0]);
+
+    const show = (records: Record<string, unknown>[]) => {
+      avaPresents.showCards({
+        artifactType,
+        records,
+        summary: data.summary ?? '',
+        confidence: data.confidence as { status: 'verified' | 'partial' | 'unverified'; score: number } | null | undefined,
+      });
+    };
+
+    if (!sparseProperty || !suiteId) {
+      show(incomingRecords);
+      return;
+    }
+
+    (async () => {
+      try {
+        const resp = await fetch(`/api/card-data/latest?suite_id=${encodeURIComponent(suiteId)}`);
+        if (resp.ok) {
+          const cached = await resp.json();
+          if (Array.isArray(cached?.records) && cached.records.length > 0) {
+            show(cached.records);
+            return;
+          }
+        }
+      } catch {
+        // fall through to raw records
+      }
+      show(incomingRecords);
+    })();
+  }, [avaPresents, suiteId]);
+
   // Ref to break circular dependency: useVoice needs appendLocalMessage, 
   // but appendLocalMessage needs setMessages from useAvaChat, 
   // and useAvaChat usually needs avaVoice from useVoice.
@@ -521,14 +579,7 @@ function AvaDeskPanelInner() {
         showVoiceError(msg.length > 80 ? msg.slice(0, 80) + '...' : msg);
       }
     },
-    onShowCards: (data: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string }) => {
-      avaPresents.showCards({
-        artifactType: data.artifact_type,
-        records: data.records,
-        summary: data.summary,
-        confidence: data.confidence,
-      });
-    },
+    onShowCards: handleStructuredCards,
     onDiagnostic: (diag) => {
       setLatestVoiceDiagnostic(diag);
       if (diag.stage === 'autoplay') {
@@ -542,43 +593,7 @@ function AvaDeskPanelInner() {
     onResponseText: (_text) => {
       // Anam hosted embed handles TTS internally — no SDK talk() needed
     },
-    onStructuredResults: (data) => {
-      if (avaPresents.visible) return;
-      const artifactType = data.artifact_type;
-      const incomingRecords = Array.isArray(data.records) ? data.records : [];
-      const likelyProperty = PROPERTY_ARTIFACT_TYPES.has(artifactType);
-      const sparseProperty = likelyProperty && !hasStrongPropertySignals(incomingRecords[0]);
-
-      const show = (records: Record<string, unknown>[]) => {
-        avaPresents.showCards({
-          artifactType,
-          records,
-          summary: data.summary ?? '',
-          confidence: data.confidence as { status: 'verified' | 'partial' | 'unverified'; score: number } | null | undefined,
-        });
-      };
-
-      if (!sparseProperty || !suiteId) {
-        show(incomingRecords);
-        return;
-      }
-
-      (async () => {
-        try {
-          const resp = await fetch(`/api/card-data/latest?suite_id=${encodeURIComponent(suiteId)}`);
-          if (resp.ok) {
-            const cached = await resp.json();
-            if (Array.isArray(cached?.records) && cached.records.length > 0) {
-              show(cached.records);
-              return;
-            }
-          }
-        } catch {
-          // fall through to raw records
-        }
-        show(incomingRecords);
-      })();
-    },
+    onStructuredResults: handleStructuredCards,
     extraBody: {
       pendingApprovals: authorityQueue.length,
       approvalSummary: authorityQueue.slice(0, 3).map((p: unknown) => (p as Record<string, string>).title || (p as Record<string, string>).type || 'Approval'),
@@ -770,12 +785,32 @@ function AvaDeskPanelInner() {
         setAnamSessionToken(null);
         setVideoState('idle');
         setConnectionStatus('Session ended');
+        return;
+      }
+      if (event.data.type === 'show_cards') {
+        const payload = event.data.payload || {};
+        if (payload && typeof payload === 'object') {
+          handleStructuredCards({
+            artifact_type: String(payload.artifact_type || ''),
+            records: Array.isArray(payload.records) ? payload.records : [],
+            summary: String(payload.summary || ''),
+            confidence: payload.confidence,
+            card_cache_id: payload.card_cache_id,
+          });
+        }
+        return;
+      }
+      if (event.data.type === 'tool_call_failed') {
+        const msg = String(event.data?.payload?.errorMessage || '').trim();
+        if (msg) {
+          showVoiceError(msg.length > 120 ? `${msg.slice(0, 120)}...` : msg);
+        }
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [clearConnectionTimeouts]);
+  }, [clearConnectionTimeouts, handleStructuredCards, showVoiceError]);
 
   const handleEndSession = useCallback(() => {
     trackInteraction('agent_disconnect', 'ava-desk-panel', { agent: 'ava' });
