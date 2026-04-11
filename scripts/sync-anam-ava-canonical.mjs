@@ -354,11 +354,22 @@ async function main() {
     console.warn('No knowledge tool found (Knowledge_Ava / ava_knowledge_search). Continuing without it.');
   }
 
+  // Force-clear persona attachments first to avoid additive merge behavior
+  // that leaves stale duplicate tool bindings attached.
   await api(`/personas/${PERSONA_ID}`, {
     method: 'PUT',
-    body: JSON.stringify({ toolIds: createdToolIds }),
+    body: JSON.stringify({ toolIds: [], tools: [] }),
   });
-  console.log('Persona toolIds updated via PUT.');
+  console.log('Persona tools cleared via PUT (toolIds: [], tools: []).');
+
+  await api(`/personas/${PERSONA_ID}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      toolIds: createdToolIds,
+      tools: createdToolIds.map((id) => ({ _toolId: id })),
+    }),
+  });
+  console.log('Persona toolIds updated via PUT (toolIds + tools).');
 
   if (SHOULD_SYNC_PROMPT) {
     const prompt = loadAvaPromptTemplate();
