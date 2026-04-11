@@ -778,6 +778,27 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     const safeOfficeId = safeSuiteId;
     const taskText = effectiveTask;
     let detailsText = typeof details === 'string' ? details : '';
+    const queryText = typeof body.query === 'string' ? body.query.trim() : '';
+    const cityText = typeof body.city === 'string' ? body.city.trim() : '';
+    const entityTypeText = typeof body.entity_type === 'string' ? body.entity_type.trim() : '';
+
+    // Anam commonly sends a generic task plus concrete query/address.
+    // Preserve the specific query in details so downstream agents (especially Adam)
+    // can actually resolve entities instead of receiving only generic intent text.
+    if (resolvedAgent === 'adam' && !detailsText.trim() && queryText) {
+      detailsText = queryText;
+      if (cityText && !detailsText.toLowerCase().includes(cityText.toLowerCase())) {
+        detailsText = `${detailsText} (${cityText})`;
+      }
+      if (entityTypeText && !taskText.toLowerCase().includes(entityTypeText.toLowerCase())) {
+        // Keep task concise but explicit about domain.
+        logger.info('[AgentTool] Adam invoke enriched with query/entity_type context', {
+          suite_id: safeSuiteId,
+          query: queryText.slice(0, 120),
+          entity_type: entityTypeText,
+        });
+      }
+    }
     if (resolvedAgent === 'adam' && !detailsText.trim() && isLikelyPropertyIntent(taskText, detailsText)) {
       const pinned = getLatestPropertyAddress(safeSuiteId);
       if (pinned) {
