@@ -20,32 +20,13 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
 const router = Router();
 const CANONICAL_ANAM_AVA_PERSONA_ID = '58f82b89-8ae7-43cc-930d-be8def14dff3';
 const CONFIGURED_ANAM_AVA_PERSONA_ID = process.env.ANAM_AVA_PERSONA_ID?.trim() || CANONICAL_ANAM_AVA_PERSONA_ID;
-const ANAM_AVA_REQUIRED_TOOL_IDS = [
-  '773aa097-6072-4662-972d-57a339a80c1f', // ava_get_context
-  '0efe155d-bbdf-40cd-aa00-35fc3e7999db', // search
-  'f2a9f8e0-36bd-48da-9e74-e7a88bc86150', // ava_create_draft
-  '4508f61a-a560-4a97-aea6-5e1892cc2c01', // ava_request_approval
-  '1af84812-92c3-4db1-a683-59a41df21e6a', // invoke_quinn
-  '3759dbde-4a9d-46f1-b398-bd0cac97084d', // invoke_clara
-  'd4578d81-fb7a-46f6-8b30-27711e5aaf65', // invoke_adam
-  '0dda5031-cb77-4932-bc47-d84e72265bb8', // show_cards
-  '891fdf03-0648-450f-926b-6a2d5c9fda89', // invoke_tec
-  'ae1bc692-d25d-4838-8c02-3bb9d54ca19f', // save_office_note
-] as const;
 
-function validateAnamAvaPromptAndConfig(prompt: string, personaId: string, toolIds: readonly string[]): string[] {
+function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): string[] {
   const errors: string[] = [];
   const normalizedPrompt = String(prompt || '').toLowerCase();
-  const configuredTools = new Set(toolIds);
 
   if (personaId !== CANONICAL_ANAM_AVA_PERSONA_ID) {
     errors.push(`Ava personaId drift detected: expected ${CANONICAL_ANAM_AVA_PERSONA_ID}, got ${personaId}`);
-  }
-
-  for (const requiredToolId of ANAM_AVA_REQUIRED_TOOL_IDS) {
-    if (!configuredTools.has(requiredToolId)) {
-      errors.push(`Missing required Ava toolId: ${requiredToolId}`);
-    }
   }
 
   if (!normalizedPrompt.includes('## search')) {
@@ -4157,32 +4138,14 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       .replace(/\{\{has_camera\}\}/g, hasCamera ? 'true' : 'false')
       .replace(/\{\{time_of_day\}\}/g, now.getHours() < 12 ? 'morning' : now.getHours() < 17 ? 'afternoon' : 'evening');
 
+    // Keep Ava session config persona-driven to prevent stale hardcoded IDs
+    // (voice/tool/document) from breaking engine/session startup.
     const AVA_CONFIG = {
       name: 'Ava',
       personaId: CONFIGURED_ANAM_AVA_PERSONA_ID,
-      avatarId: '30fa96d0-26c4-4e55-94a0-517025942e18',   // Cara at desk
-      voiceId: '0c8b52f4-f26d-4810-855c-c90e5f599cbc',    // Hope
-      llmId: 'b4f89001-9638-4879-a9c3-02cc9f9f2004',      // Anam hosted GPT-4.1
       systemPrompt: videoPrompt,
       skipGreeting: false,
-      avatarModel: 'cara-3',
       maxSessionLengthSeconds: 1800,
-      toolIds: [
-        '773aa097-6072-4662-972d-57a339a80c1f', // ava_get_context
-        '0efe155d-bbdf-40cd-aa00-35fc3e7999db', // search
-        'f2a9f8e0-36bd-48da-9e74-e7a88bc86150', // ava_create_draft
-        '4508f61a-a560-4a97-aea6-5e1892cc2c01', // ava_request_approval
-        '1af84812-92c3-4db1-a683-59a41df21e6a', // invoke_quinn
-        '3759dbde-4a9d-46f1-b398-bd0cac97084d', // invoke_clara
-        'd4578d81-fb7a-46f6-8b30-27711e5aaf65', // invoke_adam
-        '0dda5031-cb77-4932-bc47-d84e72265bb8', // show_cards
-        '891fdf03-0648-450f-926b-6a2d5c9fda89', // invoke_tec
-        'ae1bc692-d25d-4838-8c02-3bb9d54ca19f', // save_office_note
-      ],
-      documentIds: [
-        'dd6be6c1-698b-4910-a93b-3b69d1601b31', // Ava Rules & Task Workflows
-        '0c254d18-0aac-46d6-b669-cf4483eb99b8', // Strategic Playbook
-      ],
       voiceDetectionOptions: {
         endOfSpeechSensitivity: 0.7,
         silenceBeforeSkipTurnSeconds: 8,
@@ -4198,7 +4161,6 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     const avaConfigValidationErrors = validateAnamAvaPromptAndConfig(
       AVA_CONFIG.systemPrompt,
       AVA_CONFIG.personaId,
-      AVA_CONFIG.toolIds,
     );
     if (avaConfigValidationErrors.length > 0) {
       const strictAnamPromptValidation = process.env.ANAM_PROMPT_STRICT_VALIDATION === 'true';
