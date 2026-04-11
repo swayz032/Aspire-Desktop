@@ -16,6 +16,7 @@
 
 import { Router, Request, Response } from 'express';
 import { logger } from './logger';
+import { getDefaultSuiteId } from './suiteContext';
 
 const router = Router();
 
@@ -166,6 +167,21 @@ function inferLegacyInvokeSyncTarget(body: any): '/v1/tools/context' | '/v1/tool
   return '/v1/tools/context';
 }
 
+function normalizeSuiteContext(body: any): { suiteId: string; officeId: string } {
+  const rawSuite =
+    (typeof body?.suite_id === 'string' && body.suite_id.trim()) ||
+    (typeof body?.suiteId === 'string' && body.suiteId.trim()) ||
+    '';
+  const fallbackSuite = getDefaultSuiteId() || process.env.DEFAULT_SUITE_ID || '';
+  const suiteId = rawSuite || fallbackSuite;
+  const rawOffice =
+    (typeof body?.office_id === 'string' && body.office_id.trim()) ||
+    (typeof body?.officeId === 'string' && body.officeId.trim()) ||
+    '';
+  const officeId = rawOffice || suiteId;
+  return { suiteId, officeId };
+}
+
 /**
  * Legacy compatibility shim.
  * Some deployed tool configs still post to /v1/agents/invoke-sync on Aspire Desktop.
@@ -177,6 +193,9 @@ router.post('/v1/agents/invoke-sync', async (req: Request, res: Response) => {
   try {
     const targetPath = inferLegacyInvokeSyncTarget(req.body || {});
     const body = { ...(req.body || {}) };
+    const { suiteId, officeId } = normalizeSuiteContext(body);
+    if (suiteId && !body.suite_id) body.suite_id = suiteId;
+    if (officeId && !body.office_id) body.office_id = officeId;
     if (targetPath === '/v1/tools/invoke' && !body.agent) {
       body.agent = inferInvokeAgent(body);
     }
@@ -700,7 +719,12 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 52000); // 52s — backend has 45s playbook timeout + 7s margin for network
 
-    const safeSuiteId = typeof suite_id === 'string' && suite_id.trim() ? suite_id.trim() : 'default';
+    const safeSuiteId =
+      (typeof suite_id === 'string' && suite_id.trim()) ||
+      getDefaultSuiteId() ||
+      process.env.DEFAULT_SUITE_ID ||
+      '';
+    const safeOfficeId = safeSuiteId;
     const taskText = typeof task === 'string' ? task : '';
     let detailsText = typeof details === 'string' ? details : '';
     if (agent === 'adam' && !detailsText.trim() && isLikelyPropertyIntent(taskText, detailsText)) {
@@ -719,8 +743,8 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        suite_id,
-        office_id: suite_id,
+        suite_id: safeSuiteId,
+        office_id: safeOfficeId,
         correlation_id: correlationId,
         agent,
         task: taskText,
