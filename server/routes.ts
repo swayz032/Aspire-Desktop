@@ -35,6 +35,8 @@ const CANONICAL_ANAM_AVA_TOOL_NAMES = [
 const CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES = ['Knowledge_Ava', 'ava_knowledge_search'] as const;
 
 type AnamPersonaTool = {
+  id?: string;
+  _toolId?: string;
   name?: string;
   type?: string;
   subtype?: string;
@@ -50,6 +52,12 @@ type AnamPersonaTool = {
     headers?: Record<string, string>;
     parameters?: unknown;
   };
+};
+
+type CanonicalAnamToolSelection = {
+  toolIds: string[];
+  issues: string[];
+  selected: Record<string, string>;
 };
 
 function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): string[] {
@@ -156,6 +164,130 @@ async function fetchAnamPersonaToolsForValidation(
       issues: [
         `Unable to fetch Anam persona tools: ${error instanceof Error ? error.message : 'unknown error'}`,
       ],
+    };
+  }
+}
+
+function normalizeAnamToolType(rawType: unknown): string {
+  return String(rawType || '').trim().toLowerCase().replace(/^server_/, 'server-').replace(/^client_/, 'client-');
+}
+
+function scoreCanonicalToolCandidate(
+  name: string,
+  tool: AnamPersonaTool,
+  expectedWebhookPathByTool: Record<string, string>,
+): number {
+  const url = String(tool.url || tool.config?.url || '');
+  const method = String(tool.method || tool.config?.method || '').toUpperCase();
+  const headers = tool.headers || tool.config?.headers || {};
+  const parameters = tool.parameters ?? tool.config?.parameters;
+  const type = normalizeAnamToolType(tool.type);
+  const subtype = String(tool.subtype || '').trim().toLowerCase();
+  const expectedPath = expectedWebhookPathByTool[name];
+
+  let score = 0;
+  if (name === 'show_cards') {
+    if (type.includes('client')) score += 6;
+    if (parameters && typeof parameters === 'object') score += 2;
+    return score;
+  }
+
+  if (type.includes('server')) score += 2;
+  if (subtype === 'webhook') score += 2;
+  if (method === 'POST') score += 1;
+  if (url.startsWith('https://www.aspireos.app/v1/tools/')) score += 4;
+  if (expectedPath && url.includes(expectedPath)) score += 4;
+  if (headers['x-aspire-tool-secret']) score += 2;
+  if (parameters && typeof parameters === 'object') score += 1;
+  return score;
+}
+
+async function fetchCanonicalAnamAvaToolIds(anamApiKey: string): Promise<CanonicalAnamToolSelection> {
+  const expectedWebhookPathByTool: Record<string, string> = {
+    ava_get_context: '/v1/tools/context',
+    ava_search: '/v1/tools/search',
+    ava_create_draft: '/v1/tools/draft',
+    ava_request_approval: '/v1/tools/approve',
+    save_office_note: '/v1/tools/office-note',
+    invoke_adam: '/v1/tools/invoke',
+    invoke_quinn: '/v1/tools/invoke',
+    invoke_tec: '/v1/tools/invoke',
+    invoke_clara: '/v1/tools/invoke',
+  };
+
+  try {
+    const apiResp: any = await fetch('https://api.anam.ai/v1/tools', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${anamApiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!apiResp.ok) {
+      const body = await apiResp.text().catch(() => '');
+      return {
+        toolIds: [],
+        selected: {},
+        issues: [`Unable to fetch Anam tools (${apiResp.status}): ${body.slice(0, 180)}`],
+      };
+    }
+
+    const data = await apiResp.json().catch(() => ({}));
+    const tools: AnamPersonaTool[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.data)
+        ? data.data
+        : [];
+
+    const selected: Record<string, string> = {};
+    const selectedIds: string[] = [];
+    const issues: string[] = [];
+
+    for (const requiredName of CANONICAL_ANAM_AVA_TOOL_NAMES) {
+      const candidates = tools
+        .filter((tool) => String(tool?.name || '').trim() === requiredName)
+        .map((tool) => ({
+          tool,
+          id: String(tool.id || tool._toolId || '').trim(),
+          score: scoreCanonicalToolCandidate(requiredName, tool, expectedWebhookPathByTool),
+        }))
+        .filter((entry) => entry.id.length > 0);
+
+      if (candidates.length === 0) {
+        issues.push(`Canonical tool missing in /v1/tools: ${requiredName}`);
+        continue;
+      }
+
+      candidates.sort((a, b) => b.score - a.score);
+      const chosen = candidates[0];
+      selected[requiredName] = chosen.id;
+      selectedIds.push(chosen.id);
+
+      if (chosen.score < 4) {
+        issues.push(`Tool ${requiredName} selected weak candidate (score ${chosen.score})`);
+      }
+    }
+
+    const knowledgeCandidates = tools
+      .filter((tool) => CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES.includes(String(tool?.name || '').trim() as any))
+      .map((tool) => String(tool.id || tool._toolId || '').trim())
+      .filter(Boolean);
+    if (knowledgeCandidates.length > 0) {
+      const knowledgeId = knowledgeCandidates[0];
+      selected['knowledge_tool'] = knowledgeId;
+      selectedIds.push(knowledgeId);
+    }
+
+    return {
+      toolIds: Array.from(new Set(selectedIds)),
+      selected,
+      issues,
+    };
+  } catch (error: unknown) {
+    return {
+      toolIds: [],
+      selected: {},
+      issues: [`Unable to fetch canonical Anam tools: ${error instanceof Error ? error.message : 'unknown error'}`],
     };
   }
 }
@@ -4349,6 +4481,7 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         });
       }
     }
+    let avaSessionToolIds: string[] = [];
     if (resolvedPersona === 'ava') {
       const strictAnamToolValidation = process.env.ANAM_TOOLSET_STRICT_VALIDATION === 'true';
       const toolValidation = await fetchAnamPersonaToolsForValidation(CANONICAL_ANAM_AVA_PERSONA_ID, ANAM_API_KEY);
@@ -4365,6 +4498,31 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
             details: toolValidation.issues,
           });
         }
+      }
+
+      const canonicalToolSelection = await fetchCanonicalAnamAvaToolIds(ANAM_API_KEY);
+      avaSessionToolIds = canonicalToolSelection.toolIds;
+      if (canonicalToolSelection.issues.length > 0) {
+        logger.error('Anam Ava canonical tool resolution warnings', {
+          issueCount: canonicalToolSelection.issues.length,
+          issues: canonicalToolSelection.issues,
+          selected: canonicalToolSelection.selected,
+        });
+      } else {
+        logger.info('Anam Ava canonical tool IDs pinned for session', {
+          selectedCount: avaSessionToolIds.length,
+          selected: canonicalToolSelection.selected,
+        });
+      }
+
+      // Fail closed if we cannot pin every required tool; prevents random stale tool execution.
+      const strictSessionToolPinning = process.env.ANAM_SESSION_TOOL_PIN_STRICT !== 'false';
+      if (strictSessionToolPinning && avaSessionToolIds.length < CANONICAL_ANAM_AVA_TOOL_NAMES.length) {
+        return res.status(503).json({
+          error: 'ANAM_AVA_SESSION_TOOL_PIN_FAILED',
+          message: 'Ava video tool pinning failed',
+          details: canonicalToolSelection.issues,
+        });
       }
     }
     const finnCtx = `[ASPIRE_CTX:suite_id=${suiteId},user_id=${userId},office_id=${officeId},agent=finn]`;
@@ -4418,7 +4576,12 @@ When giving tax guidance, always include confidence level: "This is well-establi
       },
     };
 
-    const personaConfig = resolvedPersona === 'finn' ? FINN_CONFIG : AVA_CONFIG;
+    const personaConfig = resolvedPersona === 'finn'
+      ? FINN_CONFIG
+      : {
+          ...AVA_CONFIG,
+          ...(avaSessionToolIds.length > 0 ? { toolIds: avaSessionToolIds } : {}),
+        };
     const agent = resolvedPersona === 'finn' ? 'Finn' : 'Ava';
 
     const requestSessionToken = async (config: Record<string, unknown>) => {
@@ -4434,31 +4597,7 @@ When giving tax guidance, always include confidence level: "This is well-establi
       return { tokenResponse, rawText };
     };
 
-    let { tokenResponse: response, rawText: responseText } = await requestSessionToken(personaConfig as unknown as Record<string, unknown>);
-    if (!response.ok) {
-      const retriableByPersonaDrift = resolvedPersona === 'ava' && response.status >= 400 && response.status < 500;
-      if (retriableByPersonaDrift) {
-        const fallbackConfig = { ...(personaConfig as Record<string, unknown>) };
-        delete fallbackConfig.personaId;
-        const fallbackResult = await requestSessionToken(fallbackConfig);
-        if (fallbackResult.tokenResponse.ok) {
-          response = fallbackResult.tokenResponse;
-          responseText = fallbackResult.rawText;
-          logger.warn('Anam session token recovered after dropping personaId', {
-            persona: agent,
-            originalPersonaId: (personaConfig as Record<string, unknown>).personaId,
-            configuredPersonaId: CONFIGURED_ANAM_AVA_PERSONA_ID,
-          });
-        } else {
-          logger.error('Anam session token fallback failed', {
-            status: fallbackResult.tokenResponse.status,
-            persona: agent,
-            avatarId: (personaConfig as Record<string, unknown>).avatarId,
-            error: fallbackResult.rawText.substring(0, 500),
-          });
-        }
-      }
-    }
+    const { tokenResponse: response, rawText: responseText } = await requestSessionToken(personaConfig as unknown as Record<string, unknown>);
 
     if (!response.ok) {
       logger.error('Anam session token API error', {

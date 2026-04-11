@@ -9,7 +9,9 @@
  *   ANAM_AVA_PERSONA_ID=58f82b89-8ae7-43cc-930d-be8def14dff3
  *   ANAM_TOOL_API_BASE_URL=https://www.aspireos.app/v1/tools
  *   ANAM_TOOL_WEBHOOK_URL=https://www.aspireos.app/v1/tools (legacy alias for base URL)
- *   TOOL_WEBHOOK_SHARED_SECRET=aspire-secret-2025
+ *   TOOL_WEBHOOK_SHARED_SECRET=<shared-secret>
+ *   ASPIRE_TOOL_SECRET=<shared-secret>
+ *   ANAM_TOOL_SECRET=<shared-secret>
  *   SYNC_ANAM_PROMPT=true
  */
 
@@ -24,13 +26,18 @@ const TOOL_API_BASE_URL = (
   || 'https://www.aspireos.app/v1/tools'
 ).replace(/\/+$/, '');
 const TOOL_SECRET = process.env.TOOL_WEBHOOK_SHARED_SECRET
+  || process.env.ASPIRE_TOOL_SECRET
+  || process.env.ANAM_TOOL_SECRET
   || process.env.ELEVENLABS_TOOL_SECRET
-  || process.env.ELEVENLABS_WORKSPACE_SECRET
-  || 'aspire-secret-2025';
+  || process.env.ELEVENLABS_WORKSPACE_SECRET;
 const SHOULD_SYNC_PROMPT = String(process.env.SYNC_ANAM_PROMPT || 'false').toLowerCase() === 'true';
 
 if (!ANAM_API_KEY) {
   console.error('Missing ANAM_API_KEY');
+  process.exit(1);
+}
+if (!TOOL_SECRET) {
+  console.error('Missing TOOL_WEBHOOK_SHARED_SECRET/ASPIRE_TOOL_SECRET/ANAM_TOOL_SECRET');
   process.exit(1);
 }
 
