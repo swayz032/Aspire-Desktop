@@ -23,7 +23,10 @@ const TOOL_API_BASE_URL = (
   || process.env.ANAM_TOOL_WEBHOOK_URL
   || 'https://www.aspireos.app/v1/tools'
 ).replace(/\/+$/, '');
-const TOOL_SECRET = process.env.TOOL_WEBHOOK_SHARED_SECRET || 'aspire-secret-2025';
+const TOOL_SECRET = process.env.TOOL_WEBHOOK_SHARED_SECRET
+  || process.env.ELEVENLABS_TOOL_SECRET
+  || process.env.ELEVENLABS_WORKSPACE_SECRET
+  || 'aspire-secret-2025';
 const SHOULD_SYNC_PROMPT = String(process.env.SYNC_ANAM_PROMPT || 'false').toLowerCase() === 'true';
 
 if (!ANAM_API_KEY) {
