@@ -7,7 +7,8 @@
  *
  * Optional env:
  *   ANAM_AVA_PERSONA_ID=58f82b89-8ae7-43cc-930d-be8def14dff3
- *   ANAM_TOOL_WEBHOOK_URL=https://aspire-desktop.railway.app/v1/agents/invoke-sync
+ *   ANAM_TOOL_API_BASE_URL=https://www.aspireos.app/v1/tools
+ *   ANAM_TOOL_WEBHOOK_URL=https://www.aspireos.app/v1/tools (legacy alias for base URL)
  *   TOOL_WEBHOOK_SHARED_SECRET=aspire-secret-2025
  *   SYNC_ANAM_PROMPT=true
  */
@@ -17,7 +18,11 @@ import path from 'path';
 
 const ANAM_API_KEY = process.env.ANAM_API_KEY || '';
 const PERSONA_ID = process.env.ANAM_AVA_PERSONA_ID || '58f82b89-8ae7-43cc-930d-be8def14dff3';
-const WEBHOOK_URL = process.env.ANAM_TOOL_WEBHOOK_URL || 'https://aspire-desktop.railway.app/v1/agents/invoke-sync';
+const TOOL_API_BASE_URL = (
+  process.env.ANAM_TOOL_API_BASE_URL
+  || process.env.ANAM_TOOL_WEBHOOK_URL
+  || 'https://www.aspireos.app/v1/tools'
+).replace(/\/+$/, '');
 const TOOL_SECRET = process.env.TOOL_WEBHOOK_SHARED_SECRET || 'aspire-secret-2025';
 const SHOULD_SYNC_PROMPT = String(process.env.SYNC_ANAM_PROMPT || 'false').toLowerCase() === 'true';
 
@@ -45,24 +50,29 @@ async function api(pathname, options = {}) {
   return data;
 }
 
-function webhookTool(name, description, properties, required = []) {
+function toolUrl(pathname) {
+  const cleanPath = String(pathname || '').replace(/^\/+/, '');
+  return `${TOOL_API_BASE_URL}/${cleanPath}`;
+}
+
+function webhookTool(name, description, urlPath, properties, required = []) {
   return {
     type: 'SERVER_WEBHOOK',
     name,
     description,
     config: {
       method: 'POST',
-      url: WEBHOOK_URL,
+      url: toolUrl(urlPath),
       headers: {
         'x-aspire-tool-secret': TOOL_SECRET,
       },
       awaitResponse: true,
-    },
-    parameters: {
-      type: 'object',
-      properties,
-      ...(required.length > 0 ? { required } : {}),
-      additionalProperties: true,
+      parameters: {
+        type: 'object',
+        properties,
+        ...(required.length > 0 ? { required } : {}),
+        additionalProperties: true,
+      },
     },
   };
 }
@@ -74,49 +84,64 @@ function buildCanonicalTools() {
       name: 'show_cards',
       description:
         'Display visual cards on screen immediately after invoke_adam returns results. Provide artifact_type, records, and summary.',
-      parameters: {
-        type: 'object',
-        required: ['artifact_type', 'records', 'summary'],
-        properties: {
-          artifact_type: { type: 'string', description: 'Card artifact type from Adam response' },
-          records: { type: 'array', items: { type: 'object' }, description: 'Card records from Adam response' },
-          summary: { type: 'string', description: 'Short modal summary header' },
+      config: {
+        parameters: {
+          type: 'object',
+          required: ['artifact_type', 'records', 'summary'],
+          properties: {
+            artifact_type: { type: 'string', description: 'Card artifact type from Adam response' },
+            records: { type: 'array', items: { type: 'object' }, description: 'Card records from Adam response' },
+            summary: { type: 'string', description: 'Short modal summary header' },
+          },
+          additionalProperties: false,
         },
-        additionalProperties: false,
       },
     },
     webhookTool(
       'ava_get_context',
       'Retrieve business context: briefings, schedule, missed calls, and pending approvals.',
+      'context',
       {
-        reason: { type: 'string', description: 'Short reason for requesting context' },
-        task: { type: 'string', description: 'Optional task hint' },
+        suite_id: { type: 'string', description: 'Active suite ID' },
+        user_id: { type: 'string', description: 'Optional user ID' },
+        query: { type: 'string', description: 'Short reason for requesting context' },
       },
       [],
     ),
     webhookTool(
       'save_office_note',
       'Save request, follow-up, or reminder for future session handoff.',
+      'office-note',
       {
-        note: { type: 'string', description: 'Note body to store' },
-        priority: { type: 'string', description: 'low|medium|high' },
-        tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags' },
+        suite_id: { type: 'string', description: 'Active suite ID' },
+        note_type: { type: 'string', description: 'handoff|contract_request|follow_up|reminder' },
+        summary: { type: 'string', description: 'Note body to store' },
+        next_step: { type: 'string', description: 'Optional next step' },
+        entity: { type: 'string', description: 'Optional related entity (client/property/vendor)' },
       },
-      ['note'],
+      ['summary'],
     ),
     webhookTool(
       'invoke_tec',
       'Route document tasks to Tec for proposals, reports, contracts, and PDFs.',
+      'invoke',
       {
+        suite_id: { type: 'string', description: 'Active suite ID' },
+        user_id: { type: 'string', description: 'Optional user ID' },
+        agent: { type: 'string', enum: ['tec'], description: 'Must be tec' },
         task: { type: 'string', description: 'Document request' },
         details: { type: 'string', description: 'Optional details and constraints' },
       },
-      ['task'],
+      ['agent', 'task'],
     ),
     webhookTool(
       'invoke_adam',
       'Route research tasks to Adam for properties, hotels, products, vendors, and strategic playbooks.',
+      'invoke',
       {
+        suite_id: { type: 'string', description: 'Active suite ID' },
+        user_id: { type: 'string', description: 'Optional user ID' },
+        agent: { type: 'string', enum: ['adam'], description: 'Must be adam' },
         task: { type: 'string', description: 'Primary research task text' },
         query: { type: 'string', description: 'Search query or address' },
         city: { type: 'string', description: 'City or location context' },
@@ -125,32 +150,43 @@ function buildCanonicalTools() {
         filters: { type: 'object', description: 'Optional provider filters' },
         card_cache_id: { type: 'string', description: 'Optional cache continuation id' },
       },
-      ['task'],
+      ['agent', 'task'],
     ),
     webhookTool(
       'invoke_clara',
       'Route legal and contract tasks to Clara.',
+      'invoke',
       {
+        suite_id: { type: 'string', description: 'Active suite ID' },
+        user_id: { type: 'string', description: 'Optional user ID' },
+        agent: { type: 'string', enum: ['clara'], description: 'Must be clara' },
         task: { type: 'string', description: 'Legal/contract request' },
         details: { type: 'string', description: 'Optional specifics' },
       },
-      ['task'],
+      ['agent', 'task'],
     ),
     webhookTool(
       'invoke_quinn',
       'Route invoices, quotes, billing, and payment tracking to Quinn.',
+      'invoke',
       {
+        suite_id: { type: 'string', description: 'Active suite ID' },
+        user_id: { type: 'string', description: 'Optional user ID' },
+        agent: { type: 'string', enum: ['quinn'], description: 'Must be quinn' },
         task: { type: 'string', description: 'Invoice or billing request' },
         customer_name: { type: 'string', description: 'Customer name' },
         customer_email: { type: 'string', description: 'Customer email' },
         details: { type: 'string', description: 'Optional invoice details' },
       },
-      ['task'],
+      ['agent', 'task'],
     ),
     webhookTool(
       'ava_request_approval',
       'Submit drafted action to authority queue for explicit user approval.',
+      'approve',
       {
+        suite_id: { type: 'string', description: 'Active suite ID' },
+        user_id: { type: 'string', description: 'Optional user ID' },
         draft_id: { type: 'string', description: 'Draft identifier' },
         action_type: { type: 'string', description: 'Action type to approve' },
       },
@@ -159,7 +195,10 @@ function buildCanonicalTools() {
     webhookTool(
       'ava_create_draft',
       'Create draft action that needs user confirmation.',
+      'draft',
       {
+        suite_id: { type: 'string', description: 'Active suite ID' },
+        user_id: { type: 'string', description: 'Optional user ID' },
         draft_type: { type: 'string', description: 'email|invoice|meeting|task|reminder|deadline|follow_up|calendar' },
         details: { type: 'object', description: 'Draft payload details' },
       },
@@ -168,7 +207,10 @@ function buildCanonicalTools() {
     webhookTool(
       'ava_search',
       'Search business domains: calendar, contacts, emails, invoices.',
+      'search',
       {
+        suite_id: { type: 'string', description: 'Active suite ID' },
+        user_id: { type: 'string', description: 'Optional user ID' },
         query: { type: 'string', description: 'Search text' },
         domain: { type: 'string', description: 'calendar|contacts|email|invoices' },
         search_type: { type: 'string', description: 'Optional subtype for legacy compatibility' },
@@ -199,6 +241,7 @@ function loadAvaPromptTemplate() {
 
 async function main() {
   console.log(`Syncing Anam Ava persona ${PERSONA_ID}`);
+  console.log(`Tool API base URL: ${TOOL_API_BASE_URL}`);
   const persona = await api(`/personas/${PERSONA_ID}`, { method: 'GET' });
   const existingTools = Array.isArray(persona?.tools) ? persona.tools : [];
   const existingNames = existingTools.map((tool) => tool.name).filter(Boolean);

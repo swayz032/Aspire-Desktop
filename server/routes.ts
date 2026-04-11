@@ -43,6 +43,13 @@ type AnamPersonaTool = {
   awaitResponse?: boolean;
   headers?: Record<string, string>;
   parameters?: unknown;
+  config?: {
+    method?: string;
+    url?: string;
+    awaitResponse?: boolean;
+    headers?: Record<string, string>;
+    parameters?: unknown;
+  };
 };
 
 function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): string[] {
@@ -70,6 +77,17 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
 
 function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
   const issues: string[] = [];
+  const expectedWebhookPathByTool: Record<string, string> = {
+    ava_get_context: '/v1/tools/context',
+    ava_search: '/v1/tools/search',
+    ava_create_draft: '/v1/tools/draft',
+    ava_request_approval: '/v1/tools/approve',
+    save_office_note: '/v1/tools/office-note',
+    invoke_adam: '/v1/tools/invoke',
+    invoke_quinn: '/v1/tools/invoke',
+    invoke_tec: '/v1/tools/invoke',
+    invoke_clara: '/v1/tools/invoke',
+  };
   const names = tools.map((tool) => String(tool?.name || '').trim()).filter(Boolean);
   const counts = new Map<string, number>();
   for (const name of names) counts.set(name, (counts.get(name) || 0) + 1);
@@ -94,11 +112,19 @@ function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
       issues.push(`Tool ${name} must be server webhook`);
       continue;
     }
-    if (!tool.url || !String(tool.url).startsWith('http')) issues.push(`Tool ${name} missing webhook url`);
-    if (String(tool.method || '').toUpperCase() !== 'POST') issues.push(`Tool ${name} must use POST`);
-    if (tool.awaitResponse !== true) issues.push(`Tool ${name} must set awaitResponse=true`);
-    if (!tool.parameters || typeof tool.parameters !== 'object') issues.push(`Tool ${name} missing parameters schema`);
-    const headers = tool.headers || {};
+    const url = String(tool.url || tool.config?.url || '');
+    const method = String(tool.method || tool.config?.method || '').toUpperCase();
+    const awaitResponse = typeof tool.awaitResponse === 'boolean' ? tool.awaitResponse : tool.config?.awaitResponse;
+    const parameters = tool.parameters ?? tool.config?.parameters;
+    const headers = tool.headers || tool.config?.headers || {};
+    if (!url || !url.startsWith('http')) issues.push(`Tool ${name} missing webhook url`);
+    const expectedPath = expectedWebhookPathByTool[name];
+    if (expectedPath && !url.includes(expectedPath)) {
+      issues.push(`Tool ${name} endpoint drift: expected ${expectedPath}, got ${url}`);
+    }
+    if (method !== 'POST') issues.push(`Tool ${name} must use POST`);
+    if (awaitResponse !== true) issues.push(`Tool ${name} must set awaitResponse=true`);
+    if (!parameters || typeof parameters !== 'object') issues.push(`Tool ${name} missing parameters schema`);
     if (!headers['x-aspire-tool-secret']) issues.push(`Tool ${name} missing x-aspire-tool-secret header`);
   }
 
