@@ -20,6 +20,30 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
 const router = Router();
 const CANONICAL_ANAM_AVA_PERSONA_ID = '58f82b89-8ae7-43cc-930d-be8def14dff3';
 const CONFIGURED_ANAM_AVA_PERSONA_ID = process.env.ANAM_AVA_PERSONA_ID?.trim() || CANONICAL_ANAM_AVA_PERSONA_ID;
+const CANONICAL_ANAM_AVA_TOOL_NAMES = [
+  'ava_get_context',
+  'ava_search',
+  'ava_create_draft',
+  'ava_request_approval',
+  'invoke_quinn',
+  'invoke_adam',
+  'invoke_tec',
+  'invoke_clara',
+  'save_office_note',
+  'show_cards',
+] as const;
+const CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES = ['Knowledge_Ava', 'ava_knowledge_search'] as const;
+
+type AnamPersonaTool = {
+  name?: string;
+  type?: string;
+  subtype?: string;
+  method?: string;
+  url?: string;
+  awaitResponse?: boolean;
+  headers?: Record<string, string>;
+  parameters?: unknown;
+};
 
 function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): string[] {
   const errors: string[] = [];
@@ -29,11 +53,10 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
     errors.push(`Ava personaId drift detected: expected ${CANONICAL_ANAM_AVA_PERSONA_ID}, got ${personaId}`);
   }
 
-  if (!normalizedPrompt.includes('## search')) {
-    errors.push('Anam Ava prompt missing search tool section.');
-  }
-  if (normalizedPrompt.includes('## ava_search')) {
-    errors.push('Anam Ava prompt contains deprecated ava_search section.');
+  const hasSearch = normalizedPrompt.includes('## search');
+  const hasAvaSearch = normalizedPrompt.includes('## ava_search');
+  if (!hasSearch && !hasAvaSearch) {
+    errors.push('Anam Ava prompt missing search tool section (expected ## search or ## ava_search).');
   }
   if (normalizedPrompt.includes('transfer to specialist agents immediately')) {
     errors.push('Anam Ava prompt contains transfer language incompatible with video tool-only routing.');
@@ -43,6 +66,72 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
   }
 
   return errors;
+}
+
+function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
+  const issues: string[] = [];
+  const names = tools.map((tool) => String(tool?.name || '').trim()).filter(Boolean);
+  const counts = new Map<string, number>();
+  for (const name of names) counts.set(name, (counts.get(name) || 0) + 1);
+  for (const [name, count] of counts.entries()) {
+    if (count > 1) issues.push(`Duplicate Anam Ava tool attached: ${name} x${count}`);
+  }
+
+  for (const required of CANONICAL_ANAM_AVA_TOOL_NAMES) {
+    if (!counts.has(required)) issues.push(`Missing required Anam Ava tool: ${required}`);
+  }
+  if (!CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES.some((name) => counts.has(name))) {
+    issues.push('Missing knowledge tool: expected Knowledge_Ava or ava_knowledge_search');
+  }
+
+  for (const tool of tools) {
+    const name = String(tool?.name || '');
+    if (!name || !CANONICAL_ANAM_AVA_TOOL_NAMES.includes(name as (typeof CANONICAL_ANAM_AVA_TOOL_NAMES)[number])) {
+      continue;
+    }
+    if (name === 'show_cards') continue;
+    if (tool.type !== 'server' || tool.subtype !== 'webhook') {
+      issues.push(`Tool ${name} must be server webhook`);
+      continue;
+    }
+    if (!tool.url || !String(tool.url).startsWith('http')) issues.push(`Tool ${name} missing webhook url`);
+    if (String(tool.method || '').toUpperCase() !== 'POST') issues.push(`Tool ${name} must use POST`);
+    if (tool.awaitResponse !== true) issues.push(`Tool ${name} must set awaitResponse=true`);
+    if (!tool.parameters || typeof tool.parameters !== 'object') issues.push(`Tool ${name} missing parameters schema`);
+    const headers = tool.headers || {};
+    if (!headers['x-aspire-tool-secret']) issues.push(`Tool ${name} missing x-aspire-tool-secret header`);
+  }
+
+  return issues;
+}
+
+async function fetchAnamPersonaToolsForValidation(
+  personaId: string,
+  anamApiKey: string,
+): Promise<{ tools: AnamPersonaTool[]; issues: string[] }> {
+  try {
+    const apiResp: any = await fetch(`https://api.anam.ai/v1/personas/${personaId}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${anamApiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!apiResp.ok) {
+      const body = await apiResp.text().catch(() => '');
+      return { tools: [], issues: [`Unable to fetch Anam persona tools (${apiResp.status}): ${body.slice(0, 180)}`] };
+    }
+    const data = await apiResp.json().catch(() => ({}));
+    const tools = Array.isArray(data?.tools) ? (data.tools as AnamPersonaTool[]) : [];
+    return { tools, issues: validateAnamAvaToolset(tools) };
+  } catch (error: unknown) {
+    return {
+      tools: [],
+      issues: [
+        `Unable to fetch Anam persona tools: ${error instanceof Error ? error.message : 'unknown error'}`,
+      ],
+    };
+  }
 }
 
 type SupportedAgent =
@@ -4044,6 +4133,64 @@ router.post('/api/authority-queue/:id/execute', async (req: Request, res: Respon
  *   - Persona state is created fresh per session token request
  */
 
+router.get('/api/anam/persona-health', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).authenticatedUserId;
+    if (!userId) {
+      return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Authentication required' });
+    }
+    const ANAM_API_KEY = process.env.ANAM_API_KEY;
+    if (!ANAM_API_KEY) {
+      return res.status(503).json({ error: 'ANAM_NOT_CONFIGURED', message: 'Anam API key missing' });
+    }
+
+    const path = require('path');
+    const fs = require('fs');
+    const promptPath = path.join(
+      process.cwd(),
+      '..',
+      'backend',
+      'orchestrator',
+      'src',
+      'aspire_orchestrator',
+      'config',
+      'pack_personas',
+      'ava_anam_video_prompt.md',
+    );
+    let promptTemplate = '';
+    try {
+      promptTemplate = fs.readFileSync(promptPath, 'utf-8');
+    } catch {
+      promptTemplate = '';
+    }
+
+    const promptValidationIssues = validateAnamAvaPromptAndConfig(promptTemplate, CONFIGURED_ANAM_AVA_PERSONA_ID);
+    const toolValidation = await fetchAnamPersonaToolsForValidation(CANONICAL_ANAM_AVA_PERSONA_ID, ANAM_API_KEY);
+    const names = toolValidation.tools.map((tool) => String(tool?.name || '').trim()).filter(Boolean);
+    const counts = names.reduce<Record<string, number>>((acc, name) => {
+      acc[name] = (acc[name] || 0) + 1;
+      return acc;
+    }, {});
+
+    return res.json({
+      personaId: CANONICAL_ANAM_AVA_PERSONA_ID,
+      configuredPersonaId: CONFIGURED_ANAM_AVA_PERSONA_ID,
+      attachedToolCount: toolValidation.tools.length,
+      duplicateTools: Object.entries(counts)
+        .filter(([, count]) => count > 1)
+        .map(([name, count]) => ({ name, count })),
+      promptValidationIssues,
+      toolValidationIssues: toolValidation.issues,
+      ok: promptValidationIssues.length === 0 && toolValidation.issues.length === 0,
+    });
+  } catch (error: unknown) {
+    logger.error('Anam persona health endpoint failed', {
+      error: error instanceof Error ? error.message : 'unknown',
+    });
+    return res.status(500).json({ error: 'ANAM_PERSONA_HEALTH_FAILED', message: 'Failed to inspect Anam persona health' });
+  }
+});
+
 router.post('/api/anam/session', async (req: Request, res: Response) => {
   try {
     // Law #3: Fail Closed — require authenticated user for avatar sessions
@@ -4174,6 +4321,24 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
           message: 'Ava video configuration validation failed',
           details: avaConfigValidationErrors,
         });
+      }
+    }
+    if (resolvedPersona === 'ava') {
+      const strictAnamToolValidation = process.env.ANAM_TOOLSET_STRICT_VALIDATION === 'true';
+      const toolValidation = await fetchAnamPersonaToolsForValidation(CANONICAL_ANAM_AVA_PERSONA_ID, ANAM_API_KEY);
+      if (toolValidation.issues.length > 0) {
+        logger.error('Anam Ava tool validation failed', {
+          strict: strictAnamToolValidation,
+          issueCount: toolValidation.issues.length,
+          issues: toolValidation.issues,
+        });
+        if (strictAnamToolValidation) {
+          return res.status(503).json({
+            error: 'ANAM_AVA_TOOLSET_INVALID',
+            message: 'Ava toolset validation failed',
+            details: toolValidation.issues,
+          });
+        }
       }
     }
     const finnCtx = `[ASPIRE_CTX:suite_id=${suiteId},user_id=${userId},office_id=${officeId},agent=finn]`;
