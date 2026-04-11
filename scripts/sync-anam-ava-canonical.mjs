@@ -151,11 +151,9 @@ function buildCanonicalTools() {
     ),
     webhookTool(
       'invoke_adam',
-      'Use this tool to delegate specialized research to Adam for properties, hotels, products, vendors, or market analysis. Use task for the overall instruction and query for the specific address/name/search term.',
+      "Use this tool to delegate specialized research to the Adam agent for properties, hotels, products, vendors, or market analysis. Always set agent to 'adam'. Use task for the high-level objective and query for the specific address, name, or search term.",
       'invoke',
       {
-        suite_id: { type: 'string', description: 'Active suite ID' },
-        user_id: { type: 'string', description: 'Optional user ID' },
         agent: { type: 'string', enum: ['adam'], description: 'Must be adam' },
         task: { type: 'string', description: 'Overall research instruction (for example: find paint sprayers in Tallahassee).' },
         query: { type: 'string', description: 'Specific search term, address, or named entity to look up.' },
@@ -173,7 +171,7 @@ function buildCanonicalTools() {
         },
         card_cache_id: { type: 'string', description: 'Optional cache continuation id' },
       },
-      ['agent', 'task'],
+      ['agent', 'task', 'query'],
       { additionalProperties: false },
     ),
     webhookTool(
