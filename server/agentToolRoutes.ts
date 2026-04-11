@@ -98,11 +98,17 @@ function buildPropertyRefetchTask(seedRecord: any, suiteId: string): string | nu
   return `Pull property facts for ${address}`;
 }
 
-const TOOL_WEBHOOK_SHARED_SECRET =
-  process.env.TOOL_WEBHOOK_SHARED_SECRET?.trim() ||
-  process.env.ANAM_TOOL_SECRET?.trim() ||
-  process.env.ELEVENLABS_TOOL_SECRET?.trim() ||
-  '';
+function collectAcceptedSecrets(): string[] {
+  const raw = [
+    process.env.TOOL_WEBHOOK_SHARED_SECRET,
+    process.env.ANAM_TOOL_SECRET,
+    process.env.ELEVENLABS_TOOL_SECRET,
+    process.env.ELEVENLABS_WORKSPACE_SECRET,
+  ]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .flatMap((v) => v.split(',').map((s) => s.trim()).filter(Boolean));
+  return Array.from(new Set(raw));
+}
 
 function readHeaderString(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return String(value[0] || '').trim();
@@ -113,7 +119,8 @@ function readHeaderString(value: string | string[] | undefined): string {
  * Verify tool auth header matches configured shared secret.
  */
 function verifySecret(req: Request, res: Response): boolean {
-  if (!TOOL_WEBHOOK_SHARED_SECRET) {
+  const acceptedSecrets = collectAcceptedSecrets();
+  if (acceptedSecrets.length === 0) {
     logger.error('[AgentTool] TOOL_WEBHOOK_SHARED_SECRET missing; refusing webhook requests');
     res.status(503).json({ error: 'Service unavailable' });
     return false;
@@ -121,7 +128,7 @@ function verifySecret(req: Request, res: Response): boolean {
   const aspireSecret = readHeaderString(req.headers['x-aspire-tool-secret'] as string | string[] | undefined);
   const legacySecret = readHeaderString(req.headers['x-elevenlabs-secret'] as string | string[] | undefined);
   const secret = aspireSecret || legacySecret;
-  if (!secret || secret !== TOOL_WEBHOOK_SHARED_SECRET) {
+  if (!secret || !acceptedSecrets.includes(secret)) {
     logger.warn('[AgentTool] Invalid or missing secret', {
       path: req.path,
       hasSecret: !!secret,
@@ -138,6 +145,84 @@ function verifySecret(req: Request, res: Response): boolean {
   }
   return true;
 }
+
+function inferInvokeAgent(body: any): 'adam' | 'quinn' | 'tec' | 'clara' {
+  const text = `${body?.task || ''} ${body?.details || ''}`.toLowerCase();
+  if (body?.agent && ['adam', 'quinn', 'tec', 'clara'].includes(String(body.agent).toLowerCase())) {
+    return String(body.agent).toLowerCase() as 'adam' | 'quinn' | 'tec' | 'clara';
+  }
+  if (body?.entity_type || body?.city || body?.filters || body?.card_cache_id) return 'adam';
+  if (body?.invoice || body?.customer || /invoice|quote|billing|payment/.test(text)) return 'quinn';
+  if (/contract|nda|legal|e-sign|esign|signature/.test(text)) return 'clara';
+  return 'adam';
+}
+
+function inferLegacyInvokeSyncTarget(body: any): '/v1/tools/context' | '/v1/tools/search' | '/v1/tools/draft' | '/v1/tools/approve' | '/v1/tools/office-note' | '/v1/tools/invoke' {
+  if (body?.approval_id || body?.capability_token || body?.action_type) return '/v1/tools/approve';
+  if (body?.note || body?.title || body?.tags) return '/v1/tools/office-note';
+  if (body?.draft_type || (body?.payload && !body?.task)) return '/v1/tools/draft';
+  if (body?.task || body?.details || body?.agent || body?.entity_type || body?.city || body?.filters || body?.card_cache_id) return '/v1/tools/invoke';
+  if (body?.query || body?.domain || body?.search_type) return '/v1/tools/search';
+  return '/v1/tools/context';
+}
+
+/**
+ * Legacy compatibility shim.
+ * Some deployed tool configs still post to /v1/agents/invoke-sync on Aspire Desktop.
+ * Route these calls to canonical /v1/tools/* handlers.
+ */
+router.post('/v1/agents/invoke-sync', async (req: Request, res: Response) => {
+  if (!verifySecret(req, res)) return;
+
+  try {
+    const targetPath = inferLegacyInvokeSyncTarget(req.body || {});
+    const body = { ...(req.body || {}) };
+    if (targetPath === '/v1/tools/invoke' && !body.agent) {
+      body.agent = inferInvokeAgent(body);
+    }
+    const port = process.env.PORT || '5001';
+    const localUrl = `http://127.0.0.1:${port}${targetPath}`;
+    const incomingSecret =
+      readHeaderString(req.headers['x-aspire-tool-secret'] as string | string[] | undefined) ||
+      readHeaderString(req.headers['x-elevenlabs-secret'] as string | string[] | undefined) ||
+      collectAcceptedSecrets()[0] ||
+      '';
+
+    const proxyResp = await fetch(localUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-aspire-tool-secret': incomingSecret,
+      },
+      body: JSON.stringify(body),
+    });
+    const payloadText = await proxyResp.text();
+    let payload: any = {};
+    try {
+      payload = payloadText ? JSON.parse(payloadText) : {};
+    } catch {
+      payload = { status: proxyResp.ok ? 'completed' : 'error', message: proxyResp.ok ? 'Done.' : 'Tool unavailable right now.' };
+    }
+    // Avoid leaking internal retry/debug instructions back into model speech.
+    if (!proxyResp.ok || payload?.status === 'error') {
+      const sanitized = {
+        ...payload,
+        status: 'error',
+        message: 'I am having trouble with that right now. Please try again.',
+      };
+      return res.status(200).json(sanitized);
+    }
+    return res.status(200).json(payload);
+  } catch (err: unknown) {
+    logger.error('[AgentTool] legacy invoke-sync shim error', {
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+    return res.status(200).json({
+      status: 'error',
+      message: 'I am having trouble with that right now. Please try again.',
+    });
+  }
+});
 
 /**
  * POST /v1/tools/context
@@ -577,7 +662,7 @@ router.post('/v1/tools/approve', async (req: Request, res: Response) => {
  * Law #1: Orchestrator routes, agents execute.
  * Law #2: Every invoke emits a receipt.
  */
-const VALID_INVOKE_AGENTS = ['quinn', 'adam', 'tec'] as const;
+const VALID_INVOKE_AGENTS = ['quinn', 'adam', 'tec', 'clara'] as const;
 
 router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
