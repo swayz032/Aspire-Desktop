@@ -112,9 +112,24 @@ function collectAcceptedSecrets(): string[] {
   return Array.from(new Set(raw));
 }
 
+function pickRecord(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
+}
+
 function getRequestBody(req: Request): Record<string, any> {
-  if (req.body && typeof req.body === 'object') return req.body as Record<string, any>;
-  return {};
+  const root = pickRecord(req.body);
+  // Anam webhook payloads can place tool arguments under nested keys depending
+  // on transport/runtime. Normalize once so all handlers read a consistent shape.
+  const merged: Record<string, any> = {
+    ...root,
+    ...pickRecord(root.arguments),
+    ...pickRecord(root.params),
+    ...pickRecord(root.input),
+    ...pickRecord(root.payload),
+    ...pickRecord(root.tool_input),
+    ...pickRecord(root.body),
+  };
+  return merged;
 }
 
 function readHeaderString(value: string | string[] | undefined): string {
@@ -163,7 +178,7 @@ function verifySecret(req: Request, res: Response): boolean {
 }
 
 function inferInvokeAgent(body: any): 'adam' | 'quinn' | 'tec' | 'clara' {
-  const text = `${body?.task || ''} ${body?.details || ''}`.toLowerCase();
+  const text = `${body?.task || ''} ${body?.details || ''} ${body?.query || ''}`.toLowerCase();
   if (body?.agent && ['adam', 'quinn', 'tec', 'clara'].includes(String(body.agent).toLowerCase())) {
     return String(body.agent).toLowerCase() as 'adam' | 'quinn' | 'tec' | 'clara';
   }
@@ -724,6 +739,8 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     task: normalizedTask,
     hasTask: !!taskFromTask,
     hasQuery: !!taskFromQuery,
+    hasNestedArguments: !!(req.body && typeof req.body === 'object' && (req.body as any).arguments && typeof (req.body as any).arguments === 'object'),
+    bodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body as Record<string, any>).slice(0, 12) : [],
   });
 
   if (!resolvedAgent || !VALID_INVOKE_AGENTS.includes(resolvedAgent as any)) {
@@ -744,6 +761,11 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   const effectiveTask = normalizedTask || (fallbackTaskParts.length > 0 ? `Research ${fallbackTaskParts.join(' ')}` : '');
 
   if (!effectiveTask) {
+    logger.warn('[AgentTool] invoke missing task/query/details after normalization', {
+      agent: resolvedAgent,
+      rawBodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body as Record<string, any>).slice(0, 20) : [],
+      normalizedKeys: Object.keys(body).slice(0, 20),
+    });
     return res.status(200).json({
       error: 'MISSING_TASK',
       status: 'error',
