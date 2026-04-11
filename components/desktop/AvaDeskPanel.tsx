@@ -246,6 +246,15 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           client.addListener(AnamEvent.TOOL_CALL_FAILED, (event) => {
             post({ type: 'tool_call_failed', payload: { toolName: event?.toolName, errorMessage: event?.errorMessage } });
           });
+          if (AnamEvent.CLIENT_TOOL_EVENT_RECEIVED) {
+            client.addListener(AnamEvent.CLIENT_TOOL_EVENT_RECEIVED, (event) => {
+              const toolName = event?.eventName || event?.toolName;
+              const args = event?.eventData || event?.arguments || {};
+              if (toolName === 'show_cards') {
+                post({ type: 'show_cards', payload: args });
+              }
+            });
+          }
 
           client.addListener(AnamEvent.SESSION_READY, () => {
             if (statusEl) statusEl.remove();
