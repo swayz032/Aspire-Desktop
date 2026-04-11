@@ -697,18 +697,38 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
   const body = getRequestBody(req);
-  const { suite_id, agent, task, details, user_id } = body;
-  logger.info('[AgentTool] invoke', { suite_id, agent, task });
+  const { suite_id, details, user_id } = body;
+  const providedAgent = typeof body.agent === 'string' ? String(body.agent).toLowerCase().trim() : '';
+  const resolvedAgent = (providedAgent && VALID_INVOKE_AGENTS.includes(providedAgent as any))
+    ? providedAgent
+    : inferInvokeAgent(body);
 
-  if (!agent || !VALID_INVOKE_AGENTS.includes(agent)) {
+  // Anam may send query-centric payloads; normalize into task text for backend invoke.
+  const taskFromTask = typeof body.task === 'string' ? body.task.trim() : '';
+  const taskFromQuery = typeof body.query === 'string' ? body.query.trim() : '';
+  const taskFromDetails = typeof details === 'string' ? details.trim() : '';
+  const normalizedTask = taskFromTask || taskFromQuery || taskFromDetails;
+
+  logger.info('[AgentTool] invoke', {
+    suite_id,
+    agent: resolvedAgent,
+    task: normalizedTask,
+    hasTask: !!taskFromTask,
+    hasQuery: !!taskFromQuery,
+  });
+
+  if (!resolvedAgent || !VALID_INVOKE_AGENTS.includes(resolvedAgent as any)) {
     return res.status(400).json({
       error: 'INVALID_AGENT',
       message: `Agent must be one of: ${VALID_INVOKE_AGENTS.join(', ')}. Clara is handled through video mode.`,
     });
   }
 
-  if (!task || typeof task !== 'string') {
-    return res.status(400).json({ error: 'MISSING_TASK', message: 'Task description is required.' });
+  if (!normalizedTask) {
+    return res.status(400).json({
+      error: 'MISSING_TASK',
+      message: 'Task description is required. Provide task or query.',
+    });
   }
 
   try {
@@ -736,9 +756,9 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       process.env.DEFAULT_SUITE_ID ||
       '';
     const safeOfficeId = safeSuiteId;
-    const taskText = typeof task === 'string' ? task : '';
+    const taskText = normalizedTask;
     let detailsText = typeof details === 'string' ? details : '';
-    if (agent === 'adam' && !detailsText.trim() && isLikelyPropertyIntent(taskText, detailsText)) {
+    if (resolvedAgent === 'adam' && !detailsText.trim() && isLikelyPropertyIntent(taskText, detailsText)) {
       const pinned = getLatestPropertyAddress(safeSuiteId);
       if (pinned) {
         detailsText = pinned;
@@ -757,7 +777,7 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
         suite_id: safeSuiteId,
         office_id: safeOfficeId,
         correlation_id: correlationId,
-        agent,
+        agent: resolvedAgent,
         task: taskText,
         details: detailsText,
         user_id,
@@ -769,23 +789,23 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
 
     if (!a2aResp.ok) {
       const errBody = await a2aResp.text().catch(() => '');
-      logger.error('[AgentTool] A2A dispatch failed', { agent, status: a2aResp.status, body: errBody.slice(0, 200) });
+      logger.error('[AgentTool] A2A dispatch failed', { agent: resolvedAgent, status: a2aResp.status, body: errBody.slice(0, 200) });
       return res.json({
-        agent,
-        result: `I was not able to reach ${agent} right now. The service returned an error. Please try again.`,
+        agent: resolvedAgent,
+        result: `I was not able to reach ${resolvedAgent} right now. The service returned an error. Please try again.`,
         status: 'error',
       });
     }
 
     const a2aResult = await a2aResp.json();
-    logger.info('[AgentTool] A2A dispatch result', { agent, success: a2aResult.success, taskId: a2aResult.task_id });
+    logger.info('[AgentTool] A2A dispatch result', { agent: resolvedAgent, success: a2aResult.success, taskId: a2aResult.task_id });
 
     // ── Card Records Intercept ──
     // If Adam returned card_records (full property data), store them on the
     // gateway and strip from the ElevenLabs response. Desktop fetches full
     // records from GET /v1/tools/card-data/:id when show_cards fires.
     let responseData = a2aResult.data || null;
-    if (agent === 'adam' && Array.isArray(responseData?.card_records) && responseData.card_records.length > 0) {
+    if (resolvedAgent === 'adam' && Array.isArray(responseData?.card_records) && responseData.card_records.length > 0) {
       const cacheId = correlationId;
       const cacheSuiteId = safeSuiteId;
       cardRecordsCache.set(cacheId, {
@@ -807,9 +827,9 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     }
 
     return res.json({
-      agent,
-      task,
-      result: a2aResult.result || a2aResult.message || `${agent} has processed your request.`,
+      agent: resolvedAgent,
+      task: normalizedTask,
+      result: a2aResult.result || a2aResult.message || `${resolvedAgent} has processed your request.`,
       data: responseData,
       receipt_id: a2aResult.receipt_id || null,
       status: a2aResult.success ? 'completed' : 'error',
@@ -817,11 +837,11 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   } catch (err: unknown) {
     const isTimeout = err instanceof Error && err.name === 'AbortError';
     const message = isTimeout
-      ? `${agent} is taking longer than expected. Please try again in a moment.`
-      : `I was not able to reach ${agent} right now. Please try again.`;
-    logger.error('[AgentTool] invoke error', { agent, error: err instanceof Error ? err.message : 'unknown', isTimeout });
+      ? `${resolvedAgent} is taking longer than expected. Please try again in a moment.`
+      : `I was not able to reach ${resolvedAgent} right now. Please try again.`;
+    logger.error('[AgentTool] invoke error', { agent: resolvedAgent, error: err instanceof Error ? err.message : 'unknown', isTimeout });
     return res.json({
-      agent,
+      agent: resolvedAgent,
       result: message,
       status: 'error',
     });
