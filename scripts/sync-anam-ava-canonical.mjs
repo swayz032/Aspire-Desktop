@@ -341,10 +341,6 @@ async function main() {
   }
   // Also preserve previously attached knowledge tool IDs even if not listable in /tools.
   for (const kbId of preservedKnowledgeToolIds) {
-    if (!refreshedIds.has(kbId)) {
-      console.warn(`Skipping stale preserved knowledge tool id (not found in /tools): ${kbId}`);
-      continue;
-    }
     if (!createdToolIds.includes(kbId)) {
       createdToolIds.push(kbId);
       console.log(`Re-attached preserved knowledge tool id: ${kbId}`);

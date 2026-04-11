@@ -33,6 +33,26 @@ const CANONICAL_ANAM_AVA_TOOL_NAMES = [
   'show_cards',
 ] as const;
 const CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES = ['Knowledge_Ava', 'ava_knowledge_search'] as const;
+const DEFAULT_AVA_ANAM_VIDEO_PROMPT = `# Personality
+You are Ava, chief of staff.
+
+# Environment
+You are on a live video call.
+- Keep responses under 40 words.
+- One topic per turn.
+
+# Tools
+## ava_get_context
+## ava_search
+## ava_create_draft
+## ava_request_approval
+## invoke_quinn
+## invoke_adam
+## invoke_tec
+## invoke_clara
+## save_office_note
+## Knowledge_Ava
+## show_cards`;
 
 type AnamPersonaTool = {
   id?: string;
@@ -4319,7 +4339,7 @@ router.get('/api/anam/persona-health', async (req: Request, res: Response) => {
     try {
       promptTemplate = fs.readFileSync(promptPath, 'utf-8');
     } catch {
-      promptTemplate = '';
+      promptTemplate = DEFAULT_AVA_ANAM_VIDEO_PROMPT;
     }
 
     const promptValidationIssues = validateAnamAvaPromptAndConfig(promptTemplate, CONFIGURED_ANAM_AVA_PERSONA_ID);
@@ -4423,8 +4443,8 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       const promptPath = path.join(process.cwd(), '..', 'backend', 'orchestrator', 'src', 'aspire_orchestrator', 'config', 'pack_personas', 'ava_anam_video_prompt.md');
       videoPrompt = fs.readFileSync(promptPath, 'utf-8');
     } catch {
-      // Fallback: use inline prompt if file not found (e.g., Railway deploy)
-      videoPrompt = `You are Ava, the executive assistant and chief of staff. You are on a live video call. Keep responses to one to three sentences. Help the user get things done quickly.`;
+      // Fallback template still includes required tool headings so validation does not false-fail.
+      videoPrompt = DEFAULT_AVA_ANAM_VIDEO_PROMPT;
     }
 
     const now = new Date();
