@@ -28,6 +28,7 @@ const cardRecordsCache = new Map<string, { records: any[]; artifactType: string;
 const latestCardCacheIdBySuite = new Map<string, string>(); // Per-suite most recent cache entry
 const latestPropertyAddressBySuite = new Map<string, { address: string; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROPERTY_ARTIFACT_TYPES = new Set([
   'LandlordPropertyPack',
   'PropertyFactPack',
@@ -37,6 +38,8 @@ const PROPERTY_ARTIFACT_TYPES = new Set([
   'ScreeningComplianceBrief',
   'InvestmentOpportunityPack',
 ]);
+const ORCHESTRATOR_INVOKE_PATH = '/v1/agents/invoke';
+const ORCHESTRATOR_INVOKE_SYNC_PATH = '/v1/agents/invoke-sync';
 
 function cleanCardCache() {
   const now = Date.now();
@@ -99,6 +102,32 @@ function buildPropertyRefetchTask(seedRecord: any, suiteId: string): string | nu
   return `Pull property facts for ${address}`;
 }
 
+async function dispatchOrchestratorInvoke(
+  orchestratorUrl: string,
+  payload: Record<string, any>,
+  signal?: AbortSignal,
+): Promise<{ response: globalThis.Response; endpoint: string; fellBack: boolean }> {
+  const primaryEndpoint = `${orchestratorUrl}${ORCHESTRATOR_INVOKE_PATH}`;
+  const requestInit: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  };
+  let response = await fetch(primaryEndpoint, requestInit);
+  if (response.status === 404 || response.status === 405) {
+    const fallbackEndpoint = `${orchestratorUrl}${ORCHESTRATOR_INVOKE_SYNC_PATH}`;
+    logger.warn('[AgentTool] Orchestrator invoke endpoint fallback', {
+      primaryEndpoint,
+      fallbackEndpoint,
+      status: response.status,
+    });
+    response = await fetch(fallbackEndpoint, requestInit);
+    return { response, endpoint: fallbackEndpoint, fellBack: true };
+  }
+  return { response, endpoint: primaryEndpoint, fellBack: false };
+}
+
 function collectAcceptedSecrets(): string[] {
   const raw = [
     process.env.TOOL_WEBHOOK_SHARED_SECRET,
@@ -116,6 +145,12 @@ function pickRecord(value: unknown): Record<string, any> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
 }
 
+function normalizeUuid(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  return UUID_RE.test(trimmed) ? trimmed : '';
+}
+
 function getRequestBody(req: Request): Record<string, any> {
   const root = pickRecord(req.body);
   // Anam webhook payloads can place tool arguments under nested keys depending
@@ -129,6 +164,18 @@ function getRequestBody(req: Request): Record<string, any> {
     ...pickRecord(root.tool_input),
     ...pickRecord(root.body),
   };
+  // Suite/office IDs should come from trusted context. Ignore malformed IDs
+  // from model-generated payloads (for example "test_suite") and fall back to
+  // server defaults.
+  const { suiteId, officeId } = normalizeSuiteContext(merged);
+  if (suiteId) {
+    merged.suite_id = suiteId;
+    merged.suiteId = suiteId;
+  }
+  if (officeId) {
+    merged.office_id = officeId;
+    merged.officeId = officeId;
+  }
   return merged;
 }
 
@@ -148,23 +195,21 @@ function verifySecret(req: Request, res: Response): boolean {
     return false;
   }
   const body = getRequestBody(req);
+  const allowLegacyHeader = String(process.env.ALLOW_LEGACY_TOOL_SECRET_HEADER || '').toLowerCase() === 'true';
   const aspireSecret = readHeaderString(req.headers['x-aspire-tool-secret'] as string | string[] | undefined);
-  const legacySecret = readHeaderString(req.headers['x-elevenlabs-secret'] as string | string[] | undefined);
-  const authHeader = readHeaderString(req.headers.authorization as string | string[] | undefined);
-  const authBearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
-  const bodySecret =
-    (typeof body.secret === 'string' && body.secret.trim()) ||
-    (typeof body.tool_secret === 'string' && body.tool_secret.trim()) ||
-    '';
-  const secret = aspireSecret || legacySecret || authBearer || bodySecret;
+  const legacySecret = allowLegacyHeader
+    ? readHeaderString(req.headers['x-elevenlabs-secret'] as string | string[] | undefined)
+    : '';
+  // Security hardening: only accept secrets from tool headers. Do not read
+  // Authorization/body fields to avoid propagating or logging leaked tokens.
+  const secret = aspireSecret || legacySecret;
   if (!secret || !acceptedSecrets.includes(secret)) {
     logger.warn('[AgentTool] Invalid or missing secret', {
       path: req.path,
       hasSecret: !!secret,
       hasAspireHeader: !!aspireSecret,
       hasLegacyHeader: !!legacySecret,
-      hasAuthorizationBearer: !!authBearer,
-      hasBodySecret: !!bodySecret,
+      allowLegacyHeader,
     });
     res.status(401).json({ error: 'Unauthorized' });
     return false;
@@ -198,16 +243,10 @@ function inferLegacyInvokeSyncTarget(body: any): '/v1/tools/context' | '/v1/tool
 }
 
 function normalizeSuiteContext(body: any): { suiteId: string; officeId: string } {
-  const rawSuite =
-    (typeof body?.suite_id === 'string' && body.suite_id.trim()) ||
-    (typeof body?.suiteId === 'string' && body.suiteId.trim()) ||
-    '';
-  const fallbackSuite = getDefaultSuiteId() || process.env.DEFAULT_SUITE_ID || '';
+  const rawSuite = normalizeUuid(body?.suite_id) || normalizeUuid(body?.suiteId);
+  const fallbackSuite = normalizeUuid(getDefaultSuiteId()) || normalizeUuid(process.env.DEFAULT_SUITE_ID);
   const suiteId = rawSuite || fallbackSuite;
-  const rawOffice =
-    (typeof body?.office_id === 'string' && body.office_id.trim()) ||
-    (typeof body?.officeId === 'string' && body.officeId.trim()) ||
-    '';
+  const rawOffice = normalizeUuid(body?.office_id) || normalizeUuid(body?.officeId);
   const officeId = rawOffice || suiteId;
   return { suiteId, officeId };
 }
@@ -221,8 +260,11 @@ router.post('/v1/agents/invoke-sync', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
   try {
-    const targetPath = inferLegacyInvokeSyncTarget(req.body || {});
-    const body = { ...(req.body || {}) };
+    // Normalize nested payloads first so legacy routes can correctly infer target
+    // for Anam payloads that wrap arguments under `arguments`/`params`/`input`.
+    const normalized = getRequestBody(req);
+    const targetPath = inferLegacyInvokeSyncTarget(normalized);
+    const body = { ...normalized };
     const { suiteId, officeId } = normalizeSuiteContext(body);
     if (suiteId && !body.suite_id) body.suite_id = suiteId;
     if (officeId && !body.office_id) body.office_id = officeId;
@@ -787,7 +829,11 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
 
     const correlationId = `corr-invoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    logger.info('[AgentTool] invoke -> invoke-sync', { agent: resolvedAgent, correlationId, url: `${orchestratorUrl}/v1/agents/invoke-sync` });
+    logger.info('[AgentTool] invoke -> orchestrator', {
+      agent: resolvedAgent,
+      correlationId,
+      target: `${orchestratorUrl}${ORCHESTRATOR_INVOKE_PATH}`,
+    });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 52000); // 52s — backend has 45s playbook timeout + 7s margin for network
@@ -801,13 +847,65 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     const taskText = effectiveTask;
     let detailsText = typeof details === 'string' ? details : '';
     const queryText = typeof body.query === 'string' ? body.query.trim() : '';
+    const addressText = typeof body.address === 'string' ? body.address.trim() : '';
+    const entityText = typeof body.entity === 'string' ? body.entity.trim() : '';
     const cityText = typeof body.city === 'string' ? body.city.trim() : '';
     const entityTypeText = typeof body.entity_type === 'string' ? body.entity_type.trim() : '';
+    const customerNameText = typeof body.customer_name === 'string' ? body.customer_name.trim() : '';
+    const customerEmailText = typeof body.customer_email === 'string' ? body.customer_email.trim() : '';
+    const customerFirstNameText = typeof body.customer_first_name === 'string' ? body.customer_first_name.trim() : '';
+    const customerLastNameText = typeof body.customer_last_name === 'string' ? body.customer_last_name.trim() : '';
+    const customerCompanyText = typeof body.customer_company === 'string' ? body.customer_company.trim() : '';
+    const customerPhoneText = typeof body.customer_phone === 'string' ? body.customer_phone.trim() : '';
+    const customerAddressText = typeof body.customer_address === 'string' ? body.customer_address.trim() : '';
+    const notesText = typeof body.notes === 'string' ? body.notes.trim() : '';
+    const lineItems = Array.isArray(body.line_items) ? body.line_items : [];
+    const totalCents = Number.isFinite(Number(body.total_cents)) ? Number(body.total_cents) : null;
+    const dueDays = Number.isFinite(Number(body.due_days)) ? Number(body.due_days) : null;
+    const isQuote = typeof body.is_quote === 'boolean' ? body.is_quote : null;
+    const currencyText = typeof body.currency === 'string' ? body.currency.trim() : '';
+
+    if (resolvedAgent === 'quinn') {
+      const quinnDetailParts: string[] = [];
+      if (customerNameText) quinnDetailParts.push(`customer_name: ${customerNameText}`);
+      if (customerEmailText) quinnDetailParts.push(`customer_email: ${customerEmailText}`);
+      if (customerFirstNameText) quinnDetailParts.push(`customer_first_name: ${customerFirstNameText}`);
+      if (customerLastNameText) quinnDetailParts.push(`customer_last_name: ${customerLastNameText}`);
+      if (customerCompanyText) quinnDetailParts.push(`customer_company: ${customerCompanyText}`);
+      if (customerPhoneText) quinnDetailParts.push(`customer_phone: ${customerPhoneText}`);
+      if (customerAddressText) quinnDetailParts.push(`customer_address: ${customerAddressText}`);
+      if (currencyText) quinnDetailParts.push(`currency: ${currencyText}`);
+      if (totalCents !== null) quinnDetailParts.push(`total_cents: ${totalCents}`);
+      if (dueDays !== null) quinnDetailParts.push(`due_days: ${dueDays}`);
+      if (isQuote !== null) quinnDetailParts.push(`is_quote: ${isQuote}`);
+      if (notesText) quinnDetailParts.push(`notes: ${notesText}`);
+      if (lineItems.length > 0) {
+        const safeItems = JSON.stringify(lineItems).slice(0, 1200);
+        quinnDetailParts.push(`line_items: ${safeItems}`);
+      }
+      const quinnStructuredDetails = quinnDetailParts.join('; ');
+      if (quinnStructuredDetails) {
+        detailsText = detailsText
+          ? `${detailsText}. ${quinnStructuredDetails}`
+          : quinnStructuredDetails;
+      } else if (!detailsText && queryText) {
+        detailsText = queryText;
+      }
+    }
 
     // Anam commonly sends a generic task plus concrete query/address.
     // Preserve the specific query in details so downstream agents (especially Adam)
     // can actually resolve entities instead of receiving only generic intent text.
-    if (resolvedAgent === 'adam' && !detailsText.trim() && queryText) {
+    if (resolvedAgent === 'adam' && !detailsText.trim()) {
+      // Prioritize explicit lookup terms first, then fall back to task text so
+      // Adam always gets concrete search context from the user utterance.
+      detailsText = queryText || addressText || entityText || '';
+      if (!detailsText && taskText && taskText.split(/\s+/).length >= 4) {
+        detailsText = taskText;
+      }
+    }
+    if (resolvedAgent === 'adam' && detailsText && queryText) {
+      // Query remains the strongest intent anchor when present.
       detailsText = queryText;
       if (cityText && !detailsText.toLowerCase().includes(cityText.toLowerCase())) {
         detailsText = `${detailsText} (${cityText})`;
@@ -833,26 +931,31 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       }
     }
 
-    const a2aResp = await fetch(`${orchestratorUrl}/v1/agents/invoke-sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        suite_id: safeSuiteId,
-        office_id: safeOfficeId,
-        correlation_id: correlationId,
-        agent: resolvedAgent,
-        task: taskText,
-        details: detailsText,
-        user_id,
-      }),
-      signal: controller.signal,
-    });
+    const invokePayload = {
+      suite_id: safeSuiteId,
+      office_id: safeOfficeId,
+      correlation_id: correlationId,
+      agent: resolvedAgent,
+      task: taskText,
+      details: detailsText,
+      user_id,
+    };
+    const { response: a2aResp, endpoint: invokeEndpoint } = await dispatchOrchestratorInvoke(
+      orchestratorUrl,
+      invokePayload,
+      controller.signal,
+    );
 
     clearTimeout(timeout);
 
     if (!a2aResp.ok) {
       const errBody = await a2aResp.text().catch(() => '');
-      logger.error('[AgentTool] A2A dispatch failed', { agent: resolvedAgent, status: a2aResp.status, body: errBody.slice(0, 200) });
+      logger.error('[AgentTool] A2A dispatch failed', {
+        agent: resolvedAgent,
+        status: a2aResp.status,
+        endpoint: invokeEndpoint,
+        body: errBody.slice(0, 200),
+      });
       return res.json({
         agent: resolvedAgent,
         result: `I was not able to reach ${resolvedAgent} right now. The service returned an error. Please try again.`,
@@ -1098,7 +1201,7 @@ router.post('/v1/tools/analyze-document', async (req: Request, res: Response) =>
   logger.info('[AgentTool] analyze-document', { suite_id, document_id, file_name });
 
   try {
-    // Route to Tec (document agent) via invoke-sync
+    // Route to Tec (document agent) via orchestrator invoke API
     const orchestratorUrl = process.env.ORCHESTRATOR_URL?.trim();
     if (!orchestratorUrl) {
       return res.json({
@@ -1114,25 +1217,29 @@ router.post('/v1/tools/analyze-document', async (req: Request, res: Response) =>
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
 
-    const a2aResp = await fetch(`${orchestratorUrl}/v1/agents/invoke-sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        suite_id,
-        office_id: suite_id,
-        correlation_id: correlationId,
-        agent: 'tec',
-        task: `Analyze document: ${file_name || 'uploaded file'}`,
-        details: file_content ? `File content provided (base64). Document ID: ${document_id || 'none'}` : `Document ID: ${document_id || 'none'}`,
-      }),
-      signal: controller.signal,
-    });
+    const invokePayload = {
+      suite_id,
+      office_id: suite_id,
+      correlation_id: correlationId,
+      agent: 'tec',
+      task: `Analyze document: ${file_name || 'uploaded file'}`,
+      details: file_content ? `File content provided (base64). Document ID: ${document_id || 'none'}` : `Document ID: ${document_id || 'none'}`,
+    };
+    const { response: a2aResp, endpoint: invokeEndpoint } = await dispatchOrchestratorInvoke(
+      orchestratorUrl,
+      invokePayload,
+      controller.signal,
+    );
 
     clearTimeout(timeout);
 
     if (!a2aResp.ok) {
       const errBody = await a2aResp.text().catch(() => '');
-      logger.error('[AgentTool] analyze-document A2A failed', { status: a2aResp.status, body: errBody.slice(0, 200) });
+      logger.error('[AgentTool] analyze-document A2A failed', {
+        status: a2aResp.status,
+        endpoint: invokeEndpoint,
+        body: errBody.slice(0, 200),
+      });
       return res.json({
         document_id: document_id || `doc_${Date.now()}`,
         file_name: file_name || 'unknown',
@@ -1222,24 +1329,28 @@ router.post('/api/card-data/refetch', async (req: Request, res: Response) => {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45_000);
-    const invokeResp = await fetch(`${orchestratorUrl}/v1/agents/invoke-sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        suite_id: suiteId,
-        office_id: suiteId,
-        correlation_id: correlationId,
-        agent: 'adam',
-        task,
-        details: '',
-      }),
-      signal: controller.signal,
-    });
+    const invokePayload = {
+      suite_id: suiteId,
+      office_id: suiteId,
+      correlation_id: correlationId,
+      agent: 'adam',
+      task,
+      details: '',
+    };
+    const { response: invokeResp, endpoint: invokeEndpoint } = await dispatchOrchestratorInvoke(
+      orchestratorUrl,
+      invokePayload,
+      controller.signal,
+    );
     clearTimeout(timeout);
 
     if (!invokeResp.ok) {
       const body = await invokeResp.text().catch(() => '');
-      logger.warn('[CardData] Refetch invoke-sync failed', { status: invokeResp.status, body: body.slice(0, 180) });
+      logger.warn('[CardData] Refetch invoke failed', {
+        status: invokeResp.status,
+        endpoint: invokeEndpoint,
+        body: body.slice(0, 180),
+      });
       return res.status(502).json({ error: 'REFETCH_FAILED', message: 'Refetch failed.' });
     }
 

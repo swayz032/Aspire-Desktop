@@ -20,6 +20,9 @@ import path from 'path';
 
 const ANAM_API_KEY = process.env.ANAM_API_KEY || '';
 const PERSONA_ID = process.env.ANAM_AVA_PERSONA_ID || '58f82b89-8ae7-43cc-930d-be8def14dff3';
+const DEFAULT_AVA_AVATAR_ID = process.env.ANAM_AVA_AVATAR_ID || '30fa96d0-26c4-4e55-94a0-517025942e18';
+const DEFAULT_AVA_VOICE_ID = process.env.ANAM_AVA_VOICE_ID || '0c8b52f4-f26d-4810-855c-c90e5f599cbc';
+const DEFAULT_AVA_LLM_ID = process.env.ANAM_AVA_LLM_ID || 'ANAM_GPT_4O_MINI_V1';
 const TOOL_API_BASE_URL = (
   process.env.ANAM_TOOL_API_BASE_URL
   || process.env.ANAM_TOOL_WEBHOOK_URL
@@ -30,7 +33,9 @@ const TOOL_SECRET = process.env.TOOL_WEBHOOK_SHARED_SECRET
   || process.env.ANAM_TOOL_SECRET
   || process.env.ELEVENLABS_TOOL_SECRET
   || process.env.ELEVENLABS_WORKSPACE_SECRET;
-const SHOULD_SYNC_PROMPT = String(process.env.SYNC_ANAM_PROMPT || 'false').toLowerCase() === 'true';
+// Default to syncing prompt + tools together so dashboard testing matches runtime.
+// Set SYNC_ANAM_PROMPT=false only when intentionally preserving remote prompt text.
+const SHOULD_SYNC_PROMPT = String(process.env.SYNC_ANAM_PROMPT || 'true').toLowerCase() !== 'false';
 
 if (!ANAM_API_KEY) {
   console.error('Missing ANAM_API_KEY');
@@ -58,6 +63,70 @@ async function api(pathname, options = {}) {
     throw new Error(`Anam API ${res.status} ${pathname}: ${text.slice(0, 500)}`);
   }
   return data;
+}
+
+function extractPaginatedData(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+async function listAllTools() {
+  const perPage = 100;
+  let page = 1;
+  let maxPages = 1;
+  let safety = 0;
+  const out = [];
+
+  while (page <= maxPages && safety < 50) {
+    safety += 1;
+    const payload = await api(`/tools?page=${page}&perPage=${perPage}`, { method: 'GET' });
+    const pageItems = extractPaginatedData(payload);
+    out.push(...pageItems);
+
+    const rawLastPage = Number(payload?.meta?.lastPage || 0);
+    if (Number.isFinite(rawLastPage) && rawLastPage >= 1) {
+      maxPages = rawLastPage;
+    } else if (pageItems.length < perPage) {
+      maxPages = page;
+    } else {
+      maxPages = Math.max(maxPages, page + 1);
+    }
+
+    if (pageItems.length === 0 && (!Number.isFinite(rawLastPage) || rawLastPage < 1)) {
+      break;
+    }
+    page += 1;
+  }
+
+  const byId = new Map();
+  for (const tool of out) {
+    const id = String(tool?.id || tool?._toolId || '').trim();
+    if (!id || byId.has(id)) continue;
+    byId.set(id, tool);
+  }
+  return Array.from(byId.values());
+}
+
+function extractKnowledgeGroups(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.folders)) return payload.folders;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+function extractKnowledgeDocuments(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.documents)) return payload.documents;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+function extractPersonas(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.personas)) return payload.personas;
+  return [];
 }
 
 function parseMissingToolIdsFromErrorMessage(message) {
@@ -136,8 +205,6 @@ function buildCanonicalTools() {
       'Retrieve business context: briefings, schedule, missed calls, and pending approvals.',
       'context',
       {
-        suite_id: { type: 'string', description: 'Active suite ID' },
-        user_id: { type: 'string', description: 'Optional user ID' },
         query: { type: 'string', description: 'Short reason for requesting context' },
       },
       [],
@@ -147,7 +214,6 @@ function buildCanonicalTools() {
       'Save request, follow-up, or reminder for future session handoff.',
       'office-note',
       {
-        suite_id: { type: 'string', description: 'Active suite ID' },
         note_type: { type: 'string', description: 'handoff|contract_request|follow_up|reminder' },
         summary: { type: 'string', description: 'Note body to store' },
         next_step: { type: 'string', description: 'Optional next step' },
@@ -160,8 +226,6 @@ function buildCanonicalTools() {
       'Route document tasks to Tec for proposals, reports, contracts, and PDFs.',
       'invoke',
       {
-        suite_id: { type: 'string', description: 'Active suite ID' },
-        user_id: { type: 'string', description: 'Optional user ID' },
         agent: { type: 'string', enum: ['tec'], description: 'Must be tec' },
         task: { type: 'string', description: 'Document request' },
         details: { type: 'string', description: 'Optional details and constraints' },
@@ -199,8 +263,6 @@ function buildCanonicalTools() {
       'Route legal and contract tasks to Clara.',
       'invoke',
       {
-        suite_id: { type: 'string', description: 'Active suite ID' },
-        user_id: { type: 'string', description: 'Optional user ID' },
         agent: { type: 'string', enum: ['clara'], description: 'Must be clara' },
         task: { type: 'string', description: 'Legal/contract request' },
         details: { type: 'string', description: 'Optional specifics' },
@@ -209,16 +271,37 @@ function buildCanonicalTools() {
     ),
     webhookTool(
       'invoke_quinn',
-      'Route invoices, quotes, billing, and payment tracking to Quinn.',
+      "Use this tool for invoice and quote workflows only. Set agent to 'quinn'. Use task for the high-level action (for example: invoice or quote) and include customer/invoice fields when available.",
       'invoke',
       {
-        suite_id: { type: 'string', description: 'Active suite ID' },
-        user_id: { type: 'string', description: 'Optional user ID' },
         agent: { type: 'string', enum: ['quinn'], description: 'Must be quinn' },
-        task: { type: 'string', description: 'Invoice or billing request' },
-        customer_name: { type: 'string', description: 'Customer name' },
-        customer_email: { type: 'string', description: 'Customer email' },
-        details: { type: 'string', description: 'Optional invoice details' },
+        task: { type: 'string', description: 'Invoice or quote request (for example: invoice, quote, draft invoice)' },
+        customer_name: { type: 'string', description: 'Customer full name for lookup.' },
+        customer_email: { type: 'string', description: 'Customer email when known.' },
+        customer_first_name: { type: 'string', description: 'Customer first name for onboarding.' },
+        customer_last_name: { type: 'string', description: 'Customer last name for onboarding.' },
+        customer_company: { type: 'string', description: 'Optional customer company name.' },
+        customer_phone: { type: 'string', description: 'Optional customer phone number.' },
+        customer_address: { type: 'string', description: 'Optional billing address.' },
+        line_items: {
+          type: 'array',
+          description: 'Optional invoice line items.',
+          items: {
+            type: 'object',
+            properties: {
+              description: { type: 'string' },
+              quantity: { type: 'number' },
+              unit_price_cents: { type: 'number' },
+            },
+            additionalProperties: true,
+          },
+        },
+        total_cents: { type: 'number', description: 'Invoice total in cents.' },
+        due_days: { type: 'number', description: 'Payment due days (zero means due immediately).' },
+        currency: { type: 'string', description: 'Currency code, usually usd.' },
+        notes: { type: 'string', description: 'Optional notes/memo.' },
+        is_quote: { type: 'boolean', description: 'Set true for quote mode.' },
+        details: { type: 'string', description: 'Optional freeform invoice details.' },
       },
       ['agent', 'task'],
     ),
@@ -227,8 +310,6 @@ function buildCanonicalTools() {
       'Submit drafted action to authority queue for explicit user approval.',
       'approve',
       {
-        suite_id: { type: 'string', description: 'Active suite ID' },
-        user_id: { type: 'string', description: 'Optional user ID' },
         draft_id: { type: 'string', description: 'Draft identifier' },
         action_type: { type: 'string', description: 'Action type to approve' },
       },
@@ -239,8 +320,6 @@ function buildCanonicalTools() {
       'Create draft action that needs user confirmation.',
       'draft',
       {
-        suite_id: { type: 'string', description: 'Active suite ID' },
-        user_id: { type: 'string', description: 'Optional user ID' },
         draft_type: { type: 'string', description: 'email|invoice|meeting|task|reminder|deadline|follow_up|calendar' },
         details: { type: 'object', description: 'Draft payload details' },
       },
@@ -251,8 +330,6 @@ function buildCanonicalTools() {
       'Search business domains: calendar, contacts, emails, invoices.',
       'search',
       {
-        suite_id: { type: 'string', description: 'Active suite ID' },
-        user_id: { type: 'string', description: 'Optional user ID' },
         query: { type: 'string', description: 'Search text' },
         domain: { type: 'string', description: 'calendar|contacts|email|invoices' },
         search_type: { type: 'string', description: 'Optional subtype for legacy compatibility' },
@@ -281,26 +358,126 @@ function loadAvaPromptTemplate() {
   }
 }
 
+function materializePromptForStateful(template) {
+  const now = new Date();
+  const fullDate = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const hour = now.getHours();
+  const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  const replacements = {
+    business_name: 'Aspire',
+    salutation: 'Mr.',
+    last_name: 'Scott',
+    first_name: 'Tony',
+    owner_name: 'Mr. Scott',
+    gender: 'male',
+    industry: 'General Business',
+    date: fullDate,
+    has_camera: 'false',
+    time_of_day: timeOfDay,
+  };
+
+  let prompt = String(template || '');
+  for (const [key, value] of Object.entries(replacements)) {
+    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
+    prompt = prompt.replace(pattern, String(value));
+  }
+  // Remove any unresolved placeholders so lab tests never read template vars aloud.
+  prompt = prompt.replace(/\{\{\s*[^}]+\s*\}\}/g, '').replace(/\n{3,}/g, '\n\n');
+  return prompt.trim();
+}
+
+async function selectKnowledgeFolderIds() {
+  const groupsPayload = await api('/knowledge/groups', { method: 'GET' });
+  const groups = extractKnowledgeGroups(groupsPayload)
+    .map((g) => ({
+      id: String(g?.id || '').trim(),
+      name: String(g?.name || '').trim(),
+    }))
+    .filter((g) => g.id.length > 0);
+
+  const groupWithReadyCount = [];
+  for (const group of groups) {
+    try {
+      const docsPayload = await api(`/knowledge/groups/${group.id}/documents`, { method: 'GET' });
+      const docs = extractKnowledgeDocuments(docsPayload);
+      const readyCount = docs.filter((d) => String(d?.status || '').toUpperCase() === 'READY').length;
+      groupWithReadyCount.push({ ...group, readyCount });
+    } catch {
+      groupWithReadyCount.push({ ...group, readyCount: 0 });
+    }
+  }
+
+  const avaReady = groupWithReadyCount.filter((g) => /ava/i.test(g.name) && g.readyCount > 0);
+  const anyReady = groupWithReadyCount.filter((g) => g.readyCount > 0);
+  const selected = (avaReady.length > 0 ? avaReady : anyReady).map((g) => g.id);
+  return {
+    folderIds: selected,
+    debug: groupWithReadyCount,
+  };
+}
+
+function buildPersonaPutPayload(currentPersona, overrides = {}) {
+  const payload = {};
+  const passthroughKeys = [
+    'name',
+    'description',
+    'avatarId',
+    'avatarModel',
+    'voiceId',
+    'llmId',
+    'systemPrompt',
+    'skipGreeting',
+    'zeroDataRetention',
+    'languageCode',
+    'voiceDetectionOptions',
+    'voiceGenerationOptions',
+    'maxSessionLengthSeconds',
+  ];
+
+  for (const key of passthroughKeys) {
+    if (currentPersona?.[key] !== undefined) {
+      payload[key] = currentPersona[key];
+    }
+  }
+  if (payload.systemPrompt === undefined && typeof currentPersona?.brain?.systemPrompt === 'string') {
+    payload.systemPrompt = currentPersona.brain.systemPrompt;
+  }
+  if (!payload.avatarId) payload.avatarId = currentPersona?.avatar?.id || DEFAULT_AVA_AVATAR_ID;
+  if (!payload.voiceId) payload.voiceId = currentPersona?.voice?.id || DEFAULT_AVA_VOICE_ID;
+  if (!payload.llmId) payload.llmId = currentPersona?.llmId || DEFAULT_AVA_LLM_ID;
+  return { ...payload, ...overrides };
+}
+
 async function main() {
-  console.log(`Syncing Anam Ava persona ${PERSONA_ID}`);
+  let resolvedPersonaId = PERSONA_ID;
+  const personasPayload = await api('/personas', { method: 'GET' });
+  const personas = extractPersonas(personasPayload);
+  const personaById = personas.find((p) => String(p?.id || '').trim() === resolvedPersonaId);
+  if (!personaById) {
+    const fallbackPersona = personas.find((p) => String(p?.name || '').trim().toLowerCase() === 'ava chief of staff')
+      || personas.find((p) => String(p?.name || '').trim().toLowerCase() === 'ava');
+    if (fallbackPersona?.id) {
+      console.warn(`Preferred persona id ${resolvedPersonaId} not found for this API key. Falling back to ${fallbackPersona.id} (${fallbackPersona.name}).`);
+      resolvedPersonaId = fallbackPersona.id;
+    }
+  }
+
+  console.log(`Syncing Anam Ava persona ${resolvedPersonaId}`);
   console.log(`Tool API base URL: ${TOOL_API_BASE_URL}`);
-  const persona = await api(`/personas/${PERSONA_ID}`, { method: 'GET' });
+  const persona = await api(`/personas/${resolvedPersonaId}`, { method: 'GET' });
   const existingTools = Array.isArray(persona?.tools) ? persona.tools : [];
   const existingNames = existingTools.map((tool) => tool.name).filter(Boolean);
   console.log(`Current attached tools: ${existingTools.length}`);
   if (existingNames.length > 0) {
     console.log(`Current names: ${existingNames.join(', ')}`);
   }
-  const preservedKnowledgeToolIds = existingTools
-    .filter((tool) => ['Knowledge_Ava', 'ava_knowledge_search'].includes(String(tool?.name || '')))
-    .map((tool) => tool?._toolId || tool?.id)
-    .filter(Boolean);
-  if (preservedKnowledgeToolIds.length > 0) {
-    console.log(`Preserving knowledge tool IDs: ${preservedKnowledgeToolIds.join(', ')}`);
-  }
 
-  const list = await api('/tools', { method: 'GET' });
-  const allTools = Array.isArray(list) ? list : Array.isArray(list?.data) ? list.data : [];
+  const allTools = await listAllTools();
 
   const managedNames = new Set([
     'show_cards',
@@ -315,6 +492,8 @@ async function main() {
     'ava_search',
     'search',
     'ava_execute_action',
+    'Knowledge_Ava',
+    'ava_knowledge_search',
   ]);
 
   const deletions = allTools.filter((tool) => managedNames.has(String(tool?.name || '')));
@@ -335,78 +514,79 @@ async function main() {
     console.log(`Created ${tool.name}: ${createdId}`);
   }
 
-  // Attach knowledge tool if available from tool library.
-  const refreshedListRaw = await api('/tools', { method: 'GET' });
-  const refreshedList = Array.isArray(refreshedListRaw)
-    ? refreshedListRaw
-    : Array.isArray(refreshedListRaw?.data)
-      ? refreshedListRaw.data
-      : [];
-  const refreshedIds = new Set(refreshedList.map((tool) => tool?.id).filter(Boolean));
-  const knowledge = refreshedList.find((tool) => tool?.name === 'Knowledge_Ava')
-    || refreshedList.find((tool) => tool?.name === 'ava_knowledge_search');
-  if (knowledge?.id) {
-    createdToolIds.push(knowledge.id);
-    console.log(`Attached knowledge tool ${knowledge.name}: ${knowledge.id}`);
-  }
-  // Also preserve previously attached knowledge tool IDs even if not listable in /tools.
-  for (const kbId of preservedKnowledgeToolIds) {
-    if (!createdToolIds.includes(kbId)) {
-      createdToolIds.push(kbId);
-      console.log(`Re-attached preserved knowledge tool id: ${kbId}`);
+  // Recreate Knowledge_Ava with folders that actually have READY docs.
+  const knowledgeSelection = await selectKnowledgeFolderIds();
+  if (knowledgeSelection.folderIds.length > 0) {
+    const kbTool = await api('/tools', {
+      method: 'POST',
+      body: JSON.stringify({
+        type: 'SERVER_RAG',
+        name: 'Knowledge_Ava',
+        description:
+          "Search Ava's uploaded knowledge documents for workflow steps, voice rules, and strategic playbook guidance. Use this when task process, phrasing, or policy is uncertain. Prefer live tools for factual values; use Knowledge_Ava for how Ava should respond and operate.",
+        config: {
+          documentFolderIds: knowledgeSelection.folderIds,
+        },
+      }),
+    });
+    if (kbTool?.id) {
+      createdToolIds.push(kbTool.id);
+      console.log(`Created knowledge tool Knowledge_Ava: ${kbTool.id}`);
+      console.log(`Knowledge folders: ${knowledgeSelection.folderIds.join(', ')}`);
+    } else {
+      console.warn('Knowledge_Ava creation returned no id. Continuing without knowledge tool.');
     }
+  } else {
+    console.warn('No knowledge folders with READY docs found. Continuing without knowledge tool.');
+    console.warn(`Knowledge folder scan: ${JSON.stringify(knowledgeSelection.debug)}`);
   }
-  if (!knowledge?.id && preservedKnowledgeToolIds.length === 0) {
-    console.warn('No knowledge tool found (Knowledge_Ava / ava_knowledge_search). Continuing without it.');
+
+  const rawPrompt = SHOULD_SYNC_PROMPT ? loadAvaPromptTemplate() : null;
+  const prompt = rawPrompt ? materializePromptForStateful(rawPrompt) : null;
+  if (SHOULD_SYNC_PROMPT && !rawPrompt) {
+    console.warn('SYNC_ANAM_PROMPT=true but prompt template file was not found; continuing with existing systemPrompt.');
   }
 
   // Force-clear persona attachments first to avoid additive merge behavior.
-  // IMPORTANT: only use toolIds (not both toolIds + tools), otherwise Anam may
-  // append duplicates for the same tool names.
-  await api(`/personas/${PERSONA_ID}`, {
+  // Keep the full persona payload so PUT updates do not accidentally wipe fields.
+  await api(`/personas/${resolvedPersonaId}`, {
     method: 'PUT',
-    body: JSON.stringify({ toolIds: [] }),
+    body: JSON.stringify(buildPersonaPutPayload(persona, { toolIds: [] })),
   });
   console.log('Persona tools cleared via PUT (toolIds: []).');
 
   let finalToolIds = [...createdToolIds];
   try {
-    await api(`/personas/${PERSONA_ID}`, {
+    await api(`/personas/${resolvedPersonaId}`, {
       method: 'PUT',
-      body: JSON.stringify({
-        toolIds: finalToolIds,
-      }),
+      body: JSON.stringify(
+        buildPersonaPutPayload(persona, {
+          toolIds: finalToolIds,
+          ...(prompt ? { systemPrompt: prompt } : {}),
+        }),
+      ),
     });
-    console.log('Persona toolIds updated via PUT (toolIds only).');
+    console.log('Persona toolIds updated via PUT.');
   } catch (error) {
     const msg = error?.message || String(error);
     const missing = parseMissingToolIdsFromErrorMessage(msg);
     if (missing.length === 0) throw error;
     console.warn(`Dropping missing tool IDs and retrying: ${missing.join(', ')}`);
     finalToolIds = finalToolIds.filter((id) => !missing.includes(id));
-    await api(`/personas/${PERSONA_ID}`, {
+    await api(`/personas/${resolvedPersonaId}`, {
       method: 'PUT',
-      body: JSON.stringify({
-        toolIds: finalToolIds,
-      }),
+      body: JSON.stringify(
+        buildPersonaPutPayload(persona, {
+          toolIds: finalToolIds,
+          ...(prompt ? { systemPrompt: prompt } : {}),
+        }),
+      ),
     });
     console.log('Persona toolIds updated after pruning missing IDs.');
   }
+  if (prompt) console.log('Persona prompt updated via PUT (systemPrompt).');
 
-  if (SHOULD_SYNC_PROMPT) {
-    const prompt = loadAvaPromptTemplate();
-    if (prompt) {
-      await api(`/personas/${PERSONA_ID}`, {
-        method: 'PUT',
-        body: JSON.stringify({ brain: { systemPrompt: prompt } }),
-      });
-      console.log('Persona prompt updated via PUT.');
-    } else {
-      console.warn('SYNC_ANAM_PROMPT=true but prompt template file was not found; skipped prompt update.');
-    }
-  }
-
-  const finalPersona = await api(`/personas/${PERSONA_ID}`, { method: 'GET' });
+  const finalPersona = await api(`/personas/${resolvedPersonaId}`, { method: 'GET' });
   const finalNames = (finalPersona?.tools || []).map((tool) => String(tool?.name || '')).filter(Boolean);
   const counts = finalNames.reduce((acc, name) => {
     acc[name] = (acc[name] || 0) + 1;
