@@ -195,7 +195,9 @@ function verifySecret(req: Request, res: Response): boolean {
     return false;
   }
   const body = getRequestBody(req);
-  const allowLegacyHeader = String(process.env.ALLOW_LEGACY_TOOL_SECRET_HEADER || '').toLowerCase() === 'true';
+  // Keep legacy header compatibility on by default during migration.
+  // Set ALLOW_LEGACY_TOOL_SECRET_HEADER=false to enforce x-aspire-tool-secret only.
+  const allowLegacyHeader = String(process.env.ALLOW_LEGACY_TOOL_SECRET_HEADER || 'true').toLowerCase() !== 'false';
   const aspireSecret = readHeaderString(req.headers['x-aspire-tool-secret'] as string | string[] | undefined);
   const legacySecret = allowLegacyHeader
     ? readHeaderString(req.headers['x-elevenlabs-secret'] as string | string[] | undefined)
