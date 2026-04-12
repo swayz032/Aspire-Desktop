@@ -518,8 +518,12 @@ export function useElevenLabsAgent(options: UseElevenLabsAgentOptions): UseEleve
         cacheSource = 'fallback_tool_unavailable';
       }
 
-      // Cap records at 20 to prevent DoS (THREAT-008)
-      const safeRecords = finalRecords.slice(0, 20);
+      // Keep broader card sets for research artifacts while still capping payload size.
+      const maxCardRecords =
+        PROPERTY_ARTIFACT_TYPES.has(artifactType) || TOOL_ARTIFACT_TYPES.has(artifactType) || artifactType === 'HotelShortlist'
+          ? 50
+          : 20;
+      const safeRecords = finalRecords.slice(0, maxCardRecords);
       // Cap summary length
       const safeSummary = typeof params.summary === 'string' ? params.summary.slice(0, 500) : '';
 

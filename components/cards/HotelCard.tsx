@@ -79,6 +79,7 @@ export function HotelCard({ record, onAction, isActive, enterDelay }: CardProps)
     subratings,
     amenities,
     photos,
+    image_url,
     phone,
     website,
     tripadvisor_url,
@@ -86,7 +87,12 @@ export function HotelCard({ record, onAction, isActive, enterDelay }: CardProps)
     star_rating,
   } = record;
 
-  const heroUrl = photos?.[0]?.large || photos?.[0]?.medium || null;
+  const firstPhoto = Array.isArray(photos) ? photos[0] : null;
+  const heroFromPhoto =
+    typeof firstPhoto === 'string'
+      ? firstPhoto
+      : firstPhoto?.large || firstPhoto?.original || firstPhoto?.medium || firstPhoto?.small || firstPhoto?.thumbnail;
+  const heroUrl = heroFromPhoto || image_url || null;
   const hasSubratings = subratings && typeof subratings === 'object';
   const amenityList: string[] = Array.isArray(amenities) ? amenities : [];
   const visibleAmenities = amenityList.slice(0, 5);
