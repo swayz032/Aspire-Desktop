@@ -500,6 +500,33 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
+// Malformed JSON guard:
+// body-parser throws before routes run when Content-Type is application/json
+// and payload is invalid JSON (for example single quotes or truncated body).
+// Convert that into a clean 400 response so logs stay actionable.
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const isJsonParseError = err instanceof SyntaxError || err?.type === 'entity.parse.failed';
+  if (!isJsonParseError) return next(err);
+
+  const path = req.path || '';
+  const isToolPath = path.startsWith('/v1/tools') || path.startsWith('/v1/agents/invoke-sync');
+  logger.warn('[HTTP] Invalid JSON payload', {
+    path,
+    method: req.method,
+    contentType: req.headers['content-type'],
+    contentLength: req.headers['content-length'],
+    userAgent: req.headers['user-agent'],
+    isToolPath,
+  });
+
+  return res.status(400).json({
+    error: 'INVALID_JSON',
+    message: isToolPath
+      ? 'Tool webhook body must be valid JSON object (double quotes required).'
+      : 'Request body must be valid JSON.',
+  });
+});
+
 // Request timeout — 30s default, 60s for orchestrator (Law #10: timeout enforcement)
 app.use((req, res, next) => {
   if (req.headers.upgrade === 'websocket') return next();
