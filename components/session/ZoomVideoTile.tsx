@@ -180,13 +180,17 @@ function ZoomVideoView({
     });
 
     const styleVideoPlayer = (el: HTMLElement) => {
+      // Force the VideoPlayer custom element to fill the container
       el.style.setProperty('width', '100%', 'important');
       el.style.setProperty('height', '100%', 'important');
       el.style.setProperty('object-fit', 'cover', 'important');
-      if (participant.isLocal) el.style.transform = 'scaleX(-1)';
+      el.style.setProperty('overflow', 'hidden', 'important');
+      
+      const isLocal = participant.isLocal;
+      if (isLocal) el.style.transform = 'scaleX(-1)';
 
-      // Pierce shadow DOM — object-fit on outer element may not reach internals.
-      // We also use a MutationObserver to catch elements added after initial attach.
+      // Pierce shadow DOM and internal elements. 
+      // High-quality (1080p) streams often trigger internal letterboxing in the SDK.
       const applyInternalStyles = (root: ParentNode) => {
         root.querySelectorAll('video, canvas').forEach((child: Element) => {
           const htmlChild = child as HTMLElement;
@@ -194,6 +198,13 @@ function ZoomVideoView({
           htmlChild.style.setProperty('height', '100%', 'important');
           htmlChild.style.setProperty('object-fit', 'cover', 'important');
           htmlChild.style.setProperty('object-position', 'center', 'important');
+          
+          // Counteract SDK's internal centering/letterboxing logic (e.g. translate, padding)
+          htmlChild.style.setProperty('transform', isLocal ? 'scaleX(-1) scale(1.005)' : 'scale(1.005)', 'important');
+          htmlChild.style.setProperty('padding', '0', 'important');
+          htmlChild.style.setProperty('margin', '0', 'important');
+          htmlChild.style.setProperty('top', '0', 'important');
+          htmlChild.style.setProperty('left', '0', 'important');
         });
       };
 
@@ -201,27 +212,29 @@ function ZoomVideoView({
       if (shadow) applyInternalStyles(shadow);
       applyInternalStyles(el);
 
-      // Re-apply after SDK finishes internal rendering (with longer timeouts for HD)
-      setTimeout(() => {
-        if (shadow) applyInternalStyles(shadow);
-        applyInternalStyles(el);
-      }, 500);
-      setTimeout(() => {
-        if (shadow) applyInternalStyles(shadow);
-        applyInternalStyles(el);
-      }, 1500);
-      setTimeout(() => {
-        if (shadow) applyInternalStyles(shadow);
-        applyInternalStyles(el);
-      }, 3000);
+      // Recursive check to ensure styles stick during HD stream resolution
+      const intervals = [500, 1500, 3000, 5000];
+      intervals.forEach(ms => {
+        setTimeout(() => {
+          if (disposed) return;
+          if (shadow) applyInternalStyles(shadow);
+          applyInternalStyles(el);
+        }, ms);
+      });
 
-      // MutationObserver to handle dynamic SDK updates
+      // MutationObserver to handle dynamic SDK updates (like resolution shifts)
+      const observer = new MutationObserver(() => {
+        if (disposed) return;
+        if (shadow) applyInternalStyles(shadow);
+        applyInternalStyles(el);
+      });
+
       if (shadow) {
-        const observer = new MutationObserver(() => applyInternalStyles(shadow));
-        observer.observe(shadow, { childList: true, subtree: true });
-        return observer;
+        observer.observe(shadow, { attributes: true, childList: true, subtree: true });
       }
-      return null;
+      observer.observe(el, { attributes: true, childList: true, subtree: true });
+      
+      return observer;
     };
 
     const tryAttach = async (): Promise<HTMLElement | null> => {
@@ -236,6 +249,10 @@ function ZoomVideoView({
 
     let observer: MutationObserver | null = null;
 
+    const participantId = participant.userId;
+    const isVideoOn = participant.isVideoOn;
+    const isLocal = participant.isLocal;
+
     const attach = async () => {
       try {
         let el = await tryAttach();
@@ -249,7 +266,7 @@ function ZoomVideoView({
 
         if (disposed) {
           if (el) {
-            try { await stream.detachVideo(participant.userId, el); } catch (_e) { /* */ }
+            try { await stream.detachVideo(participantId, el); } catch (_e) { /* */ }
             el.remove();
           }
           return;
@@ -274,7 +291,7 @@ function ZoomVideoView({
       if (el) {
         videoPlayerRef.current = null;
         (async () => {
-          try { await stream.detachVideo(participant.userId, el); } catch (_e) { /* */ }
+          try { await stream.detachVideo(participantId, el); } catch (_e) { /* */ }
           el.remove();
         })();
       }
