@@ -50,36 +50,34 @@ const ZOOM_ASPIRE_CSS = `
 /* These rules ensure video covers the tile (like native Zoom) at all levels. */
 
 video-player-container {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
 }
 
 video-player {
-  display: block;
+  display: block !important;
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
+  overflow: hidden !important;
 }
 
 /* Pierce into VideoPlayer internals — the SDK may render a <video> or        */
 /* <canvas> inside the custom element or its shadow DOM.                       */
+/* Note: CSS in main document cannot pierce shadow roots, so we also use      */
+/* JS-based piercing in ZoomVideoTile.tsx for full coverage.                  */
 video-player video,
-video-player canvas {
+video-player canvas,
+.zoom-video-canvas {
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
-}
-
-/* ── Video Canvas Container (legacy) ─────────────────────────────────────── */
-
-.zoom-video-canvas {
-  width: 100%;
-  height: 100%;
-  border-radius: var(--aspire-border-radius);
-  background-color: #000;
-  object-fit: cover;
+  object-position: center !important;
 }
 
 .zoom-video-tile {

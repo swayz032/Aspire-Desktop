@@ -13,7 +13,7 @@
  * - Smooth speaking border opacity transition
  * - Muted indicator + name label overlay
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Platform, ViewStyle } from 'react-native';
 import ReAnimated, {
   useSharedValue,
@@ -25,7 +25,7 @@ import ReAnimated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, Animation } from '@/constants/tokens';
+import { Colors, Spacing } from '@/constants/tokens';
 import { AvatarTileSurface } from '@/components/session/AvatarTileSurface';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { VIDEO_RECEIVE_QUALITY } from '@/lib/zoom-config';
@@ -180,31 +180,48 @@ function ZoomVideoView({
     });
 
     const styleVideoPlayer = (el: HTMLElement) => {
-      el.style.width = '100%';
-      el.style.height = '100%';
-      el.style.objectFit = 'cover';
+      el.style.setProperty('width', '100%', 'important');
+      el.style.setProperty('height', '100%', 'important');
+      el.style.setProperty('object-fit', 'cover', 'important');
       if (participant.isLocal) el.style.transform = 'scaleX(-1)';
 
-      // Pierce shadow DOM — object-fit on outer element may not reach internals
-      const applyInternalStyles = () => {
-        const shadow = (el as any).shadowRoot;
-        if (shadow) {
-          shadow.querySelectorAll('video, canvas').forEach((child: HTMLElement) => {
-            child.style.width = '100%';
-            child.style.height = '100%';
-            child.style.objectFit = 'cover';
-          });
-        }
-        el.querySelectorAll('video, canvas').forEach((child: Element) => {
-          (child as HTMLElement).style.width = '100%';
-          (child as HTMLElement).style.height = '100%';
-          (child as HTMLElement).style.objectFit = 'cover';
+      // Pierce shadow DOM — object-fit on outer element may not reach internals.
+      // We also use a MutationObserver to catch elements added after initial attach.
+      const applyInternalStyles = (root: ParentNode) => {
+        root.querySelectorAll('video, canvas').forEach((child: Element) => {
+          const htmlChild = child as HTMLElement;
+          htmlChild.style.setProperty('width', '100%', 'important');
+          htmlChild.style.setProperty('height', '100%', 'important');
+          htmlChild.style.setProperty('object-fit', 'cover', 'important');
+          htmlChild.style.setProperty('object-position', 'center', 'important');
         });
       };
-      applyInternalStyles();
-      // Re-apply after SDK finishes internal rendering
-      setTimeout(applyInternalStyles, 300);
-      setTimeout(applyInternalStyles, 1000);
+
+      const shadow = (el as any).shadowRoot;
+      if (shadow) applyInternalStyles(shadow);
+      applyInternalStyles(el);
+
+      // Re-apply after SDK finishes internal rendering (with longer timeouts for HD)
+      setTimeout(() => {
+        if (shadow) applyInternalStyles(shadow);
+        applyInternalStyles(el);
+      }, 500);
+      setTimeout(() => {
+        if (shadow) applyInternalStyles(shadow);
+        applyInternalStyles(el);
+      }, 1500);
+      setTimeout(() => {
+        if (shadow) applyInternalStyles(shadow);
+        applyInternalStyles(el);
+      }, 3000);
+
+      // MutationObserver to handle dynamic SDK updates
+      if (shadow) {
+        const observer = new MutationObserver(() => applyInternalStyles(shadow));
+        observer.observe(shadow, { childList: true, subtree: true });
+        return observer;
+      }
+      return null;
     };
 
     const tryAttach = async (): Promise<HTMLElement | null> => {
@@ -216,6 +233,8 @@ function ZoomVideoView({
       if (result instanceof HTMLElement) return result;
       return null;
     };
+
+    let observer: MutationObserver | null = null;
 
     const attach = async () => {
       try {
@@ -238,7 +257,7 @@ function ZoomVideoView({
 
         if (!el) return; // Avatar fallback
 
-        styleVideoPlayer(el);
+        observer = styleVideoPlayer(el);
         vpc.appendChild(el);
         videoPlayerRef.current = el;
       } catch (_e) {
@@ -250,6 +269,7 @@ function ZoomVideoView({
 
     return () => {
       disposed = true;
+      if (observer) observer.disconnect();
       const el = videoPlayerRef.current;
       if (el) {
         videoPlayerRef.current = null;

@@ -244,7 +244,8 @@ function ConferenceContent({
     // Gallery view: adaptive grid — compute cols AND rows so tiles fill the screen
     const cols = allTiles <= 1 ? 1 : allTiles <= 2 ? 2 : allTiles <= 4 ? 2 : allTiles <= 6 ? 3 : allTiles <= 9 ? 3 : 4;
     const rows = Math.ceil(allTiles / cols);
-    // Use calc() to account for gap (4px) so tiles fill exactly
+    // Use calc() to account for gap (4px) so tiles fill exactly. 
+    // Subtracting gap from the total percentage ensures they stay within bounds.
     const gap = 4;
     const tileWidth = `calc(${100 / cols}% - ${gap}px)` as any;
     const tileHeight = `calc(${100 / rows}% - ${gap}px)` as any;
@@ -256,7 +257,12 @@ function ConferenceContent({
       : allTiles <= 9 ? styles.grid9
       : styles.grid12;
 
-    const tileStyle = { width: tileWidth, height: tileHeight };
+    const tileStyle = { 
+      width: tileWidth, 
+      height: tileHeight,
+      // On web, ensure the flex child doesn't shrink below its calc height
+      minHeight: tileHeight 
+    };
 
     return (
       <View style={[styles.videoGrid, gridStyle]}>
@@ -277,8 +283,6 @@ function ConferenceContent({
             />
           </View>
         ))}
-
-        {/* No empty state — local tile always exists via provider safety net */}
       </View>
     );
   };
@@ -710,6 +714,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'stretch',
     gap: 4,
     padding: 4,
   },
