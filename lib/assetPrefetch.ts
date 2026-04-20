@@ -1,8 +1,8 @@
 /**
- * Asset Prefetch — preloads critical videos and images at app startup.
+ * Asset prefetch hints critical media at app startup.
  *
- * Videos are prefetched via hidden <link rel="prefetch"> tags so the browser
- * downloads them in idle time. Images use fetch() for cache priming.
+ * Use `prefetch` instead of `preload` so idle downloads don't emit
+ * unsupported `as` or unused preload warnings on auth/onboarding routes.
  *
  * Only runs on web platform. No-op on native.
  */
@@ -27,21 +27,18 @@ export function prefetchCriticalAssets(): void {
   if (prefetched || Platform.OS !== 'web' || typeof document === 'undefined') return;
   prefetched = true;
 
-  // Prefetch videos via <link rel="preload"> — browser downloads with high priority
+  // Prefetch videos during idle time without generating preload warnings.
   for (const src of CRITICAL_VIDEOS) {
     const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'video';
+    link.rel = 'prefetch';
     link.href = src;
-    link.setAttribute('crossorigin', '');
     document.head.appendChild(link);
   }
 
-  // Prefetch images via <link rel="preload">
+  // Images are also non-blocking hints; they can warm the cache opportunistically.
   for (const src of CRITICAL_IMAGES) {
     const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'image';
+    link.rel = 'prefetch';
     link.href = src;
     document.head.appendChild(link);
   }

@@ -658,6 +658,27 @@ function OnboardingContent() {
     });
   }, []);
 
+  const getAuthToken = useCallback(async (): Promise<string | null> => {
+    const currentToken = session?.access_token?.trim();
+    if (currentToken) return currentToken;
+
+    try {
+      const { data: existing } = await supabase.auth.getSession();
+      const existingToken = existing.session?.access_token?.trim();
+      if (existingToken) return existingToken;
+
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        devError('[Onboarding] refreshSession failed:', refreshError.message);
+        return null;
+      }
+      return refreshed.session?.access_token?.trim() || null;
+    } catch (e: any) {
+      devError('[Onboarding] resolve auth token failed:', e?.message);
+      return null;
+    }
+  }, [session?.access_token]);
+
   // Cleanup debounce timers on unmount (prevents memory leak)
   useEffect(() => {
     return () => {
@@ -728,9 +749,15 @@ function OnboardingContent() {
   const searchPlaces = async (query: string, onResults: (r: any[]) => void) => {
     if (!query || query.length < 2) { onResults([]); return; }
     try {
+      const token = await getAuthToken();
+      if (!token) { onResults([]); return; }
+
       const res = await fetch('/api/places/autocomplete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ input: query }),
       });
       const data = await res.json();
@@ -741,7 +768,14 @@ function OnboardingContent() {
 
   const getPlaceDetails = async (placeId: string): Promise<AddressFields | null> => {
     try {
-      const res = await fetch(`/api/places/details/${encodeURIComponent(placeId)}`);
+      const token = await getAuthToken();
+      if (!token) return null;
+
+      const res = await fetch(`/api/places/details/${encodeURIComponent(placeId)}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       const data = await res.json();
       if (data.error) { devError('[Places] Details error:', data.error); return null; }
       return parsePlaceDetails(data);
@@ -908,7 +942,7 @@ function OnboardingContent() {
       };
 
       if (!effectiveSuiteId) {
-        const token = session?.access_token;
+        const token = await getAuthToken();
         if (!token) {
           setError('Session expired. Please sign in again.');
           setLoading(false);
@@ -973,7 +1007,7 @@ function OnboardingContent() {
       }
 
       // Existing suite — update profile via server endpoint (sanitization + receipt)
-      const token = session?.access_token;
+      const token = await getAuthToken();
       if (!token) {
         setError('Session expired. Please sign in again.');
         setLoading(false);
@@ -1001,11 +1035,13 @@ function OnboardingContent() {
 
       // Session refresh with retry polling — prevents redirect loop (same pattern as bootstrap)
       await supabase.auth.refreshSession();
+      const postRefreshToken = await getAuthToken();
       for (let attempt = 0; attempt < 3; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 500));
         try {
+          if (!postRefreshToken) break;
           const statusResp = await fetch('/api/onboarding/status', {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${postRefreshToken}` },
           });
           const statusData = await statusResp.json();
           if (statusData.complete) break;
