@@ -20,7 +20,7 @@
     "gen-types": "bash scripts/gen-types.sh",
     "check-types": "bash scripts/gen-types.sh --check",
     "sentry:upload:sourcemaps": "node scripts/sentry-release.mjs web",
-    "build:static": "NODE_OPTIONS='--max-old-space-size=4096' expo export -p web --clear && node scripts/fix-viewport.js && node scripts/copy-worklets.js",
+    "build:static": "node scripts/build-static.mjs",
     "postinstall": "node scripts/copy-worklets.js 2>/dev/null || true",
     "sentry:release:web": "node scripts/sentry-release.mjs web"
   },

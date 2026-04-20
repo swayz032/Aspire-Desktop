@@ -12,9 +12,48 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { getValidatedSession } from '@/lib/auth/validatedSession';
+import { signInWithVerifiedSession } from '@/lib/auth/passwordAuthFlow';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 type AuthMode = 'signin' | 'signup';
+type RouteTarget = ReturnType<typeof useRouter>;
+type ErrorSetter = React.Dispatch<React.SetStateAction<string | null>>;
+type LoadingSetter = React.Dispatch<React.SetStateAction<boolean>>;
+
+async function signInAndRoute(
+  email: string,
+  password: string,
+  router: RouteTarget,
+  setError: ErrorSetter,
+  setLoading: LoadingSetter,
+) {
+  const normalizedEmail = email.trim();
+  if (!normalizedEmail || !password.trim()) {
+    setError('Please enter both email and password.');
+    return;
+  }
+
+  setLoading(true);
+  setError(null);
+
+  let redirected = false;
+
+  try {
+    const { error } = await signInWithVerifiedSession(supabase.auth, normalizedEmail, password);
+    if (error) {
+      setError(error);
+      return;
+    }
+
+    redirected = true;
+    router.replace('/(tabs)' as any);
+  } catch (err: any) {
+    setError(err.message || 'An unexpected error occurred.');
+  } finally {
+    if (!redirected) setLoading(false);
+  }
+}
 
 // ─── Console definitions ─────────────────────────────────────────────────────
 const CONSOLES = [
@@ -286,21 +325,7 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
   const switchMode = (m: AuthMode) => { setMode(m); setError(null); setSuccessMsg(null); setPassword(''); setConfirmPassword(''); };
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password.trim()) { setError('Please enter both email and password.'); return; }
-    setLoading(true); setError(null);
-    try {
-      const { error: ae } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (ae) { setError(ae.message); setLoading(false); return; }
-      // Sign-in succeeded. Auth gate in _layout.tsx redirects to /(tabs).
-      // Safety timeout: if auth gate hasn't redirected after 5s, reset button
-      // and try navigating directly (prevents permanent "Please wait" freeze).
-      setTimeout(() => {
-        setLoading(false);
-        router.replace('/(tabs)' as any);
-      }, 5000);
-    } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
-      setLoading(false);
-    }
+    await signInAndRoute(email, password, router, setError, setLoading);
   };
 
   const handleSignUp = async () => {
@@ -326,8 +351,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
       } finally { clearTimeout(timeout); }
       const rd = await res.json().catch(() => ({ error: 'Invalid server response' }));
       if (!res.ok || !rd.success) { setError(rd.error || 'Signup failed. Please try again.'); return; }
-      const { error: sie } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (sie) { setError(sie.message); return; }
+      const { error: signInError } = await signInWithVerifiedSession(supabase.auth, email.trim(), password);
+      if (signInError) { setError(signInError); return; }
       router.replace('/(auth)/onboarding' as any);
     } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
     } finally { setLoading(false); }
@@ -768,20 +793,7 @@ function NativeLoginScreen() {
   };
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password.trim()) { setError('Please enter both email and password.'); return; }
-    setLoading(true); setError(null);
-    try {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (authError) { setError(authError.message); setLoading(false); return; }
-      // Auth gate in _layout.tsx handles redirect after session change.
-      // Safety timeout prevents permanent freeze.
-      setTimeout(() => {
-        setLoading(false);
-        router.replace('/(tabs)' as any);
-      }, 5000);
-    } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
-      setLoading(false);
-    }
+    await signInAndRoute(email, password, router, setError, setLoading);
   };
 
   const handleSignUp = async () => {
@@ -797,8 +809,8 @@ function NativeLoginScreen() {
       });
       const signupData = await signupRes.json();
       if (!signupRes.ok || !signupData.success) { setError(signupData.error || 'Signup failed.'); return; }
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (signInError) { setError(signInError.message); return; }
+      const { error: signInError } = await signInWithVerifiedSession(supabase.auth, email.trim(), password);
+      if (signInError) { setError(signInError); return; }
       router.replace('/(auth)/onboarding' as any);
     } catch (err: any) { setError(err.message || 'An unexpected error occurred.');
     } finally { setLoading(false); }
@@ -864,6 +876,21 @@ function NativeLoginScreen() {
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 function LoginContent() {
+  const router = useRouter();
+
+  useEffect(() => {
+    let active = true;
+
+    getValidatedSession(supabase.auth)
+      .then((validatedSession) => {
+        if (!active || !validatedSession) return;
+        router.replace('/(tabs)' as any);
+      })
+      .catch(() => undefined);
+
+    return () => { active = false; };
+  }, [router]);
+
   // NOTE: Do NOT call signOut() on mount. The previous implementation
   // cleared sessions on mount to prevent "auto-login", but this caused
   // a race condition: if signOut was still in-flight when the user

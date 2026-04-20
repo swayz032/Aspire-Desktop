@@ -46,6 +46,8 @@ import { useDesktop } from '@/lib/useDesktop';
 import { CanvasDragDropProvider } from '@/lib/canvasDragDrop';
 import { emitCanvasEvent } from '@/lib/canvasTelemetry';
 import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
+import { supabase } from '@/lib/supabase';
+import { getValidatedSession } from '@/lib/auth/validatedSession';
 import { reportError } from '@/lib/errorReporter';
 import { configureSentry, Sentry } from '@/lib/sentry';
 import { AppState, type AppStateStatus } from 'react-native';
@@ -234,6 +236,7 @@ function useAuthGate() {
   // during token refresh races where suiteId briefly becomes null.
   const onboardingConfirmedRef = useRef(DEV_BYPASS_AUTH ? true : false);
   const navLockRef = useRef(false);
+  const authPageValidationKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (DEV_BYPASS_AUTH) return;
@@ -300,6 +303,33 @@ function useAuthGate() {
         setOnboardingChecked(true);
       });
   }, [session, suiteId, isLoading]);
+
+  useEffect(() => {
+    if (DEV_BYPASS_AUTH || isLoading || session) {
+      authPageValidationKeyRef.current = null;
+      return;
+    }
+
+    const inAuthGroup = segments[0] === ('(auth)' as any);
+    if (!inAuthGroup) {
+      authPageValidationKeyRef.current = null;
+      return;
+    }
+
+    const routeKey = segments.join('/');
+    if (authPageValidationKeyRef.current === routeKey) return;
+    authPageValidationKeyRef.current = routeKey;
+
+    let active = true;
+    getValidatedSession(supabase.auth).then((validatedSession) => {
+      if (!active || !validatedSession || navLockRef.current) return;
+      navLockRef.current = true;
+      router.replace('/(tabs)' as any);
+      setTimeout(() => { navLockRef.current = false; }, 2000);
+    }).catch(() => undefined);
+
+    return () => { active = false; };
+  }, [session, isLoading, segments, router]);
 
   useEffect(() => {
     // CRITICAL: If still loading session from storage, do nothing. 

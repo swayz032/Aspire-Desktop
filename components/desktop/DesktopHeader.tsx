@@ -73,6 +73,9 @@ function DesktopHeaderInner({
   const { session, signOut } = useSupabase();
   const { tenant } = useTenant();
   const router = useRouter();
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    Platform.OS === 'web' && typeof window !== 'undefined' ? window.innerWidth : 1440,
+  );
   const [bootstrapIdentity, setBootstrapIdentity] = useState<{
     businessName?: string;
     suiteDisplayId?: string;
@@ -93,6 +96,13 @@ function DesktopHeaderInner({
     } catch {
       // Ignore malformed cache.
     }
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Derive display values from auth context, falling back to props, then defaults
@@ -135,6 +145,11 @@ function DesktopHeaderInner({
     const officePart = officeDisplayId ? `Office ${officeDisplayId}` : 'Office Pending';
     return `${suitePart} \u00b7 ${officePart}`;
   }, [suiteDisplayId, officeDisplayId]);
+  const isCompactHeader = viewportWidth < 1280;
+  const isTabletHeader = viewportWidth < 1100;
+  const showSuiteIdentity = viewportWidth >= 1180;
+  const suiteToggleMaxWidth = isTabletHeader ? 220 : isCompactHeader ? 280 : 360;
+  const searchPlaceholderText = isTabletHeader ? 'Search' : 'Search or press ⌘K';
 
   // S3-M8: Backend connectivity status + device network state (Wave 2C)
   const backendConnected = useBackendConnected();
@@ -453,6 +468,8 @@ function DesktopHeaderInner({
         {!hideSearch && (
           <Pressable
             style={({ hovered }: any) => [s.searchBar, hovered && s.searchBarHover]}
+            testID="desktop-header-search-bar"
+            accessibilityLabel={searchPlaceholderText}
           >
             <Ionicons name="search" size={16} color={Colors.text.tertiary} />
             <Text style={s.searchPlaceholder}>Search or press ⌘K</Text>
@@ -466,15 +483,26 @@ function DesktopHeaderInner({
             onPress={() => togglePanel('suite')}
             style={({ hovered }: any) => [
               s.suiteToggle,
+              { maxWidth: suiteToggleMaxWidth },
               hovered && s.suiteToggleHover,
               activePanel === 'suite' && s.suiteToggleActive,
             ]}
             testID="desktop-suite-toggle"
+            accessibilityLabel={businessName}
+            {...(Platform.OS === 'web' ? { title: businessName } as any : {})}
           >
             <View style={s.companyInfo}>
               <View style={s.statusRow}>
                 <View style={[s.statusDot, !deviceOnline ? s.statusDotOffline : !backendConnected ? s.statusDotDegraded : undefined]} />
-                <Text style={s.businessName} testID="desktop-header-business-name">{businessName}</Text>
+                <Text
+                  style={s.businessName}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  testID="desktop-header-business-name"
+                  {...(Platform.OS === 'web' ? { title: businessName } as any : {})}
+                >
+                  {businessName}
+                </Text>
                 {!deviceOnline && (
                   <Text style={s.connectivityLabel}>Offline</Text>
                 )}
@@ -482,7 +510,9 @@ function DesktopHeaderInner({
                   <Text style={s.connectivityLabel}>Server unavailable</Text>
                 )}
               </View>
-              <Text style={s.roleText}>{suiteIdentity}</Text>
+              {showSuiteIdentity ? (
+                <Text style={s.roleText} numberOfLines={1} ellipsizeMode="tail">{suiteIdentity}</Text>
+              ) : null}
             </View>
             <Ionicons
               name={activePanel === 'suite' ? 'chevron-up' : 'chevron-down'}
@@ -596,13 +626,18 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
+    gap: 16,
     zIndex: 100,
   },
-  leftSection: { flex: 1 },
+  leftSection: { flex: 1, minWidth: 0 },
   centerSection: {
-    flex: 2,
+    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 0,
   },
   searchBar: {
     flexDirection: 'row',
@@ -616,6 +651,7 @@ const s = StyleSheet.create({
     gap: 10,
     width: '100%',
     maxWidth: 400,
+    minWidth: 0,
     ...(Platform.OS === 'web' ? { transition: TRANSITION_FAST, cursor: 'pointer' } : {}),
   } as any,
   searchBarHover: {
@@ -627,16 +663,19 @@ const s = StyleSheet.create({
     color: Colors.text.tertiary,
   },
   rightSection: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 12,
+    minWidth: 0,
   },
 
   panelWrapper: {
     position: 'relative',
     zIndex: 200,
+    minWidth: 0,
   },
 
   suiteToggle: {
@@ -647,18 +686,19 @@ const s = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: 'transparent',
+    minWidth: 0,
     ...(Platform.OS === 'web' ? { transition: TRANSITION_FAST, cursor: 'pointer' } : {}),
   } as any,
   suiteToggleHover: { backgroundColor: '#141416', borderColor: '#2C2C2E' },
   suiteToggleActive: { backgroundColor: '#141416', borderColor: '#3C3C3E' },
-  companyInfo: { alignItems: 'flex-end' },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  companyInfo: { alignItems: 'flex-end', flexShrink: 1, minWidth: 0, maxWidth: '100%' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0, maxWidth: '100%' },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#34d399' },
   statusDotOffline: { backgroundColor: '#ef4444' },
   statusDotDegraded: { backgroundColor: '#f59e0b' },
   connectivityLabel: { fontSize: 10, color: '#ef4444', fontWeight: '500', marginLeft: 4 },
-  businessName: { fontSize: 14, fontWeight: '600', color: Colors.text.primary },
-  roleText: { fontSize: 12, color: Colors.text.tertiary, marginTop: 2 },
+  businessName: { fontSize: 14, fontWeight: '600', color: Colors.text.primary, flexShrink: 1, maxWidth: '100%' },
+  roleText: { fontSize: 12, color: Colors.text.tertiary, marginTop: 2, flexShrink: 1, maxWidth: '100%' },
 
   suiteDropdown: {
     position: 'absolute',
