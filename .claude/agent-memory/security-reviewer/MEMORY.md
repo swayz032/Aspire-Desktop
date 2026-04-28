@@ -67,6 +67,26 @@
 - HMAC webhook uses `sortKeys()` canonical JSON — correct and matches n8n receiver
 - Conference invite: acceptVideoCall/declineVideoCall use bare fetch() (no Bearer header) — pattern to watch
 
+## Cycle 8 Findings (Ava Presents — Voice Card System) — 2026-04-06
+
+### Critical Data Flow Issues
+- HIGH: `_extract_structured_results()` (respond.py:784-812) passes the full `records[]` array from Adam playbooks directly into `AvaResult.structured_results`. PropertyRecord's `to_dict()` serializes ALL fields including `owner_name`, `mailing_address`, `mortgage_amount`, `mortgage_lender`, `deed_type`, `sale_history[].buyer/seller` — all PII. These flow to the ElevenLabs-hosted agent and the desktop client with no redaction.
+- HIGH: `AvaResult.plan.execution_result` (respond.py:1208) includes the raw `execution_result` from state, which is the FULL research data dict including all records with PII. This is returned in the HTTP response body to the client AND is visible to any admin watching the pipeline.
+- MEDIUM: `show_cards` client tool (useElevenLabsAgent.tsx:294-298) accepts `records: any[]` with no schema validation, type checking, or field allowlisting. ElevenLabs is a third-party service — a compromised/malicious ElevenLabs response could inject arbitrary data into `records[]` that gets rendered in cards.
+- MEDIUM: `Linking.openURL()` is called without any URL scheme validation in HotelCard, ProductCard, and BusinessCard. `javascript:` URLs, `file://` paths, `data:` URLs — all accepted. On React Native web (Electron/browser), `javascript:` scheme opens XSS. On native, `data:` URLs could redirect to phishing pages.
+- MEDIUM: `tel:${phone}` constructed by string concatenation without sanitization in HotelCard:178, HotelCard:200 (BusinessCard inline), BusinessCard:200. A provider returning `phone = "1234\nX-Header: injected"` would create a malformed tel: URI but wouldn't cause injection on mobile platforms. Low practical risk on iOS/Android due to OS-level handling, but concerning on web.
+- LOW: `injectResearchModalStyles()` (ResearchModal.tsx:78-109) builds a `<style>` tag from hardcoded CSS strings. The strings are static (no interpolation) — no XSS risk here. But the pattern is a code smell — if this ever gets user-controlled content interpolated, it becomes CRITICAL.
+- INFO: No `dangerouslySetInnerHTML` found anywhere in the card components. All text rendered via React Native `<Text>` components. XSS via React Native Text is not possible.
+- INFO: TripAdvisor API key is passed in `query_params` (tripadvisor_client.py:151), but `base_client.py` logs `request.path` only (not full URL + query string). The key does NOT appear in structured logs or `provider_call_logger` entries.
+- INFO: `_redact_payload()` in provider_call_logger.py regex-redacts `api_key`, `token`, `secret`, `key` field names — but ONLY when they appear as JSON object keys, not as URL query params.
+- INFO: No tenant_id or suite_id included in `structured_results` output — correct.
+- INFO: `bypassPermissions` NOT found in any Ava Presents code.
+
+### URL Injection Surface
+- HotelCard.tsx:183 — `Linking.openURL(url)` where `url = website || tripadvisor_url` — no scheme check
+- ProductCard.tsx:112-114 — `Linking.openURL(productUrl)` where `productUrl = link || url` — no scheme check
+- BusinessCard.tsx:133-136 and BusinessCard.tsx:200 — `Linking.openURL(website)` and `Linking.openURL(`tel:${phone}`)` — no scheme check
+
 ## Cycle 3 Findings (Routes + Server) — 2026-03-22
 
 ### Backend Routes (`routes/`)

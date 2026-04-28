@@ -327,12 +327,15 @@ router.get('/api/frontdesk/config-by-number', async (req: Request, res: Response
       process.env.TOOL_WEBHOOK_SHARED_SECRET ||
       process.env.ANAM_TOOL_SECRET ||
       process.env.ELEVENLABS_TOOL_SECRET;
+    const allowLegacyHeader = String(process.env.ALLOW_LEGACY_TOOL_SECRET_HEADER || '').toLowerCase() === 'true';
     const providedAspire = Array.isArray(req.headers['x-aspire-tool-secret'])
       ? req.headers['x-aspire-tool-secret'][0]
       : req.headers['x-aspire-tool-secret'];
-    const providedLegacy = Array.isArray(req.headers['x-elevenlabs-secret'])
-      ? req.headers['x-elevenlabs-secret'][0]
-      : req.headers['x-elevenlabs-secret'];
+    const providedLegacy = allowLegacyHeader
+      ? (Array.isArray(req.headers['x-elevenlabs-secret'])
+          ? req.headers['x-elevenlabs-secret'][0]
+          : req.headers['x-elevenlabs-secret'])
+      : '';
     const providedSecret = (providedAspire || providedLegacy || '').toString();
     if (toolSecret && providedSecret !== toolSecret) {
       return res.status(401).json({ code: 'AUTH_FAILED', message: 'Invalid secret' });

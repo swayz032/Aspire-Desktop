@@ -1,3 +1,4 @@
+// [STATUS: v1] — Drives V1 ElevenLabs Conversational AI sessions. NOT used for V2 Anam personas.
 /**
  * useElevenLabsAgent — ElevenLabs Conversational AI Hook (SDK v1.0)
  *

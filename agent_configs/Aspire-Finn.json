@@ -1,4 +1,6 @@
 {
+    "_aspire_status": "v1-elevenlabs",
+    "_aspire_v2_counterpart": "Anam persona b6852adf-f904-4f61-9731-cf9b7c0ca68b (see backend/scripts/setup-anam-personas.ts)",
     "name": "Aspire - Finn",
     "conversation_config": {
         "asr": {

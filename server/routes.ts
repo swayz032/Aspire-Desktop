@@ -9,6 +9,7 @@ import { getDefaultSuiteId, getDefaultOfficeId } from './suiteContext';
 import { logger } from './logger';
 import { captureServerException } from './sentry';
 import { reportAdminIncident } from './incidentReporter';
+import { collectAcceptedSecrets } from './agentToolRoutes';
 
 // Supabase admin client for bootstrap operations (user_metadata updates)
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -33,6 +34,8 @@ const CANONICAL_ANAM_AVA_TOOL_NAMES = [
   'show_cards',
 ] as const;
 const CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES = ['Knowledge_Ava', 'ava_knowledge_search'] as const;
+const DEFAULT_ANAM_AVA_AVATAR_ID = process.env.ANAM_AVA_AVATAR_ID?.trim() || '30fa96d0-26c4-4e55-94a0-517025942e18';
+const DEFAULT_ANAM_AVA_VOICE_ID = process.env.ANAM_AVA_VOICE_ID?.trim() || '0c8b52f4-f26d-4810-855c-c90e5f599cbc';
 const DEFAULT_AVA_ANAM_VIDEO_PROMPT = `# Personality
 You are Ava, chief of staff.
 
@@ -53,6 +56,7 @@ You are on a live video call.
 ## save_office_note
 ## Knowledge_Ava
 ## show_cards`;
+const AVA_PROMPT_RELATIVE_PATH = ['..', 'backend', 'orchestrator', 'src', 'aspire_orchestrator', 'config', 'pack_personas', 'ava_anam_video_prompt.md'];
 
 type AnamPersonaTool = {
   id?: string;
@@ -79,6 +83,29 @@ type CanonicalAnamToolSelection = {
   issues: string[];
   selected: Record<string, string>;
 };
+
+function loadAvaPromptTemplateWithSource(): { prompt: string; source: string } {
+  const pathMod = require('path');
+  const fsMod = require('fs');
+  const explicitPath = process.env.AVA_ANAM_PROMPT_PATH?.trim();
+  const candidates = [
+    explicitPath || '',
+    pathMod.join(process.cwd(), ...AVA_PROMPT_RELATIVE_PATH),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      const prompt = fsMod.readFileSync(candidate, 'utf-8');
+      if (typeof prompt === 'string' && prompt.trim().length > 0) {
+        return { prompt, source: candidate };
+      }
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  return { prompt: DEFAULT_AVA_ANAM_VIDEO_PROMPT, source: 'DEFAULT_AVA_ANAM_VIDEO_PROMPT' };
+}
 
 function normalizeToolName(value: unknown): string {
   return String(value || '').trim();
@@ -196,7 +223,8 @@ function validateAnamAvaPromptAndConfig(prompt: string, personaId: string): stri
   const errors: string[] = [];
   const normalizedPrompt = String(prompt || '').toLowerCase();
 
-  if (personaId !== CANONICAL_ANAM_AVA_PERSONA_ID) {
+  const enforceCanonicalPersonaId = process.env.ANAM_ENFORCE_CANONICAL_PERSONA_ID === 'true';
+  if (enforceCanonicalPersonaId && personaId !== CANONICAL_ANAM_AVA_PERSONA_ID) {
     errors.push(`Ava personaId drift detected: expected ${CANONICAL_ANAM_AVA_PERSONA_ID}, got ${personaId}`);
   }
 
@@ -279,7 +307,15 @@ function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
     if (method !== 'POST') issues.push(`Tool ${name} must use POST`);
     if (awaitResponse !== true) issues.push(`Tool ${name} must set awaitResponse=true`);
     issues.push(...validateRequiredSchemaFields(name, parameters));
-    if (!headers['x-aspire-tool-secret']) issues.push(`Tool ${name} missing x-aspire-tool-secret header`);
+    const providedSecret = headers['x-aspire-tool-secret'];
+    if (!providedSecret) {
+      issues.push(`Tool ${name} missing x-aspire-tool-secret header`);
+    } else {
+      const acceptedSecrets = collectAcceptedSecrets();
+      if (!acceptedSecrets.includes(providedSecret)) {
+        issues.push(`Tool ${name} secret drift detected: value does not match server-accepted secrets.`);
+      }
+    }
   }
 
   return issues;
@@ -289,6 +325,63 @@ async function fetchAnamPersonaToolsForValidation(
   personaId: string,
   anamApiKey: string,
 ): Promise<{ tools: AnamPersonaTool[]; issues: string[] }> {
+  const extractToolList = (payload: any): AnamPersonaTool[] => {
+    if (Array.isArray(payload)) return payload as AnamPersonaTool[];
+    if (Array.isArray(payload?.data)) return payload.data as AnamPersonaTool[];
+    return [];
+  };
+
+  const fetchAllTools = async (): Promise<{ tools: AnamPersonaTool[]; issues: string[] }> => {
+    const issues: string[] = [];
+    const perPage = 100;
+    const tools: AnamPersonaTool[] = [];
+    let page = 1;
+    let maxPages = 1;
+    let safety = 0;
+
+    while (page <= maxPages && safety < 50) {
+      safety += 1;
+      const listResp: any = await fetch(`https://api.anam.ai/v1/tools?page=${page}&perPage=${perPage}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${anamApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!listResp.ok) {
+        const body = await listResp.text().catch(() => '');
+        issues.push(`Unable to fetch Anam tools page ${page} (${listResp.status}): ${body.slice(0, 180)}`);
+        break;
+      }
+
+      const listData = await listResp.json().catch(() => ({}));
+      const pageTools = extractToolList(listData);
+      tools.push(...pageTools);
+
+      const rawLastPage = Number(listData?.meta?.lastPage || 0);
+      if (Number.isFinite(rawLastPage) && rawLastPage >= 1) {
+        maxPages = rawLastPage;
+      } else if (pageTools.length < perPage) {
+        maxPages = page;
+      } else {
+        maxPages = Math.max(maxPages, page + 1);
+      }
+
+      if (pageTools.length === 0 && (!Number.isFinite(rawLastPage) || rawLastPage < 1)) {
+        break;
+      }
+      page += 1;
+    }
+
+    const byId = new Map<string, AnamPersonaTool>();
+    for (const tool of tools) {
+      const id = String(tool?.id || tool?._toolId || '').trim();
+      if (!id || byId.has(id)) continue;
+      byId.set(id, tool);
+    }
+    return { tools: Array.from(byId.values()), issues };
+  };
+
   try {
     const apiResp: any = await fetch(`https://api.anam.ai/v1/personas/${personaId}`, {
       method: 'GET',
@@ -302,8 +395,38 @@ async function fetchAnamPersonaToolsForValidation(
       return { tools: [], issues: [`Unable to fetch Anam persona tools (${apiResp.status}): ${body.slice(0, 180)}`] };
     }
     const data = await apiResp.json().catch(() => ({}));
-    const tools = Array.isArray(data?.tools) ? (data.tools as AnamPersonaTool[]) : [];
-    return { tools, issues: validateAnamAvaToolset(tools) };
+    const attached = Array.isArray(data?.tools) ? (data.tools as AnamPersonaTool[]) : [];
+
+    // Persona payloads may include lightweight tool refs (id + name + type only).
+    // Hydrate with /v1/tools so validation uses canonical webhook config/schema.
+    const allToolsResult = await fetchAllTools();
+    const toolById = new Map<string, AnamPersonaTool>();
+    for (const tool of allToolsResult.tools) {
+      const id = String(tool?.id || tool?._toolId || '').trim();
+      if (!id) continue;
+      toolById.set(id, tool);
+    }
+
+    const hydrationIssues: string[] = [];
+    const hydrated = attached.map((toolRef) => {
+      const id = String(toolRef?.id || toolRef?._toolId || '').trim();
+      if (!id) return toolRef;
+      const full = toolById.get(id);
+      if (!full) {
+        hydrationIssues.push(`Attached tool id not found in /v1/tools: ${id} (${String(toolRef?.name || 'unknown')})`);
+        return toolRef;
+      }
+      return full;
+    });
+
+    return {
+      tools: hydrated,
+      issues: [
+        ...allToolsResult.issues,
+        ...hydrationIssues,
+        ...validateAnamAvaToolset(hydrated),
+      ],
+    };
   } catch (error: unknown) {
     return {
       tools: [],
@@ -348,6 +471,38 @@ function scoreCanonicalToolCandidate(
   return score;
 }
 
+function isStrictCanonicalToolCandidate(
+  name: string,
+  tool: AnamPersonaTool,
+  expectedWebhookPathByTool: Record<string, string>,
+): boolean {
+  const type = normalizeAnamToolType(tool.type);
+  const subtype = getToolSubtype(tool);
+  const method = getToolMethod(tool);
+  const url = getToolUrl(tool);
+  const awaitResponse = getToolAwaitResponse(tool);
+  const headers = getToolHeaders(tool);
+  const parameters = getToolParameters(tool);
+  const schemaIssues = validateRequiredSchemaFields(name, parameters);
+
+  if (name === 'show_cards') {
+    return type.includes('client') && schemaIssues.length === 0;
+  }
+
+  const expectedPath = expectedWebhookPathByTool[name];
+  return (
+    type.includes('server') &&
+    subtype === 'webhook' &&
+    method === 'POST' &&
+    awaitResponse === true &&
+    url.startsWith('https://www.aspireos.app/v1/tools/') &&
+    !!expectedPath &&
+    url.includes(expectedPath) &&
+    !!headers['x-aspire-tool-secret'] &&
+    schemaIssues.length === 0
+  );
+}
+
 async function fetchCanonicalAnamAvaToolIds(anamApiKey: string): Promise<CanonicalAnamToolSelection> {
   const expectedWebhookPathByTool: Record<string, string> = {
     ava_get_context: '/v1/tools/context',
@@ -361,33 +516,75 @@ async function fetchCanonicalAnamAvaToolIds(anamApiKey: string): Promise<Canonic
     invoke_clara: '/v1/tools/invoke',
   };
 
+  const fetchAllTools = async (): Promise<{ tools: AnamPersonaTool[]; issues: string[] }> => {
+    const issues: string[] = [];
+    const perPage = 100;
+    const tools: AnamPersonaTool[] = [];
+    let page = 1;
+    let maxPages = 1;
+    let safety = 0;
+
+    while (page <= maxPages && safety < 50) {
+      safety += 1;
+      const apiResp: any = await fetch(`https://api.anam.ai/v1/tools?page=${page}&perPage=${perPage}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${anamApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!apiResp.ok) {
+        const body = await apiResp.text().catch(() => '');
+        issues.push(`Unable to fetch Anam tools page ${page} (${apiResp.status}): ${body.slice(0, 180)}`);
+        break;
+      }
+      const data = await apiResp.json().catch(() => ({}));
+      const pageTools: AnamPersonaTool[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+          ? data.data
+          : [];
+      tools.push(...pageTools);
+
+      const rawLastPage = Number(data?.meta?.lastPage || 0);
+      if (Number.isFinite(rawLastPage) && rawLastPage >= 1) {
+        maxPages = rawLastPage;
+      } else if (pageTools.length < perPage) {
+        maxPages = page;
+      } else {
+        maxPages = Math.max(maxPages, page + 1);
+      }
+      if (pageTools.length === 0 && (!Number.isFinite(rawLastPage) || rawLastPage < 1)) {
+        break;
+      }
+      page += 1;
+    }
+
+    const dedupById = new Map<string, AnamPersonaTool>();
+    for (const tool of tools) {
+      const id = String(tool?.id || tool?._toolId || '').trim();
+      if (!id || dedupById.has(id)) continue;
+      dedupById.set(id, tool);
+    }
+    return { tools: Array.from(dedupById.values()), issues };
+  };
+
   try {
-    const apiResp: any = await fetch('https://api.anam.ai/v1/tools', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${anamApiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    if (!apiResp.ok) {
-      const body = await apiResp.text().catch(() => '');
+    const allToolsResult = await fetchAllTools();
+    if (allToolsResult.tools.length === 0) {
       return {
         toolIds: [],
         selected: {},
-        issues: [`Unable to fetch Anam tools (${apiResp.status}): ${body.slice(0, 180)}`],
+        issues: allToolsResult.issues.length > 0
+          ? allToolsResult.issues
+          : ['Unable to fetch Anam tools (empty tool library response)'],
       };
     }
-
-    const data = await apiResp.json().catch(() => ({}));
-    const tools: AnamPersonaTool[] = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.data)
-        ? data.data
-        : [];
+    const tools = allToolsResult.tools;
 
     const selected: Record<string, string> = {};
     const selectedIds: string[] = [];
-    const issues: string[] = [];
+    const issues: string[] = [...allToolsResult.issues];
 
     for (const requiredName of CANONICAL_ANAM_AVA_TOOL_NAMES) {
       const candidates = tools
@@ -396,6 +593,7 @@ async function fetchCanonicalAnamAvaToolIds(anamApiKey: string): Promise<Canonic
           tool,
           id: String(tool.id || tool._toolId || '').trim(),
           score: scoreCanonicalToolCandidate(requiredName, tool, expectedWebhookPathByTool),
+          strict: isStrictCanonicalToolCandidate(requiredName, tool, expectedWebhookPathByTool),
         }))
         .filter((entry) => entry.id.length > 0);
 
@@ -404,13 +602,15 @@ async function fetchCanonicalAnamAvaToolIds(anamApiKey: string): Promise<Canonic
         continue;
       }
 
+      const strictCandidates = candidates.filter((entry) => entry.strict);
+      strictCandidates.sort((a, b) => b.score - a.score);
       candidates.sort((a, b) => b.score - a.score);
-      const chosen = candidates[0];
+      const chosen = strictCandidates[0] || candidates[0];
       selected[requiredName] = chosen.id;
       selectedIds.push(chosen.id);
 
-      if (chosen.score < 4) {
-        issues.push(`Tool ${requiredName} selected weak candidate (score ${chosen.score})`);
+      if (!chosen.strict) {
+        issues.push(`Tool ${requiredName} selected non-strict candidate (score ${chosen.score})`);
       }
     }
 
@@ -422,8 +622,8 @@ async function fetchCanonicalAnamAvaToolIds(anamApiKey: string): Promise<Canonic
         const subtype = getToolSubtype(tool);
         let score = 0;
         if (type.includes('server')) score += 2;
-        if (subtype === 'knowledge') score += 4;
-        return { id, score };
+        if (subtype === 'knowledge' || subtype === 'rag') score += 4;
+        return { id, score, strict: type.includes('server') && (subtype === 'knowledge' || subtype === 'rag') };
       })
       .filter((entry) => entry.id.length > 0)
       .sort((a, b) => b.score - a.score);
@@ -431,9 +631,11 @@ async function fetchCanonicalAnamAvaToolIds(anamApiKey: string): Promise<Canonic
       const knowledgeId = knowledgeCandidates[0].id;
       selected['knowledge_tool'] = knowledgeId;
       selectedIds.push(knowledgeId);
-      if (knowledgeCandidates[0].score < 4) {
-        issues.push('Knowledge tool selected weak candidate');
+      if (!knowledgeCandidates[0].strict) {
+        issues.push('Knowledge tool selected non-strict candidate');
       }
+    } else {
+      issues.push('Canonical knowledge tool missing in /v1/tools (expected Knowledge_Ava or ava_knowledge_search)');
     }
 
     return {
@@ -4498,28 +4700,43 @@ router.get('/api/anam/persona-health', async (req: Request, res: Response) => {
       return res.status(503).json({ error: 'ANAM_NOT_CONFIGURED', message: 'Anam API key missing' });
     }
 
-    const path = require('path');
-    const fs = require('fs');
-    const promptPath = path.join(
-      process.cwd(),
-      '..',
-      'backend',
-      'orchestrator',
-      'src',
-      'aspire_orchestrator',
-      'config',
-      'pack_personas',
-      'ava_anam_video_prompt.md',
-    );
-    let promptTemplate = '';
-    try {
-      promptTemplate = fs.readFileSync(promptPath, 'utf-8');
-    } catch {
-      promptTemplate = DEFAULT_AVA_ANAM_VIDEO_PROMPT;
-    }
+    const { prompt: promptTemplate, source: promptSource } = loadAvaPromptTemplateWithSource();
 
     const promptValidationIssues = validateAnamAvaPromptAndConfig(promptTemplate, CONFIGURED_ANAM_AVA_PERSONA_ID);
     const toolValidation = await fetchAnamPersonaToolsForValidation(CANONICAL_ANAM_AVA_PERSONA_ID, ANAM_API_KEY);
+    let remotePromptSource = 'missing';
+    let remotePromptLength = 0;
+    let remotePromptValidationIssues: string[] = [];
+    try {
+      const personaResp: any = await fetch(`https://api.anam.ai/v1/personas/${CANONICAL_ANAM_AVA_PERSONA_ID}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${ANAM_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (personaResp.ok) {
+        const personaData = await personaResp.json().catch(() => ({}));
+        const remotePrompt = String(personaData?.brain?.systemPrompt || personaData?.systemPrompt || '');
+        remotePromptLength = remotePrompt.length;
+        remotePromptSource = personaData?.brain?.systemPrompt
+          ? 'anam.brain.systemPrompt'
+          : personaData?.systemPrompt
+            ? 'anam.systemPrompt'
+            : 'missing';
+        if (remotePrompt) {
+          remotePromptValidationIssues = validateAnamAvaPromptAndConfig(remotePrompt, CONFIGURED_ANAM_AVA_PERSONA_ID);
+        } else {
+          remotePromptValidationIssues = ['Anam persona prompt is empty'];
+        }
+      } else {
+        const body = await personaResp.text().catch(() => '');
+        remotePromptValidationIssues = [`Unable to fetch Anam persona prompt (${personaResp.status}): ${body.slice(0, 180)}`];
+      }
+    } catch (error: unknown) {
+      remotePromptValidationIssues = [`Unable to inspect Anam persona prompt: ${error instanceof Error ? error.message : 'unknown error'}`];
+    }
+
     const names = toolValidation.tools.map((tool) => String(tool?.name || '').trim()).filter(Boolean);
     const counts = names.reduce<Record<string, number>>((acc, name) => {
       acc[name] = (acc[name] || 0) + 1;
@@ -4533,9 +4750,17 @@ router.get('/api/anam/persona-health', async (req: Request, res: Response) => {
       duplicateTools: Object.entries(counts)
         .filter(([, count]) => count > 1)
         .map(([name, count]) => ({ name, count })),
+      promptSource,
       promptValidationIssues,
+      remotePromptSource,
+      remotePromptLength,
+      remotePromptValidationIssues,
       toolValidationIssues: toolValidation.issues,
-      ok: promptValidationIssues.length === 0 && toolValidation.issues.length === 0,
+      ok: (
+        promptValidationIssues.length === 0 &&
+        remotePromptValidationIssues.length === 0 &&
+        toolValidation.issues.length === 0
+      ),
     });
   } catch (error: unknown) {
     logger.error('Anam persona health endpoint failed', {
@@ -4611,16 +4836,11 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       else salutation = 'Mr.'; // Default to Mr. if unknown but lastName exists
     }
 
-    // Load the video prompt from file, with user info baked in
-    const fs = require('fs');
-    const path = require('path');
-    let videoPrompt = '';
-    try {
-      const promptPath = path.join(process.cwd(), '..', 'backend', 'orchestrator', 'src', 'aspire_orchestrator', 'config', 'pack_personas', 'ava_anam_video_prompt.md');
-      videoPrompt = fs.readFileSync(promptPath, 'utf-8');
-    } catch {
-      // Fallback template still includes required tool headings so validation does not false-fail.
-      videoPrompt = DEFAULT_AVA_ANAM_VIDEO_PROMPT;
+    // Load Ava prompt from disk when available; fall back to bundled default.
+    const { prompt: baseAvaPromptTemplate, source: avaPromptSource } = loadAvaPromptTemplateWithSource();
+    let videoPrompt = baseAvaPromptTemplate;
+    if (avaPromptSource === 'DEFAULT_AVA_ANAM_VIDEO_PROMPT') {
+      logger.warn('Ava prompt template fallback in use', { source: avaPromptSource });
     }
 
     const now = new Date();
@@ -4639,11 +4859,15 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       .replace(/\{\{has_camera\}\}/g, hasCamera ? 'true' : 'false')
       .replace(/\{\{time_of_day\}\}/g, now.getHours() < 12 ? 'morning' : now.getHours() < 17 ? 'afternoon' : 'evening');
 
-    // Keep Ava session config persona-driven to prevent stale hardcoded IDs
-    // (voice/tool/document) from breaking engine/session startup.
+    const ANAM_AVA_LLM_ID = process.env.ANAM_AVA_LLM_ID || ANAM_HOSTED_LLM_ID;
+
+    // Use ephemeral Ava config so runtime prompt/tool pinning always applies,
+    // regardless of drift in the stored Anam persona definition.
     const AVA_CONFIG = {
       name: 'Ava',
-      personaId: CONFIGURED_ANAM_AVA_PERSONA_ID,
+      avatarId: req.body?.avatarId || DEFAULT_ANAM_AVA_AVATAR_ID,
+      voiceId: req.body?.voiceId || DEFAULT_ANAM_AVA_VOICE_ID,
+      llmId: ANAM_AVA_LLM_ID,
       systemPrompt: videoPrompt,
       skipGreeting: false,
       maxSessionLengthSeconds: 1800,
@@ -4661,14 +4885,19 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     };
     const avaConfigValidationErrors = validateAnamAvaPromptAndConfig(
       AVA_CONFIG.systemPrompt,
-      AVA_CONFIG.personaId,
+      CONFIGURED_ANAM_AVA_PERSONA_ID,
     );
     if (avaConfigValidationErrors.length > 0) {
       const strictAnamPromptValidation = process.env.ANAM_PROMPT_STRICT_VALIDATION === 'true';
-      logger.error('Anam Ava prompt/config validation failed', {
+      const promptValidationLogPayload = {
         strict: strictAnamPromptValidation,
         errors: avaConfigValidationErrors,
-      });
+      };
+      if (strictAnamPromptValidation) {
+        logger.error('Anam Ava prompt/config validation failed', promptValidationLogPayload);
+      } else {
+        logger.warn('Anam Ava prompt/config validation warnings', promptValidationLogPayload);
+      }
       if (strictAnamPromptValidation) {
         return res.status(503).json({
           error: 'ANAM_AVA_CONFIG_INVALID',
@@ -4679,27 +4908,35 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
     }
     let avaSessionToolIds: string[] = [];
     if (resolvedPersona === 'ava') {
-      const strictAnamToolValidation = process.env.ANAM_TOOLSET_STRICT_VALIDATION === 'true';
-      const toolValidation = await fetchAnamPersonaToolsForValidation(CANONICAL_ANAM_AVA_PERSONA_ID, ANAM_API_KEY);
-      if (toolValidation.issues.length > 0) {
-        logger.error('Anam Ava tool validation failed', {
-          strict: strictAnamToolValidation,
-          issueCount: toolValidation.issues.length,
-          issues: toolValidation.issues,
-        });
-        if (strictAnamToolValidation) {
-          return res.status(503).json({
-            error: 'ANAM_AVA_TOOLSET_INVALID',
-            message: 'Ava toolset validation failed',
-            details: toolValidation.issues,
-          });
+      const validateStatefulPersonaTools = process.env.ANAM_VALIDATE_STATEFUL_PERSONA_TOOLS === 'true';
+      if (validateStatefulPersonaTools) {
+        const strictAnamToolValidation = process.env.ANAM_TOOLSET_STRICT_VALIDATION === 'true';
+        const toolValidation = await fetchAnamPersonaToolsForValidation(CANONICAL_ANAM_AVA_PERSONA_ID, ANAM_API_KEY);
+        if (toolValidation.issues.length > 0) {
+          const toolValidationLogPayload = {
+            strict: strictAnamToolValidation,
+            issueCount: toolValidation.issues.length,
+            issues: toolValidation.issues,
+          };
+          if (strictAnamToolValidation) {
+            logger.error('Anam Ava tool validation failed', toolValidationLogPayload);
+          } else {
+            logger.warn('Anam Ava tool validation warnings', toolValidationLogPayload);
+          }
+          if (strictAnamToolValidation) {
+            return res.status(503).json({
+              error: 'ANAM_AVA_TOOLSET_INVALID',
+              message: 'Ava toolset validation failed',
+              details: toolValidation.issues,
+            });
+          }
         }
       }
 
       const canonicalToolSelection = await fetchCanonicalAnamAvaToolIds(ANAM_API_KEY);
       avaSessionToolIds = canonicalToolSelection.toolIds;
       if (canonicalToolSelection.issues.length > 0) {
-        logger.error('Anam Ava canonical tool resolution warnings', {
+        logger.warn('Anam Ava canonical tool resolution warnings', {
           issueCount: canonicalToolSelection.issues.length,
           issues: canonicalToolSelection.issues,
           selected: canonicalToolSelection.selected,
@@ -4713,7 +4950,10 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
 
       // Fail closed if we cannot pin every required tool; prevents random stale tool execution.
       const strictSessionToolPinning = process.env.ANAM_SESSION_TOOL_PIN_STRICT !== 'false';
-      if (strictSessionToolPinning && avaSessionToolIds.length < CANONICAL_ANAM_AVA_TOOL_NAMES.length) {
+      const requiredPinnedToolCount = CANONICAL_ANAM_AVA_TOOL_NAMES.length + 1; // + knowledge tool
+      const hasKnowledgeToolPinned = !!canonicalToolSelection.selected.knowledge_tool;
+      const hasCriticalSelectionIssues = canonicalToolSelection.issues.length > 0 || !hasKnowledgeToolPinned;
+      if (strictSessionToolPinning && (avaSessionToolIds.length < requiredPinnedToolCount || hasCriticalSelectionIssues)) {
         return res.status(503).json({
           error: 'ANAM_AVA_SESSION_TOOL_PIN_FAILED',
           message: 'Ava video tool pinning failed',
@@ -4779,6 +5019,15 @@ When giving tax guidance, always include confidence level: "This is well-establi
           ...(avaSessionToolIds.length > 0 ? { toolIds: avaSessionToolIds } : {}),
         };
     const agent = resolvedPersona === 'finn' ? 'Finn' : 'Ava';
+    if (resolvedPersona === 'ava') {
+      logger.info('Ava session config prepared', {
+        llmId: (personaConfig as Record<string, unknown>).llmId,
+        avatarId: (personaConfig as Record<string, unknown>).avatarId,
+        voiceId: (personaConfig as Record<string, unknown>).voiceId,
+        toolCount: avaSessionToolIds.length,
+        promptSource: avaPromptSource,
+      });
+    }
 
     const requestSessionToken = async (config: Record<string, unknown>) => {
       const tokenResponse = await fetch('https://api.anam.ai/v1/auth/session-token', {

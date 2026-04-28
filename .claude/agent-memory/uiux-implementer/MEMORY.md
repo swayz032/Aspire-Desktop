@@ -71,6 +71,20 @@
 - **Placeholder height**: 120px with matching bottom border for grid alignment consistency
 - **Grid context**: 3-col FlatList, `cardCell: flex 1 / maxWidth 33.33%`, `gridRow gap: 14`
 
+## Ava Presents Card System (2026-04-06)
+- [Card System Polish](card-system-polish.md) -- 9-item polish: depth, variants, shimmer, animated dots, stagger, hover, glow, badge, dividers
+- **Files**: `components/cards/` -- ResearchModal, BaseCard, HotelCard, ProductCard, BusinessCard, GenericCard, ActionButton, AnimatedDot, ImageSkeleton
+- **CardRegistry**: `CardProps` interface (shared), `resolveCard()` maps artifact types to components
+- **ActionButton variants**: `primary` (filled cyan bg, white text, scale 0.97 press) + `secondary` (outlined)
+- **Stagger**: `enterDelay` prop on BaseCard, `FadeInUp.delay().springify()`, 80ms per card index
+- **Image skeleton**: `ImageSkeleton` component, reanimated pulse 0.3-0.7 opacity on 1.5s cycle, crossfades out on load
+- **Animated dots**: `AnimatedDot` component, `withSpring` width 8->24px for active pill shape
+- **Card depth**: Non-active cards in carousel `scale: 0.92, opacity: 0.6` with CSS transition
+- **Hover lift**: `.ava-card` CSS class on BaseCard, `translateY(-4px)` + intensified shadow on hover
+- **Section dividers**: `sectionDivider` style pattern -- `marginTop: Spacing.md, paddingTop: Spacing.md, borderTopWidth: hairlineWidth`
+- **Glow orb**: Responsive `Math.min(screenW * 0.5, 600)` sizing
+- **Result count badge**: Pill next to summary text, `cyanLight` bg + `cyan` text, `smallMedium` typography
+
 ## Accessibility Patterns
 - All toggles: `accessibilityRole="radiogroup"` on container, `accessibilityRole="radio"` on segments
 - `accessibilityState={{ checked: isActive }}` on toggle segments

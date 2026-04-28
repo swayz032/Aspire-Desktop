@@ -1,3 +1,4 @@
+// [STATUS: mixed] — Receives tool calls from BOTH V1 ElevenLabs agents AND V2 Anam personas. Normalizes payload (arguments/params/input) and proxies to orchestrator /v1/agents/invoke.
 /**
  * Aspire Agent Tool Webhook Endpoints
  *
@@ -128,7 +129,7 @@ async function dispatchOrchestratorInvoke(
   return { response, endpoint: primaryEndpoint, fellBack: false };
 }
 
-function collectAcceptedSecrets(): string[] {
+export function collectAcceptedSecrets(): string[] {
   const raw = [
     process.env.TOOL_WEBHOOK_SHARED_SECRET,
     process.env.ASPIRE_TOOL_SECRET,

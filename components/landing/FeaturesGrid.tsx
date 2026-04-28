@@ -7,11 +7,11 @@ function FeaturesGridInner() {
   return (
     <section id="product" style={{
       background: '#050508',
-      padding: '120px 80px',
+      padding: 'clamp(72px, 8vw, 120px) clamp(20px, 5vw, 80px)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
       borderTop: '1px solid rgba(255,255,255,0.04)',
     }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 32 }}
@@ -38,10 +38,11 @@ function FeaturesGridInner() {
         </motion.div>
 
         {/* Grid */}
-        <div style={{
+        <div data-testid="landing-features-grid" style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 16,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
+          gap: '28px 24px',
+          alignItems: 'stretch',
         }}>
           {features.map((feature, i) => (
             <motion.div
@@ -50,14 +51,20 @@ function FeaturesGridInner() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-60px' }}
               transition={{ duration: 0.5, delay: i * 0.08 }}
+              style={{ display: 'flex', minWidth: 0 }}
             >
               <div
+                data-testid="landing-feature-card"
                 style={{
                   background: 'rgba(255,255,255,0.025)',
                   border: `1px solid rgba(255,255,255,0.07)`,
                   borderRadius: 16,
                   padding: '28px 24px',
-                  height: '100%',
+                  width: '100%',
+                  minHeight: 382,
+                  boxSizing: 'border-box',
+                  display: 'flex',
+                  flexDirection: 'column',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease',
                   position: 'relative',
@@ -127,6 +134,7 @@ function FeaturesGridInner() {
                     fontSize: 12, fontWeight: 600, color: feature.accent,
                     textDecoration: 'none',
                     display: 'inline-flex', alignItems: 'center', gap: 4,
+                    marginTop: 'auto',
                     transition: 'gap 0.2s ease',
                   }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.gap = '8px'; }}

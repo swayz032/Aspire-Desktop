@@ -1,4 +1,6 @@
 {
+    "_aspire_status": "v1-elevenlabs",
+    "_aspire_v2_counterpart": "v2-pending — no Anam persona yet (Twilio integration adds complexity)",
     "name": "Aspire - Sarah",
     "conversation_config": {
         "asr": {

@@ -107,7 +107,17 @@ function HeroSectionInner() {
       </div>
 
       {/* Content */}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: 1200, padding: '0 48px' }}>
+      <div style={{
+        position: 'relative',
+        zIndex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        width: '100%',
+        maxWidth: 1200,
+        boxSizing: 'border-box',
+        padding: '0 clamp(20px, 4vw, 48px)',
+      }}>
 
         {/* Headline */}
         <motion.div
@@ -221,7 +231,15 @@ function HeroSectionInner() {
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.6 }}
-          style={{ width: '100%', position: 'relative' }}
+          style={{
+            width: '100%',
+            maxWidth: 1080,
+            position: 'relative',
+            margin: '0 auto',
+            display: 'flex',
+            justifyContent: 'center',
+            boxSizing: 'border-box',
+          }}
         >
           {/* Glow reflection below */}
           <div style={{
@@ -240,7 +258,14 @@ function HeroSectionInner() {
             ref={containerRef}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
-            style={{ perspective: '1200px', width: '100%', position: 'relative', zIndex: 1 }}
+            style={{
+              perspective: '1200px',
+              width: '100%',
+              position: 'relative',
+              zIndex: 1,
+              display: 'flex',
+              justifyContent: 'center',
+            }}
           >
             <motion.div
               style={{
@@ -248,6 +273,7 @@ function HeroSectionInner() {
                 rotateY: reducedMotion || isTouchDevice ? 0 : rotateY,
                 transformStyle: 'preserve-3d',
                 transformOrigin: 'center center',
+                width: '100%',
               }}
               animate={reducedMotion ? {} : { y: [0, -10, 0] }}
               transition={{ repeat: Infinity, duration: 7, ease: 'easeInOut' }}

@@ -11,8 +11,10 @@ const CLIP_HEIGHT = 620;
 
 function CockpitMockupInner() {
   return (
-    <div style={{
+    <div data-testid="landing-cockpit-frame" style={{
       width: SCALED_WIDTH,
+      maxWidth: '100%',
+      boxSizing: 'border-box',
       margin: '0 auto',
       borderRadius: 16,
       overflow: 'hidden',
@@ -52,17 +54,17 @@ function CockpitMockupInner() {
       </div>
 
       {/* Clip container — shows only the top CLIP_HEIGHT px of the scaled dashboard */}
-      <div style={{
+      <div data-testid="landing-cockpit-clip" style={{
         position: 'relative',
-        width: SCALED_WIDTH,
-        height: CLIP_HEIGHT,
+        width: '100%',
+        height: `clamp(420px, 52vw, ${CLIP_HEIGHT}px)`,
         overflow: 'hidden',
       }}>
         {/* Scaled DesktopHome — pointer-events frozen, non-interactive */}
-        <div style={{
+        <div data-testid="landing-cockpit-source" style={{
           position: 'absolute',
           top: 0,
-          left: 0,
+          left: 'clamp(-430px, calc((1440px - 100vw) * 0.38), 0px)',
           width: NATURAL_WIDTH,
           height: NATURAL_HEIGHT,
           transform: `scale(${SCALE})`,

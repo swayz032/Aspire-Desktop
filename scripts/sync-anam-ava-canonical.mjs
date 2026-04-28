@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [STATUS: v2] — Anam Ava (V2 persona where LangGraph is the brain). Default persona ID: 58f82b89-... (live runtime).
 /**
  * Force-reset Anam Ava persona tools to canonical set (no duplicates, no legacy headers).
  *

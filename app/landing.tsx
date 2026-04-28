@@ -38,11 +38,72 @@ function LandingContent() {
       root.style.display = 'block';
     }
     const scrollStyle = document.createElement('style');
-    scrollStyle.id = 'hide-scrollbar';
-    scrollStyle.textContent = `::-webkit-scrollbar{display:none}html,body{-ms-overflow-style:none;scrollbar-width:none}`;
+    scrollStyle.id = 'landing-layout-fixes';
+    scrollStyle.textContent = `
+      ::-webkit-scrollbar{display:none}
+      html,body{-ms-overflow-style:none;scrollbar-width:none}
+      [data-testid="smoke-landing-root"]>section:first-of-type>div{
+        box-sizing:border-box!important;
+        padding-left:clamp(20px,4vw,48px)!important;
+        padding-right:clamp(20px,4vw,48px)!important;
+      }
+      [data-testid="smoke-landing-root"]>section:first-of-type>div>div:nth-of-type(4){
+        max-width:1080px!important;
+        margin-left:auto!important;
+        margin-right:auto!important;
+        display:flex!important;
+        justify-content:center!important;
+        box-sizing:border-box!important;
+      }
+      [data-testid="smoke-landing-root"]>section:first-of-type>div>div:nth-of-type(4)>div:nth-child(2){
+        display:flex!important;
+        justify-content:center!important;
+      }
+      [data-testid="smoke-landing-root"]>section:first-of-type>div>div:nth-of-type(4)>div:nth-child(2)>div{
+        width:100%!important;
+      }
+      [data-testid="smoke-landing-root"]>section:first-of-type>div>div:nth-of-type(4)>div:nth-child(2)>div>div{
+        max-width:100%!important;
+        box-sizing:border-box!important;
+      }
+      [data-testid="smoke-landing-root"]>section:first-of-type>div>div:nth-of-type(4)>div:nth-child(2)>div>div>div:nth-child(2){
+        width:100%!important;
+        height:clamp(420px,52vw,620px)!important;
+      }
+      [data-testid="smoke-landing-root"]>section:first-of-type>div>div:nth-of-type(4)>div:nth-child(2)>div>div>div:nth-child(2)>div:first-child{
+        left:clamp(-430px,calc((1440px - 100vw) * 0.38),0px)!important;
+      }
+      #product{
+        padding:clamp(72px,8vw,120px) clamp(20px,5vw,80px)!important;
+      }
+      #product>div{
+        width:100%!important;
+        box-sizing:border-box!important;
+      }
+      #product>div>div:last-child{
+        grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))!important;
+        gap:28px 24px!important;
+        align-items:stretch!important;
+      }
+      #product>div>div:last-child>div{
+        display:flex!important;
+        min-width:0!important;
+      }
+      #product>div>div:last-child>div>div{
+        width:100%!important;
+        height:auto!important;
+        min-height:382px!important;
+        box-sizing:border-box!important;
+        display:flex!important;
+        flex-direction:column!important;
+      }
+      #product>div>div:last-child>div>div>a{
+        margin-top:auto!important;
+      }
+    `;
     document.head.appendChild(scrollStyle);
     return () => {
-      document.getElementById('hide-scrollbar')?.remove();
+      document.getElementById('landing-layout-fixes')?.remove();
       body.style.overflow = prev.bodyOverflow;
       body.style.height = prev.bodyHeight;
       html.style.overflow = prev.htmlOverflow;
