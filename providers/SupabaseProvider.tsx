@@ -41,15 +41,19 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
   const deliberateSignOutRef = useRef(false);
   const stableSetSession = (s: Session | null) => {
     if (s) {
-      // If a deliberate sign-out is in progress, ignore any session restoration
-      // (e.g. from a refresh race or stale auth event).
-      if (deliberateSignOutRef.current) return;
+      // A new authenticated session ALWAYS supersedes a prior deliberate sign-out.
+      // Without this reset, signOut() leaves deliberateSignOutRef.current=true
+      // forever and the next signIn's auth event is silently dropped — user has
+      // to click "Sign In" twice (or refresh to reset the ref).
+      deliberateSignOutRef.current = false;
       lastValidSessionRef.current = Date.now();
       setSession(s);
     } else {
       // Deliberate sign-out — accept null immediately, no refresh attempt.
       if (deliberateSignOutRef.current) {
         setSession(null);
+        // Reset after one cycle so a subsequent signIn isn't blocked.
+        deliberateSignOutRef.current = false;
         return;
       }
       const timeSinceValid = Date.now() - lastValidSessionRef.current;

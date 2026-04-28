@@ -85,13 +85,52 @@ export async function getInboxItems(limit = 50) {
 }
 
 // ── Suite Profile ───────────────────────────────────────────────────────────
+
+/**
+ * Thrown when the authenticated user has no `suite_id` in their user_metadata.
+ * Indicates either a platform admin (cross-tenant access, no single suite to
+ * scope to) or a user mid-onboarding. Callers should branch UI accordingly.
+ */
+export class NoSuiteScopeError extends Error {
+  readonly code = 'NO_SUITE_SCOPE';
+  constructor(public readonly reason: 'admin' | 'pre_onboarding' = 'pre_onboarding') {
+    super(reason === 'admin'
+      ? 'Platform admin has no single suite_profile to load — use admin dashboard'
+      : 'No suite_id in user metadata — onboarding likely incomplete');
+    this.name = 'NoSuiteScopeError';
+  }
+}
+
 export async function getSuiteProfile() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user?.id) {
+    throw new Error('No authenticated user');
+  }
+
+  const suiteId = (session.user.user_metadata as { suite_id?: string } | undefined)?.suite_id;
+
+  // No suite_id in metadata: distinguish admin (multiple owner memberships) from
+  // pre-onboarding (zero memberships) so callers can render the right UI.
+  if (!suiteId) {
+    const { data: memberships } = await supabase
+      .from('tenant_memberships')
+      .select('tenant_id')
+      .eq('user_id', session.user.id)
+      .limit(2);
+    const count = memberships?.length ?? 0;
+    throw new NoSuiteScopeError(count >= 2 ? 'admin' : 'pre_onboarding');
+  }
+
+  // Regular user — scope explicitly by suite_id rather than relying on RLS to
+  // narrow `.limit(1).single()` (which silently picks the wrong row when the
+  // session has cross-tenant visibility).
   const { data, error } = await supabase
     .from('suite_profiles')
     .select('*')
-    .limit(1)
-    .single();
+    .eq('suite_id', suiteId)
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error(`No suite_profile found for suite_id ${suiteId}`);
   return data;
 }
 

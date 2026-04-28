@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Tenant } from '@/types';
-import { getSuiteProfile, getTenantIdentity } from '@/lib/api';
+import { getSuiteProfile, getTenantIdentity, NoSuiteScopeError } from '@/lib/api';
 import { useSupabase } from './SupabaseProvider';
 
 interface TenantContextType {
@@ -19,6 +19,10 @@ interface TenantProviderProps {
 const BOOTSTRAP_IDENTITY_CACHE_KEY = 'aspire.bootstrap.identity';
 
 type BootstrapIdentityCache = {
+  // userId is REQUIRED for the cache to be considered valid — prevents tenant
+  // data from leaking between users (e.g. admin's cache showing up for a
+  // regular user, or vice versa).
+  userId?: string;
   suiteId?: string;
   officeId?: string;
   suiteDisplayId?: string;
@@ -27,12 +31,20 @@ type BootstrapIdentityCache = {
   ownerName?: string;
 };
 
-function readBootstrapIdentityCache(): BootstrapIdentityCache | null {
+function readBootstrapIdentityCache(currentUserId?: string): BootstrapIdentityCache | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(BOOTSTRAP_IDENTITY_CACHE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as BootstrapIdentityCache;
+    const parsed = JSON.parse(raw) as BootstrapIdentityCache;
+    // Discard cache that belongs to a different user. Without this guard the
+    // admin's cached identity leaks into a regular user's session (and vice
+    // versa) when localStorage persists across logins.
+    if (currentUserId && parsed.userId && parsed.userId !== currentUserId) {
+      window.localStorage.removeItem(BOOTSTRAP_IDENTITY_CACHE_KEY);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -74,7 +86,10 @@ function mapSuiteProfileToTenant(profile: any): Tenant {
 export function TenantProvider({ children }: TenantProviderProps) {
   const { session, isLoading: authLoading } = useSupabase();
 
-  // Pre-populate from bootstrap cache so UI renders instantly with last-known data
+  // Pre-populate from bootstrap cache so UI renders instantly with last-known data.
+  // Note: at first mount we don't yet know which user is signing in; the cache
+  // guard reads `parsed.userId` and discards it on the next loadTenant() call
+  // if it belongs to a different user.
   const [tenant, setTenant] = useState<Tenant | null>(() => {
     const cached = readBootstrapIdentityCache();
     if (!cached?.suiteId) return null;
@@ -103,6 +118,7 @@ export function TenantProvider({ children }: TenantProviderProps) {
   const [error, setError] = useState<string | null>(null);
 
   const loadTenant = async () => {
+    const currentUserId = session?.user?.id;
     try {
       setIsLoading(true);
       setError(null);
@@ -116,7 +132,7 @@ export function TenantProvider({ children }: TenantProviderProps) {
         if (__DEV__) console.warn('[TenantProvider] Identity fetch failed:', identityErr);
         identity = null;
       }
-      const cached = readBootstrapIdentityCache();
+      const cached = readBootstrapIdentityCache(currentUserId);
       if (cached) {
         setTenant({
           ...mapped,
@@ -135,10 +151,13 @@ export function TenantProvider({ children }: TenantProviderProps) {
           officeDisplayId: mapped.officeDisplayId || identity?.officeDisplayId || undefined,
         });
       }
-      // Persist to bootstrap cache so next load is instant
+      // Persist to bootstrap cache so next load is instant. Bind to userId so
+      // a different user signing in on the same browser doesn't inherit this
+      // session's tenant data.
       try {
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && currentUserId) {
           const cacheData: BootstrapIdentityCache = {
+            userId: currentUserId,
             suiteId: mapped.suiteId,
             officeId: mapped.officeId,
             suiteDisplayId: mapped.displayId || identity?.suiteDisplayId,
@@ -150,8 +169,19 @@ export function TenantProvider({ children }: TenantProviderProps) {
         }
       } catch (_e) { /* localStorage may be unavailable */ }
     } catch (err) {
+      // Platform admin (no metadata.suite_id, multi-membership) has no single
+      // tenant to load. Don't surface an error — admin UIs render a tenant
+      // picker / overview instead of a per-suite dashboard.
+      if (err instanceof NoSuiteScopeError) {
+        setError(null);
+        setTenant(null);
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(BOOTSTRAP_IDENTITY_CACHE_KEY);
+        }
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Failed to load tenant');
-      const cached = readBootstrapIdentityCache();
+      const cached = readBootstrapIdentityCache(currentUserId);
       if (cached?.suiteId) {
         setTenant({
           id: cached.suiteId,
