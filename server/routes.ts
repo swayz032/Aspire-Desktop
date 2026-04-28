@@ -682,6 +682,72 @@ function resolveOrchestratorUrl(): string | null {
   return 'http://localhost:8000';
 }
 
+/**
+ * Fire-and-forget pre-warm of the tool-routing path the moment an Anam
+ * session token is granted. Production requirement: Ava's FIRST tool call
+ * must succeed under Anam's hardcoded ~5s server-webhook timeout. Without
+ * this, a cold Railway orchestrator container + cold provider connections
+ * (ATTOM, etc.) can stack to 5–8s, intermittently tripping the ceiling and
+ * surfacing as "Timeout error" to the user.
+ *
+ * We pre-warm via the same `/v1/tools/context` path Ava herself would call —
+ * matches the real hot path (orchestrator container, Supabase pool, LLM
+ * client init) without depending on Ava's prompt-following to issue
+ * `ava_get_context` first.
+ *
+ * Internal-only call. Errors are swallowed: the pre-warm is best-effort and
+ * MUST NOT delay the session token response or surface to the client.
+ */
+function prewarmAvaToolPath(suiteId: string, userId: string, officeId: string): void {
+  const baseUrl = process.env.PUBLIC_BASE_URL?.trim()
+    || (IS_PRODUCTION ? 'https://www.aspireos.app' : `http://127.0.0.1:${process.env.PORT || 5001}`);
+  const acceptedSecrets = [
+    process.env.TOOL_WEBHOOK_SHARED_SECRET,
+    process.env.ASPIRE_TOOL_SECRET,
+  ].filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  const secret = acceptedSecrets[0]?.split(',')[0]?.trim() || '';
+  if (!secret) return;
+
+  const controller = new AbortController();
+  // 4s is intentionally tight: this is a warmup, not a real call. If the
+  // path is so slow that 4s isn't enough, the user's actual first tool call
+  // will warm it instead.
+  const timer = setTimeout(() => controller.abort(), 4000);
+
+  fetch(`${baseUrl}/v1/tools/context`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-aspire-tool-secret': secret,
+      'x-aspire-prewarm': '1',
+    },
+    body: JSON.stringify({
+      suite_id: suiteId,
+      user_id: userId,
+      office_id: officeId,
+      query: '__prewarm__',
+    }),
+    signal: controller.signal,
+  })
+    .then((resp) => {
+      clearTimeout(timer);
+      logger.info('[Prewarm] Ava tool path warmed', {
+        suiteId,
+        status: resp.status,
+      });
+    })
+    .catch((err: unknown) => {
+      clearTimeout(timer);
+      const reason = err instanceof Error ? err.name + ': ' + err.message : 'unknown';
+      // Best-effort — logged at warn so cold-start diagnostics are visible
+      // in Railway logs without producing alert noise.
+      logger.warn('[Prewarm] Ava tool path warmup failed (non-blocking)', {
+        suiteId,
+        reason,
+      });
+    });
+}
+
 function parseRequestedAgent(raw: unknown): { value: SupportedAgent; provided: boolean; valid: boolean } {
   if (typeof raw !== 'string' || !raw.trim()) {
     return { value: 'ava', provided: false, valid: true };
@@ -5070,6 +5136,15 @@ When giving tax guidance, always include confidence level: "This is well-establi
     }
 
     logger.info('Anam session token obtained', { persona: resolvedPersona, tokenLength: data.sessionToken.length });
+
+    // Pre-warm the tool-routing path for Ava sessions BEFORE the user
+    // speaks their first request. Eliminates the cold-start window during
+    // which Adam's first call (typically a property lookup) would exceed
+    // Anam's ~5s server-webhook timeout. Fire-and-forget — does not block
+    // returning the session token. See prewarmAvaToolPath() for rationale.
+    if (resolvedPersona === 'ava' && suiteId && userId && officeId) {
+      prewarmAvaToolPath(suiteId, userId, officeId);
+    }
 
     // Return only the session token — no API key exposure
     res.json({ sessionToken: data.sessionToken });
