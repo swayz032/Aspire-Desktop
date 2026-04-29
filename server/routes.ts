@@ -4939,7 +4939,13 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       maxSessionLengthSeconds: 1800,
       voiceDetectionOptions: {
         endOfSpeechSensitivity: 0.7,
-        silenceBeforeSkipTurnSeconds: 8,
+        // Pass 3 / Wave 3 — disable Anam's silence-filler turn while the user
+        // is browsing cards. The prior value of 8s caused Ava to fire "are you
+        // still there?" / "let me know if you need anything" mid-browse, which
+        // directly contradicts the BROWSE MODE — strict prompt rule (Wave 2.2).
+        // 600s = effectively never auto-fire; Ava re-engages only when the
+        // user speaks or when she has actionable info to volunteer per prompt.
+        silenceBeforeSkipTurnSeconds: 600,
         silenceBeforeAutoEndTurnSeconds: 1.5,
         speechEnhancementLevel: 0.5,
       },
