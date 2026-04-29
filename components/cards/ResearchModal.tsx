@@ -700,7 +700,7 @@ const styles = StyleSheet.create({
   },
   cardSlide: {
     justifyContent: 'center',
-    minHeight: 580, // Enforce consistent card height across all types
+    height: 580, // Match BaseCard's fixed height — wrapper does not push card vertically.
     borderRadius: BorderRadius.xl,
     overflow: 'hidden',
   },
