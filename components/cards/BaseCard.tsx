@@ -18,7 +18,7 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, type ViewStyle, Platform } from 'react-native';
+import { View, ScrollView, StyleSheet, type ViewStyle, Platform } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/tokens';
 import { SafetyBadge, type SafetyBadgeProps } from './SafetyBadge';
@@ -95,13 +95,23 @@ export function BaseCard({
         </View>
       )}
 
-      {/* Hero area */}
+      {/* Hero area (fixed) */}
       {heroSlot && <View style={[styles.hero, heroStyle]}>{heroSlot}</View>}
 
-      {/* Content body */}
-      <View style={styles.content}>{children}</View>
+      {/* Content body (scrollable) -- flex:1 so overflow scrolls inside the card,
+          never pushes the card taller. */}
+      <ScrollView
+        style={styles.contentScroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        // Web: native scroll; touch: vertical only
+        accessibilityLabel="Card details"
+      >
+        {children}
+      </ScrollView>
 
-      {/* Action row */}
+      {/* Action row (fixed) */}
       {actionSlot && <View style={styles.actions}>{actionSlot}</View>}
     </Animated.View>
   );
@@ -110,12 +120,16 @@ export function BaseCard({
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const CARD_MAX_WIDTH = 500;
-const CARD_MIN_HEIGHT = 580;
+/** Cards are a uniform fixed height regardless of content. Overflow scrolls
+ *  inside the card via the content ScrollView. This guarantees a consistent
+ *  580px silhouette across all artifact types and density levels. */
+export const CARD_HEIGHT = 580;
 
 const styles = StyleSheet.create({
   card: {
     maxWidth: CARD_MAX_WIDTH,
-    minHeight: CARD_MIN_HEIGHT,
+    height: CARD_HEIGHT,
+    maxHeight: CARD_HEIGHT,
     width: '100%' as unknown as number,
     alignSelf: 'center',
     backgroundColor: Colors.surface.card,
@@ -123,6 +137,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.surface.cardBorder,
     borderRadius: BorderRadius.xl,
     overflow: 'hidden',
+    // flex column so hero (fixed) + content (flex:1) + actions (fixed) layout works
+    flexDirection: 'column',
   },
   cardActive: {
     borderColor: Colors.accent.cyan,
@@ -137,11 +153,20 @@ const styles = StyleSheet.create({
     width: '100%' as unknown as number,
     aspectRatio: 16 / 9,
     backgroundColor: Colors.background.elevated,
+    flexShrink: 0,
+  },
+  contentScroll: {
+    flex: 1,
+    // Web: enable native overflow auto so trackpad/scrollwheel works
+    ...(Platform.OS === 'web'
+      ? ({ overflowY: 'auto', overflowX: 'hidden' } as unknown as ViewStyle)
+      : {}),
   },
   content: {
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.md,
+    // No flexGrow -- content sizes to its natural height; ScrollView handles overflow
   },
   actions: {
     flexDirection: 'row',
@@ -152,5 +177,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.border.subtle,
+    flexShrink: 0,
+    backgroundColor: Colors.surface.card,
   },
 });
