@@ -65,6 +65,24 @@ function cleanCardCache() {
   }
 }
 
+// Sparse-payload threshold: each record must have at least 3 keys to count as
+// "full". <3 keys = LLM regenerated from memory and forgot the rich fields.
+// See Wave 2.4 of plan hey-can-you-deep-serene-elephant.md.
+const SHOW_CARDS_SPARSE_KEY_THRESHOLD = 3;
+
+function isSparseRecord(record: unknown): boolean {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return true;
+  const keys = Object.keys(record as Record<string, unknown>).filter(
+    (k) => (record as Record<string, unknown>)[k] !== undefined && (record as Record<string, unknown>)[k] !== null,
+  );
+  return keys.length < SHOW_CARDS_SPARSE_KEY_THRESHOLD;
+}
+
+function isSparseRecordSet(records: unknown): boolean {
+  if (!Array.isArray(records) || records.length === 0) return true;
+  return records.every(isSparseRecord);
+}
+
 function getLatestPropertyAddress(suiteId: string): string {
   const entry = latestPropertyAddressBySuite.get(suiteId);
   if (!entry) return '';
@@ -1386,6 +1404,114 @@ router.post('/api/card-data/refetch', async (req: Request, res: Response) => {
   }
 });
 
+// ─── show_cards Server-Side Guard ────────────────────────────────────────────
+// Wave 2.4: Deterministic backstop for the LLM prompt rule (Wave 2.3) that
+// instructs Ava to pass card_cache_id on re-display requests. If the LLM
+// regenerates show_cards from memory and ships sparse records (<3 keys each),
+// this route rehydrates from the suite's most recent cache entry.
+//
+// Behaviour matrix:
+//   1. Explicit card_cache_id → look it up; tenant-isolation match required.
+//      Refuses fail-closed if the cache_id's suiteId differs from the request.
+//   2. No card_cache_id, sparse records, recent latestCardCacheIdBySuite entry
+//      exists for THIS suite → rehydrate and emit a [WARN] log so the LLM
+//      regression is visible during rollout.
+//   3. No card_cache_id, full records → pass-through (current behaviour).
+//   4. No card_cache_id, sparse records, no recent cache → pass-through.
+router.post('/v1/tools/show-cards', (req: Request, res: Response) => {
+  if (!verifySecret(req, res)) return;
+  const body = getRequestBody(req);
+  const { suiteId } = normalizeSuiteContext(body);
+  if (!suiteId) {
+    return res.status(400).json({ error: 'MISSING_SUITE_ID', message: 'suite_id is required.' });
+  }
+
+  cleanCardCache();
+
+  const incomingRecords = Array.isArray(body.records) ? body.records : [];
+  const incomingArtifactType = typeof body.artifact_type === 'string' ? body.artifact_type : '';
+  const incomingSummary = typeof body.summary === 'string' ? body.summary : '';
+  const rawCacheId = typeof body.card_cache_id === 'string' ? body.card_cache_id.trim() : '';
+
+  // Path 1: explicit card_cache_id provided. Honor it; fail closed on mismatch.
+  if (rawCacheId) {
+    const cached = cardRecordsCache.get(rawCacheId);
+    if (!cached) {
+      logger.warn('[ShowCards] Explicit cache_id miss', { cacheId: rawCacheId, suiteId });
+      return res.status(404).json({ error: 'CACHE_NOT_FOUND', message: 'Card cache expired or unknown.' });
+    }
+    if (cached.suiteId !== suiteId) {
+      // Tenant isolation: never serve another suite's cache, even if the LLM
+      // (or a malicious client) hands us a foreign cache_id. Law #6.
+      logger.warn('[ShowCards] Cross-tenant rehydrate refused', {
+        cacheId: rawCacheId,
+        requestedSuite: suiteId,
+        cachedSuite: cached.suiteId,
+      });
+      return res.status(404).json({ error: 'CACHE_NOT_FOUND', message: 'Card cache expired or unknown.' });
+    }
+    logger.info('[ShowCards] Rehydrated from explicit cache_id', {
+      cacheId: rawCacheId,
+      suiteId,
+      count: cached.records.length,
+    });
+    return res.json({
+      records: cached.records,
+      artifactType: cached.artifactType,
+      summary: incomingSummary,
+      source: 'cache-by-id',
+      cacheId: rawCacheId,
+    });
+  }
+
+  // Path 2 + 4: no explicit cache_id. Detect sparse payloads and rehydrate
+  // from latestCardCacheIdBySuite if a recent entry exists for THIS suite.
+  if (isSparseRecordSet(incomingRecords)) {
+    const latestId = latestCardCacheIdBySuite.get(suiteId) || '';
+    const cached = latestId ? cardRecordsCache.get(latestId) : undefined;
+    // cleanCardCache already evicted stale entries; the TTL check is implicit.
+    // Belt-and-suspenders tenant check: latestCardCacheIdBySuite is keyed by
+    // suiteId so this should always match, but verify anyway (Law #3 fail-closed).
+    if (cached && cached.suiteId === suiteId) {
+      logger.warn('[ShowCards] sparse show_cards rehydrated from cache', {
+        suite: suiteId,
+        cacheId: latestId,
+        incomingRecordCount: incomingRecords.length,
+        incomingArtifactType: incomingArtifactType || cached.artifactType,
+        rehydratedRecordCount: cached.records.length,
+      });
+      return res.json({
+        records: cached.records,
+        artifactType: cached.artifactType,
+        summary: incomingSummary,
+        source: 'cache',
+        cacheId: latestId,
+      });
+    }
+    // Path 4: sparse but no recent cache. Pass through — the LLM may
+    // legitimately have only thin info on a fresh request before any
+    // invoke_adam has run.
+    logger.info('[ShowCards] sparse payload, no recent cache; pass-through', {
+      suite: suiteId,
+      incomingRecordCount: incomingRecords.length,
+    });
+    return res.json({
+      records: incomingRecords,
+      artifactType: incomingArtifactType,
+      summary: incomingSummary,
+      source: 'client',
+    });
+  }
+
+  // Path 3: full records, no cache_id. Pass through unchanged.
+  return res.json({
+    records: incomingRecords,
+    artifactType: incomingArtifactType,
+    summary: incomingSummary,
+    source: 'client',
+  });
+});
+
 router.get('/api/card-data/:id', (req: Request, res: Response) => {
   const id = String(req.params.id || '');
   const suiteId = typeof req.query.suite_id === 'string' ? req.query.suite_id.trim() : '';
@@ -1417,5 +1543,15 @@ router.get('/api/card-data/:id', (req: Request, res: Response) => {
     artifactType: cached.artifactType,
   });
 });
+
+// Test-only surface area. Not consumed by production code paths; gives the
+// Jest suite for the show_cards guard a way to seed and inspect the in-memory
+// caches without exporting them globally.
+export const __testing__ = {
+  cardRecordsCache,
+  latestCardCacheIdBySuite,
+  isSparseRecord,
+  isSparseRecordSet,
+};
 
 export default router;
