@@ -29,11 +29,19 @@ const TOOL_API_BASE_URL = (
   || process.env.ANAM_TOOL_WEBHOOK_URL
   || 'https://www.aspireos.app/v1/tools'
 ).replace(/\/+$/, '');
-const TOOL_SECRET = process.env.TOOL_WEBHOOK_SHARED_SECRET
+const TOOL_SECRET_RAW = process.env.TOOL_WEBHOOK_SHARED_SECRET
   || process.env.ASPIRE_TOOL_SECRET
   || process.env.ANAM_TOOL_SECRET
   || process.env.ELEVENLABS_TOOL_SECRET
-  || process.env.ELEVENLABS_WORKSPACE_SECRET;
+  || process.env.ELEVENLABS_WORKSPACE_SECRET
+  || '';
+// `TOOL_WEBHOOK_SHARED_SECRET` is a comma-separated list of *accepted* secrets
+// on the desktop server side (collectAcceptedSecrets() in agentToolRoutes.ts
+// splits on comma). When syncing Anam tool configs we must pick exactly ONE
+// value as the header to send — using the full comma-joined list as the
+// header value made every Anam tool 401 (literal "<sec1>,<sec2>" never
+// matched any single accepted secret).
+const TOOL_SECRET = TOOL_SECRET_RAW.split(',')[0].trim();
 // Default to syncing prompt + tools together so dashboard testing matches runtime.
 // Set SYNC_ANAM_PROMPT=false only when intentionally preserving remote prompt text.
 const SHOULD_SYNC_PROMPT = String(process.env.SYNC_ANAM_PROMPT || 'true').toLowerCase() !== 'false';

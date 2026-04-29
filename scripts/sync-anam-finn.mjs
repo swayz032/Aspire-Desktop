@@ -40,11 +40,17 @@ const TOOL_API_BASE_URL = (
   || 'https://www.aspireos.app/v1/tools'
 ).replace(/\/+$/, '');
 
-const TOOL_SECRET = process.env.TOOL_WEBHOOK_SHARED_SECRET
+const TOOL_SECRET_RAW = process.env.TOOL_WEBHOOK_SHARED_SECRET
   || process.env.ASPIRE_TOOL_SECRET
   || process.env.ANAM_TOOL_SECRET
   || process.env.ELEVENLABS_TOOL_SECRET
-  || process.env.ELEVENLABS_WORKSPACE_SECRET;
+  || process.env.ELEVENLABS_WORKSPACE_SECRET
+  || '';
+// `TOOL_WEBHOOK_SHARED_SECRET` is a comma-separated list of *accepted* secrets
+// on the desktop server (collectAcceptedSecrets() in agentToolRoutes.ts splits
+// on comma). When syncing Anam tool configs we must pick exactly ONE value as
+// the header to send.
+const TOOL_SECRET = TOOL_SECRET_RAW.split(',')[0].trim();
 
 const SHOULD_SYNC_PROMPT = String(process.env.SYNC_ANAM_PROMPT || 'true').toLowerCase() !== 'false';
 
