@@ -16,17 +16,15 @@
  * Matches the Aspire "Command Center Glass" aesthetic.
  */
 
-import React, { useCallback, useRef, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
-  FlatList,
   Platform,
   useWindowDimensions,
   type ViewStyle,
-  type ListRenderItemInfo,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -139,8 +137,8 @@ function injectResearchModalStyles() {
   style.id = 'ava-presents-styles';
   style.textContent = `
     .ava-presents-backdrop {
-      backdrop-filter: blur(24px) saturate(1.4);
-      -webkit-backdrop-filter: blur(24px) saturate(1.4);
+      backdrop-filter: blur(28px) brightness(0.45);
+      -webkit-backdrop-filter: blur(28px) brightness(0.45);
     }
     .ava-presents-glow {
       transition: background 0.6s ease-out;
@@ -198,7 +196,6 @@ export function ResearchModal(props: ResearchModalProps) {
   } = props;
 
   const { width: screenW, height: screenH } = useWindowDimensions();
-  const flatListRef = useRef<FlatList>(null);
 
   // Delayed unmount — keep rendering during exit animation
   const [mounted, setMounted] = useState(false);
@@ -253,16 +250,6 @@ export function ResearchModal(props: ResearchModalProps) {
     }
   }, [visible]);
 
-  // ── Scroll FlatList when activeIndex changes ──
-  useEffect(() => {
-    if (flatListRef.current && !detailMode) {
-      flatListRef.current.scrollToOffset({
-        offset: activeIndex * (CARD_WIDTH + CARD_GAP),
-        animated: true,
-      });
-    }
-  }, [activeIndex, detailMode]);
-
   // ── Animated styles ──
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
@@ -301,17 +288,6 @@ export function ResearchModal(props: ResearchModalProps) {
     return () => document.removeEventListener('keydown', handler);
   }, [visible, detailMode, dismiss, closeDetail, nextCard, prevCard]);
 
-  // ── Snapshot handler ──
-  const onMomentumScrollEnd = useCallback(
-    (e: { nativeEvent: { contentOffset: { x: number } } }) => {
-      const newIndex = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + CARD_GAP));
-      if (newIndex !== activeIndex && newIndex >= 0 && newIndex < records.length) {
-        goToCard(newIndex);
-      }
-    },
-    [activeIndex, records.length, goToCard],
-  );
-
   // ── Card renderer ──
   const CardComponent = useMemo(() => resolveCard(artifactType), [artifactType]);
 
@@ -325,48 +301,114 @@ export function ResearchModal(props: ResearchModalProps) {
     [openDetail],
   );
 
-  const renderCard = useCallback(
-    ({ item, index }: ListRenderItemInfo<Record<string, unknown>>) => {
-      const isCardActive = index === activeIndex;
+  /**
+   * Render a single card in the perspective carousel.
+   * offset = index - activeIndex.
+   *  -  0: active card on stage (full size, full opacity, no rotation, z=10)
+   *  - ±1: side peek (scale 0.86, translateX ±70%, translateZ -90, rotateY ∓6deg, opacity 0.55)
+   *  - |≥|2: hidden (opacity 0, pointerEvents none)
+   */
+  const renderPerspectiveCard = useCallback(
+    (item: Record<string, unknown>, index: number) => {
+      const offset = index - activeIndex;
+      const absOffset = Math.abs(offset);
+      const isCardActive = offset === 0;
+      const isPeek = absOffset === 1;
+      const isVisible = absOffset <= 1;
+
+      const scale = isCardActive ? 1.0 : 0.86;
+      // ±88% of card own-width keeps peeks visually clear of the active card so clicks
+      // on the peek don't get intercepted by the active card's hit area at higher z.
+      const translateXPercent = isCardActive ? 0 : offset * 88;
+      const translateZ = isCardActive ? 0 : -90;
+      const rotateY = isCardActive ? 0 : -offset * 6; // peek tilts toward stage
+      const opacity = isCardActive ? 1 : isPeek ? 0.55 : 0;
+      const zIndex = isCardActive ? 10 : isPeek ? 5 : 0;
+
       // Nora-style 3-layer box-shadow glow on active card (web only)
       const glowColor = isCardActive
         ? getGlowColorForRecord(item, artifactType)
         : undefined;
-      const cardGlowStyle: ViewStyle | undefined =
-        isCardActive && Platform.OS === 'web' && glowColor
+
+      const webTransformStyle: React.CSSProperties =
+        Platform.OS === 'web'
           ? {
-              boxShadow: `0 0 30px ${hexToRgba(glowColor, 0.35)}, 0 0 60px ${hexToRgba(glowColor, 0.15)}, 0 0 90px ${hexToRgba(glowColor, 0.05)}`,
-            } as unknown as ViewStyle
-          : undefined;
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              width: CARD_WIDTH,
+              transform: `translate(-50%, -50%) translateX(${translateXPercent}%) translateZ(${translateZ}px) rotateY(${rotateY}deg) scale(${scale})`,
+              transformStyle: 'preserve-3d',
+              transition: 'transform 0.58s cubic-bezier(0.34,1.12,0.64,1), opacity 0.4s ease, box-shadow 0.6s ease-out',
+              opacity,
+              zIndex,
+              pointerEvents: isVisible ? 'auto' : 'none',
+              cursor: isCardActive ? 'default' : isPeek ? 'pointer' : 'default',
+              boxShadow:
+                isCardActive && glowColor
+                  ? `0 0 30px ${hexToRgba(glowColor, 0.35)}, 0 0 60px ${hexToRgba(glowColor, 0.15)}, 0 0 90px ${hexToRgba(glowColor, 0.05)}`
+                  : undefined,
+              borderRadius: BorderRadius.xl,
+              overflow: 'hidden',
+            }
+          : {
+              // Native fallback: stack cards centered, only active visible.
+              opacity,
+              zIndex,
+              width: CARD_WIDTH,
+            };
+
+      const handlePeekPress = () => {
+        playClickSound();
+        goToCard(index);
+      };
+
+      const cardInner = (
+        <CardComponent
+          record={item}
+          artifactType={artifactType}
+          index={index}
+          total={records.length}
+          confidence={confidence}
+          onAction={handleCardAction}
+          isActive={isCardActive}
+          enterDelay={isCardActive ? 0 : 80}
+        />
+      );
+
+      if (isPeek) {
+        return (
+          <Pressable
+            key={`card-${index}`}
+            onPress={handlePeekPress}
+            style={[styles.cardSlide, webTransformStyle as unknown as ViewStyle]}
+            className="ava-card"
+            // @ts-expect-error dataSet is valid web prop for data-* attributes
+            dataSet={{ cardOffset: String(offset), cardActive: 'false' }}
+            testID={`research-modal-card-${index}`}
+            accessibilityRole="button"
+            accessibilityLabel={`Card ${index + 1}, tap to focus`}
+          >
+            {cardInner}
+          </Pressable>
+        );
+      }
+
       return (
         <View
-          style={[
-            styles.cardSlide,
-            { width: CARD_WIDTH },
-            !isCardActive && styles.cardSlideInactive,
-            cardGlowStyle,
-          ]}
-          className={isCardActive ? 'ava-card-glow' : undefined}
+          key={`card-${index}`}
+          style={[styles.cardSlide, webTransformStyle as unknown as ViewStyle]}
+          className={isCardActive ? 'ava-card ava-card-glow' : 'ava-card'}
+          // @ts-expect-error dataSet is valid web prop for data-* attributes
+          dataSet={{ cardOffset: String(offset), cardActive: String(isCardActive) }}
+          testID={`research-modal-card-${index}`}
+          accessibilityLabel={isCardActive ? `Card ${index + 1} of ${records.length}, active` : undefined}
         >
-          <CardComponent
-            record={item}
-            artifactType={artifactType}
-            index={index}
-            total={records.length}
-            confidence={confidence}
-            onAction={handleCardAction}
-            isActive={isCardActive}
-            enterDelay={index * 80}
-          />
+          {cardInner}
         </View>
       );
     },
-    [CardComponent, artifactType, records.length, confidence, activeIndex, handleCardAction],
-  );
-
-  const keyExtractor = useCallback(
-    (_item: Record<string, unknown>, index: number) => `card-${index}`,
-    [],
+    [CardComponent, artifactType, records.length, confidence, activeIndex, handleCardAction, goToCard],
   );
 
   // ── Don't render if fully unmounted (after exit animation completes) ──
@@ -378,8 +420,15 @@ export function ResearchModal(props: ResearchModalProps) {
   // ── Responsive glow orb sizing (Item 7) ──
   const glowSize = Math.min(screenW * 0.5, 600);
 
-  // ── Compute content padding to center the card list ──
-  const listPaddingH = Math.max(0, (screenW - CARD_WIDTH) / 2);
+  // ── 3D carousel: perspective container (web-only inline CSS for true depth) ──
+  const perspectiveContainerStyle: ViewStyle | undefined =
+    Platform.OS === 'web'
+      ? ({
+          perspective: '1600px',
+          transformStyle: 'preserve-3d',
+          position: 'relative',
+        } as unknown as ViewStyle)
+      : undefined;
 
   return (
     <View style={styles.root} testID="research-modal" pointerEvents={visible ? 'auto' : 'none'}>
@@ -393,6 +442,14 @@ export function ResearchModal(props: ResearchModalProps) {
           className="ava-presents-backdrop"
         />
       </Animated.View>
+
+      {/* Scrim — solid dark layer above the blur, below the carousel. Guarantees a clean
+          dark stage on browsers that don't fully honor backdrop-filter brightness. */}
+      <Animated.View
+        style={[styles.scrim, backdropStyle]}
+        pointerEvents="none"
+        testID="research-modal-scrim"
+      />
 
       {/* Subtle ambient tint — very dim, just for atmosphere. Main glow is on the card. */}
       <Animated.View
@@ -472,30 +529,13 @@ export function ResearchModal(props: ResearchModalProps) {
             />
           </Animated.View>
         ) : (
-          /* Level 1: Card Carousel */
+          /* Level 1: 3D Perspective Carousel */
           <>
-            <View style={styles.carouselArea}>
-              <FlatList
-                ref={flatListRef}
-                data={records}
-                renderItem={renderCard}
-                keyExtractor={keyExtractor}
-                horizontal
-                pagingEnabled={false}
-                snapToInterval={CARD_WIDTH + CARD_GAP}
-                snapToAlignment="center"
-                decelerationRate="fast"
-                showsHorizontalScrollIndicator={false}
-                onMomentumScrollEnd={onMomentumScrollEnd}
-                contentContainerStyle={{
-                  paddingHorizontal: listPaddingH,
-                  gap: CARD_GAP,
-                  alignItems: 'center',
-                }}
-                style={styles.flatList}
-        
-                className="ava-presents-list"
-              />
+            <View
+              style={[styles.carouselArea, perspectiveContainerStyle]}
+              testID="research-modal-carousel"
+            >
+              {records.map((item, index) => renderPerspectiveCard(item, index))}
 
               {/* Nav Arrows */}
               {!isFirstCard && (
@@ -504,7 +544,7 @@ export function ResearchModal(props: ResearchModalProps) {
                   style={[styles.navArrow, styles.navArrowLeft]}
                   accessibilityRole="button"
                   accessibilityLabel="Previous card"
-          
+                  testID="research-modal-prev"
                   className="ava-presents-nav"
                 >
                   <Ionicons name="chevron-back" size={24} color={Colors.text.primary} />
@@ -516,7 +556,7 @@ export function ResearchModal(props: ResearchModalProps) {
                   style={[styles.navArrow, styles.navArrowRight]}
                   accessibilityRole="button"
                   accessibilityLabel="Next card"
-          
+                  testID="research-modal-next"
                   className="ava-presents-nav"
                 >
                   <Ionicons name="chevron-forward" size={24} color={Colors.text.primary} />
@@ -574,6 +614,10 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
+  },
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
   glowOrb: {
     position: 'absolute',
@@ -652,23 +696,13 @@ const styles = StyleSheet.create({
   carouselArea: {
     flex: 1,
     justifyContent: 'center',
-  },
-  flatList: {
-    flexGrow: 0,
+    alignItems: 'center',
   },
   cardSlide: {
     justifyContent: 'center',
     minHeight: 580, // Enforce consistent card height across all types
     borderRadius: BorderRadius.xl,
     overflow: 'hidden',
-    // Active card is full scale/opacity; transition handled by web CSS or inline
-    ...(Platform.OS === 'web'
-      ? { transition: 'transform 250ms ease, opacity 250ms ease, box-shadow 600ms ease-out' } as unknown as ViewStyle
-      : {}),
-  },
-  cardSlideInactive: {
-    opacity: 0.6,
-    transform: [{ scale: 0.92 }],
   },
 
   // Nav arrows
