@@ -18,11 +18,16 @@
         ],
         "tools_contract_path": "docs/agents/nora/13_NORA_TOOLS_CONTRACT_v1.md",
         "dynamic_variables": [
-            "business_name", "first_name", "last_name", "salutation",
-            "industry", "meeting_purpose", "recording_mode"
+            "business_name",
+            "first_name",
+            "last_name",
+            "salutation",
+            "industry",
+            "meeting_purpose",
+            "recording_mode"
         ],
         "first_message": "Nora here. I'm ready when you are.",
-        "last_synced_at": null
+        "last_synced_at": "2026-04-29T19:31:28.435Z"
     },
     "name": "Aspire - Nora",
     "conversation_config": {

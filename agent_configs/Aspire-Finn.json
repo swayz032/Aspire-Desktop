@@ -13,10 +13,14 @@
         ],
         "tools_contract_path": "docs/agents/finn/06_FINN_TOOLS_CONTRACT_v1.md",
         "dynamic_variables": [
-            "business_name", "first_name", "last_name", "salutation", "industry"
+            "business_name",
+            "first_name",
+            "last_name",
+            "salutation",
+            "industry"
         ],
         "first_message": "Hey {{salutation}} {{last_name}}, Finn here.",
-        "last_synced_at": null
+        "last_synced_at": "2026-04-29T19:31:11.512Z"
     },
     "name": "Aspire - Finn",
     "conversation_config": {

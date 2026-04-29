@@ -31,6 +31,6 @@
             "routing_contacts_summary"
         ],
         "first_message": "Good {{time_of_day}}, thank you for calling {{business_name}}. This is Sarah, how can I help you today?",
-        "last_synced_at": null
+        "last_synced_at": "2026-04-29T19:24:06.517Z"
     }
 }

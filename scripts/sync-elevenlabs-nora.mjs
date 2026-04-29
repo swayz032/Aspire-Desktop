@@ -18,6 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { normalizeTools } from './_lib/elevenlabs-tool-normalize.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -110,7 +111,7 @@ function buildNoraTools() {
         suite_id: { type: 'string', description: '', is_system_provided: false, dynamic_variable: 'suite_id', constant_value: '' },
         user_id: { type: 'string', description: '', is_system_provided: false, dynamic_variable: 'user_id', constant_value: '' },
         query: { type: 'string', description: 'What meeting context to retrieve', is_system_provided: false, dynamic_variable: '', constant_value: '' },
-        meeting_purpose: { type: 'string', description: 'Optional meeting purpose hint', is_system_provided: false, dynamic_variable: 'meeting_purpose', constant_value: '' },
+        meeting_purpose: { type: 'string', dynamic_variable: 'meeting_purpose' },
       },
     }),
     // 2. search
@@ -128,7 +129,7 @@ function buildNoraTools() {
         draft_type: { type: 'string', enum: ['meeting', 'invite', 'agenda', 'recap_packet', 'office_summary', 'participant_summary'], description: 'Type of draft', is_system_provided: false, dynamic_variable: '', constant_value: '' },
         title: { type: 'string', description: 'Draft title', is_system_provided: false, dynamic_variable: '', constant_value: '' },
         body: { type: 'string', description: 'Draft content', is_system_provided: false, dynamic_variable: '', constant_value: '' },
-        participants: { type: 'array', items: { type: 'string' }, description: 'Participant names or emails', is_system_provided: false, dynamic_variable: '', constant_value: '' },
+        participants: { type: 'array', items: { type: 'string', description: 'item' }, description: 'Participant names or emails' },
         start_time: { type: 'string', description: 'ISO datetime for meeting draft', is_system_provided: false, dynamic_variable: '', constant_value: '' },
         duration_minutes: { type: 'number', description: 'Duration in minutes', is_system_provided: false, dynamic_variable: '', constant_value: '' },
       },
@@ -203,7 +204,7 @@ function buildNoraTools() {
         memory_type: { type: 'string', enum: ['meeting_recap', 'key_decision', 'action_item', 'participant_note', 'follow_up'], description: 'Memory category', is_system_provided: false, dynamic_variable: '', constant_value: '' },
         summary: { type: 'string', description: 'The insight or decision to persist', is_system_provided: false, dynamic_variable: '', constant_value: '' },
         visibility_scope: { type: 'string', enum: ['office'], description: 'Always office for Nora', is_system_provided: false, dynamic_variable: '', constant_value: 'office' },
-        participants: { type: 'array', items: { type: 'string' }, description: 'Meeting participants', is_system_provided: false, dynamic_variable: '', constant_value: '' },
+        participants: { type: 'array', items: { type: 'string', description: 'item' }, description: 'Meeting participants' },
       },
     }),
   ];
@@ -250,14 +251,18 @@ async function main() {
   log('--- PUSHING KB DOCS ---');
   for (const doc of kbDocs) {
     log(`Pushing KB: ${doc.name} (${doc.content.length} chars, SHA: ${sha256(doc.content)})`);
-    await apiCall('POST', `/convai/agents/${AGENT_ID}/knowledge-base`, { name: doc.name, content: doc.content });
-    log(`KB pushed: ${doc.name}`);
+    try {
+      await apiCall('POST', `/convai/agents/${AGENT_ID}/knowledge-base`, { name: doc.name, content: doc.content });
+      log(`KB pushed: ${doc.name}`);
+    } catch (e) {
+      log(`KB endpoint not available (skipping ${doc.name}). Use mcp__elevenlabs__add_knowledge_base_to_agent. Reason: ${String(e.message || e).slice(0, 120)}`);
+    }
   }
 
   // Push tools
   log('--- PUSHING TOOLS ---');
   await apiCall('PATCH', `/convai/agents/${AGENT_ID}`, {
-    conversation_config: { agent: { prompt: { tools } } },
+    conversation_config: { agent: { prompt: { tools: normalizeTools(JSON.parse(JSON.stringify(tools))) } } },
   });
   log(`${tools.length} tools pushed.`);
 

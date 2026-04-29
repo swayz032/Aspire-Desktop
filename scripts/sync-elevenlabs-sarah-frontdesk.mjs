@@ -21,6 +21,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { normalizeTools } from './_lib/elevenlabs-tool-normalize.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -121,7 +122,7 @@ function buildFrontDeskTools() {
       type: 'object', required: ['suite_id', 'query'], properties: {
         suite_id: { type: 'string', description: '', is_system_provided: false, dynamic_variable: 'suite_id', constant_value: '' },
         query: { type: 'string', description: 'Search query (caller name, phone, topic, or date)', is_system_provided: false, dynamic_variable: '', constant_value: '' },
-        memory_types: { type: 'array', items: { type: 'string' }, description: 'Optional filter: call, note, message, thread', is_system_provided: false, dynamic_variable: '', constant_value: '' },
+        memory_types: { type: 'array', items: { type: 'string', description: 'item' }, description: 'Optional filter: call, note, message, thread' },
         limit: { type: 'number', description: 'Max results (default 10)', is_system_provided: false, dynamic_variable: '', constant_value: '' },
       },
     }),
@@ -220,14 +221,18 @@ async function main() {
   log('--- PUSHING KB DOCS ---');
   for (const doc of kbDocs) {
     log(`Pushing KB: ${doc.name} (${doc.content.length} chars, SHA: ${sha256(doc.content)})`);
-    await apiCall('POST', `/convai/agents/${AGENT_ID}/knowledge-base`, { name: doc.name, content: doc.content });
-    log(`KB pushed: ${doc.name}`);
+    try {
+      await apiCall('POST', `/convai/agents/${AGENT_ID}/knowledge-base`, { name: doc.name, content: doc.content });
+      log(`KB pushed: ${doc.name}`);
+    } catch (e) {
+      log(`KB endpoint not available (skipping ${doc.name}). Use mcp__elevenlabs__add_knowledge_base_to_agent. Reason: ${String(e.message || e).slice(0, 120)}`);
+    }
   }
 
   // Push tools
   log('--- PUSHING TOOLS ---');
   await apiCall('PATCH', `/convai/agents/${AGENT_ID}`, {
-    conversation_config: { agent: { prompt: { tools } } },
+    conversation_config: { agent: { prompt: { tools: normalizeTools(JSON.parse(JSON.stringify(tools))) } } },
   });
   log(`${tools.length} tools pushed.`);
 

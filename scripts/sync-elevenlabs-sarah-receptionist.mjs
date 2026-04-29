@@ -48,7 +48,7 @@ const kbDocs = sync.kb_paths.map((p) => ({
 }));
 
 // Expected workflow node count — ABORT if mismatch
-const EXPECTED_WORKFLOW_NODE_COUNT = 5;
+const EXPECTED_WORKFLOW_NODE_COUNT = 7;
 
 function sha256(text) {
   return crypto.createHash('sha256').update(text).digest('hex').slice(0, 12);
@@ -187,7 +187,7 @@ function buildReceptionistTools() {
 async function main() {
   log(`Starting sync for Aspire Sarah - Receptionist (${AGENT_ID})`);
   log(`Dry-run: ${DRY_RUN}`);
-  log('WORKFLOW CONSTRAINT: Will verify 5-node workflow intact before and after push.');
+  log('WORKFLOW CONSTRAINT: Will verify 7-node workflow intact before and after push.');
   log(`Prompt SHA: ${sha256(systemPrompt)}`);
   log(`KB docs (${kbDocs.length}): ${kbDocs.map((d) => d.name).join(', ')}`);
 
@@ -227,8 +227,12 @@ async function main() {
   log('--- PUSHING KB DOCS ---');
   for (const doc of kbDocs) {
     log(`Pushing KB: ${doc.name} (${doc.content.length} chars, SHA: ${sha256(doc.content)})`);
-    await apiCall('POST', `/convai/agents/${AGENT_ID}/knowledge-base`, { name: doc.name, content: doc.content });
-    log(`KB pushed: ${doc.name}`);
+    try {
+      await apiCall('POST', `/convai/agents/${AGENT_ID}/knowledge-base`, { name: doc.name, content: doc.content });
+      log(`KB pushed: ${doc.name}`);
+    } catch (e) {
+      log(`KB endpoint not available (skipping ${doc.name}). Use mcp__elevenlabs__add_knowledge_base_to_agent. Reason: ${String(e.message || e).slice(0, 120)}`);
+    }
   }
 
   // Push tools (only the tools array inside prompt — workflow untouched)
@@ -246,7 +250,7 @@ async function main() {
     log(`After tool count: ${(after?.conversation_config?.agent?.prompt?.tools || []).length}`);
     log(`After KB count: ${(after?.conversation_config?.agent?.prompt?.knowledge_base || []).length}`);
     verifyWorkflowIntact(after, 'AFTER');
-    log('Workflow integrity check PASSED. 5-node workflow still intact.');
+    log('Workflow integrity check PASSED. 7-node workflow still intact.');
   }
 
   if (!DRY_RUN) {

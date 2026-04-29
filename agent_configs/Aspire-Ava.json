@@ -11,12 +11,20 @@
         ],
         "tools_contract_path": "docs/agents/ava/02_AVA_TOOLS_CONTRACT.md",
         "dynamic_variables": [
-            "business_name", "first_name", "last_name", "salutation", "industry",
-            "office_brief", "due_now_candidates", "open_approvals",
-            "recent_receipts", "routing_hints", "risk_summary"
+            "business_name",
+            "first_name",
+            "last_name",
+            "salutation",
+            "industry",
+            "office_brief",
+            "due_now_candidates",
+            "open_approvals",
+            "recent_receipts",
+            "routing_hints",
+            "risk_summary"
         ],
         "first_message": "Hey {{salutation}} {{last_name}}, Ava here.",
-        "last_synced_at": null
+        "last_synced_at": "2026-04-29T19:22:39.353Z"
     },
     "name": "Aspire - Ava",
     "conversation_config": {

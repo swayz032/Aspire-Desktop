@@ -138,11 +138,15 @@ async function main() {
   log('--- PUSHING KB DOCS ---');
   for (const doc of kbDocs) {
     log(`Pushing KB doc: ${doc.name} (${doc.content.length} chars, SHA: ${sha256(doc.content)})`);
-    await apiCall('POST', `/convai/agents/${AGENT_ID}/knowledge-base`, {
-      name: doc.name,
-      content: doc.content,
-    });
-    log(`KB doc pushed: ${doc.name}`);
+    try {
+      await apiCall('POST', `/convai/agents/${AGENT_ID}/knowledge-base`, {
+        name: doc.name,
+        content: doc.content,
+      });
+      log(`KB doc pushed: ${doc.name}`);
+    } catch (e) {
+      log(`KB endpoint not available (skipping ${doc.name}). Use mcp__elevenlabs__add_knowledge_base_to_agent. Reason: ${String(e.message || e).slice(0, 120)}`);
+    }
   }
 
   // ── After state ───────────────────────────────────────────────────────────
