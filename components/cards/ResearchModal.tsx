@@ -42,7 +42,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { AnimatedDot } from './AnimatedDot';
 import { playOpenSound, playClickSound } from '@/lib/sounds';
-import { resolveCard, type CardProps } from './CardRegistry';
+import { resolveCard, getCardOrientation, type CardProps } from './CardRegistry';
+import { CARD_DIMS } from './BaseCard';
 import { deriveTier, tierToGlowColor, type SafetyTier } from './SafetyBadge';
 import type { AvaPresentsState, AvaPresentsActions } from '@/hooks/useAvaPresents';
 
@@ -52,8 +53,6 @@ const DEFAULT_GLOW_COLOR = '#3B82F6';
 const GLOW_BREATH_DURATION = 3500; // 3.5s full cycle
 const BACKDROP_FADE_MS = 220;
 const MODAL_SPRING = { damping: 22, stiffness: 260, mass: 0.9 };
-const CARD_WIDTH = 500;
-const CARD_GAP = 24;
 
 /** Map raw artifact_type to a clean, user-friendly display name for the modal header. */
 const DISPLAY_NAMES: Record<string, string> = {
@@ -128,7 +127,7 @@ function getGlowColorForRecord(record: Record<string, unknown>, artifactType?: s
   return DEFAULT_GLOW_COLOR;
 }
 
-// ─── Web-only CSS for backdrop-filter + radial glow ──────────────────────────
+// ─── Web-only CSS for radial glow + hover/press affordances ──────────────────
 
 function injectResearchModalStyles() {
   if (Platform.OS !== 'web') return;
@@ -136,10 +135,6 @@ function injectResearchModalStyles() {
   const style = document.createElement('style');
   style.id = 'ava-presents-styles';
   style.textContent = `
-    .ava-presents-backdrop {
-      backdrop-filter: blur(28px) brightness(0.45);
-      -webkit-backdrop-filter: blur(28px) brightness(0.45);
-    }
     .ava-presents-glow {
       transition: background 0.6s ease-out;
       pointer-events: none;
@@ -290,6 +285,13 @@ export function ResearchModal(props: ResearchModalProps) {
 
   // ── Card renderer ──
   const CardComponent = useMemo(() => resolveCard(artifactType), [artifactType]);
+  const orientation = useMemo(() => getCardOrientation(artifactType), [artifactType]);
+  const cardDims = CARD_DIMS[orientation];
+
+  // Side-peek translateX as a % of own card width.
+  // Vertical (500w):  ±105% ≈ 525px — comfortable gap, cards don't kiss.
+  // Horizontal (880w): ±70%  ≈ 616px — wider cards, smaller % keeps them on stage.
+  const peekTranslatePct = orientation === 'horizontal' ? 70 : 105;
 
   const handleCardAction = useCallback(
     (action: 'call' | 'visit' | 'book' | 'details' | 'tell_more', record: Record<string, unknown>) => {
@@ -305,7 +307,9 @@ export function ResearchModal(props: ResearchModalProps) {
    * Render a single card in the perspective carousel.
    * offset = index - activeIndex.
    *  -  0: active card on stage (full size, full opacity, no rotation, z=10)
-   *  - ±1: side peek (scale 0.86, translateX ±70%, translateZ -90, rotateY ∓6deg, opacity 0.55)
+   *  - ±1: side peek — rotated TOWARD center (inner edge faces viewer, outer
+   *        edge recedes in 3D). Scale 0.82, translateX ±105% (vertical) /
+   *        ±70% (horizontal), translateZ -90, rotateY ±15deg, opacity 0.55.
    *  - |≥|2: hidden (opacity 0, pointerEvents none)
    */
   const renderPerspectiveCard = useCallback(
@@ -316,12 +320,15 @@ export function ResearchModal(props: ResearchModalProps) {
       const isPeek = absOffset === 1;
       const isVisible = absOffset <= 1;
 
-      const scale = isCardActive ? 1.0 : 0.86;
-      // ±88% of card own-width keeps peeks visually clear of the active card so clicks
-      // on the peek don't get intercepted by the active card's hit area at higher z.
-      const translateXPercent = isCardActive ? 0 : offset * 88;
+      const scale = isCardActive ? 1.0 : 0.82;
+      // Peeks sit ±peekTranslatePct% out so clicks aren't intercepted by the
+      // active card's hit area at higher z. Sign mirrors offset direction.
+      const translateXPercent = isCardActive ? 0 : offset * peekTranslatePct;
       const translateZ = isCardActive ? 0 : -90;
-      const rotateY = isCardActive ? 0 : -offset * 6; // peek tilts toward stage
+      // Rotate side cards TOWARD center: left-of-center (offset = -1) needs
+      // rotateY = +15deg so its right (inner) edge faces viewer; right-of-center
+      // (offset = +1) needs rotateY = -15deg so its left (inner) edge faces viewer.
+      const rotateY = isCardActive ? 0 : -Math.sign(offset) * 15;
       const opacity = isCardActive ? 1 : isPeek ? 0.55 : 0;
       const zIndex = isCardActive ? 10 : isPeek ? 5 : 0;
 
@@ -336,7 +343,8 @@ export function ResearchModal(props: ResearchModalProps) {
               position: 'absolute',
               left: '50%',
               top: '50%',
-              width: CARD_WIDTH,
+              width: cardDims.width,
+              height: cardDims.height,
               transform: `translate(-50%, -50%) translateX(${translateXPercent}%) translateZ(${translateZ}px) rotateY(${rotateY}deg) scale(${scale})`,
               transformStyle: 'preserve-3d',
               transition: 'transform 0.58s cubic-bezier(0.34,1.12,0.64,1), opacity 0.4s ease, box-shadow 0.6s ease-out',
@@ -355,7 +363,8 @@ export function ResearchModal(props: ResearchModalProps) {
               // Native fallback: stack cards centered, only active visible.
               opacity,
               zIndex,
-              width: CARD_WIDTH,
+              width: cardDims.width,
+              height: cardDims.height,
             };
 
       const handlePeekPress = () => {
@@ -373,6 +382,7 @@ export function ResearchModal(props: ResearchModalProps) {
           onAction={handleCardAction}
           isActive={isCardActive}
           enterDelay={isCardActive ? 0 : 80}
+          orientation={orientation}
         />
       );
 
@@ -408,7 +418,7 @@ export function ResearchModal(props: ResearchModalProps) {
         </View>
       );
     },
-    [CardComponent, artifactType, records.length, confidence, activeIndex, handleCardAction, goToCard],
+    [CardComponent, artifactType, records.length, confidence, activeIndex, handleCardAction, goToCard, orientation, cardDims, peekTranslatePct],
   );
 
   // ── Don't render if fully unmounted (after exit animation completes) ──
@@ -432,24 +442,15 @@ export function ResearchModal(props: ResearchModalProps) {
 
   return (
     <View style={styles.root} testID="research-modal" pointerEvents={visible ? 'auto' : 'none'}>
-      {/* Backdrop */}
+      {/* Backdrop — solid 95% black, no blur. */}
       <Animated.View style={[styles.backdrop, backdropStyle]}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={detailMode ? closeDetail : dismiss}
           accessibilityRole="button"
           accessibilityLabel="Close research results"
-          className="ava-presents-backdrop"
         />
       </Animated.View>
-
-      {/* Scrim — solid dark layer above the blur, below the carousel. Guarantees a clean
-          dark stage on browsers that don't fully honor backdrop-filter brightness. */}
-      <Animated.View
-        style={[styles.scrim, backdropStyle]}
-        pointerEvents="none"
-        testID="research-modal-scrim"
-      />
 
       {/* Subtle ambient tint — very dim, just for atmosphere. Main glow is on the card. */}
       <Animated.View
@@ -526,6 +527,7 @@ export function ResearchModal(props: ResearchModalProps) {
               confidence={confidence}
               onAction={handleCardAction}
               isActive
+              orientation={orientation}
             />
           </Animated.View>
         ) : (
@@ -615,10 +617,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
   },
-  scrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-  },
   glowOrb: {
     position: 'absolute',
     // Width, height, borderRadius set dynamically for responsive sizing
@@ -699,8 +697,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardSlide: {
+    // Width/height set inline per orientation — wrapper is purely positional.
     justifyContent: 'center',
-    height: 580, // Match BaseCard's fixed height — wrapper does not push card vertically.
     borderRadius: BorderRadius.xl,
     overflow: 'hidden',
   },

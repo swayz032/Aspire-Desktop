@@ -708,44 +708,60 @@ function prewarmAvaToolPath(suiteId: string, userId: string, officeId: string): 
   const secret = acceptedSecrets[0]?.split(',')[0]?.trim() || '';
   if (!secret) return;
 
-  const controller = new AbortController();
-  // 4s is intentionally tight: this is a warmup, not a real call. If the
-  // path is so slow that 4s isn't enough, the user's actual first tool call
-  // will warm it instead.
-  const timer = setTimeout(() => controller.abort(), 4000);
+  // Fire-and-forget warmup against a single tool path. Each call uses its own
+  // AbortController + 4s budget. Errors are swallowed at warn-level so a
+  // failed prewarm never affects the session-token response.
+  const fireAndForget = (path: string, body: Record<string, unknown>, label: string) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-aspire-tool-secret': secret,
+        'x-aspire-prewarm': '1',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+      .then((resp) => {
+        clearTimeout(timer);
+        logger.info(`[Prewarm] ${label} warmed`, { suiteId, status: resp.status });
+      })
+      .catch((err: unknown) => {
+        clearTimeout(timer);
+        const reason = err instanceof Error ? err.name + ': ' + err.message : 'unknown';
+        // Best-effort — logged at warn so cold-start diagnostics are visible
+        // in Railway logs without producing alert noise.
+        logger.warn(`[Prewarm] ${label} warmup failed (non-blocking)`, { suiteId, reason });
+      });
+  };
 
-  fetch(`${baseUrl}/v1/tools/context`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-aspire-tool-secret': secret,
-      'x-aspire-prewarm': '1',
-    },
-    body: JSON.stringify({
+  // Primary path: /v1/tools/context — warms orchestrator container, Supabase
+  // pool, LLM client init.
+  fireAndForget(
+    '/v1/tools/context',
+    { suite_id: suiteId, user_id: userId, office_id: officeId, query: '__prewarm__' },
+    'Ava /v1/tools/context',
+  );
+
+  // Wave C.4: also pre-warm /v1/tools/invoke for the Adam product path so the
+  // SerpApi clients are warm by the time the user asks for a real product.
+  // The backend recognizes query: '__prewarm__' as a no-op (or fails fast on
+  // SerpApi if the hook is not yet wired — either way this is a connection-pool
+  // warmup, not a real research call).
+  fireAndForget(
+    '/v1/tools/invoke',
+    {
       suite_id: suiteId,
       user_id: userId,
       office_id: officeId,
+      agent: 'adam',
+      entity_type: 'product',
       query: '__prewarm__',
-    }),
-    signal: controller.signal,
-  })
-    .then((resp) => {
-      clearTimeout(timer);
-      logger.info('[Prewarm] Ava tool path warmed', {
-        suiteId,
-        status: resp.status,
-      });
-    })
-    .catch((err: unknown) => {
-      clearTimeout(timer);
-      const reason = err instanceof Error ? err.name + ': ' + err.message : 'unknown';
-      // Best-effort — logged at warn so cold-start diagnostics are visible
-      // in Railway logs without producing alert noise.
-      logger.warn('[Prewarm] Ava tool path warmup failed (non-blocking)', {
-        suiteId,
-        reason,
-      });
-    });
+    },
+    'Ava /v1/tools/invoke (adam product)',
+  );
 }
 
 function parseRequestedAgent(raw: unknown): { value: SupportedAgent; provided: boolean; valid: boolean } {
@@ -7756,6 +7772,122 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
       errorStage: 'agent_session',
       message: 'Unexpected error creating agent session',
     }));
+  }
+});
+
+// ─── POST /api/tools/enrich-product ────────────────────────────────────────
+// Authenticated client proxy for the orchestrator's lazy product-enrichment
+// endpoint. Mints a short-lived (45s) capability token in the same canonical
+// shape the orchestrator's validate_token() expects (HMAC-SHA256 over the
+// sorted-key canonical JSON). The minted token is sent in the request body to
+// /v1/tools/enrich_product alongside the required suite/office/actor headers.
+//
+// Risk tier: GREEN (read-only). Receipts emitted by the orchestrator on
+// success/denial/failure (Law #2). Tenant isolation enforced via JWT-derived
+// suite_id on the proxy + token suite_id binding (Law #6).
+router.post('/api/tools/enrich-product', async (req: Request, res: Response) => {
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    return res.status(503).json({
+      error: 'ORCHESTRATOR_UNAVAILABLE',
+      message: 'Backend service is not configured',
+    });
+  }
+
+  const signingKey = (process.env.TOKEN_SIGNING_SECRET || process.env.ASPIRE_TOKEN_SIGNING_KEY || '').trim();
+  if (!signingKey || signingKey.length < 32) {
+    logger.error('[EnrichProduct] Missing or weak TOKEN_SIGNING_SECRET');
+    return res.status(503).json({
+      error: 'SIGNING_KEY_UNAVAILABLE',
+      message: 'Capability token signing key not configured',
+    });
+  }
+
+  const productId = typeof req.body?.product_id === 'string' ? req.body.product_id.trim() : '';
+  if (!productId) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'product_id is required',
+    });
+  }
+
+  const officeId = (req.headers['x-office-id'] as string) || suiteId;
+  const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+
+  // Mint capability token (Law #5) -- canonical payload byte-identical to the
+  // orchestrator's mint_token() output so validate_token() succeeds.
+  const tokenId = crypto.randomUUID();
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + 45_000); // 45s TTL (< 60s max per Law #5)
+  const tokenPayload: Record<string, unknown> = {
+    token_id: tokenId,
+    suite_id: suiteId,
+    office_id: officeId,
+    tool: 'serpapi_home_depot_product.fetch',
+    scopes: ['research.product.enrich'],
+    issued_at: issuedAt.toISOString(),
+    expires_at: expiresAt.toISOString(),
+    correlation_id: correlationId,
+  };
+  // Canonical JSON: sort_keys=True, separators=(',',':') -- matches Python
+  // json.dumps(payload, sort_keys=True, separators=(',',':')).
+  const sortedKeys = Object.keys(tokenPayload).sort();
+  const canonicalObj: Record<string, unknown> = {};
+  for (const k of sortedKeys) canonicalObj[k] = tokenPayload[k];
+  const canonical = JSON.stringify(canonicalObj);
+  const signature = crypto.createHmac('sha256', signingKey).update(canonical).digest('hex');
+  const fullToken = { ...tokenPayload, signature, revoked: false };
+
+  // Forward to orchestrator. Headers match enrich_product's auth contract:
+  // X-Suite-Id / X-Office-Id / X-Actor-Id / X-Correlation-Id (all required).
+  const url = `${orchestratorUrl}/v1/tools/enrich_product`;
+  const controller = new AbortController();
+  // Backend SerpApi single-attempt budget is ~4s + small margin; 12s gives
+  // generous headroom for cold connection pool establishment.
+  const timer = setTimeout(() => controller.abort(), 12_000);
+
+  try {
+    const orchResp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Suite-Id': suiteId,
+        'X-Office-Id': officeId,
+        'X-Actor-Id': actorId,
+        'X-Correlation-Id': correlationId,
+      },
+      body: JSON.stringify({
+        product_id: productId,
+        capability_token: fullToken,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    const data = await orchResp.json().catch(() => ({}));
+    if (!orchResp.ok) {
+      logger.warn('[EnrichProduct] Orchestrator returned error', {
+        suiteId,
+        productId,
+        status: orchResp.status,
+        message: typeof data?.message === 'string' ? data.message.slice(0, 200) : '',
+      });
+      return res.status(orchResp.status).json(data);
+    }
+    return res.status(200).json(data);
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const reason = err instanceof Error ? err.name + ': ' + err.message : 'unknown';
+    logger.error('[EnrichProduct] Proxy fetch failed', { suiteId, productId, reason });
+    return res.status(502).json({
+      error: 'ORCHESTRATOR_UNREACHABLE',
+      message: 'Could not reach product enrichment service',
+      correlation_id: correlationId,
+    });
   }
 });
 

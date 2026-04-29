@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,22 +9,11 @@ import { renderStars, fmtPrice } from './helpers';
 import { ActionButton } from './ActionButton';
 import { BaseCard } from './BaseCard';
 import { ImageSkeleton } from './ImageSkeleton';
+import { ProductDetailModal } from './ProductDetailModal';
+import type { CardProps } from './CardRegistry';
 
-interface CardProps {
-  record: Record<string, any>;
-  artifactType: string;
-  index: number;
-  total: number;
-  confidence: { status: string; score: number } | null;
-  onAction: (
-    action: 'call' | 'visit' | 'book' | 'details' | 'tell_more',
-    record: any,
-  ) => void;
-  isActive: boolean;
-  enterDelay?: number;
-}
-
-export function ProductCard({ record, onAction, isActive, enterDelay }: CardProps) {
+export function ProductCard({ record, onAction, isActive, enterDelay, orientation }: CardProps) {
+  const isHorizontal = orientation === 'horizontal';
   const isStoreSummary = record.card_kind === 'store_summary';
   const productName = isStoreSummary
     ? (record.store_name || record.title || 'Home Depot Store')
@@ -96,9 +85,27 @@ export function ProductCard({ record, onAction, isActive, enterDelay }: CardProp
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [descExpanded, setDescExpanded] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
 
   // When the active gallery image changes, reset the loaded flag for the skeleton.
   const heroImage = gallery[galleryIndex] || '';
+
+  // Horizontal hero picks thumbnails[6] (_1000.jpg variant per SerpAPI) when
+  // available -- the highest-res image SerpAPI ships in basic search results.
+  // Falls back to the existing first gallery entry on missing/short arrays.
+  const horizontalHeroImage = useMemo(() => {
+    if (Array.isArray(thumbnails) && thumbnails.length > 6) {
+      const big = thumbnails[6];
+      if (typeof big === 'string' && big) return big;
+    }
+    return gallery[0] || '';
+  }, [thumbnails, gallery]);
+
+  // Stable product_id for ProductDetailModal lazy enrichment.
+  const productIdForEnrich = useMemo(() => {
+    const v = record.product_id ?? record.internet_number ?? record.sku;
+    return typeof v === 'string' && v.trim() ? v.trim() : '';
+  }, [record]);
 
   const handlePrevImage = useCallback(() => {
     if (gallery.length <= 1) return;
@@ -186,8 +193,19 @@ export function ProductCard({ record, onAction, isActive, enterDelay }: CardProp
   }, [productUrl, onAction, record]);
 
   const handleDetails = useCallback(() => {
+    // Horizontal product cards own a dedicated lazy-enrich modal. Open it
+    // locally and DO NOT bubble to onAction('details') which would also push
+    // ResearchModal into its level-2 detail view (visual conflict).
+    if (isHorizontal && !isStoreSummary && productIdForEnrich) {
+      setDetailModalVisible(true);
+      return;
+    }
     onAction('details', record);
-  }, [onAction, record]);
+  }, [onAction, record, isHorizontal, isStoreSummary, productIdForEnrich]);
+
+  const handleCloseDetailModal = useCallback(() => {
+    setDetailModalVisible(false);
+  }, []);
 
   const handleStoreWebsite = useCallback(() => {
     if (storeWebsite) safeOpenURL(storeWebsite);
@@ -198,6 +216,66 @@ export function ProductCard({ record, onAction, isActive, enterDelay }: CardProp
     if (storePhone) safeCallPhone(storePhone);
     onAction('call', record);
   }, [storePhone, onAction, record]);
+
+  // Horizontal hero -- single image-cover, tap opens ProductDetailModal.
+  // Uses thumbnails[6] (_1000.jpg) for higher resolution than the small thumbnail.
+  const horizontalHeroContent = (
+    <Pressable
+      onPress={!isStoreSummary && productIdForEnrich ? handleDetails : undefined}
+      style={styles.horizontalHeroPressable}
+      accessibilityRole={!isStoreSummary && productIdForEnrich ? 'button' : undefined}
+      accessibilityLabel={
+        !isStoreSummary && productIdForEnrich
+          ? `Open ${productName} details`
+          : `Photo of ${productName}`
+      }
+      testID="product-card-horizontal-hero"
+    >
+      {horizontalHeroImage ? (
+        <>
+          <ImageSkeleton loaded={imageLoaded} />
+          <Image
+            key={horizontalHeroImage}
+            source={{ uri: horizontalHeroImage }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            transition={200}
+            accessibilityLabel={`Photo of ${productName}`}
+            onLoad={() => setImageLoaded(true)}
+          />
+        </>
+      ) : (
+        <LinearGradient
+          colors={Colors.gradient.cardHero}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        >
+          <View style={styles.heroFallback}>
+            <Ionicons
+              name={isStoreSummary ? 'storefront-outline' : 'cube-outline'}
+              size={40}
+              color={Colors.text.muted}
+            />
+          </View>
+        </LinearGradient>
+      )}
+
+      {!isStoreSummary && hasDiscount && (
+        <View style={styles.discountBadge}>
+          <Text style={styles.discountText}>{Math.round(percentage_off!)}% off</Text>
+        </View>
+      )}
+
+      {(retailer || isStoreSummary) && (
+        <View style={styles.retailerPill}>
+          <Text style={styles.retailerText} numberOfLines={1}>
+            {retailer || 'Home Depot'}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
 
   const heroContent = (
     <>
@@ -303,6 +381,154 @@ export function ProductCard({ record, onAction, isActive, enterDelay }: CardProp
     </>
   );
 
+  // ── Horizontal layout (880x440) ─────────────────────────────────────────
+  // LEFT 580x440 image-dominant hero, RIGHT 300x440 info stack with stacked
+  // CTAs at the bottom. NO scrolling. NO bullets/specs on card -- those live
+  // in ProductDetailModal which opens on tap.
+  if (isHorizontal) {
+    const horizontalActions = isStoreSummary ? (
+      <>
+        {storePhone ? (
+          <ActionButton label="Call" icon="call-outline" onPress={handleStoreCall} variant="primary" />
+        ) : null}
+        {storeWebsite ? (
+          <ActionButton label="Website" icon="open-outline" onPress={handleStoreWebsite} variant="secondary" />
+        ) : null}
+      </>
+    ) : (
+      <>
+        <ActionButton
+          label="View details"
+          icon="chevron-forward"
+          onPress={handleDetails}
+          variant="primary"
+        />
+        {productUrl ? (
+          <ActionButton
+            label="Visit Home Depot"
+            icon="open-outline"
+            onPress={handleVisit}
+            variant="secondary"
+          />
+        ) : null}
+      </>
+    );
+
+    return (
+      <>
+        <BaseCard
+          safety={null}
+          isActive={isActive}
+          heroSlot={horizontalHeroContent}
+          actionSlot={horizontalActions}
+          accessibilityLabel={`${productName} product card`}
+          enterDelay={enterDelay}
+          orientation="horizontal"
+        >
+          <View style={hStyles.stack}>
+            <Text
+              style={hStyles.title}
+              numberOfLines={2}
+              accessibilityRole="header"
+            >
+              {productName}
+            </Text>
+
+            {brand ? (
+              <Text style={hStyles.brand} numberOfLines={1}>
+                {brand}
+              </Text>
+            ) : null}
+
+            {price != null && (
+              <View style={hStyles.priceRow}>
+                <Text style={hStyles.priceMain}>{fmtPrice(price)}</Text>
+                {price_was != null && hasDiscount && (
+                  <Text style={hStyles.priceWas}>{fmtPrice(price_was)}</Text>
+                )}
+              </View>
+            )}
+
+            {rating != null && (
+              <View style={hStyles.ratingRow}>
+                <Text style={hStyles.ratingStars}>{renderStars(rating)}</Text>
+                <Text style={hStyles.ratingDetail} numberOfLines={1}>
+                  {' '}
+                  {typeof rating === 'number' ? rating.toFixed(1) : rating}
+                  {reviews ? ` (${Number(reviews).toLocaleString('en-US')})` : ''}
+                </Text>
+              </View>
+            )}
+
+            {badgeList.length > 0 && (
+              <View style={hStyles.badgeRow}>
+                {badgeList.slice(0, 2).map((b, i) => (
+                  <View key={i} style={hStyles.badge}>
+                    <Text style={hStyles.badgeText} numberOfLines={1}>
+                      {b}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={hStyles.stockSpacer} />
+
+            {(stockCount != null && stockCount > 0 && storeName) ? (
+              <View style={hStyles.stockRow}>
+                <Ionicons
+                  name="location-outline"
+                  size={14}
+                  color={Colors.semantic.success}
+                />
+                <Text
+                  style={[hStyles.stockText, { color: Colors.semantic.success }]}
+                  numberOfLines={1}
+                >
+                  In stock at {storeName}
+                </Text>
+              </View>
+            ) : deliveryLabel ? (
+              <View style={hStyles.stockRow}>
+                <Ionicons
+                  name="car-outline"
+                  size={14}
+                  color={Colors.text.tertiary}
+                />
+                <Text style={hStyles.stockText} numberOfLines={1}>
+                  {deliveryLabel}
+                </Text>
+              </View>
+            ) : stockCount != null && stockCount === 0 ? (
+              <View style={hStyles.stockRow}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={14}
+                  color={Colors.semantic.error}
+                />
+                <Text
+                  style={[hStyles.stockText, { color: Colors.semantic.error }]}
+                  numberOfLines={1}
+                >
+                  Out of stock
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </BaseCard>
+
+        {productIdForEnrich ? (
+          <ProductDetailModal
+            visible={detailModalVisible}
+            productId={productIdForEnrich}
+            basicRecord={record}
+            onClose={handleCloseDetailModal}
+          />
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <BaseCard
       safety={null}
@@ -312,6 +538,7 @@ export function ProductCard({ record, onAction, isActive, enterDelay }: CardProp
       actionSlot={actionContent}
       accessibilityLabel={`${productName} product card`}
       enterDelay={enterDelay}
+      orientation={orientation}
     >
       {isStoreSummary ? (
         <>
@@ -905,6 +1132,101 @@ const styles = StyleSheet.create({
     color: Colors.text.muted,
     fontStyle: 'italic',
     marginTop: Spacing.xs,
+  },
+  horizontalHeroPressable: {
+    flex: 1,
+    width: '100%' as unknown as number,
+    height: '100%' as unknown as number,
+    backgroundColor: Colors.background.elevated,
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'zoom-in' } as unknown as ViewStyle)
+      : {}),
+  },
+});
+
+// ── Horizontal layout (880x440) info-stack styles ──────────────────────────
+const hStyles = StyleSheet.create({
+  stack: {
+    flex: 1,
+    gap: 4,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 22,
+    color: Colors.text.primary,
+    letterSpacing: -0.2,
+  },
+  brand: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+    marginTop: 2,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  priceMain: {
+    fontSize: 22,
+    fontWeight: '700',
+    lineHeight: 26,
+    color: Colors.semantic.success,
+    letterSpacing: -0.4,
+  },
+  priceWas: {
+    ...Typography.caption,
+    color: Colors.text.muted,
+    textDecorationLine: 'line-through',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.xs,
+  },
+  ratingStars: {
+    ...Typography.small,
+    color: Colors.accent.amber,
+    letterSpacing: 1,
+  },
+  ratingDetail: {
+    ...Typography.small,
+    color: Colors.text.secondary,
+    flexShrink: 1,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    flexWrap: 'wrap',
+    marginTop: Spacing.sm,
+  },
+  badge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    backgroundColor: Colors.accent.cyanLight,
+    borderRadius: BorderRadius.sm,
+    maxWidth: 130,
+  },
+  badgeText: {
+    ...Typography.small,
+    color: Colors.accent.cyan,
+    fontWeight: '600',
+  },
+  stockSpacer: {
+    flex: 1,
+    minHeight: Spacing.sm,
+  },
+  stockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  stockText: {
+    ...Typography.captionMedium,
+    color: Colors.text.secondary,
+    flexShrink: 1,
   },
 });
 

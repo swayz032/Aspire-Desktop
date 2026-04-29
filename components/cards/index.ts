@@ -20,6 +20,8 @@ export { ProductCard } from './ProductCard';
 export { BusinessCard } from './BusinessCard';
 export { PropertyCard } from './PropertyCard';
 export { GenericCard } from './GenericCard';
+export { ProductDetailModal } from './ProductDetailModal';
+export type { ProductDetailModalProps } from './ProductDetailModal';
 
 // Shared helpers
 export { ActionButton } from './ActionButton';

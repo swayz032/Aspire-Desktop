@@ -7,24 +7,7 @@ import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
 import { renderStars, domainOf } from './helpers';
 import { ActionButton } from './ActionButton';
 import { BaseCard } from './BaseCard';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface CardProps {
-  record: Record<string, any>;
-  artifactType: string;
-  index: number;
-  total: number;
-  confidence: { status: string; score: number } | null;
-  onAction: (
-    action: 'call' | 'visit' | 'book' | 'details' | 'tell_more',
-    record: any,
-  ) => void;
-  isActive: boolean;
-  enterDelay?: number;
-}
+import type { CardProps } from './CardRegistry';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,7 +42,7 @@ function categoryIcon(category: string | undefined): keyof typeof Ionicons.glyph
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function BusinessCard({ record, onAction, isActive, enterDelay }: CardProps) {
+export function BusinessCard({ record, onAction, isActive, enterDelay, orientation }: CardProps) {
   const {
     name = 'Unknown Business',
     normalized_address,
@@ -154,6 +137,7 @@ export function BusinessCard({ record, onAction, isActive, enterDelay }: CardPro
       actionSlot={actionContent}
       accessibilityLabel={`${name} business card`}
       enterDelay={enterDelay}
+      orientation={orientation}
     >
       {/* Address */}
       {normalized_address ? (

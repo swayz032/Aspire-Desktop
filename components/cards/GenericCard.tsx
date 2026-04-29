@@ -11,7 +11,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import type { CardProps } from './CardRegistry';
 import { BaseCard } from './BaseCard';
 
-export function GenericCard({ record, artifactType, isActive, enterDelay }: CardProps) {
+export function GenericCard({ record, artifactType, isActive, enterDelay, orientation }: CardProps) {
   const name = record.name || record.product_name || record.title || 'Unknown';
   const address = record.normalized_address || record.address || '';
   const summary = record.summary || record.description || '';
@@ -22,6 +22,7 @@ export function GenericCard({ record, artifactType, isActive, enterDelay }: Card
       isActive={isActive}
       accessibilityLabel={`${name} research card`}
       enterDelay={enterDelay}
+      orientation={orientation}
     >
       <View style={styles.header}>
         <Ionicons name="document-text-outline" size={32} color={Colors.text.muted} />

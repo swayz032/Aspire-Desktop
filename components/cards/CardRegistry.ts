@@ -11,6 +11,7 @@
  */
 
 import React from 'react';
+import type { CardOrientation } from './BaseCard';
 
 // ─── Card Props Contract ─────────────────────────────────────────────────────
 
@@ -24,6 +25,47 @@ export interface CardProps {
   isActive: boolean;
   /** Staggered entrance delay in ms. Passed from ResearchModal's renderCard. */
   enterDelay?: number;
+  /** Orientation requested by the carousel. Cards forward this to BaseCard.
+   *  Defaults to 'vertical' if omitted (back-compat). */
+  orientation?: CardOrientation;
+}
+
+// ─── Orientation Map ─────────────────────────────────────────────────────────
+
+/**
+ * Maps artifact_type -> card orientation. Vertical = 500x580 portrait (default,
+ * best for property/landlord/vendor info-dense cards). Horizontal = 880x440
+ * landscape (image-dominant, best for hotel and product/tool cards).
+ *
+ * The carousel queries this via `getCardOrientation()` to pick the correct
+ * translateX offset for side peeks (vertical = ±105%, horizontal = ±70%).
+ */
+const ORIENTATION_MAP: Record<string, CardOrientation> = {
+  // Horizontal — image-dominant
+  HotelShortlist: 'horizontal',
+  PriceComparison: 'horizontal',
+  EstimateResearchPack: 'horizontal',
+
+  // Vertical — info-dense (default)
+  LandlordPropertyPack: 'vertical',
+  PropertyFactPack: 'vertical',
+  RentCompPack: 'vertical',
+  PermitContextPack: 'vertical',
+  NeighborhoodDemandBrief: 'vertical',
+  ScreeningComplianceBrief: 'vertical',
+  InvestmentOpportunityPack: 'vertical',
+  VendorShortlist: 'vertical',
+  ProspectList: 'vertical',
+  CompetitorBrief: 'vertical',
+  GenericResearch: 'vertical',
+};
+
+/**
+ * Returns the orientation for a given artifact type. Defaults to 'vertical'
+ * (Law #3: fail closed — unknown types get the safe portrait default).
+ */
+export function getCardOrientation(artifactType: string): CardOrientation {
+  return ORIENTATION_MAP[artifactType] ?? 'vertical';
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────────

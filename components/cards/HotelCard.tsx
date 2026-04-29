@@ -1,32 +1,15 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
-import { renderStars, fmtCount, domainOf } from './helpers';
+import { renderStars, fmtCount } from './helpers';
 import { ActionButton } from './ActionButton';
 import { BaseCard } from './BaseCard';
 import { ImageSkeleton } from './ImageSkeleton';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface CardProps {
-  record: Record<string, any>;
-  artifactType: string;
-  index: number;
-  total: number;
-  confidence: { status: string; score: number } | null;
-  onAction: (
-    action: 'call' | 'visit' | 'book' | 'details' | 'tell_more',
-    record: any,
-  ) => void;
-  isActive: boolean;
-  enterDelay?: number;
-}
+import type { CardProps } from './CardRegistry';
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -67,7 +50,8 @@ function AmenityChip({ label }: { label: string }) {
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function HotelCard({ record, onAction, isActive, enterDelay }: CardProps) {
+export function HotelCard({ record, onAction, isActive, enterDelay, orientation }: CardProps) {
+  const isHorizontal = orientation === 'horizontal';
   const {
     name = 'Unknown Hotel',
     normalized_address,
@@ -85,7 +69,13 @@ export function HotelCard({ record, onAction, isActive, enterDelay }: CardProps)
     tripadvisor_url,
     ranking_string,
     star_rating,
-  } = record;
+    price_per_night,
+    price_per_night_was,
+    nightly_rate,
+    distance,
+    location,
+    locality,
+  } = record as Record<string, any>;
 
   const firstPhoto = Array.isArray(photos) ? photos[0] : null;
   const heroFromPhoto =
@@ -177,6 +167,195 @@ export function HotelCard({ record, onAction, isActive, enterDelay }: CardProps)
     </>
   );
 
+  // ── Horizontal layout (880x440) ─────────────────────────────────────────
+  // LEFT 580x440 image-cover hero, RIGHT 300x440 info stack with stacked CTAs
+  // at the bottom. NO scrolling. Compact info: name (2-line) + star class +
+  // price/night + rating + 2 amenities + distance + [View details] [Book on site].
+  if (isHorizontal) {
+    const horizontalHeroContent = (
+      <Pressable
+        onPress={handleDetails}
+        style={hHeroStyles.pressable}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${name} details`}
+        testID="hotel-card-horizontal-hero"
+      >
+        {heroUrl ? (
+          <>
+            <ImageSkeleton loaded={imageLoaded} />
+            <Image
+              source={{ uri: heroUrl }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              transition={200}
+              accessibilityLabel={`Photo of ${name}`}
+              onLoad={() => setImageLoaded(true)}
+            />
+          </>
+        ) : (
+          <LinearGradient
+            colors={Colors.gradient.cardHeroCool}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          >
+            <View style={styles.heroFallback}>
+              <Ionicons name="bed-outline" size={36} color={Colors.text.muted} />
+              <Text style={styles.heroFallbackText} numberOfLines={2}>
+                {name}
+              </Text>
+            </View>
+          </LinearGradient>
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.55)']}
+          style={styles.heroScrim}
+        />
+        {star_rating != null && star_rating > 0 && (
+          <View style={styles.starOverlay}>
+            <Text style={styles.starOverlayText}>
+              {'★'.repeat(Math.round(star_rating))}
+            </Text>
+          </View>
+        )}
+      </Pressable>
+    );
+
+    const horizontalActions = (
+      <>
+        <ActionButton
+          label="View details"
+          icon="chevron-forward"
+          onPress={handleDetails}
+          variant="primary"
+        />
+        {(website || tripadvisor_url) ? (
+          <ActionButton
+            label="Book on site"
+            icon="open-outline"
+            onPress={handleVisit}
+            variant="secondary"
+          />
+        ) : phone ? (
+          <ActionButton
+            label="Call"
+            icon="call-outline"
+            onPress={handleCall}
+            variant="secondary"
+          />
+        ) : null}
+      </>
+    );
+
+    const nightlyPrice = typeof price_per_night === 'number'
+      ? price_per_night
+      : typeof nightly_rate === 'number'
+        ? nightly_rate
+        : null;
+    const nightlyPriceWas = typeof price_per_night_was === 'number' ? price_per_night_was : null;
+    const priceLabel = nightlyPrice != null
+      ? `$${Math.round(nightlyPrice).toLocaleString('en-US')}`
+      : '';
+    const priceWasLabel = nightlyPriceWas != null && nightlyPriceWas > (nightlyPrice ?? 0)
+      ? `$${Math.round(nightlyPriceWas).toLocaleString('en-US')}`
+      : '';
+
+    const ratingValue = traveler_rating ?? ta_rating;
+    const ratingCount = review_count ?? ta_review_count;
+
+    const horizontalAmenities = visibleAmenities.slice(0, 2);
+    const distanceLabel = typeof distance === 'string' && distance.trim()
+      ? distance.trim()
+      : typeof location === 'string' && location.trim()
+        ? location.trim()
+        : typeof locality === 'string' && locality.trim()
+          ? locality.trim()
+          : '';
+
+    return (
+      <BaseCard
+        safety={safety_score != null ? { score: safety_score } : null}
+        isActive={isActive}
+        heroSlot={horizontalHeroContent}
+        actionSlot={horizontalActions}
+        accessibilityLabel={`${name} hotel card`}
+        enterDelay={enterDelay}
+        orientation="horizontal"
+      >
+        <View style={hStyles.stack}>
+          <Text style={hStyles.title} numberOfLines={2} accessibilityRole="header">
+            {name}
+          </Text>
+
+          {star_rating != null && star_rating > 0 ? (
+            <Text style={hStyles.starClass} numberOfLines={1}>
+              {`${star_rating}-star hotel`}
+            </Text>
+          ) : null}
+
+          {priceLabel ? (
+            <View style={hStyles.priceRow}>
+              <Text style={hStyles.priceMain}>{priceLabel}</Text>
+              <Text style={hStyles.priceUnit}>/ night</Text>
+              {priceWasLabel ? (
+                <Text style={hStyles.priceWas}>{priceWasLabel}</Text>
+              ) : null}
+            </View>
+          ) : null}
+
+          {ratingValue != null && (
+            <View style={hStyles.ratingRow}>
+              <Text style={hStyles.ratingStars}>{renderStars(ratingValue)}</Text>
+              <Text style={hStyles.ratingDetail} numberOfLines={1}>
+                {' '}
+                {ratingValue.toFixed(1)}
+                {ratingCount ? ` (${fmtCount(ratingCount)})` : ''}
+              </Text>
+            </View>
+          )}
+
+          {horizontalAmenities.length > 0 && (
+            <View style={hStyles.amenityRow}>
+              {horizontalAmenities.map((a, i) => (
+                <View key={i} style={hStyles.amenityChip}>
+                  <Text style={hStyles.amenityText} numberOfLines={1}>
+                    {a}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View style={hStyles.spacer} />
+
+          {distanceLabel ? (
+            <View style={hStyles.locationRow}>
+              <Ionicons
+                name="location-outline"
+                size={14}
+                color={Colors.text.tertiary}
+              />
+              <Text style={hStyles.locationText} numberOfLines={1}>
+                {distanceLabel}
+              </Text>
+            </View>
+          ) : normalized_address ? (
+            <View style={hStyles.locationRow}>
+              <Ionicons
+                name="location-outline"
+                size={14}
+                color={Colors.text.tertiary}
+              />
+              <Text style={hStyles.locationText} numberOfLines={1}>
+                {normalized_address}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </BaseCard>
+    );
+  }
+
   return (
     <BaseCard
       safety={safety_score != null ? { score: safety_score } : null}
@@ -186,6 +365,7 @@ export function HotelCard({ record, onAction, isActive, enterDelay }: CardProps)
       actionSlot={actionContent}
       accessibilityLabel={`${name} hotel card`}
       enterDelay={enterDelay}
+      orientation={orientation}
     >
       {/* Name + Address */}
       <Text style={styles.hotelName} numberOfLines={2} accessibilityRole="header">
@@ -425,6 +605,111 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.surface.cardBorder,
+  },
+});
+
+// ── Horizontal layout (880x440) hero pressable ─────────────────────────────
+const hHeroStyles = StyleSheet.create({
+  pressable: {
+    flex: 1,
+    width: '100%' as unknown as number,
+    height: '100%' as unknown as number,
+    backgroundColor: Colors.background.elevated,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'zoom-in' } as unknown as ViewStyle)
+      : {}),
+  },
+});
+
+// ── Horizontal layout (880x440) info-stack styles ──────────────────────────
+const hStyles = StyleSheet.create({
+  stack: {
+    flex: 1,
+    gap: 4,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 22,
+    color: Colors.text.primary,
+    letterSpacing: -0.2,
+  },
+  starClass: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+    marginTop: 2,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  priceMain: {
+    fontSize: 22,
+    fontWeight: '700',
+    lineHeight: 26,
+    color: Colors.text.primary,
+    letterSpacing: -0.4,
+  },
+  priceUnit: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+  },
+  priceWas: {
+    ...Typography.caption,
+    color: Colors.text.muted,
+    textDecorationLine: 'line-through',
+    marginLeft: Spacing.xs,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.xs,
+  },
+  ratingStars: {
+    ...Typography.small,
+    color: Colors.accent.amber,
+    letterSpacing: 1,
+  },
+  ratingDetail: {
+    ...Typography.small,
+    color: Colors.text.secondary,
+    flexShrink: 1,
+  },
+  amenityRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    flexWrap: 'wrap',
+    marginTop: Spacing.sm,
+  },
+  amenityChip: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    backgroundColor: Colors.surface.cardBorder,
+    borderRadius: BorderRadius.sm,
+    maxWidth: 130,
+  },
+  amenityText: {
+    ...Typography.small,
+    color: Colors.text.secondary,
+  },
+  spacer: {
+    flex: 1,
+    minHeight: Spacing.sm,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  locationText: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+    flexShrink: 1,
   },
 });
 

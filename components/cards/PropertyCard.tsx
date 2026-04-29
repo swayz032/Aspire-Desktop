@@ -348,7 +348,7 @@ const SECTION_RENDERERS: Record<string, React.FC<{ r: Record<string, any> }>> = 
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function PropertyCard({ record, onAction, isActive, enterDelay }: CardProps) {
+export function PropertyCard({ record, onAction, isActive, enterDelay, orientation }: CardProps) {
   const r = record as Record<string, any>;
   const section = (r._cardSection as string) || 'overview';
   const sectionLabel = (r._sectionLabel as string) || 'Property Overview';
@@ -405,6 +405,7 @@ export function PropertyCard({ record, onAction, isActive, enterDelay }: CardPro
       actionSlot={actionContent}
       accessibilityLabel={`${sectionLabel} for ${address}`}
       enterDelay={enterDelay}
+      orientation={orientation}
     >
       <SectionRenderer r={r} />
     </BaseCard>
