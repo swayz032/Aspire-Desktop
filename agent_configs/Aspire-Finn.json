@@ -1,6 +1,23 @@
 {
     "_aspire_status": "v1-elevenlabs",
     "_aspire_v2_counterpart": "Anam persona b6852adf-f904-4f61-9731-cf9b7c0ca68b (see backend/scripts/setup-anam-personas.ts)",
+    "_v1_sync": {
+        "version": "1.0",
+        "agent_id": "agent_2201kmqdjjyben0tyg2t5eexnmzg",
+        "prompt_path": "docs/agents/finn/01_FINN_SYSTEM_PROMPT.md",
+        "kb_paths": [
+            "docs/agents/finn/02_FINN_VOICE_RULES_v1.md",
+            "docs/agents/finn/03_FINN_TASK_WORKFLOWS_v1.md",
+            "docs/agents/finn/04_FINN_STRATEGIC_PLAYBOOK_v1.md",
+            "docs/agents/finn/05_FINANCE_HUB_CANON_v1.md"
+        ],
+        "tools_contract_path": "docs/agents/finn/06_FINN_TOOLS_CONTRACT_v1.md",
+        "dynamic_variables": [
+            "business_name", "first_name", "last_name", "salutation", "industry"
+        ],
+        "first_message": "Hey {{salutation}} {{last_name}}, Finn here.",
+        "last_synced_at": null
+    },
     "name": "Aspire - Finn",
     "conversation_config": {
         "asr": {

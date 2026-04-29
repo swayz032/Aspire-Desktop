@@ -1,0 +1,20 @@
+{
+  "name": "FRONT_DESK_SARAH_PRODUCTION_HANDOFF_v1",
+  "purpose": "Internal owner-facing call-desk specialist",
+  "workflow_base": "Custom internal workflow",
+  "files": [
+    "00_README_FIRST.md",
+    "01_FRONT_DESK_SARAH_SYSTEM_PROMPT.md",
+    "02_FRONT_DESK_SARAH_FIRST_MESSAGES_v1.md",
+    "03_FRONT_DESK_SARAH_CUSTOM_WORKFLOW_SPEC_v1.md",
+    "04_FRONT_DESK_SARAH_SETTINGS_AND_SYSTEM_TOOLS_v1.md",
+    "05_Front_Desk_Sarah_Voice_Rules_v1.md",
+    "06_Front_Desk_Sarah_Call_Desk_Workflows_v1.md",
+    "07_Front_Desk_Sarah_Triage_Engine_v1.md",
+    "08_Front_Desk_Sarah_Callback_and_Followup_Canon_v1.md",
+    "09_Front_Desk_Sarah_Telephony_Governance_Canon_v1.md",
+    "10_FRONT_DESK_SARAH_TOOLS_CONTRACT_v1.md",
+    "11_FRONT_DESK_SARAH_TEST_MATRIX_AND_SUCCESS_EVAL_v1.md",
+    "12_FRONT_DESK_SARAH_CLAUDE_CODE_IMPLEMENTATION_PLAN_v1.md"
+  ]
+}

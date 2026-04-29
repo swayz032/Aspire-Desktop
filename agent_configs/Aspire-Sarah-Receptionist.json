@@ -1,0 +1,36 @@
+{
+    "_aspire_status": "v1-elevenlabs",
+    "_aspire_note": "External caller-facing agent. Twilio-connected. Has 5-node ElevenLabs Workflow (Start -> Greeting & Identify Intent -> Answer FAQ / Transfer Call / Take Message -> Wrap Up -> End). Per-call personalization webhook keyed off called_number at /v1/sarah/personalization.",
+    "name": "Aspire Sarah - Receptionist",
+    "_v1_sync": {
+        "version": "1.0",
+        "agent_id": "agent_6501kp71h69jfqysgd055hemqhrq",
+        "agent_id_resolved_note": "Confirmed via mcp__elevenlabs__list_agents 2026-04-28. 'Aspire Sarah - Receptionist' = agent_6501. Previously believed agent_8901 was Receptionist — that is actually Front Desk Sarah (internal). agent_6501 has the Workflow tab.",
+        "prompt_path": "docs/agents/sarah-receptionist/01_RECEPTIONIST_SARAH_SYSTEM_PROMPT_v2.md",
+        "kb_paths": [
+            "docs/agents/sarah-receptionist/02_RECEPTIONIST_SARAH_VOICE_RULES_v2.md",
+            "docs/agents/sarah-receptionist/03_RECEPTIONIST_SARAH_CALL_WORKFLOWS_v2.md",
+            "docs/agents/sarah-receptionist/04_RECEPTIONIST_SARAH_MESSAGE_CAPTURE_CANON_v2.md",
+            "docs/agents/sarah-receptionist/05_RECEPTIONIST_SARAH_ROUTING_AND_TRANSFER_POLICY_v2.md",
+            "docs/agents/sarah-receptionist/06_RECEPTIONIST_SARAH_SAFETY_AND_PRIVACY_CANON_v2.md"
+        ],
+        "tools_contract_path": "docs/agents/sarah-receptionist/08_RECEPTIONIST_SARAH_TOOLS_CONTRACT_v2.md",
+        "dynamic_variables": [
+            "business_name",
+            "first_name",
+            "last_name",
+            "industry",
+            "time_of_day",
+            "is_open_now",
+            "after_hours_mode",
+            "busy_mode",
+            "public_number_mode",
+            "catch_mode",
+            "greeting_name_override",
+            "pronunciation_override",
+            "routing_contacts_summary"
+        ],
+        "first_message": "Good {{time_of_day}}, thank you for calling {{business_name}}. This is Sarah, how can I help you today?",
+        "last_synced_at": null
+    }
+}

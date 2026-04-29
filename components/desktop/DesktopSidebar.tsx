@@ -51,6 +51,7 @@ const navItems: NavItem[] = [
     ]
   },
   { id: 'receipts', label: 'Receipts', icon: 'document-text', iconActive: 'document-text', route: '/(tabs)/receipts' },
+  { id: 'office-memory', label: 'Office Memory', icon: 'archive', iconActive: 'archive', route: '/office-memory' },
   { id: 'office-store', label: 'Office Store', icon: 'storefront', iconActive: 'storefront', route: '/office-store' },
   { id: 'team', label: 'Team Workspace', icon: 'people', iconActive: 'people', route: '/team-workspace' },
 ];

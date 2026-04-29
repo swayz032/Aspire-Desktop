@@ -1,6 +1,28 @@
 {
     "_aspire_status": "v1-elevenlabs",
     "_aspire_v2_counterpart": "v2-pending — no Anam persona yet (Twilio integration adds complexity)",
+    "_note": "This file maps to Aspire Sarah - Receptionist (external, Twilio-connected, 5-node ElevenLabs Workflow). See Aspire-Sarah-Receptionist.json for V1 sync index. See Aspire-Sarah-FrontDesk.json for the internal owner-facing call-desk agent.",
+    "_v1_sync": {
+        "version": "1.0",
+        "agent_id": "agent_8901kmqdjnrte7psp6en4f85m4kt",
+        "prompt_path": "docs/agents/sarah-receptionist/01_RECEPTIONIST_SARAH_SYSTEM_PROMPT_v2.md",
+        "kb_paths": [
+            "docs/agents/sarah-receptionist/02_RECEPTIONIST_SARAH_VOICE_RULES_v2.md",
+            "docs/agents/sarah-receptionist/03_RECEPTIONIST_SARAH_CALL_WORKFLOWS_v2.md",
+            "docs/agents/sarah-receptionist/04_RECEPTIONIST_SARAH_MESSAGE_CAPTURE_CANON_v2.md",
+            "docs/agents/sarah-receptionist/05_RECEPTIONIST_SARAH_ROUTING_AND_TRANSFER_POLICY_v2.md",
+            "docs/agents/sarah-receptionist/06_RECEPTIONIST_SARAH_SAFETY_AND_PRIVACY_CANON_v2.md"
+        ],
+        "tools_contract_path": "docs/agents/sarah-receptionist/08_RECEPTIONIST_SARAH_TOOLS_CONTRACT_v2.md",
+        "dynamic_variables": [
+            "business_name", "first_name", "last_name", "industry",
+            "time_of_day", "is_open_now", "after_hours_mode", "busy_mode",
+            "public_number_mode", "catch_mode", "greeting_name_override",
+            "pronunciation_override", "routing_contacts_summary"
+        ],
+        "first_message": "Thank you for calling {{business_name}}. This is Sarah.",
+        "last_synced_at": null
+    },
     "name": "Aspire - Sarah",
     "conversation_config": {
         "asr": {

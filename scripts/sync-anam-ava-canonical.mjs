@@ -337,6 +337,39 @@ function buildCanonicalTools() {
       },
       ['query'],
     ),
+    // Memory tools (Pass 9 — Office Memory Engine)
+    webhookTool(
+      'ava_search_memory',
+      'Search Office Memory for prior meetings, calls, decisions, and business history. Use when the owner asks about past conversations, prior decisions, or context from previous sessions.',
+      'memory/search',
+      {
+        query: { type: 'string', description: 'Memory search query (topic, person, date, or entity)' },
+        memory_types: { type: 'array', items: { type: 'string' }, description: 'Optional filter: meeting|call|note|document|contract|invoice|strategy|research' },
+        limit: { type: 'number', description: 'Max results (default 10)' },
+      },
+      ['query'],
+    ),
+    webhookTool(
+      'ava_get_thread_memory',
+      'Retrieve the full memory timeline for a specific person, entity, or topic thread.',
+      'memory/thread',
+      {
+        thread_id: { type: 'string', description: 'Thread ID from ava_search_memory results' },
+      },
+      ['thread_id'],
+    ),
+    webhookTool(
+      'ava_save_session_summary',
+      'Save a session summary to Office Memory at end-of-session. Captures what was discussed, decisions made, and open items for future sessions.',
+      'memory/write',
+      {
+        summary: { type: 'string', description: 'Session summary: what was discussed, decisions, open items' },
+        memory_type: { type: 'string', description: 'Always session_summary' },
+        visibility_scope: { type: 'string', description: 'Always office' },
+        linked_voice_session_id: { type: 'string', description: 'Optional ElevenLabs conversation_id this session continued from' },
+      },
+      ['summary'],
+    ),
   ];
 }
 
@@ -383,12 +416,26 @@ function materializePromptForStateful(template) {
   };
 
   let prompt = String(template || '');
+
+  // Inject voiceHandoffBrief block at top if not already present.
+  // The runtime session broker populates {{voiceHandoffBrief}} with prior voice session context.
+  // We preserve this template variable so the persona can continue a voice-to-video handoff.
+  if (!prompt.includes('{{voiceHandoffBrief}}')) {
+    const handoffBlock = `[VOICE HANDOFF CONTEXT]
+If a prior voice session handed off to this video session, the handoff brief will be injected below.
+Read it on your first turn and continue the conversation without asking the owner to repeat context.
+{{voiceHandoffBrief}}
+
+`;
+    prompt = handoffBlock + prompt;
+  }
+
   for (const [key, value] of Object.entries(replacements)) {
     const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
     prompt = prompt.replace(pattern, String(value));
   }
-  // Remove any unresolved placeholders so lab tests never read template vars aloud.
-  prompt = prompt.replace(/\{\{\s*[^}]+\s*\}\}/g, '').replace(/\n{3,}/g, '\n\n');
+  // Remove any unresolved placeholders EXCEPT voiceHandoffBrief (runtime-injected by session broker).
+  prompt = prompt.replace(/\{\{\s*(?!voiceHandoffBrief)[^}]+\s*\}\}/g, '').replace(/\n{3,}/g, '\n\n');
   return prompt.trim();
 }
 
@@ -495,6 +542,10 @@ async function main() {
     'ava_execute_action',
     'Knowledge_Ava',
     'ava_knowledge_search',
+    // Pass 9 memory tools
+    'ava_search_memory',
+    'ava_get_thread_memory',
+    'ava_save_session_summary',
   ]);
 
   const deletions = allTools.filter((tool) => managedNames.has(String(tool?.name || '')));

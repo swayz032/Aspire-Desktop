@@ -1,5 +1,8 @@
 # Expo App Engineer Memory
 
+## Testing
+- See `playwright-rnweb-perspective-clicks.md` — RN-Web Pressables with CSS perspective transforms (translateZ + rotateY) need `dispatchEvent('click')` in Playwright tests, not `click()`. Real users unaffected.
+
 ## Observability
 - Error reporter: `lib/errorReporter.ts` — standalone POST to `/admin/ops/incidents/report`, rate-limited 5/60s
 - Provider error reporter: `lib/providerErrorReporter.ts` — dual rate limit (3/provider + 10 total per 60s)

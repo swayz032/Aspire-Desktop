@@ -1,0 +1,63 @@
+{
+  "name": "AVA_CHIEF_OF_STAFF_PRODUCTION_V1",
+  "version": "1.0",
+  "agent": "Ava",
+  "elevenlabs_agent_id": "agent_1201kmqdjgxvfxxteedpkvjej7er",
+  "anam_persona_id_env": "ANAM_AVA_PERSONA_ID",
+  "files": [
+    "01_AVA_SYSTEM_PROMPT.md",
+    "02_AVA_TOOLS_CONTRACT.md",
+    "03_AVA_KB_OFFICE_BRIEF.md",
+    "04_AVA_KB_HANDOFF_PROTOCOL.md"
+  ],
+  "dynamic_variables": [
+    "business_name",
+    "first_name",
+    "last_name",
+    "salutation",
+    "industry",
+    "office_brief",
+    "due_now_candidates",
+    "open_approvals",
+    "recent_receipts",
+    "routing_hints",
+    "risk_summary"
+  ],
+  "public_tools": [
+    "get_memory_brief",
+    "search_memory",
+    "get_thread_memory",
+    "create_handoff_note",
+    "save_session_summary",
+    "promote_artifact",
+    "route_to_eli",
+    "route_to_nora",
+    "route_to_finn",
+    "route_to_sarah"
+  ],
+  "first_message": "Hey {{salutation}} {{last_name}}, Ava here.",
+  "routing": "Ava is the chief of staff — only agent that routes to multiple specialists. All other agents return to Ava only.",
+  "authoring_source": "Authored from Coordination Spine §4.1 (no Ava handoff zip provided)",
+  "skillpack_path": "backend/orchestrator/src/aspire_orchestrator/services/skillpacks/ava_chief_of_staff.py",
+  "memory_reads": [
+    "office_brief_cache",
+    "thread_brief_cache",
+    "proactive_candidates",
+    "approval_links",
+    "receipt_memory_links"
+  ],
+  "memory_writes": [
+    "session_summary",
+    "handoff_note",
+    "pending_intent",
+    "authority_context",
+    "timeline_event"
+  ],
+  "governance": [
+    "handoff_note before every route",
+    "receipt after every memory write",
+    "capability token required for all tool calls",
+    "tenant and office scoping enforced",
+    "PII redacted via Presidio DLP before persistence"
+  ]
+}

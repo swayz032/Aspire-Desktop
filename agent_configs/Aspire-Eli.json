@@ -1,6 +1,22 @@
 {
     "_aspire_status": "v1-elevenlabs",
     "_aspire_v2_counterpart": "v2-pending — no Anam persona yet",
+    "_v1_sync": {
+        "version": "1.0",
+        "agent_id": "agent_4201kmqdjm1tfhfaggnnfjax3m6d",
+        "prompt_path": "docs/agents/eli/01_ELI_SYSTEM_PROMPT.md",
+        "kb_paths": [
+            "docs/agents/eli/04_ELI_INBOX_TRIAGE_ENGINE_v1.md",
+            "docs/agents/eli/05_ELI_COMMUNICATIONS_JUDGMENT_PLAYBOOK_v1.md",
+            "docs/agents/eli/06_ELI_MAILBOX_AND_GOVERNANCE_CANON_v1.md"
+        ],
+        "tools_contract_path": "docs/agents/eli/07_ELI_TOOLS_CONTRACT_v1.md",
+        "dynamic_variables": [
+            "business_name", "first_name", "last_name", "salutation", "industry"
+        ],
+        "first_message": "Hey {{salutation}} {{last_name}}, Eli here.",
+        "last_synced_at": null
+    },
     "name": "Aspire - Eli",
     "conversation_config": {
         "asr": {

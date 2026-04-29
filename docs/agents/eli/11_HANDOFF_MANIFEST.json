@@ -1,0 +1,35 @@
+{
+  "name": "ELI_EMAIL_SPECIALIST_PRODUCTION_HANDOFF_v1",
+  "version": "1.0.0",
+  "agent": "Eli",
+  "purpose": "Prompt, KB, tools contract, backend alignment, and Claude Code implementation plan for Aspire's inbox specialist.",
+  "files": [
+    "00_README_FIRST.md",
+    "01_ELI_SYSTEM_PROMPT.md",
+    "02_ELI_VOICE_RULES_v1.md",
+    "03_ELI_TASK_WORKFLOWS_v1.md",
+    "04_ELI_INBOX_TRIAGE_ENGINE_v1.md",
+    "05_ELI_COMMUNICATIONS_JUDGMENT_PLAYBOOK_v1.md",
+    "06_ELI_MAILBOX_AND_GOVERNANCE_CANON_v1.md",
+    "07_ELI_TOOLS_CONTRACT_v1.md",
+    "08_BACKEND_ALIGNMENT_FINDINGS_v1.md",
+    "09_CLAUDE_CODE_IMPLEMENTATION_PLAN_v1.md",
+    "10_ELI_TEST_MATRIX_AND_SUCCESS_EVAL_v1.md"
+  ],
+  "dynamic_variables": [
+    "business_name",
+    "first_name",
+    "last_name",
+    "salutation",
+    "industry"
+  ],
+  "public_tools": [
+    "get_context",
+    "search_emails",
+    "draft_email",
+    "request_approval",
+    "execute_action"
+  ],
+  "routing": "Eli routes only to Ava",
+  "mailbox_model": "Aspire connected inbox (Polaris-backed and/or Gmail-connected)"
+}

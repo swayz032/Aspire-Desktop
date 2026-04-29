@@ -1,0 +1,32 @@
+{
+    "_aspire_status": "v1-elevenlabs",
+    "_aspire_note": "Internal owner-facing call-desk agent. No ElevenLabs Workflow (the custom workflow spec in the handoff is internal call-desk doctrine only, not a Workflow tab config). Handles missed calls, voicemails, texts, callback queue, and internal escalation to Ava.",
+    "name": "Aspire - Sarah Front Desk",
+    "_v1_sync": {
+        "version": "1.0",
+        "agent_id": "agent_8901kmqdjnrte7psp6en4f85m4kt",
+        "agent_id_resolved_note": "Confirmed via mcp__elevenlabs__list_agents 2026-04-28. 'Aspire - Sarah Front Desk' = agent_8901. Voice ID DODLEQrClDo8wCz460ld. Created 2026-03-27.",
+        "prompt_path": "docs/agents/sarah-frontdesk/01_FRONT_DESK_SARAH_SYSTEM_PROMPT.md",
+        "kb_paths": [
+            "docs/agents/sarah-frontdesk/05_Front_Desk_Sarah_Voice_Rules_v1.md",
+            "docs/agents/sarah-frontdesk/06_Front_Desk_Sarah_Call_Desk_Workflows_v1.md",
+            "docs/agents/sarah-frontdesk/07_Front_Desk_Sarah_Triage_Engine_v1.md",
+            "docs/agents/sarah-frontdesk/08_Front_Desk_Sarah_Callback_and_Followup_Canon_v1.md",
+            "docs/agents/sarah-frontdesk/09_Front_Desk_Sarah_Telephony_Governance_Canon_v1.md"
+        ],
+        "tools_contract_path": "docs/agents/sarah-frontdesk/10_FRONT_DESK_SARAH_TOOLS_CONTRACT_v1.md",
+        "dynamic_variables": [
+            "business_name",
+            "first_name",
+            "last_name",
+            "salutation",
+            "industry",
+            "missed_call_count",
+            "urgent_count",
+            "voicemail_count",
+            "text_thread_count"
+        ],
+        "first_message": "I'm Sarah, your front desk specialist in Aspire. Here's what matters first.",
+        "last_synced_at": null
+    }
+}

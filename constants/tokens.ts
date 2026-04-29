@@ -119,6 +119,20 @@ export const Colors = {
     cardHeroWarm: ['#221a1a', '#1a1214'] as readonly [string, string],
   },
 
+  // Memory Engine — Aspire-blue ambient halo + LED ring layered over deep-black canvas
+  // Used by MemoryCard, MemoryCardGlowHalo, LedAmbientSearchBar, MemoryEngineHero
+  memory: {
+    haloOuter: 'rgba(59, 130, 246, 0.18)',
+    haloMid: 'rgba(59, 130, 246, 0.25)',
+    haloRing: 'rgba(59, 130, 246, 0.35)',
+    ledOff: 'rgba(59, 130, 246, 0.30)',
+    ledOn: 'rgba(59, 130, 246, 0.65)',
+    cardBg: '#101012',
+    gradientTint: 'rgba(20, 20, 24, 0.55)',
+    detailDivider: 'rgba(255, 255, 255, 0.07)',
+    pageBackground: '#0a0a0c',
+  },
+
   desktop: {
     cardPadding: 16,
     sectionGap: 14,
@@ -249,6 +263,57 @@ export const Animation = {
   spring: {
     damping: 15,
     stiffness: 150,
+  },
+} as const;
+
+/**
+ * Motion — Aspire-aesthetic motion tokens for living UI elements.
+ *
+ * Spring config (damping 18, stiffness 180) gives a snappy yet organic settle
+ * preferred over linear easing per Framer-style design directive (plan §12.1).
+ *
+ * Used by Memory Engine (LED pulse, card lift, grid stagger) and Front Desk
+ * Setup (hero AvaOrbVideo backdrop, section transitions).
+ */
+export const Motion = {
+  /** LED ambient pulse — search bar outline, status indicators */
+  led: {
+    pulseDuration: 2400,
+    pulseEasing: 'cubic-bezier(0.4, 0, 0.6, 1)',
+    /** Opacity range for breathing effect */
+    opacityMin: 0.35,
+    opacityMax: 0.6,
+  },
+
+  /** Card hover/press feedback — premium 3D floating feel */
+  cardLift: {
+    duration: 180,
+    translateY: -2,
+    pressScale: 0.98,
+    easing: 'ease-out',
+  },
+
+  /** Grid entrance choreography — staggered card fade-in */
+  gridStagger: {
+    /** Delay between consecutive cards in a grid */
+    interval: 60,
+    /** Initial offset for entrance animation */
+    translateY: 8,
+    duration: 280,
+  },
+
+  /** Spring physics for entrance/exit — Framer-style snap with organic settle */
+  spring: {
+    damping: 18,
+    stiffness: 180,
+    mass: 0.9,
+  },
+
+  /** Hero entrance — slightly heavier spring for marquee elements */
+  heroSpring: {
+    damping: 22,
+    stiffness: 160,
+    mass: 1.0,
   },
 } as const;
 

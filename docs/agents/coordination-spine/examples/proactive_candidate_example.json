@@ -1,0 +1,27 @@
+{
+  "candidate_id": "cand_01HXYZ",
+  "schema_version": "v1",
+  "scope": {
+    "tenant_id": "tenant_001",
+    "suite_id": "suite_001",
+    "office_id": "office_014"
+  },
+  "owner_agent": "sarah",
+  "source_event_ids": ["evt_01HXYZ"],
+  "source_memory_ids": ["mem_01ABC"],
+  "entity_type": "lead",
+  "entity_id": "lead_555",
+  "thread_id": "thread_lead_555",
+  "recommended_action": "create_draft",
+  "action_class": "approval_request",
+  "why_now": "Missed high-urgency roof-repair call with callback requested and no follow-up yet.",
+  "confidence": 0.91,
+  "risk_tier": "yellow",
+  "needs_approval": true,
+  "receipt_required": true,
+  "due_at": "2026-04-28T17:15:00Z",
+  "cooldown_until": "2026-04-28T18:15:00Z",
+  "status": "open",
+  "created_at": "2026-04-28T17:05:05Z",
+  "last_activity_at": "2026-04-28T17:05:05Z"
+}

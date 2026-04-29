@@ -1,0 +1,18 @@
+{
+  "session_id": "sess_123",
+  "thread_id": "thread_quote_888",
+  "dynamic_variables": {
+    "office_brief": "Two approvals pending. One quote follow-up overdue. One invoice aging risk.",
+    "thread_summary": "Customer requested revised HVAC quote yesterday. No response since revision was drafted.",
+    "risk_tier": "yellow",
+    "recommended_next_step": "Draft short follow-up and request approval before send.",
+    "timezone": "America/New_York"
+  },
+  "allowed_tools": [
+    "get_recent_memory",
+    "get_thread_summary",
+    "create_draft",
+    "request_approval"
+  ],
+  "trace_id": "trace_789"
+}

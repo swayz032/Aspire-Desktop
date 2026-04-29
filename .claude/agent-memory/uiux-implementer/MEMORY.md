@@ -3,6 +3,12 @@
 ## Onboarding
 - [Onboarding Modal Rewrite](onboarding-modal-rewrite.md) -- 4-step floating modal replacing scroll form, spring animations, review step
 
+## Settings Pages (2026-04-28)
+- [Front Desk Setup Pattern](front-desk-setup-pattern.md) -- numbered SectionPanel + AvaOrbVideo hero + 5-section layout, Pass 10 Lane B
+
+## Cards
+- [BaseCard fixed 580px height](basecard-fixed-height.md) -- fixed height + internal ScrollView, NOT min-height + growth. Wave 4.1 polish.
+
 ## Project Structure
 - **Token files**: `constants/tokens.ts` (main) + `constants/canvas.tokens.ts` (canvas-specific)
 - **Canvas components**: `components/canvas/` — CanvasWorkspace, CanvasGrid, CanvasModeToggle, VignetteOverlay, Stage, LiveLens, etc.

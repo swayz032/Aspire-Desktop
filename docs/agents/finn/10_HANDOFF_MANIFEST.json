@@ -1,0 +1,37 @@
+{
+  "name": "FINN_FINANCE_HUB_ELEVENLABS_PRODUCTION_HANDOFF_v1",
+  "version": "1.0.0",
+  "purpose": "Production-grade Finn agent handoff for ElevenLabs + Finance Hub",
+  "files": [
+    "README.md",
+    "01_FINN_SYSTEM_PROMPT.md",
+    "02_FINN_VOICE_RULES_v1.md",
+    "03_FINN_TASK_WORKFLOWS_v1.md",
+    "04_FINN_STRATEGIC_PLAYBOOK_v1.md",
+    "05_FINANCE_HUB_CANON_v1.md",
+    "06_FINN_TOOLS_CONTRACT_v1.md",
+    "07_ELEVENLABS_AGENT_CONFIG_v1.md",
+    "08_FINN_TEST_MATRIX_AND_SUCCESS_EVAL_v1.md",
+    "09_CLAUDE_CODE_IMPLEMENTATION_PLAN_v1.md"
+  ],
+  "dynamic_variables": [
+    "business_name",
+    "first_name",
+    "last_name",
+    "salutation",
+    "industry"
+  ],
+  "routing_rule": "Finn routes only to Ava",
+  "provider_truth_hierarchy": {
+    "plaid": "bank truth",
+    "quickbooks": "books and posting authority",
+    "stripe": "invoice and payment truth"
+  },
+  "governance": [
+    "preview before apply",
+    "approval when required",
+    "receipt after state change",
+    "idempotency for mutating operations",
+    "tenant and office scoping"
+  ]
+}

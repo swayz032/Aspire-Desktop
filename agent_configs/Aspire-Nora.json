@@ -1,6 +1,29 @@
 {
     "_aspire_status": "v1-elevenlabs",
     "_aspire_v2_counterpart": "v2-pending — no Anam persona yet",
+    "_v1_sync": {
+        "version": "1.0",
+        "agent_id": "agent_1901kmqdjmwmfqg9rqr5jngfydnw",
+        "prompt_path": "docs/agents/nora/01_NORA_SYSTEM_PROMPT.md",
+        "kb_paths": [
+            "docs/agents/nora/04_NORA_CONFERENCE_INTELLIGENCE_PLAYBOOK_v1.md",
+            "docs/agents/nora/05_NORA_RECAP_PACKET_CANON_v1.md",
+            "docs/agents/nora/06_NORA_PRIVACY_AND_SHARING_CANON_v1.md",
+            "docs/agents/nora/07_NORA_BRIEFING_AND_RESEARCH_TRIGGER_POLICY_v1.md",
+            "docs/agents/nora/08_NORA_TEAM_ROUTING_POLICY_v1.md",
+            "docs/agents/nora/09_NORA_MEETING_PURPOSE_PRESETS_v1.md",
+            "docs/agents/nora/10_NORA_START_POLICY_AND_TRANSCRIPT_ARCHITECTURE_v1.md",
+            "docs/agents/nora/11_NORA_OFFICE_INBOX_AND_OFFICE_MEMORY_POLICY_v1.md",
+            "docs/agents/nora/12_NORA_CONFERENCE_AUTHORITY_QUEUE_POLICY_v1.md"
+        ],
+        "tools_contract_path": "docs/agents/nora/13_NORA_TOOLS_CONTRACT_v1.md",
+        "dynamic_variables": [
+            "business_name", "first_name", "last_name", "salutation",
+            "industry", "meeting_purpose", "recording_mode"
+        ],
+        "first_message": "Nora here. I'm ready when you are.",
+        "last_synced_at": null
+    },
     "name": "Aspire - Nora",
     "conversation_config": {
         "asr": {

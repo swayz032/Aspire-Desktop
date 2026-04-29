@@ -22,7 +22,14 @@
     "sentry:upload:sourcemaps": "node scripts/sentry-release.mjs web",
     "build:static": "node scripts/build-static.mjs",
     "postinstall": "node scripts/copy-worklets.js 2>/dev/null || true",
-    "sentry:release:web": "node scripts/sentry-release.mjs web"
+    "sentry:release:web": "node scripts/sentry-release.mjs web",
+    "sync-agents": "node scripts/sync-elevenlabs-ava.mjs && node scripts/sync-elevenlabs-finn.mjs && node scripts/sync-elevenlabs-eli.mjs && node scripts/sync-elevenlabs-nora.mjs && node scripts/sync-elevenlabs-sarah-receptionist.mjs && node scripts/sync-elevenlabs-sarah-frontdesk.mjs && node scripts/sync-anam-ava-canonical.mjs && node scripts/sync-anam-finn.mjs",
+    "sync-agent:ava": "node scripts/sync-elevenlabs-ava.mjs && node scripts/sync-anam-ava-canonical.mjs",
+    "sync-agent:finn": "node scripts/sync-elevenlabs-finn.mjs && node scripts/sync-anam-finn.mjs",
+    "sync-agent:eli": "node scripts/sync-elevenlabs-eli.mjs",
+    "sync-agent:nora": "node scripts/sync-elevenlabs-nora.mjs",
+    "sync-agent:sarah-receptionist": "node scripts/sync-elevenlabs-sarah-receptionist.mjs",
+    "sync-agent:sarah-frontdesk": "node scripts/sync-elevenlabs-sarah-frontdesk.mjs"
   },
   "jest": {
     "preset": "jest-expo"

@@ -148,6 +148,20 @@ Key new bugs (not previously captured):
 - **LOW**: `routes/admin.py:794` + `server.py:392` — `asyncio.get_event_loop()` is deprecated in Python 3.10+ when called in async context; use `asyncio.get_running_loop()`.
 - **INFO**: `_check_redis()` at admin.py:777 is now CORRECT — uses `run_in_executor` properly. Prior Cycle 3 report flagged line 728 incorrectly. The function at 777 is an `async def` and uses executor correctly.
 
+## Wave D Playwright Coverage (2026-04-29)
+
+- `e2e/research-modal-carousel.spec.ts` — updated in D.5: fixed scrim assertion (element deleted in D.1), added horizontal-cards describe block + ProductDetailModal describe block + prewarm-isolation describe block
+- `e2e/anam-session-prewarm.spec.ts` — NEW in D.5: 3 tests for Anam session pre-warm contract (C.4)
+- `e2e/native-parity-audit.md` — NEW in D.6: cross-platform parity audit for BaseCard, HotelCard, ProductCard, ProductDetailModal
+
+Key patterns for horizontal card tests:
+- `research-modal-scrim` testID is DELETED since D.1 — assert `backdropFilter` does not contain 'blur' instead
+- Horizontal card orientation: `getCardOrientation('HotelShortlist') → 'horizontal'`, `getCardOrientation('LandlordPropertyPack') → 'vertical'`
+- RN-Web inline transform for peek cards: readable via `el.style.transform` (literal string like `"translate(-50%, -50%) translateX(70%) translateZ(-90px) rotateY(-15deg) scale(0.82)"`)
+- `data-card-offset` attribute exposed via `dataSet={{ cardOffset: String(offset) }}`
+- Demo page accepts `?type=` param for artifact_type — use `?type=LandlordPropertyPack` for vertical regression test
+- Playwright cannot intercept server→orchestrator fetch (prewarm calls) — test at contract level only
+
 ## Test Commands
 
 ```bash
@@ -159,4 +173,7 @@ cd /mnt/c/Users/tonio/Projects/myapp/Aspire-desktop && npx jest hooks/ --coverag
 
 # Run with verbose output
 cd /mnt/c/Users/tonio/Projects/myapp/Aspire-desktop && npx jest --verbose --watchAll=false
+
+# Run Playwright e2e specs
+cd C:\Users\tonio\Projects\myapp\Aspire-desktop && pnpm playwright test e2e/research-modal-carousel.spec.ts e2e/anam-session-prewarm.spec.ts
 ```
