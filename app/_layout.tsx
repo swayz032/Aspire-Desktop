@@ -220,6 +220,34 @@ function useWebDesktopSetup() {
 
 const DEV_BYPASS_AUTH = allowDevSupabaseBypass();
 
+// Loud runtime banner whenever the dev bypass is ACTIVE — so a developer
+// never accidentally ships or demos with auth disabled. The bypass itself
+// is now host-gated to localhost-only (lib/supabaseRuntime.ts), but the
+// banner is the second layer of "this is not normal" signaling.
+if (DEV_BYPASS_AUTH && typeof console !== 'undefined') {
+  console.warn(
+    '%c[AUTH BYPASS ACTIVE]%c Dev mode — login is bypassed. NEVER deploy this build.',
+    'background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;font-weight:700',
+    'color:#fca5a5',
+  );
+}
+if (DEV_BYPASS_AUTH && typeof window !== 'undefined' && typeof document !== 'undefined') {
+  // Inject a top-screen warning band so the human looking at the app sees it.
+  const banner = document.createElement('div');
+  banner.id = 'aspire-dev-bypass-banner';
+  banner.style.cssText =
+    'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;' +
+    'padding:6px 12px;font-family:system-ui,-apple-system,sans-serif;font-size:12px;' +
+    'font-weight:700;text-align:center;letter-spacing:0.4px;box-shadow:0 2px 8px rgba(0,0,0,0.3)';
+  banner.textContent =
+    '⚠ AUTH BYPASS ACTIVE — local dev only. NEVER deploy this build.';
+  if (document.body) {
+    document.body.appendChild(banner);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => document.body?.appendChild(banner));
+  }
+}
+
 function isSyntheticPublicLoginRequest(): boolean {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
   const search = new URLSearchParams(window.location.search);

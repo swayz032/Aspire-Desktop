@@ -57,7 +57,7 @@ import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 // One line — no other code changes required. The Image element below is
 // already wired and the gradient fallback drops out automatically.
 
-const HERO_PHOTO: ImageSourcePropType | null = null;
+const HERO_PHOTO: ImageSourcePropType | null = require('@/assets/images/front-desk-setup-hero.jpg');
 
 // ---------------------------------------------------------------------------
 // Props
