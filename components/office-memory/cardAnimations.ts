@@ -55,12 +55,24 @@ export function injectMemoryKeyframes(): void {
       transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
                   box-shadow 220ms cubic-bezier(0.4, 0, 0.2, 1),
                   border-color 220ms ease-out;
+      /* Always-on subtle Aspire-blue glow — barely there but unmistakable.
+         Per plan §19 Pass 13.E + user direction "soft subtle glow regardless,
+         not loud." Intensifies on hover. */
+      box-shadow: 0 0 0 1px rgba(59,130,246,0.18),
+                  0 0 14px 0 rgba(59,130,246,0.12),
+                  inset 0 1px 0 rgba(255,255,255,0.04);
     }
     .aspire-memory-card:hover {
       transform: translateY(-2px);
+      box-shadow: 0 0 0 1px rgba(59,130,246,0.45),
+                  0 0 24px 4px rgba(59,130,246,0.30),
+                  inset 0 1px 0 rgba(255,255,255,0.06);
     }
     .aspire-memory-card:active {
       transform: translateY(-1px);
+      box-shadow: 0 0 0 1px rgba(59,130,246,0.55),
+                  0 0 18px 2px rgba(59,130,246,0.32),
+                  inset 0 1px 0 rgba(255,255,255,0.06);
     }
     .aspire-memory-bookmark {
       transition: background-color 160ms ease-out, transform 120ms ease-out;

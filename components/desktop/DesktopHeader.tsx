@@ -628,17 +628,23 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 16,
     zIndex: 100,
+    position: 'relative', // required for absolute-positioned centerSection
   },
   leftSection: { flex: 1, minWidth: 0 },
+  // Center search is absolutely positioned at the viewport horizontal midpoint
+  // so its placement is independent of left/right cluster widths. Without this,
+  // the search visually shifts toward whichever side has fewer pixels of content.
   centerSection: {
-    flex: 1,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
+    position: 'absolute',
+    left: '50%' as unknown as number,
+    top: 0,
+    bottom: 0,
+    width: 480,
+    marginLeft: -240, // -width/2 — centers around left:50%
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 0,
-  },
+    pointerEvents: 'box-none' as any,
+  } as any,
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -650,7 +656,7 @@ const s = StyleSheet.create({
     borderColor: Colors.border.subtle,
     gap: 10,
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 480,
     minWidth: 0,
     ...(Platform.OS === 'web' ? { transition: TRANSITION_FAST, cursor: 'pointer' } : {}),
   } as any,

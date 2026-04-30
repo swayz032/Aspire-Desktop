@@ -25,7 +25,10 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { AvaOrbVideo } from '@/components/AvaOrbVideo';
+// Use the procedural AvaOrb (transparent alpha by construction) instead of
+// AvaOrbVideo — the MP4's opaque black frame edges read as a square on the
+// deep-black canvas. Procedural orb floats correctly. Same {state,size} props.
+import { AvaOrb } from '@/components/AvaOrb';
 import { Colors } from '@/constants/tokens';
 import { LedAmbientSearchBar } from './LedAmbientSearchBar';
 
@@ -61,9 +64,10 @@ export function MemoryEngineHero({ onSearch }: MemoryEngineHeroProps) {
         />
       )}
 
-      {/* Centerpiece orb — 220 per spec, looping, premium "living blob" */}
+      {/* Centerpiece orb — 220 per spec, procedural with true alpha so it
+          floats on the black canvas instead of reading as an opaque square. */}
       <View style={styles.orbWrap}>
-        <AvaOrbVideo state="idle" size={220} />
+        <AvaOrb state="idle" size={220} />
       </View>
 
       {/* Display title — confident hierarchy, generous letter-spacing tuning */}

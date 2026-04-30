@@ -29,28 +29,26 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { id: 'home', label: 'Home', icon: 'home', iconActive: 'home', route: '/(tabs)' },
-  { id: 'bookings', label: 'Bookings', icon: 'calendar', iconActive: 'calendar', route: '/bookings' },
-  { 
-    id: 'inbox', 
-    label: 'Inbox', 
-    icon: 'mail', 
-    iconActive: 'mail', 
+  {
+    id: 'inbox',
+    label: 'Inbox',
+    icon: 'mail',
+    iconActive: 'mail',
     route: '/(tabs)/inbox',
     subItems: [
       { id: 'mailbox-setup', label: 'Mailbox Setup', route: '/inbox/setup', ownerOnly: true },
     ]
   },
-  { 
-    id: 'calls', 
-    label: 'Return Calls', 
-    icon: 'call', 
-    iconActive: 'call', 
+  {
+    id: 'calls',
+    label: 'Return Calls',
+    icon: 'call',
+    iconActive: 'call',
     route: '/session/calls',
     subItems: [
       { id: 'front-desk-setup', label: 'Front Desk Setup', route: '/session/calls/setup' },
     ]
   },
-  { id: 'receipts', label: 'Receipts', icon: 'document-text', iconActive: 'document-text', route: '/(tabs)/receipts' },
   { id: 'office-memory', label: 'Office Memory', icon: 'archive', iconActive: 'archive', route: '/office-memory' },
   { id: 'office-store', label: 'Office Store', icon: 'storefront', iconActive: 'storefront', route: '/office-store' },
   { id: 'team', label: 'Team Workspace', icon: 'people', iconActive: 'people', route: '/team-workspace' },
