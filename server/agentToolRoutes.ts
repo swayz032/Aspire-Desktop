@@ -1047,6 +1047,11 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       if (effectiveStoreId) invokePayload.store_id = effectiveStoreId;
       if (typeof body.on_sale === 'boolean') invokePayload.on_sale = body.on_sale;
       if (typeof body.voice_path === 'boolean') invokePayload.voice_path = body.voice_path;
+      // Round 4 — user_address triggers Google Places nearest-HD resolver
+      // in the orchestrator. Optional; backend gracefully falls through to
+      // city→zip + Wave A.5 disambiguation when missing.
+      const userAddressText = typeof body.user_address === 'string' ? body.user_address.trim() : '';
+      if (userAddressText) invokePayload.user_address = userAddressText;
     }
     const { response: a2aResp, endpoint: invokeEndpoint } = await dispatchOrchestratorInvoke(
       orchestratorUrl,
