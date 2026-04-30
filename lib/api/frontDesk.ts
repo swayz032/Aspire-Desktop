@@ -1,0 +1,281 @@
+/**
+ * Front Desk Setup API client — Pass 17 §17.C.
+ *
+ * Thin client wrappers around the Pass 16 backend routes:
+ *   GET   /v1/front-desk/config                — read current versioned config
+ *   PATCH /v1/front-desk/config                — versioned write (Yellow tier)
+ *   POST  /v1/front-desk/config/test-call      — fire test inbound call (Yellow)
+ *   POST  /v1/twilio/available-numbers         — search numbers (Green)
+ *   POST  /v1/twilio/purchase-number           — purchase + EL attach (Yellow)
+ *
+ * All calls go through same-origin `/api/v1/...` so the Express server proxy
+ * (mirroring server/routes.ts:7918 enrich-product) mints the capability token
+ * + injects Gateway-trusted scope headers (`X-Tenant-Id`, `X-Suite-Id`,
+ * `X-Office-Id`) before forwarding to the Python orchestrator. The frontend
+ * never holds the signing key (Law #5).
+ *
+ * Auth headers (`Authorization: Bearer <jwt>`, `X-Suite-Id`) are added by the
+ * caller-supplied `authenticatedFetch` (from `useAuthFetch()`), and we add
+ * `X-Office-Id` per call.
+ *
+ * Backend response shapes match the verified contracts in
+ * `backend/orchestrator/src/aspire_orchestrator/routes/front_desk.py` and
+ * `routes/telephony.py`.
+ */
+
+import { API_BASE } from './officeMemory';
+
+type FetchFn = (url: string, options?: RequestInit) => Promise<Response>;
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+export class FrontDeskApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'FrontDeskApiError';
+  }
+}
+
+async function expectJson<T>(resp: Response, fallbackCode: string): Promise<T> {
+  if (!resp.ok) {
+    let code = fallbackCode;
+    let message = `${fallbackCode} (${resp.status})`;
+    try {
+      const errBody = await resp.json();
+      code = errBody?.detail?.error ?? errBody?.error ?? code;
+      message = errBody?.detail?.message ?? errBody?.message ?? message;
+    } catch {
+      // fall through
+    }
+    throw new FrontDeskApiError(resp.status, code, message);
+  }
+  return (await resp.json()) as T;
+}
+
+// ---------------------------------------------------------------------------
+// Front Desk config types — mirror routes/front_desk.py response shape.
+// ---------------------------------------------------------------------------
+
+export type PublicNumberMode = 'ASPIRE_NUMBER' | 'KEEP_CURRENT_NUMBER';
+export type CatchMode = 'APP_ONLY' | 'PHONE_ONLY' | 'APP_AND_PHONE_SIMUL_RING';
+export type AfterHoursMode = 'take_message' | 'ask_callback_window' | 'try_transfer_then_message';
+export type BusyMode = 'take_message' | 'ask_callback_window' | 'try_transfer_then_message';
+export type ForwardingStatus = 'NOT_CONFIGURED' | 'PENDING' | 'VERIFIED' | 'LAST_TEST_FAILED';
+
+export interface FrontDeskConfigRow {
+  id: string;
+  tenant_id: string;
+  suite_id: string;
+  office_id: string;
+  version_no: number;
+  is_current: boolean;
+  public_number_mode: PublicNumberMode;
+  catch_mode: CatchMode;
+  after_hours_mode: AfterHoursMode;
+  busy_mode: BusyMode;
+  greeting_name_override: string;
+  pronunciation_override: string;
+  forwarding_status?: ForwardingStatus | null;
+  last_forwarding_test_at?: string | null;
+  last_forwarding_test_result?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface RoutingContactRow {
+  id: string;
+  tenant_id: string;
+  suite_id: string;
+  office_id: string;
+  role: string;
+  label: string;
+  phone: string;
+  sip_uri?: string;
+  email?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface FrontDeskConfigResponse {
+  success: boolean;
+  config: FrontDeskConfigRow | Record<string, never>;
+  routing_contacts: RoutingContactRow[];
+}
+
+export interface FrontDeskConfigPatchPartial {
+  public_number_mode?: PublicNumberMode;
+  catch_mode?: CatchMode;
+  after_hours_mode?: AfterHoursMode;
+  busy_mode?: BusyMode;
+  greeting_name_override?: string;
+  pronunciation_override?: string;
+}
+
+export interface FrontDeskConfigPatchResponse {
+  success: boolean;
+  config: FrontDeskConfigRow;
+  receipt_id: string;
+}
+
+export interface TestCallResponse {
+  success: boolean;
+  test_result: 'success' | 'failed';
+  call_sid: string;
+  receipt_id: string;
+}
+
+// ---------------------------------------------------------------------------
+// Twilio number types — mirror routes/telephony.py response shape.
+// ---------------------------------------------------------------------------
+
+export interface AvailableNumber {
+  phone_number: string;
+  region?: string;
+  monthly_cost_cents?: number;
+  capabilities?: { voice?: boolean; sms?: boolean; mms?: boolean };
+}
+
+export interface AvailableNumbersResponse {
+  success: boolean;
+  numbers: AvailableNumber[];
+  count: number;
+}
+
+export interface PurchasedNumber {
+  phone_number: string;
+  twilio_sid: string;
+  elevenlabs_phone_number_id: string;
+  attached_to_agent_id: string;
+  receipt_id: string;
+  purchased_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Endpoints
+// ---------------------------------------------------------------------------
+
+const PROXY_PREFIX = '/api/v1';
+
+interface FetchOpts {
+  authenticatedFetch: FetchFn;
+  officeId: string;
+  signal?: AbortSignal;
+}
+
+export async function fetchFrontDeskConfig(
+  opts: FetchOpts,
+): Promise<FrontDeskConfigResponse> {
+  const url = `${API_BASE}${PROXY_PREFIX}/front-desk/config?office_id=${encodeURIComponent(opts.officeId)}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<FrontDeskConfigResponse>(resp, 'FRONT_DESK_CONFIG_GET_FAILED');
+}
+
+/**
+ * Yellow tier write — server proxy mints the capability token (scope =
+ * `front_desk:config_save`) before forwarding to the orchestrator.
+ */
+export async function patchFrontDeskConfig(
+  opts: FetchOpts,
+  partial: FrontDeskConfigPatchPartial,
+): Promise<FrontDeskConfigPatchResponse> {
+  const url = `${API_BASE}${PROXY_PREFIX}/front-desk/config`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': opts.officeId,
+    },
+    body: JSON.stringify(partial),
+    signal: opts.signal,
+  });
+  return expectJson<FrontDeskConfigPatchResponse>(resp, 'FRONT_DESK_CONFIG_PATCH_FAILED');
+}
+
+/**
+ * Green tier — search Twilio available US local numbers.
+ */
+export async function searchAvailableNumbers(
+  opts: FetchOpts,
+  areaCode: string,
+  contains?: string,
+  limit: number = 20,
+): Promise<AvailableNumber[]> {
+  const url = `${API_BASE}${PROXY_PREFIX}/twilio/available-numbers`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': opts.officeId,
+    },
+    body: JSON.stringify({ area_code: areaCode, contains, limit }),
+    signal: opts.signal,
+  });
+  const json = await expectJson<AvailableNumbersResponse>(resp, 'TWILIO_SEARCH_FAILED');
+  return json.numbers ?? [];
+}
+
+/**
+ * Yellow tier — purchase a Twilio number, import to ElevenLabs, attach to
+ * Sarah Receptionist. Server proxy mints capability token (scope =
+ * `telephony:purchase`) before forwarding.
+ *
+ * @param idempotencyKey caller-supplied key; required by backend (10-128 chars).
+ */
+export async function purchaseNumber(
+  opts: FetchOpts,
+  phoneNumber: string,
+  idempotencyKey: string,
+): Promise<PurchasedNumber> {
+  const url = `${API_BASE}${PROXY_PREFIX}/twilio/purchase-number`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': opts.officeId,
+    },
+    body: JSON.stringify({
+      phone_number: phoneNumber,
+      idempotency_key: idempotencyKey,
+    }),
+    signal: opts.signal,
+  });
+  const json = await expectJson<PurchasedNumber & { success: boolean }>(resp, 'TWILIO_PURCHASE_FAILED');
+  return {
+    phone_number: json.phone_number,
+    twilio_sid: json.twilio_sid,
+    elevenlabs_phone_number_id: json.elevenlabs_phone_number_id,
+    attached_to_agent_id: json.attached_to_agent_id,
+    receipt_id: json.receipt_id,
+    purchased_at: json.purchased_at,
+  };
+}
+
+/**
+ * Yellow tier — fire a test inbound call to the office's purchased number.
+ * Server proxy mints capability token (scope = `front_desk:test_call`) before
+ * forwarding.
+ */
+export async function triggerTestCall(opts: FetchOpts): Promise<TestCallResponse> {
+  const url = `${API_BASE}${PROXY_PREFIX}/front-desk/config/test-call`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': opts.officeId,
+    },
+    body: JSON.stringify({}),
+    signal: opts.signal,
+  });
+  return expectJson<TestCallResponse>(resp, 'FRONT_DESK_TEST_CALL_FAILED');
+}

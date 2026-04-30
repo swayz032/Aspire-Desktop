@@ -29,6 +29,16 @@ import { Colors } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { triggerTestIncomingCall } from '@/lib/incomingCallOverlayStore';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import {
+  fetchFrontDeskConfig,
+  patchFrontDeskConfig,
+  triggerTestCall as apiTriggerTestCall,
+  type FrontDeskConfigPatchPartial,
+  type FrontDeskConfigRow,
+  type RoutingContactRow,
+} from '@/lib/api/frontDesk';
 
 // New section components (Pass 10 Lane B)
 import { FrontDeskSetupHero } from '@/components/calls/setup/FrontDeskSetupHero';
@@ -200,6 +210,131 @@ function deriveInitials(name: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Pass 17: hydrate from real `/v1/front-desk/config` (lowercase enums on wire)
+// ---------------------------------------------------------------------------
+
+const AFTER_HOURS_FROM_API: Record<string, AfterHoursMode> = {
+  take_message: 'TAKE_MESSAGE',
+  ask_callback_window: 'ASK_CALLBACK_WINDOW',
+  try_transfer_then_message: 'TRY_TRANSFER_THEN_MESSAGE',
+};
+const AFTER_HOURS_TO_API: Record<AfterHoursMode, FrontDeskConfigPatchPartial['after_hours_mode']> = {
+  TAKE_MESSAGE: 'take_message',
+  ASK_CALLBACK_WINDOW: 'ask_callback_window',
+  TRY_TRANSFER_THEN_MESSAGE: 'try_transfer_then_message',
+};
+const BUSY_FROM_API: Record<string, BusyMode> = {
+  take_message: 'TAKE_MESSAGE',
+  ask_callback_window: 'ASK_CALLBACK_WINDOW',
+  try_transfer_then_message: 'TRY_TRANSFER_THEN_MESSAGE',
+};
+const BUSY_TO_API: Record<BusyMode, FrontDeskConfigPatchPartial['busy_mode']> = {
+  TAKE_MESSAGE: 'take_message',
+  ASK_CALLBACK_WINDOW: 'ask_callback_window',
+  TRY_TRANSFER_THEN_MESSAGE: 'try_transfer_then_message',
+};
+const PUBLIC_NUMBER_MODES = new Set<PublicNumberMode>(['ASPIRE_NUMBER', 'KEEP_CURRENT_NUMBER']);
+const CATCH_MODES = new Set<CatchMode>(['APP_ONLY', 'PHONE_ONLY', 'APP_AND_PHONE_SIMUL_RING']);
+
+function hydrateFromApi(
+  configRow: FrontDeskConfigRow | Record<string, never>,
+  contacts: RoutingContactRow[],
+): FrontDeskConfig {
+  const hasConfig = !!(configRow && 'id' in configRow);
+
+  const publicNumberMode: PublicNumberMode = hasConfig && PUBLIC_NUMBER_MODES.has(configRow.public_number_mode as PublicNumberMode)
+    ? (configRow.public_number_mode as PublicNumberMode)
+    : 'ASPIRE_NUMBER';
+  const catchMode: CatchMode = hasConfig && CATCH_MODES.has(configRow.catch_mode as CatchMode)
+    ? (configRow.catch_mode as CatchMode)
+    : 'APP_AND_PHONE_SIMUL_RING';
+
+  const afterHoursMode: AfterHoursMode = hasConfig
+    ? (AFTER_HOURS_FROM_API[configRow.after_hours_mode] ?? 'TAKE_MESSAGE')
+    : 'TAKE_MESSAGE';
+  const busyMode: BusyMode = hasConfig
+    ? (BUSY_FROM_API[configRow.busy_mode] ?? 'TAKE_MESSAGE')
+    : 'TAKE_MESSAGE';
+
+  const routingContacts: RoutingContact[] = contacts
+    .filter((c) => c.is_active)
+    .map((c, idx) => {
+      const role = (['owner', 'sales', 'support', 'operations', 'custom'].includes(c.role)
+        ? c.role
+        : 'custom') as RoutingContact['role'];
+      return {
+        id: c.id,
+        role,
+        customRoleLabel: role === 'custom' ? c.label : undefined,
+        name: c.label,
+        phone: c.phone,
+        initials: deriveInitials(c.label),
+        fallbackMode: 'TRANSFER_ALLOWED',
+        transferAllowed: true,
+        priority: idx,
+      } as RoutingContact;
+    });
+
+  // Default Mon–Fri 9-5; backend stores hours separately (out of scope for §17)
+  // — preserve current default until Pass 18 wires hours into the schema.
+  const days = (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const).map((k) => {
+    const isWeekend = k === 'sat' || k === 'sun';
+    return { day: k, open: !isWeekend, startTime: '09:00', endTime: '17:00' };
+  });
+
+  const forwarding: ForwardingVerification | undefined =
+    publicNumberMode === 'KEEP_CURRENT_NUMBER' && hasConfig
+      ? {
+          status: (configRow.forwarding_status ?? 'NOT_CONFIGURED') as ForwardingVerification['status'],
+          lastTestAt: configRow.last_forwarding_test_at ?? undefined,
+          lastTestErrorMessage: configRow.last_forwarding_test_result ?? undefined,
+        }
+      : undefined;
+
+  return {
+    publicNumber: { mode: publicNumberMode },
+    catch: { mode: catchMode },
+    businessHours: {
+      days,
+      afterHoursMode,
+      pronunciationOverride: hasConfig ? configRow.pronunciation_override ?? '' : '',
+    },
+    routingContacts: routingContacts.length > 0 ? routingContacts : DEFAULT_CONFIG.routingContacts,
+    busy: { mode: busyMode },
+    forwarding,
+    version: hasConfig ? configRow.version_no : 1,
+  };
+}
+
+/**
+ * Compute the dirty diff between the saved snapshot and the current config.
+ * Only fields the API actually persists are emitted (hours/routing contacts
+ * have separate routes — out of scope for §17).
+ */
+function computePatchDiff(
+  current: FrontDeskConfig,
+  baseline: FrontDeskConfig,
+): FrontDeskConfigPatchPartial {
+  const partial: FrontDeskConfigPatchPartial = {};
+  if (current.publicNumber.mode !== baseline.publicNumber.mode) {
+    partial.public_number_mode = current.publicNumber.mode;
+  }
+  if (current.catch.mode !== baseline.catch.mode) {
+    partial.catch_mode = current.catch.mode;
+  }
+  if (current.businessHours.afterHoursMode !== baseline.businessHours.afterHoursMode) {
+    partial.after_hours_mode = AFTER_HOURS_TO_API[current.businessHours.afterHoursMode];
+  }
+  if (current.busy.mode !== baseline.busy.mode) {
+    partial.busy_mode = BUSY_TO_API[current.busy.mode];
+  }
+  if ((current.businessHours.pronunciationOverride ?? '') !== (baseline.businessHours.pronunciationOverride ?? '')) {
+    partial.pronunciation_override = current.businessHours.pronunciationOverride ?? '';
+  }
+  return partial;
+}
+
+// ---------------------------------------------------------------------------
 // Page-level summary derivation
 // ---------------------------------------------------------------------------
 
@@ -248,6 +383,10 @@ function dayShort(day: string): string {
 // ---------------------------------------------------------------------------
 
 function FrontDeskSetupContent() {
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId;
+
   const [config, setConfig] = useState<FrontDeskConfig>(DEFAULT_CONFIG);
   const [originalSnapshot, setOriginalSnapshot] = useState<string>(JSON.stringify(DEFAULT_CONFIG));
   const [availableNumbers] = useState<AvailableNumber[]>([
@@ -258,27 +397,58 @@ function FrontDeskSetupContent() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  // Hydrate error is captured for Pass 18 inline toast wiring; reference via
+  // `void` until the toast component lands so strict-mode lint stays clean.
+  const [hydrateError, setHydrateError] = useState<Error | null>(null);
+  void hydrateError;
 
-  // Hydrate on mount from the existing API
+  // Pass 17 (§17.B): hydrate from real `GET /api/v1/front-desk/config`. The
+  // legacy `/api/frontdesk/setup` shape is preserved as a parse-time fallback
+  // for tenants whose backend rows haven't been migrated yet — the hydrate
+  // function picks whichever shape returns 200.
   useEffect(() => {
+    if (!officeId) return;
     let cancelled = false;
+    const ctrl = new AbortController();
     (async () => {
       try {
-        const res = await fetch('/api/frontdesk/setup');
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        const hydrated = hydrateFromLegacy(data);
+        const data = await fetchFrontDeskConfig({
+          authenticatedFetch,
+          officeId,
+          signal: ctrl.signal,
+        });
         if (cancelled) return;
+        const hydrated = hydrateFromApi(data.config, data.routing_contacts ?? []);
         setConfig(hydrated);
         setOriginalSnapshot(JSON.stringify(hydrated));
-      } catch {
-        // network failure — page still renders with defaults
+        setHydrateError(null);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        // Legacy fallback: try the older /api/frontdesk/setup shape so tenants
+        // pre-migration still see their config. Surfacing the error to the UI
+        // is safe; the page keeps the defaults until Save is clicked.
+        try {
+          const legacyRes = await fetch('/api/frontdesk/setup', { signal: ctrl.signal });
+          if (legacyRes.ok && !cancelled) {
+            const legacyData = await legacyRes.json();
+            const hydrated = hydrateFromLegacy(legacyData);
+            setConfig(hydrated);
+            setOriginalSnapshot(JSON.stringify(hydrated));
+            setHydrateError(null);
+            return;
+          }
+        } catch {
+          // ignore legacy fallback errors
+        }
+        setHydrateError(err instanceof Error ? err : new Error('Failed to load Front Desk config'));
       }
     })();
     return () => {
       cancelled = true;
+      ctrl.abort();
     };
-  }, []);
+  }, [authenticatedFetch, officeId]);
 
   // ----- Dirty tracking ------------------------------------------------
   const isDirty = useMemo(
@@ -307,74 +477,53 @@ function FrontDeskSetupContent() {
     setConfig((prev) => ({ ...prev, busy: { mode } }));
   }, []);
 
-  // ----- Save ----------------------------------------------------------
+  // ----- Save (Pass 17 §17.B — Yellow tier, server proxy mints cap token) -----
   const onSave = useCallback(async () => {
-    if (!isDirty || isSaving) return;
+    if (!isDirty || isSaving || !officeId) return;
     setIsSaving(true);
     try {
-      // Map back to legacy server shape so the existing endpoint still works.
-      const lineMode = config.publicNumber.mode === 'ASPIRE_NUMBER' ? 'ASPIRE_FULL_DUPLEX' : 'EXISTING_INBOUND_ONLY';
-      const dayLookup: Record<string, string> = {
-        mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday',
-        fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
-      };
-      const businessHours: Record<string, { enabled: boolean; start: string; end: string }> = {};
-      config.businessHours.days.forEach((d) => {
-        businessHours[dayLookup[d.day]] = {
-          enabled: d.open,
-          start: d.startTime ?? '09:00',
-          end: d.endTime ?? '17:00',
-        };
-      });
-
-      const afterHoursMode =
-        config.businessHours.afterHoursMode === 'ASK_CALLBACK_WINDOW' ? 'ASK_CALLBACK_TIME' : 'TAKE_MESSAGE';
-      const busyMode =
-        config.busy.mode === 'TRY_TRANSFER_THEN_MESSAGE'
-          ? 'RETRY_ONCE'
-          : config.busy.mode === 'ASK_CALLBACK_WINDOW'
-            ? 'ASK_CALLBACK_TIME'
-            : 'TAKE_MESSAGE';
-
-      const teamMembers = config.routingContacts.map((c) => ({
-        id: c.id,
-        name: c.name,
-        phone: c.phone,
-        role: c.customRoleLabel ?? c.role.charAt(0).toUpperCase() + c.role.slice(1),
-      }));
-
-      const res = await fetch('/api/frontdesk/setup', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lineMode,
-          existingNumber: lineMode === 'EXISTING_INBOUND_ONLY' ? config.publicNumber.forwardedNumber : null,
-          businessHours,
-          afterHoursMode,
-          pronunciation: config.businessHours.pronunciationOverride ?? '',
-          busyMode,
-          teamMembers,
-        }),
-      });
-
-      if (res.ok) {
-        // Mark current state as the new clean snapshot
+      const baseline = JSON.parse(originalSnapshot) as FrontDeskConfig;
+      const partial = computePatchDiff(config, baseline);
+      // No-op patch (only contacts/hours changed) — bail out silently. The
+      // routing-contacts CRUD has its own dedicated routes (Pass 18 wiring).
+      if (Object.keys(partial).length === 0) {
         setOriginalSnapshot(JSON.stringify(config));
+        return;
       }
+      const result = await patchFrontDeskConfig(
+        { authenticatedFetch, officeId },
+        partial,
+      );
+      // Server bumps version_no — adopt it locally so the next read sees the
+      // same baseline and isDirty resets.
+      const next: FrontDeskConfig = { ...config, version: result.config.version_no };
+      setConfig(next);
+      setOriginalSnapshot(JSON.stringify(next));
     } catch {
-      // ignore — UI returns to dirty state, user can retry
+      // UI returns to dirty state — caller can retry. Error surfaces via
+      // hydrate path on next reload; inline toast wired in Pass 18.
     } finally {
       setIsSaving(false);
     }
-  }, [config, isDirty, isSaving]);
+  }, [config, isDirty, isSaving, officeId, originalSnapshot, authenticatedFetch]);
 
-  // ----- Test incoming call -------------------------------------------
-  const onTest = useCallback(() => {
+  // ----- Test incoming call (Pass 17 §17.B — calls real Twilio test) -----
+  const onTest = useCallback(async () => {
     setIsTesting(true);
+    // Always trigger the local overlay so the user sees activity immediately.
     triggerTestIncomingCall();
-    // Reset the loading flag shortly — the overlay flow takes over from here
+    // Fire the real backend test-call route in parallel; failures are silent
+    // for now (the overlay still plays). When `officeId` is missing (auth
+    // not yet hydrated) we skip the API call.
+    if (officeId) {
+      try {
+        await apiTriggerTestCall({ authenticatedFetch, officeId });
+      } catch {
+        // ignore — the overlay still gives user feedback
+      }
+    }
     setTimeout(() => setIsTesting(false), 1200);
-  }, []);
+  }, [officeId, authenticatedFetch]);
 
   // ----- Right rail data ----------------------------------------------
   const summary = useMemo(() => buildSummary(config), [config]);

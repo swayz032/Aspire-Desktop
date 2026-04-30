@@ -25,6 +25,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, BorderRadius } from '@/constants/tokens';
 import { SectionPanel } from './SectionPanel';
+import {
+  AspireNumberPickerSheet,
+  type PurchasedNumberResult,
+} from './AspireNumberPickerSheet';
 import type {
   PublicNumberConfig,
   PublicNumberMode,
@@ -63,9 +67,9 @@ function injectCss() {
     .fds-option-card { transition: border-color 180ms cubic-bezier(0.16,1,0.3,1), background-color 180ms ease-out, box-shadow 180ms ease-out, transform 160ms ease-out; }
     .fds-option-card:hover { transform: translateY(-1px); }
     .fds-option-card:focus-visible { outline: 2px solid rgba(59,130,246,0.7); outline-offset: 3px; }
-    .fds-num-card { transition: border-color 180ms ease-out, background-color 180ms ease-out, transform 160ms ease-out; }
-    .fds-num-card:hover { transform: translateY(-1px); }
-    .fds-num-card:focus-visible { outline: 2px solid rgba(59,130,246,0.7); outline-offset: 3px; }
+    .fds-find-btn { transition: border-color 180ms ease-out, background-color 180ms ease-out, transform 160ms ease-out; }
+    .fds-find-btn:hover { transform: translateY(-1px); border-color: rgba(59,130,246,0.55); background-color: rgba(59,130,246,0.06); }
+    .fds-find-btn:focus-visible { outline: 2px solid rgba(59,130,246,0.7); outline-offset: 3px; }
     @keyframes fds-reveal {
       from { opacity: 0; transform: translateY(6px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -92,6 +96,19 @@ export function PublicNumberSection({
 
   const setMode = (mode: PublicNumberMode) => onChange({ mode });
   const showAspireSubform = config.mode === 'ASPIRE_NUMBER';
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+
+  const handlePurchased = React.useCallback(
+    (result: PurchasedNumberResult) => {
+      // Update parent with the purchased number — Pass 17 will also persist
+      // the active number to the FrontDeskConfig.publicNumber via a
+      // dedicated mutation. For now we record the selection.
+      onChange({
+        selectedNumberId: result.phoneNumber,
+      });
+    },
+    [onChange],
+  );
 
   return (
     <SectionPanel step={1} title="Public Number" enterIndex={enterIndex}>
@@ -148,32 +165,84 @@ export function PublicNumberSection({
             </View>
           </View>
 
-          {/* Available number cards */}
-          {availableNumbers.length > 0 ? (
-            <View style={styles.numbersWrap}>
-              <Text style={styles.fieldLabel}>Available numbers</Text>
-              <View style={styles.numbersRow}>
-                {availableNumbers.slice(0, 3).map((num) => (
-                  <NumberCard
-                    key={num.id}
-                    number={num}
-                    selected={config.selectedNumberId === num.id}
-                    onSelect={() => onChange({ selectedNumberId: num.id })}
-                  />
-                ))}
-              </View>
-            </View>
+          {/* Active number display + picker entry point ----------------- */}
+          {config.selectedNumberId ? (
+            <ActiveNumberCard
+              number={
+                availableNumbers.find((n) => n.id === config.selectedNumberId)?.number ??
+                config.selectedNumberId
+              }
+              onChange={() => setPickerOpen(true)}
+            />
           ) : (
-            <View style={styles.emptyHint}>
-              <Ionicons name="search-outline" size={14} color={Colors.text.muted} />
-              <Text style={styles.emptyHintText}>
-                Pick an area code to see available numbers.
-              </Text>
-            </View>
+            <Pressable
+              onPress={() => setPickerOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Find an Aspire number"
+              accessibilityHint="Opens a search sheet to pick and purchase a real Twilio number"
+              style={styles.findBtn}
+              {...(Platform.OS === 'web' ? ({ className: 'fds-find-btn' } as any) : {})}
+            >
+              <View style={styles.findBtnIcon}>
+                <Ionicons name="search" size={16} color={Colors.accent.cyan} />
+              </View>
+              <View style={styles.findBtnCol}>
+                <Text style={styles.findBtnTitle}>Find an Aspire number</Text>
+                <Text style={styles.findBtnSubtitle}>
+                  Search by area code, optionally filter by a vanity word.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={Colors.text.tertiary} />
+            </Pressable>
           )}
         </View>
       ) : null}
+
+      {/* Picker sheet — controlled at section level */}
+      <AspireNumberPickerSheet
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPurchased={handlePurchased}
+        initialAreaCode={config.areaCode ?? ''}
+        initialContains={config.containsFilter ?? ''}
+      />
     </SectionPanel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ActiveNumberCard — shown after a number is selected/purchased
+// ---------------------------------------------------------------------------
+
+interface ActiveNumberCardProps {
+  number: string;
+  onChange: () => void;
+}
+
+function ActiveNumberCard({ number, onChange }: ActiveNumberCardProps) {
+  return (
+    <View style={styles.activeCard}>
+      <View style={styles.activeIcon}>
+        <Ionicons name="call" size={16} color={Colors.semantic.success} />
+      </View>
+      <View style={styles.activeCol}>
+        <Text style={styles.activeLabel}>Active Aspire number</Text>
+        <Text style={styles.activeNumber}>{number}</Text>
+      </View>
+      <View style={styles.activePill}>
+        <View style={styles.activePillDot} />
+        <Text style={styles.activePillText}>Active</Text>
+      </View>
+      <Pressable
+        onPress={onChange}
+        accessibilityRole="button"
+        accessibilityLabel="Change number"
+        style={styles.activeChangeBtn}
+        {...(Platform.OS === 'web' ? ({ className: 'fds-find-btn' } as any) : {})}
+      >
+        <Text style={styles.activeChangeText}>Change</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -218,46 +287,6 @@ function OptionCard({ selected, onPress, title, subtitle, pills }: OptionCardPro
               <CapabilityPill key={pill.label} label={pill.label} tone={pill.tone} />
             ))}
           </View>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// NumberCard — a single selectable available number
-// ---------------------------------------------------------------------------
-
-interface NumberCardProps {
-  number: AvailableNumber;
-  selected: boolean;
-  onSelect: () => void;
-}
-
-function NumberCard({ number, selected, onSelect }: NumberCardProps) {
-  return (
-    <Pressable
-      onPress={onSelect}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
-      accessibilityLabel={`Phone number ${number.number}`}
-      style={[styles.numCard, selected && styles.numCardSelected]}
-      {...(Platform.OS === 'web' ? ({ className: 'fds-num-card' } as any) : {})}
-    >
-      <View style={styles.numCardHeader}>
-        <View style={[styles.radioOuterSm, selected && styles.radioOuterSelected]}>
-          {selected ? <View style={styles.radioInnerSm} /> : null}
-        </View>
-        <Text style={[styles.numCardNumber, selected && styles.numCardNumberSelected]}>
-          {number.number}
-        </Text>
-      </View>
-      <View style={styles.numCardPills}>
-        {number.inboundReady ? (
-          <CapabilityPill label="Inbound ready" tone="success" small />
-        ) : null}
-        {number.outboundAvailable ? (
-          <CapabilityPill label="Outbound available" tone="info" small />
         ) : null}
       </View>
     </Pressable>
@@ -447,22 +476,6 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: Colors.accent.cyan,
   },
-  radioOuterSm: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.20)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioInnerSm: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: Colors.accent.cyan,
-  },
-
   // ----- CapabilityPill -------------------------------------------------
   capPill: {
     flexDirection: 'row',
@@ -545,69 +558,134 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ----- Number cards row -----------------------------------------------
-  numbersWrap: {
-    gap: 10,
-  },
-  numbersRow: {
-    flexDirection: 'row',
-    gap: 10,
-    flexWrap: 'wrap',
-  },
-  numCard: {
-    flex: 1,
-    minWidth: 200,
-    padding: 14,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: '#161618',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    gap: 8,
-  },
-  numCardSelected: {
-    backgroundColor: 'rgba(59,130,246,0.08)',
-    borderColor: 'rgba(59,130,246,0.55)',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 0 0 1px rgba(59,130,246,0.30), 0 0 22px rgba(59,130,246,0.18)' } as object)
-      : { shadowColor: '#3B82F6', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } }),
-  } as any,
-  numCardHeader: {
+  // ----- Find button (entry point to the picker sheet) ------------------
+  findBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
+    padding: 14,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderWidth: 1,
+    borderStyle: 'dashed' as ViewStyle['borderStyle'],
+    borderColor: 'rgba(59,130,246,0.28)',
+    minHeight: 64,
   },
-  numCardNumber: {
-    fontSize: 15,
+  findBtnIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(59,130,246,0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.32)',
+  },
+  findBtnCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  findBtnTitle: {
+    fontSize: 14,
     fontWeight: '600',
     color: Colors.text.primary,
+    letterSpacing: -0.1,
+  },
+  findBtnSubtitle: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: Colors.text.tertiary,
+    lineHeight: 16,
+  },
+
+  // ----- Active number card --------------------------------------------
+  activeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(52,199,89,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,199,89,0.32)',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 0 0 1px rgba(52,199,89,0.10), 0 0 22px rgba(52,199,89,0.10)' } as object)
+      : {
+          shadowColor: Colors.semantic.success,
+          shadowOpacity: 0.25,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 0 },
+        }),
+  } as any,
+  activeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(52,199,89,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,199,89,0.34)',
+  },
+  activeCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  activeLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.text.tertiary,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  activeNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
     letterSpacing: 0.1,
     fontVariant: ['tabular-nums'],
   },
-  numCardNumberSelected: {
-    color: '#ffffff',
-  },
-  numCardPills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 5,
-  },
-
-  emptyHint: {
+  activePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: BorderRadius.md,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(52,199,89,0.14)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    borderStyle: 'dashed' as ViewStyle['borderStyle'],
+    borderColor: 'rgba(52,199,89,0.34)',
   },
-  emptyHintText: {
-    fontSize: 12,
+  activePillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.semantic.success,
+  },
+  activePillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.semantic.success,
+    letterSpacing: 0.2,
+  },
+  activeChangeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 44,
+    minWidth: 44,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  activeChangeText: {
+    fontSize: 13,
     fontWeight: '500',
-    color: Colors.text.muted,
+    color: Colors.text.secondary,
   },
 });
 

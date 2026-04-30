@@ -29,6 +29,31 @@ import { MemoryResultsGridDemo } from '@/components/office-memory/MemoryResultsG
 import { MemoryFilterBarDemo } from '@/components/office-memory/MemoryFilterBar.demo';
 import { MemoryGridListToggleDemo } from '@/components/office-memory/MemoryGridListToggle.demo';
 
+// Lane E (Pass 15) — per-type detail components + fixtures
+import {
+  MemoryDetailHeader as MemoryDetailHeader15,
+  MemoryDetailRightRail,
+  MemoryDetailNote,
+  MemoryDetailDocument,
+  MemoryDetailStrategy,
+  MemoryDetailResearch,
+  MemoryDetailTask,
+  MemoryDetailSummary as MemoryDetailSummaryComp,
+  MemoryDetailTranscript,
+  MemoryDetailSession,
+} from '@/components/office-memory/details';
+import {
+  MOCK_DETAIL_NOTE,
+  MOCK_DETAIL_DOCUMENT,
+  MOCK_DETAIL_STRATEGY,
+  MOCK_DETAIL_RESEARCH,
+  MOCK_DETAIL_TASK,
+  MOCK_DETAIL_SUMMARY,
+  MOCK_DETAIL_TRANSCRIPT,
+  MOCK_DETAIL_SESSION,
+} from '@/components/office-memory/fixtures';
+import type { MemoryDetail } from '@/components/office-memory/types';
+
 // ---------------------------------------------------------------------------
 // Tab registry
 // ---------------------------------------------------------------------------
@@ -50,15 +75,66 @@ const TABS: DemoTab[] = [
   { id: 'grid', label: 'Results Grid', render: () => <MemoryResultsGridDemo /> },
   { id: 'filters', label: 'Filter Bar', render: () => <MemoryFilterBarDemo /> },
   { id: 'toggle', label: 'Toggle', render: () => <MemoryGridListToggleDemo /> },
-  // ----- Lane E (detail page) — tracked here so the hub lists every demo
-  // in the plan §13 spec. The placeholder explains what will land.
-  { id: 'detail-header', label: 'Detail Header', pending: true, render: () => <Pending name="MemoryDetailHeader" lane="E" /> },
-  { id: 'summary-card', label: 'Summary Card', pending: true, render: () => <Pending name="MemorySummaryCard" lane="E" /> },
-  { id: 'key-decisions', label: 'Key Decisions', pending: true, render: () => <Pending name="MemoryKeyDecisions" lane="E" /> },
-  { id: 'details', label: 'Details Card', pending: true, render: () => <Pending name="MemoryDetailsCard" lane="E" /> },
-  { id: 'linked-facts', label: 'Linked Facts', pending: true, render: () => <Pending name="MemoryLinkedFacts" lane="E" /> },
-  { id: 'activity', label: 'Activity Row', pending: true, render: () => <Pending name="MemoryActivityRow" lane="E" /> },
+  // ----- Pass 15 Lane E — per-type detail components rendered with full
+  // chrome (header + center column + right rail) so the demo hub doubles as
+  // a visual regression surface.
+  { id: 'detail-note',       label: 'Detail · Note',       render: () => <DetailHarness fixture={MOCK_DETAIL_NOTE}      Body={MemoryDetailNote} /> },
+  { id: 'detail-document',   label: 'Detail · Document',   render: () => <DetailHarness fixture={MOCK_DETAIL_DOCUMENT}  Body={MemoryDetailDocument} /> },
+  { id: 'detail-strategy',   label: 'Detail · Strategy',   render: () => <DetailHarness fixture={MOCK_DETAIL_STRATEGY}  Body={MemoryDetailStrategy} /> },
+  { id: 'detail-research',   label: 'Detail · Research',   render: () => <DetailHarness fixture={MOCK_DETAIL_RESEARCH}  Body={MemoryDetailResearch} /> },
+  { id: 'detail-task',       label: 'Detail · Task',       render: () => <DetailHarness fixture={MOCK_DETAIL_TASK}      Body={MemoryDetailTask} /> },
+  { id: 'detail-summary',    label: 'Detail · Summary',    render: () => <DetailHarness fixture={MOCK_DETAIL_SUMMARY}   Body={MemoryDetailSummaryComp} /> },
+  { id: 'detail-transcript', label: 'Detail · Transcript', render: () => <DetailHarness fixture={MOCK_DETAIL_TRANSCRIPT} Body={MemoryDetailTranscript} /> },
+  { id: 'detail-session',    label: 'Detail · Session',    render: () => <DetailHarness fixture={MOCK_DETAIL_SESSION}   Body={MemoryDetailSession} /> },
 ];
+
+// ---------------------------------------------------------------------------
+// Detail harness — renders Header + Body + RightRail like the live page.
+// ---------------------------------------------------------------------------
+
+function DetailHarness({
+  fixture,
+  Body,
+}: {
+  fixture: MemoryDetail;
+  Body: React.ComponentType<{ memory: MemoryDetail }>;
+}) {
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: Colors.memory.pageBackground as string }}
+      contentContainerStyle={{
+        paddingHorizontal: 32,
+        paddingVertical: 24,
+        paddingBottom: 64,
+        maxWidth: 1280,
+        alignSelf: 'center',
+        width: '100%',
+      }}
+      showsVerticalScrollIndicator={false}
+    >
+      <MemoryDetailHeader15 memory={fixture} onBack={() => {}} />
+      <View
+        style={
+          (Platform.OS === 'web'
+            ? ({
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) 360px',
+                gap: 24,
+                alignItems: 'start',
+              } as object)
+            : { gap: 24 }) as object
+        }
+      >
+        <View style={{ gap: 16, minWidth: 0 } as object}>
+          <Body memory={fixture} />
+        </View>
+        <View style={{ gap: 16, minWidth: 0 } as object}>
+          <MemoryDetailRightRail memory={fixture} />
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Pending demo placeholder (for Lane E components)

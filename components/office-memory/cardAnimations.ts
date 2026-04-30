@@ -51,6 +51,37 @@ export function injectMemoryKeyframes(): void {
       0%   { opacity: 0; transform: translateY(8px); }
       100% { opacity: 1; transform: translateY(0); }
     }
+    @keyframes memoryBubblePop {
+      0%   { opacity: 0; transform: translateY(6px) scale(0.94); }
+      60%  { opacity: 1; transform: translateY(-1px) scale(1.012); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes memoryStatusPillFlash {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+      50%      { box-shadow: 0 0 0 4px rgba(59,130,246,0.18); }
+    }
+    @keyframes memoryWaveformPulse {
+      0%, 100% { opacity: 0.55; }
+      50%      { opacity: 1; }
+    }
+    @keyframes memoryTypingDots {
+      0%   { opacity: 0.25; transform: translateY(0); }
+      30%  { opacity: 1;    transform: translateY(-2px); }
+      60%  { opacity: 0.25; transform: translateY(0); }
+      100% { opacity: 0.25; transform: translateY(0); }
+    }
+    .aspire-bubble-in {
+      animation: memoryBubblePop 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+    .aspire-status-flash {
+      animation: memoryStatusPillFlash 1600ms ease-in-out infinite;
+    }
+    .aspire-waveform-bar {
+      animation: memoryWaveformPulse 1400ms ease-in-out infinite;
+    }
+    .aspire-typing-dot {
+      animation: memoryTypingDots 1200ms ease-in-out infinite;
+    }
     .aspire-memory-card {
       transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
                   box-shadow 220ms cubic-bezier(0.4, 0, 0.2, 1),

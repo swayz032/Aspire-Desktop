@@ -1,23 +1,29 @@
 /**
- * FrontDeskSetupHero — Pass 10 Lane B (plan §10.2)
+ * FrontDeskSetupHero — Pass 16 UI rewrite (plan §16.G.1)
  *
- * Full-width hero header for the Front Desk Setup page. Replaces the legacy
- * `inbox-hero.jpg` photo with a living `AvaOrbVideo` ambient backdrop —
- * Aspire's premium aesthetic: deep-black canvas + Aspire-blue ambient glow +
- * pulsing presence orb. Subagent operates per §12.1 Framer-style mandate.
+ * Sarah's mission-control banner. Replaces the AvaOrb ambient backdrop with
+ * a cinematic forest/dawn photograph (when `front-desk-setup-hero.jpg` is
+ * dropped into `assets/images/`) topped with a vertical legibility gradient.
+ * If the photo isn't present, falls back to a CSS radial-gradient evoking
+ * a misty pre-dawn forest — keeps the layout intact and the brand feeling.
  *
  * Layered composition (back to front):
  *   1. Deep-black base                            (#0a0a0c)
- *   2. AvaOrbVideo backdrop (520x520, opacity .30, offset right of center)
- *   3. expo-blur BlurView intensity 50            (atmospheric softening)
- *   4. Aspire-blue tint overlay                   (rgba(59,130,246,0.06))
- *   5. Vertical legibility gradient               (top→bottom darken)
- *   6. Foreground content                         (orb-96 + badge + title + actions)
+ *   2. Forest photo via <Image absoluteFill cover> ── OR ── radial gradient fallback
+ *   3. Aspire-blue tint overlay                   (rgba(59,130,246,0.05))
+ *   4. Vertical legibility gradient               rgba(10,10,12,0.55) → 0.92
+ *   5. Foreground content (small AvaOrb + pill + title + actions)
  *
- * Interaction:
- *   - Test Incoming Call button (ghost) → onTest()
- *   - Save Changes button (filled cyan) → onSave(); disabled until isDirty
- *   - Both buttons web hover lift (-1px) + focus ring (Aspire blue 2px)
+ * Per §12.1 Framer-style: hero is the brand statement. Cinematic photograph,
+ * confident hierarchy, layered atmospheric depth, small living orb anchored
+ * beside the FRONT DESK pill (Sarah's "live" indicator — user explicitly
+ * liked this and wants it preserved).
+ *
+ * TODO(user): Drop a forest/mountain photo at
+ *   `Aspire-desktop/assets/images/front-desk-setup-hero.jpg`
+ * to swap in the cinematic backdrop. Until then, the radial-gradient
+ * fallback ships as the placeholder. Code in `useHeroBackdrop()` will
+ * automatically prefer the photo when it exists.
  */
 
 import React from 'react';
@@ -29,13 +35,29 @@ import {
   Platform,
   ViewStyle,
   ActivityIndicator,
+  Image,
+  ImageSourcePropType,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { AvaOrbVideo } from '@/components/AvaOrbVideo';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+
+// ---------------------------------------------------------------------------
+// Backdrop resolution
+// ---------------------------------------------------------------------------
+//
+// Metro evaluates require() statically at bundle time, so we cannot use
+// try/catch to detect a missing asset. Instead, we ship with HERO_PHOTO=null
+// and the radial-gradient placeholder. When the user drops a forest/mountain
+// photo at `assets/images/front-desk-setup-hero.jpg`, they should change this
+// to:
+//   const HERO_PHOTO: ImageSourcePropType | null = require('@/assets/images/front-desk-setup-hero.jpg');
+// One line — no other code changes required. The Image element below is
+// already wired and the gradient fallback drops out automatically.
+
+const HERO_PHOTO: ImageSourcePropType | null = null;
 
 // ---------------------------------------------------------------------------
 // Props
@@ -57,7 +79,7 @@ export interface FrontDeskSetupHeroProps {
 }
 
 // ---------------------------------------------------------------------------
-// One-time CSS injection for hover + focus polish (web only)
+// One-time CSS injection — hero polish + radial fallback (web only)
 // ---------------------------------------------------------------------------
 
 let cssInjected = false;
@@ -67,6 +89,15 @@ function injectHeroCss() {
   const style = document.createElement('style');
   style.id = 'front-desk-setup-hero-css';
   style.textContent = `
+    /* Forest-dawn radial fallback — used when front-desk-setup-hero.jpg is missing.
+       Three layered radial gradients evoke pre-dawn mist, distant ridge, and ground fog. */
+    .fds-hero-radial-fallback {
+      background:
+        radial-gradient(ellipse 80% 60% at 22% 0%, rgba(56,108,160,0.42), transparent 60%),
+        radial-gradient(ellipse 70% 55% at 78% 18%, rgba(86,140,180,0.30), transparent 65%),
+        radial-gradient(ellipse 100% 70% at 50% 100%, rgba(8,18,32,0.95), transparent 70%),
+        linear-gradient(180deg, #0d1620 0%, #0a0e16 60%, #060a10 100%);
+    }
     .fds-hero-btn { transition: transform 160ms ease-out, background-color 160ms ease-out, box-shadow 160ms ease-out; }
     .fds-hero-btn:hover { transform: translateY(-1px); }
     .fds-hero-btn:active { transform: translateY(0); }
@@ -78,6 +109,9 @@ function injectHeroCss() {
       to   { opacity: 1; transform: translateY(0); }
     }
     .fds-hero-content { animation: fds-hero-fade-up 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+    @media (prefers-reduced-motion: reduce) {
+      .fds-hero-content, .fds-hero-btn { animation: none; transition: none; }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -92,40 +126,54 @@ function FrontDeskSetupHeroInner({
   isSaving = false,
   isTesting = false,
   isDirty = false,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   sarahActive = true,
 }: FrontDeskSetupHeroProps) {
   injectHeroCss();
 
-  const orbState = sarahActive ? 'idle' : 'idle';
-
   return (
     <View style={styles.heroOuter}>
-      {/* ---------- LAYER 2: Ambient AvaOrb backdrop (very low opacity) -- */}
-      <View style={styles.backdropOrbWrap} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <View style={styles.backdropOrbInner}>
-          <AvaOrbVideo state={orbState} size={520} />
-        </View>
-      </View>
+      {/* ---------- LAYER 2: Forest photo OR radial-gradient fallback --- */}
+      {HERO_PHOTO ? (
+        <Image
+          source={HERO_PHOTO}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode="cover"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          accessible={false}
+        />
+      ) : Platform.OS === 'web' ? (
+        // Radial-gradient fallback evokes a misty pre-dawn forest until the
+        // real photo is dropped in. See HERO_PHOTO comment above.
+        <View
+          style={StyleSheet.absoluteFill as ViewStyle}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          {...({ className: 'fds-hero-radial-fallback' } as any)}
+        />
+      ) : (
+        <LinearGradient
+          colors={['#0d1620', '#0a0e16', '#060a10']}
+          locations={[0, 0.6, 1]}
+          style={StyleSheet.absoluteFill as ViewStyle}
+          pointerEvents="none"
+        />
+      )}
 
-      {/* ---------- LAYER 3: Atmospheric blur softening ----------------- */}
-      {Platform.OS === 'web' ? (
-        <View style={styles.blurOverlay} pointerEvents="none">
-          <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill as ViewStyle} />
-        </View>
-      ) : null}
-
-      {/* ---------- LAYER 4: Aspire-blue tint --------------------------- */}
+      {/* ---------- LAYER 3: Aspire-blue tint --------------------------- */}
       <View style={styles.blueTint} pointerEvents="none" />
 
-      {/* ---------- LAYER 5: Vertical legibility gradient --------------- */}
+      {/* ---------- LAYER 4: Vertical legibility gradient --------------- */}
       <LinearGradient
-        colors={['rgba(10,10,12,0.55)', 'rgba(10,10,12,0.85)', 'rgba(10,10,12,0.97)']}
+        colors={['rgba(10,10,12,0.55)', 'rgba(10,10,12,0.78)', 'rgba(10,10,12,0.92)']}
         locations={[0, 0.55, 1]}
         style={styles.gradientOverlay}
         pointerEvents="none"
       />
 
-      {/* ---------- LAYER 6: Foreground content ------------------------- */}
+      {/* ---------- LAYER 5: Foreground content ------------------------- */}
       <View
         style={styles.heroInner}
         {...(Platform.OS === 'web' ? ({ className: 'fds-hero-content' } as any) : {})}
@@ -133,14 +181,22 @@ function FrontDeskSetupHeroInner({
         <View style={styles.headerRow}>
           <View style={styles.identityCol}>
             <View style={styles.identityRow}>
-              {/* Small live-presence orb */}
-              <View style={styles.smallOrbWrap} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              {/* Small live-presence orb — Sarah's "alive" indicator */}
+              <View
+                style={styles.smallOrbWrap}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
                 <View style={styles.smallOrbHalo} />
-                <AvaOrbVideo state={orbState} size={64} />
+                <AvaOrbVideo state="idle" size={64} />
               </View>
 
               {/* FRONT DESK pill */}
-              <View style={styles.pill} accessibilityRole="text" accessibilityLabel="Section: Front Desk">
+              <View
+                style={styles.pill}
+                accessibilityRole="text"
+                accessibilityLabel="Section: Front Desk"
+              >
                 <View style={styles.pillDot} />
                 <Text style={styles.pillText}>FRONT DESK</Text>
               </View>
@@ -175,7 +231,9 @@ function FrontDeskSetupHeroInner({
               loading={isSaving}
               disabled={isSaving || !isDirty}
               accessibilityLabel="Save changes"
-              accessibilityHint={isDirty ? 'Persist your Front Desk configuration' : 'No unsaved changes'}
+              accessibilityHint={
+                isDirty ? 'Persist your Front Desk configuration' : 'No unsaved changes'
+              }
             />
           </View>
         </View>
@@ -183,6 +241,11 @@ function FrontDeskSetupHeroInner({
     </View>
   );
 }
+
+// Surface unused-import warnings — sarahActive may light up the orb in future
+// (keep prop on the public surface).
+void Spacing;
+void Typography;
 
 // ---------------------------------------------------------------------------
 // Hero button — inner component
@@ -245,9 +308,7 @@ function HeroButton({
           color={isPrimary ? '#ffffff' : Colors.text.secondary}
         />
       )}
-      <Text style={isPrimary ? styles.buttonPrimaryText : styles.buttonGhostText}>
-        {label}
-      </Text>
+      <Text style={isPrimary ? styles.buttonPrimaryText : styles.buttonGhostText}>{label}</Text>
       {trailingIcon && !loading ? (
         <Ionicons
           name={trailingIcon}
@@ -290,42 +351,17 @@ const styles = StyleSheet.create({
         }),
   } as any,
 
-  // ----- Layer 2: Ambient orb backdrop ----------------------------------
-  backdropOrbWrap: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: 600,
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0.30,
-  },
-  backdropOrbInner: {
-    transform: [{ translateX: 80 }, { translateY: 0 }],
-    opacity: 1,
-  },
-
-  // ----- Layer 3: Blur overlay ------------------------------------------
-  blurOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-
-  // ----- Layer 4: Blue tint ---------------------------------------------
+  // ----- Layer 3: Blue tint --------------------------------------------
   blueTint: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(59,130,246,0.06)',
+    backgroundColor: 'rgba(59,130,246,0.05)',
   },
 
-  // ----- Layer 5: Vertical gradient -------------------------------------
+  // ----- Layer 4: Vertical gradient ------------------------------------
   gradientOverlay: {
     position: 'absolute',
     top: 0,
@@ -334,7 +370,7 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
 
-  // ----- Layer 6: Foreground content ------------------------------------
+  // ----- Layer 5: Foreground content -----------------------------------
   heroInner: {
     position: 'relative',
     paddingHorizontal: 28,
@@ -371,8 +407,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(59,130,246,0.32)',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 0 0 4px rgba(59,130,246,0.10), 0 0 18px rgba(59,130,246,0.24)' } as object)
-      : { shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 8 }),
+      ? ({
+          boxShadow:
+            '0 0 0 4px rgba(59,130,246,0.10), 0 0 18px rgba(59,130,246,0.24)',
+        } as object)
+      : {
+          shadowColor: '#3B82F6',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.4,
+          shadowRadius: 8,
+        }),
   } as any,
   smallOrbHalo: {
     position: 'absolute',
@@ -385,7 +429,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(59,130,246,0.45)',
   },
 
-  // ----- FRONT DESK pill ------------------------------------------------
+  // ----- FRONT DESK pill -----------------------------------------------
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -404,7 +448,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent.cyan,
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 0 8px rgba(59,130,246,0.85)' } as object)
-      : { shadowColor: Colors.accent.cyan, shadowOpacity: 0.8, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } }),
+      : {
+          shadowColor: Colors.accent.cyan,
+          shadowOpacity: 0.8,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 0 },
+        }),
   } as any,
   pillText: {
     fontSize: 10,
@@ -414,7 +463,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  // ----- Title + subtitle -----------------------------------------------
+  // ----- Title + subtitle ----------------------------------------------
   title: {
     fontSize: 32,
     fontWeight: '700',
@@ -425,12 +474,12 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 15,
     fontWeight: '400',
-    color: 'rgba(255,255,255,0.78)',
+    color: 'rgba(255,255,255,0.80)',
     lineHeight: 22,
     maxWidth: 560,
   },
 
-  // ----- Action buttons -------------------------------------------------
+  // ----- Action buttons ------------------------------------------------
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -462,7 +511,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.18)',
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 1px 2px rgba(0,0,0,0.3), 0 6px 16px rgba(59,130,246,0.28)' } as object)
-      : { shadowColor: Colors.accent.cyan, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } }),
+      : {
+          shadowColor: Colors.accent.cyan,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.4,
+          shadowRadius: 10,
+        }),
   } as any,
   buttonPrimaryPressed: {
     backgroundColor: Colors.accent.cyanDark,
