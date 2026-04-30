@@ -46,6 +46,9 @@ const ORIENTATION_MAP: Record<string, CardOrientation> = {
   PriceComparison: 'horizontal',
   EstimateResearchPack: 'horizontal',
 
+  // StoreDisambiguation — vertical candidate picker
+  StoreDisambiguation: 'vertical',
+
   // Vertical — info-dense (default)
   LandlordPropertyPack: 'vertical',
   PropertyFactPack: 'vertical',
@@ -139,6 +142,10 @@ registerCard('EstimateResearchPack', ProductCard);
 registerCard('VendorShortlist', BusinessCard);
 registerCard('ProspectList', BusinessCard);
 registerCard('CompetitorBrief', BusinessCard);
+
+// Store Disambiguation — pick one Home Depot from city candidates
+import { StoreDisambiguationCard } from './StoreDisambiguationCard';
+registerCard('StoreDisambiguation', StoreDisambiguationCard);
 
 // Property / Landlord (all ATTOM property data types)
 registerCard('LandlordPropertyPack', PropertyCard);

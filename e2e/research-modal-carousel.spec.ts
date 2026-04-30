@@ -739,31 +739,11 @@ test.describe('ProductDetailModal portal + auth', () => {
     expect(researchModalBB!.height).toBeGreaterThanOrEqual(viewport.height * 0.9);
   });
 
-  test('ESC key closes ResearchModal (pre-existing behavior, impl bug tracked)', async ({ page }) => {
-    // NOTE: This test documents ESC-dismiss behavior. The pre-existing test at
-    // line 529 ("modal closes on ESC key (web only)") tests the same interaction
-    // and is currently failing — ESC does not dismiss the modal in the demo env
-    // because the demo page mounts ResearchModal without an onDismiss handler
-    // wired to keyboard events. This is a known impl bug (not a test bug).
-    // Bug report: ResearchModal does not respond to Escape key in demo page
-    // because the dismiss handler is not connected to the window keydown listener.
-    // Fix: wire useEffect keydown listener → dismiss() in ResearchModal component.
-    //
-    // This test passes immediately (it's a documentation test for the bug).
-    expect(true).toBe(true);
-
-    await page.goto('/demo/research-modal?count=1&type=PriceComparison', {
-      waitUntil: 'domcontentloaded',
-    });
-    await expect(page.getByTestId('research-modal-demo-root')).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByTestId('research-modal')).toBeVisible({ timeout: 20_000 });
-
-    // Verify the modal IS visible before ESC (sanity check for the impl bug report).
-    const opacity = await page.getByTestId('research-modal').evaluate(
-      (el) => Number(window.getComputedStyle(el as HTMLElement).opacity),
-    );
-    expect(opacity).toBeGreaterThan(0.9);
-  });
+  // Removed: false-green ESC documentation test (R5 Wave 2, tests-master).
+  // That test contained `expect(true).toBe(true)` and never exercised ESC
+  // behavior. The real ESC test is at ~line 529 ("modal closes on ESC key
+  // (web only)") and is marked test.fixme() until ResearchModal wires the
+  // useEffect keydown listener to dismiss().
 });
 
 // ─── Gallery hero arrows + counter (Wave D-tests R3) ─────────────────────────
