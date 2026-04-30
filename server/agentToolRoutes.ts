@@ -390,9 +390,22 @@ router.post('/v1/tools/context', async (req: Request, res: Response) => {
       .limit(5);
 
     const now = new Date();
+    // Round 3 bug fix: Railway runs in UTC, so toLocaleDateString without a
+    // timeZone option produced UTC dates/times — at 9:53 PM EDT the server
+    // returned "1:53 AM" and Ava said "Good morning" instead of "Good evening".
+    // Use suite_profiles.timezone if set, fall back to the request's
+    // X-User-Timezone header (Anam can pass the browser tz), then America/New_York.
+    const headerTz = typeof req.headers['x-user-timezone'] === 'string'
+      ? (req.headers['x-user-timezone'] as string)
+      : '';
+    const timezone =
+      (profile as any)?.timezone ||
+      headerTz ||
+      'America/New_York';
     const context = {
-      current_date: now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-      current_time: now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      current_date: now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: timezone }),
+      current_time: now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone }),
+      timezone,
       owner_name: profile?.owner_name || 'Unknown',
       business_name: profile?.business_name || 'Unknown',
       industry: profile?.industry || 'General',
