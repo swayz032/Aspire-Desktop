@@ -253,6 +253,7 @@ function getRequestBody(req: Request): Record<string, any> {
     ...pickRecord(root.payload),
     ...pickRecord(root.tool_input),
     ...pickRecord(root.body),
+    ...pickRecord(root.bodyParams),
   };
   // Suite/office IDs should come from trusted context. Ignore malformed IDs
   // from model-generated payloads (for example "test_suite") and fall back to
