@@ -1,29 +1,33 @@
 #!/usr/bin/env node
 /**
  * Pass 18+ §16.M extension — clears the "at least one transfer rule required"
- * error on `transfer_to_agent` system tool across all 6 EL agents.
+ * error on `transfer_to_agent` system tool across the EL agents.
  *
- * Hub-and-spoke routing model (per user direction):
- *   Ava is the central hub on the desktop homepage. Every specialist routes
- *   back to Ava when the owner's intent shifts beyond the specialist's
- *   domain. Ava routes outward to all specialists by intent.
+ * Two distinct routing surfaces (per user clarification):
+ *
+ * 1) INTERNAL hub-and-spoke (the desktop owner's experience):
+ *    Ava is the central hub on the desktop homepage. The internal specialists
+ *    (Eli, Nora, Finn, Sarah Front Desk) transfer back to Ava when the owner's
+ *    intent shifts beyond their domain. Ava routes outward to those 4
+ *    specialists by intent.
+ *
+ * 2) EXTERNAL receptionist (Sarah Receptionist):
+ *    Sarah Receptionist handles inbound external CALLERS (customers/leads).
+ *    She is NOT part of the internal Ava hub. She routes to TEAM MEMBERS /
+ *    EMPLOYEES only, via transfer_to_NUMBER (5 dynamic-variable rules:
+ *    owner / sales / support / billing / scheduling — populated per office
+ *    by the personalization webhook from front_desk_routing_contacts).
+ *    transfer_to_AGENT on Sarah Receptionist is DISABLED (null) — she does
+ *    not hand external callers off to Ava or any other internal agent.
  *
  * Per-agent transfer_to_agent config:
- *   Ava                 ON  with 5 transfers — routes outward to specialists
- *                            based on conversation intent (Eli/Nora/Finn/Sarah-R/Sarah-FD).
- *   Eli                 ON  with 1 rule  → Ava (hand back when owner needs
- *                            non-email help: scheduling, finance, calls, etc.)
- *   Nora                ON  with 1 rule  → Ava (hand back when topic shifts
- *                            away from meetings/scheduling).
- *   Finn                ON  with 1 rule  → Ava (hand back when topic shifts
- *                            away from finance/books/invoices).
- *   Sarah Front Desk    ON  with 1 rule  → Ava (internal call desk specialist
- *                            hands back to chief-of-staff when needed).
- *   Sarah Receptionist  ON  with 1 rule  → Ava (defensive — Sarah Receptionist
- *                            is for external callers and would not normally
- *                            invoke transfer_to_agent during an inbound call,
- *                            but having a valid rule keeps EL config consistent
- *                            and clears the validation error).
+ *   Ava                 ON  with 4 transfers — routes outward to internal
+ *                            specialists by intent (Eli/Nora/Finn/Sarah-FD).
+ *   Eli                 ON  with 1 rule  → Ava (back-to-hub when needed)
+ *   Nora                ON  with 1 rule  → Ava
+ *   Finn                ON  with 1 rule  → Ava
+ *   Sarah Front Desk    ON  with 1 rule  → Ava (internal call desk specialist)
+ *   Sarah Receptionist  OFF — external-only; routes to team via transfer_to_number
  *
  * Idempotent. Safe to re-run.
  *
@@ -62,6 +66,10 @@ const AGENTS = {
  *     enable_transferred_agent_first_message?: boolean,
  *   }
  */
+// Ava's INTERNAL outward routing rules (4 specialists). Sarah Receptionist is
+// EXCLUDED — she is the external caller-facing agent, not part of the
+// internal Ava hub. To configure inbound call handling, the owner uses the
+// Front Desk Setup page in the desktop UI, not a Sarah Receptionist transfer.
 const AVA_TRANSFER_TO_AGENT_RULES = [
   {
     agent_id: AGENTS.eli,
@@ -93,14 +101,6 @@ const AVA_TRANSFER_TO_AGENT_RULES = [
       'When the owner wants to triage missed calls, listen to voicemails, prep callbacks, or work the front desk queue — Sarah Front Desk runs the call desk.',
     delay_ms: 800,
     transfer_message: "Switching you to Sarah at the front desk.",
-    enable_transferred_agent_first_message: true,
-  },
-  {
-    agent_id: AGENTS['sarah-receptionist'],
-    condition:
-      'When the owner wants to test or configure how inbound external calls are handled — Sarah Receptionist is the public-facing receptionist.',
-    delay_ms: 800,
-    transfer_message: "Looping in Sarah Receptionist for the inbound call setup.",
     enable_transferred_agent_first_message: true,
   },
 ];
@@ -162,7 +162,41 @@ async function syncAva() {
       `Ava transfer_to_agent rule count mismatch — expected ${AVA_TRANSFER_TO_AGENT_RULES.length}, got ${afterRules.length}`,
     );
   }
-  console.log('  ✓ synced 5 transfer_to_agent rules (Ava as chief-of-staff)');
+  console.log(`  ✓ synced ${AVA_TRANSFER_TO_AGENT_RULES.length} transfer_to_agent rules (Ava as internal chief-of-staff)`);
+}
+
+/**
+ * Disable transfer_to_agent on an agent (set to null). Used for Sarah
+ * Receptionist who is external-only and never transfers to internal agents.
+ */
+async function disableTransferToAgent(name, agentId) {
+  console.log(`\n=== ${name} (${agentId}) ===`);
+
+  const before = await api('GET', `/convai/agents/${agentId}`);
+  const existingTools = before?.conversation_config?.agent?.prompt?.built_in_tools || {};
+  const wasOn = existingTools.transfer_to_agent != null;
+  console.log(`  before: transfer_to_agent ${wasOn ? 'ON' : 'OFF (or null)'}`);
+
+  if (!wasOn) {
+    console.log('  ✓ already off — nothing to do (idempotent)');
+    return;
+  }
+
+  const built_in_tools = { ...existingTools, transfer_to_agent: null };
+  await api('PATCH', `/convai/agents/${agentId}`, {
+    conversation_config: { agent: { prompt: { built_in_tools } } },
+  });
+
+  const after = await api('GET', `/convai/agents/${agentId}`);
+  const stillOn =
+    after?.conversation_config?.agent?.prompt?.built_in_tools
+      ?.transfer_to_agent != null;
+  console.log(`  after:  transfer_to_agent ${stillOn ? 'ON ✗' : 'OFF ✓'}`);
+  if (stillOn) {
+    throw new Error(
+      `${name} transfer_to_agent still ON after PATCH — EL did not accept disable`,
+    );
+  }
 }
 
 /**
@@ -183,12 +217,13 @@ function backToAvaRule(specialistDomain) {
   };
 }
 
+// Internal specialists only. Sarah Receptionist is intentionally absent —
+// she is external-facing and her transfer_to_agent stays disabled.
 const SPECIALIST_DOMAINS = {
   eli: 'email triage and inbox work',
   nora: 'meetings, scheduling, and conference recap',
   finn: 'finance, books, invoices, quotes, payroll, and cash review',
   'sarah-frontdesk': 'missed-call triage, voicemails, callbacks, and SMS',
-  'sarah-receptionist': 'external inbound caller handling',
 };
 
 async function syncSpecialistBackToAva(name, agentId) {
@@ -250,14 +285,25 @@ async function syncSpecialistBackToAva(name, agentId) {
     failures++;
   }
 
-  // Specialists — ENABLE with 1 back-to-Ava rule each (hub-and-spoke).
-  for (const name of ['eli', 'nora', 'finn', 'sarah-frontdesk', 'sarah-receptionist']) {
+  // INTERNAL specialists — ENABLE with 1 back-to-Ava rule each (hub-and-spoke).
+  for (const name of ['eli', 'nora', 'finn', 'sarah-frontdesk']) {
     try {
       await syncSpecialistBackToAva(name, AGENTS[name]);
     } catch (e) {
       console.error(`✗ ${name} failed: ${e.message}`);
       failures++;
     }
+  }
+
+  // EXTERNAL: Sarah Receptionist — DISABLE transfer_to_agent.
+  // She is the external receptionist and routes only via transfer_to_NUMBER
+  // (5 dynamic-variable rules → office routing contacts: owner/sales/support/
+  // billing/scheduling phones). She MUST NOT transfer to internal agents.
+  try {
+    await disableTransferToAgent('sarah-receptionist', AGENTS['sarah-receptionist']);
+  } catch (e) {
+    console.error(`✗ sarah-receptionist failed: ${e.message}`);
+    failures++;
   }
 
   console.log(
