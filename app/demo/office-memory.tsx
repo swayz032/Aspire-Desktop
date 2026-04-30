@@ -19,10 +19,12 @@ import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 // Lane B/C demos (already shipped)
+// MemoryCardGlowHalo removed in Pass 13.E — glow now lives directly on the
+// card surface (CSS .aspire-memory-card + native shadow stack). User direction:
+// "soft subtle glow regardless, not loud" — wrapper made it loud.
 import MemoryEngineHeroDemo from '@/components/office-memory/MemoryEngineHero.demo';
 import LedAmbientSearchBarDemo from '@/components/office-memory/LedAmbientSearchBar.demo';
 import MemoryCardDemo from '@/components/office-memory/MemoryCard.demo';
-import MemoryCardGlowHaloDemo from '@/components/office-memory/MemoryCardGlowHalo.demo';
 
 // Lane D demos (this PR)
 import { MemoryResultsGridDemo } from '@/components/office-memory/MemoryResultsGrid.demo';
@@ -71,7 +73,6 @@ const TABS: DemoTab[] = [
   { id: 'hero', label: 'Hero', render: () => <MemoryEngineHeroDemo /> },
   { id: 'led', label: 'LED Search', render: () => <LedAmbientSearchBarDemo /> },
   { id: 'card', label: 'Card', render: () => <MemoryCardDemo /> },
-  { id: 'halo', label: 'Card Halo', render: () => <MemoryCardGlowHaloDemo /> },
   { id: 'grid', label: 'Results Grid', render: () => <MemoryResultsGridDemo /> },
   { id: 'filters', label: 'Filter Bar', render: () => <MemoryFilterBarDemo /> },
   { id: 'toggle', label: 'Toggle', render: () => <MemoryGridListToggleDemo /> },
