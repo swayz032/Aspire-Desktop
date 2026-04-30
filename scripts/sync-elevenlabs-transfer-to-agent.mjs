@@ -3,20 +3,27 @@
  * Pass 18+ §16.M extension — clears the "at least one transfer rule required"
  * error on `transfer_to_agent` system tool across all 6 EL agents.
  *
- * The earlier sync-elevenlabs-transfer-rules.mjs only addressed
- * `transfer_to_number`. Discovery via GET /v1/convai/agents/{id}: Nora, Eli,
- * Finn, and Ava ALL have `transfer_to_agent` enabled with `transfers: []`
- * (empty array) which triggers EL's validation error.
+ * Hub-and-spoke routing model (per user direction):
+ *   Ava is the central hub on the desktop homepage. Every specialist routes
+ *   back to Ava when the owner's intent shifts beyond the specialist's
+ *   domain. Ava routes outward to all specialists by intent.
  *
- * Per-agent action:
- *   Ava                 ON  with 5 transfers — routes to specialists based
- *                            on conversation intent (Eli/Nora/Finn/Sarah-R/Sarah-FD).
- *                            Ava IS the chief-of-staff orchestrator.
- *   Eli                 OFF — email specialist; conversation ends with him.
- *   Nora                OFF — meeting assistant; conversation ends with her.
- *   Finn                OFF — finance hub manager; advisory only.
- *   Sarah Receptionist  OFF — already null (verified).
- *   Sarah Front Desk    OFF — already null (verified).
+ * Per-agent transfer_to_agent config:
+ *   Ava                 ON  with 5 transfers — routes outward to specialists
+ *                            based on conversation intent (Eli/Nora/Finn/Sarah-R/Sarah-FD).
+ *   Eli                 ON  with 1 rule  → Ava (hand back when owner needs
+ *                            non-email help: scheduling, finance, calls, etc.)
+ *   Nora                ON  with 1 rule  → Ava (hand back when topic shifts
+ *                            away from meetings/scheduling).
+ *   Finn                ON  with 1 rule  → Ava (hand back when topic shifts
+ *                            away from finance/books/invoices).
+ *   Sarah Front Desk    ON  with 1 rule  → Ava (internal call desk specialist
+ *                            hands back to chief-of-staff when needed).
+ *   Sarah Receptionist  ON  with 1 rule  → Ava (defensive — Sarah Receptionist
+ *                            is for external callers and would not normally
+ *                            invoke transfer_to_agent during an inbound call,
+ *                            but having a valid rule keeps EL config consistent
+ *                            and clears the validation error).
  *
  * Idempotent. Safe to re-run.
  *
@@ -158,42 +165,84 @@ async function syncAva() {
   console.log('  ✓ synced 5 transfer_to_agent rules (Ava as chief-of-staff)');
 }
 
-async function disableTransferToAgent(name, agentId) {
+/**
+ * Specialist-back-to-Ava rule. Each specialist gets a single transfer_to_agent
+ * rule that hands the conversation back to Ava when the owner's intent moves
+ * beyond the specialist's domain.
+ */
+function backToAvaRule(specialistDomain) {
+  return {
+    agent_id: AGENTS.ava,
+    condition:
+      `When the owner's intent moves beyond ${specialistDomain} — for example they ` +
+      `want a brief from across the office, want to start a different workflow, ` +
+      `or just want to talk to Ava again — hand the conversation back to Ava.`,
+    delay_ms: 600,
+    transfer_message: "Bringing Ava back in.",
+    enable_transferred_agent_first_message: true,
+  };
+}
+
+const SPECIALIST_DOMAINS = {
+  eli: 'email triage and inbox work',
+  nora: 'meetings, scheduling, and conference recap',
+  finn: 'finance, books, invoices, quotes, payroll, and cash review',
+  'sarah-frontdesk': 'missed-call triage, voicemails, callbacks, and SMS',
+  'sarah-receptionist': 'external inbound caller handling',
+};
+
+async function syncSpecialistBackToAva(name, agentId) {
   console.log(`\n=== ${name} (${agentId}) ===`);
 
   const before = await api('GET', `/convai/agents/${agentId}`);
   const existingTools = before?.conversation_config?.agent?.prompt?.built_in_tools || {};
-  const wasOn = existingTools.transfer_to_agent != null;
-  console.log(`  before: transfer_to_agent ${wasOn ? 'ON' : 'OFF (or null)'}`);
+  const beforeRules = existingTools.transfer_to_agent?.params?.transfers || [];
+  console.log(
+    `  before: transfer_to_agent ${existingTools.transfer_to_agent ? 'ON' : 'OFF'}, ` +
+      `transfers=${beforeRules.length}`,
+  );
 
-  if (!wasOn) {
-    console.log('  ✓ already off — nothing to do (idempotent)');
-    return;
-  }
-
-  // Set transfer_to_agent to null to disable.
-  const built_in_tools = { ...existingTools, transfer_to_agent: null };
+  const existingTta = existingTools.transfer_to_agent || {};
+  const built_in_tools = { ...existingTools };
+  built_in_tools.transfer_to_agent = {
+    ...existingTta,
+    type: existingTta.type || 'system',
+    name: 'transfer_to_agent',
+    description:
+      existingTta.description ||
+      'Transfer the conversation to another internal agent.',
+    params: {
+      system_tool_type: 'transfer_to_agent',
+      transfers: [backToAvaRule(SPECIALIST_DOMAINS[name])],
+    },
+  };
 
   await api('PATCH', `/convai/agents/${agentId}`, {
     conversation_config: { agent: { prompt: { built_in_tools } } },
   });
 
   const after = await api('GET', `/convai/agents/${agentId}`);
-  const stillOn =
+  const afterRules =
     after?.conversation_config?.agent?.prompt?.built_in_tools
-      ?.transfer_to_agent != null;
-  console.log(`  after:  transfer_to_agent ${stillOn ? 'ON ✗' : 'OFF ✓'}`);
-  if (stillOn) {
+      ?.transfer_to_agent?.params?.transfers || [];
+  console.log(`  after:  transfer_to_agent ON, transfers=${afterRules.length}`);
+  if (afterRules.length !== 1) {
     throw new Error(
-      `${name} transfer_to_agent still ON after PATCH — EL did not accept disable`,
+      `${name} expected 1 back-to-Ava rule, got ${afterRules.length}`,
     );
   }
+  if (afterRules[0].agent_id !== AGENTS.ava) {
+    throw new Error(
+      `${name} rule's agent_id should be Ava (${AGENTS.ava}), got ${afterRules[0].agent_id}`,
+    );
+  }
+  console.log('  ✓ rule → Ava installed');
 }
 
 (async () => {
   let failures = 0;
 
-  // Ava — chief-of-staff, ENABLE with 5 transfer rules
+  // Ava — chief-of-staff, ENABLE with 5 outward transfer rules
   try {
     await syncAva();
   } catch (e) {
@@ -201,10 +250,10 @@ async function disableTransferToAgent(name, agentId) {
     failures++;
   }
 
-  // Specialists — DISABLE transfer_to_agent (they don't route)
-  for (const name of ['eli', 'nora', 'finn', 'sarah-receptionist', 'sarah-frontdesk']) {
+  // Specialists — ENABLE with 1 back-to-Ava rule each (hub-and-spoke).
+  for (const name of ['eli', 'nora', 'finn', 'sarah-frontdesk', 'sarah-receptionist']) {
     try {
-      await disableTransferToAgent(name, AGENTS[name]);
+      await syncSpecialistBackToAva(name, AGENTS[name]);
     } catch (e) {
       console.error(`✗ ${name} failed: ${e.message}`);
       failures++;
