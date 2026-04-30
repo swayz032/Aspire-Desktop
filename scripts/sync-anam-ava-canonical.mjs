@@ -263,6 +263,10 @@ function buildCanonicalTools() {
           additionalProperties: true,
         },
         card_cache_id: { type: 'string', description: 'Optional cache continuation id' },
+        user_address: {
+          type: 'string',
+          description: "The user's current job site address (street + city + state if known). Ava asks the user for this before searching for products or stores. The backend uses Google Places to find the closest store to this address.",
+        },
       },
       ['agent', 'task', 'query'],
       { additionalProperties: false },
