@@ -56,6 +56,15 @@ You are on a live video call.
 ## save_office_note
 ## Knowledge_Ava
 ## show_cards`;
+// Prompt is bundled INSIDE the Aspire-desktop deploy (server/prompts/) so it's
+// available in production. The backend sibling-repo path is kept as a fallback
+// for local dev where developers may have both repos checked out side-by-side.
+// CRITICAL: keep server/prompts/ava-anam-video-prompt.md in sync with
+// backend/.../pack_personas/ava_anam_video_prompt.md — the canonical sync
+// script already pushes the canonical .md to Anam, but desktop session-mint
+// overrides Anam's stored prompt with its own personaConfig.systemPrompt at
+// session start, so this local file is what actually runs in voice sessions.
+const AVA_PROMPT_LOCAL_PATH = ['server', 'prompts', 'ava-anam-video-prompt.md'];
 const AVA_PROMPT_RELATIVE_PATH = ['..', 'backend', 'orchestrator', 'src', 'aspire_orchestrator', 'config', 'pack_personas', 'ava_anam_video_prompt.md'];
 
 type AnamPersonaTool = {
@@ -89,7 +98,16 @@ function loadAvaPromptTemplateWithSource(): { prompt: string; source: string } {
   const fsMod = require('fs');
   const explicitPath = process.env.AVA_ANAM_PROMPT_PATH?.trim();
   const candidates = [
+    // 1. Explicit override via env var (testing / staging custom prompts).
     explicitPath || '',
+    // 2. Bundled local copy inside this service's deploy. PRODUCTION path —
+    //    server/prompts/ava-anam-video-prompt.md is committed to the desktop
+    //    repo and ships with the deploy bundle.
+    pathMod.join(process.cwd(), ...AVA_PROMPT_LOCAL_PATH),
+    // 3. Sibling backend repo path. LOCAL DEV ONLY (works when both repos
+    //    are checked out under the same workspace dir). On Railway each
+    //    service is an isolated container so this candidate ALWAYS misses
+    //    in production — that's by design.
     pathMod.join(process.cwd(), ...AVA_PROMPT_RELATIVE_PATH),
   ].filter(Boolean);
 
