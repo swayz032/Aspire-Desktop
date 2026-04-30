@@ -5459,6 +5459,29 @@ function checkOnboardingRate(suiteId: string): boolean {
   return true;
 }
 
+// Per-suite rate limiter for enrich-product (60 calls/min). Bounds runaway
+// SerpAPI cost when a single tenant pumps requests through (THREAT-008). Auth
+// already gates on JWT-derived suite_id so suiteId here is trusted.
+const enrichProductRateMap = new Map<string, { count: number; resetAt: number }>();
+function checkEnrichProductRate(suiteId: string): boolean {
+  const now = Date.now();
+  const entry = enrichProductRateMap.get(suiteId);
+  if (!entry || now > entry.resetAt) {
+    enrichProductRateMap.set(suiteId, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (entry.count >= 60) return false;
+  entry.count += 1;
+  return true;
+}
+const enrichRateCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [suite, entry] of enrichProductRateMap) {
+    if (now > entry.resetAt) enrichProductRateMap.delete(suite);
+  }
+}, 5 * 60 * 1000);
+(enrichRateCleanupTimer as unknown as { unref?: () => void }).unref?.();
+
 const DOMAIN_RAIL_URL = process.env.DOMAIN_RAIL_URL || 'https://domain-rail-production.up.railway.app';
 
 /**
@@ -7793,6 +7816,95 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
   }
 });
 
+// ─── Places Photo Proxy ─────────────────────────────────────────────────────
+// Server-side proxy for Google Places Photo media so the API key never reaches
+// the browser. Backend (places_nearest_finder.py) emits absolute URLs in the
+// form `https://www.aspireos.app/v1/places/photo?ref={resource_name}` — that
+// path is the canonical contract. The `/api/places/photo` alias is retained
+// for any client that hard-codes the original spec path. Both routes share
+// one handler so behaviour is identical.
+//
+// Auth: this endpoint is reachable from rendered card <img> tags which cannot
+// send Authorization headers. Mitigation is rate-limited by the global IP
+// limiter (200/min in index.ts) plus a strict reference-format whitelist.
+// References are opaque Google identifiers, not user-supplied content, so the
+// surface area for abuse is bounded to "fetch the photo Google already
+// indexed". CORS allows requests from www.aspireos.app.
+async function handlePlacesPhotoProxy(req: Request, res: Response): Promise<void> {
+  const ref = typeof req.query.ref === 'string' ? req.query.ref.trim() : '';
+  // Google Places API resource names: "places/{place_id}/photos/{photo_ref}".
+  // Allow only this exact shape — never accept arbitrary URLs.
+  const REF_RE = /^places\/[A-Za-z0-9_-]{8,128}\/photos\/[A-Za-z0-9_-]{16,512}$/;
+  if (!ref || !REF_RE.test(ref)) {
+    res.status(400).json({ error: 'INVALID_REF', message: 'Invalid photo reference.' });
+    return;
+  }
+
+  const maxHeight = Math.min(Math.max(parseInt(String(req.query.maxHeightPx || '400'), 10) || 400, 64), 1600);
+  const maxWidth = Math.min(Math.max(parseInt(String(req.query.maxWidthPx || '600'), 10) || 600, 64), 1600);
+
+  const apiKey = (process.env.GOOGLE_MAPS_API_KEY || '').trim();
+  if (!apiKey) {
+    logger.warn('[PlacesPhoto] GOOGLE_MAPS_API_KEY not configured');
+    res.status(503).json({ error: 'UPSTREAM_UNAVAILABLE', message: 'Photo service unavailable.' });
+    return;
+  }
+
+  const upstreamUrl = `https://places.googleapis.com/v1/${ref}/media?maxHeightPx=${maxHeight}&maxWidthPx=${maxWidth}&key=${encodeURIComponent(apiKey)}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const upstream = await fetch(upstreamUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!upstream.ok) {
+      logger.warn('[PlacesPhoto] upstream non-2xx', { status: upstream.status });
+      res.status(upstream.status === 404 ? 404 : 502).json({
+        error: 'UPSTREAM_ERROR',
+        message: 'Photo unavailable.',
+      });
+      return;
+    }
+
+    const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+    if (!contentType.startsWith('image/')) {
+      logger.warn('[PlacesPhoto] non-image content type', { contentType });
+      res.status(502).json({ error: 'UPSTREAM_BAD_CONTENT', message: 'Photo unavailable.' });
+      return;
+    }
+
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+    res.setHeader('Access-Control-Allow-Origin', 'https://www.aspireos.app');
+    res.setHeader('Vary', 'Origin');
+    res.status(200).send(buf);
+    return;
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.warn('[PlacesPhoto] proxy error', {
+      isTimeout,
+      reason: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+    });
+    res.status(isTimeout ? 504 : 502).json({
+      error: 'UPSTREAM_FAILURE',
+      message: 'Photo unavailable.',
+    });
+    return;
+  }
+}
+
+// Canonical path used by backend places_nearest_finder.py (line 62).
+router.get('/v1/places/photo', handlePlacesPhotoProxy);
+// Alias kept for spec-compatibility per R5 wave 1 brief.
+router.get('/api/places/photo', handlePlacesPhotoProxy);
+
 // ─── POST /api/tools/enrich-product ────────────────────────────────────────
 // Authenticated client proxy for the orchestrator's lazy product-enrichment
 // endpoint. Mints a short-lived (45s) capability token in the same canonical
@@ -7806,6 +7918,14 @@ router.post('/api/elevenlabs/agent-session', async (req: Request, res: Response)
 router.post('/api/tools/enrich-product', async (req: Request, res: Response) => {
   const suiteId = requireAuth(req, res);
   if (!suiteId) return;
+
+  if (!checkEnrichProductRate(suiteId)) {
+    return res.status(429).json({
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many enrichment requests. Try again shortly.',
+      retryAfter: 60,
+    });
+  }
 
   const orchestratorUrl = resolveOrchestratorUrl();
   if (!orchestratorUrl) {

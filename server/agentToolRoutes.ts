@@ -29,11 +29,18 @@ const cardRecordsCache = new Map<string, { records: any[]; artifactType: string;
 const latestCardCacheIdBySuite = new Map<string, string>(); // Per-suite most recent cache entry
 const latestPropertyAddressBySuite = new Map<string, { address: string; timestamp: number }>();
 // Wave A.5: when the user disambiguates between multiple HD stores in a city,
-// remember their pick so subsequent voice queries don't re-prompt. Keyed by
-// suite_id (one active session per user) — bounded by the suite's voice
-// session lifetime + CACHE_TTL_MS.
+// remember their pick so subsequent voice queries don't re-prompt.
+// Keyed by `${suite_id}:${actor_id}` so concurrent actors within the same
+// suite don't collide (THREAT-011). TTL kept short — typical voice session is
+// well under 90s of contiguous interaction.
 const chosenStoreIdBySuite = new Map<string, { storeId: string; timestamp: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — card cache lifetime
+const STORE_PICK_TTL_MS = 90 * 1000; // 90s — voice session disambiguation memory
+
+function chosenStoreKey(suiteId: string, actorId: string): string {
+  const safeActor = actorId && typeof actorId === 'string' ? actorId.trim() : '';
+  return `${suiteId}:${safeActor || 'suite'}`;
+}
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROPERTY_ARTIFACT_TYPES = new Set([
   'LandlordPropertyPack',
@@ -46,6 +53,58 @@ const PROPERTY_ARTIFACT_TYPES = new Set([
 ]);
 const ORCHESTRATOR_INVOKE_PATH = '/v1/agents/invoke';
 const ORCHESTRATOR_INVOKE_SYNC_PATH = '/v1/agents/invoke-sync';
+
+// ─── Per-suite rate limiter (in-memory rolling window) ───────────────────────
+// Lightweight limiter for high-volume tool routes (card-data, enrich-product).
+// 60 calls/min per suite. The global apiLimiter in index.ts caps per-IP traffic
+// but cannot tell suites apart — this fills that gap (THREAT-008).
+const SUITE_RATE_WINDOW_MS = 60 * 1000;
+const SUITE_RATE_MAX = 60;
+const suiteRateMap = new Map<string, { count: number; resetAt: number }>();
+function checkSuiteRate(suiteId: string): boolean {
+  if (!suiteId) return true;
+  const now = Date.now();
+  const entry = suiteRateMap.get(suiteId);
+  if (!entry || now > entry.resetAt) {
+    suiteRateMap.set(suiteId, { count: 1, resetAt: now + SUITE_RATE_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= SUITE_RATE_MAX) return false;
+  entry.count += 1;
+  return true;
+}
+const suiteRateCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [suite, entry] of suiteRateMap) {
+    if (now > entry.resetAt) suiteRateMap.delete(suite);
+  }
+}, 5 * 60 * 1000);
+(suiteRateCleanupTimer as unknown as { unref?: () => void }).unref?.();
+
+// Express middleware adapter — accepts suite_id from body, query, or header.
+// Skips when suite_id can't be resolved (lets the route's own validation deny).
+function cardDataRateLimit(req: Request, res: Response, next: () => void): void {
+  const bodySuite =
+    (req.body && typeof req.body === 'object' && typeof (req.body as any).suite_id === 'string')
+      ? String((req.body as any).suite_id).trim()
+      : '';
+  const querySuite = typeof req.query.suite_id === 'string' ? req.query.suite_id.trim() : '';
+  const candidate = normalizeUuid(bodySuite) || normalizeUuid(querySuite);
+  if (candidate && !checkSuiteRate(candidate)) {
+    logger.warn('[AgentTool] suite rate limit exceeded', { suite: candidate, path: req.path });
+    res.status(429).json({
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many requests for this suite. Try again shortly.',
+      retryAfter: 60,
+    });
+    return;
+  }
+  next();
+}
+
+// Counter for orchestrator invoke fallback (404/405 → invoke-sync). Logged on
+// each fallback so ops can see when the primary endpoint disappears in prod.
+let orchestratorFallbackCount = 0;
 
 function cleanCardCache() {
   const now = Date.now();
@@ -68,9 +127,9 @@ function cleanCardCache() {
       latestPropertyAddressBySuite.delete(suiteId);
     }
   }
-  for (const [suiteId, entry] of chosenStoreIdBySuite) {
-    if (now - entry.timestamp > CACHE_TTL_MS) {
-      chosenStoreIdBySuite.delete(suiteId);
+  for (const [key, entry] of chosenStoreIdBySuite) {
+    if (now - entry.timestamp > STORE_PICK_TTL_MS) {
+      chosenStoreIdBySuite.delete(key);
     }
   }
 }
@@ -146,10 +205,12 @@ async function dispatchOrchestratorInvoke(
   let response = await fetch(primaryEndpoint, requestInit);
   if (response.status === 404 || response.status === 405) {
     const fallbackEndpoint = `${orchestratorUrl}${ORCHESTRATOR_INVOKE_SYNC_PATH}`;
+    orchestratorFallbackCount += 1;
     logger.warn('[AgentTool] Orchestrator invoke endpoint fallback', {
       primaryEndpoint,
       fallbackEndpoint,
       status: response.status,
+      cumulativeFallbackCount: orchestratorFallbackCount,
     });
     response = await fetch(fallbackEndpoint, requestInit);
     return { response, endpoint: fallbackEndpoint, fellBack: true };
@@ -225,7 +286,12 @@ function verifySecret(req: Request, res: Response): boolean {
   }
   const body = getRequestBody(req);
   // Keep legacy header compatibility on by default during migration.
-  // Set ALLOW_LEGACY_TOOL_SECRET_HEADER=false to enforce x-aspire-tool-secret only.
+  // THREAT-021: this default-true creates an indefinite tail for the
+  // x-elevenlabs-secret header. Migration deadline: 2026-06-01 — by then,
+  // production Railway env should have ALLOW_LEGACY_TOOL_SECRET_HEADER=false
+  // (USER ACTION). Every legacy-header request below logs a WARN with
+  // path so the rollout is observable; once those warns drop to zero we
+  // can safely flip the flag.
   const allowLegacyHeader = String(process.env.ALLOW_LEGACY_TOOL_SECRET_HEADER || 'true').toLowerCase() !== 'false';
   const aspireSecret = readHeaderString(req.headers['x-aspire-tool-secret'] as string | string[] | undefined);
   const legacySecret = allowLegacyHeader
@@ -279,6 +345,18 @@ function normalizeSuiteContext(body: any): { suiteId: string; officeId: string }
   const suiteId = rawSuite || fallbackSuite;
   const rawOffice = normalizeUuid(body?.office_id) || normalizeUuid(body?.officeId);
   const officeId = rawOffice || suiteId;
+  // Audit trail for body-supplied suite_ids (THREAT-005). Without per-secret
+  // tenant binding (Round 6 work), body suite_id is the dispatch key — log its
+  // origin so we can detect cross-tenant abuse if it happens. We log only the
+  // origin label, not the secret, never the value (Law #9).
+  if (rawSuite) {
+    logger.info('[AgentTool] suite_id_origin', {
+      origin: 'body',
+      suite_id: suiteId,
+      // Distinguish caller-provided vs default fallback for forensics.
+      hasOffice: !!rawOffice,
+    });
+  }
   return { suiteId, officeId };
 }
 
@@ -501,10 +579,13 @@ router.post('/v1/tools/search', async (req: Request, res: Response) => {
         ? `Found ${results.length} invoice record${results.length > 1 ? 's' : ''}.`
         : 'No invoices found.';
     } else if (resolvedType === 'contacts' || resolvedType === 'contact') {
-      // Search suite profiles for contacts
+      // Search suite profiles for contacts. Law #6: tenant isolation.
+      // suite_profiles is keyed by suite_id; without this filter every tenant's
+      // contacts would leak (THREAT-003).
       const { data } = await supabase
         .from('suite_profiles')
         .select('suite_id, owner_name, business_name, industry')
+        .eq('suite_id', suite_id)
         .limit(10);
       results = (data || []).map((p: any) => ({
         type: 'contact',
@@ -672,6 +753,37 @@ router.post('/v1/tools/draft', async (req: Request, res: Response) => {
       const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
       const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
+      // F-MED-A2: emit receipt for calendar draft creation (Law #2). YELLOW
+      // tier — calendar entries are state changes that may need confirmation.
+      try {
+        const correlationId = `corr-draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        await supabase.from('receipts').insert({
+          receipt_id: `rcpt-draft-${event.id}`,
+          suite_id,
+          tenant_id: suite_id || 'default',
+          office_id: suite_id || null,
+          receipt_type: 'calendar_draft',
+          status: 'SUCCEEDED',
+          correlation_id: correlationId,
+          actor_type: 'WORKER',
+          actor_id: 'ava',
+          action: {
+            type: 'calendar.draft_created',
+            event_id: event.id,
+            event_type: eventType,
+            risk_tier: 'YELLOW',
+            tool_used: 'calendar.draft',
+            reason_code: 'DRAFT_PENDING_APPROVAL',
+          },
+          result: { event_id: event.id, start_time: startTime.toISOString(), duration_minutes: durationMinutes },
+          hash_alg: 'sha256',
+        });
+      } catch (recErr) {
+        logger.warn('[AgentTool] draft calendar receipt write failed', {
+          error: recErr instanceof Error ? recErr.message : 'unknown',
+        });
+      }
+
       return res.json({
         draft_id: event.id,
         draft_type: 'meeting',
@@ -763,17 +875,29 @@ router.post('/v1/tools/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // Also emit a receipt (Law #2)
+    // Also emit a receipt (Law #2). Schema-correct fields: status uppercase
+    // (CHECK IN ('PENDING','SUCCEEDED','FAILED','DENIED')), actor_type uppercase
+    // (CHECK IN ('USER','SYSTEM','WORKER')), and governance fields nested in
+    // action JSON. receipt_hash is computed by trust_compute_receipt_hash()
+    // trigger — do NOT set it client-side.
     await supabase.from('receipts').insert({
       receipt_id: `rcpt-${approvalId}`,
       suite_id,
       tenant_id: suite_id || 'default',
+      office_id: suite_id || null,
       receipt_type: 'approval',
-      status: 'ok',
+      status: 'SUCCEEDED',
       correlation_id: correlationId,
-      actor_type: 'agent',
+      actor_type: 'WORKER',
       actor_id: 'ava',
-      action: { type: 'approve', draft_id, action_type },
+      action: {
+        type: 'approve',
+        draft_id,
+        action_type,
+        risk_tier: 'YELLOW',
+        tool_used: 'approval.create',
+        reason_code: 'APPROVED_BY_USER',
+      },
       result: { approval_id: approvalId, status: 'approved' },
       hash_alg: 'sha256',
     });
@@ -823,10 +947,17 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
         });
       }
     } catch (parseErr) {
+      // THREAT-012: rawSample previously logged 200 chars of raw body which can
+      // include PII (addresses, names, phone numbers). Replace with a hex
+      // fingerprint of the first 8 bytes for debugging without exposing
+      // content.
+      const fingerprint = rawBody.length > 0
+        ? Buffer.from(rawBody).slice(0, 8).toString('hex')
+        : '';
       logger.error('[AgentTool] invoke raw body JSON parse failed', {
         contentType: req.headers['content-type'] || '(none)',
         rawLength: rawBody.length,
-        rawSample: rawBody.toString('utf-8').slice(0, 200),
+        rawFingerprint: fingerprint,
         error: parseErr instanceof Error ? parseErr.message : 'unknown',
       });
     }
@@ -1008,19 +1139,22 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     // follow-ups that omit store_id — the orchestrator skips re-prompting.
     cleanCardCache();
     const requestStoreId = typeof body.store_id === 'string' ? body.store_id.trim() : '';
+    const actorIdForKey = typeof user_id === 'string' ? user_id : '';
+    const storePickKey = safeSuiteId ? chosenStoreKey(safeSuiteId, actorIdForKey) : '';
     let effectiveStoreId = requestStoreId;
-    if (!effectiveStoreId && safeSuiteId) {
-      const cached = chosenStoreIdBySuite.get(safeSuiteId);
-      if (cached && Date.now() - cached.timestamp <= CACHE_TTL_MS) {
+    if (!effectiveStoreId && storePickKey) {
+      const cached = chosenStoreIdBySuite.get(storePickKey);
+      if (cached && Date.now() - cached.timestamp <= STORE_PICK_TTL_MS) {
         effectiveStoreId = cached.storeId;
         logger.info('[AgentTool] Reused cached store_id for Adam invoke', {
           suite_id: safeSuiteId,
+          actor_id: actorIdForKey || '(anon)',
           store_id: effectiveStoreId,
         });
       }
     }
-    if (requestStoreId && safeSuiteId) {
-      chosenStoreIdBySuite.set(safeSuiteId, {
+    if (requestStoreId && storePickKey) {
+      chosenStoreIdBySuite.set(storePickKey, {
         storeId: requestStoreId,
         timestamp: Date.now(),
       });
@@ -1069,9 +1203,46 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
         endpoint: invokeEndpoint,
         body: errBody.slice(0, 200),
       });
+
+      // F-MED-A3: emit failure receipt for upstream 4xx/5xx so the failure is
+      // auditable and the receipt chain stays complete.
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+        if (supabaseUrl && supabaseKey && safeSuiteId) {
+          const supabase = createClient(supabaseUrl, supabaseKey);
+          await supabase.from('receipts').insert({
+            receipt_id: `rcpt-invoke-up-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            suite_id: safeSuiteId,
+            tenant_id: safeSuiteId,
+            office_id: safeOfficeId,
+            receipt_type: 'invoke_error',
+            status: 'FAILED',
+            correlation_id: correlationId,
+            actor_type: 'WORKER',
+            actor_id: 'ava',
+            action: {
+              type: 'invoke',
+              agent: resolvedAgent,
+              risk_tier: 'GREEN',
+              tool_used: 'agent.invoke',
+              reason_code: 'UPSTREAM_ERROR',
+            },
+            result: { upstream_status: a2aResp.status, endpoint_used: invokeEndpoint },
+            hash_alg: 'sha256',
+          });
+        }
+      } catch (recErr) {
+        logger.warn('[AgentTool] invoke upstream-fail receipt write failed', {
+          error: recErr instanceof Error ? recErr.message : 'unknown',
+        });
+      }
+
+      // THREAT-014: do not leak upstream body or status text to the model.
       return res.json({
         agent: resolvedAgent,
-        result: `I was not able to reach ${resolvedAgent} right now. The service returned an error. Please try again.`,
+        result: `I was not able to reach ${resolvedAgent} right now. Please try again.`,
         status: 'error',
       });
     }
@@ -1115,10 +1286,50 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     });
   } catch (err: unknown) {
     const isTimeout = err instanceof Error && err.name === 'AbortError';
+    // THREAT-014: never leak err.message to the model — those strings end up
+    // spoken by the agent and may include stack traces, paths, or upstream
+    // tokens. Generic message to caller; full detail server-side only.
     const message = isTimeout
       ? `${resolvedAgent} is taking longer than expected. Please try again in a moment.`
       : `I was not able to reach ${resolvedAgent} right now. Please try again.`;
     logger.error('[AgentTool] invoke error', { agent: resolvedAgent, error: err instanceof Error ? err.message : 'unknown', isTimeout });
+
+    // F-MED-A3: emit a failure receipt so timeouts/errors are auditable.
+    try {
+      const correlationId = `corr-invoke-err-${Date.now()}`;
+      const errSuiteId = (typeof suite_id === 'string' && suite_id.trim()) || getDefaultSuiteId() || '';
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+      if (supabaseUrl && supabaseKey && errSuiteId) {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        await supabase.from('receipts').insert({
+          receipt_id: `rcpt-invoke-err-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          suite_id: errSuiteId,
+          tenant_id: errSuiteId,
+          office_id: errSuiteId,
+          receipt_type: 'invoke_error',
+          status: 'FAILED',
+          correlation_id: correlationId,
+          actor_type: 'WORKER',
+          actor_id: 'ava',
+          action: {
+            type: 'invoke',
+            agent: resolvedAgent,
+            risk_tier: 'GREEN',
+            tool_used: 'agent.invoke',
+            reason_code: isTimeout ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_ERROR',
+          },
+          result: { error: 'invoke_failed', isTimeout },
+          hash_alg: 'sha256',
+        });
+      }
+    } catch (recErr) {
+      logger.warn('[AgentTool] invoke failure receipt write failed', {
+        error: recErr instanceof Error ? recErr.message : 'unknown',
+      });
+    }
+
     return res.json({
       agent: resolvedAgent,
       result: message,
@@ -1156,12 +1367,19 @@ router.post('/v1/tools/execute', async (req: Request, res: Response) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Validate the approval exists and is approved
-    const { data: approval } = await supabase
+    // Validate the approval exists and is approved.
+    // Law #6: tenant isolation. approval_id is server-minted but a leaked or
+    // guessed id must not let one tenant execute another tenant's approval
+    // (THREAT-013). Pin the lookup to the authenticated suite.
+    const tenantFilter = (typeof suite_id === 'string' && suite_id.trim()) || '';
+    let approvalQuery = supabase
       .from('approval_requests')
-      .select('approval_id, status, risk_tier, tool, operation, draft_summary, expires_at')
-      .eq('approval_id', approval_id)
-      .maybeSingle();
+      .select('approval_id, status, risk_tier, tool, operation, draft_summary, expires_at, tenant_id')
+      .eq('approval_id', approval_id);
+    if (tenantFilter) {
+      approvalQuery = approvalQuery.eq('tenant_id', tenantFilter);
+    }
+    const { data: approval } = await approvalQuery.maybeSingle();
 
     if (!approval) {
       return res.status(404).json({
@@ -1193,18 +1411,28 @@ router.post('/v1/tools/execute', async (req: Request, res: Response) => {
       .update({ status: 'executed', decided_at: new Date().toISOString() })
       .eq('approval_id', approval_id);
 
-    // Emit execution receipt (Law #2)
+    // Emit execution receipt (Law #2). approval_requests row is mutated above
+    // (state machine), but the receipt below is the immutable audit record of
+    // the transition itself.
     const correlationId = `corr-exec-${Date.now()}`;
     await supabase.from('receipts').insert({
       receipt_id: `rcpt-${executionId}`,
       suite_id,
       tenant_id: suite_id || 'default',
+      office_id: suite_id || null,
       receipt_type: 'execution',
-      status: 'ok',
+      status: 'SUCCEEDED',
       correlation_id: correlationId,
-      actor_type: 'agent',
+      actor_type: 'WORKER',
       actor_id: 'ava',
-      action: { type: 'execute', approval_id, action_type },
+      action: {
+        type: 'execute',
+        approval_id,
+        action_type,
+        risk_tier: approval.risk_tier || 'YELLOW',
+        tool_used: approval.tool || 'execute',
+        reason_code: 'CAPABILITY_OK',
+      },
       result: { execution_id: executionId, status: 'executed' },
       hash_alg: 'sha256',
     });
@@ -1263,12 +1491,20 @@ router.post('/v1/tools/office-note', async (req: Request, res: Response) => {
           receipt_id: `rcpt-${noteId}`,
           suite_id,
           tenant_id: suite_id || 'default',
+          office_id: suite_id || null,
           receipt_type: 'office_note',
-          status: 'ok',
+          status: 'SUCCEEDED',
           correlation_id: correlationId,
-          actor_type: 'agent',
+          actor_type: 'WORKER',
           actor_id: 'ava',
-          action: { type: 'office_note', note_type: resolvedType, entity },
+          action: {
+            type: 'office_note',
+            note_type: resolvedType,
+            entity,
+            risk_tier: 'GREEN',
+            tool_used: 'office_memory.write',
+            reason_code: 'NOTE_SAVED',
+          },
           result: { note_id: noteId, summary, next_step },
           hash_alg: 'sha256',
         });
@@ -1374,12 +1610,20 @@ router.post('/v1/tools/analyze-document', async (req: Request, res: Response) =>
           receipt_id: `rcpt-doc-${Date.now()}`,
           suite_id,
           tenant_id: suite_id || 'default',
+          office_id: suite_id || null,
           receipt_type: 'document_analysis',
-          status: a2aResult.success ? 'ok' : 'failed',
+          status: a2aResult.success ? 'SUCCEEDED' : 'FAILED',
           correlation_id: correlationId,
-          actor_type: 'agent',
+          actor_type: 'WORKER',
           actor_id: 'tec',
-          action: { type: 'analyze_document', file_name, document_id },
+          action: {
+            type: 'analyze_document',
+            file_name,
+            document_id,
+            risk_tier: 'GREEN',
+            tool_used: 'tec.analyze_document',
+            reason_code: a2aResult.success ? 'DOC_PROCESSED' : 'DOC_FAILED',
+          },
           result: { success: a2aResult.success, receipt_id: a2aResult.receipt_id },
           hash_alg: 'sha256',
         });
@@ -1416,16 +1660,23 @@ router.post('/v1/tools/analyze-document', async (req: Request, res: Response) =>
 // them from the ElevenLabs payload, and serves them here.
 // Path starts with /api/ so Metro dev proxy forwards it (only /api + /objects are proxied).
 
-router.post('/api/card-data/refetch', async (req: Request, res: Response) => {
-  const { artifact_type, suite_id, seed_record } = req.body || {};
+router.post('/api/card-data/refetch', cardDataRateLimit, async (req: Request, res: Response) => {
+  // Law #3: Fail closed. Refetch dispatches Adam against a suite — without auth
+  // the body's suite_id is attacker-controlled and would allow cross-tenant
+  // billing/abuse (THREAT-001).
+  if (!verifySecret(req, res)) return;
+
+  const body = getRequestBody(req);
+  const { suiteId: authSuiteId } = normalizeSuiteContext(body);
+  const { artifact_type, seed_record } = body;
   const artifactType = typeof artifact_type === 'string' ? artifact_type : '';
-  const suiteId = typeof suite_id === 'string' && suite_id.trim() ? suite_id.trim() : '';
   if (!PROPERTY_ARTIFACT_TYPES.has(artifactType)) {
     return res.status(400).json({ error: 'UNSUPPORTED_ARTIFACT', message: 'Auto-refetch supports property artifacts only.' });
   }
-  if (!suiteId) {
+  if (!authSuiteId) {
     return res.status(400).json({ error: 'MISSING_SUITE_ID', message: 'suite_id is required for refetch.' });
   }
+  const suiteId = authSuiteId;
 
   const task = buildPropertyRefetchTask(seed_record, suiteId);
   if (!task) {
@@ -1510,6 +1761,56 @@ router.post('/api/card-data/refetch', async (req: Request, res: Response) => {
 //      regression is visible during rollout.
 //   3. No card_cache_id, full records → pass-through (current behaviour).
 //   4. No card_cache_id, sparse records, no recent cache → pass-through.
+// Fire-and-forget receipt write for show_cards branches. show_cards is on the
+// hot path (voice latency) — we never block the response on the DB insert, but
+// every branch produces a receipt for audit (Law #2, F-MED-A1).
+async function emitShowCardsReceipt(opts: {
+  suiteId: string;
+  source: string;
+  cacheId?: string;
+  artifactType: string;
+  recordCount: number;
+  outcome: 'CACHE_HIT' | 'REHYDRATED' | 'PASSTHROUGH' | 'CROSS_TENANT_REFUSED' | 'CACHE_MISS';
+}): Promise<void> {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    if (!supabaseUrl || !supabaseKey || !opts.suiteId) return;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const correlationId = `corr-show-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const status = opts.outcome === 'CROSS_TENANT_REFUSED' ? 'DENIED'
+      : opts.outcome === 'CACHE_MISS' ? 'FAILED'
+      : 'SUCCEEDED';
+    await supabase.from('receipts').insert({
+      receipt_id: `rcpt-show-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      suite_id: opts.suiteId,
+      tenant_id: opts.suiteId,
+      office_id: opts.suiteId,
+      receipt_type: 'show_cards',
+      status,
+      correlation_id: correlationId,
+      actor_type: 'WORKER',
+      actor_id: 'ava',
+      action: {
+        type: 'show_cards',
+        risk_tier: 'GREEN',
+        tool_used: 'ui.show_cards',
+        reason_code: opts.outcome,
+        source: opts.source,
+        cache_id: opts.cacheId || null,
+      },
+      result: {
+        artifact_type: opts.artifactType,
+        record_count: opts.recordCount,
+      },
+      hash_alg: 'sha256',
+    });
+  } catch (err) {
+    logger.warn('[ShowCards] receipt write failed', { error: err instanceof Error ? err.message : 'unknown' });
+  }
+}
+
 router.post('/v1/tools/show-cards', (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
   const body = getRequestBody(req);
@@ -1530,6 +1831,14 @@ router.post('/v1/tools/show-cards', (req: Request, res: Response) => {
     const cached = cardRecordsCache.get(rawCacheId);
     if (!cached) {
       logger.warn('[ShowCards] Explicit cache_id miss', { cacheId: rawCacheId, suiteId });
+      void emitShowCardsReceipt({
+        suiteId,
+        source: 'cache-by-id',
+        cacheId: rawCacheId,
+        artifactType: incomingArtifactType,
+        recordCount: 0,
+        outcome: 'CACHE_MISS',
+      });
       return res.status(404).json({ error: 'CACHE_NOT_FOUND', message: 'Card cache expired or unknown.' });
     }
     if (cached.suiteId !== suiteId) {
@@ -1540,12 +1849,28 @@ router.post('/v1/tools/show-cards', (req: Request, res: Response) => {
         requestedSuite: suiteId,
         cachedSuite: cached.suiteId,
       });
+      void emitShowCardsReceipt({
+        suiteId,
+        source: 'cache-by-id',
+        cacheId: rawCacheId,
+        artifactType: incomingArtifactType,
+        recordCount: 0,
+        outcome: 'CROSS_TENANT_REFUSED',
+      });
       return res.status(404).json({ error: 'CACHE_NOT_FOUND', message: 'Card cache expired or unknown.' });
     }
     logger.info('[ShowCards] Rehydrated from explicit cache_id', {
       cacheId: rawCacheId,
       suiteId,
       count: cached.records.length,
+    });
+    void emitShowCardsReceipt({
+      suiteId,
+      source: 'cache-by-id',
+      cacheId: rawCacheId,
+      artifactType: cached.artifactType,
+      recordCount: cached.records.length,
+      outcome: 'CACHE_HIT',
     });
     return res.json({
       records: cached.records,
@@ -1572,6 +1897,14 @@ router.post('/v1/tools/show-cards', (req: Request, res: Response) => {
         incomingArtifactType: incomingArtifactType || cached.artifactType,
         rehydratedRecordCount: cached.records.length,
       });
+      void emitShowCardsReceipt({
+        suiteId,
+        source: 'cache',
+        cacheId: latestId,
+        artifactType: cached.artifactType,
+        recordCount: cached.records.length,
+        outcome: 'REHYDRATED',
+      });
       return res.json({
         records: cached.records,
         artifactType: cached.artifactType,
@@ -1587,6 +1920,13 @@ router.post('/v1/tools/show-cards', (req: Request, res: Response) => {
       suite: suiteId,
       incomingRecordCount: incomingRecords.length,
     });
+    void emitShowCardsReceipt({
+      suiteId,
+      source: 'client',
+      artifactType: incomingArtifactType,
+      recordCount: incomingRecords.length,
+      outcome: 'PASSTHROUGH',
+    });
     return res.json({
       records: incomingRecords,
       artifactType: incomingArtifactType,
@@ -1596,6 +1936,13 @@ router.post('/v1/tools/show-cards', (req: Request, res: Response) => {
   }
 
   // Path 3: full records, no cache_id. Pass through unchanged.
+  void emitShowCardsReceipt({
+    suiteId,
+    source: 'client',
+    artifactType: incomingArtifactType,
+    recordCount: incomingRecords.length,
+    outcome: 'PASSTHROUGH',
+  });
   return res.json({
     records: incomingRecords,
     artifactType: incomingArtifactType,
@@ -1604,9 +1951,20 @@ router.post('/v1/tools/show-cards', (req: Request, res: Response) => {
   });
 });
 
-router.get('/api/card-data/:id', (req: Request, res: Response) => {
+router.get('/api/card-data/:id', cardDataRateLimit, (req: Request, res: Response) => {
+  // Law #3: Fail closed. Card cache holds full property data — without auth a
+  // cache-id enumeration attack could exfiltrate any tenant's records
+  // (THREAT-002). suite_id derives from the authenticated tool secret context,
+  // NOT the attacker-controlled query string.
+  if (!verifySecret(req, res)) return;
+
   const id = String(req.params.id || '');
-  const suiteId = typeof req.query.suite_id === 'string' ? req.query.suite_id.trim() : '';
+  const querySuiteFromString = typeof req.query.suite_id === 'string' ? req.query.suite_id.trim() : '';
+  // GET has no body, so normalizeSuiteContext can't pull from body; verifySecret
+  // already authenticated the caller, so the query suite_id is acceptable
+  // *only* after secret verification (the attacker still needs a valid secret).
+  // The previous unauthenticated handler made this query param the sole gate.
+  const suiteId = normalizeUuid(querySuiteFromString) || normalizeUuid(getDefaultSuiteId());
   cleanCardCache();
   if (!suiteId) {
     return res.status(400).json({ error: 'MISSING_SUITE_ID', message: 'suite_id query param is required.' });

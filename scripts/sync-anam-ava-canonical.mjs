@@ -18,6 +18,13 @@
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Resolve __dirname for ES modules so the prompt path is anchored to the
+// script file, not process.cwd(). Running this script from any directory
+// (e.g. via Railway run, npm script, monorepo root) now works identically.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const ANAM_API_KEY = process.env.ANAM_API_KEY || '';
 const PERSONA_ID = process.env.ANAM_AVA_PERSONA_ID || '58f82b89-8ae7-43cc-930d-be8def14dff3';
@@ -251,6 +258,14 @@ function buildCanonicalTools() {
         task: { type: 'string', description: 'Overall research instruction (for example: find paint sprayers in Tallahassee).' },
         query: { type: 'string', description: 'Specific search term, address, or named entity to look up.' },
         city: { type: 'string', description: 'City or location context' },
+        state: {
+          type: 'string',
+          description: "Optional US state two-letter code or full name (for example FL or Florida). Helps disambiguate when the same city name appears in multiple states.",
+        },
+        zip_code: {
+          type: 'string',
+          description: 'Optional 5-digit US ZIP code for product/store lookups. The backend forwards this to SerpAPI as delivery_zip when present.',
+        },
         limit: { type: 'number', description: 'Optional result limit' },
         entity_type: {
           type: 'string',
@@ -386,20 +401,28 @@ function buildCanonicalTools() {
 }
 
 function loadAvaPromptTemplate() {
+  // Anchor to script directory so this works regardless of CWD.
+  // Layout: <repo-root>/Aspire-desktop/scripts/sync-anam-ava-canonical.mjs ->
+  //         <repo-root>/backend/orchestrator/src/aspire_orchestrator/config/pack_personas/ava_anam_video_prompt.md
+  const promptPath = path.resolve(
+    __dirname,
+    '..',
+    '..',
+    'backend',
+    'orchestrator',
+    'src',
+    'aspire_orchestrator',
+    'config',
+    'pack_personas',
+    'ava_anam_video_prompt.md',
+  );
   try {
-    const promptPath = path.join(
-      process.cwd(),
-      '..',
-      'backend',
-      'orchestrator',
-      'src',
-      'aspire_orchestrator',
-      'config',
-      'pack_personas',
-      'ava_anam_video_prompt.md',
-    );
     return fs.readFileSync(promptPath, 'utf-8');
-  } catch {
+  } catch (err) {
+    // F-MED-A7: when the user explicitly asks for prompt sync but the file is
+    // missing, surface the path so they can fix it. The previous silent
+    // `return null` made misconfiguration invisible during deploy.
+    console.error(`[sync-anam] Failed to read prompt template at ${promptPath}: ${err?.message || err}`);
     return null;
   }
 }
@@ -608,7 +631,12 @@ async function main() {
   const rawPrompt = SHOULD_SYNC_PROMPT ? loadAvaPromptTemplate() : null;
   const prompt = rawPrompt ? materializePromptForStateful(rawPrompt) : null;
   if (SHOULD_SYNC_PROMPT && !rawPrompt) {
-    console.warn('SYNC_ANAM_PROMPT=true but prompt template file was not found; continuing with existing systemPrompt.');
+    // F-MED-A7: do not silently continue. The user explicitly opted into
+    // prompt sync; failing to load the template is a configuration error
+    // worth blocking deploy. Set SYNC_ANAM_PROMPT=false if you really do
+    // want the persona's existing remote prompt preserved.
+    console.error('SYNC_ANAM_PROMPT=true but prompt template file was not found. Aborting (set SYNC_ANAM_PROMPT=false to skip prompt sync).');
+    process.exit(2);
   }
 
   // Force-clear persona attachments first to avoid additive merge behavior.
