@@ -5,7 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { ActionButton } from './ActionButton';
 import { BaseCard } from './BaseCard';
-import { registerCard } from './CardRegistry';
+// IMPORTANT: do NOT import `registerCard` at runtime here. CardRegistry
+// already imports this module and calls registerCard for it — adding a
+// self-registration here creates a circular import that triggers a TDZ
+// at the bundler level: when CardRegistry's `var l = r(d[5])` import
+// resolves this module during init, the module would call back into
+// CardRegistry's `registerCard` BEFORE its `const CARD_MAP = new Map`
+// has been initialized. Result: blank-white production page with
+// `ReferenceError: Cannot access 'p' before initialization`.
 import type { CardProps } from './CardRegistry';
 
 /**
@@ -233,7 +240,8 @@ const styles = StyleSheet.create({
   },
 });
 
-// Self-register at import time (consistent with HotelCard, ProductCard, BusinessCard).
-registerCard('StoreDisambiguation', StoreDisambiguationCard);
+// Registration moved to CardRegistry.ts (one-way import).
+// Self-registration here creates a circular import — see top-of-file comment.
+// CardRegistry.ts:148 calls registerCard('StoreDisambiguation', StoreDisambiguationCard).
 
 export default StoreDisambiguationCard;
