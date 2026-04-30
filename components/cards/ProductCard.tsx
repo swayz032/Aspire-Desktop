@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
+import { useSupabase } from '@/providers/SupabaseProvider';
 import { renderStars, fmtPrice } from './helpers';
 import { ActionButton } from './ActionButton';
 import { BaseCard } from './BaseCard';
@@ -13,6 +14,13 @@ import { ProductDetailModal } from './ProductDetailModal';
 import type { CardProps } from './CardRegistry';
 
 export function ProductCard({ record, onAction, isActive, enterDelay, orientation }: CardProps) {
+  // Auth from context: ProductCard is always rendered inside the SupabaseProvider
+  // tree (it lives in ResearchModal which mounts under the dashboard). We pass
+  // the token down to ProductDetailModal explicitly so the modal does NOT have
+  // to call supabase.auth.getSession() outside the provider tree.
+  const { session, suiteId } = useSupabase();
+  const authToken = session?.access_token ?? null;
+
   const isHorizontal = orientation === 'horizontal';
   const isStoreSummary = record.card_kind === 'store_summary';
   const productName = isStoreSummary
@@ -238,7 +246,10 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
             key={horizontalHeroImage}
             source={{ uri: horizontalHeroImage }}
             style={StyleSheet.absoluteFillObject}
-            contentFit="cover"
+            // Wave B.5: contain (letterbox) so square product photos don't get
+            // their tops/bottoms clipped on the wide horizontal hero pane. The
+            // pressable's elevated bg fills the dead space cleanly.
+            contentFit="contain"
             transition={200}
             accessibilityLabel={`Photo of ${productName}`}
             onLoad={() => setImageLoaded(true)}
@@ -472,6 +483,12 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
               </View>
             )}
 
+            {!isStoreSummary && typeof record.description_short === 'string' && record.description_short.trim() ? (
+              <Text style={hStyles.descShort} numberOfLines={2}>
+                {String(record.description_short).trim()}
+              </Text>
+            ) : null}
+
             <View style={hStyles.stockSpacer} />
 
             {(stockCount != null && stockCount > 0 && storeName) ? (
@@ -523,6 +540,8 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
             productId={productIdForEnrich}
             basicRecord={record}
             onClose={handleCloseDetailModal}
+            authToken={authToken}
+            suiteId={suiteId}
           />
         ) : null}
       </>
@@ -1212,6 +1231,12 @@ const hStyles = StyleSheet.create({
     ...Typography.small,
     color: Colors.accent.cyan,
     fontWeight: '600',
+  },
+  descShort: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.text.tertiary,
+    marginTop: Spacing.sm,
   },
   stockSpacer: {
     flex: 1,

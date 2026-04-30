@@ -22,6 +22,31 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { render } from '@testing-library/react-native';
 
+// Stub the supabase client so importing ProductCard (which transitively pulls
+// SupabaseProvider) doesn't blow up on missing EXPO_PUBLIC_SUPABASE_URL during
+// jest. Tests here only assert layout/sizing, never call supabase.
+jest.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+      onAuthStateChange: jest.fn().mockReturnValue({ data: { subscription: { unsubscribe: jest.fn() } } }),
+      refreshSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+      signOut: jest.fn().mockResolvedValue({ error: null }),
+    },
+    from: jest.fn(),
+    channel: jest.fn(),
+    removeChannel: jest.fn(),
+  },
+}));
+
+// SupabaseProvider's useSupabase() throws when called outside the provider.
+// In ProductCard we read session/suiteId via this hook -- stub it so the
+// render tree gets a benign null session.
+jest.mock('@/providers/SupabaseProvider', () => ({
+  useSupabase: () => ({ session: null, suiteId: null, isLoading: false, signOut: jest.fn() }),
+  SupabaseProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 // Tested module
 import { BaseCard, CARD_HEIGHT } from '@/components/cards/BaseCard';
 

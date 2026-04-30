@@ -28,6 +28,11 @@ const router = Router();
 const cardRecordsCache = new Map<string, { records: any[]; artifactType: string; suiteId: string; timestamp: number }>();
 const latestCardCacheIdBySuite = new Map<string, string>(); // Per-suite most recent cache entry
 const latestPropertyAddressBySuite = new Map<string, { address: string; timestamp: number }>();
+// Wave A.5: when the user disambiguates between multiple HD stores in a city,
+// remember their pick so subsequent voice queries don't re-prompt. Keyed by
+// suite_id (one active session per user) — bounded by the suite's voice
+// session lifetime + CACHE_TTL_MS.
+const chosenStoreIdBySuite = new Map<string, { storeId: string; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROPERTY_ARTIFACT_TYPES = new Set([
@@ -61,6 +66,11 @@ function cleanCardCache() {
   for (const [suiteId, entry] of latestPropertyAddressBySuite) {
     if (now - entry.timestamp > CACHE_TTL_MS) {
       latestPropertyAddressBySuite.delete(suiteId);
+    }
+  }
+  for (const [suiteId, entry] of chosenStoreIdBySuite) {
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      chosenStoreIdBySuite.delete(suiteId);
     }
   }
 }
@@ -952,7 +962,30 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       }
     }
 
-    const invokePayload = {
+    // Wave A.5: pull through the Adam-specific location/store hints. If the
+    // user previously picked a store in this session, auto-inject it on
+    // follow-ups that omit store_id — the orchestrator skips re-prompting.
+    cleanCardCache();
+    const requestStoreId = typeof body.store_id === 'string' ? body.store_id.trim() : '';
+    let effectiveStoreId = requestStoreId;
+    if (!effectiveStoreId && safeSuiteId) {
+      const cached = chosenStoreIdBySuite.get(safeSuiteId);
+      if (cached && Date.now() - cached.timestamp <= CACHE_TTL_MS) {
+        effectiveStoreId = cached.storeId;
+        logger.info('[AgentTool] Reused cached store_id for Adam invoke', {
+          suite_id: safeSuiteId,
+          store_id: effectiveStoreId,
+        });
+      }
+    }
+    if (requestStoreId && safeSuiteId) {
+      chosenStoreIdBySuite.set(safeSuiteId, {
+        storeId: requestStoreId,
+        timestamp: Date.now(),
+      });
+    }
+
+    const invokePayload: Record<string, unknown> = {
       suite_id: safeSuiteId,
       office_id: safeOfficeId,
       correlation_id: correlationId,
@@ -961,6 +994,19 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       details: detailsText,
       user_id,
     };
+
+    // Wave A — pass through Adam tool-material-price-check hints.
+    if (resolvedAgent === 'adam') {
+      if (entityTypeText) invokePayload.entity_type = entityTypeText;
+      if (cityText) invokePayload.city = cityText;
+      const stateText = typeof body.state === 'string' ? body.state.trim() : '';
+      if (stateText) invokePayload.state = stateText;
+      const zipText = typeof body.zip_code === 'string' ? body.zip_code.trim() : '';
+      if (zipText) invokePayload.zip_code = zipText;
+      if (effectiveStoreId) invokePayload.store_id = effectiveStoreId;
+      if (typeof body.on_sale === 'boolean') invokePayload.on_sale = body.on_sale;
+      if (typeof body.voice_path === 'boolean') invokePayload.voice_path = body.voice_path;
+    }
     const { response: a2aResp, endpoint: invokeEndpoint } = await dispatchOrchestratorInvoke(
       orchestratorUrl,
       invokePayload,

@@ -1,5 +1,6 @@
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Platform, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
@@ -7,6 +8,7 @@ import { safeOpenURL, safeCallPhone } from '@/lib/safeOpenURL';
 import { renderStars, domainOf } from './helpers';
 import { ActionButton } from './ActionButton';
 import { BaseCard } from './BaseCard';
+import { ImageSkeleton } from './ImageSkeleton';
 import type { CardProps } from './CardRegistry';
 
 // ---------------------------------------------------------------------------
@@ -43,6 +45,7 @@ function categoryIcon(category: string | undefined): keyof typeof Ionicons.glyph
 // ---------------------------------------------------------------------------
 
 export function BusinessCard({ record, onAction, isActive, enterDelay, orientation }: CardProps) {
+  const isHorizontal = orientation === 'horizontal';
   const {
     name = 'Unknown Business',
     normalized_address,
@@ -54,10 +57,16 @@ export function BusinessCard({ record, onAction, isActive, enterDelay, orientati
     hours,
     distance_miles,
     open_now,
-  } = record;
+    image_url,
+  } = record as Record<string, any>;
 
   const domain = domainOf(website);
   const icon = categoryIcon(category);
+  const heroUrl: string = typeof image_url === 'string' && image_url.trim() ? image_url.trim() : '';
+
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+  const showHeroImage = heroUrl && !imageFailed;
 
   const handleCall = useCallback(() => {
     if (phone) safeCallPhone(phone);
@@ -127,6 +136,212 @@ export function BusinessCard({ record, onAction, isActive, enterDelay, orientati
       />
     </>
   );
+
+  // ── Horizontal layout (880x440) ─────────────────────────────────────────
+  // LEFT 580x440 hero: Google Places photo (image_url) on neutral canvas,
+  // letterboxed via contentFit="contain". Fallback = storefront icon + name.
+  // RIGHT 300x440 info stack with stacked CTAs at bottom.
+  if (isHorizontal) {
+    const horizontalHeroContent = (
+      <Pressable
+        onPress={handleDetails}
+        style={hHeroStyles.pressable}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${name} details`}
+        testID="business-card-horizontal-hero"
+      >
+        {showHeroImage ? (
+          <>
+            <ImageSkeleton loaded={imageLoaded} />
+            <Image
+              source={{ uri: heroUrl }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="contain"
+              transition={200}
+              accessibilityLabel={`Photo of ${name}`}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageFailed(true)}
+            />
+          </>
+        ) : (
+          <View style={hHeroStyles.fallback}>
+            <View style={hHeroStyles.fallbackIcon}>
+              <Ionicons name={icon} size={56} color={Colors.accent.cyan} />
+            </View>
+            <Text style={hHeroStyles.fallbackName} numberOfLines={2}>
+              {name}
+            </Text>
+            {category ? (
+              <Text style={hHeroStyles.fallbackCategory} numberOfLines={1}>
+                {category}
+              </Text>
+            ) : null}
+          </View>
+        )}
+
+        {/* Subtle scrim only when an image is present, for retailer pill legibility */}
+        {showHeroImage ? (
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.45)']}
+            style={hHeroStyles.scrim}
+            pointerEvents="none"
+          />
+        ) : null}
+
+        {/* Open / Closed pill — top-left */}
+        {open_now != null ? (
+          <View
+            style={[
+              hHeroStyles.statusPill,
+              {
+                backgroundColor: open_now
+                  ? 'rgba(52, 199, 89, 0.92)'
+                  : 'rgba(255, 59, 48, 0.92)',
+              },
+            ]}
+          >
+            <View style={hHeroStyles.statusDot} />
+            <Text style={hHeroStyles.statusText}>
+              {open_now ? 'Open now' : 'Closed'}
+            </Text>
+          </View>
+        ) : null}
+      </Pressable>
+    );
+
+    const horizontalActions = (
+      <>
+        <ActionButton
+          label="View details"
+          icon="chevron-forward"
+          onPress={handleDetails}
+          variant="primary"
+        />
+        {website ? (
+          <ActionButton
+            label="Visit"
+            icon="open-outline"
+            onPress={handleWebsite}
+            variant="secondary"
+          />
+        ) : phone ? (
+          <ActionButton
+            label="Call"
+            icon="call-outline"
+            onPress={handleCall}
+            variant="secondary"
+          />
+        ) : null}
+      </>
+    );
+
+    const distanceLabel =
+      typeof distance_miles === 'number'
+        ? `${distance_miles.toFixed(1)} mi away`
+        : distance_miles
+          ? `${distance_miles} mi away`
+          : '';
+
+    return (
+      <BaseCard
+        safety={null}
+        isActive={isActive}
+        heroSlot={horizontalHeroContent}
+        actionSlot={horizontalActions}
+        accessibilityLabel={`${name} business card`}
+        enterDelay={enterDelay}
+        orientation="horizontal"
+      >
+        <View style={hStyles.stack}>
+          <Text style={hStyles.title} numberOfLines={2} accessibilityRole="header">
+            {name}
+          </Text>
+
+          {category ? (
+            <Text style={hStyles.category} numberOfLines={1}>
+              {category}
+            </Text>
+          ) : null}
+
+          {rating != null ? (
+            <View style={hStyles.ratingRow}>
+              <Text style={hStyles.ratingStars}>{renderStars(rating)}</Text>
+              <Text style={hStyles.ratingDetail} numberOfLines={1}>
+                {' '}
+                {typeof rating === 'number' ? rating.toFixed(1) : rating}
+                {review_count ? ` (${Number(review_count).toLocaleString('en-US')})` : ''}
+              </Text>
+            </View>
+          ) : null}
+
+          {normalized_address ? (
+            <View style={hStyles.metaRow}>
+              <Ionicons
+                name="location-outline"
+                size={14}
+                color={Colors.text.tertiary}
+              />
+              <Text style={hStyles.metaText} numberOfLines={2}>
+                {normalized_address}
+              </Text>
+            </View>
+          ) : null}
+
+          {phone ? (
+            <View style={hStyles.metaRow}>
+              <Ionicons
+                name="call-outline"
+                size={14}
+                color={Colors.text.tertiary}
+              />
+              <Text style={hStyles.metaText} numberOfLines={1}>
+                {phone}
+              </Text>
+            </View>
+          ) : null}
+
+          {domain ? (
+            <View style={hStyles.metaRow}>
+              <Ionicons
+                name="globe-outline"
+                size={14}
+                color={Colors.text.tertiary}
+              />
+              <Text style={hStyles.metaText} numberOfLines={1}>
+                {domain}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={hStyles.spacer} />
+
+          {distanceLabel ? (
+            <View style={hStyles.metaRow}>
+              <Ionicons
+                name="navigate-outline"
+                size={14}
+                color={Colors.text.tertiary}
+              />
+              <Text style={hStyles.metaText} numberOfLines={1}>
+                {distanceLabel}
+              </Text>
+            </View>
+          ) : hours && typeof hours === 'string' ? (
+            <View style={hStyles.metaRow}>
+              <Ionicons
+                name="time-outline"
+                size={14}
+                color={Colors.text.tertiary}
+              />
+              <Text style={hStyles.metaText} numberOfLines={1}>
+                {hours}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </BaseCard>
+    );
+  }
 
   return (
     <BaseCard
@@ -371,6 +586,129 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.surface.cardBorder,
+  },
+});
+
+// ── Horizontal layout (880x440) hero pressable + fallback ─────────────────
+const hHeroStyles = StyleSheet.create({
+  pressable: {
+    flex: 1,
+    width: '100%' as unknown as number,
+    height: '100%' as unknown as number,
+    backgroundColor: Colors.background.elevated,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'pointer' } as unknown as ViewStyle)
+      : {}),
+  },
+  fallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xxl,
+    gap: Spacing.md,
+  },
+  fallbackIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.accent.cyanLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fallbackName: {
+    fontSize: 18,
+    fontWeight: '600',
+    lineHeight: 24,
+    color: Colors.text.primary,
+    textAlign: 'center',
+    letterSpacing: -0.2,
+    marginTop: Spacing.sm,
+  },
+  fallbackCategory: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+    textAlign: 'center',
+  },
+  scrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+  },
+  statusPill: {
+    position: 'absolute',
+    top: Spacing.md,
+    left: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#ffffff',
+  },
+  statusText: {
+    ...Typography.small,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+});
+
+// ── Horizontal layout (880x440) info-stack styles ──────────────────────────
+const hStyles = StyleSheet.create({
+  stack: {
+    flex: 1,
+    gap: 4,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 22,
+    color: Colors.text.primary,
+    letterSpacing: -0.2,
+  },
+  category: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+    marginTop: 2,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.xs,
+  },
+  ratingStars: {
+    ...Typography.small,
+    color: Colors.accent.amber,
+    letterSpacing: 1,
+  },
+  ratingDetail: {
+    ...Typography.small,
+    color: Colors.text.secondary,
+    flexShrink: 1,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  metaText: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+    flexShrink: 1,
+    flex: 1,
+  },
+  spacer: {
+    flex: 1,
+    minHeight: Spacing.sm,
   },
 });
 

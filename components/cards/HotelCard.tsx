@@ -186,7 +186,7 @@ export function HotelCard({ record, onAction, isActive, enterDelay, orientation 
             <Image
               source={{ uri: heroUrl }}
               style={StyleSheet.absoluteFillObject}
-              contentFit="cover"
+              contentFit="contain"
               transition={200}
               accessibilityLabel={`Photo of ${name}`}
               onLoad={() => setImageLoaded(true)}
@@ -210,6 +210,7 @@ export function HotelCard({ record, onAction, isActive, enterDelay, orientation 
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.55)']}
           style={styles.heroScrim}
+          pointerEvents="none"
         />
         {star_rating != null && star_rating > 0 && (
           <View style={styles.starOverlay}>

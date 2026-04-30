@@ -27,6 +27,7 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
+  Modal,
   type ViewStyle,
 } from 'react-native';
 import Animated, {
@@ -38,6 +39,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/tokens';
 import { safeOpenURL } from '@/lib/safeOpenURL';
+import { buildTraceHeaders } from '@/lib/traceHeaders';
 import { renderStars, fmtPrice } from './helpers';
 import { ActionButton } from './ActionButton';
 
@@ -96,6 +98,14 @@ export interface ProductDetailModalProps {
   basicRecord: Record<string, any>;
   visible: boolean;
   onClose: () => void;
+  /**
+   * Supabase access token from the parent component (read via useSupabase()).
+   * When null, the modal renders an explicit "Sign in" empty state instead of
+   * attempting the enrichment fetch. Law #3: fail closed.
+   */
+  authToken: string | null;
+  /** Tenant scope id from useSupabase(). Required for X-Suite-Id header. */
+  suiteId: string | null;
 }
 
 // ─── Cache (module-level, per session) ──────────────────────────────────────
@@ -128,7 +138,12 @@ function injectModalStyles() {
     .pdm-thumb { transition: opacity 200ms ease, transform 200ms ease; }
     .pdm-thumb:hover { opacity: 1 !important; transform: scale(1.04); }
     .pdm-close:hover { background-color: rgba(255,255,255,0.12) !important; }
-    .pdm-arrow:hover { background-color: rgba(0,0,0,0.75) !important; }
+    .pdm-arrow { transition: background-color 180ms ease, transform 180ms ease; }
+    .pdm-arrow:hover {
+      background-color: rgba(0,0,0,0.7) !important;
+      transform: scale(1.05);
+    }
+    .pdm-arrow:active { transform: scale(0.95); }
   `;
   document.head.appendChild(style);
 }
@@ -242,12 +257,15 @@ export function ProductDetailModal({
   basicRecord,
   visible,
   onClose,
+  authToken,
+  suiteId,
 }: ProductDetailModalProps) {
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [enriched, setEnriched] = useState<EnrichedProductRecord | null>(
     () => enrichCache.get(productId) ?? null,
   );
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const isUnauthenticated = !authToken;
   const [galleryIdx, setGalleryIdx] = useState(0);
   const [descExpanded, setDescExpanded] = useState(false);
   const [openCategory, setOpenCategory] = useState<string | null>(null);
@@ -273,8 +291,13 @@ export function ProductDetailModal({
   }, [productId]);
 
   // Fire enrichment when the modal becomes visible.
+  // Auth is supplied via props (authToken, suiteId) so the modal works whether
+  // or not it sits inside the SupabaseProvider tree at render time. When
+  // authToken is null, we skip the fetch entirely and surface a clear "Sign in"
+  // empty state (Law #3 -- fail closed).
   const fetchEnrichment = useCallback(async () => {
     if (!visible || !productId || fetchInFlight.current) return;
+    if (!authToken) return; // unauthenticated path handled in render
     const cached = enrichCache.get(productId);
     if (cached) {
       setEnriched(cached);
@@ -285,17 +308,19 @@ export function ProductDetailModal({
     setLoadState('loading');
     setErrorMessage('');
     try {
-      // Lazy import: keeps the supabase client out of the module graph during
-      // tests and avoids forcing every consumer to load the auth runtime.
-      const { authenticatedFetchStandalone } = await import('@/lib/authFetchStandalone');
-      const resp = await authenticatedFetchStandalone(
-        '/api/tools/enrich-product',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product_id: productId }),
-        },
-      );
+      const trace = buildTraceHeaders();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+        'X-Correlation-Id': trace.correlationId,
+        'X-Trace-Id': trace.traceId,
+      };
+      if (suiteId) headers['X-Suite-Id'] = suiteId;
+      const resp = await fetch('/api/tools/enrich-product', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ product_id: productId }),
+      });
       if (!resp.ok) {
         const text = await resp.text().catch(() => '');
         throw new Error(`Enrichment failed (${resp.status}): ${text.slice(0, 120)}`);
@@ -313,13 +338,13 @@ export function ProductDetailModal({
     } finally {
       fetchInFlight.current = false;
     }
-  }, [visible, productId]);
+  }, [visible, productId, authToken, suiteId]);
 
   useEffect(() => {
-    if (visible && loadState === 'idle') {
+    if (visible && loadState === 'idle' && authToken) {
       fetchEnrichment();
     }
-  }, [visible, loadState, fetchEnrichment]);
+  }, [visible, loadState, fetchEnrichment, authToken]);
 
   // ESC key on web closes the modal.
   useEffect(() => {
@@ -397,26 +422,39 @@ export function ProductDetailModal({
     setErrorMessage('');
   }, []);
 
-  if (!visible) return null;
-
-  const isLoading = loadState === 'loading' || loadState === 'idle';
+  // When unauthenticated we skip the fetch entirely. Treat as "not loading"
+  // so skeletons don't render and the empty state below is the only body.
+  const isLoading = !isUnauthenticated && (loadState === 'loading' || loadState === 'idle');
   const hasEnriched = loadState === 'success' && enriched != null;
-  const hasError = loadState === 'error';
+  const hasError = !isUnauthenticated && loadState === 'error';
 
+  // RN Modal handles its own visibility; we still gate child mount on `visible`
+  // so the fetch effect does not fire when closed.
   return (
-    <View
-      style={styles.root}
-      pointerEvents="auto"
-      testID="product-detail-modal"
-      accessibilityViewIsModal
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      // Web: react-native-web renders this to a portal on document.body, so
+      // the panel is no longer trapped inside ResearchModal's z-index 9999
+      // stacking context.
+      // Native: RN's native modal stack renders above all sibling views.
+      statusBarTranslucent
     >
-      {/* Backdrop -- solid 95% black, click-to-close (matches ResearchModal). */}
-      <Pressable
-        onPress={onClose}
-        style={styles.backdrop}
-        accessibilityRole="button"
-        accessibilityLabel="Close product details"
-      />
+      <View
+        style={styles.root}
+        pointerEvents="auto"
+        testID="product-detail-modal"
+        accessibilityViewIsModal
+      >
+        {/* Backdrop -- solid 95% black, click-to-close (matches ResearchModal). */}
+        <Pressable
+          onPress={onClose}
+          style={styles.backdrop}
+          accessibilityRole="button"
+          accessibilityLabel="Close product details"
+        />
 
       {/* Modal panel. Pressable swallows clicks so the backdrop only closes
           when the user taps outside the panel. */}
@@ -477,8 +515,9 @@ export function ProductDetailModal({
                         accessibilityLabel="Previous image"
                         testID="product-detail-modal-prev-image"
                         className={Platform.OS === 'web' ? 'pdm-arrow' : undefined}
+                        hitSlop={8}
                       >
-                        <Ionicons name="chevron-back" size={22} color={Colors.text.primary} />
+                        <Ionicons name="chevron-back" size={26} color={Colors.text.primary} />
                       </Pressable>
                       <Pressable
                         onPress={goNextImage}
@@ -487,8 +526,9 @@ export function ProductDetailModal({
                         accessibilityLabel="Next image"
                         testID="product-detail-modal-next-image"
                         className={Platform.OS === 'web' ? 'pdm-arrow' : undefined}
+                        hitSlop={8}
                       >
-                        <Ionicons name="chevron-forward" size={22} color={Colors.text.primary} />
+                        <Ionicons name="chevron-forward" size={26} color={Colors.text.primary} />
                       </Pressable>
                       <View style={styles.galleryCounter}>
                         <Text style={styles.galleryCounterText}>
@@ -748,6 +788,28 @@ export function ProductDetailModal({
             </View>
           ) : null}
 
+          {/* UNAUTHENTICATED STATE -- Law #3: fail closed when no token. */}
+          {isUnauthenticated && (
+            <View style={styles.errorBox} testID="product-detail-modal-unauthenticated">
+              <Ionicons name="lock-closed-outline" size={28} color={Colors.text.tertiary} />
+              <Text style={styles.errorTitle}>Sign in to see full details</Text>
+              <Text style={styles.errorMessage} numberOfLines={2}>
+                Full specs, in-store availability, and shipping ETAs require an
+                authenticated session.
+              </Text>
+              {externalUrl ? (
+                <View style={styles.errorActions}>
+                  <ActionButton
+                    label="Visit Home Depot"
+                    icon="open-outline"
+                    onPress={handleVisit}
+                    variant="primary"
+                  />
+                </View>
+              ) : null}
+            </View>
+          )}
+
           {/* ERROR STATE -- Law #3: explicit error, no degraded render */}
           {hasError && (
             <View style={styles.errorBox}>
@@ -786,8 +848,9 @@ export function ProductDetailModal({
           )}
         </ScrollView>
 
-        {/* FOOTER -- always-available CTA */}
-        {externalUrl && !hasError ? (
+        {/* FOOTER -- always-available CTA (suppressed when error or
+            unauthenticated state already shows the same CTA inline). */}
+        {externalUrl && !hasError && !isUnauthenticated ? (
           <View style={styles.footer}>
             <ActionButton
               label="Visit Home Depot"
@@ -798,7 +861,8 @@ export function ProductDetailModal({
           </View>
         ) : null}
       </Pressable>
-    </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -906,14 +970,17 @@ const styles = StyleSheet.create({
   galleryArrow: {
     position: 'absolute',
     top: '50%' as unknown as number,
-    marginTop: -24,
-    width: 48,
-    height: 48,
+    marginTop: -26,
+    width: 52,
+    height: 52,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 5,
+    // Subtle ring so arrows stay legible on bright product photos.
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   galleryArrowLeft: { left: Spacing.md },
   galleryArrowRight: { right: Spacing.md },
@@ -921,10 +988,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: Spacing.md,
     right: Spacing.md,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
     zIndex: 4,
   },
   galleryCounterText: {

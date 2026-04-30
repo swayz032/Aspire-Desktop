@@ -162,15 +162,21 @@ export function useAvaPresents(): UseAvaPresentReturn {
 
   const nextCard = useCallback(() => {
     setState((prev) => {
-      if (prev.detailMode || prev.activeIndex >= prev.records.length - 1) return prev;
-      return { ...prev, activeIndex: prev.activeIndex + 1 };
+      if (prev.detailMode || prev.records.length === 0) return prev;
+      // Wrap-around: at the last card, advancing returns to index 0 instead of
+      // exiting the modal. Matches the "always-visible right arrow" UX in
+      // ResearchModal — see Wave B.4.
+      const next = (prev.activeIndex + 1) % prev.records.length;
+      return { ...prev, activeIndex: next };
     });
   }, []);
 
   const prevCard = useCallback(() => {
     setState((prev) => {
-      if (prev.detailMode || prev.activeIndex <= 0) return prev;
-      return { ...prev, activeIndex: prev.activeIndex - 1 };
+      if (prev.detailMode || prev.records.length === 0) return prev;
+      // Wrap-around: at index 0, going back lands on the last card.
+      const next = (prev.activeIndex - 1 + prev.records.length) % prev.records.length;
+      return { ...prev, activeIndex: next };
     });
   }, []);
 

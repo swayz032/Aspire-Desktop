@@ -424,8 +424,10 @@ export function ResearchModal(props: ResearchModalProps) {
   // ── Don't render if fully unmounted (after exit animation completes) ──
   if (!mounted) return null;
 
-  const isFirstCard = activeIndex === 0;
-  const isLastCard = activeIndex === records.length - 1;
+  // Wave B.4: nav arrows are always visible while there are >=2 cards.
+  // The hook now wraps from last → 0 and 0 → last, so the right arrow no
+  // longer "exits" the carousel at the end.
+  const hasMultipleCards = records.length > 1;
 
   // ── Responsive glow orb sizing (Item 7) ──
   const glowSize = Math.min(screenW * 0.5, 600);
@@ -539,8 +541,9 @@ export function ResearchModal(props: ResearchModalProps) {
             >
               {records.map((item, index) => renderPerspectiveCard(item, index))}
 
-              {/* Nav Arrows */}
-              {!isFirstCard && (
+              {/* Nav Arrows -- always visible when carousel has >=2 cards.
+                  Hook wraps at boundaries (Wave B.4). */}
+              {hasMultipleCards && (
                 <Pressable
                   onPress={() => { playClickSound(); prevCard(); }}
                   style={[styles.navArrow, styles.navArrowLeft]}
@@ -552,7 +555,7 @@ export function ResearchModal(props: ResearchModalProps) {
                   <Ionicons name="chevron-back" size={24} color={Colors.text.primary} />
                 </Pressable>
               )}
-              {!isLastCard && (
+              {hasMultipleCards && (
                 <Pressable
                   onPress={() => { playClickSound(); nextCard(); }}
                   style={[styles.navArrow, styles.navArrowRight]}

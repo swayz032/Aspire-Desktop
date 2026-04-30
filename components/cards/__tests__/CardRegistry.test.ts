@@ -4,6 +4,28 @@
  * Verifies Law #3 (Fail Closed): unknown types resolve to a placeholder, never null.
  */
 
+// Stub supabase + SupabaseProvider so ProductCard's useSupabase() import chain
+// doesn't fail on missing EXPO_PUBLIC_SUPABASE_URL during jest. These tests
+// only assert registry resolution, never render the cards.
+jest.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+      onAuthStateChange: jest.fn().mockReturnValue({ data: { subscription: { unsubscribe: jest.fn() } } }),
+      refreshSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+      signOut: jest.fn().mockResolvedValue({ error: null }),
+    },
+    from: jest.fn(),
+    channel: jest.fn(),
+    removeChannel: jest.fn(),
+  },
+}));
+
+jest.mock('@/providers/SupabaseProvider', () => ({
+  useSupabase: () => ({ session: null, suiteId: null, isLoading: false, signOut: jest.fn() }),
+  SupabaseProvider: ({ children }: { children: any }) => children,
+}));
+
 import { resolveCard, registerCard, registeredTypes } from '../CardRegistry';
 
 describe('CardRegistry', () => {
