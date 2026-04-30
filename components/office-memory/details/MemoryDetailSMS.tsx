@@ -29,7 +29,7 @@
  *     a local "sending" bubble so the UX feels real to the demo.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -50,6 +50,9 @@ import type { MemoryDetail } from '../types';
 import { ChatBubbleStream } from '../blocks/ChatBubbleStream';
 import type { ChatMessage } from '../blocks/ChatBubbleStream';
 import { injectMemoryKeyframes } from '../cardAnimations';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { sendSMS as apiSendSMS } from '@/lib/api/sms';
 
 injectMemoryKeyframes();
 
@@ -104,6 +107,30 @@ export function MemoryDetailSMS({ memory, onSendSMS }: MemoryDetailSMSProps) {
     name: memory.entity?.name ?? 'Unknown',
     phone: '',
   };
+
+  // Default send wiring — Yellow tier outbound SMS via the same-origin server
+  // proxy (server mints the capability token; client never holds it).
+  // Callers may pass `onSendSMS` to override (e.g. for Storybook demos).
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? null;
+
+  const defaultSendSMS = useCallback(
+    async (body: string): Promise<void> => {
+      if (!officeId) {
+        throw new Error('No active office. Please refresh and try again.');
+      }
+      await apiSendSMS({
+        authenticatedFetch,
+        officeId,
+        threadMemoryId: memory.id,
+        body,
+      });
+    },
+    [authenticatedFetch, officeId, memory.id],
+  );
+
+  const effectiveSendSMS = onSendSMS ?? defaultSendSMS;
 
   // Combine server messages + local drafts (sending/sent/failed appended below)
   const serverMessages = (memory.messages ?? []) as ChatMessage[];
@@ -161,12 +188,7 @@ export function MemoryDetailSMS({ memory, onSendSMS }: MemoryDetailSMSProps) {
     setDraft('');
 
     try {
-      if (onSendSMS) {
-        await onSendSMS(trimmedDraft);
-      } else {
-        // Mock — Pass 17 will replace this.
-        await new Promise<void>((resolve) => setTimeout(resolve, 620));
-      }
+      await effectiveSendSMS(trimmedDraft);
       setDrafts((prev) =>
         prev.map((d) => (d.id === id ? { ...d, status: 'sent' } : d)),
       );

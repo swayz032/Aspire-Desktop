@@ -10,6 +10,7 @@ import { logger } from './logger';
 import { captureServerException } from './sentry';
 import { reportAdminIncident } from './incidentReporter';
 import { collectAcceptedSecrets } from './agentToolRoutes';
+import { mintCapabilityToken, resolveSigningKey } from './lib/capabilityToken';
 
 // Supabase admin client for bootstrap operations (user_metadata updates)
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -8027,6 +8028,417 @@ router.post('/api/tools/enrich-product', async (req: Request, res: Response) => 
       correlation_id: correlationId,
     });
   }
+});
+
+// ─── Pass 18+ — Office Memory / Front Desk / Telephony / SMS proxy routes ────
+//
+// Same-origin `/api/v1/...` proxies that mirror the `/api/tools/enrich-product`
+// pattern above. They:
+//   1. Require an authenticated JWT (suite_id derived from JWT, never headers).
+//   2. Mint a short-lived capability token (Law #5) for write-tier scopes.
+//   3. Forward to the Python orchestrator with X-Tenant-Id / X-Suite-Id /
+//      X-Office-Id / X-Actor-Id / X-Correlation-Id headers.
+//   4. Forward orchestrator error envelopes verbatim with the same HTTP status.
+//   5. Never log capability tokens, JWTs, or user-supplied content (Law #9).
+//
+// Risk tier mapping (matches backend route definitions):
+//   GREEN: search-memory, available-numbers, GET /front-desk/config
+//   YELLOW: PATCH config, test-call, routing-contacts CRUD, purchase/release,
+//           sms/send
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ProxyForwardOptions {
+  /** Path on the orchestrator (must start with `/v1/...`). */
+  orchestratorPath: string;
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  /** Optional JSON body to send. capability_token is merged in if minted. */
+  body?: Record<string, unknown> | null;
+  /** Required scope to mint a capability token. Omit for Green-tier reads. */
+  scope?: string;
+  /** Logical name used in log lines (no PII). */
+  logTag: string;
+  /** ms — read routes 5s, write routes 10s. */
+  timeoutMs: number;
+  req: Request;
+  res: Response;
+}
+
+/**
+ * Shared proxy forwarder. Validates JWT, optionally mints a capability token,
+ * forwards to the orchestrator, returns the response shape verbatim.
+ */
+async function proxyForward(opts: ProxyForwardOptions): Promise<void> {
+  const { req, res, orchestratorPath, method, scope, logTag, timeoutMs } = opts;
+
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    res.status(503).json({
+      error: 'ORCHESTRATOR_UNAVAILABLE',
+      message: 'Backend service is not configured',
+    });
+    return;
+  }
+
+  const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+  const officeId = typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+  // In this single-tenant-per-suite codebase, tenant_id == suite_id.
+  const tenantId = suiteId;
+  const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+  const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+  // Mint capability token for write-tier scopes (Law #5).
+  let capabilityToken: Record<string, unknown> | null = null;
+  if (scope) {
+    if (!resolveSigningKey()) {
+      logger.error(`[${logTag}] Missing or weak TOKEN_SIGNING_SECRET`);
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+    const minted = mintCapabilityToken({
+      scope,
+      tenant_id: tenantId,
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+    });
+    if (!minted) {
+      res.status(503).json({
+        error: 'SIGNING_KEY_UNAVAILABLE',
+        message: 'Capability token signing key not configured',
+      });
+      return;
+    }
+    capabilityToken = minted.token;
+  }
+
+  // Compose the request body (merge capability_token into JSON write bodies).
+  let bodyJson: string | undefined;
+  if (method !== 'GET' && method !== 'DELETE') {
+    const baseBody: Record<string, unknown> =
+      opts.body && typeof opts.body === 'object' ? { ...opts.body } : {};
+    if (capabilityToken) {
+      baseBody.capability_token = capabilityToken;
+    }
+    bodyJson = JSON.stringify(baseBody);
+  } else if (capabilityToken) {
+    // GET/DELETE with cap token (e.g. release-number) — pass body anyway since
+    // FastAPI accepts JSON body on DELETE for our routes.
+    bodyJson = JSON.stringify({ capability_token: capabilityToken });
+  }
+
+  const url = `${orchestratorUrl}${orchestratorPath}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Structured log — never log body, token, or JWT.
+  logger.info(`[${logTag}] proxy`, {
+    suite_id: suiteId,
+    office_id: officeId,
+    method,
+    path: orchestratorPath,
+    trace_id: traceId,
+    correlation_id: correlationId,
+    has_cap_token: !!capabilityToken,
+  });
+
+  try {
+    const orchResp = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tenant-Id': tenantId,
+        'X-Suite-Id': suiteId,
+        'X-Office-Id': officeId,
+        'X-Actor-Id': actorId,
+        'X-Correlation-Id': correlationId,
+        'X-Trace-Id': traceId,
+      },
+      body: bodyJson,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    const text = await orchResp.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // non-JSON response — pass status + raw text under `message`
+        data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) };
+      }
+    }
+
+    if (!orchResp.ok) {
+      logger.warn(`[${logTag}] Orchestrator returned error`, {
+        suite_id: suiteId,
+        status: orchResp.status,
+        path: orchestratorPath,
+        trace_id: traceId,
+      });
+    }
+    res.status(orchResp.status).json(data ?? {});
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.error(`[${logTag}] Proxy fetch failed`, {
+      suite_id: suiteId,
+      path: orchestratorPath,
+      reason: err instanceof Error ? err.name + ': ' + err.message.slice(0, 120) : 'unknown',
+      is_timeout: isTimeout,
+      trace_id: traceId,
+    });
+    res.status(isTimeout ? 504 : 502).json({
+      error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+      message: isTimeout
+        ? 'Backend did not respond in time'
+        : 'Could not reach backend service',
+      correlation_id: correlationId,
+    });
+  }
+}
+
+// ─── Office Memory ────────────────────────────────────────────────────────────
+
+router.post('/api/v1/office-memory/search-memory', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/office-memory/search-memory',
+    method: 'POST',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    logTag: 'OfficeMemorySearch',
+    timeoutMs: 5_000,
+    req,
+    res,
+  });
+});
+
+// GET /api/v1/office-memory/:memoryId — backend has no GET-by-id endpoint, so
+// proxy to POST /v1/office-memory/search-memory with a memory_id filter and
+// surface the first result. The frontend hook accepts either a bare object or
+// a wrapped `{ memory: ... }` envelope.
+router.get('/api/v1/office-memory/:memoryId', async (req: Request, res: Response) => {
+  const memoryId = typeof req.params.memoryId === 'string' ? req.params.memoryId.trim() : '';
+  if (!memoryId) {
+    res.status(400).json({ error: 'INVALID_INPUT', message: 'memoryId required' });
+    return;
+  }
+  // Forward as a POST search keyed on memory_id (q='' triggers the search to
+  // match by id-prefix; backend returns up to N results, we filter client-side
+  // by exact memory_id below). Until the orchestrator exposes a true GET, this
+  // keeps the proxy contract clean for the frontend.
+  const suiteId = requireAuth(req, res);
+  if (!suiteId) return;
+
+  const orchestratorUrl = resolveOrchestratorUrl();
+  if (!orchestratorUrl) {
+    res.status(503).json({ error: 'ORCHESTRATOR_UNAVAILABLE', message: 'Backend not configured' });
+    return;
+  }
+
+  const officeIdRaw = (req.headers['x-office-id'] as string) || '';
+  const officeId = typeof officeIdRaw === 'string' && officeIdRaw.trim() ? officeIdRaw.trim() : suiteId;
+  const tenantId = suiteId;
+  const actorId = ((req as any).authenticatedUserId as string) || suiteId;
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr_${crypto.randomUUID()}`;
+  const traceId = (req.headers['x-trace-id'] as string) || correlationId;
+
+  const url = `${orchestratorUrl}/v1/office-memory/search-memory`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const orchResp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tenant-Id': tenantId,
+        'X-Suite-Id': suiteId,
+        'X-Office-Id': officeId,
+        'X-Actor-Id': actorId,
+        'X-Correlation-Id': correlationId,
+        'X-Trace-Id': traceId,
+      },
+      body: JSON.stringify({ q: memoryId, limit: 50 }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!orchResp.ok) {
+      const errText = await orchResp.text().catch(() => '');
+      let parsed: unknown = null;
+      try { parsed = errText ? JSON.parse(errText) : null; } catch { /* ignore */ }
+      res.status(orchResp.status).json(parsed ?? { error: 'MEMORY_DETAIL_FAILED' });
+      return;
+    }
+
+    const json = (await orchResp.json()) as { results?: Array<{ memory_id?: string }> };
+    const match = (json.results ?? []).find((r) => r?.memory_id === memoryId);
+    if (!match) {
+      res.status(404).json({ error: 'MEMORY_NOT_FOUND', message: 'Memory not found' });
+      return;
+    }
+    res.status(200).json({ memory: match });
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.error('[OfficeMemoryDetail] Proxy fetch failed', {
+      suite_id: suiteId,
+      memory_id: memoryId,
+      reason: err instanceof Error ? err.name : 'unknown',
+      is_timeout: isTimeout,
+    });
+    res.status(isTimeout ? 504 : 502).json({
+      error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+      message: 'Could not reach backend service',
+      correlation_id: correlationId,
+    });
+  }
+});
+
+// ─── Front Desk ───────────────────────────────────────────────────────────────
+
+router.get('/api/v1/front-desk/config', async (req: Request, res: Response) => {
+  const officeIdQS = typeof req.query.office_id === 'string' ? `?office_id=${encodeURIComponent(req.query.office_id)}` : '';
+  await proxyForward({
+    orchestratorPath: `/v1/front-desk/config${officeIdQS}`,
+    method: 'GET',
+    logTag: 'FrontDeskConfigGet',
+    timeoutMs: 5_000,
+    req,
+    res,
+  });
+});
+
+router.patch('/api/v1/front-desk/config', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/front-desk/config',
+    method: 'PATCH',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'front_desk:config_save',
+    logTag: 'FrontDeskConfigPatch',
+    timeoutMs: 10_000,
+    req,
+    res,
+  });
+});
+
+router.post('/api/v1/front-desk/config/test-call', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/front-desk/config/test-call',
+    method: 'POST',
+    body: {},
+    scope: 'front_desk:test_call',
+    logTag: 'FrontDeskTestCall',
+    timeoutMs: 10_000,
+    req,
+    res,
+  });
+});
+
+router.post('/api/v1/front-desk/routing-contacts', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/front-desk/routing-contacts',
+    method: 'POST',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'front_desk:routing_write',
+    logTag: 'FrontDeskRoutingCreate',
+    timeoutMs: 10_000,
+    req,
+    res,
+  });
+});
+
+router.patch('/api/v1/front-desk/routing-contacts/:id', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'contact id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/front-desk/routing-contacts/${encodeURIComponent(id)}`,
+    method: 'PATCH',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'front_desk:routing_write',
+    logTag: 'FrontDeskRoutingPatch',
+    timeoutMs: 10_000,
+    req,
+    res,
+  });
+});
+
+router.delete('/api/v1/front-desk/routing-contacts/:id', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'contact id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/front-desk/routing-contacts/${encodeURIComponent(id)}`,
+    method: 'DELETE',
+    scope: 'front_desk:routing_write',
+    logTag: 'FrontDeskRoutingDelete',
+    timeoutMs: 10_000,
+    req,
+    res,
+  });
+});
+
+// ─── Telephony (Twilio) ───────────────────────────────────────────────────────
+
+router.post('/api/v1/twilio/available-numbers', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/twilio/available-numbers',
+    method: 'POST',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    // Green tier — no capability token.
+    logTag: 'TwilioSearch',
+    timeoutMs: 5_000,
+    req,
+    res,
+  });
+});
+
+router.post('/api/v1/twilio/purchase-number', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/twilio/purchase-number',
+    method: 'POST',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'telephony:purchase',
+    logTag: 'TwilioPurchase',
+    timeoutMs: 10_000,
+    req,
+    res,
+  });
+});
+
+router.post('/api/v1/twilio/release-number/:id', async (req: Request, res: Response) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) { res.status(400).json({ error: 'INVALID_INPUT', message: 'phone_number_id required' }); return; }
+  await proxyForward({
+    orchestratorPath: `/v1/twilio/release-number/${encodeURIComponent(id)}`,
+    method: 'POST',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'telephony:release',
+    logTag: 'TwilioRelease',
+    timeoutMs: 10_000,
+    req,
+    res,
+  });
+});
+
+// ─── SMS ──────────────────────────────────────────────────────────────────────
+
+router.post('/api/v1/sms/send', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/sms/send',
+    method: 'POST',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'telephony:sms_send',
+    logTag: 'SmsSend',
+    timeoutMs: 10_000,
+    req,
+    res,
+  });
 });
 
 export default router;

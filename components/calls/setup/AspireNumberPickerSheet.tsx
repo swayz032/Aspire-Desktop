@@ -40,6 +40,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Colors, BorderRadius, Spacing } from '@/constants/tokens';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import {
+  searchAvailableNumbers as apiSearchAvailableNumbers,
+  purchaseNumber as apiPurchaseNumber,
+  type AvailableNumber,
+} from '@/lib/api/frontDesk';
 
 // ---------------------------------------------------------------------------
 // Types — server contracts
@@ -77,57 +84,23 @@ export interface AspireNumberPickerSheetProps {
 }
 
 // ---------------------------------------------------------------------------
-// Pass-17-ready API wrapper (will be swapped for lib/api/frontDesk.ts)
+// Adapter: backend response (snake_case, AvailableNumber) → component shape
+// (camelCase, TwilioAvailableNumber). Capability + region fields are optional
+// in the backend contract; defaults below match Pass 16 UI expectations.
 // ---------------------------------------------------------------------------
 
-async function searchAvailableNumbers(params: {
-  areaCode: string;
-  contains?: string;
-}): Promise<TwilioAvailableNumber[]> {
-  try {
-    const res = await fetch('/v1/twilio/available-numbers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        area_code: params.areaCode,
-        contains: params.contains || undefined,
-        limit: 12,
-      }),
-    });
-    if (!res.ok) throw new Error(`Search failed (${res.status})`);
-    const data = await res.json();
-    return (data.numbers ?? data.results ?? []) as TwilioAvailableNumber[];
-  } catch (err) {
-    throw err instanceof Error ? err : new Error('Search failed');
-  }
-}
-
-async function purchaseNumber(params: {
-  phoneNumber: string;
-  capabilityToken?: string;
-  idempotencyKey: string;
-}): Promise<PurchasedNumberResult> {
-  const res = await fetch('/v1/twilio/purchase-number', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Idempotency-Key': params.idempotencyKey,
-      ...(params.capabilityToken
-        ? { 'X-Capability-Token': params.capabilityToken }
-        : {}),
-    },
-    body: JSON.stringify({
-      phone_number: params.phoneNumber,
-      idempotency_key: params.idempotencyKey,
-    }),
-  });
-  if (!res.ok) throw new Error(`Purchase failed (${res.status})`);
-  const data = await res.json();
+function adaptAvailableNumber(n: AvailableNumber): TwilioAvailableNumber {
   return {
-    phoneNumber: data.phone_number ?? params.phoneNumber,
-    friendlyName: data.friendly_name ?? formatNumber(params.phoneNumber),
-    region: data.region,
-    sid: data.sid,
+    phoneNumber: n.phone_number,
+    friendlyName: formatNumber(n.phone_number),
+    region: n.region,
+    isoCountry: 'US',
+    monthlyCostUsd: typeof n.monthly_cost_cents === 'number' ? n.monthly_cost_cents / 100 : 1.15,
+    capabilities: {
+      voice: n.capabilities?.voice ?? true,
+      sms: n.capabilities?.sms ?? true,
+      mms: n.capabilities?.mms ?? false,
+    },
   };
 }
 
@@ -218,6 +191,13 @@ export function AspireNumberPickerSheet({
 }: AspireNumberPickerSheetProps) {
   injectSheetCss();
 
+  // Auth + tenant context — lib/api/frontDesk.ts requires authenticatedFetch +
+  // officeId. Without these the sheet renders an inline error instead of
+  // calling unauthenticated endpoints (Law #3 fail-closed).
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? null;
+
   const [areaCode, setAreaCode] = useState(initialAreaCode);
   const [contains, setContains] = useState(initialContains);
   const [results, setResults] = useState<TwilioAvailableNumber[] | null>(null);
@@ -264,33 +244,49 @@ export function AspireNumberPickerSheet({
       setSearchError('Enter a 3-digit area code.');
       return;
     }
+    if (!officeId) {
+      setSearchError('No active office. Please refresh and try again.');
+      return;
+    }
     setIsSearching(true);
     setSearchError(null);
     setResults(null);
     setSelectedPhone(null);
     try {
-      const numbers = await searchAvailableNumbers({
+      const numbers = await apiSearchAvailableNumbers(
+        { authenticatedFetch, officeId },
         areaCode,
-        contains: contains.trim() || undefined,
-      });
-      setResults(numbers);
+        contains.trim() || undefined,
+        12,
+      );
+      setResults(numbers.map(adaptAvailableNumber));
     } catch (err) {
       setSearchError(err instanceof Error ? err.message : 'Search failed.');
       setResults([]);
     } finally {
       setIsSearching(false);
     }
-  }, [areaCode, contains]);
+  }, [areaCode, contains, authenticatedFetch, officeId]);
 
   const handleConfirmPurchase = useCallback(async () => {
     if (!selectedPhone) return;
+    if (!officeId) {
+      setPurchaseError('No active office. Please refresh and try again.');
+      return;
+    }
     setIsPurchasing(true);
     setPurchaseError(null);
     try {
-      const result = await purchaseNumber({
-        phoneNumber: selectedPhone,
-        idempotencyKey: genIdempotencyKey(),
-      });
+      const purchased = await apiPurchaseNumber(
+        { authenticatedFetch, officeId },
+        selectedPhone,
+        genIdempotencyKey(),
+      );
+      const result: PurchasedNumberResult = {
+        phoneNumber: purchased.phone_number,
+        friendlyName: formatNumber(purchased.phone_number),
+        sid: purchased.twilio_sid,
+      };
       onPurchased(result);
       onClose();
     } catch (err) {
@@ -298,7 +294,7 @@ export function AspireNumberPickerSheet({
     } finally {
       setIsPurchasing(false);
     }
-  }, [selectedPhone, onPurchased, onClose]);
+  }, [selectedPhone, onPurchased, onClose, authenticatedFetch, officeId]);
 
   const selectedDetail = results?.find((n) => n.phoneNumber === selectedPhone) ?? null;
 

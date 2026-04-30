@@ -41,6 +41,12 @@ export interface SarahStatusRailProps {
   summary: SetupSummaryItem[];
   forwarding?: ForwardingVerification;
   publicNumberMode: PublicNumberMode;
+  /**
+   * ISO-8601 timestamp of Sarah's most recent call. When provided, Card A
+   * shows "Last call: Xm ago". When omitted, the line falls back to "—".
+   * Pass 17 will wire this to the memory_objects feed.
+   */
+  lastCallAt?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,21 +58,51 @@ export function SarahStatusRail({
   summary,
   forwarding,
   publicNumberMode,
+  lastCallAt,
 }: SarahStatusRailProps) {
   return (
     <View style={styles.rail}>
-      <SarahStatusCard sarah={sarah} />
+      <SarahStatusCard sarah={sarah} lastCallAt={lastCallAt} />
       <SetupSummaryCard items={summary} />
       <VerificationCard publicNumberMode={publicNumberMode} forwarding={forwarding} />
     </View>
   );
 }
 
+/**
+ * Format an ISO timestamp as "Xm ago", "Xh ago", or "Xd ago". Falls back to
+ * "—" when null/invalid. Kept in this file (small helper, not worth a util).
+ */
+function formatLastCall(iso?: string): string {
+  if (!iso) return '—';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '—';
+  const diffMs = Date.now() - t;
+  if (diffMs < 0) return 'just now';
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
 // ---------------------------------------------------------------------------
 // Card A — Sarah Status
 // ---------------------------------------------------------------------------
 
-function SarahStatusCard({ sarah }: { sarah: SarahStatus }) {
+function SarahStatusCard({
+  sarah,
+  lastCallAt,
+}: {
+  sarah: SarahStatus;
+  lastCallAt?: string;
+}) {
+  const lastCallLabel = formatLastCall(lastCallAt);
+
   return (
     <View style={styles.card}>
       <Text style={styles.cardHead} accessibilityRole="header">
@@ -74,7 +110,11 @@ function SarahStatusCard({ sarah }: { sarah: SarahStatus }) {
       </Text>
 
       <View style={styles.identityRow}>
-        <View style={styles.avatar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <View
+          style={styles.avatar}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
           <Ionicons name="person" size={22} color={Colors.accent.cyan} />
           <View style={styles.avatarPing} />
         </View>
@@ -85,6 +125,18 @@ function SarahStatusCard({ sarah }: { sarah: SarahStatus }) {
         </View>
 
         <ActivePill active={sarah.active} />
+      </View>
+
+      {/* Last call timestamp */}
+      <View
+        style={styles.lastCallRow}
+        accessibilityRole="text"
+        accessibilityLabel={`Last call ${lastCallLabel === '—' ? 'unknown' : lastCallLabel}`}
+      >
+        <Ionicons name="time-outline" size={12} color={Colors.text.muted} />
+        <Text style={styles.lastCallText}>
+          Last call: <Text style={styles.lastCallStrong}>{lastCallLabel}</Text>
+        </Text>
       </View>
     </View>
   );
@@ -320,6 +372,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     color: Colors.text.tertiary,
+  },
+
+  // Last call row
+  lastCallRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  lastCallText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: Colors.text.tertiary,
+    letterSpacing: 0.1,
+  },
+  lastCallStrong: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.text.secondary,
+    fontVariant: ['tabular-nums'],
   },
 
   // Active/idle pill
