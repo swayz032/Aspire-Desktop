@@ -793,6 +793,32 @@ const VALID_INVOKE_AGENTS = ['quinn', 'adam', 'tec', 'clara'] as const;
 router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
+  // Round 3 hotfix: if express body parsers didn't populate req.body but the
+  // verify callback captured a raw buffer, parse it here as JSON. Anam's
+  // webhook runtime sometimes posts with non-standard Content-Type.
+  const rawBody = (req as any).rawBody;
+  const reqBodyEmpty = !req.body || (typeof req.body === 'object' && Object.keys(req.body).length === 0);
+  if (reqBodyEmpty && rawBody && rawBody.length > 0) {
+    try {
+      const parsed = JSON.parse(rawBody.toString('utf-8'));
+      if (parsed && typeof parsed === 'object') {
+        req.body = parsed;
+        logger.warn('[AgentTool] invoke recovered body from raw buffer', {
+          contentType: req.headers['content-type'] || '(none)',
+          rawLength: rawBody.length,
+          recoveredKeys: Object.keys(parsed).slice(0, 12),
+        });
+      }
+    } catch (parseErr) {
+      logger.error('[AgentTool] invoke raw body JSON parse failed', {
+        contentType: req.headers['content-type'] || '(none)',
+        rawLength: rawBody.length,
+        rawSample: rawBody.toString('utf-8').slice(0, 200),
+        error: parseErr instanceof Error ? parseErr.message : 'unknown',
+      });
+    }
+  }
+
   const body = getRequestBody(req);
   const { suite_id, details, user_id } = body;
   const providedAgent = typeof body.agent === 'string' ? String(body.agent).toLowerCase().trim() : '';
@@ -814,6 +840,8 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     hasQuery: !!taskFromQuery,
     hasNestedArguments: !!(req.body && typeof req.body === 'object' && (req.body as any).arguments && typeof (req.body as any).arguments === 'object'),
     bodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body as Record<string, any>).slice(0, 12) : [],
+    contentType: req.headers['content-type'] || '(none)',
+    rawBodyLen: (req as any).rawBody ? (req as any).rawBody.length : 0,
   });
 
   if (!resolvedAgent || !VALID_INVOKE_AGENTS.includes(resolvedAgent as any)) {

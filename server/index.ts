@@ -496,6 +496,23 @@ app.use(express.json({
     if (req.url?.includes('/webhook')) {
       req.rawBody = buf;
     }
+    // Preserve raw body for tool invocation paths so we can recover from
+    // wrong/missing Content-Type from Anam webhook runtime (Round 3 hotfix).
+    if (req.url?.startsWith('/v1/tools') || req.url?.startsWith('/v1/agents/invoke-sync')) {
+      req.rawBody = buf;
+    }
+  },
+}));
+// Round 3 hotfix: Anam's webhook runtime occasionally posts /v1/tools/* with a
+// non-application/json Content-Type (or none at all). The global express.json
+// above ignores those, leaving req.body = {} and breaking every tool call with
+// MISSING_TASK. This second JSON parser is scoped ONLY to tool paths and accepts
+// ANY content-type — if the global one already populated req.body it's a no-op.
+app.use(['/v1/tools', '/v1/agents/invoke-sync'], express.json({
+  limit: '1mb',
+  type: () => true,
+  verify: (req: any, _res, buf) => {
+    if (!req.rawBody) req.rawBody = buf;
   },
 }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
