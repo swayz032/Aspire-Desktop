@@ -1,38 +1,75 @@
 // components/call-room/CallRoomBackground.tsx
 //
-// Renders the office background. Uses `contain` so the WHOLE scene is
-// visible at every viewport size (matching the original artwork). Any
-// area not filled by the image is dark (background-color), giving a
-// cinema-letterbox feel rather than a cropped/zoomed view.
+// Renders the office background. On web (the primary Aspire-desktop target)
+// we use a plain <img> element with object-fit: cover and object-position
+// center so the whole scene fills the viewport, properly centered, at every
+// size (desktop / laptop / tablet). On native we use <ImageBackground>.
 
 import React from 'react';
-import { ImageBackground, StyleSheet, View } from 'react-native';
+import { ImageBackground, Platform, StyleSheet, View } from 'react-native';
 import { layers } from './layers/manifest';
+
+// On web, Metro / Expo Webpack lets us require() the asset and get a URL string
+// (or an object with `uri`). Resolve once at module load.
+function resolveLayerUri(src: number | { uri?: string; default?: string } | string): string {
+  if (typeof src === 'string') return src;
+  if (src && typeof src === 'object') {
+    // @ts-expect-error - shape varies by bundler
+    return src.uri ?? src.default ?? '';
+  }
+  return '';
+}
 
 export function CallRoomBackground(): React.ReactElement {
   return (
     <View style={styles.root} testID="call-room-background">
-      {layers.map((layer, i) => (
-        <ImageBackground
-          key={i}
-          testID={`call-room-bg-layer-${i}`}
-          source={layer.src}
-          resizeMode="contain"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              opacity: layer.opacity,
-              zIndex: layer.zIndex,
-            },
-          ]}
-          imageStyle={{
-            resizeMode: 'contain',
-            // @ts-expect-error — web-only style props for proper centering
-            objectFit: 'contain',
-            objectPosition: 'center center',
-          }}
-        />
-      ))}
+      {layers.map((layer, i) => {
+        if (Platform.OS === 'web') {
+          // Use a real <img> tag so object-fit / object-position behave correctly
+          // across every viewport size.
+          const uri = resolveLayerUri(layer.src as never);
+          return (
+            <img
+              key={i}
+              data-testid={`call-room-bg-layer-${i}`}
+              src={uri}
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center center',
+                opacity: layer.opacity,
+                zIndex: layer.zIndex,
+                transform: `scale(${layer.scale})`,
+                transformOrigin: 'center center',
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            />
+          );
+        }
+
+        // Native fallback (iOS/Android)
+        return (
+          <ImageBackground
+            key={i}
+            testID={`call-room-bg-layer-${i}`}
+            source={layer.src as number}
+            resizeMode="cover"
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                opacity: layer.opacity,
+                zIndex: layer.zIndex,
+                transform: [{ scale: layer.scale }],
+              },
+            ]}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -40,7 +77,7 @@ export function CallRoomBackground(): React.ReactElement {
 const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0a0a0a', // letterbox color when aspect ratios don't match
+    backgroundColor: '#0a0a0a', // fallback while images load
     overflow: 'hidden',
   },
 });
