@@ -1,9 +1,9 @@
 // components/call-room/CallRoomBackground.tsx
 //
-// Renders the office background. Uses <ImageBackground> with explicit
-// imageStyle so the image stays centered + cover-fitted at every viewport
-// size (desktop, laptop, tablet). On web the imageStyle props translate to
-// CSS object-fit/object-position; on native they're applied to the inner Image.
+// Renders the office background. Uses `contain` so the WHOLE scene is
+// visible at every viewport size (matching the original artwork). Any
+// area not filled by the image is dark (background-color), giving a
+// cinema-letterbox feel rather than a cropped/zoomed view.
 
 import React from 'react';
 import { ImageBackground, StyleSheet, View } from 'react-native';
@@ -17,21 +17,18 @@ export function CallRoomBackground(): React.ReactElement {
           key={i}
           testID={`call-room-bg-layer-${i}`}
           source={layer.src}
-          resizeMode="cover"
+          resizeMode="contain"
           style={[
             StyleSheet.absoluteFill,
             {
               opacity: layer.opacity,
               zIndex: layer.zIndex,
-              transform: [{ scale: layer.scale }],
             },
           ]}
           imageStyle={{
-            // Cross-platform: cover + center. On web these become
-            // object-fit / object-position on the inner <img>.
-            resizeMode: 'cover',
-            // @ts-expect-error — web-only style props for proper centering at all sizes
-            objectFit: 'cover',
+            resizeMode: 'contain',
+            // @ts-expect-error — web-only style props for proper centering
+            objectFit: 'contain',
             objectPosition: 'center center',
           }}
         />
@@ -43,7 +40,7 @@ export function CallRoomBackground(): React.ReactElement {
 const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0a0a0a', // fallback while images load
+    backgroundColor: '#0a0a0a', // letterbox color when aspect ratios don't match
     overflow: 'hidden',
   },
 });
