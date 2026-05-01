@@ -289,7 +289,7 @@ function CallsScreen() {
 
   // TEMP: REMOVE BEFORE PRODUCTION — Call Room dev preview gate
   const { session: supabaseSession } = useSupabase();
-  const isPlatformAdmin = supabaseSession?.user?.email === 'tonioswayz32@gmail.com';
+  const isPlatformAdmin = supabaseSession?.user?.email === 'tonioscott58@yahoo.com';
   // END TEMP
 
   // Formatted calls list

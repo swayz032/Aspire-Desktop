@@ -15,7 +15,8 @@ import { Redirect } from 'expo-router';
 import { useSupabase } from '@/providers/SupabaseProvider';
 import CallRoomDemo from '@/components/call-room/CallRoom.demo';
 
-const PLATFORM_ADMIN_EMAIL = 'tonioswayz32@gmail.com';
+// Founder login for the Aspire desktop frontend. (The admin-portal uses tonioswayz32@gmail.com — different surface.)
+const PLATFORM_ADMIN_EMAIL = 'tonioscott58@yahoo.com';
 
 export default function CallRoomDevRoute(): React.ReactElement {
   const { session, isLoading } = useSupabase();
