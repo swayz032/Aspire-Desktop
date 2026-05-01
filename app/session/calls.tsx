@@ -24,6 +24,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
 import type { CallSession } from '@/types/frontdesk';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+// TEMP: REMOVE BEFORE PRODUCTION — Call Room dev preview button
+import { useSupabase } from '@/providers/SupabaseProvider';
+// END TEMP
 
 // ---------------------------------------------------------------------------
 // Hero image
@@ -283,6 +286,11 @@ function CallsScreen() {
   const isDesktop = useDesktop();
   const { authenticatedFetch } = useAuthFetch();
   const { calls: rawCalls, loading: callsLoading, error: callsError, refresh } = useFrontdeskCalls({ pollInterval: 5000 });
+
+  // TEMP: REMOVE BEFORE PRODUCTION — Call Room dev preview gate
+  const { session: supabaseSession } = useSupabase();
+  const isPlatformAdmin = supabaseSession?.user?.email === 'tonioswayz32@gmail.com';
+  // END TEMP
 
   // Formatted calls list
   const allCalls = rawCalls.slice(0, 25).map(formatCallSession);
@@ -889,6 +897,35 @@ function CallsScreen() {
             </ImageBackground>
 
             <View style={desktopStyles.bodyContent}>
+              {/* TEMP: REMOVE BEFORE PRODUCTION — Call Room dev preview button */}
+              {isPlatformAdmin && (
+                <Pressable
+                  onPress={() => router.push('/_dev/call-room' as any)}
+                  accessibilityLabel="Preview Call Room (dev)"
+                  accessibilityRole="button"
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    backgroundColor: 'rgba(212, 165, 116, 0.18)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(212, 165, 116, 0.55)',
+                    alignSelf: 'flex-start',
+                    marginBottom: Spacing.md,
+                  }}
+                  {...(Platform.OS === 'web' ? ({ 'data-temp': 'call-room-preview' } as any) : {})}
+                >
+                  <Text style={{ fontSize: 14 }}>🎬</Text>
+                  <Text style={{ color: '#d4a574', fontSize: 13, fontWeight: '600' }}>
+                    Preview Call Room (DEV)
+                  </Text>
+                </Pressable>
+              )}
+              {/* END TEMP */}
+
               {/* Quick action buttons -- enterprise routes */}
               <View style={desktopStyles.quickActionsRow}>
                 <TouchableOpacity style={desktopStyles.quickActionCard} onPress={() => setActiveTab('dialpad')} activeOpacity={0.7}>
@@ -1215,6 +1252,31 @@ function CallsScreen() {
           <Ionicons name="chevron-back" size={24} color={Colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Return Calls</Text>
+        {/* TEMP: REMOVE BEFORE PRODUCTION — Call Room dev preview button (mobile header) */}
+        {isPlatformAdmin && (
+          <Pressable
+            onPress={() => router.push('/_dev/call-room' as any)}
+            accessibilityLabel="Preview Call Room (dev)"
+            accessibilityRole="button"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 8,
+              backgroundColor: 'rgba(212, 165, 116, 0.18)',
+              borderWidth: 1,
+              borderColor: 'rgba(212, 165, 116, 0.55)',
+              marginRight: 8,
+            }}
+            {...(Platform.OS === 'web' ? ({ 'data-temp': 'call-room-preview' } as any) : {})}
+          >
+            <Text style={{ fontSize: 12 }}>🎬</Text>
+            <Text style={{ color: '#d4a574', fontSize: 11, fontWeight: '600' }}>DEV</Text>
+          </Pressable>
+        )}
+        {/* END TEMP */}
         <TouchableOpacity
           onPress={() => router.push('/(tabs)/inbox' as any)}
           style={styles.inboxButton}
