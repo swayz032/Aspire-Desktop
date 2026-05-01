@@ -453,10 +453,20 @@ router.post('/v1/tools/context', async (req: Request, res: Response) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch profile
+    // Round 7 A.1 — enriched briefing. Whitelist of fields safe to surface to
+    // Ava's voice context. EXPLICITLY EXCLUDED for privacy (Law #9):
+    // home_address_line1, home_address_line2, date_of_birth, ssn, ein, banking,
+    // raw lat/lng. City/state are surfaced; street address is NOT.
     const { data: profile } = await supabase
       .from('suite_profiles')
-      .select('owner_name, business_name, industry, office_id')
+      .select(`
+        owner_name, owner_title, business_name, industry, role_category,
+        gender, team_size,
+        business_city, business_state, home_city, home_state,
+        timezone, currency, preferred_channel, sales_channel, customer_type,
+        years_in_business, annual_revenue_band, fiscal_year_end_month,
+        onboarding_completed_at, office_id
+      `)
       .eq('suite_id', suite_id)
       .maybeSingle();
 
@@ -481,13 +491,76 @@ router.post('/v1/tools/context', async (req: Request, res: Response) => {
       (profile as any)?.timezone ||
       headerTz ||
       'America/New_York';
+
+    // Round 7 A.1 derivations — split owner_name into first_name; derive
+    // gender_pronoun + salutation. Defaults are "" (NOT "Unknown") so the
+    // prompt's omission rule cleanly skips empty values.
+    const ownerName = ((profile as any)?.owner_name || '').toString().trim();
+    let firstName = '';
+    if (ownerName) {
+      const parts = ownerName.split(/\s+/);
+      firstName = parts[0] || '';
+    }
+
+    const genderRaw = ((profile as any)?.gender || '').toString().trim().toLowerCase();
+    let genderPronoun = 'they/them'; // safe default
+    let salutation = ''; // empty when unknown — prompt omits it
+    if (genderRaw === 'male' || genderRaw === 'm') {
+      genderPronoun = 'he/him';
+      salutation = 'Mr.';
+    } else if (genderRaw === 'female' || genderRaw === 'f') {
+      genderPronoun = 'she/her';
+      salutation = 'Ms.';
+    } else if (
+      genderRaw === 'non-binary' || genderRaw === 'nonbinary' ||
+      genderRaw === 'nb' || genderRaw === 'enby'
+    ) {
+      genderPronoun = 'they/them';
+      salutation = 'Mx.';
+    }
+
+    const onboardingCompletedAt = (profile as any)?.onboarding_completed_at || null;
+
     const context = {
       current_date: now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: timezone }),
       current_time: now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone }),
       timezone,
-      owner_name: profile?.owner_name || 'Unknown',
-      business_name: profile?.business_name || 'Unknown',
-      industry: profile?.industry || 'General',
+
+      // Identity (Round 7 output-critic Issue #6: empty string instead of
+      // "Unknown" / "General" so the prompt's "omit field when missing" rule
+      // fires deterministically. Speaking "Unknown" or "General" aloud was
+      // the original Round 7 user complaint.)
+      owner_name: profile?.owner_name || '',
+      first_name: firstName,
+      salutation,
+      gender_pronoun: genderPronoun,
+      owner_title: (profile as any)?.owner_title || '',
+
+      // Business
+      business_name: profile?.business_name || '',
+      industry: profile?.industry || '',
+      role_category: (profile as any)?.role_category || '',
+      team_size: (profile as any)?.team_size || '',
+      years_in_business: (profile as any)?.years_in_business ?? null,
+      annual_revenue_band: (profile as any)?.annual_revenue_band || '',
+      fiscal_year_end_month: (profile as any)?.fiscal_year_end_month ?? null,
+      currency: (profile as any)?.currency || '',
+
+      // Location (city/state ONLY — street address whitelisted out per Law #9)
+      office_city: (profile as any)?.business_city || '',
+      office_state: (profile as any)?.business_state || '',
+      home_city: (profile as any)?.home_city || '',
+      home_state: (profile as any)?.home_state || '',
+
+      // Channels & sales
+      preferred_channel: (profile as any)?.preferred_channel || '',
+      sales_channel: (profile as any)?.sales_channel || '',
+      customer_type: (profile as any)?.customer_type || '',
+
+      // Onboarding state
+      onboarding_completed: !!onboardingCompletedAt,
+      onboarding_completed_at: onboardingCompletedAt,
+
       recent_activity: (recentReceipts || []).map((r: any) => ({
         action: r.action_type,
         outcome: r.outcome,
@@ -931,6 +1004,23 @@ const VALID_INVOKE_AGENTS = ['quinn', 'adam', 'tec', 'clara'] as const;
 router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   if (!verifySecret(req, res)) return;
 
+  // Round 7 R-001: one-shot diagnostic log to capture exact wire format Anam
+  // posts for invoke_adam (flat vs bodyParams-wrapped). Gated behind env flag
+  // so it stays off in prod by default. MUST run AFTER verifySecret so
+  // unauthenticated callers cannot spray the Railway log stream. PII
+  // protection: rawBodyPreview is truncated to 200 chars — DO NOT remove
+  // the slice. Roll back once we have captured one payload (per plan D.7).
+  if (process.env.LOG_TOOL_INVOKE_DIAG === 'true') {
+    const diagRawBody = (req as any).rawBody;
+    logger.info('[AgentTool][invoke][diag]', {
+      contentType: req.headers['content-type'] || '(none)',
+      contentLength: req.headers['content-length'] || '(none)',
+      rawBodyLen: diagRawBody?.length ?? 0,
+      rawBodyPreview: diagRawBody ? diagRawBody.toString('utf-8').slice(0, 200) : '',
+      bodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body).slice(0, 12) : [],
+    });
+  }
+
   // Round 3 hotfix: if express body parsers didn't populate req.body but the
   // verify callback captured a raw buffer, parse it here as JSON. Anam's
   // webhook runtime sometimes posts with non-standard Content-Type.
@@ -977,10 +1067,84 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   const taskFromDetails = typeof details === 'string' ? details.trim() : '';
   const normalizedTask = taskFromTask || taskFromQuery || taskFromDetails;
 
+  // Round 7 C-1/C-2/C-3: mint correlationId + suite_id BEFORE validation so
+  // every early-exit path (INVALID_AGENT, MISSING_TASK, MISCONFIGURATION) can
+  // emit a receipt. Law #2 demands receipt coverage even on denied/failed
+  // invocations.
+  const correlationId = `corr-invoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const safeSuiteId =
+    (typeof suite_id === 'string' && suite_id.trim()) ||
+    getDefaultSuiteId() ||
+    process.env.DEFAULT_SUITE_ID ||
+    '';
+  const safeOfficeId = safeSuiteId;
+
+  // Helper: emit an early-exit receipt (denial or misconfig failure) so the
+  // receipt chain stays complete even when we never call the orchestrator.
+  // Mirrors the upstream-fail receipt shape at the dispatch error site so the
+  // schema stays consistent. Status MUST be uppercase ('DENIED'|'FAILED') and
+  // actor_type 'WORKER' — Round 5 found a CHECK constraint silent failure on
+  // lowercase values.
+  const emitEarlyExitReceipt = async (params: {
+    receiptType: 'invoke_denial' | 'invoke_error';
+    status: 'DENIED' | 'FAILED';
+    reasonCode: 'INVALID_AGENT' | 'MISSING_TASK' | 'MISCONFIGURATION';
+    toolUsed: string;
+  }): Promise<void> => {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+      // Round 7 output-critic Issue #2: validate suite_id / office_id are
+      // valid UUIDs before INSERT. Postgres rejects non-UUID values for the
+      // uuid columns, and the catch below swallows the error silently —
+      // which would defeat the entire point of C-1/C-2/C-3 (Wave 3.5 hotfix).
+      // Skip the receipt write if suite_id is not a valid UUID; office_id
+      // becomes null when its UUID is invalid (column is nullable).
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const validSuiteId = typeof safeSuiteId === 'string' && UUID_RE.test(safeSuiteId);
+      const validOfficeId = typeof safeOfficeId === 'string' && UUID_RE.test(safeOfficeId);
+      if (!validSuiteId) {
+        logger.warn('[AgentTool] invoke early-exit receipt skipped: suite_id is not a valid UUID', {
+          reason: params.reasonCode,
+          suiteIdType: typeof safeSuiteId,
+        });
+        return;
+      }
+      if (supabaseUrl && supabaseKey) {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        await supabase.from('receipts').insert({
+          receipt_id: `rcpt-${correlationId}`,
+          suite_id: safeSuiteId,
+          tenant_id: safeSuiteId,
+          office_id: validOfficeId ? safeOfficeId : null,
+          receipt_type: params.receiptType,
+          status: params.status,
+          correlation_id: correlationId,
+          actor_type: 'WORKER',
+          actor_id: 'ava',
+          action: {
+            action_type: 'invoke',
+            risk_tier: 'GREEN',
+            tool_used: params.toolUsed,
+            reason_code: params.reasonCode,
+          },
+          hash_alg: 'sha256',
+        });
+      }
+    } catch (recErr) {
+      logger.warn('[AgentTool] invoke early-exit receipt write failed', {
+        reason: params.reasonCode,
+        error: recErr instanceof Error ? recErr.message : 'unknown',
+      });
+    }
+  };
+
   logger.info('[AgentTool] invoke', {
     suite_id,
     agent: resolvedAgent,
     task: normalizedTask,
+    correlationId,
     hasTask: !!taskFromTask,
     hasQuery: !!taskFromQuery,
     hasNestedArguments: !!(req.body && typeof req.body === 'object' && (req.body as any).arguments && typeof (req.body as any).arguments === 'object'),
@@ -990,6 +1154,13 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   });
 
   if (!resolvedAgent || !VALID_INVOKE_AGENTS.includes(resolvedAgent as any)) {
+    // Round 7 C-2: receipt for INVALID_AGENT denial.
+    await emitEarlyExitReceipt({
+      receiptType: 'invoke_denial',
+      status: 'DENIED',
+      reasonCode: 'INVALID_AGENT',
+      toolUsed: 'agent.invoke',
+    });
     return res.status(200).json({
       error: 'INVALID_AGENT',
       status: 'error',
@@ -1009,8 +1180,17 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
   if (!effectiveTask) {
     logger.warn('[AgentTool] invoke missing task/query/details after normalization', {
       agent: resolvedAgent,
+      correlationId,
       rawBodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body as Record<string, any>).slice(0, 20) : [],
       normalizedKeys: Object.keys(body).slice(0, 20),
+    });
+    // Round 7 C-1: receipt for MISSING_TASK denial — closes the silent-failure
+    // gap surfaced in transcript 3ca28bc6 (3× MISSING_TASK with no receipts).
+    await emitEarlyExitReceipt({
+      receiptType: 'invoke_denial',
+      status: 'DENIED',
+      reasonCode: 'MISSING_TASK',
+      toolUsed: `invoke_${resolvedAgent}`,
     });
     return res.status(200).json({
       error: 'MISSING_TASK',
@@ -1024,14 +1204,19 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     const orchestratorUrl = process.env.ORCHESTRATOR_URL?.trim();
     if (!orchestratorUrl) {
       logger.warn('[AgentTool] ORCHESTRATOR_URL not set — cannot reach agents');
+      // Round 7 C-3: receipt for MISCONFIGURATION failure.
+      await emitEarlyExitReceipt({
+        receiptType: 'invoke_error',
+        status: 'FAILED',
+        reasonCode: 'MISCONFIGURATION',
+        toolUsed: `invoke_${resolvedAgent}`,
+      });
       return res.json({
         agent: resolvedAgent,
         result: `I was not able to reach ${resolvedAgent} right now because the backend service is not configured. Please try again later.`,
         status: 'error',
       });
     }
-
-    const correlationId = `corr-invoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     logger.info('[AgentTool] invoke -> orchestrator', {
       agent: resolvedAgent,
@@ -1042,12 +1227,9 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 52000); // 52s — backend has 45s playbook timeout + 7s margin for network
 
-    const safeSuiteId =
-      (typeof suite_id === 'string' && suite_id.trim()) ||
-      getDefaultSuiteId() ||
-      process.env.DEFAULT_SUITE_ID ||
-      '';
-    const safeOfficeId = safeSuiteId;
+    // Round 7 C-1/C-2/C-3: safeSuiteId / safeOfficeId / correlationId moved to
+    // top of handler so early-exit receipts can use them. Re-aliased here for
+    // readability; do not redeclare.
     const taskText = effectiveTask;
     let detailsText = typeof details === 'string' ? details : '';
     const queryText = typeof body.query === 'string' ? body.query.trim() : '';
@@ -1187,6 +1369,12 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       // city→zip + Wave A.5 disambiguation when missing.
       const userAddressText = typeof body.user_address === 'string' ? body.user_address.trim() : '';
       if (userAddressText) invokePayload.user_address = userAddressText;
+      // Round 7 A.3 — multi-store opt-in. When true, voice path also runs
+      // Google Shopping (Lowe's, Walmart, Ace, Amazon) instead of HD-only.
+      // Default false preserves HD-default behavior + voice latency.
+      if (typeof body.include_other_stores === 'boolean') {
+        invokePayload.include_other_stores = body.include_other_stores;
+      }
     }
     const { response: a2aResp, endpoint: invokeEndpoint } = await dispatchOrchestratorInvoke(
       orchestratorUrl,

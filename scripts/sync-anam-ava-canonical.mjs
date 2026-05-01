@@ -282,6 +282,10 @@ function buildCanonicalTools() {
           type: 'string',
           description: "The user's current job site address (street + city + state if known). Ava asks the user for this before searching for products or stores. The backend uses Google Places to find the closest store to this address.",
         },
+        include_other_stores: {
+          type: 'boolean',
+          description: 'Default false. Set true ONLY when the user explicitly asks to check stores other than Home Depot ("any other stores?", "check Lowe\'s", "what about Walmart"). When true, results include Google Shopping retailers (Amazon, Walmart, Lowe\'s, etc.). When false, only Home Depot is searched.',
+        },
       },
       ['agent', 'task', 'query'],
       { additionalProperties: false },

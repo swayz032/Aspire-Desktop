@@ -224,7 +224,18 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
         try {
           const sdk = await import('https://esm.sh/@anam-ai/js-sdk@latest');
           const types = await import('https://esm.sh/@anam-ai/js-sdk@latest/dist/module/types');
-          client = sdk.createClient(sessionToken);
+          // Round 7 B.1: opt into high-bitrate video via sessionOptions.
+          // Defensive: SDK is loaded from @anam-ai/js-sdk@latest CDN so the
+          // option SHOULD be supported, but feature-detect via try/catch and
+          // fall back to single-arg form if the SDK rejects the second arg.
+          try {
+            client = sdk.createClient(sessionToken, {
+              sessionOptions: { videoQuality: 'high' },
+            });
+          } catch (e) {
+            console.warn('[AvaDeskPanel] createClient with sessionOptions failed, falling back to single-arg', e);
+            client = sdk.createClient(sessionToken);
+          }
           const AnamEvent = types.AnamEvent;
 
           if (typeof client.registerToolCallHandler === 'function') {
