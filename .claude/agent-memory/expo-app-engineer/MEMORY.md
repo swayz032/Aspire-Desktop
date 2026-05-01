@@ -78,6 +78,16 @@
 - No `any` types needed in our components except for web-only CSS properties cast
 - `as any` required for web CSS properties not in RN types (boxShadow, transition, etc.)
 
+## Messages Page Hooks (Lane E6 - 2026-05-01)
+- API client: `lib/api/messages.ts` — 9 wrappers around `/api/messages/*` (Lane E1 contract per plan §3.9.9)
+- Hooks: `lib/messages/use{MessageThreads,MessageThread,SendMessage,MessageSuggestions,ContactSearch,MessageTemplates,TenantA2pStatus}.ts`
+- Pattern: custom hooks (NO React Query — codebase doesn't have QueryClient mounted) — module-level cache + listener fan-out + AbortController per fetch + import type for component-type imports (avoids circular runtime deps)
+- Optimistic updates: `useMessageThreads` mutations (pin/archive/markRead) snapshot every slice, mutate, rollback on error
+- Send flow: `useSendMessage.mutateAsync` writes optimistic outbound bubble via `appendMessageToThread`, replaces with server-confirmed row via `replaceMessageId`, invalidates threads cache
+- A2P fail-closed: `useTenantA2pStatus` defaults to 'unregistered' if Lane B's `/api/tenant/a2p-status` 404s
+- Demo: `app/demo/messages.tsx` — 5-state hub (zero/suggestions/thread/compose/contacts) using `*Override` props
+- Pattern note: components keep their `*Override` test/demo props for offline review even after wiring real hooks
+
 ## LiveKit Conference Integration
 - Base CSS: `lib/livekit-styles.ts` — ~21KB structural + Aspire dark theme overrides
 - CSS injection: `injectLiveKitStyles()` — module-level `injected` flag + `getElementById` guard

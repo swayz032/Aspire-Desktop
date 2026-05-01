@@ -1,55 +1,48 @@
 /**
- * PublicNumberSection.demo — both modes + selection states + empty.
+ * PublicNumberSection.demo — covers all 3 honest 2026 modes (§3.1):
+ *   - ASPIRE_NEW_NUMBER (default + with active number)
+ *   - FORWARD_EXISTING (with companion-SMS picker entry)
+ *   - PORT_IN (V1.1 stub)
  */
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Colors } from '@/constants/tokens';
 import { PublicNumberSection } from './PublicNumberSection';
-import type { PublicNumberConfig, AvailableNumber } from './setup-types';
-
-const SAMPLE_NUMBERS: AvailableNumber[] = [
-  { id: 'n1', number: '(212) 555-0198', inboundReady: true, outboundAvailable: true },
-  { id: 'n2', number: '(212) 555-7204', inboundReady: true, outboundAvailable: true },
-  { id: 'n3', number: '(212) 555-3148', inboundReady: true, outboundAvailable: true },
-];
+import type { PublicNumberConfig } from './setup-types';
 
 export default function PublicNumberSectionDemo() {
   const [a, setA] = useState<PublicNumberConfig>({
-    mode: 'ASPIRE_NUMBER',
-    areaCode: '212',
-    selectedNumberId: 'n1',
+    mode: 'ASPIRE_NEW_NUMBER',
   });
   const [b, setB] = useState<PublicNumberConfig>({
-    mode: 'KEEP_CURRENT_NUMBER',
-    forwardedNumber: '(404) 555-0182',
+    mode: 'ASPIRE_NEW_NUMBER',
+    selectedNumberId: '+14483331552',
   });
   const [c, setC] = useState<PublicNumberConfig>({
-    mode: 'ASPIRE_NUMBER',
-    areaCode: '',
-    containsFilter: 'PAINT',
+    mode: 'FORWARD_EXISTING',
+    forwardedNumber: '(404) 555-0182',
+  });
+  const [d, setD] = useState<PublicNumberConfig>({
+    mode: 'PORT_IN',
   });
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      <Variant title="Aspire number — number selected">
-        <PublicNumberSection
-          config={a}
-          onChange={(p) => setA({ ...a, ...p })}
-          availableNumbers={SAMPLE_NUMBERS}
-        />
+      <Variant title="Aspire new number — default selected, no number picked yet">
+        <PublicNumberSection config={a} onChange={(p) => setA({ ...a, ...p })} />
       </Variant>
 
-      <Variant title="Keep current number — sub-form hidden">
+      <Variant title="Aspire new number — number purchased & active">
         <PublicNumberSection config={b} onChange={(p) => setB({ ...b, ...p })} />
       </Variant>
 
-      <Variant title="Aspire number — no area code, empty results hint">
-        <PublicNumberSection
-          config={c}
-          onChange={(p) => setC({ ...c, ...p })}
-          availableNumbers={[]}
-        />
+      <Variant title="Forward existing — owner enters their existing carrier number">
+        <PublicNumberSection config={c} onChange={(p) => setC({ ...c, ...p })} />
+      </Variant>
+
+      <Variant title="Port-in (advanced V1.1) — placeholder timeline">
+        <PublicNumberSection config={d} onChange={(p) => setD({ ...d, ...p })} />
       </Variant>
     </ScrollView>
   );
@@ -70,7 +63,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0c',
     ...(Platform.OS === 'web' ? ({ height: '100%' } as object) : {}),
   } as any,
-  content: { padding: 32, gap: 24 },
+  content: { padding: 32, gap: 32 },
   variant: { gap: 12 },
   variantTitle: {
     fontSize: 12,

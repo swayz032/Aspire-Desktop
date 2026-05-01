@@ -1,23 +1,23 @@
 /**
- * Front Desk Setup — page shell (Pass 16 UI rewrite, plan §16.G.3)
+ * Front Desk Setup — page shell (Pass 19 update — plan §6.1).
  *
- * Replaces the previous "stack everything" scroll body with a tabbed
- * center-stage layout: hero up top, 5-step tab nav under it, one section
- * visible at a time in a generous center column, sticky Sarah Status Rail
- * on the right.
+ * Pass 19 changes:
+ *   - Replaces legacy `/api/frontdesk/setup` GET/PATCH with the versioned
+ *     `lib/api/frontDesk.ts` (`fetchFrontDeskConfig` / `patchFrontDeskConfig`).
+ *     Save now mints a capability token server-side and writes through the
+ *     same proxy pattern as Office Memory.
+ *   - Drops the hardcoded `availableNumbers` demo array — the picker sheet
+ *     now owns search results and returns the purchased number via
+ *     `onPurchased`. The page records the selected number and re-fetches
+ *     config so the rail / summary reflect Twilio truth.
+ *   - Wires the §3.2 Catch×Public-Number interlock: when CatchCallsSection
+ *     reports `severity === 'invalid'` we mark that tab as invalid and
+ *     disable the hero Save button.
  *
  * Per §12.1 Framer-style: every screen has one job. The active section
  * gets the canvas it deserves (max-width 880, generous padding) so the
  * forms breathe and feel premium instead of cramped. Tab switching
  * preserves in-memory state — no resets.
- *
- * Data flow:
- *   - Hydrate from `/api/frontdesk/setup` (legacy endpoint) on mount
- *   - Future: Pass 17 will swap to `lib/api/frontDesk.ts > getConfig()`
- *     calling `GET /v1/front-desk/config`
- *   - PATCH on Save (legacy endpoint kept for now). Pass 17 swaps in
- *     `patchConfig()` calling versioned `PATCH /v1/front-desk/config`
- *   - Per-tab dirty state derived by diffing slices against the original
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -26,8 +26,19 @@ import { Colors, Spacing } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { triggerTestIncomingCall } from '@/lib/incomingCallOverlayStore';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import {
+  fetchFrontDeskConfig,
+  patchFrontDeskConfig,
+  triggerTestCall as apiTriggerTestCall,
+  type FrontDeskConfigRow,
+  type FrontDeskConfigPatchPartial,
+  type AfterHoursMode as ApiAfterHoursMode,
+  type BusyMode as ApiBusyMode,
+} from '@/lib/api/frontDesk';
 
-// New section components (Pass 10 Lane B + Pass 16 UI)
+// New section components (Pass 10 Lane B + Pass 16 UI + Pass 19 rewrite)
 import { FrontDeskSetupHero } from '@/components/calls/setup/FrontDeskSetupHero';
 import {
   FrontDeskSetupTabs,
@@ -50,10 +61,10 @@ import type {
   RoutingContact,
   BusyMode,
   AfterHoursMode,
-  AvailableNumber,
   ForwardingVerification,
   SarahStatus,
   SetupSummaryItem,
+  CatchInterlockResult,
 } from '@/components/calls/setup/setup-types';
 
 // ---------------------------------------------------------------------------
@@ -61,7 +72,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_CONFIG: FrontDeskConfig = {
-  publicNumber: { mode: 'ASPIRE_NUMBER' },
+  publicNumber: { mode: 'ASPIRE_NEW_NUMBER' },
   catch: { mode: 'APP_AND_PHONE_SIMUL_RING' },
   businessHours: {
     days: [
@@ -93,144 +104,82 @@ const SARAH_DEFAULT: SarahStatus = {
 };
 
 // ---------------------------------------------------------------------------
-// Pass-17-ready API stub
-// ---------------------------------------------------------------------------
-//
-// When `lib/api/frontDesk.ts` lands in Pass 17, swap these two functions
-// for `getConfig()` / `patchConfig()`. The shapes here mirror the existing
-// legacy endpoint payload so nothing breaks today.
-
-type LegacyApiBag = Record<string, any>;
-
-async function fetchLegacyConfig(): Promise<LegacyApiBag | null> {
-  try {
-    const res = await fetch('/api/frontdesk/setup');
-    if (!res.ok) return null;
-    return (await res.json()) as LegacyApiBag;
-  } catch {
-    return null;
-  }
-}
-
-async function patchLegacyConfig(body: Record<string, unknown>): Promise<boolean> {
-  try {
-    const res = await fetch('/api/frontdesk/setup', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Migrate legacy server payload into the new FrontDeskConfig shape
+// Wire-format adapters (versioned API ↔ frontend type)
 // ---------------------------------------------------------------------------
 
-function hydrateFromLegacy(data: LegacyApiBag | null | undefined): FrontDeskConfig {
-  if (!data) return DEFAULT_CONFIG;
+const AFTER_HOURS_WIRE_TO_FE: Record<ApiAfterHoursMode, AfterHoursMode> = {
+  take_message: 'TAKE_MESSAGE',
+  ask_callback_window: 'ASK_CALLBACK_WINDOW',
+  try_transfer_then_message: 'TRY_TRANSFER_THEN_MESSAGE',
+};
+const AFTER_HOURS_FE_TO_WIRE: Record<AfterHoursMode, ApiAfterHoursMode> = {
+  TAKE_MESSAGE: 'take_message',
+  ASK_CALLBACK_WINDOW: 'ask_callback_window',
+  TRY_TRANSFER_THEN_MESSAGE: 'try_transfer_then_message',
+};
+const BUSY_WIRE_TO_FE: Record<ApiBusyMode, BusyMode> = {
+  take_message: 'TAKE_MESSAGE',
+  ask_callback_window: 'ASK_CALLBACK_WINDOW',
+  try_transfer_then_message: 'TRY_TRANSFER_THEN_MESSAGE',
+};
+const BUSY_FE_TO_WIRE: Record<BusyMode, ApiBusyMode> = {
+  TAKE_MESSAGE: 'take_message',
+  ASK_CALLBACK_WINDOW: 'ask_callback_window',
+  TRY_TRANSFER_THEN_MESSAGE: 'try_transfer_then_message',
+};
 
-  const legacyLineMode = data.lineMode as string | undefined;
-  const publicNumberMode: PublicNumberMode =
-    legacyLineMode === 'EXISTING_INBOUND_ONLY' ? 'KEEP_CURRENT_NUMBER' : 'ASPIRE_NUMBER';
+/**
+ * Hydrate the FrontDeskConfig from the versioned `/v1/front-desk/config`
+ * response. The wire row only carries the fields we currently persist —
+ * business hours / routing contacts default from local state.
+ */
+function hydrateFromVersionedConfig(
+  row: FrontDeskConfigRow | Record<string, never> | undefined,
+  base: FrontDeskConfig,
+): FrontDeskConfig {
+  if (!row || !('id' in row)) return base;
 
-  const legacyHours = data.businessHours as
-    | Record<string, { enabled: boolean; start: string; end: string }>
-    | undefined;
-  const dayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
-  const legacyDayLookup: Record<typeof dayKeys[number], string> = {
-    mon: 'Monday',
-    tue: 'Tuesday',
-    wed: 'Wednesday',
-    thu: 'Thursday',
-    fri: 'Friday',
-    sat: 'Saturday',
-    sun: 'Sunday',
-  };
-
-  const days = dayKeys.map((k) => {
-    const legacy = legacyHours?.[legacyDayLookup[k]];
-    if (!legacy) {
-      const isWeekend = k === 'sat' || k === 'sun';
-      return { day: k, open: !isWeekend, startTime: '09:00', endTime: '17:00' };
-    }
-    return {
-      day: k,
-      open: !!legacy.enabled,
-      startTime: legacy.start ?? '09:00',
-      endTime: legacy.end ?? '17:00',
-    };
-  });
-
-  const legacyAfterHours = data.afterHoursMode as string | undefined;
-  const afterHoursMode: AfterHoursMode =
-    legacyAfterHours === 'ASK_CALLBACK_TIME' ? 'ASK_CALLBACK_WINDOW' : 'TAKE_MESSAGE';
-
-  const legacyBusy = data.busyMode as string | undefined;
-  const busyMode: BusyMode =
-    legacyBusy === 'RETRY_ONCE'
-      ? 'TRY_TRANSFER_THEN_MESSAGE'
-      : legacyBusy === 'ASK_CALLBACK_TIME'
-        ? 'ASK_CALLBACK_WINDOW'
-        : 'TAKE_MESSAGE';
-
-  const legacyTeam = (data.teamMembers ?? []) as Array<{
-    id?: string;
-    name: string;
-    phone?: string;
-    role?: string;
-  }>;
-  const routingContacts: RoutingContact[] =
-    legacyTeam.length > 0
-      ? legacyTeam.map((m, idx) => ({
-          id: m.id ?? `rc-${idx}`,
-          role: (m.role?.toLowerCase() as RoutingContact['role']) ?? 'custom',
-          customRoleLabel: m.role,
-          name: m.name,
-          phone: m.phone ?? '',
-          initials: deriveInitials(m.name),
-          fallbackMode: 'TRANSFER_ALLOWED',
-          transferAllowed: true,
-          priority: idx,
-        }))
-      : DEFAULT_CONFIG.routingContacts;
-
+  const publicNumberMode = row.public_number_mode as PublicNumberMode;
   const forwarding: ForwardingVerification | undefined =
-    publicNumberMode === 'KEEP_CURRENT_NUMBER'
+    publicNumberMode === 'FORWARD_EXISTING'
       ? {
-          status: data.forwardingVerified ? 'VERIFIED' : 'NOT_CONFIGURED',
-          lastTestAt: data.forwardingLastTestAt,
-          lastTestErrorMessage: data.forwardingLastTestError,
+          status: row.forwarding_status ?? 'NOT_CONFIGURED',
+          lastTestAt: row.last_forwarding_test_at ?? undefined,
+          lastTestErrorMessage: row.last_forwarding_test_result ?? undefined,
         }
       : undefined;
 
   return {
+    ...base,
     publicNumber: {
+      ...base.publicNumber,
       mode: publicNumberMode,
-      forwardedNumber: data.existingNumber || undefined,
-      selectedNumberId: data.businessNumberId,
-      areaCode: data.areaCode,
     },
-    catch: { mode: 'APP_AND_PHONE_SIMUL_RING' },
+    catch: { mode: row.catch_mode },
     businessHours: {
-      days,
-      afterHoursMode,
-      pronunciationOverride: data.pronunciation ?? '',
+      ...base.businessHours,
+      afterHoursMode: AFTER_HOURS_WIRE_TO_FE[row.after_hours_mode] ?? 'TAKE_MESSAGE',
+      pronunciationOverride: row.pronunciation_override || base.businessHours.pronunciationOverride,
     },
-    routingContacts,
-    busy: { mode: busyMode },
+    busy: { mode: BUSY_WIRE_TO_FE[row.busy_mode] ?? 'TAKE_MESSAGE' },
     forwarding,
-    version: data.version ?? 1,
+    version: row.version_no ?? 1,
   };
 }
 
-function deriveInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+/**
+ * Build the partial PATCH body for `/v1/front-desk/config`. The backend
+ * expects only the fields that changed; we send the canonical projection
+ * for every save (the orchestrator versions on the write).
+ */
+function buildPatchBody(config: FrontDeskConfig): FrontDeskConfigPatchPartial {
+  return {
+    public_number_mode: config.publicNumber.mode,
+    catch_mode: config.catch.mode,
+    after_hours_mode: AFTER_HOURS_FE_TO_WIRE[config.businessHours.afterHoursMode],
+    busy_mode: BUSY_FE_TO_WIRE[config.busy.mode],
+    pronunciation_override: config.businessHours.pronunciationOverride ?? '',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -260,11 +209,18 @@ function buildSummary(config: FrontDeskConfig): SetupSummaryItem[] {
         ? 'On my phone'
         : 'Ring both';
 
+  const publicNumberLabel: string =
+    config.publicNumber.mode === 'ASPIRE_NEW_NUMBER'
+      ? 'Aspire — new'
+      : config.publicNumber.mode === 'FORWARD_EXISTING'
+        ? 'Forward existing'
+        : 'Port-in (V1.1)';
+
   return [
     {
       iconName: 'call-outline',
       label: 'Public number',
-      value: config.publicNumber.mode === 'ASPIRE_NUMBER' ? 'Aspire number' : 'Keep current number',
+      value: publicNumberLabel,
     },
     { iconName: 'arrow-redo-outline', label: 'Catch calls', value: catchLabel },
     { iconName: 'time-outline', label: 'Open hours', value: openLabel },
@@ -304,40 +260,66 @@ function diffDirtyTabs(
 // ---------------------------------------------------------------------------
 
 function FrontDeskSetupContent() {
+  const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? null;
+
   const [config, setConfig] = useState<FrontDeskConfig>(DEFAULT_CONFIG);
   const [originalConfig, setOriginalConfig] = useState<FrontDeskConfig>(DEFAULT_CONFIG);
   const [activeTab, setActiveTab] = useState<FrontDeskTabId>('public-number');
 
-  const [availableNumbers] = useState<AvailableNumber[]>([
-    { id: 'demo-1', number: '(212) 555-0198', inboundReady: true, outboundAvailable: true },
-    { id: 'demo-2', number: '(212) 555-7204', inboundReady: true, outboundAvailable: true },
-    { id: 'demo-3', number: '(212) 555-3148', inboundReady: true, outboundAvailable: true },
-  ]);
-
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [hydrationError, setHydrationError] = useState<string | null>(null);
+
+  // §3.2 interlock — invalid tabs disable Save.
+  const [catchInterlock, setCatchInterlock] = useState<CatchInterlockResult>({
+    severity: 'ok',
+    message: '',
+  });
+
+  // Forwarding-test in-flight indicator (drives the spinner inside the
+  // ForwardingInstructionsCard inside PublicNumberSection).
+  const [isTestingForwarding, setIsTestingForwarding] = useState(false);
 
   // ----- Hydrate on mount ----------------------------------------------
   useEffect(() => {
     let cancelled = false;
+    if (!officeId) return; // wait for tenant to resolve
+
     (async () => {
-      const data = await fetchLegacyConfig();
-      if (cancelled) return;
-      const hydrated = hydrateFromLegacy(data);
-      setConfig(hydrated);
-      setOriginalConfig(hydrated);
+      try {
+        const res = await fetchFrontDeskConfig({ authenticatedFetch, officeId });
+        if (cancelled) return;
+        const hydrated = hydrateFromVersionedConfig(res.config, DEFAULT_CONFIG);
+        setConfig(hydrated);
+        setOriginalConfig(hydrated);
+        setHydrationError(null);
+      } catch (err) {
+        if (cancelled) return;
+        // Fail-soft: keep defaults but surface the error so users see why.
+        setHydrationError(err instanceof Error ? err.message : 'Could not load setup.');
+      }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authenticatedFetch, officeId]);
 
   // ----- Derived state -------------------------------------------------
   const dirtyTabs = useMemo(
     () => diffDirtyTabs(config, originalConfig),
     [config, originalConfig],
   );
+  const invalidTabs = useMemo<Set<FrontDeskTabId>>(() => {
+    const set = new Set<FrontDeskTabId>();
+    if (catchInterlock.severity === 'invalid') set.add('catch');
+    return set;
+  }, [catchInterlock]);
   const isDirty = dirtyTabs.size > 0;
+  const hasInvalid = invalidTabs.size > 0;
 
   // ----- Patchers ------------------------------------------------------
   const updatePublicNumber = useCallback((p: Partial<PublicNumberConfig>) => {
@@ -360,76 +342,73 @@ function FrontDeskSetupContent() {
     setConfig((prev) => ({ ...prev, busy: { mode } }));
   }, []);
 
+  // ----- Refresh from server (after a purchase or test-call) ----------
+  const refreshFromServer = useCallback(async () => {
+    if (!officeId) return;
+    try {
+      const res = await fetchFrontDeskConfig({ authenticatedFetch, officeId });
+      const hydrated = hydrateFromVersionedConfig(res.config, config);
+      setConfig(hydrated);
+      setOriginalConfig(hydrated);
+    } catch {
+      // Soft-fail — original config + local edits remain.
+    }
+  }, [authenticatedFetch, officeId, config]);
+
   // ----- Save ----------------------------------------------------------
   const onSave = useCallback(async () => {
-    if (!isDirty || isSaving) return;
+    if (!isDirty || isSaving || hasInvalid || !officeId) return;
     setIsSaving(true);
+    setSaveError(null);
     try {
-      const lineMode =
-        config.publicNumber.mode === 'ASPIRE_NUMBER'
-          ? 'ASPIRE_FULL_DUPLEX'
-          : 'EXISTING_INBOUND_ONLY';
-      const dayLookup: Record<string, string> = {
-        mon: 'Monday',
-        tue: 'Tuesday',
-        wed: 'Wednesday',
-        thu: 'Thursday',
-        fri: 'Friday',
-        sat: 'Saturday',
-        sun: 'Sunday',
-      };
-      const businessHours: Record<string, { enabled: boolean; start: string; end: string }> = {};
-      config.businessHours.days.forEach((d) => {
-        businessHours[dayLookup[d.day]] = {
-          enabled: d.open,
-          start: d.startTime ?? '09:00',
-          end: d.endTime ?? '17:00',
-        };
-      });
-
-      const afterHoursMode =
-        config.businessHours.afterHoursMode === 'ASK_CALLBACK_WINDOW'
-          ? 'ASK_CALLBACK_TIME'
-          : 'TAKE_MESSAGE';
-      const busyMode =
-        config.busy.mode === 'TRY_TRANSFER_THEN_MESSAGE'
-          ? 'RETRY_ONCE'
-          : config.busy.mode === 'ASK_CALLBACK_WINDOW'
-            ? 'ASK_CALLBACK_TIME'
-            : 'TAKE_MESSAGE';
-
-      const teamMembers = config.routingContacts.map((c) => ({
-        id: c.id,
-        name: c.name,
-        phone: c.phone,
-        role: c.customRoleLabel ?? c.role.charAt(0).toUpperCase() + c.role.slice(1),
-      }));
-
-      const ok = await patchLegacyConfig({
-        lineMode,
-        existingNumber:
-          lineMode === 'EXISTING_INBOUND_ONLY' ? config.publicNumber.forwardedNumber : null,
-        businessHours,
-        afterHoursMode,
-        pronunciation: config.businessHours.pronunciationOverride ?? '',
-        busyMode,
-        teamMembers,
-      });
-
-      if (ok) {
-        setOriginalConfig(config);
-      }
+      const body = buildPatchBody(config);
+      await patchFrontDeskConfig({ authenticatedFetch, officeId }, body);
+      setOriginalConfig(config);
+      // Optional: re-hydrate to pull the server's canonical version_no.
+      await refreshFromServer();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Save failed.');
     } finally {
       setIsSaving(false);
     }
-  }, [config, isDirty, isSaving]);
+  }, [
+    isDirty,
+    isSaving,
+    hasInvalid,
+    officeId,
+    config,
+    authenticatedFetch,
+    refreshFromServer,
+  ]);
 
   // ----- Test incoming call -------------------------------------------
-  const onTest = useCallback(() => {
+  const onTest = useCallback(async () => {
     setIsTesting(true);
+    // Local UI overlay first (snappy preview), then real backend call.
     triggerTestIncomingCall();
+    if (officeId) {
+      try {
+        await apiTriggerTestCall({ authenticatedFetch, officeId });
+      } catch {
+        // Non-fatal; the local overlay already showed.
+      }
+    }
     setTimeout(() => setIsTesting(false), 1200);
-  }, []);
+  }, [authenticatedFetch, officeId]);
+
+  // ----- Forwarding test (FORWARD_EXISTING only) -----------------------
+  const onTestForwarding = useCallback(async () => {
+    if (!officeId) return;
+    setIsTestingForwarding(true);
+    try {
+      await apiTriggerTestCall({ authenticatedFetch, officeId });
+      await refreshFromServer();
+    } catch {
+      // Card surfaces its own error UI on the next render via forwarding state.
+    } finally {
+      setIsTestingForwarding(false);
+    }
+  }, [authenticatedFetch, officeId, refreshFromServer]);
 
   // ----- Right rail data ----------------------------------------------
   const summary = useMemo(() => buildSummary(config), [config]);
@@ -442,8 +421,9 @@ function FrontDeskSetupContent() {
           <PublicNumberSection
             config={config.publicNumber}
             onChange={updatePublicNumber}
-            availableNumbers={availableNumbers}
             enterIndex={0}
+            onTestForwarding={onTestForwarding}
+            isTestingForwarding={isTestingForwarding}
           />
         );
       case 'catch':
@@ -451,6 +431,8 @@ function FrontDeskSetupContent() {
           <CatchCallsSection
             mode={config.catch.mode}
             onChange={updateCatch}
+            publicNumberMode={config.publicNumber.mode}
+            onValidityChange={setCatchInterlock}
             enterIndex={0}
           />
         );
@@ -484,6 +466,11 @@ function FrontDeskSetupContent() {
   const activeTabLabel =
     FRONT_DESK_TABS.find((t) => t.id === activeTab)?.label ?? 'Section';
 
+  // Disabled save when nothing changed OR when an invalid combo is present.
+  const saveDisabledReason = hasInvalid
+    ? 'Resolve the invalid Catch×Public-Number combo before saving.'
+    : saveError ?? hydrationError ?? '';
+
   return (
     <ScrollView
       style={styles.scroll}
@@ -496,8 +483,9 @@ function FrontDeskSetupContent() {
         onTest={onTest}
         isSaving={isSaving}
         isTesting={isTesting}
-        isDirty={isDirty}
+        isDirty={isDirty && !hasInvalid}
         sarahActive={SARAH_DEFAULT.active}
+        saveDisabledReason={saveDisabledReason || undefined}
       />
 
       {/* Tab nav */}
@@ -506,13 +494,13 @@ function FrontDeskSetupContent() {
           activeTab={activeTab}
           onChange={setActiveTab}
           dirtyTabs={dirtyTabs}
+          invalidTabs={invalidTabs}
         />
       </View>
 
       {/* 2-column body — center stage + sticky right rail */}
       <View style={styles.bodyGrid}>
         <View style={styles.mainCol}>
-          {/* `key` on activeTab forces section entrance animation per swap */}
           <View
             style={styles.centerStage}
             key={`stage-${activeTab}`}
@@ -529,6 +517,7 @@ function FrontDeskSetupContent() {
               summary={summary}
               forwarding={config.forwarding}
               publicNumberMode={config.publicNumber.mode}
+              publicNumberConfig={config.publicNumber}
             />
           </View>
         </View>

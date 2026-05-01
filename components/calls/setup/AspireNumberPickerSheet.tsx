@@ -1,30 +1,38 @@
 /**
- * AspireNumberPickerSheet — Pass 16 UI (plan §16.H)
+ * AspireNumberPickerSheet — Pass 19 update (plan §3.3 + §6.1).
  *
  * Modal sheet for searching and purchasing an Aspire (Twilio) phone number.
- * Opens from PublicNumberSection's "Find an Aspire number" button.
+ * Used by both ASPIRE_NEW_NUMBER (primary number) and FORWARD_EXISTING (SMS
+ * companion number, per §3.8) flows.
  *
- * Flow:
- *   1. User enters area code (3-digit) + optional vanity (e.g. "PAINT")
- *   2. Click Search → POST /v1/twilio/available-numbers
- *   3. Results render as cards (phone number, region, monthly cost, capabilities)
- *   4. User picks one → "Reserve & buy" CTA
- *   5. Yellow-tier confirm dialog ("This will purchase $X/mo for (NUMBER). Proceed?")
- *   6. Confirm → POST /v1/twilio/purchase-number
- *   7. On success, sheet closes + parent updates with active number
+ * Pass 19 changes:
+ *
+ *   1. **z-index fix** — wraps in `<Modal presentationStyle="overFullScreen"
+ *      transparent>` on every platform. Backdrop is an explicit
+ *      `position:absolute,top/left/right/bottom:0` View with `zIndex: 9999`
+ *      so it covers the entire viewport (verified in Chrome DevTools — the
+ *      sheet sits above all cards including the floating Sarah Status Rail).
+ *
+ *   2. **Local | Toll-free toggle** — `numberType` state. When TOLL_FREE is
+ *      selected, the area-code input hides (toll-free is non-geographic) and
+ *      the backend search hits Twilio's TollFree resource. Sheet renders the
+ *      monthly cost prominently — toll-free is ~$2/mo vs local ~$1.15/mo.
+ *
+ *   3. **Empty-state recommendation** — when local search returns 0 (Twilio
+ *      doesn't carry inventory in every area code), the empty state pivots
+ *      the user to toll-free with a one-tap "Switch to toll-free" CTA, plus
+ *      a secondary text-link "Try a different area code" that just refocuses
+ *      the input.
  *
  * Per §12.1 Framer-style:
  *   - Glassmorphism on the sheet (expo-blur intensity 30 over backdrop)
  *   - Layered depth: backdrop + glass surface + content
  *   - Premium controls — focus rings on every input
  *   - Skeleton shimmer during loading
- *   - Personality on empty: "No matches. Try a different area code."
- *
- * Pass 17 will swap fetch() URLs for `lib/api/frontDesk.ts`. Until then we
- * call the endpoints directly with a sane default error fallback.
+ *   - Personality on empty: pivots-to-toll-free instead of generic "no results"
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -46,6 +54,7 @@ import {
   searchAvailableNumbers as apiSearchAvailableNumbers,
   purchaseNumber as apiPurchaseNumber,
   type AvailableNumber,
+  type NumberTypeWire,
 } from '@/lib/api/frontDesk';
 
 // ---------------------------------------------------------------------------
@@ -85,17 +94,16 @@ export interface AspireNumberPickerSheetProps {
 
 // ---------------------------------------------------------------------------
 // Adapter: backend response (snake_case, AvailableNumber) → component shape
-// (camelCase, TwilioAvailableNumber). Capability + region fields are optional
-// in the backend contract; defaults below match Pass 16 UI expectations.
 // ---------------------------------------------------------------------------
 
-function adaptAvailableNumber(n: AvailableNumber): TwilioAvailableNumber {
+function adaptAvailableNumber(n: AvailableNumber, fallbackCost: number): TwilioAvailableNumber {
   return {
     phoneNumber: n.phone_number,
     friendlyName: formatNumber(n.phone_number),
     region: n.region,
     isoCountry: 'US',
-    monthlyCostUsd: typeof n.monthly_cost_cents === 'number' ? n.monthly_cost_cents / 100 : 1.15,
+    monthlyCostUsd:
+      typeof n.monthly_cost_cents === 'number' ? n.monthly_cost_cents / 100 : fallbackCost,
     capabilities: {
       voice: n.capabilities?.voice ?? true,
       sms: n.capabilities?.sms ?? true,
@@ -148,12 +156,14 @@ function injectSheetCss() {
       outline-offset: 3px;
       border-radius: 12px;
     }
-    .fds-sheet-btn { transition: transform 160ms ease-out, background-color 160ms ease-out, box-shadow 160ms ease-out; }
+    .fds-sheet-btn { transition: transform 160ms ease-out, background-color 160ms ease-out, box-shadow 160ms ease-out, border-color 160ms ease-out; }
     .fds-sheet-btn:hover { transform: translateY(-1px); }
     .fds-sheet-btn:active { transform: translateY(0); }
     .fds-sheet-btn:focus-visible { outline: 2px solid rgba(59,130,246,0.7); outline-offset: 2px; }
+    .fds-sheet-toggle { transition: background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out; }
+    .fds-sheet-toggle:focus-visible { outline: 2px solid rgba(59,130,246,0.7); outline-offset: 3px; }
     @media (prefers-reduced-motion: reduce) {
-      .fds-sheet-backdrop, .fds-sheet-card, .fds-skeleton, .fds-result-card, .fds-sheet-btn { animation: none; transition: none; }
+      .fds-sheet-backdrop, .fds-sheet-card, .fds-skeleton, .fds-result-card, .fds-sheet-btn, .fds-sheet-toggle { animation: none; transition: none; }
     }
   `;
   document.head.appendChild(style);
@@ -164,7 +174,6 @@ function injectSheetCss() {
 // ---------------------------------------------------------------------------
 
 function formatNumber(raw: string): string {
-  // Strip + and country code, format as (XXX) XXX-XXXX
   const digits = raw.replace(/\D/g, '');
   const last10 = digits.slice(-10);
   if (last10.length !== 10) return raw;
@@ -177,6 +186,9 @@ function genIdempotencyKey(): string {
   }
   return `aspire-num-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
+
+const LOCAL_FALLBACK_COST = 1.15;
+const TOLL_FREE_FALLBACK_COST = 2.0;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -191,16 +203,16 @@ export function AspireNumberPickerSheet({
 }: AspireNumberPickerSheetProps) {
   injectSheetCss();
 
-  // Auth + tenant context — lib/api/frontDesk.ts requires authenticatedFetch +
-  // officeId. Without these the sheet renders an inline error instead of
-  // calling unauthenticated endpoints (Law #3 fail-closed).
   const { authenticatedFetch } = useAuthFetch();
   const { tenant } = useTenant();
   const officeId = tenant?.officeId ?? null;
 
+  const [numberType, setNumberType] = useState<NumberTypeWire>('LOCAL');
   const [areaCode, setAreaCode] = useState(initialAreaCode);
   const [contains, setContains] = useState(initialContains);
   const [results, setResults] = useState<TwilioAvailableNumber[] | null>(null);
+  const [lastSearchedType, setLastSearchedType] = useState<NumberTypeWire>('LOCAL');
+  const [lastSearchedAreaCode, setLastSearchedAreaCode] = useState<string>('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
@@ -208,12 +220,17 @@ export function AspireNumberPickerSheet({
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
+  const areaCodeInputRef = useRef<TextInput>(null);
+
   // Reset transient state whenever the sheet opens
   useEffect(() => {
     if (visible) {
+      setNumberType('LOCAL');
       setAreaCode(initialAreaCode);
       setContains(initialContains);
       setResults(null);
+      setLastSearchedType('LOCAL');
+      setLastSearchedAreaCode('');
       setSearchError(null);
       setSelectedPhone(null);
       setConfirmOpen(false);
@@ -239,34 +256,65 @@ export function AspireNumberPickerSheet({
     return () => window.removeEventListener('keydown', handler);
   }, [visible, confirmOpen, onClose]);
 
-  const handleSearch = useCallback(async () => {
-    if (areaCode.length !== 3) {
-      setSearchError('Enter a 3-digit area code.');
-      return;
-    }
-    if (!officeId) {
-      setSearchError('No active office. Please refresh and try again.');
-      return;
-    }
-    setIsSearching(true);
-    setSearchError(null);
+  const performSearch = useCallback(
+    async (searchType: NumberTypeWire, searchAreaCode: string) => {
+      if (searchType === 'LOCAL' && searchAreaCode.length !== 3) {
+        setSearchError('Enter a 3-digit area code.');
+        return;
+      }
+      if (!officeId) {
+        setSearchError('No active office. Please refresh and try again.');
+        return;
+      }
+      setIsSearching(true);
+      setSearchError(null);
+      setResults(null);
+      setSelectedPhone(null);
+      setLastSearchedType(searchType);
+      setLastSearchedAreaCode(searchAreaCode);
+      try {
+        const numbers = await apiSearchAvailableNumbers(
+          { authenticatedFetch, officeId },
+          searchAreaCode,
+          contains.trim() || undefined,
+          12,
+          searchType,
+        );
+        const fallbackCost =
+          searchType === 'TOLL_FREE' ? TOLL_FREE_FALLBACK_COST : LOCAL_FALLBACK_COST;
+        setResults(numbers.map((n) => adaptAvailableNumber(n, fallbackCost)));
+      } catch (err) {
+        setSearchError(err instanceof Error ? err.message : 'Search failed.');
+        setResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [officeId, contains, authenticatedFetch],
+  );
+
+  const handleSearch = useCallback(() => {
+    performSearch(numberType, areaCode);
+  }, [performSearch, numberType, areaCode]);
+
+  /**
+   * Handles the empty-state "Switch to toll-free" CTA — flips the toggle and
+   * immediately re-searches without requiring the user to tap Search again.
+   */
+  const handleSwitchToTollFree = useCallback(() => {
+    setNumberType('TOLL_FREE');
+    performSearch('TOLL_FREE', '');
+  }, [performSearch]);
+
+  const handleTryDifferentAreaCode = useCallback(() => {
     setResults(null);
-    setSelectedPhone(null);
-    try {
-      const numbers = await apiSearchAvailableNumbers(
-        { authenticatedFetch, officeId },
-        areaCode,
-        contains.trim() || undefined,
-        12,
-      );
-      setResults(numbers.map(adaptAvailableNumber));
-    } catch (err) {
-      setSearchError(err instanceof Error ? err.message : 'Search failed.');
-      setResults([]);
-    } finally {
-      setIsSearching(false);
+    setSearchError(null);
+    setLastSearchedAreaCode('');
+    // Refocus the area-code input on web.
+    if (Platform.OS === 'web') {
+      window.setTimeout(() => areaCodeInputRef.current?.focus(), 50);
     }
-  }, [areaCode, contains, authenticatedFetch, officeId]);
+  }, []);
 
   const handleConfirmPurchase = useCallback(async () => {
     if (!selectedPhone) return;
@@ -300,133 +348,152 @@ export function AspireNumberPickerSheet({
 
   if (!visible) return null;
 
-  // ----- Web overlay -----
-  if (Platform.OS === 'web') {
-    return (
-      <View
+  // -----------------------------------------------------------------------
+  // Render — the modal+overFullScreen wrapper guarantees the backdrop
+  // covers the entire viewport on every platform. On web we additionally
+  // enforce zIndex: 9999 + position: fixed via inline style.
+  // -----------------------------------------------------------------------
+
+  const sheetBody = (
+    <>
+      {/* Backdrop — full-viewport, click-to-close */}
+      <Pressable
+        onPress={onClose}
+        accessibilityLabel="Close picker"
         style={styles.backdrop}
+        {...(Platform.OS === 'web' ? ({ className: 'fds-sheet-backdrop' } as any) : {})}
+      />
+
+      {/* Tinted blur layer — purely cosmetic, sits above backdrop, below sheet */}
+      <BlurView
+        intensity={30}
+        tint="dark"
+        style={styles.backdropBlur}
+        pointerEvents="none"
+      />
+
+      {/* Sheet card */}
+      <View
+        style={styles.sheetWrap}
+        pointerEvents="box-none"
         accessibilityViewIsModal
         accessibilityLabel="Find an Aspire number"
-        {...({ className: 'fds-sheet-backdrop' } as any)}
       >
-        <Pressable
-          onPress={onClose}
-          style={StyleSheet.absoluteFill as ViewStyle}
-          accessibilityLabel="Close picker"
-        />
-        <BlurView
-          intensity={30}
-          tint="dark"
-          style={[StyleSheet.absoluteFill as ViewStyle, styles.backdropTint]}
-          pointerEvents="none"
-        />
         <View
           style={styles.sheetCard}
-          {...({ className: 'fds-sheet-card' } as any)}
+          {...(Platform.OS === 'web' ? ({ className: 'fds-sheet-card' } as any) : {})}
         >
           <SheetContent
+            numberType={numberType}
+            onChangeNumberType={(t) => {
+              setNumberType(t);
+              // Don't auto-search on toggle — user controls timing.
+              setResults(null);
+              setSelectedPhone(null);
+            }}
             areaCode={areaCode}
             setAreaCode={setAreaCode}
+            areaCodeInputRef={areaCodeInputRef}
             contains={contains}
             setContains={setContains}
             isSearching={isSearching}
             searchError={searchError}
             results={results}
+            lastSearchedType={lastSearchedType}
+            lastSearchedAreaCode={lastSearchedAreaCode}
             selectedPhone={selectedPhone}
             setSelectedPhone={setSelectedPhone}
             onSearch={handleSearch}
             onClose={onClose}
             onPurchase={() => setConfirmOpen(true)}
+            onSwitchToTollFree={handleSwitchToTollFree}
+            onTryDifferentAreaCode={handleTryDifferentAreaCode}
           />
         </View>
-
-        {confirmOpen && selectedDetail ? (
-          <ConfirmDialog
-            number={selectedDetail}
-            isPurchasing={isPurchasing}
-            error={purchaseError}
-            onCancel={() => setConfirmOpen(false)}
-            onConfirm={handleConfirmPurchase}
-          />
-        ) : null}
       </View>
-    );
-  }
 
-  // ----- Native modal -----
+      {/* Confirm dialog overlays everything */}
+      {confirmOpen && selectedDetail ? (
+        <ConfirmDialog
+          number={selectedDetail}
+          numberType={lastSearchedType}
+          isPurchasing={isPurchasing}
+          error={purchaseError}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={handleConfirmPurchase}
+        />
+      ) : null}
+    </>
+  );
+
   return (
     <Modal
       visible={visible}
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      presentationStyle="overFullScreen"
+      // On web, RN's Modal renders as a portal; we also enforce stacking via
+      // the explicit zIndex on the outer container below.
+      statusBarTranslucent
     >
-      <View style={styles.backdrop}>
-        <Pressable onPress={onClose} style={StyleSheet.absoluteFill as ViewStyle} />
-        <View style={[styles.sheetCard, styles.sheetCardNative]}>
-          <SheetContent
-            areaCode={areaCode}
-            setAreaCode={setAreaCode}
-            contains={contains}
-            setContains={setContains}
-            isSearching={isSearching}
-            searchError={searchError}
-            results={results}
-            selectedPhone={selectedPhone}
-            setSelectedPhone={setSelectedPhone}
-            onSearch={handleSearch}
-            onClose={onClose}
-            onPurchase={() => setConfirmOpen(true)}
-          />
-        </View>
-
-        {confirmOpen && selectedDetail ? (
-          <ConfirmDialog
-            number={selectedDetail}
-            isPurchasing={isPurchasing}
-            error={purchaseError}
-            onCancel={() => setConfirmOpen(false)}
-            onConfirm={handleConfirmPurchase}
-          />
-        ) : null}
-      </View>
+      <View style={styles.modalRoot}>{sheetBody}</View>
     </Modal>
   );
 }
 
 // ---------------------------------------------------------------------------
-// SheetContent — extracted to share between web overlay and native modal
+// SheetContent
 // ---------------------------------------------------------------------------
 
 interface SheetContentProps {
+  numberType: NumberTypeWire;
+  onChangeNumberType: (t: NumberTypeWire) => void;
   areaCode: string;
   setAreaCode: (v: string) => void;
+  areaCodeInputRef: React.RefObject<TextInput | null>;
   contains: string;
   setContains: (v: string) => void;
   isSearching: boolean;
   searchError: string | null;
   results: TwilioAvailableNumber[] | null;
+  lastSearchedType: NumberTypeWire;
+  lastSearchedAreaCode: string;
   selectedPhone: string | null;
   setSelectedPhone: (phone: string | null) => void;
   onSearch: () => void;
   onClose: () => void;
   onPurchase: () => void;
+  onSwitchToTollFree: () => void;
+  onTryDifferentAreaCode: () => void;
 }
 
 function SheetContent({
+  numberType,
+  onChangeNumberType,
   areaCode,
   setAreaCode,
+  areaCodeInputRef,
   contains,
   setContains,
   isSearching,
   searchError,
   results,
+  lastSearchedType,
+  lastSearchedAreaCode,
   selectedPhone,
   setSelectedPhone,
   onSearch,
   onClose,
   onPurchase,
+  onSwitchToTollFree,
+  onTryDifferentAreaCode,
 }: SheetContentProps) {
+  const monthlyCostHint =
+    numberType === 'TOLL_FREE'
+      ? '~$2.00/month'
+      : '~$1.15/month';
+
   return (
     <>
       {/* Header */}
@@ -437,7 +504,7 @@ function SheetContent({
             Find an Aspire number
           </Text>
           <Text style={styles.headerSubtitle}>
-            Search by area code, optionally filtered by a vanity word.
+            Pick a local 10DLC for your area or a toll-free 8XX that works nationwide.
           </Text>
         </View>
         <Pressable
@@ -451,22 +518,47 @@ function SheetContent({
         </Pressable>
       </View>
 
-      {/* Search row */}
-      <View style={styles.searchRow}>
-        <View style={[styles.fieldCol, styles.fieldColAreaCode]}>
-          <Text style={styles.fieldLabel}>Area code</Text>
-          <TextInput
-            value={areaCode}
-            onChangeText={(t) => setAreaCode(t.replace(/\D/g, '').slice(0, 3))}
-            placeholder="212"
-            placeholderTextColor={Colors.text.muted}
-            keyboardType="number-pad"
-            maxLength={3}
-            style={styles.input}
-            accessibilityLabel="Area code"
-            {...(Platform.OS === 'web' ? ({ className: 'fds-search-input' } as any) : {})}
+      {/* Number-type segmented toggle (Local | Toll-free) + monthly cost hint */}
+      <View style={styles.toggleRow}>
+        <View style={styles.toggleSegments} accessibilityRole="radiogroup">
+          <ToggleSegment
+            label="Local"
+            sublabel="10DLC · area-code based"
+            active={numberType === 'LOCAL'}
+            onPress={() => onChangeNumberType('LOCAL')}
+          />
+          <ToggleSegment
+            label="Toll-free"
+            sublabel="8XX · nationwide"
+            active={numberType === 'TOLL_FREE'}
+            onPress={() => onChangeNumberType('TOLL_FREE')}
           />
         </View>
+        <View style={styles.costHint}>
+          <Ionicons name="cash-outline" size={12} color={Colors.text.tertiary} />
+          <Text style={styles.costHintText}>{monthlyCostHint}</Text>
+        </View>
+      </View>
+
+      {/* Search row */}
+      <View style={styles.searchRow}>
+        {numberType === 'LOCAL' ? (
+          <View style={[styles.fieldCol, styles.fieldColAreaCode]}>
+            <Text style={styles.fieldLabel}>Area code</Text>
+            <TextInput
+              ref={areaCodeInputRef}
+              value={areaCode}
+              onChangeText={(t) => setAreaCode(t.replace(/\D/g, '').slice(0, 3))}
+              placeholder="212"
+              placeholderTextColor={Colors.text.muted}
+              keyboardType="number-pad"
+              maxLength={3}
+              style={styles.input}
+              accessibilityLabel="Area code"
+              {...(Platform.OS === 'web' ? ({ className: 'fds-search-input' } as any) : {})}
+            />
+          </View>
+        ) : null}
         <View style={[styles.fieldCol, styles.fieldColVanity]}>
           <Text style={styles.fieldLabel}>Contains (optional)</Text>
           <TextInput
@@ -509,19 +601,28 @@ function SheetContent({
         ) : searchError ? (
           <ErrorState message={searchError} onRetry={onSearch} />
         ) : results === null ? (
-          <InitialPrompt />
+          <InitialPrompt numberType={numberType} />
         ) : results.length === 0 ? (
-          <EmptyState />
+          lastSearchedType === 'LOCAL' ? (
+            <EmptyLocalRecommendation
+              areaCode={lastSearchedAreaCode}
+              onSwitchToTollFree={onSwitchToTollFree}
+              onTryDifferentAreaCode={onTryDifferentAreaCode}
+            />
+          ) : (
+            <EmptyTollFreeState />
+          )
         ) : (
           <ResultsGrid
             results={results}
+            numberType={lastSearchedType}
             selectedPhone={selectedPhone}
             onSelect={setSelectedPhone}
           />
         )}
       </ScrollView>
 
-      {/* Footer — only visible when a number is selected */}
+      {/* Footer — only when a number is selected */}
       {selectedPhone ? (
         <View style={styles.footer}>
           <Text style={styles.footerHint} numberOfLines={1}>
@@ -548,15 +649,51 @@ function SheetContent({
 }
 
 // ---------------------------------------------------------------------------
-// ResultsGrid — selectable cards
+// ToggleSegment — single segment of the Local|Toll-free toggle
+// ---------------------------------------------------------------------------
+
+function ToggleSegment({
+  label,
+  sublabel,
+  active,
+  onPress,
+}: {
+  label: string;
+  sublabel: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: active }}
+      accessibilityLabel={`${label} — ${sublabel}`}
+      style={[styles.toggleSegment, active && styles.toggleSegmentActive]}
+      {...(Platform.OS === 'web' ? ({ className: 'fds-sheet-toggle' } as any) : {})}
+    >
+      <Text style={[styles.toggleSegmentLabel, active && styles.toggleSegmentLabelActive]}>
+        {label}
+      </Text>
+      <Text style={[styles.toggleSegmentSublabel, active && styles.toggleSegmentSublabelActive]}>
+        {sublabel}
+      </Text>
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ResultsGrid
 // ---------------------------------------------------------------------------
 
 function ResultsGrid({
   results,
+  numberType,
   selectedPhone,
   onSelect,
 }: {
   results: TwilioAvailableNumber[];
+  numberType: NumberTypeWire;
   selectedPhone: string | null;
   onSelect: (phone: string) => void;
 }) {
@@ -566,6 +703,7 @@ function ResultsGrid({
         <NumberResultCard
           key={num.phoneNumber}
           number={num}
+          numberType={numberType}
           selected={selectedPhone === num.phoneNumber}
           onSelect={() => onSelect(num.phoneNumber)}
         />
@@ -576,15 +714,22 @@ function ResultsGrid({
 
 function NumberResultCard({
   number,
+  numberType,
   selected,
   onSelect,
 }: {
   number: TwilioAvailableNumber;
+  numberType: NumberTypeWire;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const cost = number.monthlyCostUsd ?? 1.15;
-  const region = number.region ?? number.isoCountry ?? 'United States';
+  const cost =
+    number.monthlyCostUsd ??
+    (numberType === 'TOLL_FREE' ? TOLL_FREE_FALLBACK_COST : LOCAL_FALLBACK_COST);
+  const region =
+    numberType === 'TOLL_FREE'
+      ? 'Nationwide · toll-free'
+      : (number.region ?? number.isoCountry ?? 'United States');
   const display = number.friendlyName ?? formatNumber(number.phoneNumber);
 
   return (
@@ -629,7 +774,7 @@ function CapabilityPill({ label }: { label: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// SkeletonGrid — loading state
+// SkeletonGrid
 // ---------------------------------------------------------------------------
 
 function SkeletonGrid() {
@@ -652,40 +797,89 @@ function SkeletonGrid() {
 }
 
 // ---------------------------------------------------------------------------
-// EmptyState — search returned 0 results
+// EmptyLocalRecommendation — pivots to toll-free when local search returns 0
 // ---------------------------------------------------------------------------
 
-function EmptyState() {
+function EmptyLocalRecommendation({
+  areaCode,
+  onSwitchToTollFree,
+  onTryDifferentAreaCode,
+}: {
+  areaCode: string;
+  onSwitchToTollFree: () => void;
+  onTryDifferentAreaCode: () => void;
+}) {
+  return (
+    <View style={styles.recoBox} accessibilityLabel="Toll-free recommendation">
+      <View pointerEvents="none" style={styles.recoAmbient} />
+      <View style={styles.recoIconWrap}>
+        <Ionicons name="globe-outline" size={26} color={Colors.accent.cyan} />
+      </View>
+      <Text style={styles.recoKicker}>RECOMMENDED</Text>
+      <Text style={styles.recoTitle} accessibilityRole="header">
+        Twilio doesn’t have local numbers in {areaCode || 'that area code'} right now
+      </Text>
+      <Text style={styles.recoBody}>
+        Most owners pick a toll-free number — they work nationwide, are easier
+        for callers to remember, and clear A2P verification faster than 10DLC.
+      </Text>
+      <Pressable
+        onPress={onSwitchToTollFree}
+        accessibilityRole="button"
+        accessibilityLabel="Switch to toll-free and search"
+        style={styles.recoCtaPrimary}
+        {...(Platform.OS === 'web' ? ({ className: 'fds-sheet-btn' } as any) : {})}
+      >
+        <Ionicons name="swap-horizontal" size={14} color="#ffffff" />
+        <Text style={styles.recoCtaPrimaryText}>Switch to toll-free</Text>
+      </Pressable>
+      <Pressable
+        onPress={onTryDifferentAreaCode}
+        accessibilityRole="link"
+        accessibilityLabel="Try a different area code"
+        style={styles.recoCtaSecondary}
+      >
+        <Text style={styles.recoCtaSecondaryText}>or try a different area code</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function EmptyTollFreeState() {
   return (
     <View style={styles.stateBox}>
       <View style={styles.stateIcon}>
         <Ionicons name="telescope-outline" size={28} color={Colors.text.tertiary} />
       </View>
       <Text style={styles.stateTitle} accessibilityRole="header">
-        No numbers matched
+        No toll-free matches
       </Text>
       <Text style={styles.stateBody}>
-        Try a different area code or remove the vanity filter.
+        Remove the vanity filter or try a different one — Twilio rotates inventory.
       </Text>
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// InitialPrompt — pre-search hint
+// InitialPrompt
 // ---------------------------------------------------------------------------
 
-function InitialPrompt() {
+function InitialPrompt({ numberType }: { numberType: NumberTypeWire }) {
   return (
     <View style={styles.stateBox}>
       <View style={styles.stateIcon}>
         <Ionicons name="search-outline" size={28} color={Colors.accent.cyan} />
       </View>
       <Text style={styles.stateTitle} accessibilityRole="header">
-        Pick a region to start
+        {numberType === 'TOLL_FREE'
+          ? 'Search toll-free inventory'
+          : 'Pick a region to start'}
       </Text>
       <Text style={styles.stateBody}>
-        Enter a 3-digit area code above. Add a vanity word like "PAINT" to narrow results.
+        {numberType === 'TOLL_FREE'
+          ? 'Optionally add a vanity word like "PAINT" to narrow the toll-free results.'
+          : 'Enter a 3-digit area code above. Add a vanity word like "PAINT" to narrow.'}
       </Text>
     </View>
   );
@@ -729,6 +923,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 interface ConfirmDialogProps {
   number: TwilioAvailableNumber;
+  numberType: NumberTypeWire;
   isPurchasing: boolean;
   error: string | null;
   onCancel: () => void;
@@ -737,17 +932,20 @@ interface ConfirmDialogProps {
 
 function ConfirmDialog({
   number,
+  numberType,
   isPurchasing,
   error,
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
-  const cost = number.monthlyCostUsd ?? 1.15;
+  const cost =
+    number.monthlyCostUsd ??
+    (numberType === 'TOLL_FREE' ? TOLL_FREE_FALLBACK_COST : LOCAL_FALLBACK_COST);
   const display = number.friendlyName ?? formatNumber(number.phoneNumber);
 
   return (
     <View
-      style={[styles.confirmBackdrop]}
+      style={styles.confirmBackdrop}
       accessibilityViewIsModal
       {...(Platform.OS === 'web' ? ({ className: 'fds-sheet-backdrop' } as any) : {})}
     >
@@ -768,7 +966,8 @@ function ConfirmDialog({
         </Text>
         <Text style={styles.confirmBody}>
           This will purchase{' '}
-          <Text style={styles.confirmStrong}>{display}</Text> for{' '}
+          <Text style={styles.confirmStrong}>{display}</Text>
+          {numberType === 'TOLL_FREE' ? ' (toll-free)' : ''} for{' '}
           <Text style={styles.confirmStrong}>${cost.toFixed(2)}/month</Text>. Charges are
           governed by your active billing setup.
         </Text>
@@ -820,33 +1019,63 @@ function ConfirmDialog({
 // ---------------------------------------------------------------------------
 
 const SHEET_MAX_WIDTH = 760;
-const SHEET_MAX_HEIGHT = 720;
+const SHEET_MAX_HEIGHT = 760;
 
 const styles = StyleSheet.create({
+  // ----- Modal root — full-viewport container --------------------------
+  modalRoot: {
+    flex: 1,
+    ...(Platform.OS === 'web'
+      ? ({
+          position: 'fixed' as any,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 9999,
+        } as object)
+      : {}),
+  } as any,
+
   // ----- Backdrop ------------------------------------------------------
+  // §6.1 z-index fix: explicit position/inset/zIndex so the backdrop
+  // covers everything (including the sticky Sarah Status Rail) on web.
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    position: Platform.OS === 'web' ? ('fixed' as any) : 'absolute',
-    backgroundColor: 'rgba(4,6,10,0.62)',
+    position: Platform.OS === 'web' ? ('absolute' as any) : 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    zIndex: 9999,
+  } as any,
+  backdropBlur: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+  } as any,
+  sheetWrap: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    zIndex: 1000,
+    zIndex: 10000,
   } as any,
-  backdropTint: {
-    backgroundColor: 'rgba(8,10,16,0.30)',
-  },
 
   // ----- Sheet card ----------------------------------------------------
   sheetCard: {
     width: '100%',
     maxWidth: SHEET_MAX_WIDTH,
     maxHeight: SHEET_MAX_HEIGHT,
-    backgroundColor: 'rgba(16,16,20,0.92)',
+    backgroundColor: 'rgba(16,16,20,0.94)',
     borderRadius: BorderRadius.xl,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     overflow: 'hidden',
+    zIndex: 10001,
     ...(Platform.OS === 'web'
       ? ({
           boxShadow:
@@ -862,9 +1091,6 @@ const styles = StyleSheet.create({
           elevation: 12,
         }),
   } as any,
-  sheetCardNative: {
-    backgroundColor: '#101014',
-  },
 
   // ----- Header --------------------------------------------------------
   header: {
@@ -874,7 +1100,7 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 24,
     paddingTop: 22,
-    paddingBottom: 16,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.05)',
   },
@@ -914,13 +1140,86 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
   },
 
+  // ----- Toggle row (Local | Toll-free) -------------------------------
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    paddingBottom: 0,
+    flexWrap: 'wrap',
+  },
+  toggleSegments: {
+    flexDirection: 'row',
+    padding: 4,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(0,0,0,0.32)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    gap: 4,
+  },
+  toggleSegment: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+    minWidth: 130,
+    gap: 1,
+  },
+  toggleSegmentActive: {
+    backgroundColor: 'rgba(59,130,246,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.45)',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 0 0 1px rgba(59,130,246,0.15), 0 0 14px rgba(59,130,246,0.18)' } as object)
+      : {}),
+  } as any,
+  toggleSegmentLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.text.tertiary,
+    letterSpacing: -0.1,
+  },
+  toggleSegmentLabelActive: {
+    color: '#ffffff',
+  },
+  toggleSegmentSublabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: Colors.text.muted,
+    letterSpacing: 0.2,
+  },
+  toggleSegmentSublabelActive: {
+    color: Colors.accent.cyan,
+  },
+
+  costHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  costHintText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.text.tertiary,
+    letterSpacing: 0.1,
+    fontVariant: ['tabular-nums'],
+  },
+
   // ----- Search row ----------------------------------------------------
   searchRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 12,
     paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingTop: 14,
     paddingBottom: 8,
     flexWrap: 'wrap',
   },
@@ -999,7 +1298,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  // ----- Result card --------------------------------------------------
+  // ----- Result card ---------------------------------------------------
   resultCard: {
     flexBasis: '48%',
     flexGrow: 1,
@@ -1098,7 +1397,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  // ----- Skeleton card ------------------------------------------------
+  // ----- Skeleton card -------------------------------------------------
   skeletonCard: {
     flexBasis: '48%',
     flexGrow: 1,
@@ -1110,7 +1409,107 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
   } as any,
 
-  // ----- State boxes (empty / initial / error) ------------------------
+  // ----- Recommendation panel (empty-local pivot) ----------------------
+  recoBox: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    gap: 8,
+    overflow: 'hidden',
+  },
+  recoAmbient: {
+    position: 'absolute',
+    top: -120,
+    left: -120,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: 'rgba(59,130,246,0.06)',
+    ...(Platform.OS === 'web' ? ({ filter: 'blur(60px)' } as object) : {}),
+  } as any,
+  recoIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(59,130,246,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.32)',
+    marginBottom: 6,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow:
+            '0 0 0 6px rgba(59,130,246,0.04), 0 0 28px rgba(59,130,246,0.20), inset 0 1px 0 rgba(255,255,255,0.06)',
+        } as object)
+      : {}),
+  } as any,
+  recoKicker: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.accent.cyan,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  recoTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.text.primary,
+    letterSpacing: -0.2,
+    textAlign: 'center',
+    maxWidth: 480,
+    lineHeight: 23,
+  },
+  recoBody: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.text.tertiary,
+    textAlign: 'center',
+    lineHeight: 19,
+    maxWidth: 460,
+  },
+  recoCtaPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    minHeight: 44,
+    marginTop: 12,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.accent.cyan,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 1px 2px rgba(0,0,0,0.3), 0 8px 20px rgba(59,130,246,0.34)' } as object)
+      : {
+          shadowColor: Colors.accent.cyan,
+          shadowOffset: { width: 0, height: 5 },
+          shadowOpacity: 0.42,
+          shadowRadius: 12,
+        }),
+  } as any,
+  recoCtaPrimaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff',
+    letterSpacing: 0.1,
+  },
+  recoCtaSecondary: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    marginTop: 2,
+  },
+  recoCtaSecondaryText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.text.tertiary,
+    textDecorationLine: 'underline',
+  },
+
+  // ----- State boxes (initial / error / toll-free empty) -------------
   stateBox: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1218,13 +1617,16 @@ const styles = StyleSheet.create({
 
   // ----- Confirm dialog -----------------------------------------------
   confirmBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    position: Platform.OS === 'web' ? ('fixed' as any) : 'absolute',
-    backgroundColor: 'rgba(4,6,10,0.78)',
+    position: Platform.OS === 'web' ? ('absolute' as any) : 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(4,6,10,0.80)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    zIndex: 1100,
+    zIndex: 11000,
   } as any,
   confirmCard: {
     width: '100%',
@@ -1235,6 +1637,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245,158,11,0.32)',
     padding: 20,
     gap: 12,
+    zIndex: 11001,
     ...(Platform.OS === 'web'
       ? ({
           boxShadow:

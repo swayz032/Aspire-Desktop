@@ -17,7 +17,7 @@ import { Colors, BorderRadius } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
-// Section component demos (this Pass 10 Lane B)
+// Section component demos (Pass 10 Lane B + Pass 19 Lane A additions)
 import FrontDeskSetupHeroDemo from '@/components/calls/setup/FrontDeskSetupHero.demo';
 import PublicNumberSectionDemo from '@/components/calls/setup/PublicNumberSection.demo';
 import CatchCallsSectionDemo from '@/components/calls/setup/CatchCallsSection.demo';
@@ -25,6 +25,8 @@ import BusinessHoursSectionDemo from '@/components/calls/setup/BusinessHoursSect
 import RoutingContactsSectionDemo from '@/components/calls/setup/RoutingContactsSection.demo';
 import BusyModeSectionDemo from '@/components/calls/setup/BusyModeSection.demo';
 import SarahStatusRailDemo from '@/components/calls/setup/SarahStatusRail.demo';
+import ForwardingInstructionsCardDemo from '@/components/calls/setup/ForwardingInstructionsCard.demo';
+import PortInWizardStubDemo from '@/components/calls/setup/PortInWizardStub.demo';
 
 // ---------------------------------------------------------------------------
 // Tab registry
@@ -44,6 +46,8 @@ const TABS: DemoTab[] = [
   { id: 'routing-contacts', label: '4 · Routing Contacts', render: () => <RoutingContactsSectionDemo /> },
   { id: 'busy-mode', label: '5 · When Busy', render: () => <BusyModeSectionDemo /> },
   { id: 'rail', label: 'Status Rail', render: () => <SarahStatusRailDemo /> },
+  { id: 'forwarding', label: 'Forwarding Instructions', render: () => <ForwardingInstructionsCardDemo /> },
+  { id: 'port-in', label: 'Port-In Stub', render: () => <PortInWizardStubDemo /> },
 ];
 
 // ---------------------------------------------------------------------------

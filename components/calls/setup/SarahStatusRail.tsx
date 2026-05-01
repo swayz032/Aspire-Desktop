@@ -1,17 +1,20 @@
 /**
- * SarahStatusRail — Pass 10 Lane B (plan §10.4)
+ * SarahStatusRail — Pass 19 update (plan §3.8 + §6.1).
  *
  * Right-rail composite of 3 stacked cards:
  *   A. Sarah Status         — avatar + name + role + Active pill
- *   B. Current Setup Summary — 5 labeled rows with icons
- *   C. Verification         — forwarding test status (mode-aware)
+ *   B. Current Setup Summary — labeled rows with icons, plus a dual-number
+ *                              callout when the Public Number mode is
+ *                              FORWARD_EXISTING (per §3.8 — owner sees BOTH
+ *                              the Aspire SMS-companion number AND the
+ *                              customer-facing forwarding number).
+ *   C. Verification         — forwarding-test status (mode-aware)
  *
- * Per §12.1: rail cards share the same visual language as section
- * panels — same border + shadow stack — but use a tighter type
- * scale and persistent left-icon + right-value pattern. Verification
- * card is mode-aware: shows "Not needed in Aspire number mode" when
- * mode === ASPIRE_NUMBER, otherwise renders the forwarding state
- * machine (NOT_CONFIGURED / PENDING / VERIFIED / LAST_TEST_FAILED).
+ * §3.8 dual-number display rationale:
+ *   In `FORWARD_EXISTING`, the owner has TWO numbers — the Aspire-issued
+ *   companion (used for SMS + Ava reminders) and their existing-carrier
+ *   number (the customer-facing one that forwards to Sarah). The legacy
+ *   single-number summary line was misleading. Pass 19 surfaces both.
  */
 
 import React from 'react';
@@ -30,6 +33,7 @@ import type {
   ForwardingVerification,
   PublicNumberMode,
   ForwardingStatus,
+  PublicNumberConfig,
 } from './setup-types';
 
 // ---------------------------------------------------------------------------
@@ -41,6 +45,12 @@ export interface SarahStatusRailProps {
   summary: SetupSummaryItem[];
   forwarding?: ForwardingVerification;
   publicNumberMode: PublicNumberMode;
+  /**
+   * Pass the full Public Number config so the rail can show BOTH numbers in
+   * `FORWARD_EXISTING` mode (Aspire SMS companion + existing carrier #).
+   * Falls back gracefully when undefined.
+   */
+  publicNumberConfig?: PublicNumberConfig;
   /**
    * ISO-8601 timestamp of Sarah's most recent call. When provided, Card A
    * shows "Last call: Xm ago". When omitted, the line falls back to "—".
@@ -58,11 +68,20 @@ export function SarahStatusRail({
   summary,
   forwarding,
   publicNumberMode,
+  publicNumberConfig,
   lastCallAt,
 }: SarahStatusRailProps) {
   return (
     <View style={styles.rail}>
       <SarahStatusCard sarah={sarah} lastCallAt={lastCallAt} />
+
+      {publicNumberMode === 'FORWARD_EXISTING' && publicNumberConfig ? (
+        <DualNumberCard
+          aspireCompanion={publicNumberConfig.selectedNumberId}
+          customerFacing={publicNumberConfig.forwardedNumber}
+        />
+      ) : null}
+
       <SetupSummaryCard items={summary} />
       <VerificationCard publicNumberMode={publicNumberMode} forwarding={forwarding} />
     </View>
@@ -88,6 +107,15 @@ function formatLastCall(iso?: string): string {
   if (days < 30) return `${days}d ago`;
   const months = Math.floor(days / 30);
   return `${months}mo ago`;
+}
+
+function formatPhone(value?: string): string {
+  if (!value) return '—';
+  if (/^\(\d{3}\) \d{3}-\d{4}$/.test(value)) return value;
+  const digits = value.replace(/\D/g, '');
+  const last10 = digits.slice(-10);
+  if (last10.length !== 10) return value;
+  return `(${last10.slice(0, 3)}) ${last10.slice(3, 6)}-${last10.slice(6)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +196,49 @@ function ActivePill({ active }: { active: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
+// Card A.5 — Dual-number display (FORWARD_EXISTING only, per §3.8)
+// ---------------------------------------------------------------------------
+
+function DualNumberCard({
+  aspireCompanion,
+  customerFacing,
+}: {
+  aspireCompanion?: string;
+  customerFacing?: string;
+}) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardHead} accessibilityRole="header">
+        Your Numbers
+      </Text>
+
+      {/* Aspire companion */}
+      <View style={styles.numRow} accessibilityRole="text">
+        <View style={[styles.numDot, styles.numDotAspire]} />
+        <View style={styles.numCol}>
+          <Text style={styles.numKicker}>ASPIRE NUMBER</Text>
+          <Text style={styles.numValue}>{formatPhone(aspireCompanion)}</Text>
+          <Text style={styles.numHelper}>SMS + Ava reminders</Text>
+        </View>
+      </View>
+
+      {/* Hairline divider */}
+      <View style={styles.numDivider} />
+
+      {/* Customer-facing existing number */}
+      <View style={styles.numRow} accessibilityRole="text">
+        <View style={[styles.numDot, styles.numDotForward]} />
+        <View style={styles.numCol}>
+          <Text style={styles.numKicker}>CUSTOMER-FACING</Text>
+          <Text style={styles.numValue}>{formatPhone(customerFacing)}</Text>
+          <Text style={styles.numHelper}>Forwards to Sarah</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Card B — Current Setup Summary
 // ---------------------------------------------------------------------------
 
@@ -215,21 +286,29 @@ function VerificationCard({
   publicNumberMode: PublicNumberMode;
   forwarding?: ForwardingVerification;
 }) {
-  const isAspire = publicNumberMode === 'ASPIRE_NUMBER';
+  // Pass 19 reframe: ASPIRE_NEW_NUMBER and PORT_IN don't need forwarding
+  // verification (Sarah answers the number directly). Only FORWARD_EXISTING
+  // surfaces the forwarding-test state machine.
+  const needsForwarding = publicNumberMode === 'FORWARD_EXISTING';
   const status: ForwardingStatus = forwarding?.status ?? 'NOT_CONFIGURED';
 
-  // Mode-aware presentation (plan §10.4 Card C)
   let icon: keyof typeof Ionicons.glyphMap;
   let iconColor: string;
   let title: string;
   let subtitle: string;
   let titleColor: string = Colors.text.primary;
 
-  if (isAspire) {
+  if (!needsForwarding) {
     icon = 'checkmark-circle';
     iconColor = Colors.semantic.success;
-    title = 'Forwarding test';
-    subtitle = 'Not needed in Aspire number mode';
+    title =
+      publicNumberMode === 'PORT_IN'
+        ? 'Direct ownership'
+        : 'Forwarding test';
+    subtitle =
+      publicNumberMode === 'PORT_IN'
+        ? 'Aspire owns the number end-to-end after port-in completes.'
+        : 'Not needed — Sarah answers your Aspire number directly.';
   } else {
     switch (status) {
       case 'VERIFIED':
@@ -275,7 +354,7 @@ function VerificationCard({
         accessibilityLabel={`${title}. ${subtitle}`}
       >
         <View style={styles.verifyIconWrap}>
-          {status === 'PENDING' && !isAspire ? (
+          {needsForwarding && status === 'PENDING' ? (
             <ActivityIndicator size="small" color={Colors.semantic.warning} />
           ) : (
             <Ionicons name={icon} size={20} color={iconColor} />
@@ -415,6 +494,58 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+
+  // ----- Card A.5 — Dual-number callout (FORWARD_EXISTING only) -------
+  numRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  numDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 6,
+  },
+  numDotAspire: {
+    backgroundColor: Colors.accent.cyan,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 0 8px rgba(59,130,246,0.55)' } as any)
+      : {}),
+  } as any,
+  numDotForward: {
+    backgroundColor: Colors.semantic.warning,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 0 8px rgba(245,158,11,0.55)' } as any)
+      : {}),
+  } as any,
+  numCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  numKicker: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.text.muted,
+    letterSpacing: 1.2,
+  },
+  numValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 0.2,
+    fontVariant: ['tabular-nums'],
+  },
+  numHelper: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: Colors.text.tertiary,
+  },
+  numDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
 
   // ----- Card B — Setup Summary ----------------------------------------

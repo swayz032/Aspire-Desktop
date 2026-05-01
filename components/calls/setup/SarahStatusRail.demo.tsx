@@ -1,12 +1,17 @@
 /**
- * SarahStatusRail.demo — covers the 4 verification states + idle Sarah.
+ * SarahStatusRail.demo — Pass 19 update covers all 3 modes + dual-number
+ * card (FORWARD_EXISTING) + the 4 verification states.
  */
 
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Colors } from '@/constants/tokens';
 import { SarahStatusRail } from './SarahStatusRail';
-import type { SarahStatus, SetupSummaryItem } from './setup-types';
+import type {
+  SarahStatus,
+  SetupSummaryItem,
+  PublicNumberConfig,
+} from './setup-types';
 
 const SARAH_ACTIVE: SarahStatus = {
   active: true,
@@ -21,69 +26,100 @@ const SARAH_IDLE: SarahStatus = {
 };
 
 const SUMMARY: SetupSummaryItem[] = [
-  { iconName: 'call-outline', label: 'Public number', value: 'Aspire number' },
+  { iconName: 'call-outline', label: 'Public number', value: 'Aspire — new' },
   { iconName: 'arrow-redo-outline', label: 'Catch calls', value: 'Ring both' },
   { iconName: 'time-outline', label: 'Open hours', value: 'Mon–Fri, 9:00–5:00' },
   { iconName: 'moon-outline', label: 'After hours', value: 'Take message' },
   { iconName: 'people-outline', label: 'Routing contacts', value: '3 configured' },
 ];
 
+const FORWARD_CONFIG: PublicNumberConfig = {
+  mode: 'FORWARD_EXISTING',
+  selectedNumberId: '+14483331552',
+  forwardedNumber: '(404) 555-0182',
+};
+
+const ASPIRE_CONFIG: PublicNumberConfig = {
+  mode: 'ASPIRE_NEW_NUMBER',
+  selectedNumberId: '+14483331552',
+};
+
+const PORT_CONFIG: PublicNumberConfig = {
+  mode: 'PORT_IN',
+};
+
 export default function SarahStatusRailDemo() {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      <Variant title="Active — Aspire number mode (forwarding not needed)">
+      <Variant title="ASPIRE_NEW_NUMBER — verification not needed">
         <Hosted>
           <SarahStatusRail
             sarah={SARAH_ACTIVE}
             summary={SUMMARY}
-            publicNumberMode="ASPIRE_NUMBER"
+            publicNumberMode="ASPIRE_NEW_NUMBER"
+            publicNumberConfig={ASPIRE_CONFIG}
           />
         </Hosted>
       </Variant>
 
-      <Variant title="Active — Keep current, NOT_CONFIGURED">
+      <Variant title="FORWARD_EXISTING — dual-number card visible, NOT_CONFIGURED">
         <Hosted>
           <SarahStatusRail
             sarah={SARAH_ACTIVE}
             summary={SUMMARY}
-            publicNumberMode="KEEP_CURRENT_NUMBER"
+            publicNumberMode="FORWARD_EXISTING"
+            publicNumberConfig={FORWARD_CONFIG}
             forwarding={{ status: 'NOT_CONFIGURED' }}
           />
         </Hosted>
       </Variant>
 
-      <Variant title="Active — Keep current, PENDING">
+      <Variant title="FORWARD_EXISTING — PENDING">
         <Hosted>
           <SarahStatusRail
             sarah={SARAH_ACTIVE}
             summary={SUMMARY}
-            publicNumberMode="KEEP_CURRENT_NUMBER"
+            publicNumberMode="FORWARD_EXISTING"
+            publicNumberConfig={FORWARD_CONFIG}
             forwarding={{ status: 'PENDING' }}
           />
         </Hosted>
       </Variant>
 
-      <Variant title="Active — Keep current, VERIFIED">
+      <Variant title="FORWARD_EXISTING — VERIFIED">
         <Hosted>
           <SarahStatusRail
             sarah={SARAH_ACTIVE}
             summary={SUMMARY}
-            publicNumberMode="KEEP_CURRENT_NUMBER"
+            publicNumberMode="FORWARD_EXISTING"
+            publicNumberConfig={FORWARD_CONFIG}
             forwarding={{ status: 'VERIFIED', lastTestAt: 'Apr 28, 2:14 PM' }}
           />
         </Hosted>
       </Variant>
 
-      <Variant title="Idle — LAST_TEST_FAILED with error">
+      <Variant title="FORWARD_EXISTING — LAST_TEST_FAILED">
         <Hosted>
           <SarahStatusRail
             sarah={SARAH_IDLE}
             summary={SUMMARY}
-            publicNumberMode="KEEP_CURRENT_NUMBER"
+            publicNumberMode="FORWARD_EXISTING"
+            publicNumberConfig={FORWARD_CONFIG}
             forwarding={{
               status: 'LAST_TEST_FAILED',
               lastTestErrorMessage: 'Carrier rejected the call after 3 retries.',
             }}
+          />
+        </Hosted>
+      </Variant>
+
+      <Variant title="PORT_IN — direct ownership">
+        <Hosted>
+          <SarahStatusRail
+            sarah={SARAH_ACTIVE}
+            summary={SUMMARY}
+            publicNumberMode="PORT_IN"
+            publicNumberConfig={PORT_CONFIG}
           />
         </Hosted>
       </Variant>
@@ -101,7 +137,6 @@ function Variant({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Hosted({ children }: { children: React.ReactNode }) {
-  // Simulates the rail's natural width (~30% of a 1280 desktop = 360–400)
   return <View style={styles.hosted}>{children}</View>;
 }
 

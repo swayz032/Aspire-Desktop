@@ -1,951 +1,762 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+/**
+ * /session/messages — full-page rewrite (plan §3.9, Lane E2 + E3 shell).
+ *
+ * Composition (per §3.9):
+ *
+ *   ┌────────────────────── DesktopShell ──────────────────────┐
+ *   │  ┌──────────── MessagesHero (full width) ─────────────┐  │
+ *   │  │  💬 TEXT MESSAGES                Contacts  + New   │  │
+ *   │  │     N conv · M unread · L drafts                   │  │
+ *   │  └────────────────────────────────────────────────────┘  │
+ *   │  ┌──────────── MessagesFilterTabs ───────────────────┐  │
+ *   │  │  All N    Unread M    Pinned P    Archived A   ⋮  │  │
+ *   │  └────────────────────────────────────────────────────┘  │
+ *   │  ┌─────────┬──────────────────────────────────────────┐ │
+ *   │  │ 380px   │  flex: 1                                  │ │
+ *   │  │ Thread  │  MessagesRightPane (Lane E4)              │ │
+ *   │  │ List    │  — falls back to placeholder branch when  │ │
+ *   │  │         │    Lane E4 has not landed yet             │ │
+ *   │  └─────────┴──────────────────────────────────────────┘ │
+ *   └──────────────────────────────────────────────────────────┘
+ *
+ * Lane scope (E2 + E3 only):
+ *   - Page shell + state plumbing
+ *   - Renders MessagesHero, MessagesFilterTabs, MessagesThreadList
+ *   - Active filter state + selected-thread state lives here
+ *   - Bulk-action handlers (mark-all-read, clear-archived) are stubbed —
+ *     Lane E6 wires them to the gateway PATCH routes
+ *   - Right pane: optimistic dynamic import of `MessagesRightPane` from
+ *     `@/components/messages/MessagesRightPane` (Lane E4). When that file
+ *     does not exist yet, we render a fallback panel that mirrors the
+ *     prior plan §3.9.4 state branching (zero / suggestions / thread / compose)
+ *     well enough for E2+E3 to be visually coherent on its own.
+ *
+ * Data source:
+ *   Lane E6 wired `useMessageThreads(filter)` from `lib/messages/`. The page
+ *   reads two slices in parallel — the active filter for the list, and 'all'
+ *   for the universe-wide hero/counts. The hook caches by filter so tab
+ *   swaps are free.
+ *
+ * Header:
+ *   `app/session/_layout.tsx` already sets `headerShown: false`, so no
+ *   route-name banner appears at the top of this page.
+ */
+
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  Platform,
   ScrollView,
   Pressable,
-  TextInput,
-  ImageBackground,
-  FlatList,
-  ViewStyle,
-  Platform,
-  Animated as RNAnimated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
+import { Colors, BorderRadius } from '@/constants/tokens';
 import { DesktopShell } from '@/components/desktop/DesktopShell';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { useSmsThreads, useSmsMessages } from '@/hooks/useSmsThreads';
-import type { SmsThread, SmsMessage } from '@/types/frontdesk';
+
+import { MessagesHero } from '@/components/messages/MessagesHero';
+import {
+  MessagesFilterTabs,
+  type MessagesFilterTab,
+} from '@/components/messages/MessagesFilterTabs';
+import {
+  MessagesThreadList,
+  type ThreadContextAction,
+} from '@/components/messages/MessagesThreadList';
+import {
+  computeFilterCounts,
+  filterThreadsByTab,
+  type MessageThreadSummary,
+} from '@/components/messages/fixtures';
+import { useMessageThreads } from '@/lib/messages/useMessageThreads';
+
+// Lane E5 — full-overlay sheets mounted at page level
+import {
+  NewMessageSheet,
+  type NewMessagePrefill,
+} from '@/components/messages/NewMessageSheet';
+import { ContactsSidePanel } from '@/components/messages/ContactsSidePanel';
 
 // ---------------------------------------------------------------------------
-// Constants
+// Lane-E4 right pane: optimistic require with safe fallback.
+//
+// We try to load `MessagesRightPane` at module-load time. Metro evaluates
+// require() synchronously at bundle build, so the safest cross-platform
+// approach is: wrap the import in a try/catch within a function executed
+// once at module load. If the module is absent, the catch path leaves
+// `LaneE4Pane` as null — the page then renders our fallback shell.
+//
+// When Lane E4 ships, no edit is required here: Metro picks up the new
+// module, the try succeeds, and the right pane swaps in automatically.
 // ---------------------------------------------------------------------------
 
-const HERO_IMAGE = require('@/assets/images/messages-hero.jpg');
-const THREAD_LIST_WIDTH = 340;
+type RightPaneProps = {
+  selectedThread: MessageThreadSummary | null;
+  threadCount: number;
+  onComposeNew: () => void;
+  onOpenContacts: () => void;
+};
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Format E.164 phone number for display. */
-function formatE164(e164: string): string {
-  if (!e164) return '';
-  const digits = e164.replace(/\D/g, '');
-  if (digits.length === 11 && digits.startsWith('1')) {
-    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
-  }
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  return e164;
-}
-
-/** Relative timestamp label (e.g. "2m ago", "Yesterday"). */
-function relativeTime(iso: string | null): string {
-  if (!iso) return '';
-  const now = Date.now();
-  const then = new Date(iso).getTime();
-  const diffMs = now - then;
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return 'now';
-  if (diffMin < 60) return `${diffMin}m`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay === 1) return 'Yesterday';
-  if (diffDay < 7) return `${diffDay}d`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-/** Full timestamp for message bubbles. */
-function messageTimestamp(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
-
-// ---------------------------------------------------------------------------
-// Delivery status icon
-// ---------------------------------------------------------------------------
-
-function DeliveryIcon({ status }: { status: string | null }) {
-  if (!status) return null;
-  const lower = (status ?? '').toLowerCase();
-  if (lower === 'failed' || lower === 'undelivered') {
-    return <Ionicons name="alert-circle" size={12} color={Colors.semantic.error} />;
-  }
-  if (lower === 'delivered' || lower === 'read') {
-    return <Ionicons name="checkmark-done" size={12} color={Colors.semantic.success} />;
-  }
-  // sent / queued / accepted
-  return <Ionicons name="checkmark" size={12} color={Colors.text.muted} />;
+let LaneE4Pane: React.ComponentType<RightPaneProps> | null = null;
+try {
+  // Metro static-analyzes require(). When `MessagesRightPane.tsx` is absent
+  // the bundler warns loudly but does not crash — we recover via try/catch.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require('@/components/messages/MessagesRightPane');
+  LaneE4Pane =
+    (mod?.MessagesRightPane as React.ComponentType<RightPaneProps>) ||
+    (mod?.default as React.ComponentType<RightPaneProps>) ||
+    null;
+} catch {
+  LaneE4Pane = null;
 }
 
 // ---------------------------------------------------------------------------
-// Thread List Item
+// Inner page
 // ---------------------------------------------------------------------------
 
-interface ThreadItemProps {
-  thread: SmsThread;
-  selected: boolean;
-  onSelect: (id: string) => void;
-}
-
-function ThreadItem({ thread, selected, onSelect }: ThreadItemProps) {
-  return (
-    <Pressable onPress={() => onSelect(thread.thread_id)}>
-      <Card
-        variant="default"
-        padding="sm"
-        style={[
-          threadItemStyles.card,
-          selected ? threadItemStyles.cardSelected : undefined,
-        ] as any}
-      >
-        <View style={threadItemStyles.row}>
-          {/* Contact avatar placeholder */}
-          <View style={threadItemStyles.avatar}>
-            <Ionicons name="person" size={18} color={Colors.text.secondary} />
-          </View>
-
-          <View style={threadItemStyles.body}>
-            <View style={threadItemStyles.topRow}>
-              <Text style={threadItemStyles.phone} numberOfLines={1}>
-                {formatE164(thread.counterparty_e164)}
-              </Text>
-              <Text style={threadItemStyles.time}>
-                {relativeTime(thread.last_message_at)}
-              </Text>
-            </View>
-
-            <View style={threadItemStyles.bottomRow}>
-              <Text style={threadItemStyles.preview} numberOfLines={1}>
-                {thread.status === 'active' ? 'Tap to view conversation' : thread.status}
-              </Text>
-              {thread.unread_count > 0 && (
-                <Badge
-                  label={String(thread.unread_count)}
-                  variant="warning"
-                  size="sm"
-                />
-              )}
-            </View>
-          </View>
-        </View>
-      </Card>
-    </Pressable>
-  );
-}
-
-const threadItemStyles = StyleSheet.create({
-  card: {
-    marginBottom: 6,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.surface.card,
-  },
-  cardSelected: {
-    backgroundColor: Colors.surface.cardHover,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.accent.cyan,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    padding: Spacing.sm,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.background.elevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  body: {
-    flex: 1,
-    gap: 4,
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  phone: {
-    ...Typography.bodyMedium,
-    color: Colors.text.primary,
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  time: {
-    ...Typography.small,
-    color: Colors.text.muted,
-  },
-  bottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  preview: {
-    ...Typography.caption,
-    color: Colors.text.tertiary,
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Message Bubble
-// ---------------------------------------------------------------------------
-
-interface BubbleProps {
-  message: SmsMessage;
-}
-
-function MessageBubble({ message }: BubbleProps) {
-  const isOutbound = message.direction === 'outbound';
-
-  return (
-    <View
-      style={[
-        bubbleStyles.wrapper,
-        isOutbound ? bubbleStyles.wrapperOutbound : bubbleStyles.wrapperInbound,
-      ]}
-    >
-      <View
-        style={[
-          bubbleStyles.bubble,
-          isOutbound ? bubbleStyles.bubbleOutbound : bubbleStyles.bubbleInbound,
-        ]}
-      >
-        <Text style={bubbleStyles.text}>{message.body}</Text>
-        <View style={bubbleStyles.meta}>
-          <Text style={bubbleStyles.timestamp}>
-            {messageTimestamp(message.received_at ?? message.created_at)}
-          </Text>
-          {isOutbound && <DeliveryIcon status={message.delivery_status} />}
-        </View>
-      </View>
-    </View>
-  );
-}
-
-const bubbleStyles = StyleSheet.create({
-  wrapper: {
-    paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
-  },
-  wrapperOutbound: {
-    alignItems: 'flex-end',
-  },
-  wrapperInbound: {
-    alignItems: 'flex-start',
-  },
-  bubble: {
-    maxWidth: '75%',
-    borderRadius: BorderRadius.xl,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  bubbleOutbound: {
-    backgroundColor: Colors.accent.cyanLight,
-    borderBottomRightRadius: BorderRadius.xs,
-  },
-  bubbleInbound: {
-    backgroundColor: Colors.surface.cardElevated,
-    borderBottomLeftRadius: BorderRadius.xs,
-  },
-  text: {
-    ...Typography.caption,
-    color: Colors.text.primary,
-  },
-  meta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 4,
-    marginTop: 4,
-  },
-  timestamp: {
-    ...Typography.micro,
-    color: Colors.text.muted,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Compose Bar
-// ---------------------------------------------------------------------------
-
-interface ComposeBarProps {
-  onSend: (body: string) => void;
-  sending: boolean;
-}
-
-function ComposeBar({ onSend, sending }: ComposeBarProps) {
-  const [text, setText] = useState('');
-
-  const handleSend = useCallback(() => {
-    const trimmed = text.trim();
-    if (!trimmed || sending) return;
-    onSend(trimmed);
-    setText('');
-  }, [text, sending, onSend]);
-
-  return (
-    <View style={composeStyles.container}>
-      <TextInput
-        style={composeStyles.input}
-        placeholder="Type a message..."
-        placeholderTextColor={Colors.text.muted}
-        value={text}
-        onChangeText={setText}
-        onSubmitEditing={handleSend}
-        returnKeyType="send"
-        editable={!sending}
-        multiline
-        accessibilityLabel="Message input"
-        accessibilityHint="Type your SMS message here"
-      />
-      <Pressable
-        style={[
-          composeStyles.sendButton,
-          (!text.trim() || sending) && composeStyles.sendButtonDisabled,
-        ]}
-        onPress={handleSend}
-        disabled={!text.trim() || sending}
-        accessibilityLabel="Send message"
-        accessibilityRole="button"
-      >
-        <Ionicons
-          name="send"
-          size={18}
-          color={text.trim() && !sending ? '#FFFFFF' : Colors.text.disabled}
-        />
-      </Pressable>
-    </View>
-  );
-}
-
-const composeStyles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border.subtle,
-    backgroundColor: Colors.background.secondary,
-  },
-  input: {
-    flex: 1,
-    ...Typography.caption,
-    color: Colors.text.primary,
-    backgroundColor: Colors.surface.input,
-    borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    maxHeight: 100,
-    borderWidth: 1,
-    borderColor: Colors.surface.inputBorder,
-  },
-  sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.accent.cyan,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendButtonDisabled: {
-    backgroundColor: Colors.background.tertiary,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Empty / Compliance States
-// ---------------------------------------------------------------------------
-
-function EmptyConversation() {
-  return (
-    <View style={emptyStyles.container}>
-      <Ionicons name="chatbubbles-outline" size={48} color={Colors.text.muted} />
-      <Text style={emptyStyles.title}>No conversation selected</Text>
-      <Text style={emptyStyles.subtitle}>Choose a thread from the left to view messages</Text>
-    </View>
-  );
-}
-
-function EmptyThreads() {
-  return (
-    <View style={emptyStyles.container}>
-      <Ionicons name="chatbubbles-outline" size={48} color={Colors.text.muted} />
-      <Text style={emptyStyles.title}>No conversations yet</Text>
-      <Text style={emptyStyles.subtitle}>
-        Messages with your business line will appear here
-      </Text>
-    </View>
-  );
-}
-
-function ComplianceBanner() {
-  return (
-    <Card variant="default" padding="md" style={complianceStyles.card as ViewStyle}>
-      <View style={complianceStyles.row}>
-        <Ionicons name="warning" size={20} color={Colors.semantic.warning} />
-        <View style={complianceStyles.textBlock}>
-          <Text style={complianceStyles.title}>SMS not enabled</Text>
-          <Text style={complianceStyles.body}>
-            Set up your Front Desk business line to enable text messaging capabilities.
-          </Text>
-        </View>
-      </View>
-    </Card>
-  );
-}
-
-const emptyStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
-    padding: Spacing.xxxl,
-  },
-  title: {
-    ...Typography.bodyMedium,
-    color: Colors.text.secondary,
-  },
-  subtitle: {
-    ...Typography.caption,
-    color: Colors.text.muted,
-    textAlign: 'center',
-  },
-});
-
-const complianceStyles = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.accent.amberLight,
-    borderColor: Colors.accent.amberMedium,
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.md,
-  },
-  textBlock: {
-    flex: 1,
-    gap: 4,
-  },
-  title: {
-    ...Typography.captionMedium,
-    color: Colors.semantic.warning,
-  },
-  body: {
-    ...Typography.small,
-    color: Colors.text.tertiary,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Main Page Component
-// ---------------------------------------------------------------------------
-
-export default function WrappedMessagesPage() {
-  return (
-    <PageErrorBoundary pageName="messages">
-      <MessagesPage />
-    </PageErrorBoundary>
-  );
-}
-
-function MessagesPage() {
-  // -- Data hooks -----------------------------------------------------------
-  const { threads, loading: threadsLoading, error: threadsError } = useSmsThreads();
+function MessagesPageInner() {
+  // ── Filter + selection state (page-level per plan §3.9) ──────────────
+  const [activeTab, setActiveTab] = useState<MessagesFilterTab>('all');
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const {
-    messages,
-    loading: messagesLoading,
-    error: messagesError,
-    refresh: refreshMessages,
-  } = useSmsMessages(selectedThreadId);
 
-  // -- Search ---------------------------------------------------------------
-  const [searchQuery, setSearchQuery] = useState('');
+  // ── Data ──────────────────────────────────────────────────────────────
+  // We fetch both:
+  //   - the active-tab slice (drives the thread list)
+  //   - the 'all' slice (drives counts/totalUnread, computed against the
+  //     unfiltered universe per plan §3.9.2)
+  // The hook caches by filter so a tab swap doesn't re-fetch what we have.
+  const universe = useMessageThreads('all');
+  const activeSlice = useMessageThreads(activeTab);
+  // Universe is the union of all/archived (archived isn't in 'all'):
+  const allKnownThreads = useMemo(() => {
+    if (activeTab === 'archived') {
+      return [...universe.threads, ...activeSlice.threads];
+    }
+    return universe.threads;
+  }, [universe.threads, activeSlice.threads, activeTab]);
 
-  // -- Compose / Send -------------------------------------------------------
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
+  const isLoading = activeTab === 'all' ? universe.isLoading : activeSlice.isLoading;
 
-  // -- SMS enabled (derived: if we have threads OR no error, treat as enabled) -
-  const smsEnabled = !threadsError;
+  // Counts reflect the universe (not the filtered slice) — matches §3.9.2.
+  // For archived count we trust the local universe view since unread/pinned
+  // counts already exclude archived; we lift archived from the activeSlice
+  // when the user has clicked into the Archived tab (otherwise we don't know).
+  const counts = useMemo(
+    () => computeFilterCounts(allKnownThreads),
+    [allKnownThreads],
+  );
 
-  // -- Thread selection animation -------------------------------------------
-  const fadeAnim = useRef(new RNAnimated.Value(1)).current;
+  // The thread list shows the active slice. When the active tab is 'all',
+  // we want the same data the universe already loaded; otherwise we filter
+  // the active slice locally (it's already the right scope, but we double-
+  // filter against archived to be safe — the server may not yet enforce).
+  const filteredThreads = useMemo(() => {
+    if (activeTab === 'all') {
+      return filterThreadsByTab(universe.threads, 'all');
+    }
+    return filterThreadsByTab(activeSlice.threads, activeTab);
+  }, [universe.threads, activeSlice.threads, activeTab]);
 
-  const handleSelectThread = useCallback(
-    (threadId: string) => {
-      if (threadId === selectedThreadId) return;
-      // Fade out, swap, fade in
-      RNAnimated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 120,
-        useNativeDriver: false,
-      }).start(() => {
-        setSelectedThreadId(threadId);
-        setSendError(null);
-        RNAnimated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 180,
-          useNativeDriver: false,
-        }).start();
+  // Drive the hero subtitle off the universe — "42 conversations" stays
+  // truthful even when you click into the Pinned tab.
+  const totalUnread = useMemo(
+    () =>
+      universe.threads
+        .filter((t) => !t.is_archived)
+        .reduce((sum, t) => sum + t.unread_count, 0),
+    [universe.threads],
+  );
+
+  // Selected thread object (or null) — passed to right pane.
+  const selectedThread = useMemo(() => {
+    if (!selectedThreadId) return null;
+    return (
+      allKnownThreads.find((t) => t.thread_id === selectedThreadId) ?? null
+    );
+  }, [selectedThreadId, allKnownThreads]);
+
+  // Mutations from the active slice — pin/archive/markRead. Both
+  // hook instances share the cache, so calling either yields the same effect.
+  const togglePin = activeTab === 'all' ? universe.togglePin : activeSlice.togglePin;
+  const toggleArchive =
+    activeTab === 'all' ? universe.toggleArchive : activeSlice.toggleArchive;
+  const markRead = activeTab === 'all' ? universe.markRead : activeSlice.markRead;
+
+  // ── Handlers ──────────────────────────────────────────────────────────
+  const handleThreadSelect = useCallback((threadId: string) => {
+    setSelectedThreadId(threadId);
+  }, []);
+
+  /**
+   * Context-menu actions — wired to real PATCH routes via useMessageThreads.
+   * Failures are logged but not surfaced as toasts in V1 (the optimistic
+   * update rolls back automatically if the server denies; the row reverts
+   * via cache notification).
+   *
+   * `mark-unread` and `delete` are V1.1 — V1 backend has no inverse-mark or
+   * destructive endpoint, so we no-op (Law #3 fail closed).
+   */
+  const handleContextMenu = useCallback(
+    (threadId: string, action: ThreadContextAction) => {
+      const promise = (async () => {
+        switch (action) {
+          case 'pin':
+          case 'unpin':
+            // Backend toggles based on current state — single endpoint.
+            return togglePin(threadId);
+          case 'archive':
+          case 'unarchive':
+            return toggleArchive(threadId);
+          case 'mark-unread':
+          case 'delete':
+            // V1.1: backend has no inverse-mark / destructive route yet.
+            // Fail closed — log & no-op rather than guess at a contract.
+            if (Platform.OS === 'web' && typeof console !== 'undefined') {
+              console.info(
+                `[messages] action '${action}' is V1.1 — no backend route in V1`,
+              );
+            }
+            return;
+          default:
+            return;
+        }
+      })();
+      promise.catch((err) => {
+        if (Platform.OS === 'web' && typeof console !== 'undefined') {
+          console.warn(
+            `[messages] context action ${action} failed on ${threadId}:`,
+            err,
+          );
+        }
       });
     },
-    [selectedThreadId, fadeAnim],
+    [togglePin, toggleArchive],
   );
 
-  // -- Auto-scroll to bottom on new messages --------------------------------
-  const flatListRef = useRef<FlatList<SmsMessage>>(null);
-  useEffect(() => {
-    if (messages.length > 0) {
-      // Small delay so FlatList has time to render
-      const timer = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [messages.length]);
-
-  // -- Send message handler -------------------------------------------------
-  const selectedThread = threads.find((t) => t.thread_id === selectedThreadId);
-
-  const handleSend = useCallback(
-    async (body: string) => {
-      if (!selectedThread) return;
-      setSending(true);
-      setSendError(null);
-      try {
-        const res = await fetch('/api/messages/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            toE164: selectedThread.counterparty_e164,
-            body,
-          }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || `HTTP ${res.status}`);
+  /** Marks every unread thread read in parallel. Each call carries its own
+   *  optimistic update + rollback so a single failure doesn't block siblings. */
+  const handleMarkAllRead = useCallback(() => {
+    const unreadIds = universe.threads
+      .filter((t) => !t.is_archived && t.unread_count > 0)
+      .map((t) => t.thread_id);
+    if (unreadIds.length === 0) return;
+    Promise.allSettled(unreadIds.map((id) => markRead(id))).then((results) => {
+      if (Platform.OS === 'web' && typeof console !== 'undefined') {
+        const failures = results.filter((r) => r.status === 'rejected').length;
+        if (failures > 0) {
+          console.warn(
+            `[messages] mark-all-read: ${failures}/${results.length} requests failed`,
+          );
         }
-        refreshMessages();
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Failed to send message';
-        setSendError(message);
-      } finally {
-        setSending(false);
       }
+    });
+  }, [universe.threads, markRead]);
+
+  /** "Clear archived" — toggles archive off for every archived row, moving
+   *  them back into the active tabs. Real bulk-delete is V1.1. */
+  const handleClearArchived = useCallback(() => {
+    const archivedIds = activeSlice.threads
+      .filter((t) => t.is_archived)
+      .map((t) => t.thread_id);
+    if (archivedIds.length === 0) return;
+    Promise.allSettled(archivedIds.map((id) => toggleArchive(id))).then(
+      (results) => {
+        if (Platform.OS === 'web' && typeof console !== 'undefined') {
+          const failures = results.filter((r) => r.status === 'rejected').length;
+          if (failures > 0) {
+            console.warn(
+              `[messages] clear-archived: ${failures}/${results.length} requests failed`,
+            );
+          }
+        }
+      },
+    );
+  }, [activeSlice.threads, toggleArchive]);
+
+  // Compose / Contacts — Lane E5 mounts the real sheets below the page JSX.
+  // `composePrefill` flows in from contact-panel picks (and, later, suggestion
+  // cards via Lane E6). It clears whenever the sheet closes so the next
+  // open-from-hero starts cleanly.
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [contactsOpen, setContactsOpen] = useState(false);
+  const [composePrefill, setComposePrefill] = useState<NewMessagePrefill | undefined>(
+    undefined,
+  );
+
+  const handleNewMessage = useCallback(() => {
+    setComposePrefill(undefined);
+    setComposeOpen(true);
+  }, []);
+
+  const handleOpenContacts = useCallback(() => {
+    setContactsOpen(true);
+  }, []);
+
+  const handleCloseCompose = useCallback(() => {
+    setComposeOpen(false);
+    setComposePrefill(undefined);
+  }, []);
+
+  const handleCloseContacts = useCallback(() => {
+    setContactsOpen(false);
+  }, []);
+
+  // Contacts panel → compose: panel closes itself first, then we stash the
+  // contact as a prefill and open the sheet so the To: chip is pre-filled.
+  const handleContactsCompose = useCallback(
+    (contact: NewMessagePrefill['contact']) => {
+      setContactsOpen(false);
+      setComposePrefill({ contact });
+      setComposeOpen(true);
     },
-    [selectedThread, refreshMessages],
-  );
-
-  // -- Filtered threads -----------------------------------------------------
-  const filteredThreads = searchQuery
-    ? threads.filter((t) =>
-        formatE164(t.counterparty_e164)
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase()) ||
-        t.counterparty_e164.includes(searchQuery),
-      )
-    : threads;
-
-  // -- Message list renderer ------------------------------------------------
-  const renderMessage = useCallback(
-    ({ item }: { item: SmsMessage }) => <MessageBubble message={item} />,
-    [],
-  );
-  const messageKeyExtractor = useCallback(
-    (item: SmsMessage) => item.sms_message_id,
     [],
   );
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
+  // After a confirmed Yellow-tier send, close the sheet and select the
+  // resulting thread so the user lands on it. The thread id is the
+  // canonical id returned by `POST /api/messages/send` (via `useSendMessage`
+  // inside NewMessageSheet) — the thread cache is invalidated server-side
+  // and the universe slice will reflect the new thread on its next read.
+  const handleSent = useCallback((threadId: string) => {
+    setComposeOpen(false);
+    setComposePrefill(undefined);
+    setSelectedThreadId(threadId);
+    // Force the universe slice to refetch immediately so the new thread row
+    // appears in the list without waiting for the 30s stale window.
+    void universe.refetch();
+  }, [universe]);
 
+  // ── Render ────────────────────────────────────────────────────────────
   return (
-    <DesktopShell>
-      <View style={styles.root}>
-        {/* ============================================================== */}
-        {/* Hero Banner                                                     */}
-        {/* ============================================================== */}
-        <ImageBackground
-          source={HERO_IMAGE}
-          style={styles.heroBanner}
-          imageStyle={styles.heroImage}
-        >
-          <LinearGradient
-            colors={['rgba(10, 10, 10, 0.3)', 'rgba(10, 10, 10, 0.75)']}
-            style={styles.heroOverlay}
-          >
-            <View style={styles.heroContent}>
-              <LinearGradient
-                colors={[Colors.accent.cyan, Colors.accent.cyanDark]}
-                style={styles.heroIconWrap}
-              >
-                <Ionicons name="chatbubbles" size={24} color="#fff" />
-              </LinearGradient>
-              <View style={styles.heroTextBlock}>
-                <Text style={styles.heroTitle}>Text Messages</Text>
-                <Text style={styles.heroSubtitle}>
-                  {threads.length} conversation{threads.length !== 1 ? 's' : ''}
-                  {threads.reduce((n, t) => n + t.unread_count, 0) > 0 &&
-                    ` \u00B7 ${threads.reduce((n, t) => n + t.unread_count, 0)} unread`}
-                </Text>
-              </View>
-            </View>
-          </LinearGradient>
-        </ImageBackground>
+    <View style={styles.root}>
+      {/* Outer scroll container — only the right pane scrolls in nested cases.
+          The hero + filter tabs sit at the top; the 2-col grid takes flex:1. */}
+      <View style={styles.heroWrap}>
+        <MessagesHero
+          threadCount={counts.all}
+          unreadCount={totalUnread}
+          draftCount={0}
+          onContactsPress={handleOpenContacts}
+          onNewMessagePress={handleNewMessage}
+        />
+      </View>
 
-        {/* ============================================================== */}
-        {/* Compliance banner if SMS not enabled                            */}
-        {/* ============================================================== */}
-        {!smsEnabled && <ComplianceBanner />}
+      <View style={styles.filterTabsWrap}>
+        <MessagesFilterTabs
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          counts={counts}
+          onMarkAllRead={handleMarkAllRead}
+          onClearArchived={handleClearArchived}
+        />
+      </View>
 
-        {/* ============================================================== */}
-        {/* Split Pane                                                      */}
-        {/* ============================================================== */}
-        <View style={styles.splitPane}>
-          {/* ------------------------------------------------------------ */}
-          {/* Left Panel - Thread List                                      */}
-          {/* ------------------------------------------------------------ */}
-          <View style={styles.leftPanel}>
-            {/* Search bar */}
-            <View style={styles.searchContainer}>
-              <View style={styles.searchBar}>
-                <Ionicons name="search" size={16} color={Colors.text.muted} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search conversations..."
-                  placeholderTextColor={Colors.text.muted}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  accessibilityLabel="Search conversations"
-                />
-                {searchQuery.length > 0 && (
-                  <Pressable
-                    onPress={() => setSearchQuery('')}
-                    accessibilityLabel="Clear search"
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="close-circle" size={16} color={Colors.text.muted} />
-                  </Pressable>
-                )}
-              </View>
-            </View>
+      {/* 2-column grid — fixed 380 left, flex right */}
+      <View style={styles.grid}>
+        <View style={styles.leftCol}>
+          <MessagesThreadList
+            threads={filteredThreads}
+            selectedThreadId={selectedThreadId}
+            onThreadSelect={handleThreadSelect}
+            onContextMenu={handleContextMenu}
+            isLoading={isLoading}
+            filter={activeTab}
+          />
+        </View>
 
-            {/* Thread list */}
-            <ScrollView
-              style={styles.threadScroll}
-              contentContainerStyle={styles.threadScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {threadsLoading && filteredThreads.length === 0 ? (
-                <View style={styles.loadingContainer}>
-                  <Text style={styles.loadingText}>Loading threads...</Text>
-                </View>
-              ) : filteredThreads.length === 0 ? (
-                <EmptyThreads />
-              ) : (
-                filteredThreads.map((thread) => (
-                  <ThreadItem
-                    key={thread.thread_id}
-                    thread={thread}
-                    selected={thread.thread_id === selectedThreadId}
-                    onSelect={handleSelectThread}
-                  />
-                ))
-              )}
-            </ScrollView>
-          </View>
-
-          {/* ------------------------------------------------------------ */}
-          {/* Right Panel - Conversation                                    */}
-          {/* ------------------------------------------------------------ */}
-          <RNAnimated.View style={[styles.rightPanel, { opacity: fadeAnim }]}>
-            {!selectedThreadId ? (
-              <EmptyConversation />
-            ) : (
-              <View style={styles.conversationContainer}>
-                {/* Conversation header */}
-                <View style={styles.conversationHeader}>
-                  <View style={styles.conversationHeaderAvatar}>
-                    <Ionicons name="person" size={20} color={Colors.text.secondary} />
-                  </View>
-                  <View style={styles.conversationHeaderInfo}>
-                    <Text style={styles.conversationHeaderPhone}>
-                      {selectedThread
-                        ? formatE164(selectedThread.counterparty_e164)
-                        : ''}
-                    </Text>
-                    <Text style={styles.conversationHeaderSub}>
-                      {selectedThread
-                        ? `via ${formatE164(selectedThread.business_number_e164)}`
-                        : ''}
-                    </Text>
-                  </View>
-                  <Pressable
-                    style={styles.conversationHeaderAction}
-                    onPress={refreshMessages}
-                    accessibilityLabel="Refresh messages"
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="refresh" size={18} color={Colors.text.secondary} />
-                  </Pressable>
-                </View>
-
-                {/* Message list */}
-                {messagesLoading && messages.length === 0 ? (
-                  <View style={styles.loadingContainer}>
-                    <Text style={styles.loadingText}>Loading messages...</Text>
-                  </View>
-                ) : messagesError ? (
-                  <View style={styles.loadingContainer}>
-                    <Ionicons name="alert-circle" size={24} color={Colors.semantic.error} />
-                    <Text style={styles.errorText}>Failed to load messages</Text>
-                  </View>
-                ) : messages.length === 0 ? (
-                  <View style={emptyStyles.container}>
-                    <Ionicons name="chatbubble-outline" size={36} color={Colors.text.muted} />
-                    <Text style={emptyStyles.subtitle}>No messages in this thread yet</Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    ref={flatListRef}
-                    data={messages}
-                    renderItem={renderMessage}
-                    keyExtractor={messageKeyExtractor}
-                    contentContainerStyle={styles.messageListContent}
-                    showsVerticalScrollIndicator={false}
-                    style={styles.messageList}
-                  />
-                )}
-
-                {/* Send error banner */}
-                {sendError && (
-                  <View style={styles.sendErrorBanner}>
-                    <Ionicons name="alert-circle" size={14} color={Colors.semantic.error} />
-                    <Text style={styles.sendErrorText}>{sendError}</Text>
-                    <Pressable
-                      onPress={() => setSendError(null)}
-                      accessibilityLabel="Dismiss error"
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="close" size={14} color={Colors.text.muted} />
-                    </Pressable>
-                  </View>
-                )}
-
-                {/* Compose bar */}
-                <ComposeBar onSend={handleSend} sending={sending} />
-              </View>
-            )}
-          </RNAnimated.View>
+        <View style={styles.rightCol}>
+          {LaneE4Pane ? (
+            <LaneE4Pane
+              selectedThread={selectedThread}
+              threadCount={counts.all}
+              onComposeNew={handleNewMessage}
+              onOpenContacts={handleOpenContacts}
+            />
+          ) : (
+            <RightPaneFallback
+              selectedThread={selectedThread}
+              threadCount={counts.all}
+              onComposeNew={handleNewMessage}
+              onOpenContacts={handleOpenContacts}
+              composeOpen={composeOpen}
+              contactsOpen={contactsOpen}
+              onCloseCompose={handleCloseCompose}
+              onCloseContacts={handleCloseContacts}
+            />
+          )}
         </View>
       </View>
-    </DesktopShell>
+
+      {/* Lane E5: full-overlay sheets — mounted at page level so they float
+          above the right pane regardless of E4's internal state. The sheets
+          own their own zIndex 9999 + presentationStyle="overFullScreen"
+          modals; nothing else needs to know about them. */}
+      <NewMessageSheet
+        visible={composeOpen}
+        onClose={handleCloseCompose}
+        onSent={handleSent}
+        prefill={composePrefill}
+      />
+      <ContactsSidePanel
+        visible={contactsOpen}
+        onClose={handleCloseContacts}
+        onComposeNew={handleContactsCompose}
+      />
+    </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Styles
+// Right-pane fallback — used when Lane E4's MessagesRightPane has not yet
+// shipped. Mirrors §3.9.4 state branching at a coarse level so the page is
+// visually coherent during the parallel-lane window.
+//
+// When Lane E4 lands, this fallback drops out automatically (the import at
+// the top of the file succeeds and `LaneE4Pane` becomes non-null).
+// ---------------------------------------------------------------------------
+
+interface RightPaneFallbackProps {
+  selectedThread: MessageThreadSummary | null;
+  threadCount: number;
+  onComposeNew: () => void;
+  onOpenContacts: () => void;
+  /** Held for backwards compatibility — Lane E5 sheets render at page level. */
+  composeOpen?: boolean;
+  contactsOpen?: boolean;
+  onCloseCompose?: () => void;
+  onCloseContacts?: () => void;
+}
+
+function RightPaneFallback({
+  selectedThread,
+  threadCount,
+  onComposeNew,
+  onOpenContacts,
+}: RightPaneFallbackProps) {
+  // Compose-active and contacts-active states are now handled by Lane E5's
+  // real overlay sheets mounted at page level (NewMessageSheet +
+  // ContactsSidePanel) — those float above this pane with zIndex 9999, so
+  // we no longer render placeholder branches here.
+
+  // Thread-selected branch — Lane E4 owns the chat-bubble + composer view.
+  if (selectedThread) {
+    return (
+      <FallbackPanel
+        icon="chatbubble-ellipses-outline"
+        title={`Thread with ${selectedThread.contact_name || selectedThread.contact_phone}`}
+        body="Lane E4 mounts the chat-bubble stream + composer + delivery status here. Lane E2 has wired the thread-list selection plumbing — you're seeing it work."
+        meta={selectedThread.last_message_preview}
+      />
+    );
+  }
+
+  // None-selected branches: zero state vs suggestions, depending on whether
+  // ANY threads exist. Lane E4's component will replace this with a richer
+  // panel including Ava-suggested follow-ups (plan §3.9.4 (B)).
+  if (threadCount === 0) {
+    return (
+      <FallbackPanel
+        icon="sparkles-outline"
+        title="No conversations yet"
+        body="Send your first message to start a thread. Lane E4 replaces this with a premium getting-started panel: illustration, two CTAs, and three Ava-suggested actions."
+        ctaLabel="Start your first message"
+        ctaIcon="add"
+        onCta={onComposeNew}
+        secondaryCtaLabel="View routing contacts"
+        secondaryCtaIcon="people-outline"
+        onSecondaryCta={onOpenContacts}
+      />
+    );
+  }
+
+  return (
+    <FallbackPanel
+      icon="arrow-back-outline"
+      title="Choose a thread from the left"
+      body="Lane E4 replaces this with a 'Suggested actions' panel — Ava's recommended follow-ups based on recent activity."
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Fallback panel — small reusable layout matching the page's visual chrome.
+// ---------------------------------------------------------------------------
+
+interface FallbackPanelProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  body: string;
+  meta?: string;
+  ctaLabel?: string;
+  ctaIcon?: keyof typeof Ionicons.glyphMap;
+  onCta?: () => void;
+  secondaryCtaLabel?: string;
+  secondaryCtaIcon?: keyof typeof Ionicons.glyphMap;
+  onSecondaryCta?: () => void;
+}
+
+function FallbackPanel({
+  icon,
+  title,
+  body,
+  meta,
+  ctaLabel,
+  ctaIcon,
+  onCta,
+  secondaryCtaLabel,
+  secondaryCtaIcon,
+  onSecondaryCta,
+}: FallbackPanelProps) {
+  return (
+    <ScrollView
+      contentContainerStyle={fallbackStyles.scrollContent}
+      style={fallbackStyles.scroll}
+    >
+      <View style={fallbackStyles.card}>
+        <View style={fallbackStyles.iconHalo}>
+          <Ionicons name={icon} size={36} color={Colors.accent.cyan} />
+        </View>
+        <Text style={fallbackStyles.title} accessibilityRole="header">
+          {title}
+        </Text>
+        <Text style={fallbackStyles.body}>{body}</Text>
+        {meta ? (
+          <View style={fallbackStyles.metaPill}>
+            <Text style={fallbackStyles.metaText} numberOfLines={2}>
+              {`“${meta}”`}
+            </Text>
+          </View>
+        ) : null}
+        {(ctaLabel || secondaryCtaLabel) && (
+          <View style={fallbackStyles.ctaRow}>
+            {ctaLabel && onCta && (
+              <Pressable
+                onPress={onCta}
+                accessibilityRole="button"
+                accessibilityLabel={ctaLabel}
+                style={({ pressed }) => [
+                  fallbackStyles.cta,
+                  fallbackStyles.ctaPrimary,
+                  pressed && fallbackStyles.ctaPrimaryPressed,
+                ]}
+              >
+                {ctaIcon && <Ionicons name={ctaIcon} size={16} color="#ffffff" />}
+                <Text style={fallbackStyles.ctaPrimaryText}>{ctaLabel}</Text>
+              </Pressable>
+            )}
+            {secondaryCtaLabel && onSecondaryCta && (
+              <Pressable
+                onPress={onSecondaryCta}
+                accessibilityRole="button"
+                accessibilityLabel={secondaryCtaLabel}
+                style={({ pressed }) => [
+                  fallbackStyles.cta,
+                  fallbackStyles.ctaGhost,
+                  pressed && fallbackStyles.ctaGhostPressed,
+                ]}
+              >
+                {secondaryCtaIcon && (
+                  <Ionicons
+                    name={secondaryCtaIcon}
+                    size={16}
+                    color={Colors.text.secondary}
+                  />
+                )}
+                <Text style={fallbackStyles.ctaGhostText}>
+                  {secondaryCtaLabel}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
+const fallbackStyles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  card: {
+    maxWidth: 460,
+    alignItems: 'center',
+    gap: 16,
+  },
+  iconHalo: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: 'rgba(59,130,246,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 0 32px rgba(59,130,246,0.18)' } as object)
+      : {}),
+  } as any,
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: Colors.text.primary,
+    textAlign: 'center',
+    letterSpacing: -0.2,
+  },
+  body: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.text.tertiary,
+    textAlign: 'center',
+    lineHeight: 21,
+    maxWidth: 380,
+  },
+  metaPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#161618',
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    maxWidth: 380,
+  },
+  metaText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: Colors.text.secondary,
+    lineHeight: 19,
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: BorderRadius.md,
+    minHeight: 44,
+  },
+  ctaPrimary: {
+    backgroundColor: Colors.accent.cyan,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow:
+            '0 1px 2px rgba(0,0,0,0.3), 0 6px 16px rgba(59,130,246,0.28)',
+        } as object)
+      : {
+          shadowColor: Colors.accent.cyan,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.4,
+          shadowRadius: 10,
+        }),
+  } as any,
+  ctaPrimaryPressed: {
+    backgroundColor: Colors.accent.cyanDark,
+    opacity: 0.95,
+  },
+  ctaPrimaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff',
+    letterSpacing: 0.1,
+  },
+  ctaGhost: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  ctaGhostPressed: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    opacity: 0.95,
+  },
+  ctaGhostText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.text.secondary,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Page styles
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.background.primary,
+    backgroundColor: '#0a0a0c',
   },
-
-  // -- Hero Banner ----------------------------------------------------------
-  heroBanner: {
-    height: 130,
+  heroWrap: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 12,
+  },
+  filterTabsWrap: {
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  grid: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 24,
+    gap: 16,
+    minHeight: 0, // critical for nested flex+scroll on web
+  },
+  leftCol: {
+    width: 380,
+    backgroundColor: '#0d0d0d',
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
     overflow: 'hidden',
+    minHeight: 0,
   },
-  heroImage: {
-    resizeMode: 'cover',
-    ...(Platform.OS === 'web'
-      ? { objectPosition: '40% center', objectFit: 'cover', filter: 'brightness(0.9) saturate(1.1)' }
-      : {}),
-  } as Record<string, unknown>,
-  heroOverlay: {
+  rightCol: {
     flex: 1,
-    paddingHorizontal: Spacing.xl,
-    justifyContent: 'center',
-  },
-  heroContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  heroIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroTextBlock: {
-    flex: 1,
-  },
-  heroTitle: {
-    ...Typography.title,
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-  },
-  heroSubtitle: {
-    ...Typography.caption,
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 2,
-  },
-
-  // -- Split Pane -----------------------------------------------------------
-  splitPane: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-
-  // -- Left Panel (Thread List) ---------------------------------------------
-  leftPanel: {
-    width: THREAD_LIST_WIDTH,
-    borderRightWidth: 1,
-    borderRightColor: Colors.border.subtle,
-    backgroundColor: Colors.background.secondary,
-  },
-  searchContainer: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.surface.input,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    backgroundColor: '#0d0d0d',
+    borderRadius: BorderRadius.xl,
     borderWidth: 1,
-    borderColor: Colors.surface.inputBorder,
-  },
-  searchInput: {
-    flex: 1,
-    ...Typography.caption,
-    color: Colors.text.primary,
-    padding: 0,
-  },
-  threadScroll: {
-    flex: 1,
-  },
-  threadScrollContent: {
-    padding: Spacing.sm,
-    paddingBottom: Spacing.xl,
-  },
-
-  // -- Right Panel (Conversation) -------------------------------------------
-  rightPanel: {
-    flex: 1,
-    backgroundColor: Colors.background.primary,
-  },
-
-  // -- Conversation ---------------------------------------------------------
-  conversationContainer: {
-    flex: 1,
-  },
-  conversationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.subtle,
-    backgroundColor: Colors.background.secondary,
-    gap: Spacing.md,
-  },
-  conversationHeaderAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.background.elevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  conversationHeaderInfo: {
-    flex: 1,
-  },
-  conversationHeaderPhone: {
-    ...Typography.bodyMedium,
-    color: Colors.text.primary,
-  },
-  conversationHeaderSub: {
-    ...Typography.small,
-    color: Colors.text.muted,
-    marginTop: 1,
-  },
-  conversationHeaderAction: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.background.tertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  messageList: {
-    flex: 1,
-  },
-  messageListContent: {
-    paddingVertical: Spacing.lg,
-  },
-
-  // -- Loading / Error ------------------------------------------------------
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.xxxl,
-    gap: Spacing.sm,
-  },
-  loadingText: {
-    ...Typography.caption,
-    color: Colors.text.muted,
-  },
-  errorText: {
-    ...Typography.caption,
-    color: Colors.semantic.error,
-  },
-
-  // -- Send Error Banner ----------------------------------------------------
-  sendErrorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.semantic.errorLight,
-  },
-  sendErrorText: {
-    ...Typography.small,
-    color: Colors.semantic.error,
-    flex: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+    minWidth: 0,
+    minHeight: 0,
   },
 });
+
+// ---------------------------------------------------------------------------
+// Public export with shell + error boundary
+// ---------------------------------------------------------------------------
+
+export default function MessagesPage() {
+  return (
+    <DesktopShell>
+      <PageErrorBoundary pageName="messages">
+        <MessagesPageInner />
+      </PageErrorBoundary>
+    </DesktopShell>
+  );
+}

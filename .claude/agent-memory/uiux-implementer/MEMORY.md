@@ -5,6 +5,11 @@
 
 ## Settings Pages (2026-04-28)
 - [Front Desk Setup Pattern](front-desk-setup-pattern.md) -- numbered SectionPanel + AvaOrbVideo hero + 5-section layout, Pass 10 Lane B
+- [Front Desk Tabbed Stage Pattern](front-desk-tabbed-stage-pattern.md) -- hero + 5-tab nav + center-stage + sticky rail, Pass 16 UI (supersedes stacked layout)
+
+## Messages (2026-04-30)
+- [Messages Page Redesign](messages-page-redesign.md) -- hero + filter tabs + thread list shell, Lane E2+E3 of calm-lynx Pass 19
+- [Messages Lane E5 Overlays](messages-lane-e5-overlays.md) -- NewMessageSheet + ContactsSidePanel + ContactAutocomplete + MessageTemplatePicker, full-overlay modal pattern, calm-lynx Lane E5
 
 ## Cards
 - [BaseCard fixed 580px height](basecard-fixed-height.md) -- fixed height + internal ScrollView, NOT min-height + growth. Wave 4.1 polish.

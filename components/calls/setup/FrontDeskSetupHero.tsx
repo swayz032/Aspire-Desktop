@@ -76,6 +76,12 @@ export interface FrontDeskSetupHeroProps {
   isDirty?: boolean;
   /** Optional — controls the small foreground orb's animated state */
   sarahActive?: boolean;
+  /**
+   * Pass 19 — when set, the Save button is disabled and the string is
+   * surfaced as the accessibility hint (e.g. for §3.2 invalid Catch×Public-
+   * Number combos).
+   */
+  saveDisabledReason?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,9 +132,13 @@ function FrontDeskSetupHeroInner({
   isSaving = false,
   isTesting = false,
   isDirty = false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   sarahActive = true,
+  saveDisabledReason,
 }: FrontDeskSetupHeroProps) {
+  // sarahActive is part of the public prop surface (drives a future orb pulse);
+  // void to silence the unused-warning while keeping the contract stable.
+  void sarahActive;
+
   injectHeroCss();
 
   return (
@@ -229,10 +239,14 @@ function FrontDeskSetupHeroInner({
               label="Save Changes"
               onPress={onSave}
               loading={isSaving}
-              disabled={isSaving || !isDirty}
+              disabled={isSaving || !isDirty || !!saveDisabledReason}
               accessibilityLabel="Save changes"
               accessibilityHint={
-                isDirty ? 'Persist your Front Desk configuration' : 'No unsaved changes'
+                saveDisabledReason
+                  ? saveDisabledReason
+                  : isDirty
+                    ? 'Persist your Front Desk configuration'
+                    : 'No unsaved changes'
               }
             />
           </View>

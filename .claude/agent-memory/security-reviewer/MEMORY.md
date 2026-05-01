@@ -67,6 +67,29 @@
 - HMAC webhook uses `sortKeys()` canonical JSON — correct and matches n8n receiver
 - Conference invite: acceptVideoCall/declineVideoCall use bare fetch() (no Bearer header) — pattern to watch
 
+## Cycle 9 Findings (Round 5 Adam Path Full Audit) — 2026-04-29
+
+### CRITICAL Auth/Isolation Gaps
+- CRITICAL: `POST /api/card-data/refetch` (agentToolRoutes.ts:1419) — NO auth. Any unauthenticated caller supplies `suite_id` in body and triggers a full Adam playbook run against the orchestrator for that suite. This causes arbitrary agent invocations billed to and attributed to any tenant. Law #6 + Law #7 violation.
+- HIGH: `GET /api/card-data/:id` (agentToolRoutes.ts:1607) — NO auth. Any caller who knows a correlation-id (cacheId) can retrieve full property records (PII-rich ATTOM data including owner_name, mortgage, sale history) for any suite. `suite_id` is read from query param and compared to cache — this is client-supplied. Law #6 violation.
+- HIGH: `/v1/tools/search` contacts branch (agentToolRoutes.ts:503-514) — uses `supabase.from('suite_profiles').select(...).limit(10)` with NO `.eq('suite_id', suite_id)` filter. Returns up to 10 profiles from any tenants. Cross-tenant PII leak. Law #6 violation.
+
+### Capability Token / Secret Issues
+- MEDIUM: `TOKEN_SIGNING_SECRET` in routes.ts:7818 falls back to `ASPIRE_TOKEN_SIGNING_KEY`. This dual-var lookup is fine but the comment says it's used to mint tokens identical to the Python backend. If this env var is absent but the Python backend has its own configured, cross-service validation will fail silently — tokens minted by desktop will be rejected by orchestrator. No fail-closed guard on this mismatch.
+- INFO: Token revocation set is in-memory in token_service.py — clears on restart. Multi-replica deployments get no cross-instance revocation. Known Phase 1 limitation (noted in code).
+
+### Google API Key in photo_url (confirmed open)
+- HIGH: `hd_store_resolver.py:185-190` and `places_nearest_finder.py:273-279` — Google Maps API key appended as `&key={api_key}` in photo_url returned to client in store_summary card. Client receives and displays URL containing the API key. Any user who inspects the image URL extracts the key.
+
+### user_address PII in logs
+- MEDIUM: `trades.py:387-388` — `logger.info(...)` logs `user_address` truncated at 60 chars. Physical address is PII (Law #9). Logged at INFO level — flows to Railway structured logs.
+
+### Cross-Tenant chosenStoreIdBySuite Poisoning
+- LOW: Attack requires same process-memory state (not cross-user) — Map is keyed by suiteId so poisoning requires controlling the suiteId, which is normalized via JWT. Low practical risk.
+
+### _GOOGLE_FORMATTED_ADDRESS_CITY_STATE_RE ReDoS
+- INFO: Regex `r",\s*([A-Za-z][A-Za-z\s\-\.']+?),\s*([A-Z]{2})\s+\d{5}"` has lazy `+?` in capture group but processes untrusted Google API response data, not user input directly. Google response is bounded. ReDoS risk is very low.
+
 ## Cycle 8 Findings (Ava Presents — Voice Card System) — 2026-04-06
 
 ### Critical Data Flow Issues
@@ -280,6 +303,29 @@
 
 ### `bypassPermissions` Status
 - NOT FOUND in any Cycle 8 files reviewed.
+
+## Cycle 10 Findings (Round 3 — ProductCard/Modal auth refactor + agentToolRoutes store cache + hd_store_resolver + trades.py) — 2026-04-29
+
+### PASS items (no findings)
+- ProductDetailModal.tsx: authToken never logged. Error message includes HTTP status + first 120 chars of response text — acceptable (no token in error body). Fail-closed path (null token → skip fetch, render "Sign in" state) — verified correct.
+- ProductCard.tsx: token read from useSupabase() context at render time via `session?.access_token ?? null`. Not stored in module-level state or window. Not logged. Correct.
+- chosenStoreIdBySuite cache: keyed by `safeSuiteId` which is UUID-validated (normalizeUuid → UUID_RE) from JWT-verified context — NOT user-controllable from client. storeId written back to orchestrator via `invokePayload.store_id` as a string field — no injection vector (it's a string value in a JSON body, not interpolated into SQL or shell).
+- Cache TTL: 5min via CACHE_TTL_MS = 5 * 60 * 1000, enforced on both read (line 973) and eviction (cleanCardCache, line 71-75). Bounded correctly.
+- hd_store_directory._BY_CITY: keyed as `(city.lower().strip(), state.upper().strip())` — ASCII normalization only. No Unicode normalization (NFC/NFD). Non-ASCII city names (e.g., Ñ, é) will lowercase correctly via Python str.lower() for Basic Multilingual Plane characters (Python's str.lower() handles Unicode) but .upper() on mixed-script state codes is only meaningful for ASCII. Risk: a non-ASCII state abbreviation would be normalized inconsistently but US state codes are always ASCII. Practical risk: NONE.
+
+### FLAG: MEDIUM — Google Places API key embedded in image_url returned to client
+- File: `hd_store_resolver.py:185-190`
+- `image_url = f"...places.googleapis.com/v1/{name}/media?maxHeightPx=400&maxWidthPx=600&key={api_key}"`
+- This URL is returned via resolve_store_async → hd_store_info → store_summary → final_records → card payload → desktop client
+- The `GOOGLE_MAPS_API_KEY` appears in cleartext in the client-visible card record
+- Google's own documentation does allow embedding keys in direct browser fetch URLs (for Places Photos API), but this exposes the key to ANY client who can see the card response, browser devtools, or logs
+- Mitigation path: proxy the image through a server endpoint (e.g., `/api/tools/hd-photo?ref=<photo_name>`) that performs the Places API call server-side and streams the response
+- The key is NOT logged — confirmed: logger.warning at line 169 logs `exc` (exception string, not the request URL with key), and logger.debug at line 151 logs only a disabled-message
+
+### PASS: SerpApi URL encoding
+- `base_client.py:302-305`: URL is built as `f"{k}={v}"` without urllib.parse.quote(). For SerpApi: query `q` and `store_id` values (strings/numbers from user input) are injected into the query string without percent-encoding. A `q` value with `&`, `=`, or `+` characters will break the query string parameter parsing at SerpApi's endpoint. This is a correctness bug (garbled search), NOT a security injection vector — SerpApi does not execute the query value as code.
+- `city` and `state` from body: routed through `shopping_payload["location"] = location_hint` where `location_hint = f"{city}, {state}"`. This goes into SerpApi's HTTP GET query params without encoding. Same analysis: correctness bug, not security.
+- `_fuzzy_pick_store_from_query`: uses `re.findall(r"[A-Za-z]{3,}", text.lower())`. User-controlled `query` string passed as `text`. Pattern is a fixed character class — no user-supplied regex expansion. ReDoS is NOT possible here. PASS.
 
 ## Cycle 9 Findings (ElevenLabs V1 Hybrid Architecture) — 2026-03-27
 

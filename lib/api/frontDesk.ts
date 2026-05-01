@@ -62,7 +62,15 @@ async function expectJson<T>(resp: Response, fallbackCode: string): Promise<T> {
 // Front Desk config types — mirror routes/front_desk.py response shape.
 // ---------------------------------------------------------------------------
 
-export type PublicNumberMode = 'ASPIRE_NUMBER' | 'KEEP_CURRENT_NUMBER';
+/**
+ * Pass 19 §3.1 — 3-mode honest model. Migration 105 (Lane B) remaps legacy
+ * `ASPIRE_NUMBER`→`ASPIRE_NEW_NUMBER` and `KEEP_CURRENT_NUMBER`→`FORWARD_EXISTING`
+ * server-side; the wire format the gateway returns matches this enum.
+ */
+export type PublicNumberMode =
+  | 'ASPIRE_NEW_NUMBER'
+  | 'FORWARD_EXISTING'
+  | 'PORT_IN';
 export type CatchMode = 'APP_ONLY' | 'PHONE_ONLY' | 'APP_AND_PHONE_SIMUL_RING';
 export type AfterHoursMode = 'take_message' | 'ask_callback_window' | 'try_transfer_then_message';
 export type BusyMode = 'take_message' | 'ask_callback_window' | 'try_transfer_then_message';
@@ -203,13 +211,25 @@ export async function patchFrontDeskConfig(
 }
 
 /**
- * Green tier — search Twilio available US local numbers.
+ * Pass 19 §3.3 — `LOCAL` (default) hits Twilio AvailablePhoneNumbers/Local;
+ * `TOLL_FREE` hits AvailablePhoneNumbers/TollFree (non-geographic, area-code
+ * ignored backend-side).
+ */
+export type NumberTypeWire = 'LOCAL' | 'TOLL_FREE';
+
+/**
+ * Green tier — search Twilio available US numbers (local or toll-free).
+ *
+ * @param numberType `'LOCAL'` (default) or `'TOLL_FREE'`. When toll-free, the
+ *                   `areaCode` argument is ignored backend-side (toll-free
+ *                   numbers are non-geographic).
  */
 export async function searchAvailableNumbers(
   opts: FetchOpts,
   areaCode: string,
   contains?: string,
   limit: number = 20,
+  numberType: NumberTypeWire = 'LOCAL',
 ): Promise<AvailableNumber[]> {
   const url = `${API_BASE}${PROXY_PREFIX}/twilio/available-numbers`;
   const resp = await opts.authenticatedFetch(url, {
@@ -218,11 +238,59 @@ export async function searchAvailableNumbers(
       'Content-Type': 'application/json',
       'X-Office-Id': opts.officeId,
     },
-    body: JSON.stringify({ area_code: areaCode, contains, limit }),
+    body: JSON.stringify({
+      area_code: areaCode,
+      contains,
+      limit,
+      number_type: numberType,
+    }),
     signal: opts.signal,
   });
   const json = await expectJson<AvailableNumbersResponse>(resp, 'TWILIO_SEARCH_FAILED');
   return json.numbers ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Forwarding instructions (§3.1 + ForwardingInstructionsCard) — Green tier.
+// Lane B (`/v1/front-desk/forwarding-instructions`) returns carrier-specific
+// conditional-forwarding codes pre-formatted with the Aspire forward-target.
+// ---------------------------------------------------------------------------
+
+export interface ForwardingCodeSetWire {
+  always: string;
+  busy: string;
+  no_answer: string;
+  unreachable: string;
+}
+
+export interface ForwardingInstructionsWire {
+  success: boolean;
+  carrier_name: string;
+  codes: ForwardingCodeSetWire;
+  aspire_forward_target: string;
+  help_url?: string;
+}
+
+/**
+ * Green tier — resolve the owner's existing-carrier number via Twilio Lookup
+ * v2 and return the carrier-specific conditional-forwarding codes (e.g.
+ * AT&T `**21*` / `**61*`, Verizon `*72` / `*71`), plus the Aspire
+ * forward-target the codes route to.
+ */
+export async function fetchForwardingInstructions(
+  opts: FetchOpts,
+  phoneNumber: string,
+): Promise<ForwardingInstructionsWire> {
+  const url = `${API_BASE}${PROXY_PREFIX}/front-desk/forwarding-instructions?phone=${encodeURIComponent(phoneNumber)}&office_id=${encodeURIComponent(opts.officeId)}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  return expectJson<ForwardingInstructionsWire>(
+    resp,
+    'FORWARDING_INSTRUCTIONS_FAILED',
+  );
 }
 
 /**

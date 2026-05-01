@@ -65,6 +65,12 @@ export interface FrontDeskSetupTabsProps {
   onChange: (tab: FrontDeskTabId) => void;
   /** Set of tab ids that have unsaved changes — render a small blue dot. */
   dirtyTabs?: ReadonlySet<FrontDeskTabId>;
+  /**
+   * Pass 19 — set of tab ids whose internal validation failed (e.g. §3.2
+   * Catch×Public-Number invalid combo). Renders a red dot in addition to
+   * the dirty marker, and the page uses this set to gate the Save button.
+   */
+  invalidTabs?: ReadonlySet<FrontDeskTabId>;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +116,7 @@ export function FrontDeskSetupTabs({
   activeTab,
   onChange,
   dirtyTabs,
+  invalidTabs,
 }: FrontDeskSetupTabsProps) {
   injectTabsCss();
 
@@ -173,6 +180,12 @@ export function FrontDeskSetupTabs({
           {FRONT_DESK_TABS.map((tab) => {
             const isActive = tab.id === activeTab;
             const isDirty = !!dirtyTabs?.has(tab.id);
+            const isInvalid = !!invalidTabs?.has(tab.id);
+            const a11ySuffix = isInvalid
+              ? ', invalid configuration'
+              : isDirty
+                ? ', unsaved changes'
+                : '';
             return (
               <Pressable
                 key={tab.id}
@@ -181,7 +194,7 @@ export function FrontDeskSetupTabs({
                 }}
                 onPress={() => onChange(tab.id)}
                 accessibilityRole="tab"
-                accessibilityLabel={`${tab.label}${isDirty ? ', unsaved changes' : ''}`}
+                accessibilityLabel={`${tab.label}${a11ySuffix}`}
                 accessibilityState={{ selected: isActive }}
                 style={[styles.tabBtn, isActive && styles.tabBtnActive]}
                 {...(Platform.OS === 'web' ? ({ className: 'fds-tab-btn' } as any) : {})}
@@ -213,7 +226,13 @@ export function FrontDeskSetupTabs({
                   >
                     {tab.label}
                   </Text>
-                  {isDirty ? (
+                  {isInvalid ? (
+                    <View
+                      style={styles.invalidDot}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    />
+                  ) : isDirty ? (
                     <View
                       style={styles.dirtyDot}
                       accessibilityElementsHidden
@@ -359,6 +378,20 @@ const styles = StyleSheet.create({
       ? ({ boxShadow: '0 0 6px rgba(59,130,246,0.7)' } as object)
       : {
           shadowColor: Colors.accent.cyan,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.6,
+          shadowRadius: 3,
+        }),
+  } as any,
+  invalidDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.semantic.error,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 0 6px rgba(239,68,68,0.7)' } as object)
+      : {
+          shadowColor: Colors.semantic.error,
           shadowOffset: { width: 0, height: 0 },
           shadowOpacity: 0.6,
           shadowRadius: 3,
