@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { Redirect } from 'expo-router';
+import { Redirect, Stack } from 'expo-router';
 
 import { useSupabase } from '@/providers/SupabaseProvider';
 import CallRoomDemo from '@/components/call-room/CallRoom.demo';
@@ -36,7 +36,13 @@ export default function CallRoomDevRoute(): React.ReactElement {
     return <Redirect href="/" />;
   }
 
-  return <CallRoomDemo />;
+  return (
+    <>
+      {/* Hide the route header — Call Room is pure immersive (office + floating card only) */}
+      <Stack.Screen options={{ headerShown: false, title: '' }} />
+      <CallRoomDemo />
+    </>
+  );
 }
 
 const styles = StyleSheet.create({
