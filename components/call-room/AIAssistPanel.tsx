@@ -18,10 +18,6 @@ export function AIAssistPanel(): React.ReactElement {
       <Text style={[styles.smallLabel, { marginTop: 18 }]}>Next actions</Text>
       <ActionRow icon="📅" label="Schedule Inspection" />
       <ActionRow icon="💬" label="Draft SMS" />
-
-      <Pressable style={styles.moreActions} accessibilityRole="button" accessibilityLabel="More actions">
-        <Text style={styles.moreActionsText}>More actions ⌄</Text>
-      </Pressable>
     </View>
   );
 }
@@ -37,7 +33,16 @@ function ActionRow({ icon, label }: { icon: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  panel: { padding: 18 },
+  panel: {
+    padding: 18,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    // Stretch vertically so left + right panels equalize in height.
+    alignSelf: 'stretch',
+    width: '100%',
+  },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 6 },
   icon: { fontSize: 14, color: 'rgba(120,170,220,0.85)' },
   sectionLabel: {

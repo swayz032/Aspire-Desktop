@@ -137,18 +137,23 @@ const styles = StyleSheet.create({
   body: {
     flexDirection: 'row',
     gap: 16,
-    flex: 1,
-    minHeight: 320,
+    // Body hugs its content (the panels) so the controls bar sits close.
+    // alignItems defaults to 'stretch' which makes left/right panels match each other in height.
+    alignItems: 'stretch',
   },
+  // Columns are layout slots only — no tinted background.
+  // The panel components inside each column carry their own background
+  // and use alignSelf: 'flex-start' so they hug content (don't stretch
+  // down to touch the controls bar).
   column: { flex: 1, borderRadius: 12 },
-  leftColumn: { backgroundColor: 'rgba(255,255,255,0.03)' },
+  leftColumn: { backgroundColor: 'transparent' },
   centerColumn: {
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
-  rightColumn: { backgroundColor: 'rgba(255,255,255,0.03)' },
+  rightColumn: { backgroundColor: 'transparent' },
 });
 
 const cardStyles = StyleSheet.create({
