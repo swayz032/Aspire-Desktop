@@ -137,9 +137,9 @@ const styles = StyleSheet.create({
   body: {
     flexDirection: 'row',
     gap: 16,
-    // Body hugs its content (the panels) so the controls bar sits close.
-    // alignItems defaults to 'stretch' which makes left/right panels match each other in height.
-    alignItems: 'stretch',
+    // Hug content. Panels carry their own minHeight so they match each other
+    // visually without forcing the body to stretch toward the controls bar.
+    alignItems: 'flex-start',
   },
   // Columns are layout slots only — no tinted background.
   // The panel components inside each column carry their own background

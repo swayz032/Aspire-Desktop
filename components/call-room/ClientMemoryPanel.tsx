@@ -72,9 +72,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     width: '100%',
-    // Fill the column's vertical space so left + right panels match each other in height.
-    // (Body has alignItems:'stretch' which equalizes the columns; flex:1 here equalizes the panels.)
-    flex: 1,
+    // Both side panels share the same minHeight so their tints match.
+    // Auto-grows if content needs more, but never extends down to the controls bar.
+    minHeight: 280,
   },
   sectionLabel: {
     color: 'rgba(255,255,255,0.5)',

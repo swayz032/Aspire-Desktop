@@ -40,8 +40,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     width: '100%',
-    // Fill column's vertical space so left + right panels match in height.
-    flex: 1,
+    // Both side panels share the same minHeight so their tints match.
+    minHeight: 280,
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 6 },
   icon: { fontSize: 14, color: 'rgba(120,170,220,0.85)' },
