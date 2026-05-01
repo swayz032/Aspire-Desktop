@@ -1,6 +1,7 @@
 // components/call-room/CallRoom.tsx
 import React from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { CallRoomBackground } from './CallRoomBackground';
 import type { CallState } from './types';
 
 export interface CallRoomProps {
@@ -11,6 +12,15 @@ export interface CallRoomProps {
 export function CallRoom({ visible, callState }: CallRoomProps): React.ReactElement | null {
   if (!visible) return null;
   return (
-    <View testID="call-room-root" style={{ flex: 1, backgroundColor: '#0a0a0a' }} />
+    <View testID="call-room-root" style={styles.root}>
+      <CallRoomBackground />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0a0a0a',
+  },
+});
