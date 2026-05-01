@@ -71,11 +71,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
-    // Stretch vertically so left + right panels equalize in height.
-    // Body's alignItems: 'stretch' (default) makes the taller of the two
-    // pull the shorter one up to match.
-    alignSelf: 'stretch',
     width: '100%',
+    // Fill the column's vertical space so left + right panels match each other in height.
+    // (Body has alignItems:'stretch' which equalizes the columns; flex:1 here equalizes the panels.)
+    flex: 1,
   },
   sectionLabel: {
     color: 'rgba(255,255,255,0.5)',

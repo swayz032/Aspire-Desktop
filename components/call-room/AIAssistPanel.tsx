@@ -39,9 +39,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
-    // Stretch vertically so left + right panels equalize in height.
-    alignSelf: 'stretch',
     width: '100%',
+    // Fill column's vertical space so left + right panels match in height.
+    flex: 1,
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 6 },
   icon: { fontSize: 14, color: 'rgba(120,170,220,0.85)' },
