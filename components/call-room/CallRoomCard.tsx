@@ -2,6 +2,8 @@
 import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import type { CallState } from './types';
+import { ClientMemoryPanel } from './ClientMemoryPanel';
+import { AIAssistPanel } from './AIAssistPanel';
 
 export interface CallRoomCardProps {
   callState: CallState;
@@ -51,11 +53,25 @@ export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactEleme
         </Text>
       </View>
 
-      {/* Body — 3 empty columns (T10 fills these) */}
+      {/* Body — 3 columns: Client Memory · Center Stage · AI Assist */}
       <View style={styles.body}>
-        <View style={[styles.column, styles.leftColumn]} testID="call-room-client-memory" />
-        <View style={[styles.column, styles.centerColumn]} testID="call-room-center" />
-        <View style={[styles.column, styles.rightColumn]} testID="call-room-ai-assist" />
+        <View style={[styles.column, styles.leftColumn]} testID="call-room-client-memory">
+          <ClientMemoryPanel client={callState.client} />
+        </View>
+
+        <View style={[styles.column, styles.centerColumn]} testID="call-room-center">
+          {/* Avatar slot — T29 wires the real avatar with rings. Placeholder for now. */}
+          <View style={cardStyles.avatarSlot} testID="avatar-slot" />
+          <Text style={cardStyles.timer}>{formatDuration(callState.startedAt)}</Text>
+          <Text style={cardStyles.callerName}>
+            {callState.client.name ?? 'Unknown caller'}
+          </Text>
+          <Text style={cardStyles.callerPhone}>{formatPhoneE164(callState.client.phoneE164)}</Text>
+        </View>
+
+        <View style={[styles.column, styles.rightColumn]} testID="call-room-ai-assist">
+          <AIAssistPanel />
+        </View>
       </View>
 
       {/* Controls placeholder (T11) */}
@@ -65,6 +81,20 @@ export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactEleme
       <View style={styles.summaryPlaceholder} testID="call-room-summary-slot" />
     </View>
   );
+}
+
+function formatDuration(startedAt: number | null): string {
+  if (!startedAt) return '00:00';
+  const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  const m = String(Math.floor(sec / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function formatPhoneE164(e164: string): string {
+  const m = e164.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  if (!m) return e164;
+  return `(${m[1]}) ${m[2]}-${m[3]}`;
 }
 
 const styles = StyleSheet.create({
@@ -110,7 +140,12 @@ const styles = StyleSheet.create({
   },
   column: { flex: 1, borderRadius: 12 },
   leftColumn: { backgroundColor: 'rgba(255,255,255,0.03)' },
-  centerColumn: { backgroundColor: 'transparent' },
+  centerColumn: {
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
   rightColumn: { backgroundColor: 'rgba(255,255,255,0.03)' },
   controlsPlaceholder: {
     height: 64,
@@ -123,5 +158,39 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+});
+
+const cardStyles = StyleSheet.create({
+  avatarSlot: {
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(120, 170, 220, 0.4)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    marginTop: 10,
+    marginBottom: 22,
+  },
+  timer: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+  },
+  callerName: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  callerPhone: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+    marginTop: 2,
   },
 });
