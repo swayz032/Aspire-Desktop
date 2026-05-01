@@ -4,6 +4,8 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 import type { CallState } from './types';
 import { ClientMemoryPanel } from './ClientMemoryPanel';
 import { AIAssistPanel } from './AIAssistPanel';
+import { CallRoomControls } from './CallRoomControls';
+import { CallRoomSummaryStrip } from './CallRoomSummaryStrip';
 
 export interface CallRoomCardProps {
   callState: CallState;
@@ -74,11 +76,11 @@ export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactEleme
         </View>
       </View>
 
-      {/* Controls placeholder (T11) */}
-      <View style={styles.controlsPlaceholder} testID="call-room-controls-slot" />
+      {/* Controls bar (T11) */}
+      <CallRoomControls state={callState} />
 
-      {/* Summary placeholder (T11) */}
-      <View style={styles.summaryPlaceholder} testID="call-room-summary-slot" />
+      {/* Summary strip (T11) */}
+      <CallRoomSummaryStrip client={callState.client} />
     </View>
   );
 }
@@ -147,18 +149,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   rightColumn: { backgroundColor: 'rgba(255,255,255,0.03)' },
-  controlsPlaceholder: {
-    height: 64,
-    marginTop: 16,
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  summaryPlaceholder: {
-    height: 72,
-    marginTop: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
 });
 
 const cardStyles = StyleSheet.create({
