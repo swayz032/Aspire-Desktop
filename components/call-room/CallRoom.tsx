@@ -8,13 +8,22 @@ import type { CallState } from './types';
 export interface CallRoomProps {
   visible: boolean;
   callState: CallState;
+  /**
+   * Global parallax multiplier forwarded to CallRoomBackground.
+   * Defaults to 1. Dev controls (CallRoom.demo) drive this with [0..2].
+   */
+  parallaxIntensity?: number;
 }
 
-export function CallRoom({ visible, callState }: CallRoomProps): React.ReactElement | null {
+export function CallRoom({
+  visible,
+  callState,
+  parallaxIntensity = 1,
+}: CallRoomProps): React.ReactElement | null {
   if (!visible) return null;
   return (
     <View testID="call-room-root" style={styles.root}>
-      <CallRoomBackground />
+      <CallRoomBackground intensity={parallaxIntensity} />
       <View style={styles.cardWrap} pointerEvents="box-none">
         <CallRoomCard callState={callState} />
       </View>
