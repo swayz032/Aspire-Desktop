@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "postinstall": "node scripts/patch-import-meta.mjs",
     "start": "tsx server/index.ts",
     "serve": "tsx server/index.ts",
     "dev": "expo start",
