@@ -7,6 +7,7 @@ import { AIAssistPanel } from './AIAssistPanel';
 import { CallRoomControls } from './CallRoomControls';
 import { CallRoomSummaryStrip } from './CallRoomSummaryStrip';
 import { useRoomLight, type RoomLight } from './hooks/useRoomLight';
+import { useCardTilt } from './hooks/useCardTilt';
 
 export interface CallRoomCardProps {
   callState: CallState;
@@ -53,15 +54,21 @@ function buildDynamicBoxShadow(light: RoomLight): string {
 
 export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactElement {
   const light = useRoomLight();
+  const tilt = useCardTilt(2);
   const isWeb = Platform.OS === 'web';
 
-  // Web-only dynamic styles. Native path (below) ignores `light` for perf —
-  // updating elevation/shadowOffset every frame would tank performance.
+  // Web-only dynamic styles. Native path (below) ignores `light`/`tilt` for perf —
+  // updating elevation/shadowOffset/transform every frame would tank performance,
+  // and rotateX/Y on Android causes jank until we A/B test on devices.
   const dynamicCardStyle =
     isWeb
       ? ({
           boxShadow: buildDynamicBoxShadow(light),
-          transition: 'box-shadow 200ms ease-out',
+          transform: `perspective(1400px) rotateX(${tilt.rotateX.toFixed(
+            2,
+          )}deg) rotateY(${tilt.rotateY.toFixed(2)}deg)`,
+          transformStyle: 'preserve-3d',
+          transition: 'box-shadow 200ms ease-out, transform 220ms ease-out',
         } as object)
       : undefined;
 
