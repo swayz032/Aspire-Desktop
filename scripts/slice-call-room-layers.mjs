@@ -111,75 +111,33 @@ async function main() {
   }
 
   // ------------------------------------------------------------------
-  // Step 2: For each band, build edge-filled RGBA WebP.
-  //   a) premultiplied = color * alpha  (push transparent to black,
-  //      opaque to original color)
-  //   b) blur premultiplied  → spreads color into transparent regions
-  //   c) blur alpha  → gives normalization factor
-  //   d) extended_color = blurred_premultiplied / blurred_alpha
-  //   e) output = (extended_color, original_alpha)
+  // Step 2: For each band, build RGBA WebP.
+  //
+  // Partition of unity guarantees that summing all 4 layers reconstructs
+  // the original image exactly. So each layer just needs:
+  //   - RGB = original color (always — never blurred)
+  //   - alpha = the partition weight for this band
+  //
+  // No dilation, no blending. The math handles seamlessness on its own.
+  // When fg-near translates by 20px, the underneath layers (bg-far, etc)
+  // still have their full alpha contribution at the revealed pixels;
+  // because alphas summed to 1.0 originally, the revealed region still
+  // shows ~95%+ of the original color (the missing 5% is fg-near's
+  // partition weight at that pixel, which is small by definition since
+  // fg-near concentrates on near-foreground depths).
   // ------------------------------------------------------------------
   for (let b = 0; b < BANDS.length; b++) {
     const band = BANDS[b];
     console.log(`\n[${b + 1}/${BANDS.length}] ${band.name}.webp…`);
     const a = alphas[b];
 
-    // Build premultiplied RGBA: RGB scaled by alpha, alpha as-is.
-    const premult = Buffer.alloc(N * 4);
-    for (let p = 0; p < N; p++) {
-      const av = a[p];
-      // (color * alpha + 127) / 255  — proper rounding
-      premult[p * 4 + 0] = (colorRaw[p * 3 + 0] * av + 127) / 255 | 0;
-      premult[p * 4 + 1] = (colorRaw[p * 3 + 1] * av + 127) / 255 | 0;
-      premult[p * 4 + 2] = (colorRaw[p * 3 + 2] * av + 127) / 255 | 0;
-      premult[p * 4 + 3] = av;
-    }
-
-    console.log(`  blurring premultiplied (radius ${DILATE_BLUR})…`);
-    const blurred = await sharp(premult, { raw: { width: W, height: H, channels: 4 } })
-      .blur(DILATE_BLUR)
-      .raw()
-      .toBuffer();
-
-    // Unpremultiply: extendedRGB = blurredRGB / blurredAlpha (per-pixel)
-    // Then composite: where original alpha is high, use original color;
-    // where it's low, use extended (so dilation fills gaps without
-    // contaminating the in-band content).
-    console.log(`  unpremultiplying + compositing…`);
     const out = Buffer.alloc(N * 4);
-    let extendedFillCount = 0;
     for (let p = 0; p < N; p++) {
-      const origA = a[p];
-      const bA = blurred[p * 4 + 3];
-
-      if (origA >= 240) {
-        // Fully (or near-fully) in-band → use original color, sharp
-        out[p * 4 + 0] = colorRaw[p * 3 + 0];
-        out[p * 4 + 1] = colorRaw[p * 3 + 1];
-        out[p * 4 + 2] = colorRaw[p * 3 + 2];
-        out[p * 4 + 3] = origA;
-      } else if (bA >= 4) {
-        // Blend: in-band content + dilated fill from neighbors.
-        // For mid-alpha pixels, weighted blend prevents seams.
-        const k = 255 / bA;
-        const eR = Math.min(255, (blurred[p * 4 + 0] * k) | 0);
-        const eG = Math.min(255, (blurred[p * 4 + 1] * k) | 0);
-        const eB = Math.min(255, (blurred[p * 4 + 2] * k) | 0);
-
-        // Blend between in-band original and dilated extended based on
-        // how strongly the pixel "belongs" to this band.
-        const t = origA / 255; // 0 = full extended, 1 = full original
-        out[p * 4 + 0] = (colorRaw[p * 3 + 0] * t + eR * (1 - t)) | 0;
-        out[p * 4 + 1] = (colorRaw[p * 3 + 1] * t + eG * (1 - t)) | 0;
-        out[p * 4 + 2] = (colorRaw[p * 3 + 2] * t + eB * (1 - t)) | 0;
-        out[p * 4 + 3] = origA;
-        if (origA < 64) extendedFillCount++;
-      } else {
-        // Too far from any in-band pixel — leave fully transparent.
-        out[p * 4 + 3] = 0;
-      }
+      out[p * 4 + 0] = colorRaw[p * 3 + 0];
+      out[p * 4 + 1] = colorRaw[p * 3 + 1];
+      out[p * 4 + 2] = colorRaw[p * 3 + 2];
+      out[p * 4 + 3] = a[p];
     }
-    console.log(`  edge-fill applied to ${extendedFillCount.toLocaleString()} pixels`);
 
     await sharp(out, { raw: { width: W, height: H, channels: 4 } })
       .webp({ quality: 82, alphaQuality: 92, effort: 6 })
