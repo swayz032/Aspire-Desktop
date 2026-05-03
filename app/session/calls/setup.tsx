@@ -38,6 +38,7 @@ import {
   type FrontDeskConfigRow,
   type FrontDeskConfigPatchPartial,
   type RoutingContactRow,
+  type AspireNumberInfo,
   type AfterHoursMode as ApiAfterHoursMode,
   type BusyMode as ApiBusyMode,
 } from '@/lib/api/frontDesk';
@@ -369,6 +370,7 @@ function FrontDeskSetupContent() {
   const [isTesting, setIsTesting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [hydrationError, setHydrationError] = useState<string | null>(null);
+  const [aspireNumber, setAspireNumber] = useState<AspireNumberInfo | null>(null);
 
   // §3.2 interlock — invalid tabs disable Save.
   const [catchInterlock, setCatchInterlock] = useState<CatchInterlockResult>({
@@ -397,6 +399,7 @@ function FrontDeskSetupContent() {
         );
         setConfig(hydrated);
         setOriginalConfig(hydrated);
+        setAspireNumber(res.aspire_number ?? null);
         setHydrationError(null);
       } catch (err) {
         if (cancelled) return;
@@ -457,6 +460,7 @@ function FrontDeskSetupContent() {
       );
       setConfig(hydrated);
       setOriginalConfig(hydrated);
+      setAspireNumber(res.aspire_number ?? null);
     } catch {
       // Soft-fail — original config + local edits remain.
     }
@@ -677,6 +681,7 @@ function FrontDeskSetupContent() {
               forwarding={config.forwarding}
               publicNumberMode={config.publicNumber.mode}
               publicNumberConfig={config.publicNumber}
+              aspireNumber={aspireNumber}
             />
           </View>
         </View>

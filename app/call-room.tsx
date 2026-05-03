@@ -18,13 +18,14 @@
  * then the back-navigation lets the user exit while the call continues
  * on the Twilio side (matches the prior calls.tsx behavior).
  */
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { useSupabase } from '@/providers/SupabaseProvider';
 import { CallRoom } from '@/components/call-room/CallRoom';
-import type { CallState, ClientContext } from '@/components/call-room/types';
+import type { CallState, ClientContext, VoiceState } from '@/components/call-room/types';
+import { useVoiceCall } from '@/lib/voice/useVoiceCall';
 
 interface CallRoomQuery {
   /** E.164 dialed number, e.g. "+15558675309". Required. */
@@ -35,6 +36,10 @@ interface CallRoomQuery {
   callId?: string;
   /** Service / inquiry hint, if known from the contact record. */
   service?: string;
+  /** Twilio Voice SDK JWT, pre-fetched on the Return Call page. */
+  voiceToken?: string;
+  /** E.164 caller_id Twilio will surface (the office's Aspire number). */
+  callerId?: string;
 }
 
 function buildCallState(query: CallRoomQuery): CallState {
@@ -77,10 +82,56 @@ export default function CallRoomRoute(): React.ReactElement {
       name: pick('name'),
       callId: pick('callId'),
       service: pick('service'),
+      voiceToken: pick('voiceToken'),
+      callerId: pick('callerId'),
     };
   }, [rawParams]);
 
-  const callState = useMemo<CallState>(() => buildCallState(params), [params]);
+  // ----- Live voice call --------------------------------------------------
+  // Navigate back to the Return Call page when the SDK reports an end
+  // (caller hung up, error, or local hangup).
+  const navigateBackOnEnd = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/session/calls');
+    }
+  }, [router]);
+
+  const voice = useVoiceCall({
+    token: params.voiceToken ?? null,
+    destination: params.phone ?? null,
+    onEnd: navigateBackOnEnd,
+  });
+
+  const baseCallState = useMemo<CallState>(() => buildCallState(params), [params]);
+  const callState = useMemo<CallState>(() => {
+    // Mirror SDK status into the existing CallState shape consumed by
+    // CallRoomCard / Controls. Where the SDK reports a more specific
+    // status than 'connected' (idle/dialing/ringing/on_hold/ended/error),
+    // we surface it; otherwise the fixture default 'connected' stands.
+    const sdkStatus = voice.status;
+    const mapped: CallState['status'] =
+      sdkStatus === 'idle'
+        ? 'connected'
+        : sdkStatus === 'error'
+          ? 'ended'
+          : sdkStatus;
+    return {
+      ...baseCallState,
+      status: mapped,
+      isMuted: voice.isMuted,
+      isOnHold: sdkStatus === 'on_hold',
+    };
+  }, [baseCallState, voice.status, voice.isMuted]);
+
+  // Audio-level driven pulse ring. VoiceState is a simple discriminator
+  // ('silence' | 'caller' | 'host'); we threshold the SDK output volume
+  // (0..1, the destination's voice) so the avatar pulses while they speak.
+  const voiceState = useMemo<VoiceState>(() => {
+    if (voice.status !== 'connected') return 'silence';
+    return voice.audioLevel > 0.05 ? 'caller' : 'silence';
+  }, [voice.status, voice.audioLevel]);
 
   if (isLoading) {
     return (
@@ -101,13 +152,12 @@ export default function CallRoomRoute(): React.ReactElement {
   }
 
   const handleEnd = () => {
-    // TODO: POST /api/frontdesk/end-call with params.callId once the
-    // backend endpoint exists. For now back-navigation matches the
-    // existing handleEndCall behavior in app/session/calls.tsx.
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/session/calls');
+    // Cleanly hang up via the SDK if connected; the SDK's 'disconnect'
+    // event fires onEnd which navigates back. Calling navigateBackOnEnd
+    // directly here as a fallback when the SDK never connected.
+    voice.hangup();
+    if (voice.status === 'idle' || voice.status === 'error') {
+      navigateBackOnEnd();
     }
   };
 
@@ -115,7 +165,15 @@ export default function CallRoomRoute(): React.ReactElement {
     <>
       {/* Hide the route header — the Call Room is full-bleed immersive. */}
       <Stack.Screen options={{ headerShown: false, title: '' }} />
-      <CallRoom visible callState={callState} onEnd={handleEnd} />
+      <CallRoom
+        visible
+        callState={callState}
+        voiceState={voiceState}
+        onEnd={handleEnd}
+        onMute={() => voice.mute()}
+        onHold={() => voice.hold()}
+        onSendDigit={(d) => voice.sendDigits(d)}
+      />
     </>
   );
 }

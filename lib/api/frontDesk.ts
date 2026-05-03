@@ -126,6 +126,28 @@ export interface FrontDeskConfigResponse {
   routing_contacts: RoutingContactRow[];
   /** Tenant-level voicemail destination (suite_profiles.voicemail_email). */
   voicemail_email?: string;
+  /**
+   * Office's purchased Aspire phone number, joined from tenant_phone_numbers.
+   * `null` when no number has been bought yet — the FE should render an
+   * "Aspire number not set up" CTA in that case.
+   */
+  aspire_number?: AspireNumberInfo | null;
+}
+
+/**
+ * Office-level phone number record. Used by the AspireNumberPill component
+ * on the Return Call page header, the Front Desk Setup Sarah Status Rail,
+ * and the Call Room caller-id display.
+ */
+export interface AspireNumberInfo {
+  /** E.164, e.g. "+14155550198". */
+  e164: string;
+  /** Pre-formatted for display, e.g. "+1 (415) 555-0198". */
+  formatted: string;
+  /** Twilio capability flags. */
+  capabilities: { voice?: boolean; sms?: boolean; mms?: boolean };
+  status: 'active' | 'released' | 'suspended';
+  purchased_at?: string;
 }
 
 /**

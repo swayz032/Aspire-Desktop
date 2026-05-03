@@ -1,11 +1,71 @@
 // components/call-room/ClientMemoryPanel.tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { ClientContext } from './types';
 import { CallRoomClock } from './CallRoomClock';
+import { useAuthFetch } from '@/lib/authenticatedFetch';
+
+interface CallerIdLookupResult {
+  display_name?: string;
+  role?: string;
+  contact_type?: 'routing' | 'sms' | 'call_history' | 'unknown' | string;
+  last_interaction_at?: string | null;
+  formatted_number?: string;
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  routing: 'Routing contact',
+  sms: 'Recent SMS',
+  call_history: 'Recent call',
+};
 
 export function ClientMemoryPanel({ client }: { client: ClientContext }): React.ReactElement {
-  if (!client.name && !client.service) {
+  const { authenticatedFetch } = useAuthFetch();
+  const [resolved, setResolved] = useState<CallerIdLookupResult | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Real caller-id lookup. Only fires when we have a proper E.164 phone +
+  // no name pre-set (the caller may already be known via the route params).
+  useEffect(() => {
+    let cancelled = false;
+    const phone = (client.phoneE164 || '').trim();
+    if (!/^\+\d{7,15}$/.test(phone)) {
+      setResolved(null);
+      return;
+    }
+    setLoading(true);
+    (async () => {
+      try {
+        const r = await authenticatedFetch(
+          `/api/calls/caller-id-lookup?phone=${encodeURIComponent(phone)}`,
+        );
+        if (!r.ok) {
+          if (!cancelled) setResolved(null);
+          return;
+        }
+        const data = (await r.json()) as CallerIdLookupResult;
+        if (!cancelled) setResolved(data);
+      } catch {
+        if (!cancelled) setResolved(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedFetch, client.phoneE164]);
+
+  // Merge: route params take precedence (CRM-known caller), otherwise
+  // surface the resolved name. service/urgency/note remain from route
+  // params for now — those come from a contact card on the dialer page.
+  const displayName = client.name || resolved?.display_name || null;
+  const sourceLabel =
+    !client.name && resolved?.contact_type && resolved.contact_type !== 'unknown'
+      ? SOURCE_LABEL[resolved.contact_type] || null
+      : null;
+
+  if (!displayName && !client.service && !loading) {
     return (
       <View style={styles.panel} testID="client-memory-empty">
         <PanelHeader />
@@ -16,8 +76,11 @@ export function ClientMemoryPanel({ client }: { client: ClientContext }): React.
   return (
     <View style={styles.panel} testID="client-memory">
       <PanelHeader />
-      {client.name && <Text style={styles.name}>{client.name}</Text>}
+      {displayName && <Text style={styles.name}>{displayName}</Text>}
       <Text style={styles.phone}>{formatPhone(client.phoneE164)}</Text>
+      {sourceLabel ? (
+        <Text style={styles.sourceLabel}>{sourceLabel}</Text>
+      ) : null}
       <View style={styles.divider} />
       {client.service && <Row label="Service" value={client.service} />}
       {client.urgency && <UrgencyRow level={client.urgency} />}
@@ -104,6 +167,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 2,
     fontVariant: ['tabular-nums'],
+  },
+  sourceLabel: {
+    color: 'rgba(120,170,220,0.85)',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    marginTop: 6,
+    textTransform: 'uppercase',
   },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginVertical: 14 },
   row: {

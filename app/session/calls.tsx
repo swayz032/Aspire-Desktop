@@ -24,6 +24,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
 import type { CallSession } from '@/types/frontdesk';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useTenant } from '@/providers/TenantProvider';
+import { fetchFrontDeskConfig, type AspireNumberInfo } from '@/lib/api/frontDesk';
+import { AspireNumberPill } from '@/components/calls/AspireNumberPill';
+import { fetchVoiceToken, VoiceTokenError } from '@/lib/api/voice';
 
 // ---------------------------------------------------------------------------
 // Hero image
@@ -282,7 +286,35 @@ function CallsScreen() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { authenticatedFetch } = useAuthFetch();
+  const { tenant } = useTenant();
   const { calls: rawCalls, loading: callsLoading, error: callsError, refresh } = useFrontdeskCalls({ pollInterval: 5000 });
+
+  // ----- Aspire phone number (badge in page header) ----------------------
+  // Pulled once on mount + on tenant change; the same data is hydrated
+  // again by the FDS Setup page's React Query, so cache invalidation
+  // there bubbles back here on the next focus.
+  const [aspireNumber, setAspireNumber] = useState<AspireNumberInfo | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const officeId = tenant?.officeId;
+    if (!officeId) {
+      setAspireNumber(null);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await fetchFrontDeskConfig({ authenticatedFetch, officeId });
+        if (!cancelled) {
+          setAspireNumber(res.aspire_number ?? null);
+        }
+      } catch {
+        if (!cancelled) setAspireNumber(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedFetch, tenant?.officeId]);
 
   // Formatted calls list
   const allCalls = rawCalls.slice(0, 25).map(formatCallSession);
@@ -552,16 +584,42 @@ function CallsScreen() {
         return;
       }
 
-      // Twilio + Sarah ElevenLabs leg accepted. Hand the user off to the
-      // immersive Call Room. The body may include a callSessionId we can
-      // pass through for end-call wiring.
+      // Outbox receipt accepted. Now mint the Voice SDK token so the
+      // Call Room can establish in-browser audio. We do this on the
+      // SAME user gesture (the click on Call) so iOS Safari doesn't
+      // strip the AudioContext permission window.
       const body = await res.json().catch(() => ({} as Record<string, unknown>));
       const callId = (body as { callSessionId?: string }).callSessionId;
+
+      let voiceToken: string | undefined;
+      let voiceCallerId: string | undefined;
+      const officeId = tenant?.officeId;
+      if (officeId) {
+        try {
+          const tok = await fetchVoiceToken({ authenticatedFetch, officeId });
+          voiceToken = tok.token;
+          voiceCallerId = tok.caller_id;
+        } catch (tokErr) {
+          // Failure modes: VOICE_NOT_CONFIGURED, NO_ASPIRE_NUMBER, network.
+          // We still navigate to the Call Room — it'll surface a friendly
+          // banner via useVoiceCall.status === 'error', and the receipt
+          // path above keeps the audit trail intact regardless.
+          if (tokErr instanceof VoiceTokenError && tokErr.code === 'NO_ASPIRE_NUMBER') {
+            setCallError(tokErr.message);
+            setIsCalling(false);
+            return;
+          }
+          // Otherwise fall through to non-audio Call Room.
+        }
+      }
+
       router.push({
         pathname: '/call-room',
         params: {
           phone: toE164,
           ...(callId ? { callId } : {}),
+          ...(voiceToken ? { voiceToken } : {}),
+          ...(voiceCallerId ? { callerId: voiceCallerId } : {}),
         },
       } as never);
       // Local "calling" overlay state is no longer the primary UX; reset
@@ -900,6 +958,9 @@ function CallsScreen() {
                       <Text style={desktopStyles.headerSubtitle}>
                         {missedCount} missed{voicemailCount > 0 ? ` \u00B7 ${voicemailCount} voicemail${voicemailCount !== 1 ? 's' : ''}` : ''} \u00B7 Make outbound calls with Ava
                       </Text>
+                      <View style={{ marginTop: 8 }}>
+                        <AspireNumberPill aspireNumber={aspireNumber} />
+                      </View>
                     </View>
                   </View>
                   <TouchableOpacity
@@ -1255,6 +1316,9 @@ function CallsScreen() {
             </View>
           )}
         </TouchableOpacity>
+      </View>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+        <AspireNumberPill aspireNumber={aspireNumber} compact />
       </View>
 
       {/* Tabs */}

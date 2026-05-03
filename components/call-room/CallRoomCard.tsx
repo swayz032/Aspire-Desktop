@@ -9,7 +9,6 @@ import { KeypadPanel } from './KeypadPanel';
 import { TransferPanel } from './TransferPanel';
 import { ContactsPanel } from './ContactsPanel';
 import { CallRoomControls } from './CallRoomControls';
-import { CallRoomSummaryStrip } from './CallRoomSummaryStrip';
 import { useCardTilt } from './hooks/useCardTilt';
 import type { TimeOfDayState } from './types';
 
@@ -24,13 +23,26 @@ export interface CallRoomCardProps {
   voiceState?: VoiceState;
   /** End Call handler — terminates the call leg and exits the room. */
   onEnd?: () => void;
+  /** Toggle mute on the active SDK call. */
+  onMute?: () => void;
+  /** Toggle hold (v1: mute outgoing audio + status='on_hold'). */
+  onHold?: () => void;
+  /** Send a single DTMF digit on the active SDK call. */
+  onSendDigit?: (digit: string) => void;
 }
 
 const GLASS_BG = 'rgba(15, 18, 24, 0.65)';
 const GLASS_BORDER = 'rgba(120, 170, 220, 0.35)';
 const ASPIRE_GLOW = 'rgba(120, 170, 220, 0.18)';
 
-export function CallRoomCard({ callState, voiceState, onEnd }: CallRoomCardProps): React.ReactElement {
+export function CallRoomCard({
+  callState,
+  voiceState,
+  onEnd,
+  onMute,
+  onHold,
+  onSendDigit,
+}: CallRoomCardProps): React.ReactElement {
   const tilt = useCardTilt(2);
   const isWeb = Platform.OS === 'web';
   const [rightPanel, setRightPanel] = useState<RightPanel>('ai-assist');
@@ -112,6 +124,7 @@ export function CallRoomCard({ callState, voiceState, onEnd }: CallRoomCardProps
               onBack={backToAssist}
               onOpenContacts={() => setRightPanel('contacts')}
               onAddCall={(_digits) => backToAssist()}
+              onDtmf={(d) => onSendDigit?.(d)}
             />
           ) : rightPanel === 'transfer' ? (
             <TransferPanel onBack={backToAssist} onTransferred={backToAssist} />
@@ -121,7 +134,7 @@ export function CallRoomCard({ callState, voiceState, onEnd }: CallRoomCardProps
               onAddCall={(_contactId) => backToAssist()}
             />
           ) : (
-            <AIAssistPanel />
+            <AIAssistPanel client={callState.client} />
           )}
         </View>
       </View>
@@ -131,13 +144,12 @@ export function CallRoomCard({ callState, voiceState, onEnd }: CallRoomCardProps
         state={callState}
         keypadActive={rightPanel === 'keypad'}
         transferActive={rightPanel === 'transfer'}
+        onMute={onMute}
+        onHold={onHold}
         onKeypad={() => toggleRightPanel('keypad')}
         onTransfer={() => toggleRightPanel('transfer')}
         onEnd={onEnd}
       />
-
-      {/* Summary strip (T11) */}
-      <CallRoomSummaryStrip client={callState.client} />
     </View>
   );
 }
