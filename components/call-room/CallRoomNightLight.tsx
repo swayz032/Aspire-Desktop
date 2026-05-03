@@ -65,6 +65,14 @@ export function CallRoomNightLight({
   if (!isWeb) return null;
   if (!mounted) return null;
 
+  // Vertical mask: fully opaque at the top (where the beam enters), fades
+  // to transparent toward the bottom so the cone tip dies smoothly into
+  // the dark room photo instead of cutting off at a hard edge. Mask runs
+  // ~25%-80% of the viewport height; tuning these stops controls how
+  // aggressively the bottom fades out.
+  const maskGradient =
+    'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 28%, rgba(0,0,0,0) 75%)';
+
   return (
     <View
       pointerEvents="none"
@@ -73,8 +81,12 @@ export function CallRoomNightLight({
         StyleSheet.absoluteFillObject,
         {
           opacity: visible ? 1 : 0,
-          // @ts-expect-error - web-only CSS property
+          // @ts-expect-error - web-only CSS properties
           transition: `opacity ${FADE_MS}ms ease-out`,
+          // @ts-expect-error - mask-image (and -webkit-mask-image) are web-only
+          maskImage: maskGradient,
+          // @ts-expect-error - safari prefix
+          WebkitMaskImage: maskGradient,
         },
       ]}
     >
@@ -131,8 +143,7 @@ function SceneContents({ SpotLight, Sparkles }: SceneContentsProps): React.React
   // overhead lamp shining onto the right side of the card from above.
   const targetRef = useRef(null);
 
-  // Warm tungsten lamp color — like a real desk/ceiling lamp. NOT the cool
-  // screen blue the user rejected.
+  // Warm tungsten lamp color — like a real desk/ceiling lamp.
   const lampColor = '#ffd9a0';
 
   return (
@@ -157,29 +168,28 @@ function SceneContents({ SpotLight, Sparkles }: SceneContentsProps): React.React
         position={[4.0, 2.5, 0.5]}
         target={targetRef.current ?? undefined}
         color={lampColor}
-        intensity={4.5}
-        distance={5.5}
-        angle={0.7}
+        intensity={3.5}
+        distance={4.5}
+        angle={0.55}
         penumbra={0.7}
-        attenuation={5}
+        attenuation={8}
         anglePower={4}
         radiusTop={0.1}
-        radiusBottom={2.4}
+        radiusBottom={1.7}
         volumetric
       />
 
-      {/* Dust particles drifting in the lamp's beam — adds the "real
-          atmosphere" feel where motes catch the warm light. Positioned in
-          a volume around the cone path between source (top-right) and
-          card (lower-center-right). Slow drift via speed param. */}
+      {/* Dust particles drifting in the lamp's beam — atmospheric motes
+          catching the warm light. Smaller and dimmer than V1 so they read
+          as ambient haze, not discrete bright points. */}
       <Sparkles
-        count={90}
+        count={70}
         scale={[3.5, 3.0, 1.2]}
         position={[2.6, 1.1, 0.3]}
-        size={3}
-        speed={0.25}
+        size={1.8}
+        speed={0.22}
         color={lampColor}
-        opacity={0.6}
+        opacity={0.45}
         noise={0.6}
       />
 
