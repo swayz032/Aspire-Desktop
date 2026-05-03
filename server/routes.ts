@@ -8555,6 +8555,116 @@ router.post('/api/v1/sms/send', async (req: Request, res: Response) => {
   });
 });
 
+// ─── Caller-ID Lookup (Call Room ClientMemoryPanel) ──────────────────────────
+//
+// GET /api/calls/caller-id-lookup?phone=+1...
+// Forwards to orchestrator GET /v1/calls/caller-id-lookup with a freshly
+// minted Green-tier capability token on the query string (FastAPI GET
+// routes don't read request bodies, so the standard proxyForward pattern
+// doesn't quite fit here).
+
+router.get('/api/calls/caller-id-lookup', async (req: Request, res: Response) => {
+  try {
+    const phone = typeof req.query.phone === 'string' ? req.query.phone : '';
+    if (!phone) {
+      return res.status(400).json({ error: 'PHONE_REQUIRED' });
+    }
+    const orchUrl = resolveOrchestratorUrl();
+    if (!orchUrl) {
+      return res.status(503).json({ error: 'ORCHESTRATOR_UNAVAILABLE' });
+    }
+    const authSuiteId = (req as any).authenticatedSuiteId as string | undefined;
+    const suiteId = authSuiteId || getDefaultSuiteId();
+    const officeId =
+      ((req.headers['x-office-id'] as string | undefined) ?? '').trim() ||
+      getDefaultOfficeId();
+    const tenantId =
+      ((req.headers['x-tenant-id'] as string | undefined) ?? '').trim() || suiteId;
+    const correlationId =
+      (req.headers['x-correlation-id'] as string | undefined) ?? crypto.randomUUID();
+
+    if (!resolveSigningKey()) {
+      return res.status(503).json({ error: 'SIGNING_KEY_UNAVAILABLE' });
+    }
+    const minted = mintCapabilityToken({
+      scope: 'telephony:caller_id_lookup',
+      tenant_id: tenantId,
+      suite_id: suiteId,
+      office_id: officeId,
+      correlation_id: correlationId,
+    });
+    if (!minted) {
+      return res.status(503).json({ error: 'TOKEN_MINT_FAILED' });
+    }
+
+    const qs = new URLSearchParams({
+      phone,
+      capability_token: JSON.stringify(minted.token),
+    }).toString();
+    const upstream = `${orchUrl}/v1/calls/caller-id-lookup?${qs}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const r = await fetch(upstream, {
+        method: 'GET',
+        headers: {
+          'X-Tenant-Id': tenantId,
+          'X-Suite-Id': suiteId,
+          'X-Office-Id': officeId,
+          'X-Correlation-Id': correlationId,
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const text = await r.text();
+      let data: unknown = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: 'UPSTREAM_NON_JSON' };
+        }
+      }
+      res.status(r.status).json(data ?? {});
+    } catch (err) {
+      clearTimeout(timer);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+        correlation_id: correlationId,
+      });
+    }
+  } catch (err) {
+    logger.error('[CallerIdLookup] error', {
+      reason: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+    });
+    res.status(500).json({ error: 'INTERNAL' });
+  }
+});
+
+// ─── Twilio Voice Token (Call Room production wiring) ────────────────────────
+//
+// POST /api/twilio/voice-token mints a short-lived Twilio Voice Access Token
+// for the browser SDK Device. Yellow tier — orchestrator validates the
+// capability token + cuts a `voice_token_minted` receipt before responding.
+//
+// The TwiML webhook (`/v1/twilio/voice/twiml`) is hit DIRECTLY by Twilio at
+// orchestrator.aspire.app — it doesn't go through this gateway, so it has
+// no proxy entry here. It validates X-Twilio-Signature server-side.
+
+router.post('/api/twilio/voice-token', async (req: Request, res: Response) => {
+  await proxyForward({
+    orchestratorPath: '/v1/twilio/voice-token',
+    method: 'POST',
+    body: typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {},
+    scope: 'telephony:voice_call',
+    logTag: 'TwilioVoiceToken',
+    timeoutMs: 8_000,
+    req,
+    res,
+  });
+});
+
 // ─── Sarah Receptionist webhook tools ─────────────────────────────────────────
 //
 // These are called by ElevenLabs at runtime when the agent invokes one of its

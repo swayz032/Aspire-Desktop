@@ -27,6 +27,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, BorderRadius } from '@/constants/tokens';
+import type { AspireNumberInfo } from '@/lib/api/frontDesk';
+import { AspireNumberPill } from '@/components/calls/AspireNumberPill';
 import type {
   SarahStatus,
   SetupSummaryItem,
@@ -57,6 +59,13 @@ export interface SarahStatusRailProps {
    * Pass 17 will wire this to the memory_objects feed.
    */
   lastCallAt?: string;
+  /**
+   * Office's purchased Aspire number (joined from tenant_phone_numbers).
+   * Renders the AspireNumberPill in the rail across all PublicNumberModes
+   * — single source of truth so the FE doesn't have to deduce the number
+   * from publicNumberConfig.selectedNumberId in some modes only.
+   */
+  aspireNumber?: AspireNumberInfo | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,10 +79,17 @@ export function SarahStatusRail({
   publicNumberMode,
   publicNumberConfig,
   lastCallAt,
+  aspireNumber,
 }: SarahStatusRailProps) {
   return (
     <View style={styles.rail}>
       <SarahStatusCard sarah={sarah} lastCallAt={lastCallAt} />
+
+      {/* Aspire number badge — appears in every PublicNumberMode (Pass 19 §2.5).
+          The pill itself renders a "Set up →" CTA when no number is purchased. */}
+      <View style={styles.aspireNumberRow}>
+        <AspireNumberPill aspireNumber={aspireNumber} />
+      </View>
 
       {publicNumberMode === 'FORWARD_EXISTING' && publicNumberConfig ? (
         <DualNumberCard
@@ -377,6 +393,12 @@ const styles = StyleSheet.create({
   // ----- Rail container -------------------------------------------------
   rail: {
     gap: 14,
+  },
+
+  // Single-row holder for the AspireNumberPill so the pill aligns flush with
+  // the cards that bracket it.
+  aspireNumberRow: {
+    paddingHorizontal: 4,
   },
 
   // ----- Card shell (shared) -------------------------------------------

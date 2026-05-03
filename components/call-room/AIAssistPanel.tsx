@@ -2,10 +2,55 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import type { ClientContext } from './types';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-export function AIAssistPanel(): React.ReactElement {
+export interface AIAssistPanelProps {
+  /** Caller context — used to derive a context-aware suggested question. */
+  client?: ClientContext;
+}
+
+/**
+ * Phase 1 (rules-based) AI Assist panel.
+ *
+ * Suggested question + next actions adapt to the caller's known service /
+ * urgency / familiarity. The full server-side AI-assist endpoint
+ * (POST /v1/calls/ai-assist) ships in v1.1; today's panel runs a small
+ * deterministic heuristic so the prompt isn't a hard-coded "Is water
+ * entering the attic or ceiling?" no matter who's on the line.
+ */
+function deriveSuggestedQuestion(client?: ClientContext): string {
+  if (!client) return 'How can we help you today?';
+  const service = (client.service || '').trim().toLowerCase();
+  if (service.includes('plumb') || service.includes('water') || service.includes('leak')) {
+    return 'Is water actively entering the home right now?';
+  }
+  if (service.includes('roof') || service.includes('drywall') || service.includes('ceiling')) {
+    return 'When did you first notice the damage?';
+  }
+  if (service.includes('hvac') || service.includes('ac') || service.includes('heat')) {
+    return 'Is the system running but not cooling, or fully off?';
+  }
+  if (service.includes('paint')) {
+    return 'Is this for an interior or exterior job?';
+  }
+  if (service.includes('electric')) {
+    return 'Is anything currently sparking or smoking?';
+  }
+  if (client.note && client.note.length > 0) {
+    return `Confirming the note: "${client.note.slice(0, 80)}"?`;
+  }
+  if (client.urgency === 'high') {
+    return 'Is everyone safe? What’s the urgency right now?';
+  }
+  return client.name
+    ? `Hi ${client.name.split(' ')[0]} — how can we help today?`
+    : 'How can we help you today?';
+}
+
+export function AIAssistPanel({ client }: AIAssistPanelProps): React.ReactElement {
+  const question = deriveSuggestedQuestion(client);
   return (
     <View style={styles.panel} testID="ai-assist">
       <View style={styles.headerRow}>
@@ -15,12 +60,13 @@ export function AIAssistPanel(): React.ReactElement {
 
       <Text style={styles.smallLabel}>Suggested question</Text>
       <View style={styles.suggestion}>
-        <Text style={styles.suggestionText}>Is water entering the attic or ceiling?</Text>
+        <Text style={styles.suggestionText}>{question}</Text>
       </View>
 
       <Text style={[styles.smallLabel, { marginTop: 18 }]}>Next actions</Text>
       <ActionRow icon="calendar-outline" label="Schedule Inspection" />
       <ActionRow icon="chatbubble-ellipses-outline" label="Draft SMS" />
+      <ActionRow icon="document-text-outline" label="Take a message" />
     </View>
   );
 }

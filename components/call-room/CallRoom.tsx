@@ -29,6 +29,12 @@ export interface CallRoomProps {
    * route should both terminate the Twilio call leg and navigate back.
    */
   onEnd?: () => void;
+  /** Toggle mute on the active SDK call. */
+  onMute?: () => void;
+  /** Toggle hold (v1: mute outgoing audio). */
+  onHold?: () => void;
+  /** Send a single DTMF digit on the active SDK call. */
+  onSendDigit?: (digit: string) => void;
 }
 
 export function CallRoom({
@@ -37,6 +43,9 @@ export function CallRoom({
   forcedTimeOfDay,
   voiceState,
   onEnd,
+  onMute,
+  onHold,
+  onSendDigit,
 }: CallRoomProps): React.ReactElement | null {
   const tod = useTimeOfDay(forcedTimeOfDay);
   const isWeb = Platform.OS === 'web';
@@ -55,7 +64,14 @@ export function CallRoom({
       {isWeb && <CallRoomNightLight active={isNight} />}
 
       <View style={styles.cardWrap} pointerEvents="box-none">
-        <CallRoomCard callState={callState} voiceState={voiceState} onEnd={onEnd} />
+        <CallRoomCard
+          callState={callState}
+          voiceState={voiceState}
+          onEnd={onEnd}
+          onMute={onMute}
+          onHold={onHold}
+          onSendDigit={onSendDigit}
+        />
       </View>
     </View>
   );
