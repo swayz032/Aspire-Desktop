@@ -1,36 +1,2058 @@
 {
-    "_aspire_status": "v1-elevenlabs",
-    "_aspire_note": "External caller-facing agent. Twilio-connected. Has 5-node ElevenLabs Workflow (Start -> Greeting & Identify Intent -> Answer FAQ / Transfer Call / Take Message -> Wrap Up -> End). Per-call personalization webhook keyed off called_number at /v1/sarah/personalization.",
-    "name": "Aspire Sarah - Receptionist",
-    "_v1_sync": {
-        "version": "1.0",
-        "agent_id": "agent_6501kp71h69jfqysgd055hemqhrq",
-        "agent_id_resolved_note": "Confirmed via mcp__elevenlabs__list_agents 2026-04-28. 'Aspire Sarah - Receptionist' = agent_6501. Previously believed agent_8901 was Receptionist — that is actually Front Desk Sarah (internal). agent_6501 has the Workflow tab.",
-        "prompt_path": "docs/agents/sarah-receptionist/01_RECEPTIONIST_SARAH_SYSTEM_PROMPT_v2.md",
-        "kb_paths": [
-            "docs/agents/sarah-receptionist/02_RECEPTIONIST_SARAH_VOICE_RULES_v2.md",
-            "docs/agents/sarah-receptionist/03_RECEPTIONIST_SARAH_CALL_WORKFLOWS_v2.md",
-            "docs/agents/sarah-receptionist/04_RECEPTIONIST_SARAH_MESSAGE_CAPTURE_CANON_v2.md",
-            "docs/agents/sarah-receptionist/05_RECEPTIONIST_SARAH_ROUTING_AND_TRANSFER_POLICY_v2.md",
-            "docs/agents/sarah-receptionist/06_RECEPTIONIST_SARAH_SAFETY_AND_PRIVACY_CANON_v2.md"
+  "agent_id": "agent_6501kp71h69jfqysgd055hemqhrq",
+  "name": "Aspire Sarah - Receptionist",
+  "conversation_config": {
+    "asr": {
+      "quality": "high",
+      "provider": "scribe_realtime",
+      "user_input_audio_format": "pcm_16000",
+      "keywords": []
+    },
+    "turn": {
+      "turn_timeout": 7.0,
+      "initial_wait_time": null,
+      "silence_end_call_timeout": 30.0,
+      "soft_timeout_config": {
+        "timeout_seconds": -1.0,
+        "message": "Hhmmmm...yeah.",
+        "use_llm_generated_message": false
+      },
+      "mode": "turn",
+      "turn_eagerness": "normal",
+      "spelling_patience": "auto",
+      "speculative_turn": true,
+      "retranscribe_on_turn_timeout": false,
+      "turn_model": "turn_v2",
+      "interruption_ignore_terms": []
+    },
+    "tts": {
+      "model_id": "eleven_v3_conversational",
+      "voice_id": "eXpIbVcVbLo8ZJQDlDnl",
+      "supported_voices": [],
+      "expressive_mode": true,
+      "suggested_audio_tags": [],
+      "agent_output_audio_format": "pcm_16000",
+      "optimize_streaming_latency": 3,
+      "stability": 0.5,
+      "speed": 1.0,
+      "similarity_boost": 0.8,
+      "text_normalisation_type": "system_prompt",
+      "pronunciation_dictionary_locators": []
+    },
+    "conversation": {
+      "text_only": false,
+      "max_duration_seconds": 600,
+      "client_events": [
+        "audio",
+        "interruption",
+        "agent_response",
+        "user_transcript",
+        "agent_response_correction",
+        "agent_tool_response"
+      ],
+      "file_input": {
+        "enabled": true,
+        "max_files_per_conversation": 10
+      },
+      "monitoring_enabled": false,
+      "monitoring_events": [
+        "user_transcript",
+        "agent_response",
+        "agent_response_correction"
+      ],
+      "dtmf_input_settings": null,
+      "source_attribution": false
+    },
+    "language_presets": {},
+    "vad": {
+      "background_voice_detection": false
+    },
+    "agent": {
+      "first_message": "Good {{time_of_day}}, thank you for calling {{business_name}}. This is Sarah, how can I help you today?",
+      "language": "en",
+      "hinglish_mode": false,
+      "dynamic_variables": {
+        "dynamic_variable_placeholders": {
+          "business_name": "Your Business",
+          "first_name": "first_name",
+          "last_name": "last_name",
+          "industry": "industry",
+          "time_of_day": "time_of_day",
+          "is_open_now": "is_open_now",
+          "busy_mode": "busy_mode",
+          "voicemail_email": "",
+          "is_after_hours": "",
+          "after_hours_mode": "",
+          "catch_mode": "",
+          "public_number_mode": "",
+          "greeting_name_override": "",
+          "pronunciation_override": "",
+          "routing_owner_phone": "",
+          "routing_sales_phone": "",
+          "routing_support_phone": "",
+          "routing_billing_phone": "",
+          "routing_scheduling_phone": "",
+          "routing_contacts_summary": "",
+          "caller_history_summary": "",
+          "caller_intent": "",
+          "caller_name": "",
+          "callback_number": "",
+          "transfer_target": ""
+        }
+      },
+      "disable_first_message_interruptions": false,
+      "max_conversation_duration_message": "",
+      "prompt": {
+        "prompt": "You are Sarah, the AI Receptionist for {{business_name}} — a {{industry}} business.\n\nOwner on file: {{first_name}} {{last_name}}.\n\nYou are the first voice every caller hears when they reach the business. You are warm, calm, polished, and reliable — the kind of receptionist who protects the company reputation on every call.\n\n# Tone & style\n\nWarm, professional, business-appropriate. Short and natural phone-call language — one to three sentences per turn.\n\nGood examples:\n- Thank you for calling {{business_name}}, this is Sarah.\n- One moment please, I am checking that for you.\n- I can connect you, or I can take a message right now.\n- Got it — I will make sure that gets to the right person.\n\nBad examples:\n- Based on my analysis, your request should be routed.\n- I am now transferring your call.\n- Please hold while I execute that action.\n\n# Live runtime context (all values are injected fresh per call)\n\nBusiness identity:\n- Business name: {{business_name}}\n- Industry: {{industry}}\n- Owner: {{first_name}} {{last_name}}\n- Voicemail email: {{voicemail_email}}\n\nTime + open state:\n- Time of day right now: {{time_of_day}}  (use this in your greeting — \"Good {{time_of_day}}\")\n- Is the business open right now: {{is_open_now}}\n- Is this an after-hours call: {{is_after_hours}}\n\nOwner-configured behavior:\n- After-hours mode: {{after_hours_mode}}  (TAKE_MESSAGE | ASK_CALLBACK_WINDOW | TRY_TRANSFER_THEN_MESSAGE)\n- Busy mode: {{busy_mode}}  (TAKE_MESSAGE | ASK_CALLBACK_WINDOW | TRY_TRANSFER_THEN_MESSAGE)\n- Catch mode: {{catch_mode}}  (APP_ONLY | PHONE_ONLY | APP_AND_PHONE_SIMUL_RING)\n- Public number mode: {{public_number_mode}}  (ASPIRE_NEW_NUMBER | FORWARD_EXISTING | PORT_IN)\n\nOwner overrides (only use if non-empty):\n- Greeting name override: {{greeting_name_override}}\n- Pronunciation override: {{pronunciation_override}}\n\nRouting destinations available for THIS call (each phone may be empty if the owner did not configure that role):\n- Owner: {{routing_owner_phone}}\n- Sales: {{routing_sales_phone}}\n- Support: {{routing_support_phone}}\n- Billing: {{routing_billing_phone}}\n- Scheduling: {{routing_scheduling_phone}}\n\nRouting summary (humanized): {{routing_contacts_summary}}\n\nCaller context:\n- Prior interaction history: {{caller_history_summary}}\n\n# First message strategy\n\nOpen with: \"Good {{time_of_day}}, thank you for calling {{business_name}}, this is Sarah.\" Then pause for the caller's reason.\n\nIf {{greeting_name_override}} is non-empty, use that as the business name pronunciation cue.\n\nIf {{is_after_hours}} is true, briefly let the caller know we are outside business hours but you can still help: \"Good {{time_of_day}}, you have reached {{business_name}} after hours — this is Sarah, I can take a message and have someone follow up.\"\n\n# Five jobs you do well\n\n1. Greet the caller professionally (use {{time_of_day}} + {{business_name}})\n2. Identify why they are calling within 1-2 turns\n3. Answer only safe front-desk questions (use get_business_context + get_faq_answer tools)\n4. Connect them to the right routing destination when possible (transfer_to_number)\n5. Capture a complete message when transfer is not possible (capture_message tool)\n\nDisclose once per call: \"This is Sarah, the AI front desk assistant for {{business_name}}.\" Use get_business_context if you need fresh business details.\n\n# Routing decision logic\n\nWhen the caller asks for a specific role:\n- Owner / founder / manager / \"person in charge\" → use routing rule that targets {{routing_owner_phone}}\n- Sales / quotes / pricing / new business → {{routing_sales_phone}}\n- Support / warranty / service issue / product problem → {{routing_support_phone}}\n- Billing / invoice / payment / refund → {{routing_billing_phone}}\n- Scheduling / appointment / reschedule / book → {{routing_scheduling_phone}}\n\nBefore triggering transfer:\n- Confirm intent in one sentence: \"So you would like to speak with the owner — is that right?\"\n- Announce the connection: \"One moment, connecting you now.\"\n\nIf the routing destination for that role is empty (the owner did not configure it):\n- Apologize plainly: \"I am not able to reach them directly right now — let me take a message and have them call you back.\"\n- Fall through to message capture (capture_message tool)\n- Do NOT fabricate a phone number, name, or callback time\n\n# Catch-mode awareness\n\nThe owner has configured {{catch_mode}} for how Aspire delivers calls:\n- APP_ONLY → calls ring inside the Aspire app on owner devices; transfer attempts go through Aspire routing\n- PHONE_ONLY → calls route to owner direct phone numbers\n- APP_AND_PHONE_SIMUL_RING → both ring at once, first answer wins; warn the caller that voicemail might pick up if direct phone gets there first\n\nYou do not control catch_mode at call time — it just informs your fallback behavior when transfers do not land.\n\n# After-hours behavior\n\nIf {{is_after_hours}} is true, follow {{after_hours_mode}}:\n- TAKE_MESSAGE → go straight to message capture (do not attempt transfer)\n- ASK_CALLBACK_WINDOW → ask for preferred callback time, then capture as message\n- TRY_TRANSFER_THEN_MESSAGE → attempt transfer to {{routing_owner_phone}} once; if that fails, capture message\n\nSet realistic expectations: \"We are outside business hours right now, but I will make sure {{first_name}} sees this first thing tomorrow.\"\n\n# Busy behavior\n\nIf the owner-side rings come back busy or no-answer, follow {{busy_mode}}:\n- TAKE_MESSAGE → capture immediately\n- ASK_CALLBACK_WINDOW → ask preferred callback window, then capture\n- TRY_TRANSFER_THEN_MESSAGE → try one more routing destination, then capture\n\n# Message capture canon\n\nWhen you take a message, ALWAYS collect:\n1. Caller full name\n2. Best callback number — read it back digit-by-digit (\"let me read that back, five-five-five-zero-one-two-three\") for confirmation\n3. Reason for the call (one short sentence)\n4. Urgency (low / normal / urgent)\n5. Preferred callback window (e.g. \"after 3pm today\")\n6. Who they want it routed to (owner, sales, etc., or \"anyone available\")\n\nConfirm at the end in one sentence: \"Got it — I will let {{first_name}} know you called about the leak repair quote, normal urgency, callback after 5pm at five-five-five-zero-one-two-three.\"\n\nUse the capture_message tool to persist all six fields. The tool also captures urgency + intent_category for the post-call analysis.\n\n# Front-desk FAQs you can handle directly\n\nUse get_faq_answer + get_business_context for:\n- Business hours (use {{is_open_now}} for the current state)\n- Location / address\n- Services offered (high level)\n- Whether you do <X service>\n- Basic pricing intro (refer to sales for specifics)\n\nStrict honesty — if the answer is not in the knowledge base or context, do NOT fabricate. Say: \"I am not sure about that off the top of my head — would you like me to take a message so the owner can confirm?\"\n\n# Guardrails\n\nNever:\n- Give out private phone numbers, cell numbers, or internal extensions\n- Discuss card numbers, bank details, or take payment over the phone\n- Promise availability you have not verified\n- Fabricate hours, services, prices, or callback times\n- Argue with abusive callers (set a boundary calmly, end the call if needed)\n- Reveal tool names, system names, or architecture details\n- End with \"Can I help with anything else?\" filler\n\nAlways:\n- Disclose AI status once per call\n- Read callback numbers back for confirmation\n- Set a clear next step on every call (\"I will have {{first_name}} call you back this afternoon\")\n- Stop talking immediately if the caller interrupts you\n\n# Tool reference\n\nUse these in this priority order:\n\n1. get_business_context — pull live business config (hours, services, address, owner identity)\n2. get_faq_answer — search the FAQ knowledge base for a specific question\n3. transfer_to_number — connect the call to a routing destination (system tool, uses dyn-var rules)\n4. capture_message — save a message with all six required fields\n5. request_callback_window — when caller wants a callback, capture the preferred window\n6. save_call_summary — persist the outcome before ending the call\n\n# If a tool fails\n\n1. Acknowledge simply (\"I am having trouble pulling that up right now\")\n2. Do NOT guess\n3. Fall back to message capture\n4. End with a clear next step\n\n# Identity\n\nIf asked who you are: \"I am Sarah, the AI front desk assistant for {{business_name}}.\"\nIf asked what you do: \"I answer calls, route them to the right person, and make sure messages get through.\"\n\n# Final reminder\n\nYou are the first impression of {{business_name}}. Be warm, clear, and efficient. Route correctly. Capture complete messages. Never fabricate. Always end with a clear next step.\n\n# Solo-owner / small-team fallback rule (CRITICAL)\n\nIf the caller asks for a specific role (sales / support / billing / scheduling) but the dynamic variable for that role is empty (no dedicated contact configured), AND {{ routing_owner_phone }} is non-empty, route the caller to the OWNER instead of taking a message. The owner handles all roles personally in solo and small-team businesses.\n\nWhen you do this, briefly tell the caller something like: \"Let me connect you with {{ first_name }} — they handle this personally.\"\n\nOnly fall through to take_message when BOTH the role-specific routing phone AND routing_owner_phone are empty (very rare — happens only if the owner has not configured any routing contacts at all).",
+        "llm": "glm-45-air-fp8",
+        "reasoning_effort": null,
+        "thinking_budget": null,
+        "temperature": 0.3,
+        "max_tokens": -1,
+        "tool_ids": [
+          "tool_3401kqdb5m58erp92m4bp7yj5s7p",
+          "tool_6601kqdb5m59e53td5k4hhnbg74y",
+          "tool_1301kqdb5m5aevgtqtdhj6dwh4hm",
+          "tool_2401kqdb5m5benvsm9wkm5radnwe",
+          "tool_6401kqdb5m5ce1ntqvd0y7egpc7j",
+          "tool_8901kqdb5m5deaysvwfpznak4qvz"
         ],
-        "tools_contract_path": "docs/agents/sarah-receptionist/08_RECEPTIONIST_SARAH_TOOLS_CONTRACT_v2.md",
-        "dynamic_variables": [
-            "business_name",
-            "first_name",
-            "last_name",
-            "industry",
-            "time_of_day",
-            "is_open_now",
-            "after_hours_mode",
-            "busy_mode",
-            "public_number_mode",
-            "catch_mode",
-            "greeting_name_override",
-            "pronunciation_override",
-            "routing_contacts_summary"
+        "built_in_tools": {
+          "end_call": {
+            "type": "system",
+            "name": "end_call",
+            "description": "End the conversation when the caller is finished or the task is complete.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "end_call"
+            }
+          },
+          "language_detection": null,
+          "transfer_to_agent": null,
+          "transfer_to_number": {
+            "type": "system",
+            "name": "transfer_to_number",
+            "description": "Transfer the caller to a routing contact via dynamic-variable destination resolution.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "transfer_to_number",
+              "transfers": [
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_owner_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for owner — and {{ routing_owner_phone }} is not empty."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_sales_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for sales — and {{ routing_sales_phone }} is not empty."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_support_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for support — and {{ routing_support_phone }} is not empty."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_billing_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for billing — and {{ routing_billing_phone }} is not empty."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_scheduling_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for scheduling — and {{ routing_scheduling_phone }} is not empty."
+                }
+              ],
+              "enable_client_message": true
+            }
+          },
+          "skip_turn": {
+            "type": "system",
+            "name": "skip_turn",
+            "description": "Skip a turn when the caller is mid-thought and the agent should stay quiet.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "skip_turn"
+            }
+          },
+          "play_keypad_touch_tone": null,
+          "voicemail_detection": null,
+          "update_state": {
+            "type": "system",
+            "name": "update_state",
+            "description": "Persist short-lived per-session state slots so the agent can recall context across turns within a single conversation.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [
+              {
+                "source": "response",
+                "dynamic_variable": "callback_number",
+                "value_path": "updates.callback_number",
+                "sanitize": false,
+                "preserve_native_type": false
+              },
+              {
+                "source": "response",
+                "dynamic_variable": "caller_intent",
+                "value_path": "updates.caller_intent",
+                "sanitize": false,
+                "preserve_native_type": false
+              },
+              {
+                "source": "response",
+                "dynamic_variable": "caller_name",
+                "value_path": "updates.caller_name",
+                "sanitize": false,
+                "preserve_native_type": false
+              },
+              {
+                "source": "response",
+                "dynamic_variable": "is_open_now",
+                "value_path": "updates.is_open_now",
+                "sanitize": false,
+                "preserve_native_type": false
+              },
+              {
+                "source": "response",
+                "dynamic_variable": "transfer_target",
+                "value_path": "updates.transfer_target",
+                "sanitize": false,
+                "preserve_native_type": false
+              }
+            ],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "update_state",
+              "updates": [
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "caller_intent",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                },
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "caller_name",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                },
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "callback_number",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                },
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "transfer_target",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                },
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "is_open_now",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                }
+              ]
+            }
+          },
+          "memory_entry_search": null,
+          "memory_entry_create": null,
+          "memory_entry_update": null,
+          "memory_entry_delete": null,
+          "agent_prompt_change": null,
+          "procedure_update": null,
+          "transfer_to_genesys_chat": null
+        },
+        "enable_parallel_tool_calls": false,
+        "mcp_server_ids": [],
+        "native_mcp_server_ids": [],
+        "knowledge_base": [
+          {
+            "type": "text",
+            "name": "02_RECEPTIONIST_SARAH_VOICE_RULES_v2",
+            "id": "Mflhx5i8GXwZllJKmGRH",
+            "usage_mode": "prompt"
+          },
+          {
+            "type": "text",
+            "name": "03_RECEPTIONIST_SARAH_CALL_WORKFLOWS_v2",
+            "id": "QcsCZGbNpoU4IfIZ8WRs",
+            "usage_mode": "prompt"
+          },
+          {
+            "type": "text",
+            "name": "04_RECEPTIONIST_SARAH_MESSAGE_CAPTURE_CANON_v2",
+            "id": "7Ls55qP8l7s1FF0kXN5V",
+            "usage_mode": "auto"
+          },
+          {
+            "type": "text",
+            "name": "05_RECEPTIONIST_SARAH_ROUTING_AND_TRANSFER_POLICY_v2",
+            "id": "7ysCoTCP6t7afUK3COZN",
+            "usage_mode": "auto"
+          },
+          {
+            "type": "text",
+            "name": "06_RECEPTIONIST_SARAH_SAFETY_AND_PRIVACY_CANON_v2",
+            "id": "yUWADpF4bxuJwpbxyRQi",
+            "usage_mode": "auto"
+          }
         ],
-        "first_message": "Good {{time_of_day}}, thank you for calling {{business_name}}. This is Sarah, how can I help you today?",
-        "last_synced_at": "2026-04-29T19:24:06.517Z"
+        "custom_llm": null,
+        "ignore_default_personality": true,
+        "rag": {
+          "enabled": true,
+          "embedding_model": "e5_mistral_7b_instruct",
+          "max_vector_distance": 0.5,
+          "max_documents_length": 4000,
+          "max_retrieved_rag_chunks_count": 8,
+          "num_candidates": null,
+          "query_rewrite_prompt_override": null
+        },
+        "timezone": null,
+        "backup_llm_config": {
+          "preference": "default"
+        },
+        "cascade_timeout_seconds": 8.0,
+        "tools": [
+          {
+            "type": "webhook",
+            "name": "get_business_context",
+            "description": "Get business configuration for this call: business hours, greeting name, routing contacts, busy mode, after-hours mode. Call at session start.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "dynamic_variables": {
+              "dynamic_variable_placeholders": {}
+            },
+            "execution_mode": "immediate",
+            "api_schema": {
+              "request_headers": {
+                "Content-Type": "application/json",
+                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+              },
+              "url": "https://www.aspireos.app/v1/tools/sarah/personalization",
+              "method": "POST",
+              "path_params_schema": {},
+              "query_params_schema": null,
+              "request_body_schema": {
+                "type": "object",
+                "required": [
+                  "called_number"
+                ],
+                "description": "",
+                "properties": {
+                  "called_number": {
+                    "type": "string",
+                    "description": "The Twilio number that was called (E.164 format)",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "caller_number": {
+                    "type": "string",
+                    "description": "The inbound caller phone number if available",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  }
+                }
+              },
+              "response_body_schema": null,
+              "content_type": "application/json",
+              "auth_connection": null
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "capture_message",
+            "description": "Record a caller message with contact details. Use when caller wants to leave a message or after-hours intake.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "dynamic_variables": {
+              "dynamic_variable_placeholders": {}
+            },
+            "execution_mode": "immediate",
+            "api_schema": {
+              "request_headers": {
+                "Content-Type": "application/json",
+                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+              },
+              "url": "https://www.aspireos.app/v1/tools/sarah/capture-message",
+              "method": "POST",
+              "path_params_schema": {},
+              "query_params_schema": null,
+              "request_body_schema": {
+                "type": "object",
+                "required": [
+                  "caller_name",
+                  "message"
+                ],
+                "description": "",
+                "properties": {
+                  "caller_name": {
+                    "type": "string",
+                    "description": "Caller full name as provided",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "caller_phone": {
+                    "type": "string",
+                    "description": "Caller phone number",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Message content the caller wants to leave",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "urgency": {
+                    "type": "string",
+                    "description": "Caller-stated urgency",
+                    "enum": [
+                      "normal",
+                      "urgent",
+                      "emergency"
+                    ],
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "reason_category": {
+                    "type": "string",
+                    "description": "Call reason category (appointment, billing, support, general)",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "called_number": {
+                    "type": "string",
+                    "description": "The Twilio number that was called",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  }
+                }
+              },
+              "response_body_schema": null,
+              "content_type": "application/json",
+              "auth_connection": null
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "transfer_to_number",
+            "description": "Transfer call to the appropriate team member. Server resolves the destination number from routing contacts — do NOT pass a raw phone number. Pass role only.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": true,
+            "pre_tool_speech": "force",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "dynamic_variables": {
+              "dynamic_variable_placeholders": {}
+            },
+            "execution_mode": "immediate",
+            "api_schema": {
+              "request_headers": {
+                "Content-Type": "application/json",
+                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+              },
+              "url": "https://www.aspireos.app/v1/tools/sarah/transfer",
+              "method": "POST",
+              "path_params_schema": {},
+              "query_params_schema": null,
+              "request_body_schema": {
+                "type": "object",
+                "required": [
+                  "transfer_role"
+                ],
+                "description": "",
+                "properties": {
+                  "transfer_role": {
+                    "type": "string",
+                    "description": "Role to transfer to (server resolves phone number)",
+                    "enum": [
+                      "owner",
+                      "sales",
+                      "support",
+                      "custom"
+                    ],
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "caller_name": {
+                    "type": "string",
+                    "description": "Caller name for warm transfer announcement",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Transfer reason context",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "called_number": {
+                    "type": "string",
+                    "description": "The Twilio number that was called",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  }
+                }
+              },
+              "response_body_schema": null,
+              "content_type": "application/json",
+              "auth_connection": null
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "get_faq_answer",
+            "description": "Look up FAQ answers for common caller questions: business hours, services, location, pricing. Use before admitting lack of knowledge.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "dynamic_variables": {
+              "dynamic_variable_placeholders": {}
+            },
+            "execution_mode": "immediate",
+            "api_schema": {
+              "request_headers": {
+                "Content-Type": "application/json",
+                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+              },
+              "url": "https://www.aspireos.app/v1/tools/sarah/faq",
+              "method": "POST",
+              "path_params_schema": {},
+              "query_params_schema": null,
+              "request_body_schema": {
+                "type": "object",
+                "required": [
+                  "question"
+                ],
+                "description": "",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "description": "The caller question to answer",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "called_number": {
+                    "type": "string",
+                    "description": "The Twilio number that was called (for business scoping)",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  }
+                }
+              },
+              "response_body_schema": null,
+              "content_type": "application/json",
+              "auth_connection": null
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "request_callback_window",
+            "description": "Record a callback request with preferred time window. Use when after-hours or busy mode is \"Ask for callback window\".",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "dynamic_variables": {
+              "dynamic_variable_placeholders": {}
+            },
+            "execution_mode": "immediate",
+            "api_schema": {
+              "request_headers": {
+                "Content-Type": "application/json",
+                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+              },
+              "url": "https://www.aspireos.app/v1/tools/sarah/callback-request",
+              "method": "POST",
+              "path_params_schema": {},
+              "query_params_schema": null,
+              "request_body_schema": {
+                "type": "object",
+                "required": [
+                  "caller_name",
+                  "preferred_window"
+                ],
+                "description": "",
+                "properties": {
+                  "caller_name": {
+                    "type": "string",
+                    "description": "Caller full name",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "caller_phone": {
+                    "type": "string",
+                    "description": "Caller phone number",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "preferred_window": {
+                    "type": "string",
+                    "description": "Caller preferred callback window e.g. \"tomorrow morning\" or \"2pm-4pm\"",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Reason for callback",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "called_number": {
+                    "type": "string",
+                    "description": "The Twilio number that was called",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  }
+                }
+              },
+              "response_body_schema": null,
+              "content_type": "application/json",
+              "auth_connection": null
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "save_call_summary",
+            "description": "Save a call summary and outcome to office memory at call end. Use in wrap-up phase.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "dynamic_variables": {
+              "dynamic_variable_placeholders": {}
+            },
+            "execution_mode": "immediate",
+            "api_schema": {
+              "request_headers": {
+                "Content-Type": "application/json",
+                "x-elevenlabs-secret": "67a31a3b169095c75b000239c6e7878511f7ed5092a824b2eeadeec7447a9fe6"
+              },
+              "url": "https://www.aspireos.app/v1/tools/sarah/call-summary",
+              "method": "POST",
+              "path_params_schema": {},
+              "query_params_schema": null,
+              "request_body_schema": {
+                "type": "object",
+                "required": [
+                  "outcome",
+                  "summary"
+                ],
+                "description": "",
+                "properties": {
+                  "outcome": {
+                    "type": "string",
+                    "description": "Call outcome",
+                    "enum": [
+                      "message_taken",
+                      "transferred",
+                      "faq_resolved",
+                      "callback_scheduled",
+                      "abandoned"
+                    ],
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "Brief call summary for office record",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "caller_name": {
+                    "type": "string",
+                    "description": "Caller name if captured",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "caller_phone": {
+                    "type": "string",
+                    "description": "Caller phone if captured",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  },
+                  "called_number": {
+                    "type": "string",
+                    "description": "The Twilio number that was called",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "constant_value": ""
+                  }
+                }
+              },
+              "response_body_schema": null,
+              "content_type": "application/json",
+              "auth_connection": null
+            }
+          },
+          {
+            "type": "system",
+            "name": "end_call",
+            "description": "End the conversation when the caller is finished or the task is complete.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "end_call"
+            }
+          },
+          {
+            "type": "system",
+            "name": "transfer_to_number",
+            "description": "Transfer the caller to a routing contact via dynamic-variable destination resolution.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "transfer_to_number",
+              "transfers": [
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_owner_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for owner — and {{ routing_owner_phone }} is not empty."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_sales_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for sales — and {{ routing_sales_phone }} is not empty."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_support_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for support — and {{ routing_support_phone }} is not empty."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_billing_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for billing — and {{ routing_billing_phone }} is not empty."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "phone_dynamic_variable",
+                    "phone_number": "routing_scheduling_phone"
+                  },
+                  "transfer_type": "conference",
+                  "post_dial_digits": null,
+                  "phone_number": null,
+                  "condition": "When the caller is asking for scheduling — and {{ routing_scheduling_phone }} is not empty."
+                }
+              ],
+              "enable_client_message": true
+            }
+          },
+          {
+            "type": "system",
+            "name": "skip_turn",
+            "description": "Skip a turn when the caller is mid-thought and the agent should stay quiet.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "skip_turn"
+            }
+          },
+          {
+            "type": "system",
+            "name": "update_state",
+            "description": "Persist short-lived per-session state slots so the agent can recall context across turns within a single conversation.",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [
+              {
+                "source": "response",
+                "dynamic_variable": "callback_number",
+                "value_path": "updates.callback_number",
+                "sanitize": false,
+                "preserve_native_type": false
+              },
+              {
+                "source": "response",
+                "dynamic_variable": "caller_intent",
+                "value_path": "updates.caller_intent",
+                "sanitize": false,
+                "preserve_native_type": false
+              },
+              {
+                "source": "response",
+                "dynamic_variable": "caller_name",
+                "value_path": "updates.caller_name",
+                "sanitize": false,
+                "preserve_native_type": false
+              },
+              {
+                "source": "response",
+                "dynamic_variable": "is_open_now",
+                "value_path": "updates.is_open_now",
+                "sanitize": false,
+                "preserve_native_type": false
+              },
+              {
+                "source": "response",
+                "dynamic_variable": "transfer_target",
+                "value_path": "updates.transfer_target",
+                "sanitize": false,
+                "preserve_native_type": false
+              }
+            ],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "update_state",
+              "updates": [
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "caller_intent",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                },
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "caller_name",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                },
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "callback_number",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                },
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "transfer_target",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                },
+                {
+                  "type": "dynamic_variable",
+                  "variable_name": "is_open_now",
+                  "expression": {
+                    "type": "null_literal"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
     }
+  },
+  "platform_settings": {
+    "evaluation": {
+      "criteria": [
+        {
+          "id": "professional_tone",
+          "name": "Professional tone",
+          "type": "prompt",
+          "conversation_goal_prompt": "Did Sarah maintain a warm, professional, business-appropriate tone throughout the call? Pass if she was consistently polite, calm, and on-brand. Fail if she was robotic, rude, or off-tone.",
+          "use_knowledge_base": false,
+          "scope": "conversation",
+          "llm": null
+        },
+        {
+          "id": "intent_identified",
+          "name": "Caller intent identified within 2 turns",
+          "type": "prompt",
+          "conversation_goal_prompt": "Did Sarah correctly identify the caller intent (FAQ, transfer, message) within the first 2 turns of conversation? Pass if intent was clear and routing was correct. Fail if she had to ask 3+ clarifying questions.",
+          "use_knowledge_base": false,
+          "scope": "conversation",
+          "llm": null
+        },
+        {
+          "id": "message_captured_correctly",
+          "name": "Message captured correctly",
+          "type": "prompt",
+          "conversation_goal_prompt": "If the caller left a message, did Sarah collect ALL required fields (name, callback number, reason, urgency, callback window) AND read the callback number back digit-by-digit for confirmation? Pass if all fields captured and confirmed. Fail if any field missing or callback number not confirmed. N/A if no message was taken.",
+          "use_knowledge_base": false,
+          "scope": "conversation",
+          "llm": null
+        },
+        {
+          "id": "no_fabrication",
+          "name": "No fabricated info",
+          "type": "prompt",
+          "conversation_goal_prompt": "Did Sarah avoid fabricating business details (hours, pricing, services, policies) that were NOT explicitly in the knowledge base or system prompt? Pass if she said she was not sure and offered to take a message when uncertain. Fail if she invented details to fill gaps.",
+          "use_knowledge_base": false,
+          "scope": "conversation",
+          "llm": null
+        },
+        {
+          "id": "transfer_handoff_clean",
+          "name": "Transfer handoff was clean",
+          "type": "prompt",
+          "conversation_goal_prompt": "If a transfer was attempted, did Sarah confirm the caller intent before triggering, announce the connection, and provide a graceful fallback to message capture if transfer failed? Pass if all 3 boxes ticked. Fail if she dropped the call mid-transfer or fabricated transfer success. N/A if no transfer was attempted.",
+          "use_knowledge_base": false,
+          "scope": "conversation",
+          "llm": null
+        }
+      ]
+    },
+    "widget": {
+      "variant": "full",
+      "placement": "bottom-right",
+      "expandable": "never",
+      "avatar": {
+        "type": "orb",
+        "color_1": "#2792dc",
+        "color_2": "#9ce6e6"
+      },
+      "feedback_mode": "during",
+      "end_feedback": {
+        "type": "rating"
+      },
+      "bg_color": "#ffffff",
+      "text_color": "#000000",
+      "btn_color": "#000000",
+      "btn_text_color": "#ffffff",
+      "border_color": "#e1e1e1",
+      "focus_color": "#000000",
+      "border_radius": null,
+      "btn_radius": null,
+      "action_text": null,
+      "start_call_text": null,
+      "end_call_text": null,
+      "expand_text": null,
+      "listening_text": null,
+      "speaking_text": null,
+      "shareable_page_text": null,
+      "shareable_page_show_terms": true,
+      "terms_text": "#### Terms and conditions\n\nBy clicking \"Agree,\" and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.",
+      "terms_html": "<h4>Terms and conditions</h4>\n<p>By clicking &quot;Agree,&quot; and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.</p>\n",
+      "terms_key": null,
+      "show_avatar_when_collapsed": false,
+      "disable_banner": false,
+      "override_link": null,
+      "markdown_link_allowed_hosts": [],
+      "markdown_link_include_www": true,
+      "markdown_link_allow_http": true,
+      "mic_muting_enabled": false,
+      "transcript_enabled": false,
+      "text_input_enabled": true,
+      "conversation_mode_toggle_enabled": false,
+      "default_expanded": false,
+      "always_expanded": false,
+      "dismissible": false,
+      "show_agent_status": false,
+      "show_conversation_id": true,
+      "strip_audio_tags": true,
+      "syntax_highlight_theme": null,
+      "text_contents": {
+        "main_label": null,
+        "start_call": null,
+        "start_chat": null,
+        "new_call": null,
+        "end_call": null,
+        "mute_microphone": null,
+        "change_language": null,
+        "collapse": null,
+        "expand": null,
+        "copied": null,
+        "accept_terms": null,
+        "dismiss_terms": null,
+        "listening_status": null,
+        "speaking_status": null,
+        "connecting_status": null,
+        "chatting_status": null,
+        "input_label": null,
+        "input_placeholder": null,
+        "input_placeholder_text_only": null,
+        "input_placeholder_new_conversation": null,
+        "user_ended_conversation": null,
+        "agent_ended_conversation": null,
+        "conversation_id": null,
+        "error_occurred": null,
+        "copy_id": null,
+        "initiate_feedback": null,
+        "request_follow_up_feedback": null,
+        "thanks_for_feedback": null,
+        "thanks_for_feedback_details": null,
+        "follow_up_feedback_placeholder": null,
+        "submit": null,
+        "go_back": null,
+        "send_message": null,
+        "text_mode": null,
+        "voice_mode": null,
+        "switched_to_text_mode": null,
+        "switched_to_voice_mode": null,
+        "copy": null,
+        "download": null,
+        "wrap": null,
+        "agent_working": null,
+        "agent_done": null,
+        "agent_error": null
+      },
+      "styles": {
+        "base": null,
+        "base_hover": null,
+        "base_active": null,
+        "base_border": null,
+        "base_subtle": null,
+        "base_primary": null,
+        "base_error": null,
+        "accent": null,
+        "accent_hover": null,
+        "accent_active": null,
+        "accent_border": null,
+        "accent_subtle": null,
+        "accent_primary": null,
+        "overlay_padding": null,
+        "button_radius": null,
+        "input_radius": null,
+        "bubble_radius": null,
+        "sheet_radius": null,
+        "compact_sheet_radius": null,
+        "dropdown_sheet_radius": null
+      },
+      "language_selector": false,
+      "supports_text_only": true,
+      "custom_avatar_path": null,
+      "language_presets": {}
+    },
+    "data_collection": {
+      "caller_name": {
+        "type": "string",
+        "description": "The caller's full name as they introduced themselves.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "constant_value": "",
+        "llm": null
+      },
+      "caller_callback_number": {
+        "type": "string",
+        "description": "The phone number the caller wants to be called back at, in E.164 format.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "constant_value": "",
+        "llm": null
+      },
+      "intent_category": {
+        "type": "string",
+        "description": "The primary reason for the call. One of: faq | sales | support | billing | scheduling | other.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "constant_value": "",
+        "llm": null
+      },
+      "urgency": {
+        "type": "string",
+        "description": "How urgent the caller's issue is. One of: low | normal | high.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "constant_value": "",
+        "llm": null
+      },
+      "message_body": {
+        "type": "string",
+        "description": "The full message content the caller wants relayed.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "constant_value": "",
+        "llm": null
+      },
+      "requested_callback_window": {
+        "type": "string",
+        "description": "Time window the caller would prefer to be called back.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "constant_value": "",
+        "llm": null
+      },
+      "was_angry": {
+        "type": "boolean",
+        "description": "Whether the caller's tone was hostile or angry.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "constant_value": "",
+        "llm": null
+      },
+      "escalation_needed": {
+        "type": "boolean",
+        "description": "Whether the issue requires immediate human escalation.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "constant_value": "",
+        "llm": null
+      }
+    },
+    "data_collection_scopes": {},
+    "overrides": {
+      "conversation_config_override": {
+        "turn": {
+          "soft_timeout_config": {
+            "message": false
+          }
+        },
+        "tts": {
+          "voice_id": false,
+          "stability": false,
+          "speed": false,
+          "similarity_boost": false
+        },
+        "conversation": {
+          "text_only": true
+        },
+        "agent": {
+          "first_message": false,
+          "language": false,
+          "max_conversation_duration_message": false,
+          "prompt": {
+            "prompt": false,
+            "llm": false,
+            "tool_ids": false,
+            "native_mcp_server_ids": false,
+            "knowledge_base": false
+          }
+        }
+      },
+      "custom_llm_extra_body": false,
+      "enable_conversation_initiation_client_data_from_webhook": false,
+      "enable_starting_workflow_node_id_from_client": false
+    },
+    "workspace_overrides": {
+      "conversation_initiation_client_data_webhook": {
+        "url": "https://orchestrator.aspire.app/v1/sarah/personalization",
+        "request_headers": {}
+      },
+      "webhooks": {
+        "post_call_webhook_id": null,
+        "events": [
+          "transcript"
+        ],
+        "transcript_format": "json",
+        "send_audio": false
+      }
+    },
+    "testing": {
+      "attached_tests": [
+        {
+          "test_id": "test_1901khvcra51fcxvrys71rj48c6e",
+          "workflow_node_id": null
+        },
+        {
+          "test_id": "test_9701khvcramgeqga0enfbmrxrze4",
+          "workflow_node_id": null
+        },
+        {
+          "test_id": "test_9301khvcrb07f6hsxafhm2t5ren7",
+          "workflow_node_id": null
+        }
+      ],
+      "referenced_tests_ids": [
+        "test_1901khvcra51fcxvrys71rj48c6e",
+        "test_9701khvcramgeqga0enfbmrxrze4",
+        "test_9301khvcrb07f6hsxafhm2t5ren7"
+      ]
+    },
+    "archived": false,
+    "guardrails": {
+      "version": "1",
+      "focus": {
+        "is_enabled": true
+      },
+      "prompt_injection": {
+        "is_enabled": true
+      },
+      "content": {
+        "execution_mode": "streaming",
+        "config": {
+          "sexual": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "profanity": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "religion_or_politics": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "medical_and_legal_information": {
+            "is_enabled": false,
+            "threshold": 0.3
+          }
+        },
+        "trigger_action": {
+          "type": "end_call"
+        }
+      },
+      "moderation": {
+        "execution_mode": "streaming",
+        "config": {
+          "sexual": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence_graphic": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment_threatening": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "hate": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "hate_threatening": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm_instructions": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm_intent": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "sexual_minors": {
+            "is_enabled": false,
+            "threshold": 0.3
+          }
+        }
+      },
+      "custom": {
+        "config": {
+          "configs": [
+            {
+              "is_enabled": true,
+              "name": "No sharing personal/internal info",
+              "prompt": "The agent must never share personal phone numbers, home addresses, or internal details about employees. If the agent reveals private employee information, this guardrail is violated.",
+              "execution_mode": "streaming",
+              "trigger_action": {
+                "type": "end_call"
+              }
+            },
+            {
+              "is_enabled": true,
+              "name": "No guessing department responsibilities",
+              "prompt": "The agent must not guess or make up information about what departments do internally. If unsure, the agent should ask the caller or offer to take a message. If the agent fabricates department details, this guardrail is violated.",
+              "execution_mode": "streaming",
+              "trigger_action": {
+                "type": "end_call"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "summary_language": null,
+    "auth": {
+      "enable_auth": false,
+      "allowlist": [],
+      "require_origin_header": false,
+      "shareable_token": null
+    },
+    "call_limits": {
+      "agent_concurrency_limit": -1,
+      "daily_limit": 100000,
+      "bursting_enabled": true
+    },
+    "ban": null,
+    "smb_metadata": null,
+    "privacy": {
+      "record_voice": true,
+      "retention_days": -1,
+      "delete_transcript_and_pii": false,
+      "delete_audio": false,
+      "apply_to_existing_conversations": false,
+      "zero_retention_mode": false,
+      "conversation_history_redaction": {
+        "enabled": false,
+        "entities": []
+      }
+    },
+    "trust_context": "unknown",
+    "analysis_llm": "gemini-2.5-flash",
+    "safety": {
+      "is_blocked_ivc": false,
+      "is_blocked_non_ivc": false,
+      "ignore_safety_evaluation": false
+    }
+  },
+  "phone_numbers": [],
+  "whatsapp_accounts": [],
+  "workflow": {
+    "edges": {
+      "start_to_greeting": {
+        "source": "start_node",
+        "target": "greeting",
+        "forward_condition": {
+          "label": null,
+          "type": "unconditional"
+        },
+        "backward_condition": null
+      },
+      "greeting_to_transfer": {
+        "source": "greeting",
+        "target": "transfer",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "The caller wants to speak with a specific person or department and that person or department is available"
+        },
+        "backward_condition": null
+      },
+      "greeting_to_message": {
+        "source": "greeting",
+        "target": "take_message",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "The caller wants to reach someone who is unavailable, or the caller explicitly wants to leave a message"
+        },
+        "backward_condition": null
+      },
+      "greeting_to_faq": {
+        "source": "greeting",
+        "target": "answer_faq",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "The caller has a general question about business hours, location, or other basic company info"
+        },
+        "backward_condition": null
+      },
+      "transfer_to_message": {
+        "source": "transfer",
+        "target": "take_message",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "The transfer failed or the person is unavailable, and the caller wants to leave a message instead"
+        },
+        "backward_condition": null
+      },
+      "transfer_to_wrap": {
+        "source": "transfer",
+        "target": "wrap_up",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "The call has been successfully transferred or the caller no longer needs to be transferred"
+        },
+        "backward_condition": null
+      },
+      "message_to_wrap": {
+        "source": "take_message",
+        "target": "wrap_up",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "The message has been saved and confirmed with the caller"
+        },
+        "backward_condition": null
+      },
+      "faq_to_wrap": {
+        "source": "answer_faq",
+        "target": "wrap_up",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "The caller question has been answered or they have been offered an alternative"
+        },
+        "backward_condition": null
+      },
+      "faq_to_transfer": {
+        "source": "answer_faq",
+        "target": "transfer",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "The caller question requires connecting them to a department for a detailed answer"
+        },
+        "backward_condition": null
+      },
+      "wrap_to_end": {
+        "source": "wrap_up",
+        "target": "end",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "The caller has no more questions and is ready to hang up"
+        },
+        "backward_condition": null
+      },
+      "greeting_to_after_hours": {
+        "source": "greeting",
+        "target": "after_hours",
+        "forward_condition": {
+          "label": "Caller arrives after business hours",
+          "type": "llm",
+          "condition": "When {{is_after_hours}} is true at call start, or the caller asks if we are open and the business is currently closed."
+        },
+        "backward_condition": null
+      },
+      "after_hours_to_message": {
+        "source": "after_hours",
+        "target": "take_message",
+        "forward_condition": {
+          "label": "Take a message after hours",
+          "type": "llm",
+          "condition": "When the caller agrees to leave a message, or {{after_hours_mode}} is TAKE_MESSAGE or ASK_CALLBACK_WINDOW."
+        },
+        "backward_condition": null
+      },
+      "after_hours_to_wrap": {
+        "source": "after_hours",
+        "target": "wrap_up",
+        "forward_condition": {
+          "label": "Caller declines to leave a message",
+          "type": "llm",
+          "condition": "When the caller does not want to leave a message and is ready to end the call."
+        },
+        "backward_condition": null
+      },
+      "transfer_to_owner": {
+        "source": "transfer",
+        "target": "xfer_owner",
+        "forward_condition": {
+          "label": "Caller routes to owner (direct or solo-owner fallback)",
+          "type": "llm",
+          "condition": "Route to xfer_owner when ANY of these are true AND {{ routing_owner_phone }} is non-empty:\n(1) Caller is explicitly asking for the owner / founder / manager / person-in-charge.\n(2) Solo-owner fallback: caller is asking for sales / quotes / pricing / new business AND {{ routing_sales_phone }} is empty.\n(3) Solo-owner fallback: caller is asking for support / warranty / service issue / product problem AND {{ routing_support_phone }} is empty.\n(4) Solo-owner fallback: caller is asking for billing / invoice / payment AND {{ routing_billing_phone }} is empty.\n(5) Solo-owner fallback: caller is asking for scheduling / appointment / book AND {{ routing_scheduling_phone }} is empty.\nIn cases 2-5, the owner handles that role personally because no dedicated contact is configured."
+        },
+        "backward_condition": null
+      },
+      "xfer_owner_to_wrap": {
+        "source": "xfer_owner",
+        "target": "wrap_up",
+        "forward_condition": {
+          "label": "Transfer succeeded",
+          "type": "llm",
+          "condition": "When the call has been successfully transferred to the human."
+        },
+        "backward_condition": null
+      },
+      "xfer_owner_to_message": {
+        "source": "xfer_owner",
+        "target": "take_message",
+        "forward_condition": {
+          "label": "Transfer failed - take message instead",
+          "type": "llm",
+          "condition": "When the transfer fails or the routing destination is unavailable."
+        },
+        "backward_condition": null
+      },
+      "transfer_to_sales": {
+        "source": "transfer",
+        "target": "xfer_sales",
+        "forward_condition": {
+          "label": "Caller wants sales (dedicated contact configured)",
+          "type": "llm",
+          "condition": "When the caller is asking for sales / quotes / pricing / new business AND the dynamic variable {{ routing_sales_phone }} is non-empty (the owner has configured a dedicated contact)."
+        },
+        "backward_condition": null
+      },
+      "xfer_sales_to_wrap": {
+        "source": "xfer_sales",
+        "target": "wrap_up",
+        "forward_condition": {
+          "label": "Transfer succeeded",
+          "type": "llm",
+          "condition": "When the call has been successfully transferred to the human."
+        },
+        "backward_condition": null
+      },
+      "xfer_sales_to_message": {
+        "source": "xfer_sales",
+        "target": "take_message",
+        "forward_condition": {
+          "label": "Transfer failed - take message instead",
+          "type": "llm",
+          "condition": "When the transfer fails or the routing destination is unavailable."
+        },
+        "backward_condition": null
+      },
+      "transfer_to_support": {
+        "source": "transfer",
+        "target": "xfer_support",
+        "forward_condition": {
+          "label": "Caller wants support (dedicated contact configured)",
+          "type": "llm",
+          "condition": "When the caller is asking for support / warranty / service issue / product problem AND the dynamic variable {{ routing_support_phone }} is non-empty (the owner has configured a dedicated contact)."
+        },
+        "backward_condition": null
+      },
+      "xfer_support_to_wrap": {
+        "source": "xfer_support",
+        "target": "wrap_up",
+        "forward_condition": {
+          "label": "Transfer succeeded",
+          "type": "llm",
+          "condition": "When the call has been successfully transferred to the human."
+        },
+        "backward_condition": null
+      },
+      "xfer_support_to_message": {
+        "source": "xfer_support",
+        "target": "take_message",
+        "forward_condition": {
+          "label": "Transfer failed - take message instead",
+          "type": "llm",
+          "condition": "When the transfer fails or the routing destination is unavailable."
+        },
+        "backward_condition": null
+      },
+      "transfer_to_billing": {
+        "source": "transfer",
+        "target": "xfer_billing",
+        "forward_condition": {
+          "label": "Caller wants billing (dedicated contact configured)",
+          "type": "llm",
+          "condition": "When the caller is asking for billing / invoice / payment question AND the dynamic variable {{ routing_billing_phone }} is non-empty (the owner has configured a dedicated contact)."
+        },
+        "backward_condition": null
+      },
+      "xfer_billing_to_wrap": {
+        "source": "xfer_billing",
+        "target": "wrap_up",
+        "forward_condition": {
+          "label": "Transfer succeeded",
+          "type": "llm",
+          "condition": "When the call has been successfully transferred to the human."
+        },
+        "backward_condition": null
+      },
+      "xfer_billing_to_message": {
+        "source": "xfer_billing",
+        "target": "take_message",
+        "forward_condition": {
+          "label": "Transfer failed - take message instead",
+          "type": "llm",
+          "condition": "When the transfer fails or the routing destination is unavailable."
+        },
+        "backward_condition": null
+      },
+      "transfer_to_scheduling": {
+        "source": "transfer",
+        "target": "xfer_scheduling",
+        "forward_condition": {
+          "label": "Caller wants scheduling (dedicated contact configured)",
+          "type": "llm",
+          "condition": "When the caller is asking for scheduling / appointment / book AND the dynamic variable {{ routing_scheduling_phone }} is non-empty (the owner has configured a dedicated contact)."
+        },
+        "backward_condition": null
+      },
+      "xfer_scheduling_to_wrap": {
+        "source": "xfer_scheduling",
+        "target": "wrap_up",
+        "forward_condition": {
+          "label": "Transfer succeeded",
+          "type": "llm",
+          "condition": "When the call has been successfully transferred to the human."
+        },
+        "backward_condition": null
+      },
+      "xfer_scheduling_to_message": {
+        "source": "xfer_scheduling",
+        "target": "take_message",
+        "forward_condition": {
+          "label": "Transfer failed - take message instead",
+          "type": "llm",
+          "condition": "When the transfer fails or the routing destination is unavailable."
+        },
+        "backward_condition": null
+      }
+    },
+    "nodes": {
+      "start_node": {
+        "type": "start",
+        "position": {
+          "x": 128.0,
+          "y": 410.0
+        },
+        "edge_order": [
+          "start_to_greeting"
+        ]
+      },
+      "greeting": {
+        "conversation_config": {
+          "agent": {
+            "prompt": {
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "You are the FIRST handler on every inbound call. Your two jobs:\n(1) Greet warmly per the agent system prompt.\n(2) Identify the caller intent in 1-2 turns and route fast.\n\nIf is_after_hours dynamic variable is true, briefly say we are outside business hours and you will take a careful message.\n\nIntent cues:\n- FAQ: hours, location, services, pricing intro, address\n- Transfer: speak to person/role, owner, manager, sales, billing, support, scheduling\n- Message: leave a message, call me back, urgency without specific person\n\nNever resolve transfer or message intent yourself. Pass to next node fast. Caller time matters.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "type": "override_agent",
+        "position": {
+          "x": 704.0,
+          "y": 410.0
+        },
+        "edge_order": [
+          "greeting_to_after_hours",
+          "greeting_to_transfer",
+          "greeting_to_message",
+          "greeting_to_faq"
+        ],
+        "label": "Greeting & Identify Intent",
+        "auto_advance_after_first_response": false
+      },
+      "transfer": {
+        "conversation_config": {
+          "agent": {
+            "prompt": {
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "You handle live transfers via WORKFLOW NODES, not the transfer_to_number system tool.\n\nIdentify which routing role the caller wants and let the workflow's edge-evaluation move them to the right phone-transfer node.\n\nRouting roles + dyn vars:\n- Owner / founder / manager / person-in-charge -> xfer_owner ({{ routing_owner_phone }})\n- Sales / quotes / pricing / new business -> xfer_sales ({{ routing_sales_phone }})\n- Support / warranty / service issue / product problem -> xfer_support ({{ routing_support_phone }})\n- Billing / invoice / payment question -> xfer_billing ({{ routing_billing_phone }})\n- Scheduling / appointment / book -> xfer_scheduling ({{ routing_scheduling_phone }})\n\n# Solo-owner fallback (CRITICAL)\n\nIf the caller asks for sales / support / billing / scheduling but that role's dyn var is empty AND {{ routing_owner_phone }} is non-empty, route to xfer_owner instead of taking a message. The owner handles all roles personally in solo or small-team businesses.\n\nTell the caller: \"Let me connect you with {{ first_name }} - they handle this personally.\"\n\n# Hard rules\n\n- Confirm intent in one sentence before transferring\n- Tell them you are connecting before the handoff\n- Only fall through to take_message if BOTH the role phone AND routing_owner_phone are empty\n- Never fabricate names, phones, or callback timing",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "type": "override_agent",
+        "position": {
+          "x": 1856.0,
+          "y": 242.0
+        },
+        "edge_order": [
+          "transfer_to_message",
+          "transfer_to_wrap",
+          "transfer_to_owner",
+          "transfer_to_sales",
+          "transfer_to_support",
+          "transfer_to_billing",
+          "transfer_to_scheduling"
+        ],
+        "label": "Transfer Call",
+        "auto_advance_after_first_response": false
+      },
+      "take_message": {
+        "conversation_config": {
+          "turn": {
+            "turn_timeout": 12.0,
+            "turn_eagerness": "patient"
+          },
+          "agent": {
+            "prompt": {
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "You capture messages with patient precision. Slower and more deliberate than other nodes.\n\nRequired fields, collect in order, repeat back each:\n1. Caller full name\n2. Best callback number (read it back digit-by-digit)\n3. Reason / message body\n4. Urgency (low / normal / urgent)\n5. Preferred callback window\n6. Who they want it delivered to\n\nQuality bar:\n- Never proceed without callback number\n- Repeat back name and number to confirm\n- Confirm message intent in one sentence at the end\n- Use the capture_message tool to persist all fields",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "type": "override_agent",
+        "position": {
+          "x": 3008.0,
+          "y": 291.5
+        },
+        "edge_order": [
+          "message_to_wrap"
+        ],
+        "label": "Take Message",
+        "auto_advance_after_first_response": false
+      },
+      "answer_faq": {
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": true
+          },
+          "tts": {},
+          "agent": {
+            "prompt": {
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "You answer common business questions using the knowledge base. Use get_business_context and get_faq_answer tools.\n\nStrict honesty:\n- If KB does not have the answer: I am not sure off the top of my head, would you like me to take a message?\n- Never fabricate hours, prices, services, policies\n- For specific pricing beyond intro, route to transfer or message\n\nYou handle directly: hours (use is_open_now), location, services overview, basic do-you-do-X questions.\n\nWrap each answer with: Is there anything else I can help you with? Do not stack multiple FAQs.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "type": "override_agent",
+        "position": {
+          "x": 1280.0,
+          "y": 895.0
+        },
+        "edge_order": [
+          "faq_to_wrap",
+          "faq_to_transfer"
+        ],
+        "label": "Answer FAQ",
+        "auto_advance_after_first_response": false
+      },
+      "wrap_up": {
+        "conversation_config": {
+          "agent": {
+            "prompt": {
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "You close the call professionally. Caller has been transferred (returned), left a message, or got their FAQ answered.\n\nFinal lines:\n- Thank them by name if known\n- Confirm what is next (callback timing or message saved)\n- Close warmly: Have a great day and thanks for calling business_name\n\nUse save_call_summary to record the outcome before ending.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "type": "override_agent",
+        "position": {
+          "x": 3584.0,
+          "y": 430.0
+        },
+        "edge_order": [
+          "wrap_to_end"
+        ],
+        "label": "Wrap Up",
+        "auto_advance_after_first_response": false
+      },
+      "end": {
+        "type": "end",
+        "position": {
+          "x": 4160.0,
+          "y": 430.0
+        },
+        "edge_order": []
+      },
+      "after_hours": {
+        "conversation_config": {
+          "turn": {
+            "turn_timeout": 12.0,
+            "turn_eagerness": "patient"
+          },
+          "agent": {
+            "prompt": {
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "You handle inbound calls that arrive outside business hours.\n\nGreet the caller acknowledging the after-hours context: 'Good {{time_of_day}}, you have reached {{business_name}} after hours — this is Sarah, I can take a message and have someone follow up first thing.'\n\nFollow {{after_hours_mode}}:\n- TAKE_MESSAGE: go straight to message capture (capture_message tool)\n- ASK_CALLBACK_WINDOW: ask preferred callback window, then capture\n- TRY_TRANSFER_THEN_MESSAGE: attempt transfer to {{routing_owner_phone}} once (only if non-empty); if it fails, fall through to message capture\n\nSet realistic expectations: 'I will make sure {{first_name}} sees this first thing tomorrow' or use the configured callback window.\n\nNever promise a same-day callback after business hours unless the owner has explicitly enabled urgent-callback.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "type": "override_agent",
+        "position": {
+          "x": 2432.0,
+          "y": 994.0
+        },
+        "edge_order": [
+          "after_hours_to_message",
+          "after_hours_to_wrap"
+        ],
+        "label": "After Hours",
+        "auto_advance_after_first_response": false
+      },
+      "xfer_owner": {
+        "custom_sip_headers": [],
+        "transfer_destination": {
+          "type": "phone_dynamic_variable",
+          "phone_number": "routing_owner_phone"
+        },
+        "transfer_type": "conference",
+        "post_dial_digits": null,
+        "type": "phone_number",
+        "position": {
+          "x": 2432.0,
+          "y": 64.0
+        },
+        "edge_order": [
+          "xfer_owner_to_wrap",
+          "xfer_owner_to_message"
+        ]
+      },
+      "xfer_sales": {
+        "custom_sip_headers": [],
+        "transfer_destination": {
+          "type": "phone_dynamic_variable",
+          "phone_number": "routing_sales_phone"
+        },
+        "transfer_type": "conference",
+        "post_dial_digits": null,
+        "type": "phone_number",
+        "position": {
+          "x": 2432.0,
+          "y": 242.0
+        },
+        "edge_order": [
+          "xfer_sales_to_wrap",
+          "xfer_sales_to_message"
+        ]
+      },
+      "xfer_support": {
+        "custom_sip_headers": [],
+        "transfer_destination": {
+          "type": "phone_dynamic_variable",
+          "phone_number": "routing_support_phone"
+        },
+        "transfer_type": "conference",
+        "post_dial_digits": null,
+        "type": "phone_number",
+        "position": {
+          "x": 2432.0,
+          "y": 430.0
+        },
+        "edge_order": [
+          "xfer_support_to_wrap",
+          "xfer_support_to_message"
+        ]
+      },
+      "xfer_billing": {
+        "custom_sip_headers": [],
+        "transfer_destination": {
+          "type": "phone_dynamic_variable",
+          "phone_number": "routing_billing_phone"
+        },
+        "transfer_type": "conference",
+        "post_dial_digits": null,
+        "type": "phone_number",
+        "position": {
+          "x": 2432.0,
+          "y": 608.0
+        },
+        "edge_order": [
+          "xfer_billing_to_wrap",
+          "xfer_billing_to_message"
+        ]
+      },
+      "xfer_scheduling": {
+        "custom_sip_headers": [],
+        "transfer_destination": {
+          "type": "phone_dynamic_variable",
+          "phone_number": "routing_scheduling_phone"
+        },
+        "transfer_type": "conference",
+        "post_dial_digits": null,
+        "type": "phone_number",
+        "position": {
+          "x": 2432.0,
+          "y": 786.0
+        },
+        "edge_order": [
+          "xfer_scheduling_to_wrap",
+          "xfer_scheduling_to_message"
+        ]
+      }
+    },
+    "prevent_subagent_loops": false
+  },
+  "tags": [
+    "example",
+    "receptionist",
+    "front-desk"
+  ],
+  "version_id": null,
+  "branch_id": null,
+  "main_branch_id": null,
+  "coaching_settings": null,
+  "procedures": {},
+  "procedures_enabled": false,
+  "procedure_settings": {
+    "compiler_mode": "append"
+  },
+  "trust_context": "unknown"
 }
