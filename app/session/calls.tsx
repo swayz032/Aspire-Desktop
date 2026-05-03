@@ -550,7 +550,10 @@ function CallsScreen() {
   };
 
   // ---------------------------------------------------------------------------
-  // Outbound call via /api/frontdesk/outbound-call
+  // Outbound call — Voice SDK is the primary path. The legacy outbox
+  // (/api/frontdesk/outbound-call) is fired-and-forgotten as a parallel
+  // audit-trail hop for accounts that still have a business_lines row;
+  // it is NEVER allowed to block the call.
   // ---------------------------------------------------------------------------
 
   const handleCall = async () => {
@@ -565,61 +568,73 @@ function CallsScreen() {
       const cleaned = phoneNumber.replace(/\D/g, '');
       const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
 
-      const res = await authenticatedFetch('/api/frontdesk/outbound-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toE164 }),
-      });
-
-      if (res.status === 403) {
-        setIsCalling(false);
-        setOutboundBlocked(true);
-        return;
-      }
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Call failed' }));
-        setCallError(err.error || 'Call initiation failed');
-        setIsCalling(false);
-        return;
-      }
-
-      // Outbox receipt accepted. Now mint the Voice SDK token so the
-      // Call Room can establish in-browser audio. We do this on the
-      // SAME user gesture (the click on Call) so iOS Safari doesn't
-      // strip the AudioContext permission window.
-      const body = await res.json().catch(() => ({} as Record<string, unknown>));
-      const callId = (body as { callSessionId?: string }).callSessionId;
-
-      let voiceToken: string | undefined;
-      let voiceCallerId: string | undefined;
       const officeId = tenant?.officeId;
-      if (officeId) {
-        try {
-          const tok = await fetchVoiceToken({ authenticatedFetch, officeId });
-          voiceToken = tok.token;
-          voiceCallerId = tok.caller_id;
-        } catch (tokErr) {
-          // Failure modes: VOICE_NOT_CONFIGURED, NO_ASPIRE_NUMBER, network.
-          // We still navigate to the Call Room — it'll surface a friendly
-          // banner via useVoiceCall.status === 'error', and the receipt
-          // path above keeps the audit trail intact regardless.
-          if (tokErr instanceof VoiceTokenError && tokErr.code === 'NO_ASPIRE_NUMBER') {
+      if (!officeId) {
+        setCallError('Your office is still loading — try again in a moment.');
+        setIsCalling(false);
+        return;
+      }
+
+      // 1) PRIMARY PATH — mint the Voice SDK token. If this fails, the
+      //    call cannot proceed; surface the reason clearly.
+      let voiceToken: string;
+      let voiceCallerId: string;
+      try {
+        const tok = await fetchVoiceToken({ authenticatedFetch, officeId });
+        voiceToken = tok.token;
+        voiceCallerId = tok.caller_id;
+      } catch (tokErr) {
+        if (tokErr instanceof VoiceTokenError) {
+          if (tokErr.code === 'NO_ASPIRE_NUMBER') {
             setCallError(tokErr.message);
-            setIsCalling(false);
-            return;
+          } else if (tokErr.code === 'VOICE_NOT_CONFIGURED') {
+            setCallError(
+              'In-browser calls aren’t configured for this account yet. Contact support.',
+            );
+          } else {
+            setCallError(tokErr.message || 'Couldn’t set up the call.');
           }
-          // Otherwise fall through to non-audio Call Room.
+        } else {
+          setCallError('Network error — could not set up the call.');
         }
+        setIsCalling(false);
+        return;
+      }
+
+      // 2) NON-BLOCKING audit hop — best-effort. Old accounts with a
+      //    business_lines row will get the OUTBOUND_BLOCKED guard etc.
+      //    New accounts (no business_lines row) silently skip it. Either
+      //    way the SDK call still proceeds.
+      let auditCallId: string | undefined;
+      try {
+        const auditRes = await authenticatedFetch('/api/frontdesk/outbound-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ toE164 }),
+        });
+        if (auditRes.status === 403) {
+          // Owner intentionally on inbound-only — block the call here too.
+          setOutboundBlocked(true);
+          setIsCalling(false);
+          return;
+        }
+        if (auditRes.ok) {
+          const body = await auditRes.json().catch(() => ({} as Record<string, unknown>));
+          auditCallId = (body as { callSessionId?: string }).callSessionId;
+        }
+        // 4xx/5xx other than 403: ignore. Voice SDK path is the source
+        // of truth and already cuts a voice_token_minted receipt.
+      } catch {
+        // Network error on audit hop — ignore, voice path stands alone.
       }
 
       router.push({
         pathname: '/call-room',
         params: {
           phone: toE164,
-          ...(callId ? { callId } : {}),
-          ...(voiceToken ? { voiceToken } : {}),
-          ...(voiceCallerId ? { callerId: voiceCallerId } : {}),
+          ...(auditCallId ? { callId: auditCallId } : {}),
+          voiceToken,
+          callerId: voiceCallerId,
         },
       } as never);
       // Local "calling" overlay state is no longer the primary UX; reset
@@ -632,7 +647,9 @@ function CallsScreen() {
   };
 
   // ---------------------------------------------------------------------------
-  // Return call via /api/frontdesk/return-call
+  // Return a missed call — Voice SDK primary path; the legacy
+  // /api/frontdesk/return-call endpoint is fired-and-forgotten as the
+  // audit-trail hop (mirrors handleCall's structure).
   // ---------------------------------------------------------------------------
 
   const handleReturnCall = async (call: FormattedCall) => {
@@ -644,34 +661,66 @@ function CallsScreen() {
     setIsCalling(true);
 
     try {
-      const res = await authenticatedFetch('/api/frontdesk/return-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callSessionId: call.callSessionId }),
-      });
-
-      if (res.status === 403) {
-        setIsCalling(false);
-        setOutboundBlocked(true);
-        return;
-      }
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Return call failed' }));
-        setCallError(err.error || 'Return call failed');
-        setIsCalling(false);
-        return;
-      }
-
-      // Hand off to Call Room with the original caller's metadata.
       const cleaned = call.rawNumber.replace(/\D/g, '');
       const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
+
+      const officeId = tenant?.officeId;
+      if (!officeId) {
+        setCallError('Your office is still loading — try again in a moment.');
+        setIsCalling(false);
+        return;
+      }
+
+      // 1) PRIMARY — Voice SDK token.
+      let voiceToken: string;
+      let voiceCallerId: string;
+      try {
+        const tok = await fetchVoiceToken({ authenticatedFetch, officeId });
+        voiceToken = tok.token;
+        voiceCallerId = tok.caller_id;
+      } catch (tokErr) {
+        if (tokErr instanceof VoiceTokenError) {
+          if (tokErr.code === 'NO_ASPIRE_NUMBER') {
+            setCallError(tokErr.message);
+          } else if (tokErr.code === 'VOICE_NOT_CONFIGURED') {
+            setCallError(
+              'In-browser calls aren’t configured for this account yet. Contact support.',
+            );
+          } else {
+            setCallError(tokErr.message || 'Couldn’t set up the return call.');
+          }
+        } else {
+          setCallError('Network error — could not return call');
+        }
+        setIsCalling(false);
+        return;
+      }
+
+      // 2) NON-BLOCKING audit hop.
+      try {
+        const auditRes = await authenticatedFetch('/api/frontdesk/return-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callSessionId: call.callSessionId }),
+        });
+        if (auditRes.status === 403) {
+          setOutboundBlocked(true);
+          setIsCalling(false);
+          return;
+        }
+        // Non-403 errors: ignore — voice path stands alone.
+      } catch {
+        // Network error on audit hop — ignore.
+      }
+
       router.push({
         pathname: '/call-room',
         params: {
           phone: toE164,
           name: call.name,
           callId: call.callSessionId,
+          voiceToken,
+          callerId: voiceCallerId,
         },
       } as never);
       setIsCalling(false);
