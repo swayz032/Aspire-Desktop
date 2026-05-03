@@ -107,10 +107,39 @@ export async function getSuiteProfile() {
     throw new Error('No authenticated user');
   }
 
-  const suiteId = (session.user.user_metadata as { suite_id?: string } | undefined)?.suite_id;
+  // Read suite_id from the JWT-embedded user_metadata. This is the FAST path —
+  // works for any session whose JWT was minted AFTER the user's metadata was
+  // last written (which is the common case for new sign-ins).
+  let suiteId = (session.user.user_metadata as { suite_id?: string } | undefined)?.suite_id;
 
-  // No suite_id in metadata: distinguish admin (multiple owner memberships) from
-  // pre-onboarding (zero memberships) so callers can render the right UI.
+  // SLOW PATH — JWT metadata is empty (covers two cases):
+  //  (a) The user signed in BEFORE a server-side metadata write
+  //      (e.g. /api/onboarding/bootstrap or a backfill SQL update). Supabase
+  //      does NOT invalidate existing sessions when admin.updateUserById
+  //      runs, so the user's JWT keeps the stale metadata until the next
+  //      full token refresh. This was the root cause of the recurring
+  //      "Suite Pending - Office Pending" / "no active office" bugs.
+  //  (b) The user is the platform admin (no metadata.suite_id by design).
+  //
+  // For (a) we want to force a fresh metadata read from Supabase Auth.
+  // supabase.auth.getUser() makes a network call to /auth/v1/user which
+  // returns the up-to-date user record (including current user_metadata),
+  // unlike getSession() which just reads from local storage.
+  if (!suiteId) {
+    try {
+      const { data: freshUser } = await supabase.auth.getUser();
+      const fresh = (freshUser?.user?.user_metadata as { suite_id?: string } | undefined)?.suite_id;
+      if (fresh) {
+        suiteId = fresh;
+      }
+    } catch {
+      // best-effort — fall through to membership-count branch below
+    }
+  }
+
+  // Still no suite_id after fresh read: distinguish admin (multiple owner
+  // memberships) from pre-onboarding (zero memberships) so callers can
+  // render the right UI.
   if (!suiteId) {
     const { data: memberships } = await supabase
       .from('tenant_memberships')
