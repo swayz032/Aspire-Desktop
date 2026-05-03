@@ -88,9 +88,11 @@ export default function CallRoomRoute(): React.ReactElement {
   }, [rawParams]);
 
   // ----- Live voice call --------------------------------------------------
-  // Navigate back to the Return Call page when the SDK reports an end
-  // (caller hung up, error, or local hangup).
-  const navigateBackOnEnd = useCallback(() => {
+  // We only auto-navigate back when the call ENDED CLEANLY (caller hung up
+  // or local hangup completed). On error/cancel we keep the user on the
+  // Call Room screen so the error message stays visible — that's how we
+  // diagnosed the v0 silent-failure regression.
+  const navigateBack = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -98,10 +100,21 @@ export default function CallRoomRoute(): React.ReactElement {
     }
   }, [router]);
 
+  const handleVoiceEnd = useCallback(
+    (reason: 'completed' | 'error' | 'cancelled') => {
+      if (reason === 'completed') {
+        navigateBack();
+      }
+      // On 'error' or 'cancelled' — stay on the Call Room. The error
+      // banner + status are already surfaced via voice.error / voice.status.
+    },
+    [navigateBack],
+  );
+
   const voice = useVoiceCall({
     token: params.voiceToken ?? null,
     destination: params.phone ?? null,
-    onEnd: navigateBackOnEnd,
+    onEnd: handleVoiceEnd,
   });
 
   const baseCallState = useMemo<CallState>(() => buildCallState(params), [params]);
@@ -152,13 +165,10 @@ export default function CallRoomRoute(): React.ReactElement {
   }
 
   const handleEnd = () => {
-    // Cleanly hang up via the SDK if connected; the SDK's 'disconnect'
-    // event fires onEnd which navigates back. Calling navigateBackOnEnd
-    // directly here as a fallback when the SDK never connected.
+    // User-initiated hangup (End Call button). Always navigate back —
+    // unlike SDK-initiated 'error' which keeps the user on the screen.
     voice.hangup();
-    if (voice.status === 'idle' || voice.status === 'error') {
-      navigateBackOnEnd();
-    }
+    navigateBack();
   };
 
   return (
@@ -173,6 +183,7 @@ export default function CallRoomRoute(): React.ReactElement {
         onMute={() => voice.mute()}
         onHold={() => voice.hold()}
         onSendDigit={(d) => voice.sendDigits(d)}
+        errorBanner={voice.error}
       />
     </>
   );

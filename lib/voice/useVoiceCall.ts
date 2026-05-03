@@ -149,8 +149,12 @@ export function useVoiceCall(opts: UseVoiceCallOptions): UseVoiceCallReturn {
       try {
         // Dynamic import so the ~120KB SDK only loads when the Call Room
         // route is actually entered (not on every page).
+        // eslint-disable-next-line no-console
+        console.info('[useVoiceCall] importing @twilio/voice-sdk...');
         const sdk = await import('@twilio/voice-sdk');
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.info('[useVoiceCall] SDK loaded, instantiating Device');
         const Device = sdk.Device;
         const device = new Device(opts.token!, {
           // Closer = fewer dropped packets on retried PSTN segments.
@@ -163,23 +167,32 @@ export function useVoiceCall(opts: UseVoiceCallOptions): UseVoiceCallReturn {
         // Surface SDK-level errors as 'error' status so the UI can recover.
         device.on('error', (err: { message?: string; code?: number }) => {
           if (cancelled) return;
+          // eslint-disable-next-line no-console
+          console.error('[useVoiceCall] Device error', err);
           setState((s) => ({
             ...s,
             status: 'error',
             error: err?.message || `Voice SDK error ${err?.code ?? ''}`.trim(),
           }));
-          onEndRef.current?.('error');
-          cleanup();
+          // Do NOT auto-navigate away on Device errors — the UI surfaces the
+          // error and lets the user retry. Auto-navigation hid the failure
+          // mode from us in v0.
         });
 
         // Register with Twilio so the SDK is reachable. Outbound calls
         // technically work without register() in newer SDKs, but doing it
         // unblocks future incoming events without a re-init.
+        // eslint-disable-next-line no-console
+        console.info('[useVoiceCall] device.register()...');
         await device.register();
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.info('[useVoiceCall] registered, connecting to', opts.destination);
 
         const call = await device.connect({ params: { To: opts.destination! } });
         callRef.current = call;
+        // eslint-disable-next-line no-console
+        console.info('[useVoiceCall] device.connect() returned a Call');
 
         // Status transitions — Twilio's Call emits these in order.
         call.on('ringing', () => {
@@ -208,31 +221,38 @@ export function useVoiceCall(opts: UseVoiceCallOptions): UseVoiceCallReturn {
         });
         call.on('disconnect', () => {
           if (cancelled) return;
+          // eslint-disable-next-line no-console
+          console.info('[useVoiceCall] Call disconnect');
           setState((s) => ({ ...s, status: 'ended', audioLevel: 0 }));
           onEndRef.current?.('completed');
           cleanup();
         });
         call.on('cancel', () => {
           if (cancelled) return;
+          // eslint-disable-next-line no-console
+          console.warn('[useVoiceCall] Call cancel — never reached the destination');
           setState((s) => ({ ...s, status: 'ended' }));
           onEndRef.current?.('cancelled');
           cleanup();
         });
-        call.on('error', (err: { message?: string }) => {
+        call.on('error', (err: { message?: string; code?: number }) => {
           if (cancelled) return;
+          // eslint-disable-next-line no-console
+          console.error('[useVoiceCall] Call error', err);
           setState((s) => ({
             ...s,
             status: 'error',
-            error: err?.message || 'Call failed.',
+            error: err?.message || `Call error ${err?.code ?? ''}`.trim(),
           }));
-          onEndRef.current?.('error');
-          cleanup();
+          // Do NOT auto-navigate — surface the error.
         });
       } catch (err: unknown) {
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.error('[useVoiceCall] setup failed', err);
         const msg = err instanceof Error ? err.message : 'Call setup failed.';
         setState((s) => ({ ...s, status: 'error', error: msg }));
-        onEndRef.current?.('error');
+        // Do NOT auto-navigate — surface the error so we can debug.
         cleanup();
       }
     })();

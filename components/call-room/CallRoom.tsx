@@ -1,6 +1,6 @@
 // components/call-room/CallRoom.tsx
 import React from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { CallRoomBackground } from './CallRoomBackground';
 import { CallRoomCard } from './CallRoomCard';
 import { CallRoomNightLight } from './CallRoomNightLight';
@@ -35,6 +35,8 @@ export interface CallRoomProps {
   onHold?: () => void;
   /** Send a single DTMF digit on the active SDK call. */
   onSendDigit?: (digit: string) => void;
+  /** SDK-level error to surface near the top of the room. */
+  errorBanner?: string | null;
 }
 
 export function CallRoom({
@@ -46,6 +48,7 @@ export function CallRoom({
   onMute,
   onHold,
   onSendDigit,
+  errorBanner,
 }: CallRoomProps): React.ReactElement | null {
   const tod = useTimeOfDay(forcedTimeOfDay);
   const isWeb = Platform.OS === 'web';
@@ -64,6 +67,11 @@ export function CallRoom({
       {isWeb && <CallRoomNightLight active={isNight} />}
 
       <View style={styles.cardWrap} pointerEvents="box-none">
+        {errorBanner ? (
+          <View style={styles.errorBanner} pointerEvents="auto">
+            <Text style={styles.errorBannerText}>{errorBanner}</Text>
+          </View>
+        ) : null}
         <CallRoomCard
           callState={callState}
           voiceState={voiceState}
@@ -88,4 +96,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 32,
   },
+  errorBanner: {
+    position: 'absolute',
+    top: 24,
+    left: 32,
+    right: 32,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(220, 38, 38, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 165, 165, 0.45)',
+    zIndex: 10,
+  },
+  errorBannerText: {
+    color: '#fecaca',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+  } as any,
 });

@@ -780,7 +780,12 @@ function CallsScreen() {
   // =========================================================================
 
   if (isDesktop) {
-    if (isCalling) {
+    // Legacy in-page "Calling..." overlay — replaced by the /call-room
+    // route. We keep the `isCalling` flag for the dialer's pulse animation
+    // + ring rings during the brief mint+navigate window, but no longer
+    // swap the entire screen with the old overlay (which used to flash for
+    // a moment before the real Call Room navigation took over).
+    if (false && isCalling) {
       return (
         <FullscreenSessionShell showBackButton={false}>
           <View style={callingStyles.container}>
