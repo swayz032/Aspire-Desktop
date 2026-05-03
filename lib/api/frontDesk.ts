@@ -106,11 +106,16 @@ export interface RoutingContactRow {
   suite_id: string;
   office_id: string;
   role: string;
-  label: string;
+  /** Live DB column is `name`. Older payloads may surface this as `label`
+   * — both are read defensively in the frontend mapper. */
+  name?: string;
+  label?: string;
   phone: string;
   sip_uri?: string;
   email?: string;
-  is_active: boolean;
+  transfer_allowed?: boolean;
+  fallback_mode?: string;
+  sort_order?: number;
   created_at: string;
   updated_at?: string | null;
 }
@@ -365,6 +370,13 @@ export async function purchaseNumber(
 // `{success}` (DELETE) — see backend/.../routes/front_desk.py:412-560.
 // ---------------------------------------------------------------------------
 
+/**
+ * Wire payload for POST /v1/front-desk/routing-contacts.
+ * The backend accepts both `name` (canonical, matches DB) and `label`
+ * (legacy alias). We send `label` here for backward compat with older
+ * orchestrator versions; once everything is on the new schema we'll
+ * switch the wire to `name`.
+ */
 export interface RoutingContactCreatePayload {
   role: string;
   label: string;

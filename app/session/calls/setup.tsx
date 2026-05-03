@@ -148,22 +148,26 @@ function mapWireToContact(row: RoutingContactRow, index: number): RoutingContact
   const role = (KNOWN_ROLES.has(wireRole as RoutingContact['role'])
     ? (wireRole as RoutingContact['role'])
     : 'custom') as RoutingContact['role'];
-  const initials = (row.label ?? '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s.charAt(0).toUpperCase())
-    .join('') || '??';
+  // Live DB column is `name`; older clients may surface `label` — read both.
+  const display = (row.name ?? row.label ?? '').toString();
+  const initials =
+    display
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((s) => s.charAt(0).toUpperCase())
+      .join('') || '??';
   return {
     id: row.id,
     role,
     customRoleLabel: role === 'custom' ? row.role : undefined,
-    name: row.label || '',
+    name: display,
     phone: row.phone || '',
     initials,
-    fallbackMode: 'TRANSFER_ALLOWED',
-    transferAllowed: true,
-    priority: index,
+    fallbackMode:
+      (row.fallback_mode as RoutingContact['fallbackMode']) || 'TRANSFER_ALLOWED',
+    transferAllowed: row.transfer_allowed ?? true,
+    priority: typeof row.sort_order === 'number' ? row.sort_order : index,
   };
 }
 
