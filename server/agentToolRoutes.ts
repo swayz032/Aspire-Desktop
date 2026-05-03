@@ -235,6 +235,40 @@ function pickRecord(value: unknown): Record<string, any> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
 }
 
+// Some LLM tool runtimes (OpenAI tool_calls, Anam in some configs) post the
+// arguments object as a JSON-encoded STRING instead of an object. pickRecord
+// rejects strings, so without this we end up with no task/query and 200 →
+// MISSING_TASK. Accept the string form and parse defensively.
+function pickRecordOrParse(value: unknown): Record<string, any> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, any>;
+  }
+  if (typeof value === 'string' && value.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, any>;
+      }
+    } catch {
+      // ignore — fall through to empty record
+    }
+  }
+  return {};
+}
+
+// Extract args from OpenAI-style tool_calls[N].function.arguments where
+// arguments is a JSON-encoded string. Returns the FIRST tool call's args.
+function pickToolCallArguments(value: unknown): Record<string, any> {
+  if (!Array.isArray(value) || value.length === 0) return {};
+  const first = value[0];
+  if (!first || typeof first !== 'object') return {};
+  const fn = (first as any).function;
+  if (fn && typeof fn === 'object') {
+    return pickRecordOrParse(fn.arguments);
+  }
+  return pickRecordOrParse((first as any).arguments);
+}
+
 function normalizeUuid(value: unknown): string {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
@@ -245,15 +279,25 @@ function getRequestBody(req: Request): Record<string, any> {
   const root = pickRecord(req.body);
   // Anam webhook payloads can place tool arguments under nested keys depending
   // on transport/runtime. Normalize once so all handlers read a consistent shape.
+  // Order: outer envelopes first, inner content last (so inner wins on conflict).
   const merged: Record<string, any> = {
     ...root,
-    ...pickRecord(root.arguments),
-    ...pickRecord(root.params),
-    ...pickRecord(root.input),
-    ...pickRecord(root.payload),
-    ...pickRecord(root.tool_input),
-    ...pickRecord(root.body),
-    ...pickRecord(root.bodyParams),
+    // OpenAI-style tool_calls[].function.arguments (JSON string in some runtimes).
+    ...pickToolCallArguments((root as any).tool_calls),
+    // OpenAI-style legacy function_call.arguments (JSON string).
+    ...pickRecordOrParse((root as any).function_call?.arguments),
+    // String-or-object envelope keys (Anam runtime variants).
+    ...pickRecordOrParse(root.arguments),
+    ...pickRecordOrParse(root.params),
+    ...pickRecordOrParse(root.input),
+    ...pickRecordOrParse(root.payload),
+    ...pickRecordOrParse(root.tool_input),
+    ...pickRecordOrParse(root.body),
+    ...pickRecordOrParse(root.bodyParams),
+    // Additional envelope keys observed in webhook integrations.
+    ...pickRecordOrParse((root as any).args),
+    ...pickRecordOrParse((root as any).data),
+    ...pickRecordOrParse((root as any).body_params),
   };
   // Suite/office IDs should come from trusted context. Ignore malformed IDs
   // from model-generated payloads (for example "test_suite") and fall back to

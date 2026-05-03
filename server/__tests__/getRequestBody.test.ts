@@ -249,3 +249,99 @@ describe('getRequestBody — bodyParams takes precedence over flat root when bot
     }
   });
 });
+
+// ─── Round 8 — string-form arguments and additional envelope keys ─────────────
+// These shapes were observed in May 2026 production transcripts where
+// invoke_adam returned MISSING_TASK with what looked like valid args. Root
+// cause: Anam (and OpenAI-style tool runtimes) can post arguments as a
+// JSON-encoded string instead of an object, which pickRecord rejected.
+
+describe('getRequestBody — string-form arguments envelope (Anam/OpenAI tool runtime)', () => {
+  it('parses JSON string in arguments key', async () => {
+    seedSuiteCache(SUITE_A);
+    const { status, body } = await postShowCards({
+      arguments: JSON.stringify({ suite_id: SUITE_A, task: 'x', query: 'y' }),
+    });
+    expect(status).not.toBe(400);
+    expect(body.error).not.toBe('MISSING_SUITE_ID');
+  });
+
+  it('parses JSON string in bodyParams key', async () => {
+    seedSuiteCache(SUITE_A);
+    const { status, body } = await postShowCards({
+      bodyParams: JSON.stringify({ suite_id: SUITE_A, task: 'x', query: 'y' }),
+    });
+    expect(status).not.toBe(400);
+    expect(body.error).not.toBe('MISSING_SUITE_ID');
+  });
+
+  it('ignores non-JSON strings without crashing', async () => {
+    const { status } = await postShowCards({
+      arguments: 'not json at all',
+      bodyParams: '{"unbalanced":',
+    });
+    // Falls through to MISSING_SUITE_ID or DEFAULT_SUITE_ID — must not crash.
+    expect(status).not.toBe(500);
+  });
+});
+
+describe('getRequestBody — OpenAI tool_calls shape', () => {
+  it('extracts arguments from tool_calls[0].function.arguments JSON string', async () => {
+    seedSuiteCache(SUITE_A);
+    const { status, body } = await postShowCards({
+      tool_calls: [
+        {
+          id: 'call_abc',
+          type: 'function',
+          function: {
+            name: 'show_cards',
+            arguments: JSON.stringify({ suite_id: SUITE_A, task: 'x', query: 'y' }),
+          },
+        },
+      ],
+    });
+    expect(status).not.toBe(400);
+    expect(body.error).not.toBe('MISSING_SUITE_ID');
+  });
+
+  it('extracts arguments from legacy function_call.arguments JSON string', async () => {
+    seedSuiteCache(SUITE_A);
+    const { status, body } = await postShowCards({
+      function_call: {
+        name: 'show_cards',
+        arguments: JSON.stringify({ suite_id: SUITE_A, task: 'x', query: 'y' }),
+      },
+    });
+    expect(status).not.toBe(400);
+    expect(body.error).not.toBe('MISSING_SUITE_ID');
+  });
+});
+
+describe('getRequestBody — extra envelope keys (args/data/body_params)', () => {
+  it('extracts from args envelope', async () => {
+    seedSuiteCache(SUITE_A);
+    const { status, body } = await postShowCards({
+      args: { suite_id: SUITE_A, task: 'x', query: 'y' },
+    });
+    expect(status).not.toBe(400);
+    expect(body.error).not.toBe('MISSING_SUITE_ID');
+  });
+
+  it('extracts from data envelope', async () => {
+    seedSuiteCache(SUITE_A);
+    const { status, body } = await postShowCards({
+      data: { suite_id: SUITE_A, task: 'x', query: 'y' },
+    });
+    expect(status).not.toBe(400);
+    expect(body.error).not.toBe('MISSING_SUITE_ID');
+  });
+
+  it('extracts from body_params (snake_case variant)', async () => {
+    seedSuiteCache(SUITE_A);
+    const { status, body } = await postShowCards({
+      body_params: { suite_id: SUITE_A, task: 'x', query: 'y' },
+    });
+    expect(status).not.toBe(400);
+    expect(body.error).not.toBe('MISSING_SUITE_ID');
+  });
+});
