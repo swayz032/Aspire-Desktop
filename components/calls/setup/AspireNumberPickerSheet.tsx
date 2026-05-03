@@ -90,6 +90,13 @@ export interface AspireNumberPickerSheetProps {
   initialAreaCode?: string;
   /** Initial vanity contains filter (e.g. "PAINT") */
   initialContains?: string;
+  /**
+   * Active office ID — passed from parent because the React Native Modal
+   * on web renders via a portal that's outside the TenantProvider context
+   * tree, so reading `useTenant()` inside the sheet returns an empty
+   * officeId. Parent already has `tenant.officeId` in scope; thread it down.
+   */
+  officeId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,12 +207,16 @@ export function AspireNumberPickerSheet({
   onPurchased,
   initialAreaCode = '',
   initialContains = '',
+  officeId: officeIdProp,
 }: AspireNumberPickerSheetProps) {
   injectSheetCss();
 
   const { authenticatedFetch } = useAuthFetch();
+  // Prefer the prop (passed from parent in TenantProvider tree). Fall back to
+  // useTenant() for any callsite that hasn't migrated yet — but on web Modal
+  // renders via a portal outside context, so the prop is required to work.
   const { tenant } = useTenant();
-  const officeId = tenant?.officeId ?? null;
+  const officeId = officeIdProp ?? tenant?.officeId ?? null;
 
   const [numberType, setNumberType] = useState<NumberTypeWire>('LOCAL');
   const [areaCode, setAreaCode] = useState(initialAreaCode);

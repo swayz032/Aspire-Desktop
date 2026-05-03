@@ -53,7 +53,6 @@ import {
   type PurchasedNumberResult,
 } from './AspireNumberPickerSheet';
 import { ForwardingInstructionsCard } from './ForwardingInstructionsCard';
-import { PortInWizardStub } from './PortInWizardStub';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers/TenantProvider';
 import {
@@ -161,16 +160,6 @@ const MODE_CARDS: ModeCardDef[] = [
     ],
     accent: 'primary',
   },
-  {
-    mode: 'PORT_IN',
-    badgeIcon: 'construct-outline',
-    badgeLabel: 'ADVANCED · V1.1',
-    title: 'Move my number to Aspire',
-    body:
-      'Twilio takes over your number entirely (LOA + utility bill). Aspire owns voice + SMS end-to-end. 7–14 day port window. Risk of port rejection.',
-    pills: [{ label: 'V1.1 — coming soon', tone: 'warn' }],
-    accent: 'amber',
-  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -185,6 +174,12 @@ export function PublicNumberSection({
   isTestingForwarding = false,
 }: PublicNumberSectionProps) {
   injectCss();
+
+  // Read officeId here (in the React tree under TenantProvider) so we can
+  // thread it down into the AspireNumberPickerSheet — RN Modal portals out
+  // of the context tree on web, breaking useTenant() inside the sheet.
+  const { tenant } = useTenant();
+  const officeId = tenant?.officeId ?? null;
 
   const setMode = (mode: PublicNumberMode) => {
     if (mode === config.mode) return;
@@ -233,18 +228,20 @@ export function PublicNumberSection({
           />
         ) : null}
 
-        {config.mode === 'PORT_IN' ? <PortInWizardStub /> : null}
       </View>
 
       {/* Picker sheet — controlled at section level. Used by both
           ASPIRE_NEW_NUMBER (for the primary number) and FORWARD_EXISTING (for
-          the SMS-companion Aspire number). */}
+          the SMS-companion Aspire number). officeId is passed down from the
+          parent because RN Modal renders via a portal that's outside the
+          TenantProvider context tree on web. */}
       <AspireNumberPickerSheet
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onPurchased={handlePurchased}
         initialAreaCode={config.areaCode ?? ''}
         initialContains={config.containsFilter ?? ''}
+        officeId={officeId}
       />
     </SectionPanel>
   );
