@@ -1,6 +1,18 @@
 // components/call-room/types.ts
 
-export type AvatarMode = 'photo' | 'initials' | 'default_male' | 'default_female';
+/**
+ * Production avatar model — 2 modes only:
+ *   • 'photo'   — render client.photoUrl when the user has uploaded one
+ *   • 'contact' — universal default vector silhouette on glass orb
+ */
+export type AvatarMode = 'photo' | 'contact';
+
+/**
+ * Live voice-activity flag for the call. In production, fed by an audio
+ * level threshold from the LiveKit/Twilio audio track; in the demo, set
+ * directly via the dev controls.
+ */
+export type VoiceState = 'silence' | 'caller' | 'host';
 
 export type TimeOfDayState = 'dawn' | 'day' | 'dusk' | 'night';
 

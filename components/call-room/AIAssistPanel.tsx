@@ -1,12 +1,15 @@
 // components/call-room/AIAssistPanel.tsx
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 export function AIAssistPanel(): React.ReactElement {
   return (
     <View style={styles.panel} testID="ai-assist">
       <View style={styles.headerRow}>
-        <Text style={styles.icon}>✨</Text>
+        <Ionicons name="sparkles" size={14} color="rgba(120,170,220,0.85)" style={styles.headerIcon} />
         <Text style={styles.sectionLabel}>AI ASSIST</Text>
       </View>
 
@@ -16,18 +19,18 @@ export function AIAssistPanel(): React.ReactElement {
       </View>
 
       <Text style={[styles.smallLabel, { marginTop: 18 }]}>Next actions</Text>
-      <ActionRow icon="📅" label="Schedule Inspection" />
-      <ActionRow icon="💬" label="Draft SMS" />
+      <ActionRow icon="calendar-outline" label="Schedule Inspection" />
+      <ActionRow icon="chatbubble-ellipses-outline" label="Draft SMS" />
     </View>
   );
 }
 
-function ActionRow({ icon, label }: { icon: string; label: string }) {
+function ActionRow({ icon, label }: { icon: IconName; label: string }) {
   return (
     <Pressable style={styles.actionRow} accessibilityRole="button" accessibilityLabel={label}>
-      <Text style={styles.actionIcon}>{icon}</Text>
+      <Ionicons name={icon} size={16} color="rgba(255,255,255,0.85)" style={styles.actionIcon} />
       <Text style={styles.actionLabel}>{label}</Text>
-      <Text style={styles.actionChevron}>›</Text>
+      <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.4)" />
     </Pressable>
   );
 }
@@ -40,11 +43,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     width: '100%',
-    // Both side panels share the same minHeight so their tints match.
-    minHeight: 280,
+    // Locked to 280 so swapping AI Assist <-> Keypad <-> Transfer never
+    // shifts the column height. Matches ClientMemoryPanel's minHeight.
+    height: 280,
+    overflow: 'hidden',
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 6 },
-  icon: { fontSize: 14, color: 'rgba(120,170,220,0.85)' },
+  headerIcon: { marginRight: 0 },
   sectionLabel: {
     color: 'rgba(255,255,255,0.5)',
     fontSize: 11,
@@ -74,9 +79,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginVertical: 4,
   },
-  actionIcon: { fontSize: 14, marginRight: 8 },
+  actionIcon: { marginRight: 10 },
   actionLabel: { flex: 1, color: 'rgba(255,255,255,0.88)', fontSize: 13 },
-  actionChevron: { color: 'rgba(255,255,255,0.4)', fontSize: 18 },
   moreActions: { marginTop: 8, paddingHorizontal: 4, paddingVertical: 6 },
   moreActionsText: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
 });

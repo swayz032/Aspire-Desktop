@@ -5,7 +5,7 @@ import { CallRoomBackground } from './CallRoomBackground';
 import { CallRoomCard } from './CallRoomCard';
 import { CallRoomNightLight } from './CallRoomNightLight';
 import { useTimeOfDay } from './hooks/useTimeOfDay';
-import type { CallState, TimeOfDayState } from './types';
+import type { CallState, TimeOfDayState, VoiceState } from './types';
 
 export interface CallRoomProps {
   visible: boolean;
@@ -19,12 +19,24 @@ export interface CallRoomProps {
    * hour and re-evaluates every 5 minutes.
    */
   forcedTimeOfDay?: TimeOfDayState;
+  /**
+   * Live voice-activity. Drives the avatar pulse ring. In production this
+   * is debounced from the audio track's level; in demo it's set manually.
+   */
+  voiceState?: VoiceState;
+  /**
+   * Fired when the user taps End Call in the controls bar. Production
+   * route should both terminate the Twilio call leg and navigate back.
+   */
+  onEnd?: () => void;
 }
 
 export function CallRoom({
   visible,
   callState,
   forcedTimeOfDay,
+  voiceState,
+  onEnd,
 }: CallRoomProps): React.ReactElement | null {
   const tod = useTimeOfDay(forcedTimeOfDay);
   const isWeb = Platform.OS === 'web';
@@ -43,7 +55,7 @@ export function CallRoom({
       {isWeb && <CallRoomNightLight active={isNight} />}
 
       <View style={styles.cardWrap} pointerEvents="box-none">
-        <CallRoomCard callState={callState} />
+        <CallRoomCard callState={callState} voiceState={voiceState} onEnd={onEnd} />
       </View>
     </View>
   );

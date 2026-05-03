@@ -20,7 +20,6 @@ const ORDER: TimeOfDayState[] = ['day', 'dawn', 'dusk', 'night'];
 function resolveLayerUri(src: number | { uri?: string; default?: string } | string): string {
   if (typeof src === 'string') return src;
   if (src && typeof src === 'object') {
-    // @ts-expect-error - shape varies by bundler
     return src.uri ?? src.default ?? '';
   }
   return '';

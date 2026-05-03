@@ -12,7 +12,9 @@ import type { TimeOfDayState } from './types';
 const TIMES: TimeOfDayState[] = ['dawn', 'day', 'dusk', 'night'];
 
 export default function CallRoomDemo(): React.ReactElement {
-  const [fixtureIdx, setFixtureIdx] = useState(0);
+  // Default to fixture 1 ("Carl Diaz · default_male") so the 3D cartoon avatar
+  // is visible on first load. Use the dev panel to switch fixtures.
+  const [fixtureIdx, setFixtureIdx] = useState(1);
   const [forcedTime, setForcedTime] = useState<TimeOfDayState | 'auto'>('auto');
   const [parallaxScale, setParallaxScale] = useState(1);
   const [voiceSim, setVoiceSim] = useState<'silence' | 'caller' | 'host'>('silence');
@@ -100,6 +102,7 @@ export default function CallRoomDemo(): React.ReactElement {
           visible={visible}
           callState={fixture.state}
           forcedTimeOfDay={forcedTime === 'auto' ? undefined : forcedTime}
+          voiceState={voiceSim}
         />
 
         {!panelOpen && (

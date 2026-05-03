@@ -68,6 +68,72 @@ function scrubDict(data: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
+function cleanContextValue(value: unknown, maxLength = 160): string {
+  if (typeof value !== 'string') return '';
+  return scrubValue(value.replace(/[\r\n]/g, '').trim()).slice(0, maxLength);
+}
+
+function buildRequestContext(req: any): Record<string, unknown> {
+  const correlationId =
+    cleanContextValue(req?.headers?.['x-correlation-id']) ||
+    cleanContextValue(req?.correlationId) ||
+    `corr_${randomUUID()}`;
+  const traceId =
+    cleanContextValue(req?.headers?.['x-trace-id']) ||
+    cleanContextValue(req?.traceId) ||
+    correlationId;
+  const suiteId =
+    cleanContextValue(req?.authenticatedSuiteId) ||
+    cleanContextValue(req?.headers?.['x-suite-id']) ||
+    cleanContextValue(req?.query?.suite_id);
+  const officeId =
+    cleanContextValue(req?.authenticatedOfficeId) ||
+    cleanContextValue(req?.headers?.['x-office-id']) ||
+    cleanContextValue(req?.query?.office_id);
+  const actorId =
+    cleanContextValue(req?.authenticatedUserId) ||
+    cleanContextValue(req?.headers?.['x-actor-id']);
+
+  req.correlationId = correlationId;
+  req.traceId = traceId;
+  req.headers['x-correlation-id'] = correlationId;
+  req.headers['x-trace-id'] = traceId;
+
+  return {
+    service: 'aspire-desktop-server',
+    surface: 'desktop-server',
+    method: req?.method,
+    path: req?.path || req?.url,
+    route_family: typeof req?.path === 'string' && req.path.startsWith('/api') ? 'api' : 'web',
+    suite_id: suiteId,
+    office_id: officeId,
+    actor_id: actorId,
+    correlation_id: correlationId,
+    trace_id: traceId,
+  };
+}
+
+function applyScopeContext(scope: any, context: Record<string, unknown>): void {
+  const tags: Record<string, string> = {
+    service: 'aspire-desktop-server',
+    surface: 'desktop-server',
+    route_family: String(context.route_family || 'web'),
+    http_method: String(context.method || ''),
+    suite_id: String(context.suite_id || 'unscoped'),
+    office_id: String(context.office_id || 'unscoped'),
+    correlation_id: String(context.correlation_id || ''),
+    trace_id: String(context.trace_id || ''),
+  };
+
+  for (const [key, value] of Object.entries(tags)) {
+    if (value) scope.setTag?.(key, value.slice(0, 200));
+  }
+  if (context.actor_id) {
+    scope.setUser?.({ id: String(context.actor_id) });
+  }
+  scope.setContext?.('aspire_request', scrubDict(context));
+}
+
 // ---------------------------------------------------------------------------
 // Sentry lifecycle
 // ---------------------------------------------------------------------------
@@ -199,6 +265,9 @@ export function initSentry(): void {
       environment,
       release,
       sendDefaultPii: false,
+      integrations: [
+        ...(typeof Sentry.expressIntegration === 'function' ? [Sentry.expressIntegration()] : []),
+      ],
       initialScope: {
         tags: {
           service: 'aspire-desktop-server',
@@ -274,16 +343,47 @@ export function initSentry(): void {
  * Returns a no-op passthrough if Sentry is not initialized.
  */
 export function sentryRequestHandler(): RequestHandler {
-  if (_initialized && _sentryModule) {
-    try {
-      if (_sentryModule.Handlers?.requestHandler) {
-        return _sentryModule.Handlers.requestHandler();
-      }
-    } catch {
-      // Fall through to no-op
+  return (req, res, next) => {
+    const context = buildRequestContext(req as any);
+    res.setHeader('X-Correlation-Id', String(context.correlation_id || ''));
+    res.setHeader('X-Trace-Id', String(context.trace_id || ''));
+
+    if (!_initialized || !_sentryModule) {
+      next();
+      return;
     }
-  }
-  return (_req, _res, next) => next();
+
+    const attach = (scope: any) => {
+      applyScopeContext(scope, context);
+      _sentryModule.addBreadcrumb?.({
+        category: 'http.request',
+        message: `${req.method} ${req.path || req.url}`,
+        level: 'info',
+        data: {
+          correlation_id: context.correlation_id,
+          trace_id: context.trace_id,
+          suite_id: context.suite_id || 'unscoped',
+          office_id: context.office_id || 'unscoped',
+        },
+      });
+    };
+
+    try {
+      if (typeof _sentryModule.withIsolationScope === 'function') {
+        _sentryModule.withIsolationScope((scope: any) => {
+          attach(scope);
+          next();
+        });
+        return;
+      }
+
+      const scope = _sentryModule.getCurrentScope?.();
+      if (scope) attach(scope);
+    } catch {
+      // Sentry context must never block request handling.
+    }
+    next();
+  };
 }
 
 /**
@@ -293,6 +393,9 @@ export function sentryRequestHandler(): RequestHandler {
 export function sentryErrorHandler(): ErrorRequestHandler {
   if (_initialized && _sentryModule) {
     try {
+      if (typeof _sentryModule.expressErrorHandler === 'function') {
+        return _sentryModule.expressErrorHandler();
+      }
       if (_sentryModule.Handlers?.errorHandler) {
         return _sentryModule.Handlers.errorHandler();
       }
@@ -311,7 +414,11 @@ export function sentryErrorHandler(): ErrorRequestHandler {
   };
 }
 
-export function setupSentryExpressErrorHandler(app: { use: (...args: unknown[]) => unknown }): void {
+export function setupSentryExpressErrorHandler(app: any): void {
+  if (_initialized && _sentryModule && typeof _sentryModule.setupExpressErrorHandler === 'function') {
+    _sentryModule.setupExpressErrorHandler(app);
+    return;
+  }
   app.use(sentryErrorHandler());
 }
 

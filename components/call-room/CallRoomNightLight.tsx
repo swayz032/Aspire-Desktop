@@ -83,9 +83,7 @@ export function CallRoomNightLight({
           opacity: visible ? 1 : 0,
           // @ts-expect-error - web-only CSS properties
           transition: `opacity ${FADE_MS}ms ease-out`,
-          // @ts-expect-error - mask-image (and -webkit-mask-image) are web-only
           maskImage: maskGradient,
-          // @ts-expect-error - safari prefix
           WebkitMaskImage: maskGradient,
         },
       ]}

@@ -2,19 +2,20 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { ClientContext } from './types';
+import { CallRoomClock } from './CallRoomClock';
 
 export function ClientMemoryPanel({ client }: { client: ClientContext }): React.ReactElement {
   if (!client.name && !client.service) {
     return (
       <View style={styles.panel} testID="client-memory-empty">
-        <SectionLabel>Client Memory</SectionLabel>
+        <PanelHeader />
         <Text style={styles.empty}>New caller · No history yet</Text>
       </View>
     );
   }
   return (
     <View style={styles.panel} testID="client-memory">
-      <SectionLabel>Client Memory</SectionLabel>
+      <PanelHeader />
       {client.name && <Text style={styles.name}>{client.name}</Text>}
       <Text style={styles.phone}>{formatPhone(client.phoneE164)}</Text>
       <View style={styles.divider} />
@@ -30,8 +31,16 @@ export function ClientMemoryPanel({ client }: { client: ClientContext }): React.
   );
 }
 
-function SectionLabel({ children }: { children: string }) {
-  return <Text style={styles.sectionLabel}>{children.toUpperCase()}</Text>;
+// Panel header — section label on the left, premium local-time clock on
+// the right. Both sit on the panel's translucent glass; no separate
+// background fill on either element.
+function PanelHeader() {
+  return (
+    <View style={styles.headerRow}>
+      <Text style={styles.sectionLabel}>CLIENT MEMORY</Text>
+      <CallRoomClock />
+    </View>
+  );
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -76,12 +85,18 @@ const styles = StyleSheet.create({
     // Auto-grows if content needs more, but never extends down to the controls bar.
     minHeight: 280,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    gap: 12,
+  },
   sectionLabel: {
     color: 'rgba(255,255,255,0.5)',
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 1.2,
-    marginBottom: 14,
   },
   name: { color: '#fff', fontSize: 18, fontWeight: '600' },
   phone: {

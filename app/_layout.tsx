@@ -29,7 +29,7 @@ if (Platform.OS === 'web' && typeof console !== 'undefined') {
 }
 
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase } from '@/providers';
+import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase, useTenant } from '@/providers';
 import { ElevenLabsAgentProvider } from '@/hooks/useElevenLabsAgent';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 import { SessionTimeoutWarning } from '@/components/ui/SessionTimeoutWarning';
@@ -49,7 +49,7 @@ import { allowDevSupabaseBypass } from '@/lib/supabaseRuntime';
 import { supabase } from '@/lib/supabase';
 import { getValidatedSession } from '@/lib/auth/validatedSession';
 import { reportError } from '@/lib/errorReporter';
-import { configureSentry, Sentry } from '@/lib/sentry';
+import { captureDesktopException, configureSentry, setAspireSentryContext, Sentry } from '@/lib/sentry';
 import { AppState, type AppStateStatus } from 'react-native';
 import { getBiometricPreference, authenticateWithBiometrics } from '@/lib/biometrics';
 import { useSupabaseDevTools } from '@/lib/devtools/supabasePlugin';
@@ -91,6 +91,14 @@ class GlobalErrorBoundary extends React.Component<
   }
 
   private handleWindowError = (event: ErrorEvent) => {
+    captureDesktopException(event.error instanceof Error ? event.error : new Error(event.message || 'Unhandled error'), {
+      tags: { boundary: 'window_error' },
+      extra: {
+        source: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      },
+    });
     reportError({
       title: event.message || 'Unhandled error',
       severity: 'sev2',
@@ -103,6 +111,9 @@ class GlobalErrorBoundary extends React.Component<
 
   private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
     const reason = event.reason;
+    captureDesktopException(reason instanceof Error ? reason : new Error(String(reason || 'Unhandled promise rejection')), {
+      tags: { boundary: 'unhandled_rejection' },
+    });
     reportError({
       title: reason?.message || 'Unhandled promise rejection',
       severity: 'sev2',
@@ -114,17 +125,13 @@ class GlobalErrorBoundary extends React.Component<
   };
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    try {
-      Sentry.captureException(error, {
-        extra: {
-          pageName: 'GlobalErrorBoundary',
-          componentStack: info.componentStack,
-        },
-      });
-    } catch {
-      // Sentry may not be initialized — safe to ignore
-    }
-
+    captureDesktopException(error, {
+      tags: { boundary: 'global_error_boundary' },
+      extra: {
+        pageName: 'GlobalErrorBoundary',
+        componentStack: info.componentStack,
+      },
+    });
     console.error('[Aspire] Fatal render error:', error.message, info.componentStack);
     emitCanvasEvent('error', {
       source: 'global_error_boundary',
@@ -463,7 +470,10 @@ function ResearchModalOverlay() {
 function AppNavigator() {
   const isDesktop = useDesktop();
   const colorScheme = useColorScheme();
-  const { session, signOut } = useSupabase();
+  const { session, signOut, suiteId } = useSupabase();
+  const { tenant } = useTenant();
+  const sentrySegments = useSegments();
+  const sentryRoute = `/${sentrySegments.filter(Boolean).join('/') || 'home'}`;
   useAuthGate();
   useRealtimeConferenceInvitations();
   useRealtimeApprovalRequests();
@@ -474,6 +484,16 @@ function AppNavigator() {
   // Dev tools plugins — only active in __DEV__ builds (zero overhead in production)
   useSupabaseDevTools();
   useStoreDevTools();
+  useEffect(() => {
+    setAspireSentryContext({
+      route: sentryRoute,
+      suiteId: tenant?.suiteId || suiteId,
+      officeId: tenant?.officeId || null,
+      actorId: session?.user?.id || null,
+      surface: 'desktop-client',
+      businessName: tenant?.businessName || null,
+    });
+  }, [sentryRoute, session?.user?.id, suiteId, tenant?.suiteId, tenant?.officeId, tenant?.businessName]);
 
   // Wave 7E: Dev-mode debugging — log Supabase Realtime channel status + Network Inspector hint
   useEffect(() => {

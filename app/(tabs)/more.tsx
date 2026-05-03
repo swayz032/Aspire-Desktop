@@ -141,6 +141,17 @@ function MoreContent() {
             onPress={() => router.push('/voice-test')}
             isHighlighted={true}
           />
+          {/* TEMP: REMOVE BEFORE PRODUCTION LAUNCH — Call Room demo preview.
+              Production calls already route to /call-room from app/session/calls.tsx.
+              This entry exists so the team can browse the demo experience without
+              an active call. Strip this MenuItem when shipping to end users. */}
+          <MenuItem
+            icon="videocam"
+            title="Call Room Preview (DEV)"
+            subtitle="Demo the active-call experience with mock fixtures"
+            onPress={() => router.push('/_dev/call-room' as never)}
+            isHighlighted={true}
+          />
         </View>
 
         <SectionDivider title="Support" />
