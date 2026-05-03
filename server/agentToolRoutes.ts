@@ -492,14 +492,23 @@ router.post('/v1/tools/context', async (req: Request, res: Response) => {
       headerTz ||
       'America/New_York';
 
-    // Round 7 A.1 derivations — split owner_name into first_name; derive
-    // gender_pronoun + salutation. Defaults are "" (NOT "Unknown") so the
-    // prompt's omission rule cleanly skips empty values.
+    // Round 7 A.1 + Round 8 prep derivations — split owner_name into
+    // first_name AND last_name; derive gender_pronoun + salutation. Defaults
+    // are "" (NOT "Unknown") so the prompt's omission rule cleanly skips
+    // empty values. last_name is REQUIRED by the prompt's PRIMARY greeting
+    // form ("Good morning, Mr. {{last_name}}.") — without it the prompt
+    // falls back to first_name addressing, breaking the chief-of-staff
+    // persona for the trades-worker ICP.
     const ownerName = ((profile as any)?.owner_name || '').toString().trim();
     let firstName = '';
+    let lastName = '';
     if (ownerName) {
       const parts = ownerName.split(/\s+/);
       firstName = parts[0] || '';
+      // last_name = everything after the first token, joined back. Handles
+      // "Tony Lewis Scott" -> first=Tony, last="Lewis Scott". For single-token
+      // names ("Tonio"), last_name stays empty and prompt falls back.
+      lastName = parts.slice(1).join(' ');
     }
 
     const genderRaw = ((profile as any)?.gender || '').toString().trim().toLowerCase();
@@ -532,6 +541,7 @@ router.post('/v1/tools/context', async (req: Request, res: Response) => {
       // the original Round 7 user complaint.)
       owner_name: profile?.owner_name || '',
       first_name: firstName,
+      last_name: lastName,
       salutation,
       gender_pronoun: genderPronoun,
       owner_title: (profile as any)?.owner_title || '',
