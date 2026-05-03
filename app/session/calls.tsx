@@ -551,6 +551,22 @@ function CallsScreen() {
         setIsCalling(false);
         return;
       }
+
+      // Twilio + Sarah ElevenLabs leg accepted. Hand the user off to the
+      // immersive Call Room. The body may include a callSessionId we can
+      // pass through for end-call wiring.
+      const body = await res.json().catch(() => ({} as Record<string, unknown>));
+      const callId = (body as { callSessionId?: string }).callSessionId;
+      router.push({
+        pathname: '/call-room',
+        params: {
+          phone: toE164,
+          ...(callId ? { callId } : {}),
+        },
+      } as never);
+      // Local "calling" overlay state is no longer the primary UX; reset
+      // so returning to this screen doesn't show a stale spinner.
+      setIsCalling(false);
     } catch (_e) {
       setCallError('Network error -- could not initiate call');
       setIsCalling(false);
@@ -588,6 +604,19 @@ function CallsScreen() {
         setIsCalling(false);
         return;
       }
+
+      // Hand off to Call Room with the original caller's metadata.
+      const cleaned = call.rawNumber.replace(/\D/g, '');
+      const toE164 = cleaned.startsWith('1') ? `+${cleaned}` : `+1${cleaned}`;
+      router.push({
+        pathname: '/call-room',
+        params: {
+          phone: toE164,
+          name: call.name,
+          callId: call.callSessionId,
+        },
+      } as never);
+      setIsCalling(false);
     } catch (_e) {
       setCallError('Network error -- could not return call');
       setIsCalling(false);
