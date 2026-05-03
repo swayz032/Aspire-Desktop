@@ -65,13 +65,13 @@ export function CallRoomNightLight({
   if (!isWeb) return null;
   if (!mounted) return null;
 
-  // Vertical mask: fully opaque at the top (where the beam enters), fades
-  // to transparent toward the bottom so the cone tip dies smoothly into
-  // the dark room photo instead of cutting off at a hard edge. Mask runs
-  // ~25%-80% of the viewport height; tuning these stops controls how
-  // aggressively the bottom fades out.
+  // Radial mask anchored at the top-right corner — opaque near the corner
+  // (where the beam enters), fading to transparent outward in every
+  // direction. This makes BOTH the bottom AND the bottom-left of the cone
+  // fade naturally into the dark room, instead of having a hard diagonal
+  // cutoff line where the cone mesh ends.
   const maskGradient =
-    'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 28%, rgba(0,0,0,0) 75%)';
+    'radial-gradient(ellipse 95% 80% at 100% 0%, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 32%, rgba(0,0,0,0) 85%)';
 
   return (
     <View
@@ -170,12 +170,12 @@ function SceneContents({ SpotLight, Sparkles }: SceneContentsProps): React.React
         color={lampColor}
         intensity={3.5}
         distance={4.5}
-        angle={0.55}
+        angle={0.65}
         penumbra={0.7}
         attenuation={8}
         anglePower={4}
         radiusTop={0.1}
-        radiusBottom={1.7}
+        radiusBottom={2.0}
         volumetric
       />
 
