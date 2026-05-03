@@ -5,20 +5,19 @@
 // center so the whole scene fills the viewport, properly centered, at every
 // size (desktop / laptop / tablet). On native we use <ImageBackground>.
 //
-// M2-T14: each layer is offset by a cursor-tracked parallax delta. With the
-// current single-layer manifest (parallaxRange: 0) the room stays static —
-// computeLayerOffset returns {0,0} when range is 0 — but the wiring is in
-// place so future sliced layers move correctly.
+// The room is intentionally STATIC — no parallax movement. Background motion
+// during long calls can cause motion-sickness or headaches; depth is sold
+// instead by the floating card's shadow, lighting, and subtle tilt response.
 
 import React from 'react';
 import { ImageBackground, Platform, StyleSheet, View } from 'react-native';
 import { layers } from './layers/manifest';
-import { computeLayerOffset, useCursor } from './hooks/useParallax';
 
 export interface CallRoomBackgroundProps {
   /**
-   * Global parallax multiplier (0 = no parallax, 1 = full, 2 = exaggerated).
-   * Defaults to 1. Wired to dev controls in CallRoom.demo.
+   * Reserved for future use. Kept for prop-shape stability with existing
+   * tests and demo controls; currently has no effect because the room
+   * is static by design.
    */
   intensity?: number;
 }
@@ -34,17 +33,11 @@ function resolveLayerUri(src: number | { uri?: string; default?: string } | stri
   return '';
 }
 
-export function CallRoomBackground({ intensity = 1 }: CallRoomBackgroundProps = {}): React.ReactElement {
-  const { cursor, viewport } = useCursor();
-
+export function CallRoomBackground(_props: CallRoomBackgroundProps = {}): React.ReactElement {
   return (
     <View style={styles.root} testID="call-room-background">
       {layers.map((layer, i) => {
-        const offset = computeLayerOffset(cursor, viewport, layer.parallaxRange, intensity);
-
         if (Platform.OS === 'web') {
-          // Use a real <img> tag so object-fit / object-position behave correctly
-          // across every viewport size.
           const uri = resolveLayerUri(layer.src as never);
           return (
             <img
@@ -61,9 +54,8 @@ export function CallRoomBackground({ intensity = 1 }: CallRoomBackgroundProps = 
                 objectPosition: 'center center',
                 opacity: layer.opacity,
                 zIndex: layer.zIndex,
-                transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${layer.scale})`,
+                transform: `scale(${layer.scale})`,
                 transformOrigin: 'center center',
-                transition: 'transform 120ms ease-out',
                 pointerEvents: 'none',
                 userSelect: 'none',
               }}
@@ -71,7 +63,6 @@ export function CallRoomBackground({ intensity = 1 }: CallRoomBackgroundProps = 
           );
         }
 
-        // Native fallback (iOS/Android)
         return (
           <ImageBackground
             key={i}
@@ -83,11 +74,7 @@ export function CallRoomBackground({ intensity = 1 }: CallRoomBackgroundProps = 
               {
                 opacity: layer.opacity,
                 zIndex: layer.zIndex,
-                transform: [
-                  { translateX: offset.x },
-                  { translateY: offset.y },
-                  { scale: layer.scale },
-                ],
+                transform: [{ scale: layer.scale }],
               },
             ]}
           />
