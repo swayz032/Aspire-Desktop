@@ -900,30 +900,97 @@ function InitialPrompt({ numberType }: { numberType: NumberTypeWire }) {
 // ErrorState
 // ---------------------------------------------------------------------------
 
+/**
+ * Classify a raw Twilio/orchestrator error message into a UX-friendly state.
+ * Hides infra leaks (e.g. "20008: Test Account Credentials") from the user
+ * and routes recoverable errors to the right CTA.
+ */
+function classifyTwilioError(message: string): {
+  title: string;
+  body: string;
+  flavor: 'config' | 'rate_limit' | 'network' | 'generic';
+} {
+  const lower = (message || '').toLowerCase();
+
+  // Test/missing credentials — 20008 from Twilio, MISSING_TWILIO_CREDENTIALS from us.
+  if (
+    lower.includes('20008') ||
+    lower.includes('test account credentials') ||
+    lower.includes('missing_twilio_credentials') ||
+    lower.includes('twilio_account_sid') ||
+    lower.includes('authenticate')
+  ) {
+    return {
+      title: 'Twilio not connected yet',
+      body:
+        "Your Twilio account isn't fully configured for purchasing real numbers. " +
+        'An admin needs to upgrade to a Live account and connect production credentials.',
+      flavor: 'config',
+    };
+  }
+
+  // 429 / throttling — common when rapidly searching
+  if (lower.includes('20429') || lower.includes('rate limit') || lower.includes('throttle')) {
+    return {
+      title: 'Slow down a moment',
+      body: 'Twilio is rate-limiting us. Wait a few seconds and try again.',
+      flavor: 'rate_limit',
+    };
+  }
+
+  // Network / timeout / 5xx
+  if (
+    lower.includes('timeout') ||
+    lower.includes('econnreset') ||
+    lower.includes('network') ||
+    lower.includes('502') ||
+    lower.includes('503') ||
+    lower.includes('504')
+  ) {
+    return {
+      title: 'Connection hiccup',
+      body: 'We couldn’t reach the number directory. Check your connection and try again.',
+      flavor: 'network',
+    };
+  }
+
+  return {
+    title: 'Search hit a snag',
+    body: message || 'Something went wrong. Try again in a moment.',
+    flavor: 'generic',
+  };
+}
+
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const cls = classifyTwilioError(message);
+  // Config errors aren't recoverable by retrying — hide the retry CTA
+  // and let the owner know an admin action is required.
+  const showRetry = cls.flavor !== 'config';
   return (
     <View
       style={styles.stateBox}
       accessibilityRole="alert"
-      accessibilityLabel={`Search error: ${message}`}
+      accessibilityLabel={`Search error: ${cls.title}`}
     >
       <View style={[styles.stateIcon, styles.stateIconError]}>
         <Ionicons name="alert-circle" size={28} color={Colors.semantic.error} />
       </View>
       <Text style={styles.stateTitle} accessibilityRole="header">
-        Search hit a snag
+        {cls.title}
       </Text>
-      <Text style={styles.stateBody}>{message}</Text>
-      <Pressable
-        onPress={onRetry}
-        accessibilityRole="button"
-        accessibilityLabel="Retry search"
-        style={styles.retryBtn}
-        {...(Platform.OS === 'web' ? ({ className: 'fds-sheet-btn' } as any) : {})}
-      >
-        <Ionicons name="refresh" size={14} color={Colors.text.primary} />
-        <Text style={styles.retryBtnText}>Try again</Text>
-      </Pressable>
+      <Text style={styles.stateBody}>{cls.body}</Text>
+      {showRetry ? (
+        <Pressable
+          onPress={onRetry}
+          accessibilityRole="button"
+          accessibilityLabel="Retry search"
+          style={styles.retryBtn}
+          {...(Platform.OS === 'web' ? ({ className: 'fds-sheet-btn' } as any) : {})}
+        >
+          <Ionicons name="refresh" size={14} color={Colors.text.primary} />
+          <Text style={styles.retryBtnText}>Try again</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
