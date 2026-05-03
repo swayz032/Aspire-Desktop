@@ -3,20 +3,19 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { CallRoomBackground } from './CallRoomBackground';
 import { CallRoomCard } from './CallRoomCard';
-import { CallRoomTint } from './CallRoomTint';
 import type { CallState, TimeOfDayState } from './types';
 
 export interface CallRoomProps {
   visible: boolean;
   callState: CallState;
   /**
-   * Global parallax multiplier forwarded to CallRoomBackground.
-   * Defaults to 1. Dev controls (CallRoom.demo) drive this with [0..2].
+   * Reserved — currently unused. Kept for prop-shape stability with existing
+   * tests / demo controls. Background is static; depth is sold by the card.
    */
   parallaxIntensity?: number;
   /**
-   * Dev override for time-of-day tint. When undefined, the tint auto-classifies
-   * from local hour and refreshes every 5 minutes.
+   * Dev override for time-of-day. When undefined, the background auto-
+   * selects from local hour (re-evaluates every 5 minutes).
    */
   forcedTimeOfDay?: TimeOfDayState;
 }
@@ -24,14 +23,12 @@ export interface CallRoomProps {
 export function CallRoom({
   visible,
   callState,
-  parallaxIntensity = 1,
   forcedTimeOfDay,
 }: CallRoomProps): React.ReactElement | null {
   if (!visible) return null;
   return (
     <View testID="call-room-root" style={styles.root}>
-      <CallRoomBackground intensity={parallaxIntensity} />
-      <CallRoomTint forced={forcedTimeOfDay} />
+      <CallRoomBackground forcedTimeOfDay={forcedTimeOfDay} />
       <View style={styles.cardWrap} pointerEvents="box-none">
         <CallRoomCard callState={callState} />
       </View>

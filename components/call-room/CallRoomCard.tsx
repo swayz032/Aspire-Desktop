@@ -6,7 +6,6 @@ import { ClientMemoryPanel } from './ClientMemoryPanel';
 import { AIAssistPanel } from './AIAssistPanel';
 import { CallRoomControls } from './CallRoomControls';
 import { CallRoomSummaryStrip } from './CallRoomSummaryStrip';
-import { useRoomLight, type RoomLight } from './hooks/useRoomLight';
 import { useCardTilt } from './hooks/useCardTilt';
 
 export interface CallRoomCardProps {
@@ -15,67 +14,23 @@ export interface CallRoomCardProps {
 
 const GLASS_BG = 'rgba(15, 18, 24, 0.65)';
 const GLASS_BORDER = 'rgba(120, 170, 220, 0.35)';
-
-// Cool-blue and warm-amber glow stops, lerped by RoomLight.warmth.
-// At warmth=0 -> cool blue; at warmth=1 -> warm amber.
-const GLOW_COOL = { r: 120, g: 170, b: 220, a: 0.18 };
-const GLOW_WARM = { r: 180, g: 150, b: 110, a: 0.22 };
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}
-
-function glowColor(warmth: number): string {
-  const r = Math.round(lerp(GLOW_COOL.r, GLOW_WARM.r, warmth));
-  const g = Math.round(lerp(GLOW_COOL.g, GLOW_WARM.g, warmth));
-  const b = Math.round(lerp(GLOW_COOL.b, GLOW_WARM.b, warmth));
-  const a = lerp(GLOW_COOL.a, GLOW_WARM.a, warmth).toFixed(3);
-  return `rgba(${r},${g},${b},${a})`;
-}
-
-function buildDynamicBoxShadow(light: RoomLight): string {
-  // Shadow offset OPPOSITE to cursor on X (light source on the cursor side).
-  // X: cursor right (+1) -> shadow left (-12px). Y: cursor up (-1) -> shadow down (+6px).
-  const dx = -light.x * 12;
-  const dy = -light.y * 6;
-  const glow = glowColor(light.warmth);
-  return (
-    `${dx.toFixed(1)}px 2px 6px rgba(0,0,0,0.6), ` +
-    `${dx.toFixed(1)}px ${(24 + dy).toFixed(1)}px 60px rgba(0,0,0,0.5), ` +
-    `0 0 80px ${glow}, ` +
-    `inset 0 1px 0 rgba(255,255,255,0.06), ` +
-    `inset 0 -1px 0 rgba(0,0,0,0.4)`
-  );
-}
+const ASPIRE_GLOW = 'rgba(120, 170, 220, 0.18)';
 
 export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactElement {
-  const light = useRoomLight();
   const tilt = useCardTilt(2);
   const isWeb = Platform.OS === 'web';
 
-  // Web-only dynamic styles. Native path (below) ignores `light`/`tilt` for perf —
-  // updating elevation/shadowOffset/transform every frame would tank performance,
-  // and rotateX/Y on Android causes jank until we A/B test on devices.
+  // Web-only: subtle card tilt for depth (no cursor light tracking).
   const dynamicCardStyle =
     isWeb
       ? ({
-          boxShadow: buildDynamicBoxShadow(light),
           transform: `perspective(1400px) rotateX(${tilt.rotateX.toFixed(
             2,
           )}deg) rotateY(${tilt.rotateY.toFixed(2)}deg)`,
           transformStyle: 'preserve-3d',
-          transition: 'box-shadow 200ms ease-out, transform 220ms ease-out',
+          transition: 'transform 220ms ease-out',
         } as object)
       : undefined;
-
-  // Refraction gradient angle: 105deg at center, 85deg at left, 125deg at right.
-  const refractionAngle = 105 + light.x * 20;
-  // Top highlight opacity: 0.13 at center, 0.18 at top, 0.08 at bottom (boosted in M4).
-  const topHighlightOpacity = clamp(0.13 - light.y * 0.05, 0.08, 0.18);
 
   return (
     <View style={[styles.card, dynamicCardStyle]} testID="call-room-card">
@@ -89,10 +44,7 @@ export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactEleme
               {
                 borderRadius: 18,
                 // @ts-expect-error - web-only
-                background: `linear-gradient(180deg, rgba(255,255,255,${topHighlightOpacity.toFixed(
-                  3,
-                )}) 0%, rgba(255,255,255,0) 12%)`,
-                transition: 'background 200ms ease-out',
+                background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 12%)',
               },
             ]}
           />
@@ -103,12 +55,8 @@ export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactEleme
               {
                 borderRadius: 18,
                 // @ts-expect-error - web-only
-                background: `linear-gradient(${refractionAngle.toFixed(
-                  1,
-                )}deg, rgba(212,165,116,${(0.06 + light.warmth * 0.04).toFixed(
-                  3,
-                )}) 0%, rgba(120,170,220,0.03) 50%, transparent 100%)`,
-                transition: 'background 200ms ease-out',
+                background:
+                  'linear-gradient(105deg, rgba(212,165,116,0.06) 0%, rgba(120,170,220,0.03) 50%, transparent 100%)',
               },
             ]}
           />
@@ -180,10 +128,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...(Platform.OS === 'web'
       ? ({
-          // Premium thick 3D glass: blur + saturation lift. boxShadow is applied
-          // dynamically per-frame from `useRoomLight` in the component body.
           backdropFilter: 'blur(18px) saturate(1.4) brightness(1.05)',
           WebkitBackdropFilter: 'blur(18px) saturate(1.4) brightness(1.05)',
+          boxShadow:
+            '0 2px 6px rgba(0,0,0,0.6), 0 24px 60px rgba(0,0,0,0.5), 0 0 80px ' +
+            ASPIRE_GLOW +
+            ', inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 rgba(0,0,0,0.4)',
         } as object)
       : {
           shadowColor: '#000',

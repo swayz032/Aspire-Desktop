@@ -1,29 +1,22 @@
 // components/call-room/CallRoomBackground.tsx
 //
-// Renders the office background. On web (the primary Aspire-desktop target)
-// we use a plain <img> element with object-fit: cover and object-position
-// center so the whole scene fills the viewport, properly centered, at every
-// size (desktop / laptop / tablet). On native we use <ImageBackground>.
-//
-// The room is intentionally STATIC — no parallax movement. Background motion
-// during long calls can cause motion-sickness or headaches; depth is sold
-// instead by the floating card's shadow, lighting, and subtle tilt response.
+// Renders the office background. The image swaps based on time of day —
+// day, dusk, or night photo. All 3 are rendered in a stack and crossfaded
+// via opacity so the transition is smooth (600ms) when the hour rolls over
+// or the dev panel forces a different state.
 
 import React from 'react';
 import { ImageBackground, Platform, StyleSheet, View } from 'react-native';
-import { layers } from './layers/manifest';
+import { layersByState } from './layers/manifest';
+import { useTimeOfDay } from './hooks/useTimeOfDay';
+import type { TimeOfDayState } from './types';
 
 export interface CallRoomBackgroundProps {
-  /**
-   * Reserved for future use. Kept for prop-shape stability with existing
-   * tests and demo controls; currently has no effect because the room
-   * is static by design.
-   */
-  intensity?: number;
+  forcedTimeOfDay?: TimeOfDayState;
 }
 
-// On web, Metro / Expo Webpack lets us require() the asset and get a URL string
-// (or an object with `uri`). Resolve once at module load.
+const ORDER: TimeOfDayState[] = ['day', 'dawn', 'dusk', 'night'];
+
 function resolveLayerUri(src: number | { uri?: string; default?: string } | string): string {
   if (typeof src === 'string') return src;
   if (src && typeof src === 'object') {
@@ -33,16 +26,24 @@ function resolveLayerUri(src: number | { uri?: string; default?: string } | stri
   return '';
 }
 
-export function CallRoomBackground(_props: CallRoomBackgroundProps = {}): React.ReactElement {
+export function CallRoomBackground({ forcedTimeOfDay }: CallRoomBackgroundProps = {}): React.ReactElement {
+  const tint = useTimeOfDay(forcedTimeOfDay);
+  const isWeb = Platform.OS === 'web';
+  const activeState = tint.state;
+
   return (
     <View style={styles.root} testID="call-room-background">
-      {layers.map((layer, i) => {
-        if (Platform.OS === 'web') {
+      {ORDER.map((state) => {
+        const layer = layersByState[state];
+        const isActive = state === activeState;
+        const opacity = isActive ? 1 : 0;
+
+        if (isWeb) {
           const uri = resolveLayerUri(layer.src as never);
           return (
             <img
-              key={i}
-              data-testid={`call-room-bg-layer-${i}`}
+              key={state}
+              data-testid={`call-room-bg-${state}`}
               src={uri}
               alt=""
               style={{
@@ -52,10 +53,10 @@ export function CallRoomBackground(_props: CallRoomBackgroundProps = {}): React.
                 height: '100%',
                 objectFit: 'cover',
                 objectPosition: 'center center',
-                opacity: layer.opacity,
-                zIndex: layer.zIndex,
+                opacity,
                 transform: `scale(${layer.scale})`,
                 transformOrigin: 'center center',
+                transition: 'opacity 600ms ease-out',
                 pointerEvents: 'none',
                 userSelect: 'none',
               }}
@@ -65,17 +66,13 @@ export function CallRoomBackground(_props: CallRoomBackgroundProps = {}): React.
 
         return (
           <ImageBackground
-            key={i}
-            testID={`call-room-bg-layer-${i}`}
+            key={state}
+            testID={`call-room-bg-${state}`}
             source={layer.src as number}
             resizeMode="cover"
             style={[
               StyleSheet.absoluteFill,
-              {
-                opacity: layer.opacity,
-                zIndex: layer.zIndex,
-                transform: [{ scale: layer.scale }],
-              },
+              { opacity, transform: [{ scale: layer.scale }] },
             ]}
           />
         );
@@ -87,7 +84,7 @@ export function CallRoomBackground(_props: CallRoomBackgroundProps = {}): React.
 const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0a0a0a', // fallback while images load
+    backgroundColor: '#0a0a0a',
     overflow: 'hidden',
   },
 });

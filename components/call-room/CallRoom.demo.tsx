@@ -99,10 +99,7 @@ export default function CallRoomDemo(): React.ReactElement {
         <CallRoom
           visible={visible}
           callState={fixture.state}
-          parallaxIntensity={parallaxScale}
           forcedTimeOfDay={forcedTime === 'auto' ? undefined : forcedTime}
-          // dev-only props (will be wired in later milestones):
-          // voiceSim={voiceSim}
         />
 
         {!panelOpen && (
