@@ -3,6 +3,12 @@ import { render } from '@testing-library/react-native';
 import { CallRoom } from '../../components/call-room/CallRoom';
 import { callRoomFixtures } from '../../components/call-room/fixtures/callRoomFixtures';
 
+// Short-circuit the WebGL night-light scene so existing CallRoom tests
+// never load Three.js / @react-three/* at runtime.
+jest.mock('../../components/call-room/CallRoomNightLight', () => ({
+  CallRoomNightLight: () => null,
+}));
+
 describe('CallRoom', () => {
   it('renders nothing when not visible', () => {
     const { queryByTestId } = render(
