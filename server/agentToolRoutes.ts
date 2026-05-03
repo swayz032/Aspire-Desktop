@@ -235,6 +235,45 @@ function pickRecord(value: unknown): Record<string, any> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
 }
 
+// Cap on records returned to the LLM in invoke_adam responses. Slim full
+// records server-side, cache the originals, return at most this many to
+// Anam/ElevenLabs. Keeps tool-response payloads bounded (~4KB max at 25 ×
+// ~150 bytes each) so the model can reliably copy them into show_cards.
+const RECORD_CAP = 25;
+
+// Whitelist of display-essential fields for an Adam result record. Strips
+// bloat (thumbnails arrays, variants, specifications, dimensions, weight,
+// verification_status, confidence, bullets, fulfillment_*) so the LLM-facing
+// payload stays small. Each slim record ≈ 100-180 bytes.
+//
+// Law #9 (PII): only display-safe fields are surfaced — names, prices,
+// store info, public image URLs. No internal IDs, no fulfillment metadata,
+// no SKU enumeration that could fingerprint inventory.
+export function slimAdamRecord(r: any): Record<string, any> {
+  if (!r || typeof r !== 'object') return {};
+  const slim: Record<string, any> = {};
+  if (r.card_kind) slim.card_kind = r.card_kind;
+  if (r.retailer) slim.retailer = r.retailer;
+  if (r.product_name) slim.product_name = r.product_name;
+  if (r.store_name) slim.store_name = r.store_name;
+  if (r.name) slim.name = r.name;
+  if (r.address) slim.address = r.address;
+  if (r.city) slim.city = r.city;
+  if (r.state) slim.state = r.state;
+  if (r.brand) slim.brand = r.brand;
+  if (typeof r.price === 'number') slim.price = r.price;
+  if (r.currency) slim.currency = r.currency;
+  if (r.availability) slim.availability = r.availability;
+  if (r.availability_text) slim.availability_text = r.availability_text;
+  if (typeof r.in_store_stock === 'number') slim.in_store_stock = r.in_store_stock;
+  if (typeof r.rating === 'number') slim.rating = r.rating;
+  if (typeof r.reviews === 'number') slim.reviews = r.reviews;
+  if (typeof r.image_url === 'string') slim.image_url = r.image_url;
+  if (typeof r.thumbnail === 'string') slim.thumbnail = r.thumbnail;
+  if (typeof r.url === 'string') slim.url = r.url;
+  return slim;
+}
+
 // Some LLM tool runtimes (OpenAI tool_calls, Anam in some configs) post the
 // arguments object as a JSON-encoded STRING instead of an object. pickRecord
 // rejects strings, so without this we end up with no task/query and 200 →
@@ -1519,6 +1558,63 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
       responseData = { ...slimData, _card_cache_id: cacheId };
     }
 
+    // ── Records Slim + Cache (new shape — products/stores/hotels) ──
+    // Adam now returns full records under data.records (not card_records). A
+    // 15-record payload with full thumbnails arrays, variants, and verification
+    // metadata is ~15KB — too big for Anam's hosted LLM to copy verbatim into a
+    // show_cards CLIENT call. Observed in session 73aee55d where Ava skipped
+    // show_cards entirely after a 15-record paint search.
+    //
+    // Strategy: slim each record to display-essential fields only (~150 bytes
+    // each, ~2KB total for 15) and cache the FULL records for follow-up
+    // detail requests. Card cap at 25 to keep the LLM-facing payload bounded
+    // even on large responses (still all renderable client-side).
+    //
+    // Law #2 (receipts): a2aResult already produced receipt_id for the
+    // invocation; the slim is a non-state-changing transform on the response.
+    // Law #6 (tenant isolation): cache keyed by suite_id; reads enforce match.
+    // Law #9 (PII): slimRecord whitelists display fields — no PII added.
+    if (
+      resolvedAgent === 'adam' &&
+      Array.isArray(responseData?.records) &&
+      responseData.records.length > 0
+    ) {
+      const cacheId = correlationId;
+      const cacheSuiteId = safeSuiteId;
+      const fullRecords: any[] = responseData.records;
+      cardRecordsCache.set(cacheId, {
+        records: fullRecords,
+        artifactType: responseData.artifact_type || '',
+        suiteId: cacheSuiteId,
+        timestamp: Date.now(),
+      });
+      latestCardCacheIdBySuite.set(cacheSuiteId, cacheId);
+      if (PROPERTY_ARTIFACT_TYPES.has(responseData.artifact_type || '')) {
+        maybeStoreLatestPropertyAddress(cacheSuiteId, fullRecords);
+      }
+      cleanCardCache();
+
+      const slimRecords = fullRecords.slice(0, RECORD_CAP).map(slimAdamRecord);
+      const totalCount = typeof responseData.total_count === 'number'
+        ? responseData.total_count
+        : fullRecords.length;
+
+      logger.info('[AgentTool] Slimmed records (new shape)', {
+        cacheId,
+        totalCount,
+        slimmedCount: slimRecords.length,
+        capped: fullRecords.length > RECORD_CAP,
+      });
+
+      responseData = {
+        ...responseData,
+        records: slimRecords,
+        _card_cache_id: cacheId,
+        _records_cached: true,
+        total_count: totalCount,
+      };
+    }
+
     return res.json({
       agent: resolvedAgent,
       task: effectiveTask,
@@ -2245,6 +2341,8 @@ export const __testing__ = {
   latestCardCacheIdBySuite,
   isSparseRecord,
   isSparseRecordSet,
+  slimAdamRecord,
+  RECORD_CAP,
 };
 
 export default router;

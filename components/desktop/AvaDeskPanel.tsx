@@ -500,12 +500,21 @@ function AvaDeskPanelInner() {
 
   const [authorityQueue, setAuthorityQueue] = useState<any[]>([]);
 
-  const handleStructuredCards = useCallback((data: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string }) => {
+  const handleStructuredCards = useCallback((data: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string; total_count?: number; _records_cached?: boolean }) => {
     if (avaPresents.visible) return;
     const artifactType = data.artifact_type;
     const incomingRecords = Array.isArray(data.records) ? data.records : [];
     const likelyProperty = PROPERTY_ARTIFACT_TYPES.has(artifactType);
     const sparseProperty = likelyProperty && !hasStrongPropertySignals(incomingRecords[0]);
+
+    // Server slims invoke_adam responses to display-essential fields and caps
+    // at 25 records (see agentToolRoutes.ts records-slim logic). Each slim
+    // record has enough fields to render directly. Hydration is only needed
+    // if total_count > what we received (i.e., the 25-record cap was hit) AND
+    // a suite session is available to authenticate the cache fetch.
+    const hasMoreInCache = (
+      typeof data.total_count === 'number' && data.total_count > incomingRecords.length
+    );
 
     const show = (records: Record<string, unknown>[]) => {
       avaPresents.showCards({
@@ -516,7 +525,9 @@ function AvaDeskPanelInner() {
       });
     };
 
-    if (!sparseProperty || !suiteId) {
+    const needsHydration = sparseProperty || hasMoreInCache;
+
+    if (!needsHydration || !suiteId) {
       show(incomingRecords);
       return;
     }
