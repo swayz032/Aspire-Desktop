@@ -293,12 +293,18 @@ function CallsScreen() {
   // Pulled once on mount + on tenant change; the same data is hydrated
   // again by the FDS Setup page's React Query, so cache invalidation
   // there bubbles back here on the next focus.
-  const [aspireNumber, setAspireNumber] = useState<AspireNumberInfo | null>(null);
+  // Tri-state: undefined = not loaded yet (don't pop modal), null = confirmed
+  // no number (pop modal), object = active number (hide modal). The previous
+  // 2-state version popped the modal on every fetch failure, including
+  // transient 401s during auth refresh — fixed by treating fetch failures
+  // as "indeterminate" instead of "no number".
+  const [aspireNumber, setAspireNumber] = useState<AspireNumberInfo | null | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
     const officeId = tenant?.officeId;
     if (!officeId) {
-      setAspireNumber(null);
+      // Office not yet hydrated — keep aspireNumber=undefined so the modal
+      // doesn't flash before TenantProvider resolves.
       return;
     }
     (async () => {
@@ -308,7 +314,10 @@ function CallsScreen() {
           setAspireNumber(res.aspire_number ?? null);
         }
       } catch {
-        if (!cancelled) setAspireNumber(null);
+        // Fetch failed (network, 401 during auth refresh, 5xx). Don't
+        // confidently say "no number" — leave undefined so the FDS modal
+        // gate doesn't pop on a transient error.
+        if (!cancelled) setAspireNumber(undefined);
       }
     })();
     return () => {
@@ -374,20 +383,25 @@ function CallsScreen() {
   // The old endpoint stays around for legacy reads but is no longer the gate.
 
   useEffect(() => {
-    // Wait until both the tenant resolves AND the aspire_number fetch
-    // completes (or fails) before deciding whether to show the gate.
+    // Wait until both the tenant resolves AND we have a CONFIRMED state
+    // for the Aspire number before deciding whether to show the gate.
+    // Three states for aspireNumber:
+    //   undefined  -> not loaded yet (don't decide, don't pop)
+    //   null       -> confirmed no number (pop the gate)
+    //   object     -> number assigned (hide the gate)
     if (!tenant?.officeId) {
-      // Office not loaded yet — keep the modal hidden so we don't flash it
-      // while TenantProvider is hydrating.
+      return;
+    }
+    if (aspireNumber === undefined) {
+      // Still loading. Keep the modal in its current state.
       return;
     }
     if (aspireNumber) {
-      // Number assigned -> setup is done. Hide gate; mark check complete.
       setShowSetupModal(false);
       setSetupChecked(true);
       return;
     }
-    // Office loaded but no Aspire number -> show the gate.
+    // aspireNumber === null — confirmed no number assigned for this office.
     setShowSetupModal(true);
     setSetupChecked(true);
   }, [tenant?.officeId, aspireNumber]);
