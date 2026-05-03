@@ -104,7 +104,7 @@ function NightLightScene(): React.ReactElement {
       {/* Fog gives the volumetric SpotLight beam something to scatter
           through — without it the cone is invisible. Color matches the
           deep night-room ambience so the falloff blends. */}
-      <fog attach="fog" args={['#0a0e16', 3, 7]} />
+      <fog attach="fog" args={['#0a0e16', 1, 5]} />
 
       <SceneContents SpotLight={SpotLight} />
 
@@ -144,27 +144,29 @@ function SceneContents({ SpotLight }: SceneContentsProps): React.ReactElement {
           corner. Removing the visible source eliminates bloom-bleed of the
           bulb into the visible frame. */}
 
-      {/* Target where the cone "lands" — the card's top-right area so the
-          beam descends from the off-screen corner onto that part of the card. */}
-      <object3D ref={targetRef} position={[0.7, -0.3, 0]} />
+      {/* Target = card's top-right corner. With camera at (0,0,4) fov=50
+          the visible viewport at z=0 spans roughly ±3.5 × ±1.87. The
+          card occupies the central region; its top-right corner sits
+          around world (2.0, 0.5, 0). The cone aims here so the visible
+          light pool lands on the card's top-right exactly. */}
+      <object3D ref={targetRef} position={[2.0, 0.5, 0]} />
 
-      {/* Volumetric SpotLight positioned FAR off-screen at the top-right
-          corner of the page (well past the camera frustum at z=0). The
-          source itself is invisible; only the cone descending into the
-          viewport renders. Wide angle + large radiusBottom = the light
-          pool spreads broadly across the card's top-right when it lands. */}
+      {/* Source positioned far past the top-right corner of the visible
+          viewport at z=0, in line with the target so the cone descends
+          diagonally INTO the card's top-right. Source itself is off-
+          screen and invisible; only the cone enters the visible area. */}
       <SpotLight
-        position={[4.0, 2.5, 0.5]}
+        position={[4.8, 2.8, 0.5]}
         target={targetRef.current ?? undefined}
         color={lampColor}
-        intensity={5}
-        distance={9}
-        angle={Math.PI / 4}
-        penumbra={0.95}
-        attenuation={1.8}
-        anglePower={3}
+        intensity={6}
+        distance={10}
+        angle={Math.PI / 5}
+        penumbra={0.6}
+        attenuation={1.4}
+        anglePower={1.5}
         radiusTop={0.05}
-        radiusBottom={1.6}
+        radiusBottom={1.8}
         volumetric
       />
 
