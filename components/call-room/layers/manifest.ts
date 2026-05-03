@@ -43,7 +43,9 @@ export const layers: LayerSpec[] = [
   },
   {
     src: require('./fg-near.webp'),
-    parallaxRange: 28,
+    // 20px stays comfortably inside the 24px dilation radius so foreground
+    // motion never reveals a hole.
+    parallaxRange: 20,
     zIndex: 3,
     opacity: 1,
     scale: 1.08,
