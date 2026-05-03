@@ -91,7 +91,7 @@ function NightLightScene(): React.ReactElement {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { Canvas } = require('@react-three/fiber');
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { SpotLight } = require('@react-three/drei');
+  const { SpotLight, Sparkles } = require('@react-three/drei');
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { EffectComposer, Bloom } = require('@react-three/postprocessing');
 
@@ -102,11 +102,10 @@ function NightLightScene(): React.ReactElement {
       style={{ width: '100%', height: '100%', background: 'transparent' }}
     >
       {/* Fog gives the volumetric SpotLight beam something to scatter
-          through — without it the cone is invisible. Color matches the
-          deep night-room ambience so the falloff blends. */}
-      <fog attach="fog" args={['#0a0e16', 1, 5]} />
+          through. Color matches the deep night ambience for clean blend. */}
+      <fog attach="fog" args={['#0a0e16', 3, 7]} />
 
-      <SceneContents SpotLight={SpotLight} />
+      <SceneContents SpotLight={SpotLight} Sparkles={Sparkles} />
 
       <EffectComposer>
         <Bloom
@@ -121,11 +120,12 @@ function NightLightScene(): React.ReactElement {
 }
 
 interface SceneContentsProps {
-  // drei SpotLight — typed loosely because we're require-loading at runtime.
+  // drei components — typed loosely because we're require-loading at runtime.
   SpotLight: React.ComponentType<Record<string, unknown>>;
+  Sparkles: React.ComponentType<Record<string, unknown>>;
 }
 
-function SceneContents({ SpotLight }: SceneContentsProps): React.ReactElement {
+function SceneContents({ SpotLight, Sparkles }: SceneContentsProps): React.ReactElement {
   // Light source positioned in the upper-RIGHT of the scene (off-screen-ish),
   // aimed DOWN-and-LEFT at the card's top-right area. Reads as a real
   // overhead lamp shining onto the right side of the card from above.
@@ -144,30 +144,43 @@ function SceneContents({ SpotLight }: SceneContentsProps): React.ReactElement {
           corner. Removing the visible source eliminates bloom-bleed of the
           bulb into the visible frame. */}
 
-      {/* Target = card's top-right corner. With camera at (0,0,4) fov=50
-          the visible viewport at z=0 spans roughly ±3.5 × ±1.87. The
-          card occupies the central region; its top-right corner sits
-          around world (2.0, 0.5, 0). The cone aims here so the visible
-          light pool lands on the card's top-right exactly. */}
+      {/* Target = card's top-right corner. Camera at (0,0,4) fov=50 puts
+          z=0 viewport at roughly ±3.5 × ±1.87. Card top-right ≈ (2.0,
+          0.5, 0). The cone aims here so the visible pool lands on the
+          card's top-right. */}
       <object3D ref={targetRef} position={[2.0, 0.5, 0]} />
 
-      {/* Source positioned far past the top-right corner of the visible
-          viewport at z=0, in line with the target so the cone descends
-          diagonally INTO the card's top-right. Source itself is off-
-          screen and invisible; only the cone enters the visible area. */}
+      {/* Source past the visible top-right corner so the bulb itself is
+          off-screen. Returns to the previous-working light geometry,
+          just with the target retargeted. */}
       <SpotLight
-        position={[4.8, 2.8, 0.5]}
+        position={[4.0, 2.5, 0.5]}
         target={targetRef.current ?? undefined}
         color={lampColor}
-        intensity={6}
-        distance={10}
-        angle={Math.PI / 5}
-        penumbra={0.6}
-        attenuation={1.4}
-        anglePower={1.5}
-        radiusTop={0.05}
-        radiusBottom={1.8}
+        intensity={4.5}
+        distance={5.5}
+        angle={0.7}
+        penumbra={0.7}
+        attenuation={5}
+        anglePower={4}
+        radiusTop={0.1}
+        radiusBottom={2.4}
         volumetric
+      />
+
+      {/* Dust particles drifting in the lamp's beam — adds the "real
+          atmosphere" feel where motes catch the warm light. Positioned in
+          a volume around the cone path between source (top-right) and
+          card (lower-center-right). Slow drift via speed param. */}
+      <Sparkles
+        count={90}
+        scale={[3.5, 3.0, 1.2]}
+        position={[2.6, 1.1, 0.3]}
+        size={3}
+        speed={0.25}
+        color={lampColor}
+        opacity={0.6}
+        noise={0.6}
       />
 
       {/* Faint warm ambient so bloom doesn't sit on pure black. */}
