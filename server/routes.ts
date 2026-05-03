@@ -8555,6 +8555,82 @@ router.post('/api/v1/sms/send', async (req: Request, res: Response) => {
   });
 });
 
+// ─── Sarah Receptionist webhook tools ─────────────────────────────────────────
+//
+// These are called by ElevenLabs at runtime when the agent invokes one of its
+// 6 webhook tools (see EL agent webhook tools list). EL calls the public
+// gateway URL (https://www.aspireos.app/v1/tools/sarah/*) and the gateway
+// forwards directly to the orchestrator without any session/JWT requirement
+// (these are unauthenticated webhook calls). The orchestrator resolves
+// tenant scope from the `called_number` field in the body, mirroring the
+// `/v1/sarah/personalization` flow. The ElevenLabs-Signature header is
+// forwarded through so the orchestrator can verify HMAC when configured.
+
+const SARAH_TOOL_PATHS = [
+  'personalization',
+  'capture-message',
+  'transfer',
+  'faq',
+  'callback-request',
+  'call-summary',
+] as const;
+
+for (const subpath of SARAH_TOOL_PATHS) {
+  router.post(`/v1/tools/sarah/${subpath}`, async (req: Request, res: Response) => {
+    const orchUrl = resolveOrchestratorUrl();
+    if (!orchUrl) {
+      return res.status(503).json({
+        success: false,
+        error: 'ORCHESTRATOR_UNAVAILABLE',
+        message: 'Backend not reachable',
+      });
+    }
+    const correlationId =
+      (req.headers['x-correlation-id'] as string | undefined) ?? crypto.randomUUID();
+    const elSignature = (req.headers['elevenlabs-signature'] as string | undefined) ?? '';
+    const bodyJson = JSON.stringify(req.body ?? {});
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const orchResp = await fetch(`${orchUrl}/v1/tools/sarah/${subpath}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Correlation-Id': correlationId,
+          ...(elSignature ? { 'ElevenLabs-Signature': elSignature } : {}),
+        },
+        body: bodyJson,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const text = await orchResp.text();
+      let data: unknown = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: 'UPSTREAM_NON_JSON', message: text.slice(0, 200) };
+        }
+      }
+      res.status(orchResp.status).json(data ?? {});
+    } catch (err) {
+      clearTimeout(timer);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      logger.error(`[SarahTool:${subpath}] proxy_failed`, {
+        reason: err instanceof Error ? err.name : 'unknown',
+        is_timeout: isTimeout,
+        correlation_id: correlationId,
+      });
+      res.status(isTimeout ? 504 : 502).json({
+        success: false,
+        error: isTimeout ? 'ORCHESTRATOR_TIMEOUT' : 'ORCHESTRATOR_UNREACHABLE',
+        correlation_id: correlationId,
+      });
+    }
+  });
+}
+
 export default router;
 
 
