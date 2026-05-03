@@ -31,9 +31,13 @@ import { useTenant } from '@/providers/TenantProvider';
 import {
   fetchFrontDeskConfig,
   patchFrontDeskConfig,
+  createRoutingContact,
+  updateRoutingContact,
+  deleteRoutingContact,
   triggerTestCall as apiTriggerTestCall,
   type FrontDeskConfigRow,
   type FrontDeskConfigPatchPartial,
+  type RoutingContactRow,
   type AfterHoursMode as ApiAfterHoursMode,
   type BusyMode as ApiBusyMode,
 } from '@/lib/api/frontDesk';
@@ -58,6 +62,7 @@ import type {
   PublicNumberMode,
   CatchMode,
   BusinessHoursConfig,
+  BusinessHourDay,
   RoutingContact,
   BusyMode,
   AfterHoursMode,
@@ -125,15 +130,59 @@ const BUSY_FE_TO_WIRE: Record<BusyMode, ApiBusyMode> = {
 };
 
 /**
+ * Project a server-shaped `RoutingContactRow` into the local `RoutingContact`
+ * UI shape. The backend stores the canonical role string + display label;
+ * the frontend type carries extra UI-only fields (fallbackMode, priority,
+ * initials) which default to safe values on hydrate.
+ */
+const KNOWN_ROLES: ReadonlySet<RoutingContact['role']> = new Set([
+  'owner',
+  'sales',
+  'support',
+  'operations',
+  'custom',
+]);
+
+function mapWireToContact(row: RoutingContactRow, index: number): RoutingContact {
+  const wireRole = (row.role ?? '').toLowerCase();
+  const role = (KNOWN_ROLES.has(wireRole as RoutingContact['role'])
+    ? (wireRole as RoutingContact['role'])
+    : 'custom') as RoutingContact['role'];
+  const initials = (row.label ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s.charAt(0).toUpperCase())
+    .join('') || '??';
+  return {
+    id: row.id,
+    role,
+    customRoleLabel: role === 'custom' ? row.role : undefined,
+    name: row.label || '',
+    phone: row.phone || '',
+    initials,
+    fallbackMode: 'TRANSFER_ALLOWED',
+    transferAllowed: true,
+    priority: index,
+  };
+}
+
+/**
  * Hydrate the FrontDeskConfig from the versioned `/v1/front-desk/config`
- * response. The wire row only carries the fields we currently persist —
- * business hours / routing contacts default from local state.
+ * response. The wire row carries the form-level fields; routing contacts
+ * come from a sibling `routing_contacts` array on the same response.
  */
 function hydrateFromVersionedConfig(
   row: FrontDeskConfigRow | Record<string, never> | undefined,
+  routingContacts: RoutingContactRow[] | undefined,
   base: FrontDeskConfig,
 ): FrontDeskConfig {
-  if (!row || !('id' in row)) return base;
+  if (!row || !('id' in row)) {
+    return {
+      ...base,
+      routingContacts: (routingContacts ?? []).map(mapWireToContact),
+    };
+  }
 
   const publicNumberMode = row.public_number_mode as PublicNumberMode;
   const forwarding: ForwardingVerification | undefined =
@@ -145,6 +194,24 @@ function hydrateFromVersionedConfig(
         }
       : undefined;
 
+  // Project the saved 7-key business_hours JSONB back into the local
+  // BusinessHourDay[] shape. If the row predates Pass 19 (no business_hours
+  // saved yet), fall back to the base/default schedule.
+  const dayKeys: BusinessHourDay['day'][] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const wireHours = row.business_hours ?? null;
+  const hydratedDays: BusinessHourDay[] = wireHours
+    ? dayKeys.map((d) => {
+        const w = (wireHours as Record<string, { open: boolean; startTime?: string; endTime?: string } | undefined>)[d];
+        const fallback = base.businessHours.days.find((bd) => bd.day === d);
+        return {
+          day: d,
+          open: w?.open ?? fallback?.open ?? false,
+          startTime: w?.startTime ?? fallback?.startTime,
+          endTime: w?.endTime ?? fallback?.endTime,
+        };
+      })
+    : base.businessHours.days;
+
   return {
     ...base,
     publicNumber: {
@@ -154,10 +221,12 @@ function hydrateFromVersionedConfig(
     catch: { mode: row.catch_mode },
     businessHours: {
       ...base.businessHours,
+      days: hydratedDays,
       afterHoursMode: AFTER_HOURS_WIRE_TO_FE[row.after_hours_mode] ?? 'TAKE_MESSAGE',
       pronunciationOverride: row.pronunciation_override || base.businessHours.pronunciationOverride,
     },
     busy: { mode: BUSY_WIRE_TO_FE[row.busy_mode] ?? 'TAKE_MESSAGE' },
+    routingContacts: (routingContacts ?? []).map(mapWireToContact),
     forwarding,
     version: row.version_no ?? 1,
   };
@@ -169,12 +238,23 @@ function hydrateFromVersionedConfig(
  * for every save (the orchestrator versions on the write).
  */
 function buildPatchBody(config: FrontDeskConfig): FrontDeskConfigPatchPartial {
+  // Project the per-day in-memory shape into the canonical 7-key wire shape
+  // expected by the backend (front_desk_configs.business_hours JSONB column).
+  const businessHoursWire: Record<string, { open: boolean; startTime?: string; endTime?: string }> = {};
+  for (const d of config.businessHours.days) {
+    businessHoursWire[d.day] = {
+      open: !!d.open,
+      ...(d.startTime ? { startTime: d.startTime } : {}),
+      ...(d.endTime ? { endTime: d.endTime } : {}),
+    };
+  }
   return {
     public_number_mode: config.publicNumber.mode,
     catch_mode: config.catch.mode,
     after_hours_mode: AFTER_HOURS_FE_TO_WIRE[config.businessHours.afterHoursMode],
     busy_mode: BUSY_FE_TO_WIRE[config.busy.mode],
     pronunciation_override: config.businessHours.pronunciationOverride ?? '',
+    business_hours: businessHoursWire,
   };
 }
 
@@ -288,7 +368,11 @@ function FrontDeskSetupContent() {
       try {
         const res = await fetchFrontDeskConfig({ authenticatedFetch, officeId });
         if (cancelled) return;
-        const hydrated = hydrateFromVersionedConfig(res.config, DEFAULT_CONFIG);
+        const hydrated = hydrateFromVersionedConfig(
+          res.config,
+          res.routing_contacts,
+          DEFAULT_CONFIG,
+        );
         setConfig(hydrated);
         setOriginalConfig(hydrated);
         setHydrationError(null);
@@ -343,7 +427,11 @@ function FrontDeskSetupContent() {
     if (!officeId) return;
     try {
       const res = await fetchFrontDeskConfig({ authenticatedFetch, officeId });
-      const hydrated = hydrateFromVersionedConfig(res.config, config);
+      const hydrated = hydrateFromVersionedConfig(
+        res.config,
+        res.routing_contacts,
+        config,
+      );
       setConfig(hydrated);
       setOriginalConfig(hydrated);
     } catch {
@@ -357,10 +445,61 @@ function FrontDeskSetupContent() {
     setIsSaving(true);
     setSaveError(null);
     try {
+      // 1) Save the form-level config (Public Number, Catch, Hours, Busy).
       const body = buildPatchBody(config);
       await patchFrontDeskConfig({ authenticatedFetch, officeId }, body);
-      setOriginalConfig(config);
-      // Optional: re-hydrate to pull the server's canonical version_no.
+
+      // 2) Persist routing-contact CRUD via the dedicated Yellow-tier endpoints.
+      //    Diff against the server snapshot (originalConfig.routingContacts):
+      //      - in new but NOT in original (by id)        -> POST
+      //      - in both with changed fields                -> PATCH
+      //      - in original but NOT in new                 -> DELETE
+      //    Local IDs from the section's add flow are temp client-side ids.
+      //    The server returns the canonical UUID on POST; we reconcile state
+      //    via a refreshFromServer() at the end.
+      const prevById = new Map(originalConfig.routingContacts.map((c) => [c.id, c]));
+      const newById = new Map(config.routingContacts.map((c) => [c.id, c]));
+      const toCreate = config.routingContacts.filter((c) => !prevById.has(c.id));
+      const toDelete = originalConfig.routingContacts.filter((c) => !newById.has(c.id));
+      const toUpdate = config.routingContacts.filter((c) => {
+        const prev = prevById.get(c.id);
+        if (!prev) return false;
+        return (
+          prev.name !== c.name ||
+          prev.phone !== c.phone ||
+          prev.role !== c.role ||
+          prev.customRoleLabel !== c.customRoleLabel
+        );
+      });
+
+      const opts = { authenticatedFetch, officeId };
+      const ops: Promise<unknown>[] = [];
+      for (const c of toCreate) {
+        ops.push(
+          createRoutingContact(opts, {
+            role: c.role === 'custom' ? c.customRoleLabel || 'custom' : c.role,
+            label: c.name,
+            phone: c.phone,
+          }),
+        );
+      }
+      for (const c of toUpdate) {
+        ops.push(
+          updateRoutingContact(opts, c.id, {
+            label: c.name,
+            phone: c.phone,
+          }),
+        );
+      }
+      for (const c of toDelete) {
+        ops.push(deleteRoutingContact(opts, c.id));
+      }
+      if (ops.length > 0) {
+        await Promise.all(ops);
+      }
+
+      // 3) Re-hydrate from server so local state reflects canonical UUIDs +
+      //    the bumped version_no on front_desk_configs.
       await refreshFromServer();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed.');
@@ -373,6 +512,7 @@ function FrontDeskSetupContent() {
     hasInvalid,
     officeId,
     config,
+    originalConfig,
     authenticatedFetch,
     refreshFromServer,
   ]);

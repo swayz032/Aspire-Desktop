@@ -89,6 +89,10 @@ export interface FrontDeskConfigRow {
   busy_mode: BusyMode;
   greeting_name_override: string;
   pronunciation_override: string;
+  /** JSONB column — present on rows saved through Pass 19+ Hours-tab path. */
+  business_hours?: BusinessHoursWire | null;
+  /** IANA tz, e.g. "America/Los_Angeles". Drives is_open_now eval. */
+  timezone?: string | null;
   forwarding_status?: ForwardingStatus | null;
   last_forwarding_test_at?: string | null;
   last_forwarding_test_result?: string | null;
@@ -117,6 +121,23 @@ export interface FrontDeskConfigResponse {
   routing_contacts: RoutingContactRow[];
 }
 
+/**
+ * Canonical business-hours wire shape — stored as JSONB on
+ * `front_desk_configs.business_hours`. Seven keys (mon..sun), each with
+ * `open` (bool) and `startTime`/`endTime` (HH:MM 24h strings). The
+ * personalization webhook reads this column to compute `is_open_now` and
+ * `is_after_hours` against the office's wall-clock time.
+ */
+export interface BusinessHoursWire {
+  mon?: { open: boolean; startTime?: string; endTime?: string };
+  tue?: { open: boolean; startTime?: string; endTime?: string };
+  wed?: { open: boolean; startTime?: string; endTime?: string };
+  thu?: { open: boolean; startTime?: string; endTime?: string };
+  fri?: { open: boolean; startTime?: string; endTime?: string };
+  sat?: { open: boolean; startTime?: string; endTime?: string };
+  sun?: { open: boolean; startTime?: string; endTime?: string };
+}
+
 export interface FrontDeskConfigPatchPartial {
   public_number_mode?: PublicNumberMode;
   catch_mode?: CatchMode;
@@ -124,6 +145,10 @@ export interface FrontDeskConfigPatchPartial {
   busy_mode?: BusyMode;
   greeting_name_override?: string;
   pronunciation_override?: string;
+  /** Hours tab — full 7-day shape. Server stores as-is on JSONB column. */
+  business_hours?: BusinessHoursWire;
+  /** IANA timezone (e.g. "America/Los_Angeles"). Controls is_open_now eval. */
+  timezone?: string;
 }
 
 export interface FrontDeskConfigPatchResponse {
@@ -327,6 +352,84 @@ export async function purchaseNumber(
     receipt_id: json.receipt_id,
     purchased_at: json.purchased_at,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Routing contacts CRUD — Yellow tier per route. Server proxy mints capability
+// tokens (scope = `front_desk:routing_write`) before forwarding to orchestrator.
+// All three routes return a fresh `RoutingContactRow` (POST/PATCH) or
+// `{success}` (DELETE) — see backend/.../routes/front_desk.py:412-560.
+// ---------------------------------------------------------------------------
+
+export interface RoutingContactCreatePayload {
+  role: string;
+  label: string;
+  phone?: string;
+  sip_uri?: string;
+  email?: string;
+}
+
+export interface RoutingContactPatchPayload {
+  label?: string;
+  phone?: string;
+  sip_uri?: string;
+  email?: string;
+}
+
+export async function createRoutingContact(
+  opts: FetchOpts,
+  payload: RoutingContactCreatePayload,
+): Promise<RoutingContactRow> {
+  const url = `${API_BASE}${PROXY_PREFIX}/front-desk/routing-contacts`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': opts.officeId,
+    },
+    body: JSON.stringify(payload),
+    signal: opts.signal,
+  });
+  const json = await expectJson<{ success: boolean; contact: RoutingContactRow }>(
+    resp,
+    'ROUTING_CONTACT_CREATE_FAILED',
+  );
+  return json.contact;
+}
+
+export async function updateRoutingContact(
+  opts: FetchOpts,
+  contactId: string,
+  payload: RoutingContactPatchPayload,
+): Promise<RoutingContactRow> {
+  const url = `${API_BASE}${PROXY_PREFIX}/front-desk/routing-contacts/${encodeURIComponent(contactId)}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Office-Id': opts.officeId,
+    },
+    body: JSON.stringify(payload),
+    signal: opts.signal,
+  });
+  const json = await expectJson<{ success: boolean; contact: RoutingContactRow }>(
+    resp,
+    'ROUTING_CONTACT_PATCH_FAILED',
+  );
+  return json.contact;
+}
+
+export async function deleteRoutingContact(
+  opts: FetchOpts,
+  contactId: string,
+): Promise<void> {
+  const url = `${API_BASE}${PROXY_PREFIX}/front-desk/routing-contacts/${encodeURIComponent(contactId)}`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'DELETE',
+    headers: { 'X-Office-Id': opts.officeId },
+    signal: opts.signal,
+  });
+  await expectJson<{ success: boolean }>(resp, 'ROUTING_CONTACT_DELETE_FAILED');
 }
 
 /**
