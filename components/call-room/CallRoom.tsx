@@ -30,7 +30,7 @@ export function CallRoom({
     <View testID="call-room-root" style={styles.root}>
       <CallRoomBackground forcedTimeOfDay={forcedTimeOfDay} />
       <View style={styles.cardWrap} pointerEvents="box-none">
-        <CallRoomCard callState={callState} />
+        <CallRoomCard callState={callState} forcedTimeOfDay={forcedTimeOfDay} />
       </View>
     </View>
   );

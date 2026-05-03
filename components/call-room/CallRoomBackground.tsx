@@ -79,29 +79,39 @@ export function CallRoomBackground({ forcedTimeOfDay }: CallRoomBackgroundProps 
         );
       })}
 
-      {/* Night-only directional lamp glow from the top-right corner. Reads as
-          a 3D light source — like a desk lamp or window glow at night casting
-          warm light across the virtual office. Web-only (RN can't do radial
-          gradients without a lib). Crossfades with the night image so it
-          appears smoothly when night state activates. */}
-      {isWeb && (
+      {/* Night-only DIM WASH — darkens the bright twilight image so the
+          virtual office reads as "after hours". Sits between the photo
+          and the card. Web + native compatible. */}
+      {isNight && (
         <View
           pointerEvents="none"
-          testID="call-room-night-lamp"
+          testID="call-room-night-dim"
           style={[
             StyleSheet.absoluteFillObject,
             {
-              opacity: isNight ? 1 : 0,
-              transition: 'opacity 800ms ease-out',
-              // Outer atmospheric warm wash from top-right
+              backgroundColor: 'rgba(8, 12, 22, 0.55)',
+              ...(isWeb
+                ? ({ transition: 'opacity 800ms ease-out' } as object)
+                : {}),
+            },
+          ]}
+        />
+      )}
+
+      {/* Subtle ambient warmth from the top-right corner so the dim wash
+          doesn't kill all the sunset glow. Much softer than the card light. */}
+      {isWeb && isNight && (
+        <View
+          pointerEvents="none"
+          testID="call-room-night-ambient"
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
               // @ts-expect-error - web-only
-              background: [
-                // Soft atmospheric warmth blanketing the upper-right quadrant
-                'radial-gradient(circle at 92% 8%, rgba(255, 200, 140, 0.45) 0%, rgba(255, 180, 110, 0.25) 18%, rgba(255, 170, 90, 0.10) 35%, rgba(255, 160, 80, 0) 65%)',
-                // Tighter hot spot — the lamp itself
-                'radial-gradient(circle at 95% 5%, rgba(255, 230, 190, 0.55) 0%, rgba(255, 210, 160, 0.18) 8%, rgba(255, 200, 140, 0) 18%)',
-              ].join(', '),
+              background:
+                'radial-gradient(circle at 95% 5%, rgba(255, 200, 140, 0.30) 0%, rgba(255, 180, 110, 0.12) 25%, rgba(255, 160, 80, 0) 55%)',
               mixBlendMode: 'screen',
+              transition: 'opacity 800ms ease-out',
             },
           ]}
         />

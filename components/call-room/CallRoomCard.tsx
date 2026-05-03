@@ -7,18 +7,23 @@ import { AIAssistPanel } from './AIAssistPanel';
 import { CallRoomControls } from './CallRoomControls';
 import { CallRoomSummaryStrip } from './CallRoomSummaryStrip';
 import { useCardTilt } from './hooks/useCardTilt';
+import { useTimeOfDay } from './hooks/useTimeOfDay';
+import type { TimeOfDayState } from './types';
 
 export interface CallRoomCardProps {
   callState: CallState;
+  forcedTimeOfDay?: TimeOfDayState;
 }
 
 const GLASS_BG = 'rgba(15, 18, 24, 0.65)';
 const GLASS_BORDER = 'rgba(120, 170, 220, 0.35)';
 const ASPIRE_GLOW = 'rgba(120, 170, 220, 0.18)';
 
-export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactElement {
+export function CallRoomCard({ callState, forcedTimeOfDay }: CallRoomCardProps): React.ReactElement {
   const tilt = useCardTilt(2);
+  const tod = useTimeOfDay(forcedTimeOfDay);
   const isWeb = Platform.OS === 'web';
+  const isNight = tod.state === 'night';
 
   // Web-only: subtle card tilt for depth (no cursor light tracking).
   const dynamicCardStyle =
@@ -57,6 +62,31 @@ export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactEleme
                 // @ts-expect-error - web-only
                 background:
                   'linear-gradient(105deg, rgba(212,165,116,0.06) 0%, rgba(120,170,220,0.03) 50%, transparent 100%)',
+              },
+            ]}
+          />
+
+          {/* NIGHT-ONLY: warm directional light striking the card from the
+              top-right corner — like a desk lamp shining onto the card.
+              Two stacked radials (broad warm spill + tight bright hot spot)
+              with screen blend so they ADD light to the dark glass. */}
+          <View
+            pointerEvents="none"
+            testID="call-room-card-night-light"
+            style={[
+              StyleSheet.absoluteFillObject,
+              {
+                borderRadius: 18,
+                opacity: isNight ? 1 : 0,
+                // @ts-expect-error - web-only
+                background: [
+                  // Broad warm spill across the top-right quadrant of the card
+                  'radial-gradient(ellipse 90% 70% at 100% 0%, rgba(255, 210, 160, 0.35) 0%, rgba(255, 190, 130, 0.18) 22%, rgba(255, 175, 110, 0.06) 45%, transparent 70%)',
+                  // Tight hot spot — the visible "lamp landing point" on the card
+                  'radial-gradient(circle at 92% 8%, rgba(255, 235, 200, 0.55) 0%, rgba(255, 220, 170, 0.25) 8%, rgba(255, 200, 140, 0) 22%)',
+                ].join(', '),
+                mixBlendMode: 'screen',
+                transition: 'opacity 800ms ease-out',
               },
             ]}
           />
