@@ -500,11 +500,8 @@ function SheetContent({
   onSwitchToTollFree,
   onTryDifferentAreaCode,
 }: SheetContentProps) {
-  const monthlyCostHint =
-    numberType === 'TOLL_FREE'
-      ? '~$2.00/month'
-      : '~$1.15/month';
-
+  // Numbers are included in the user's Aspire subscription — never surface
+  // raw Twilio per-number pricing in the UI. The user's plan covers it.
   return (
     <>
       {/* Header */}
@@ -546,8 +543,8 @@ function SheetContent({
           />
         </View>
         <View style={styles.costHint}>
-          <Ionicons name="cash-outline" size={12} color={Colors.text.tertiary} />
-          <Text style={styles.costHintText}>{monthlyCostHint}</Text>
+          <Ionicons name="checkmark-circle-outline" size={12} color={Colors.text.tertiary} />
+          <Text style={styles.costHintText}>Included in your plan</Text>
         </View>
       </View>
 
@@ -645,12 +642,12 @@ function SheetContent({
           <Pressable
             onPress={onPurchase}
             accessibilityRole="button"
-            accessibilityLabel="Reserve and buy this number"
+            accessibilityLabel="Claim this number"
             style={styles.purchaseBtn}
             {...(Platform.OS === 'web' ? ({ className: 'fds-sheet-btn' } as any) : {})}
           >
             <Ionicons name="lock-closed" size={14} color="#ffffff" />
-            <Text style={styles.purchaseBtnText}>Reserve & buy</Text>
+            <Text style={styles.purchaseBtnText}>Claim number</Text>
             <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.85)" />
           </Pressable>
         </View>
@@ -734,9 +731,9 @@ function NumberResultCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const cost =
-    number.monthlyCostUsd ??
-    (numberType === 'TOLL_FREE' ? TOLL_FREE_FALLBACK_COST : LOCAL_FALLBACK_COST);
+  // Numbers are included in the user's Aspire subscription — no per-number
+  // price is shown in the UI. We keep monthlyCostUsd in the wire shape for
+  // future plan-tier comparisons but never render it as a dollar amount.
   const region =
     numberType === 'TOLL_FREE'
       ? 'Nationwide · toll-free'
@@ -748,7 +745,7 @@ function NumberResultCard({
       onPress={onSelect}
       accessibilityRole="radio"
       accessibilityState={{ checked: selected }}
-      accessibilityLabel={`Phone number ${display}, ${region}, ${cost.toFixed(2)} dollars per month`}
+      accessibilityLabel={`Phone number ${display}, ${region}`}
       style={[styles.resultCard, selected && styles.resultCardSelected]}
       {...(Platform.OS === 'web' ? ({ className: 'fds-result-card' } as any) : {})}
     >
@@ -770,7 +767,6 @@ function NumberResultCard({
           {number.capabilities.sms ? <CapabilityPill label="SMS" /> : null}
           {number.capabilities.mms ? <CapabilityPill label="MMS" /> : null}
         </View>
-        <Text style={styles.resultCost}>${cost.toFixed(2)}/mo</Text>
       </View>
     </Pressable>
   );
@@ -1016,9 +1012,8 @@ function ConfirmDialog({
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
-  const cost =
-    number.monthlyCostUsd ??
-    (numberType === 'TOLL_FREE' ? TOLL_FREE_FALLBACK_COST : LOCAL_FALLBACK_COST);
+  // Numbers are included in the Aspire subscription — confirm copy
+  // reflects "claim", not "purchase / charge".
   const display = number.friendlyName ?? formatNumber(number.phoneNumber);
 
   return (
@@ -1040,14 +1035,13 @@ function ConfirmDialog({
           <Ionicons name="alert-circle" size={26} color={Colors.semantic.warning} />
         </View>
         <Text style={styles.confirmTitle} accessibilityRole="header">
-          Confirm purchase
+          Confirm new number
         </Text>
         <Text style={styles.confirmBody}>
-          This will purchase{' '}
+          This will assign{' '}
           <Text style={styles.confirmStrong}>{display}</Text>
-          {numberType === 'TOLL_FREE' ? ' (toll-free)' : ''} for{' '}
-          <Text style={styles.confirmStrong}>${cost.toFixed(2)}/month</Text>. Charges are
-          governed by your active billing setup.
+          {numberType === 'TOLL_FREE' ? ' (toll-free)' : ''} as your office
+          number. Included in your Aspire plan — no extra charge.
         </Text>
 
         {error ? (
