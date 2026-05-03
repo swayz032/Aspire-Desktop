@@ -37,4 +37,19 @@ describe('getTint', () => {
     expect(day).toBeLessThan(getTint('dusk').overlayOpacity);
     expect(day).toBeLessThan(getTint('night').overlayOpacity);
   });
+
+  it('night includes a ceiling lamp config', () => {
+    const lamp = getTint('night').ceilingLamp;
+    expect(lamp).toBeDefined();
+    expect(lamp!.color).toMatch(/^rgba\(/);
+    expect(lamp!.cx).toBeGreaterThanOrEqual(0);
+    expect(lamp!.cx).toBeLessThanOrEqual(100);
+    expect(lamp!.radius).toBeGreaterThan(0);
+  });
+
+  it('day / dawn / dusk do NOT define a ceiling lamp', () => {
+    expect(getTint('day').ceilingLamp).toBeUndefined();
+    expect(getTint('dawn').ceilingLamp).toBeUndefined();
+    expect(getTint('dusk').ceilingLamp).toBeUndefined();
+  });
 });

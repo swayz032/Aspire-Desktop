@@ -10,11 +10,22 @@ import type { TimeOfDayState } from '../types';
 
 export type { TimeOfDayState };
 
+export interface CeilingLamp {
+  color: string;       // warm-white center color (CSS rgba)
+  edgeColor: string;   // outer fade — usually 0 alpha of the same hue
+  cx: number;          // center x in % (50 = middle)
+  cy: number;          // center y in % (30 = upper third, where the card sits)
+  radius: number;      // % of viewport diameter
+}
+
 export interface TimeOfDayTint {
   state: TimeOfDayState;
   overlayColor: string;
   overlayOpacity: number;
   vignetteColor: string;
+  // Only set at night — simulates a ceiling lamp turning on so the room
+  // doesn't feel pitch-black. The card sits inside the warm pool of light.
+  ceilingLamp?: CeilingLamp;
 }
 
 export function classifyHour(hour: number): TimeOfDayState {
@@ -50,9 +61,18 @@ export function getTint(state: TimeOfDayState): TimeOfDayTint {
     case 'night':
       return {
         state,
-        overlayColor: 'rgba(40, 50, 90, 1)',
-        overlayOpacity: 0.30,
-        vignetteColor: 'rgba(0, 0, 10, 0.6)',
+        // Heavier dark wash so the room feels genuinely dim at night.
+        overlayColor: 'rgba(20, 28, 55, 1)',
+        overlayOpacity: 0.55,
+        vignetteColor: 'rgba(0, 0, 8, 0.75)',
+        ceilingLamp: {
+          // Warm tungsten lamp pool — bright at center, fades to invisible.
+          color: 'rgba(255, 220, 170, 0.42)',
+          edgeColor: 'rgba(255, 220, 170, 0)',
+          cx: 50,
+          cy: 38,
+          radius: 65,
+        },
       };
   }
 }

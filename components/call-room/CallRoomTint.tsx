@@ -2,8 +2,10 @@
 //
 // Time-of-day tint overlay. Sits BETWEEN <CallRoomBackground /> and
 // <CallRoomCard /> — multiplies the background with the ambient color and
-// adds a soft edge vignette (web only). pointerEvents="none" so it never
-// intercepts clicks.
+// adds a soft edge vignette (web only). At night, a warm "ceiling lamp"
+// glow paints over the dark wash so the room reads as "Aspire turned on
+// the overhead light because it's late" — not pitch-black, but clearly
+// after-hours. pointerEvents="none" so it never intercepts clicks.
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useTimeOfDay } from './hooks/useTimeOfDay';
@@ -23,7 +25,7 @@ export function CallRoomTint({ forced }: CallRoomTintProps): React.ReactElement 
       style={StyleSheet.absoluteFillObject}
       testID="call-room-tint"
     >
-      {/* Ambient color overlay (multiply on web tints highlights with the color) */}
+      {/* 1. Ambient color overlay (multiply tints highlights with the color) */}
       <View
         pointerEvents="none"
         style={[
@@ -41,7 +43,7 @@ export function CallRoomTint({ forced }: CallRoomTintProps): React.ReactElement 
         ]}
       />
 
-      {/* Edge vignette — web only (RN can't do radial gradients without a lib) */}
+      {/* 2. Edge vignette — web only (RN can't do radial gradients without a lib) */}
       {isWeb && (
         <View
           pointerEvents="none"
@@ -51,6 +53,25 @@ export function CallRoomTint({ forced }: CallRoomTintProps): React.ReactElement 
               // @ts-expect-error - web-only
               background: `radial-gradient(ellipse at center, transparent 50%, ${tint.vignetteColor} 100%)`,
               transition: 'background 600ms ease-out',
+            },
+          ]}
+        />
+      )}
+
+      {/* 3. Ceiling lamp pool — only at night. Warm tungsten glow centered
+              over the card area so the room reads as "lights are on". Uses
+              `screen` blend so it adds light (carves out the darkness rather
+              than colorizing on top of it). */}
+      {isWeb && tint.ceilingLamp && (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              // @ts-expect-error - web-only
+              background: `radial-gradient(circle at ${tint.ceilingLamp.cx}% ${tint.ceilingLamp.cy}%, ${tint.ceilingLamp.color} 0%, ${tint.ceilingLamp.color} 8%, ${tint.ceilingLamp.edgeColor} ${tint.ceilingLamp.radius}%)`,
+              mixBlendMode: 'screen',
+              transition: 'background 800ms ease-out',
             },
           ]}
         />

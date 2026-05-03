@@ -77,34 +77,11 @@ export function CallRoomCard({ callState }: CallRoomCardProps): React.ReactEleme
   // Top highlight opacity: 0.13 at center, 0.18 at top, 0.08 at bottom (boosted in M4).
   const topHighlightOpacity = clamp(0.13 - light.y * 0.05, 0.08, 0.18);
 
-  // Specular highlight position: cursor-tracked radial bloom across the glass.
-  // Map light.x/y (-1..1) into a 20%..80% gradient center range.
-  const hx = 50 + light.x * 30;
-  const hy = 50 + light.y * 30;
-
   return (
     <View style={[styles.card, dynamicCardStyle]} testID="call-room-card">
       {/* Edge highlight + refraction (web-only premium glass layers) */}
       {isWeb && (
         <>
-          {/* Specular cursor-tracked bloom — sits beneath the refraction overlays
-              so the warmth gradient still tints it, not vice versa. */}
-          <View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFillObject,
-              {
-                borderRadius: 18,
-                // @ts-expect-error - web-only
-                background: `radial-gradient(circle at ${hx.toFixed(1)}% ${hy.toFixed(
-                  1,
-                )}%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.08) 18%, rgba(255,255,255,0) 45%)`,
-                mixBlendMode: 'screen',
-                transition: 'background 220ms ease-out',
-                opacity: 0.9,
-              },
-            ]}
-          />
           <View
             pointerEvents="none"
             style={[
