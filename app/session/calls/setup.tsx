@@ -176,11 +176,16 @@ function hydrateFromVersionedConfig(
   row: FrontDeskConfigRow | Record<string, never> | undefined,
   routingContacts: RoutingContactRow[] | undefined,
   base: FrontDeskConfig,
+  voicemailEmail?: string,
 ): FrontDeskConfig {
   if (!row || !('id' in row)) {
     return {
       ...base,
       routingContacts: (routingContacts ?? []).map(mapWireToContact),
+      businessHours: {
+        ...base.businessHours,
+        voicemailEmail: voicemailEmail ?? base.businessHours.voicemailEmail,
+      },
     };
   }
 
@@ -224,6 +229,8 @@ function hydrateFromVersionedConfig(
       days: hydratedDays,
       afterHoursMode: AFTER_HOURS_WIRE_TO_FE[row.after_hours_mode] ?? 'TAKE_MESSAGE',
       pronunciationOverride: row.pronunciation_override || base.businessHours.pronunciationOverride,
+      timezone: row.timezone || base.businessHours.timezone,
+      voicemailEmail: voicemailEmail ?? base.businessHours.voicemailEmail,
     },
     busy: { mode: BUSY_WIRE_TO_FE[row.busy_mode] ?? 'TAKE_MESSAGE' },
     routingContacts: (routingContacts ?? []).map(mapWireToContact),
@@ -248,7 +255,7 @@ function buildPatchBody(config: FrontDeskConfig): FrontDeskConfigPatchPartial {
       ...(d.endTime ? { endTime: d.endTime } : {}),
     };
   }
-  return {
+  const patch: FrontDeskConfigPatchPartial = {
     public_number_mode: config.publicNumber.mode,
     catch_mode: config.catch.mode,
     after_hours_mode: AFTER_HOURS_FE_TO_WIRE[config.businessHours.afterHoursMode],
@@ -256,6 +263,16 @@ function buildPatchBody(config: FrontDeskConfig): FrontDeskConfigPatchPartial {
     pronunciation_override: config.businessHours.pronunciationOverride ?? '',
     business_hours: businessHoursWire,
   };
+  if (config.businessHours.timezone) {
+    patch.timezone = config.businessHours.timezone;
+  }
+  // Send voicemail_email even when blank — empty string is the explicit
+  // "clear" signal for an existing voicemail address. The handler relays
+  // null vs unset to suite_profiles correctly.
+  if (typeof config.businessHours.voicemailEmail === 'string') {
+    patch.voicemail_email = config.businessHours.voicemailEmail.trim();
+  }
+  return patch;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,6 +389,7 @@ function FrontDeskSetupContent() {
           res.config,
           res.routing_contacts,
           DEFAULT_CONFIG,
+          res.voicemail_email,
         );
         setConfig(hydrated);
         setOriginalConfig(hydrated);
@@ -431,6 +449,7 @@ function FrontDeskSetupContent() {
         res.config,
         res.routing_contacts,
         config,
+        res.voicemail_email,
       );
       setConfig(hydrated);
       setOriginalConfig(hydrated);

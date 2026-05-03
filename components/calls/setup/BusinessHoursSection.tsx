@@ -63,6 +63,21 @@ const AFTER_HOURS_OPTIONS: { value: AfterHoursMode; label: string; recommended?:
   { value: 'TRY_TRANSFER_THEN_MESSAGE', label: 'Try transfer once, then message' },
 ];
 
+// Common US-business timezones surfaced as a curated list. Anything outside
+// this list still round-trips correctly because the dropdown re-uses the
+// stored IANA value as both key and label.
+const TIMEZONE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'America/New_York', label: 'Eastern (New York)' },
+  { value: 'America/Chicago', label: 'Central (Chicago)' },
+  { value: 'America/Denver', label: 'Mountain (Denver)' },
+  { value: 'America/Phoenix', label: 'Mountain — no DST (Phoenix)' },
+  { value: 'America/Los_Angeles', label: 'Pacific (Los Angeles)' },
+  { value: 'America/Anchorage', label: 'Alaska (Anchorage)' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii (Honolulu)' },
+];
+
+const DEFAULT_TIMEZONE = 'America/New_York';
+
 // ---------------------------------------------------------------------------
 // One-time CSS
 // ---------------------------------------------------------------------------
@@ -117,6 +132,11 @@ export function BusinessHoursSection({ config, onChange, enterIndex }: BusinessH
 
   const setAfterHours = (m: AfterHoursMode) => onChange({ afterHoursMode: m });
   const setPronunciation = (t: string) => onChange({ pronunciationOverride: t });
+  const setTimezone = (tz: string) => onChange({ timezone: tz });
+  const setVoicemailEmail = (e: string) => onChange({ voicemailEmail: e });
+
+  const currentTz = config.timezone || DEFAULT_TIMEZONE;
+  const currentVm = config.voicemailEmail ?? '';
 
   return (
     <SectionPanel step={3} title="Business Hours" enterIndex={enterIndex}>
@@ -201,6 +221,59 @@ export function BusinessHoursSection({ config, onChange, enterIndex }: BusinessH
           </View>
 
           <View style={styles.pronWrap}>
+            <Text style={styles.subhead}>Timezone</Text>
+            {Platform.OS === 'web' ? (
+              <select
+                value={currentTz}
+                onChange={(e) => setTimezone((e.target as HTMLSelectElement).value)}
+                aria-label="Office timezone"
+                style={{
+                  height: 40,
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'rgba(255,255,255,0.03)',
+                  color: '#fff',
+                  paddingLeft: 12,
+                  paddingRight: 12,
+                  fontSize: 14,
+                  width: '100%',
+                  outline: 'none',
+                }}
+              >
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+                {!TIMEZONE_OPTIONS.some((t) => t.value === currentTz) ? (
+                  <option key={currentTz} value={currentTz}>
+                    {currentTz}
+                  </option>
+                ) : null}
+              </select>
+            ) : (
+              <View style={styles.tzNativeRow}>
+                {TIMEZONE_OPTIONS.map((tz) => {
+                  const selected = currentTz === tz.value;
+                  return (
+                    <Pressable
+                      key={tz.value}
+                      onPress={() => setTimezone(tz.value)}
+                      style={[styles.tzChip, selected && styles.tzChipSelected]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                    >
+                      <Text style={[styles.tzChipLabel, selected && styles.tzChipLabelSelected]}>
+                        {tz.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.pronWrap}>
             <Text style={styles.subhead}>How to say your business name (optional)</Text>
             <TextInput
               value={config.pronunciationOverride ?? ''}
@@ -211,6 +284,25 @@ export function BusinessHoursSection({ config, onChange, enterIndex }: BusinessH
               accessibilityLabel="Business name pronunciation override"
               {...(Platform.OS === 'web' ? ({ className: 'fds-time-input' } as any) : {})}
             />
+          </View>
+
+          <View style={styles.pronWrap}>
+            <Text style={styles.subhead}>Voicemail email (optional)</Text>
+            <TextInput
+              value={currentVm}
+              onChangeText={setVoicemailEmail}
+              placeholder="voicemail@yourbusiness.com"
+              placeholderTextColor={Colors.text.muted}
+              style={styles.pronInput}
+              accessibilityLabel="Voicemail email destination"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+              {...(Platform.OS === 'web' ? ({ className: 'fds-time-input' } as any) : {})}
+            />
+            <Text style={styles.helpText}>
+              Where Sarah forwards voicemail transcripts. Leave blank to use your account email.
+            </Text>
           </View>
         </View>
       </View>
@@ -442,6 +534,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   } as any,
+  helpText: {
+    fontSize: 11,
+    color: Colors.text.muted,
+    marginTop: 2,
+    lineHeight: 14,
+  },
+
+  // ----- Timezone (native fallback) ----------------------------------------
+  tzNativeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  tzChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  tzChipSelected: {
+    borderColor: 'rgba(59,130,246,0.55)',
+    backgroundColor: 'rgba(59,130,246,0.12)',
+  },
+  tzChipLabel: {
+    fontSize: 12,
+    color: Colors.text.muted,
+  },
+  tzChipLabelSelected: {
+    color: Colors.text.primary,
+    fontWeight: '600',
+  },
 });
 
 export default BusinessHoursSection;
