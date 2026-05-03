@@ -51,13 +51,24 @@ function readBootstrapIdentityCache(currentUserId?: string): BootstrapIdentityCa
 }
 
 function mapSuiteProfileToTenant(profile: any): Tenant {
+  // Aspire's data model is currently 1:1 suite-to-office. There is no
+  // separate `office_profiles` table; office identity lives on
+  // `suite_profiles` via `office_display_id`. When a profile fetch returns
+  // no `office_id` (older sessions, partial onboarding metadata), fall
+  // back to `suite_id` so downstream API calls (e.g. `/v1/front-desk/*`,
+  // capability tokens) have a valid office scope. Same pattern for
+  // `officeDisplayId` — fall back to `display_id` so the header shows a
+  // human-readable identifier instead of "Pending".
+  const suiteIdResolved = profile.suite_id ?? profile.suiteId ?? '';
+  const displayIdResolved = profile.display_id ?? profile.displayId ?? undefined;
   return {
     id: profile.id ?? profile.suite_id ?? '',
     businessName: profile.business_name ?? profile.businessName ?? 'Aspire Business',
-    suiteId: profile.suite_id ?? profile.suiteId ?? '',
-    officeId: profile.office_id ?? profile.officeId ?? '',
-    displayId: profile.display_id ?? profile.displayId ?? undefined,
-    officeDisplayId: profile.office_display_id ?? profile.officeDisplayId ?? undefined,
+    suiteId: suiteIdResolved,
+    officeId: profile.office_id ?? profile.officeId ?? suiteIdResolved,
+    displayId: displayIdResolved,
+    officeDisplayId:
+      profile.office_display_id ?? profile.officeDisplayId ?? displayIdResolved ?? undefined,
     ownerName: profile.owner_name ?? profile.ownerName ?? '',
     ownerEmail: profile.owner_email ?? profile.ownerEmail ?? '',
     role: profile.role ?? 'Founder',
