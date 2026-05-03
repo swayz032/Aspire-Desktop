@@ -1114,6 +1114,56 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     });
   }
 
+  // MVEO Layer 4 — wire-shape sampler. 1% of all invoke calls always-on.
+  // Records the envelope shape (sorted body keys + content-type + nested-args
+  // flag) so a daily cron can detect NOVEL shapes that we haven't unwrapped
+  // before. Would have caught the May 3 MISSING_TASK envelope mismatch days
+  // before it impacted the user. Best-effort, never blocks the request.
+  if (Math.random() < 0.01) {
+    const sampleRawBody = (req as any).rawBody;
+    const sampleSuiteId = typeof (req.body as any)?.suite_id === 'string'
+      ? (req.body as any).suite_id
+      : (getDefaultSuiteId() || '');
+    const bodyKeys = req.body && typeof req.body === 'object'
+      ? Object.keys(req.body as Record<string, any>).sort().slice(0, 30)
+      : [];
+    const hasNestedArgs = !!(req.body
+      && typeof req.body === 'object'
+      && ((req.body as any).arguments
+        || (req.body as any).bodyParams
+        || (req.body as any).tool_calls
+        || (req.body as any).function_call));
+    const contentType = String(req.headers['content-type'] || '').slice(0, 100);
+    const shapeSignature = JSON.stringify({ k: bodyKeys, c: contentType, n: hasNestedArgs });
+    const shapeHash = require('crypto').createHash('sha256').update(shapeSignature).digest('hex').slice(0, 16);
+
+    void (async () => {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+        if (!supabaseUrl || !supabaseKey || !sampleSuiteId) return;
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        // Upsert: if (tenant_id, tool_name, shape_hash) exists, bump
+        // last_seen + sample_count; otherwise insert with first_seen=now().
+        const { error } = await supabase.rpc('mveo_record_envelope_sample', {
+          p_tenant_id: sampleSuiteId,
+          p_tool_name: 'invoke',
+          p_shape_hash: shapeHash,
+          p_body_keys: bodyKeys,
+          p_content_type: contentType,
+          p_raw_body_len: sampleRawBody?.length ?? 0,
+          p_has_nested_arguments: hasNestedArgs,
+        });
+        if (error) {
+          logger.warn('[EnvelopeSampler] upsert failed', { error: error.message });
+        }
+      } catch {
+        // sampler is fire-and-forget; never affects request
+      }
+    })();
+  }
+
   // Round 3 hotfix: if express body parsers didn't populate req.body but the
   // verify callback captured a raw buffer, parse it here as JSON. Anam's
   // webhook runtime sometimes posts with non-standard Content-Type.

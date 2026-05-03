@@ -500,7 +500,7 @@ function AvaDeskPanelInner() {
 
   const [authorityQueue, setAuthorityQueue] = useState<any[]>([]);
 
-  const handleStructuredCards = useCallback((data: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string; total_count?: number; _records_cached?: boolean }) => {
+  const handleStructuredCards = useCallback((data: { artifact_type: string; records: any[]; summary: string; confidence?: any; card_cache_id?: string; total_count?: number; _records_cached?: boolean; _card_cache_id?: string }) => {
     if (avaPresents.visible) return;
     const artifactType = data.artifact_type;
     const incomingRecords = Array.isArray(data.records) ? data.records : [];
@@ -516,6 +516,31 @@ function AvaDeskPanelInner() {
       typeof data.total_count === 'number' && data.total_count > incomingRecords.length
     );
 
+    // MVEO Layer 1 — fire tool-chain integrity beacon. Server cron looks for
+    // invoke_adam receipts that returned records with NO matching beacon
+    // within 10s, surfaces those as 'show_cards skipped' incidents.
+    // Best-effort: failure to beacon must not block card render.
+    const fireBeacon = async () => {
+      try {
+        const beaconCorrelationId = data._card_cache_id || data.card_cache_id || '';
+        if (!session?.access_token) return;
+        await fetch('/api/telemetry/show-cards-fired', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            invoke_correlation_id: beaconCorrelationId,
+            artifact_type: artifactType,
+            record_count: typeof data.total_count === 'number' ? data.total_count : incomingRecords.length,
+          }),
+        });
+      } catch {
+        // best-effort telemetry, do not surface
+      }
+    };
+
     const show = (records: Record<string, unknown>[]) => {
       avaPresents.showCards({
         artifactType,
@@ -523,6 +548,7 @@ function AvaDeskPanelInner() {
         summary: data.summary ?? '',
         confidence: data.confidence as { status: 'verified' | 'partial' | 'unverified'; score: number } | null | undefined,
       });
+      void fireBeacon();
     };
 
     const needsHydration = sparseProperty || hasMoreInCache;
@@ -547,7 +573,7 @@ function AvaDeskPanelInner() {
       }
       show(incomingRecords);
     })();
-  }, [avaPresents, suiteId]);
+  }, [avaPresents, suiteId, session?.access_token]);
 
   // Ref to break circular dependency: useVoice needs appendLocalMessage, 
   // but appendLocalMessage needs setMessages from useAvaChat, 

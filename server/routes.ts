@@ -3722,6 +3722,61 @@ function writeSseEvent(res: Response, payload: Record<string, unknown>): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
+// MVEO Layer 1 — tool-chain integrity beacon.
+// Desktop fires this after rendering Anam's CLIENT show_cards call so the
+// server can detect the case where invoke_adam returned records but the LLM
+// never completed the chain (would have caught session 73aee55d's bug).
+// Auth: JWT-validated by global RLS middleware; suite_id derives from JWT,
+// NOT from request body (Law #6).
+router.post('/api/telemetry/show-cards-fired', async (req: Request, res: Response) => {
+  const correlationId = (req.headers['x-correlation-id'] as string) || `corr-beacon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const suiteId = (req as any).authenticatedSuiteId || null;
+  const userId = (req as any).authenticatedUserId || null;
+
+  if (!suiteId) {
+    return res.status(401).json({
+      error: 'AUTH_REQUIRED',
+      message: 'Authenticated suite context required.',
+      correlation_id: correlationId,
+    });
+  }
+
+  const invokeCorrelationId = typeof req.body?.invoke_correlation_id === 'string'
+    ? req.body.invoke_correlation_id.slice(0, 200)
+    : '';
+  const artifactType = typeof req.body?.artifact_type === 'string'
+    ? req.body.artifact_type.slice(0, 100)
+    : '';
+  const recordCount = typeof req.body?.record_count === 'number'
+    ? Math.max(0, Math.min(10000, Math.floor(req.body.record_count)))
+    : 0;
+
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(503).json({ error: 'STORAGE_UNAVAILABLE', message: 'Cannot record beacon.' });
+    }
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { error } = await supabase.from('tool_chain_beacons').insert({
+      tenant_id: suiteId,
+      user_id: userId,
+      tool_name: 'show_cards',
+      invoke_correlation_id: invokeCorrelationId || null,
+      artifact_type: artifactType || null,
+      record_count: recordCount,
+    });
+    if (error) {
+      logger.warn('[Beacon] tool_chain_beacons insert failed', { error: error.message });
+      return res.status(500).json({ error: 'INSERT_FAILED' });
+    }
+    return res.status(204).send();
+  } catch (err) {
+    logger.error('[Beacon] unexpected error', { error: err instanceof Error ? err.message : 'unknown' });
+    return res.status(500).json({ error: 'BEACON_ERROR' });
+  }
+});
+
 router.get('/api/orchestrator/intent', async (req: Request, res: Response) => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `corr-sse-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const traceId = resolveTraceId(req, correlationId);
