@@ -156,6 +156,10 @@ export interface BusinessHoursConfig {
   afterHoursMode: AfterHoursMode;
   /** Optional pronunciation override for business name */
   pronunciationOverride?: string;
+  /** IANA timezone (e.g., "America/Los_Angeles"). Drives is_open_now eval. */
+  timezone?: string;
+  /** Dedicated voicemail destination — falls back to owner email when blank. */
+  voicemailEmail?: string;
 }
 
 // ---------------------------------------------------------------------------

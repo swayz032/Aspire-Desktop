@@ -119,6 +119,8 @@ export interface FrontDeskConfigResponse {
   success: boolean;
   config: FrontDeskConfigRow | Record<string, never>;
   routing_contacts: RoutingContactRow[];
+  /** Tenant-level voicemail destination (suite_profiles.voicemail_email). */
+  voicemail_email?: string;
 }
 
 /**
@@ -149,6 +151,8 @@ export interface FrontDeskConfigPatchPartial {
   business_hours?: BusinessHoursWire;
   /** IANA timezone (e.g. "America/Los_Angeles"). Controls is_open_now eval. */
   timezone?: string;
+  /** Dedicated voicemail inbox — relayed by handler to suite_profiles. */
+  voicemail_email?: string;
 }
 
 export interface FrontDeskConfigPatchResponse {
