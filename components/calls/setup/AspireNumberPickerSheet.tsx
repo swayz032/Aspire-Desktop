@@ -274,7 +274,7 @@ export function AspireNumberPickerSheet({
         return;
       }
       if (!officeId) {
-        setSearchError('No active office. Please refresh and try again.');
+        setSearchError('Your office isn’t set up yet. Complete onboarding (Suite + Office) before purchasing a number.');
         return;
       }
       setIsSearching(true);
@@ -330,7 +330,7 @@ export function AspireNumberPickerSheet({
   const handleConfirmPurchase = useCallback(async () => {
     if (!selectedPhone) return;
     if (!officeId) {
-      setPurchaseError('No active office. Please refresh and try again.');
+      setPurchaseError('Your office isn’t set up yet. Complete onboarding (Suite + Office) before purchasing a number.');
       return;
     }
     setIsPurchasing(true);

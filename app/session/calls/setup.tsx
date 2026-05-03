@@ -87,11 +87,7 @@ const DEFAULT_CONFIG: FrontDeskConfig = {
     afterHoursMode: 'TAKE_MESSAGE',
     pronunciationOverride: '',
   },
-  routingContacts: [
-    { id: 'rc-owner', role: 'owner', name: 'Tonio Scott', phone: '(404) 555-0182', initials: 'TS', fallbackMode: 'TRANSFER_ALLOWED', transferAllowed: true, priority: 0 },
-    { id: 'rc-sales', role: 'sales', name: 'Maya Reed', phone: '(404) 555-0144', initials: 'MR', fallbackMode: 'TRANSFER_ALLOWED', transferAllowed: true, priority: 1 },
-    { id: 'rc-support', role: 'support', name: 'James Cole', phone: '(404) 555-0177', initials: 'JC', fallbackMode: 'MESSAGE_FALLBACK', transferAllowed: true, priority: 2 },
-  ],
+  routingContacts: [],
   busy: { mode: 'TAKE_MESSAGE' },
   forwarding: undefined,
   version: 1,
