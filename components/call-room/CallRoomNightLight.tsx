@@ -110,8 +110,8 @@ function NightLightScene(): React.ReactElement {
 
       <EffectComposer>
         <Bloom
-          intensity={1.6}
-          luminanceThreshold={0.2}
+          intensity={0.8}
+          luminanceThreshold={0.4}
           luminanceSmoothing={0.9}
           mipmapBlur
         />
@@ -137,32 +137,34 @@ function SceneContents({ SpotLight }: SceneContentsProps): React.ReactElement {
 
   return (
     <>
-      {/* The visible bulb — small emissive sphere in the top-right of the
-          scene. Bloom turns this into a believable glowing source the eye
-          locks onto as "the lamp". */}
-      <mesh position={[1.6, 1.4, 0.5]}>
-        <sphereGeometry args={[0.1, 32, 32]} />
-        <meshBasicMaterial color={lampColor} toneMapped={false} />
-      </mesh>
+      {/* NO emissive sphere — the bulb itself stays invisible. Only the
+          volumetric cone of light shows in the viewport. The light source
+          sits off-screen past the top-right corner; what the user sees is
+          the descending pool of warm light landing on the card's top-right
+          corner. Removing the visible source eliminates bloom-bleed of the
+          bulb into the visible frame. */}
 
-      {/* Target for the SpotLight cone — sits at the card's top-right area
-          so the cone aims DOWN-LEFT onto the card. */}
-      <object3D ref={targetRef} position={[0.5, -0.2, 0]} />
+      {/* Target where the cone "lands" — the card's top-right area so the
+          beam descends from the off-screen corner onto that part of the card. */}
+      <object3D ref={targetRef} position={[0.7, -0.3, 0]} />
 
-      {/* Volumetric SpotLight — visible cone of warm light through the
-          fogged scene, descending from the top-right onto the card. */}
+      {/* Volumetric SpotLight positioned FAR off-screen at the top-right
+          corner of the page (well past the camera frustum at z=0). The
+          source itself is invisible; only the cone descending into the
+          viewport renders. Wide angle + large radiusBottom = the light
+          pool spreads broadly across the card's top-right when it lands. */}
       <SpotLight
-        position={[1.6, 1.4, 0.5]}
+        position={[4.0, 2.5, 0.5]}
         target={targetRef.current ?? undefined}
         color={lampColor}
-        intensity={3.2}
-        distance={5}
-        angle={Math.PI / 3}
-        penumbra={0.85}
-        attenuation={2.2}
-        anglePower={4}
-        radiusTop={0.04}
-        radiusBottom={1.0}
+        intensity={5}
+        distance={9}
+        angle={Math.PI / 4}
+        penumbra={0.95}
+        attenuation={1.8}
+        anglePower={3}
+        radiusTop={0.05}
+        radiusBottom={1.6}
         volumetric
       />
 
