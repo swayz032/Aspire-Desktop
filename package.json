@@ -3,7 +3,6 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "postinstall": "node scripts/patch-import-meta.mjs",
     "start": "tsx server/index.ts",
     "serve": "tsx server/index.ts",
     "dev": "expo start",
@@ -22,7 +21,7 @@
     "check-types": "bash scripts/gen-types.sh --check",
     "sentry:upload:sourcemaps": "node scripts/sentry-release.mjs web",
     "build:static": "node scripts/build-static.mjs",
-    "postinstall": "node scripts/copy-worklets.js 2>/dev/null || true",
+    "postinstall": "node scripts/patch-import-meta.mjs && (node scripts/copy-worklets.js 2>/dev/null || true)",
     "sentry:release:web": "node scripts/sentry-release.mjs web",
     "sync-agents": "node scripts/sync-elevenlabs-ava.mjs && node scripts/sync-elevenlabs-finn.mjs && node scripts/sync-elevenlabs-eli.mjs && node scripts/sync-elevenlabs-nora.mjs && node scripts/sync-elevenlabs-sarah-receptionist.mjs && node scripts/sync-elevenlabs-sarah-frontdesk.mjs && node scripts/sync-anam-ava-canonical.mjs && node scripts/sync-anam-finn.mjs",
     "sync-agent:ava": "node scripts/sync-elevenlabs-ava.mjs && node scripts/sync-anam-ava-canonical.mjs",
