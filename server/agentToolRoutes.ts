@@ -2383,6 +2383,223 @@ router.get('/api/card-data/:id', cardDataRateLimit, (req: Request, res: Response
   });
 });
 
+// ─── MVEO Layer 3 — Synthetic Ava Paint Canary ───────────────────────────────
+// Internal endpoint hit by pg_cron (via pg_net) every 15 minutes. Drives a
+// synthetic invoke_adam call with a known-good payload and asserts the
+// response shape that the May 3 transcripts revealed was breaking
+// (records present, _card_cache_id set, slim records well-formed, no
+// MISSING_TASK / no envelope mismatch).
+//
+// Why this matters: Pass 1 detectors (anomaly + tool-chain) only fire when
+// REAL traffic is broken. The canary catches regressions during quiet hours
+// or before any real user hits the broken state.
+//
+// Auth: same shared secret used for /v1/tools/* — pg_cron signs the request
+// with the secret retrieved from Vault.
+router.post('/internal/canary/ava-paint-flow', async (req: Request, res: Response) => {
+  if (!verifySecret(req, res)) return;
+
+  const correlationId = `canary-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const canarySuiteId = process.env.MVEO_CANARY_SUITE_ID
+    || getDefaultSuiteId()
+    || process.env.DEFAULT_SUITE_ID
+    || '';
+
+  if (!canarySuiteId) {
+    return res.status(503).json({
+      error: 'NO_CANARY_SUITE',
+      correlation_id: correlationId,
+    });
+  }
+
+  // Synthetic payload — mirror the exact shape Anam Ava posts for paint
+  // searches, with bodyParams envelope variant (the one we observed in
+  // production transcripts). Address is a known Tallahassee location with
+  // stable Home Depot proximity.
+  const syntheticBody = {
+    bodyParams: {
+      task: 'canary: find paint at Home Depot near job site',
+      agent: 'adam',
+      query: 'paint',
+      entity_type: 'product',
+      user_address: '1575 Paul Russell Road, Tallahassee, FL 32301',
+      suite_id: canarySuiteId,
+    },
+  };
+
+  // Loopback to the public invoke endpoint so we exercise the FULL stack:
+  // body parser, secret check, getRequestBody, dispatch, slim, cache, and
+  // response shape. Localhost target so we don't egress to Railway from
+  // inside Railway.
+  const port = process.env.PORT || '5000';
+  const internalUrl = `http://127.0.0.1:${port}/v1/tools/invoke`;
+  const startedAt = Date.now();
+
+  type CanaryFailure = { check: string; got: unknown; expected: unknown };
+  const failures: CanaryFailure[] = [];
+
+  let upstreamStatus = 0;
+  let upstreamBody: any = null;
+
+  try {
+    const tokenSecret = process.env.ASPIRE_TOOL_SECRET
+      || (process.env.TOOL_WEBHOOK_SHARED_SECRET || '').split(',')[0]
+      || '';
+    const upstream = await fetch(internalUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-aspire-tool-secret': tokenSecret,
+        'x-correlation-id': correlationId,
+      },
+      body: JSON.stringify(syntheticBody),
+      signal: AbortSignal.timeout(15000),
+    });
+    upstreamStatus = upstream.status;
+    upstreamBody = await upstream.json().catch(() => null);
+  } catch (err) {
+    failures.push({
+      check: 'upstream_invoke_reachable',
+      got: err instanceof Error ? err.message : 'unknown',
+      expected: 'invoke endpoint responds within 15s',
+    });
+  }
+
+  const elapsedMs = Date.now() - startedAt;
+
+  // ── Assertions on the response shape ──
+  if (upstreamStatus !== 200) {
+    failures.push({
+      check: 'http_200',
+      got: upstreamStatus,
+      expected: 200,
+    });
+  }
+  if (upstreamBody?.error) {
+    failures.push({
+      check: 'no_error_field',
+      got: upstreamBody.error,
+      expected: 'undefined',
+    });
+  }
+  if (upstreamBody?.status !== 'completed') {
+    failures.push({
+      check: 'status_completed',
+      got: upstreamBody?.status,
+      expected: 'completed',
+    });
+  }
+  const data = upstreamBody?.data;
+  if (!data || typeof data !== 'object') {
+    failures.push({ check: 'data_object', got: typeof data, expected: 'object' });
+  } else {
+    if (!Array.isArray(data.records) || data.records.length === 0) {
+      failures.push({
+        check: 'records_non_empty',
+        got: Array.isArray(data.records) ? data.records.length : typeof data.records,
+        expected: '>= 1',
+      });
+    }
+    if (typeof data._card_cache_id !== 'string' || !data._card_cache_id) {
+      failures.push({
+        check: 'card_cache_id_present',
+        got: data._card_cache_id,
+        expected: 'non-empty string',
+      });
+    }
+    if (data._records_cached !== true) {
+      failures.push({
+        check: 'records_cached_flag',
+        got: data._records_cached,
+        expected: true,
+      });
+    }
+    // Slim records check: at least one product record with display fields.
+    if (Array.isArray(data.records)) {
+      const productRecords = data.records.filter((r: any) =>
+        r && (r.product_name || r.name) && typeof r.price === 'number',
+      );
+      if (productRecords.length === 0) {
+        failures.push({
+          check: 'has_product_record_with_display_fields',
+          got: data.records.length + ' records, none with product_name+price',
+          expected: '>= 1 product with name + price',
+        });
+      }
+      // Bloat regression: any record carrying thumbnails/variants is a sign
+      // that slimAdamRecord stopped firing (regression of the May 3 fix).
+      const bloatedRecords = data.records.filter((r: any) =>
+        r && (Array.isArray(r.thumbnails) || Array.isArray(r.variants) || r.specifications),
+      );
+      if (bloatedRecords.length > 0) {
+        failures.push({
+          check: 'no_bloat_fields',
+          got: bloatedRecords.length + ' records with thumbnails/variants/specifications',
+          expected: '0 (slimAdamRecord must strip these)',
+        });
+      }
+    }
+  }
+
+  // ── Insert incident on any failure ──
+  if (failures.length > 0) {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+      if (supabaseUrl && supabaseKey) {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        const failureSummary = failures.map((f) => f.check).join(', ');
+        await supabase.rpc('mveo_insert_incident', {
+          p_tenant_id: canarySuiteId,
+          p_severity: 'high',
+          p_source: 'mveo_canary',
+          p_title: `Synthetic canary FAILED: ${failureSummary}`,
+          p_description: `Ava paint canary detected a regression. ${failures.length} check(s) failed. Check the metadata.failures field for what broke.`,
+          p_component: 'mveo_synthetic_canary',
+          p_fingerprint: `mveo:canary:ava_paint_flow:${failures.map((f) => f.check).sort().join('|')}`,
+          p_metadata: {
+            failures,
+            elapsed_ms: elapsedMs,
+            upstream_status: upstreamStatus,
+            response_keys: upstreamBody && typeof upstreamBody === 'object'
+              ? Object.keys(upstreamBody)
+              : [],
+            data_keys: data && typeof data === 'object'
+              ? Object.keys(data)
+              : [],
+            record_count: Array.isArray(data?.records) ? data.records.length : 0,
+            detector: 'mveo_canary_ava_paint_flow',
+          },
+          p_correlation_id: correlationId,
+          p_dedupe_window: '15 minutes',
+        });
+      }
+    } catch (recErr) {
+      logger.error('[Canary] failed to insert incident', {
+        error: recErr instanceof Error ? recErr.message : 'unknown',
+      });
+    }
+  }
+
+  logger.info('[Canary] ava-paint-flow', {
+    correlation_id: correlationId,
+    elapsed_ms: elapsedMs,
+    upstream_status: upstreamStatus,
+    failure_count: failures.length,
+    record_count: Array.isArray(data?.records) ? data.records.length : 0,
+  });
+
+  return res.status(failures.length > 0 ? 200 : 200).json({
+    canary: 'ava_paint_flow',
+    ok: failures.length === 0,
+    elapsed_ms: elapsedMs,
+    correlation_id: correlationId,
+    failure_count: failures.length,
+    failures: failures.length > 0 ? failures : undefined,
+  });
+});
+
 // Test-only surface area. Not consumed by production code paths; gives the
 // Jest suite for the show_cards guard a way to seed and inspect the in-memory
 // caches without exporting them globally.
