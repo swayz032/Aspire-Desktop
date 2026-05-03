@@ -98,24 +98,6 @@ export function CallRoomBackground({ forcedTimeOfDay }: CallRoomBackgroundProps 
         />
       )}
 
-      {/* Subtle ambient warmth from the top-right corner so the dim wash
-          doesn't kill all the sunset glow. Much softer than the card light. */}
-      {isWeb && isNight && (
-        <View
-          pointerEvents="none"
-          testID="call-room-night-ambient"
-          style={[
-            StyleSheet.absoluteFillObject,
-            {
-              // @ts-expect-error - web-only
-              background:
-                'radial-gradient(circle at 95% 5%, rgba(255, 200, 140, 0.30) 0%, rgba(255, 180, 110, 0.12) 25%, rgba(255, 160, 80, 0) 55%)',
-              mixBlendMode: 'screen',
-              transition: 'opacity 800ms ease-out',
-            },
-          ]}
-        />
-      )}
     </View>
   );
 }

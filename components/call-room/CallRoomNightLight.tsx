@@ -104,7 +104,7 @@ function NightLightScene(): React.ReactElement {
       {/* Fog gives the volumetric SpotLight beam something to scatter
           through — without it the cone is invisible. Color matches the
           deep night-room ambience so the falloff blends. */}
-      <fog attach="fog" args={['#0a1020', 4, 8]} />
+      <fog attach="fog" args={['#0a0e16', 3, 7]} />
 
       <SceneContents SpotLight={SpotLight} />
 
@@ -126,55 +126,48 @@ interface SceneContentsProps {
 }
 
 function SceneContents({ SpotLight }: SceneContentsProps): React.ReactElement {
-  // Target the SpotLight wants to point AT. We position the light slightly
-  // below center (where the card top edge sits in screen space) and aim it
-  // upward by placing the target above. This produces an upward beam,
-  // matching the "laptop screen casting light into the room" mental model.
+  // Light source positioned in the upper-RIGHT of the scene (off-screen-ish),
+  // aimed DOWN-and-LEFT at the card's top-right area. Reads as a real
+  // overhead lamp shining onto the right side of the card from above.
   const targetRef = useRef(null);
 
-  // Cool-blue-white — the LED-screen-at-night feel with a subtle Aspire
-  // tint. Slightly warmer than pure blue so it reads as "screen" not
-  // "police siren".
-  const screenColor = '#b8d0f5';
+  // Warm tungsten lamp color — like a real desk/ceiling lamp. NOT the cool
+  // screen blue the user rejected.
+  const lampColor = '#ffd9a0';
 
   return (
     <>
-      {/* The visible light source — a small emissive sphere camera sees as
-          the "screen" emerging from the card area. Bloom turns this into a
-          believable glowing point. Positioned in the upper half of NDC
-          (y = +0.4) so it sits just above the card's top edge in screen
-          space, with the beam rising upward into the dark room. */}
-      <mesh position={[0, 0.4, 0]}>
-        <sphereGeometry args={[0.12, 32, 32]} />
-        <meshBasicMaterial color={screenColor} toneMapped={false} />
+      {/* The visible bulb — small emissive sphere in the top-right of the
+          scene. Bloom turns this into a believable glowing source the eye
+          locks onto as "the lamp". */}
+      <mesh position={[1.6, 1.4, 0.5]}>
+        <sphereGeometry args={[0.1, 32, 32]} />
+        <meshBasicMaterial color={lampColor} toneMapped={false} />
       </mesh>
 
-      {/* Target for the SpotLight cone — placed above the source so the
-          cone aims UP into the room. */}
-      <object3D ref={targetRef} position={[0, 2.5, 0]} />
+      {/* Target for the SpotLight cone — sits at the card's top-right area
+          so the cone aims DOWN-LEFT onto the card. */}
+      <object3D ref={targetRef} position={[0.5, -0.2, 0]} />
 
-      {/* Volumetric drei SpotLight — produces the visible cone of light
-          through the fogged scene. Wide angle, soft penumbra, attenuated
-          falloff matching a real screen casting upward. */}
+      {/* Volumetric SpotLight — visible cone of warm light through the
+          fogged scene, descending from the top-right onto the card. */}
       <SpotLight
-        position={[0, 0.4, 0]}
+        position={[1.6, 1.4, 0.5]}
         target={targetRef.current ?? undefined}
-        color={screenColor}
-        intensity={3}
-        distance={6}
-        angle={Math.PI / 2.5}
-        penumbra={0.8}
-        attenuation={2.5}
+        color={lampColor}
+        intensity={3.2}
+        distance={5}
+        angle={Math.PI / 3}
+        penumbra={0.85}
+        attenuation={2.2}
         anglePower={4}
-        radiusTop={0.05}
-        radiusBottom={1.4}
+        radiusTop={0.04}
+        radiusBottom={1.0}
         volumetric
       />
 
-      {/* Faint ambient so the bloom isn't sitting on pure black — keeps
-          edges from clipping harshly when the canvas composites over the
-          night photo. */}
-      <ambientLight intensity={0.05} color={screenColor} />
+      {/* Faint warm ambient so bloom doesn't sit on pure black. */}
+      <ambientLight intensity={0.05} color={lampColor} />
     </>
   );
 }
