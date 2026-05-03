@@ -364,27 +364,33 @@ function CallsScreen() {
   // ---------------------------------------------------------------------------
   // Setup check
   // ---------------------------------------------------------------------------
+  //
+  // Source of truth: tenant_phone_numbers (the new schema). If aspire_number
+  // resolves on the FDS config response, the office is set up. We deliberately
+  // stopped querying /api/frontdesk/setup which reads the legacy business_lines
+  // table — that path returned null for every account on the new schema and
+  // popped this modal even after the owner had finished onboarding.
+  //
+  // The old endpoint stays around for legacy reads but is no longer the gate.
 
   useEffect(() => {
-    checkFrontDeskSetup();
-  }, []);
-
-  const checkFrontDeskSetup = async () => {
-    try {
-      const res = await authenticatedFetch('/api/frontdesk/setup');
-      if (res.ok) {
-        const data = await res.json();
-        if (!data || !data.setupComplete) {
-          setShowSetupModal(true);
-        }
-      } else {
-        setShowSetupModal(true);
-      }
-    } catch (_e) {
-      // Setup check failed silently
+    // Wait until both the tenant resolves AND the aspire_number fetch
+    // completes (or fails) before deciding whether to show the gate.
+    if (!tenant?.officeId) {
+      // Office not loaded yet — keep the modal hidden so we don't flash it
+      // while TenantProvider is hydrating.
+      return;
     }
+    if (aspireNumber) {
+      // Number assigned -> setup is done. Hide gate; mark check complete.
+      setShowSetupModal(false);
+      setSetupChecked(true);
+      return;
+    }
+    // Office loaded but no Aspire number -> show the gate.
+    setShowSetupModal(true);
     setSetupChecked(true);
-  };
+  }, [tenant?.officeId, aspireNumber]);
 
   // ---------------------------------------------------------------------------
   // Pulse animation for call button
