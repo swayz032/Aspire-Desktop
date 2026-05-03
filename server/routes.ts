@@ -1133,6 +1133,60 @@ async function resolveSuiteOfficeIdentity(suiteId: string): Promise<{
   };
 }
 
+/**
+ * Write the full onboarding identity into auth.users.raw_user_meta_data.
+ *
+ * The frontend's TenantProvider reads suite_id, office_id, suite_display_id,
+ * office_display_id, business_name, and onboarding_completed_at from
+ * user_metadata on session bootstrap. If any of those are missing the
+ * desktop UI shows "Suite Pending · Office Pending" in the header and
+ * blocks the AspireNumberPickerSheet with a "no active office" error.
+ *
+ * Aspire's data model is currently 1:1 suite-to-office (no separate
+ * office_profiles table — office identity lives on suite_profiles via
+ * office_display_id). office_id is therefore always equal to suite_id.
+ *
+ * This helper is idempotent and merges into existing metadata rather
+ * than overwriting it. Safe to call from both /bootstrap and /profile.
+ */
+async function writeOnboardingMetadata(
+  userId: string,
+  suiteId: string,
+  identity: { suiteDisplayId: string; officeDisplayId: string; businessName?: string | null },
+  businessNameOverride?: string,
+  onboardingCompletedAt?: string,
+): Promise<void> {
+  if (!supabaseAdmin) return;
+  const businessName = businessNameOverride || identity.businessName || '';
+  // Read current metadata so we merge instead of clobbering other fields
+  // (e.g. role, preferences, custom flags set by other handlers).
+  let existing: Record<string, any> = {};
+  try {
+    const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
+    existing = (data?.user?.user_metadata as Record<string, any>) || {};
+  } catch {
+    // best-effort — if read fails we still write the canonical fields
+  }
+  const merged = {
+    ...existing,
+    suite_id: suiteId,
+    office_id: suiteId, // 1:1 model
+    suite_display_id: identity.suiteDisplayId,
+    office_display_id: identity.officeDisplayId,
+    ...(businessName ? { business_name: businessName } : {}),
+    ...(onboardingCompletedAt ? { onboarding_completed_at: onboardingCompletedAt } : {}),
+  };
+  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    user_metadata: merged,
+  });
+  if (error) {
+    logger.error('writeOnboardingMetadata failed', {
+      userId, suiteId, error: error.message || error.code || 'unknown',
+    });
+    throw new Error(`metadata_write_failed:${error.code || 'unknown'}`);
+  }
+}
+
 // Canonical JSON: sort object keys recursively for deterministic HMAC signatures
 // Must match n8n receiver sortKeys() — both sides produce identical canonical JSON
 function sortKeys(obj: any): any {
@@ -1362,6 +1416,25 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       existingProfile?.industry
     ) {
       const identity = await resolveSuiteOfficeIdentity(existingSuiteId);
+      // Heal stale user_metadata for users whose original onboarding bootstrap
+      // ran before the metadata fix shipped — they completed onboarding but
+      // their auth.users.raw_user_meta_data is missing office_id / display
+      // IDs / business_name. Re-running bootstrap on a "completed" suite
+      // now backfills metadata as a side effect so the desktop UI picks up
+      // the correct identity on the next session refresh.
+      try {
+        await writeOnboardingMetadata(
+          userId,
+          existingSuiteId,
+          identity,
+          existingProfile.business_name || undefined,
+          existingProfile.onboarding_completed_at,
+        );
+      } catch (metadataErr: unknown) {
+        logger.warn('Stale-metadata heal failed (non-fatal)', {
+          correlationId, error: metadataErr instanceof Error ? metadataErr.message : 'unknown',
+        });
+      }
       return res.json({
         suiteId: existingSuiteId,
         created: false,
@@ -1603,13 +1676,28 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Intake receipt could not be recorded. Operation denied (Law #3: fail closed).' });
     }
 
-    // 6. Update user_metadata with suite_id (so client gets it on session refresh)
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      user_metadata: { suite_id: suiteId },
-    });
+    // 6. Resolve display IDs FIRST so we can write the full identity into
+    //    user_metadata in one shot. Order matters: the original code wrote
+    //    only { suite_id: suiteId } to metadata, then resolved display IDs
+    //    afterward, leaving office_id/display IDs out of metadata forever
+    //    — which made the FDS page show "Suite Pending · Office Pending"
+    //    even after onboarding completed (root cause of the recurring
+    //    "no active office" bug). Now we resolve identity first then
+    //    write all 6 fields atomically via writeOnboardingMetadata.
+    const identityForMetadata = await resolveSuiteOfficeIdentity(suiteId);
 
-    if (updateError) {
-      logger.error('User metadata update error', { error: updateError?.message || updateError?.code || 'unknown' });
+    try {
+      await writeOnboardingMetadata(
+        userId,
+        suiteId,
+        identityForMetadata,
+        businessName,
+        new Date().toISOString(),
+      );
+    } catch (metadataErr: unknown) {
+      logger.error('User metadata update error', {
+        error: metadataErr instanceof Error ? metadataErr.message : 'unknown',
+      });
       return res.status(500).json({ error: 'METADATA_UPDATE_FAILED', message: 'Suite created but metadata update failed' });
     }
 
@@ -1658,7 +1746,10 @@ router.post('/api/onboarding/bootstrap', async (req: Request, res: Response) => 
       logger.warn('N8N_WEBHOOK_SECRET not set — skipping intake activation webhook (fail-closed)');
     }
 
-    const identity = await resolveSuiteOfficeIdentity(suiteId);
+    // Reuse the identity already resolved above for the metadata write to
+    // avoid a redundant DB roundtrip. Fall back to a fresh fetch only if
+    // the earlier resolution somehow returned a partial.
+    const identity = identityForMetadata;
 
     // 8. Persist display IDs in suite_profiles so client-side RLS queries return them
     // Without this, getTenantIdentity() is the only source, and if it fails the UI shows "Suite Pending"
@@ -1924,6 +2015,29 @@ router.patch('/api/onboarding/profile', async (req: Request, res: Response) => {
       // YELLOW-tier receipt is mandatory — fail closed per Law #3
       logger.error('Profile update receipt failed', { correlationId, error: receiptErr instanceof Error ? receiptErr.message : 'unknown' });
       return res.status(500).json({ error: 'RECEIPT_EMISSION_FAILED', message: 'Profile update receipt could not be recorded (Law #3: fail closed).' });
+    }
+
+    // Refresh user_metadata so the next session bootstrap sees current
+    // identity + onboarding state. Without this, users who edit their
+    // profile via PATCH don't get suite_id/office_id/display IDs synced
+    // into auth.users.raw_user_meta_data, and the desktop UI keeps
+    // showing stale "Pending" labels until the user re-runs bootstrap.
+    try {
+      const identity = await resolveSuiteOfficeIdentity(suiteId);
+      await writeOnboardingMetadata(
+        userId,
+        suiteId,
+        identity,
+        businessName || undefined,
+        updatePayload.onboarding_completed_at as string,
+      );
+    } catch (metadataErr: unknown) {
+      // Non-fatal — the suite_profiles row is the source of truth and was
+      // already updated. Log and continue so the user isn't blocked from
+      // editing other profile fields just because the metadata sync failed.
+      logger.warn('Profile update metadata sync failed (non-fatal)', {
+        correlationId, error: metadataErr instanceof Error ? metadataErr.message : 'unknown',
+      });
     }
 
     res.json({ suiteId, updated: true, receiptId });
