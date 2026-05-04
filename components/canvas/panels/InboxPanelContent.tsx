@@ -127,14 +127,11 @@ function InboxPanelContentInner(_props: PanelContentProps) {
     } catch { /* ignore */ }
   }, [authenticatedFetch]);
 
-  const handleCallBack = useCallback(async (phone: string) => {
-    try {
-      await fetch('/api/frontdesk/outbound-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: phone }),
-      });
-    } catch { /* ignore */ }
+  const handleCallBack = useCallback(async (_phone: string) => {
+    // Legacy /api/frontdesk/outbound-call removed (404 in prod). The
+    // canvas inbox panel does not yet go through the new Voice SDK
+    // flow — use /session/calls to place real outbound until this
+    // panel is migrated.
   }, []);
 
   const missedCalls = calls.filter(c => c.status === 'missed' || c.status === 'no-answer');

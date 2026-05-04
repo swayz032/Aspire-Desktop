@@ -1,10 +1,12 @@
 /**
  * /call-room — Production route for an active outbound call.
  *
- * Entered by `app/session/calls.tsx::handleCall` after a successful POST
- * to /api/frontdesk/outbound-call. Receives the dialed number, optional
- * known contact name, and the Twilio call session ID via query params,
- * builds a CallState, and renders the immersive Call Room.
+ * Entered by `app/session/calls.tsx::handleCall` after a successful
+ * /api/twilio/voice-token mint. Receives the dialed number, the Voice
+ * SDK JWT, the caller_id (Aspire number), an optional known contact
+ * name, and the source button's bounding rect (for the portal-reveal
+ * morph) via query params, builds a CallState, and renders the
+ * immersive Call Room.
  *
  * Auth: any authenticated tenant member. The route does NOT founder-gate
  * (unlike /_dev/call-room which is the demo preview); production calls

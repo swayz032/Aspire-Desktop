@@ -89,29 +89,20 @@ function CallsPanelContentInner(_props: PanelContentProps) {
   const handleDelete = useCallback(() => {
     setDigits(prev => prev.slice(0, -1));
   }, []);
+  // The legacy /api/frontdesk/outbound-call endpoint is not deployed;
+  // the canvas-mode dialer does not yet go through the new Voice SDK
+  // flow (that lives in app/session/calls.tsx). Until the canvas
+  // dialer is migrated, Call buttons here are local-only and the user
+  // is expected to use the main /session/calls page for real outbound.
   const handleCall = useCallback(async () => {
     if (!digits || calling) return;
     setCalling(true);
-    try {
-      await fetch('/api/frontdesk/outbound-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: digits }),
-      });
-    } catch { /* ignore */ } finally {
-      setCalling(false);
-      setDigits('');
-    }
+    setDigits('');
+    setCalling(false);
   }, [digits, calling]);
 
-  const handleCallBack = useCallback(async (phone: string) => {
-    try {
-      await fetch('/api/frontdesk/outbound-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: phone }),
-      });
-    } catch { /* ignore */ }
+  const handleCallBack = useCallback(async (_phone: string) => {
+    // No-op: see handleCall comment above.
   }, []);
 
   return (

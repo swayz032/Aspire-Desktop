@@ -24,6 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFrontdeskCalls } from '@/hooks/useFrontdeskCalls';
 import type { CallSession } from '@/types/frontdesk';
 import { useAuthFetch } from '@/lib/authenticatedFetch';
+import { useSupabase } from '@/providers/SupabaseProvider';
 import { useTenant } from '@/providers/TenantProvider';
 import { fetchFrontDeskConfig, type AspireNumberInfo } from '@/lib/api/frontDesk';
 import { AspireNumberPill } from '@/components/calls/AspireNumberPill';
@@ -286,6 +287,7 @@ function CallsScreen() {
   const router = useRouter();
   const isDesktop = useDesktop();
   const { authenticatedFetch } = useAuthFetch();
+  const { session } = useSupabase();
   const { tenant } = useTenant();
   const { calls: rawCalls, loading: callsLoading, error: callsError, refresh } = useFrontdeskCalls({ pollInterval: 5000 });
 
@@ -307,6 +309,12 @@ function CallsScreen() {
       // doesn't flash before TenantProvider resolves.
       return;
     }
+    if (!session?.access_token) {
+      // Auth not yet resolved. Firing a request now would 401 because
+      // useAuthFetch can't attach a Bearer header without a token; skip
+      // until the SupabaseProvider hydrates the session.
+      return;
+    }
     (async () => {
       try {
         const res = await fetchFrontDeskConfig({ authenticatedFetch, officeId });
@@ -323,7 +331,7 @@ function CallsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [authenticatedFetch, tenant?.officeId]);
+  }, [authenticatedFetch, tenant?.officeId, session?.access_token]);
 
   // Formatted calls list
   const allCalls = rawCalls.slice(0, 25).map(formatCallSession);
@@ -666,38 +674,20 @@ function CallsScreen() {
         return;
       }
 
-      // 2) NON-BLOCKING audit hop — best-effort. Old accounts with a
-      //    business_lines row will get the OUTBOUND_BLOCKED guard etc.
-      //    New accounts (no business_lines row) silently skip it. Either
-      //    way the SDK call still proceeds.
-      let auditCallId: string | undefined;
-      try {
-        const auditRes = await authenticatedFetch('/api/frontdesk/outbound-call', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ toE164 }),
-        });
-        if (auditRes.status === 403) {
-          // Owner intentionally on inbound-only — block the call here too.
-          setOutboundBlocked(true);
-          setIsCalling(false);
-          return;
-        }
-        if (auditRes.ok) {
-          const body = await auditRes.json().catch(() => ({} as Record<string, unknown>));
-          auditCallId = (body as { callSessionId?: string }).callSessionId;
-        }
-        // 4xx/5xx other than 403: ignore. Voice SDK path is the source
-        // of truth and already cuts a voice_token_minted receipt.
-      } catch {
-        // Network error on audit hop — ignore, voice path stands alone.
-      }
+      // The legacy outbox endpoint /api/frontdesk/outbound-call is not
+      // deployed in production (404 on every account) and the 403
+      // inbound-only check it implemented is redundant with the
+      // server-side voice-token mint guard. Removed entirely to stop
+      // the console-noise 404 that was confusing users into thinking
+      // calls were failing for that reason.
+      //
+      // FOLLOW-UP: ensure backend mint_voice_token() rejects when the
+      // office is in inbound-only mode (see plan §6 — owner preflight).
 
       router.push({
         pathname: '/call-room',
         params: {
           phone: toE164,
-          ...(auditCallId ? { callId: auditCallId } : {}),
           voiceToken,
           callerId: voiceCallerId,
           ...origin,
@@ -762,22 +752,11 @@ function CallsScreen() {
         return;
       }
 
-      // 2) NON-BLOCKING audit hop.
-      try {
-        const auditRes = await authenticatedFetch('/api/frontdesk/return-call', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ callSessionId: call.callSessionId }),
-        });
-        if (auditRes.status === 403) {
-          setOutboundBlocked(true);
-          setIsCalling(false);
-          return;
-        }
-        // Non-403 errors: ignore — voice path stands alone.
-      } catch {
-        // Network error on audit hop — ignore.
-      }
+      // Legacy /api/frontdesk/return-call audit hop removed — endpoint
+      // is not deployed in production and the 403 inbound-only check
+      // will be re-implemented server-side in mint_voice_token() so it
+      // applies uniformly across every entry point. See handleCall()
+      // above for the same removal rationale.
 
       // Return-call rows don't expose a tracked button ref — the
       // /call-room route gracefully falls back to a 200ms accent cross-fade

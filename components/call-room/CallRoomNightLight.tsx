@@ -105,11 +105,40 @@ function NightLightScene(): React.ReactElement {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { EffectComposer, Bloom } = require('@react-three/postprocessing');
 
+  // WebGL context-loss handling — without preventDefault() on the lost
+  // event, the browser permanently revokes the context and the canvas
+  // goes black. preventDefault() tells the browser we'll handle restore
+  // ourselves; Three.js then automatically re-uploads buffers/textures
+  // when contextrestored fires. The fallback CSS gradient (held by the
+  // parent View's mask area) reads as the same warm light during the
+  // brief gap between lost and restored.
+  const [contextLost, setContextLost] = useState<boolean>(false);
+  const handleCreated = (state: { gl: { domElement: HTMLCanvasElement } }): void => {
+    const canvas = state.gl.domElement;
+    canvas.addEventListener('webglcontextlost', (e: Event) => {
+      // Keep the context object alive so Three.js can restore.
+      e.preventDefault();
+      setContextLost(true);
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      setContextLost(false);
+    });
+  };
+
   return (
     <Canvas
-      gl={{ alpha: true, antialias: true }}
+      gl={{ alpha: true, antialias: true, powerPreference: 'low-power' }}
       camera={{ position: [0, 0, 4], fov: 50 }}
-      style={{ width: '100%', height: '100%', background: 'transparent' }}
+      style={{
+        width: '100%',
+        height: '100%',
+        background: 'transparent',
+        opacity: contextLost ? 0 : 1,
+        // Brief fade hides any residual frame on context loss; the parent
+        // mask region keeps showing through so the room never goes black.
+        transition: 'opacity 240ms ease-out',
+      }}
+      onCreated={handleCreated}
     >
       {/* Fog gives the volumetric SpotLight beam something to scatter
           through. Color matches the deep night ambience for clean blend. */}

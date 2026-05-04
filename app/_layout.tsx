@@ -28,6 +28,69 @@ if (Platform.OS === 'web' && typeof console !== 'undefined') {
   };
 }
 
+// React Navigation / Expo Router sets aria-hidden="true" on hidden Stack
+// screen containers. When a focused element is inside one (e.g. an input
+// or pressable that was focused before the transition), Chrome surfaces
+// the WAI-ARIA "Blocked aria-hidden on an element because its descendant
+// retained focus" warning on every nav. The accessibility-correct
+// equivalent is the inert attribute — it both hides from a11y AND
+// prevents focus, eliminating the warning.
+//
+// We do this with a MutationObserver instead of forking RN's stack
+// because the screen containers are managed by react-navigation's
+// internals, which we don't control. Mirrors aria-hidden -> inert
+// one-way, blurring any stuck focus.
+if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+  const applyInertMirror = (el: Element): void => {
+    const ariaHidden = el.getAttribute('aria-hidden');
+    if (ariaHidden === 'true') {
+      // Already-known a11y trick: blur focus before the screen becomes
+      // inert, otherwise the browser races us and logs the warning.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && el.contains(active)) {
+        try { active.blur(); } catch { /* swallow */ }
+      }
+      if (!el.hasAttribute('inert')) {
+        el.setAttribute('inert', '');
+      }
+    } else if (el.hasAttribute('inert') && (ariaHidden === null || ariaHidden === 'false')) {
+      el.removeAttribute('inert');
+    }
+  };
+
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.type === 'attributes' && m.attributeName === 'aria-hidden' && m.target instanceof Element) {
+        applyInertMirror(m.target);
+      } else if (m.type === 'childList') {
+        m.addedNodes.forEach((n) => {
+          if (n instanceof Element && n.getAttribute('aria-hidden') === 'true') {
+            applyInertMirror(n);
+          }
+        });
+      }
+    }
+  });
+
+  // Wait for body to exist (web bundle runs before DOMContentLoaded in
+  // some build configurations).
+  const start = (): void => {
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['aria-hidden'],
+      subtree: true,
+      childList: true,
+    });
+    // Catch elements that were already aria-hidden=true before we started.
+    document.querySelectorAll('[aria-hidden="true"]').forEach(applyInertMirror);
+  };
+  if (document.body) {
+    start();
+  } else {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  }
+}
+
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { SupabaseProvider, TenantProvider, SessionProvider, AvaDockProvider, MicStateProvider, useSupabase, useTenant } from '@/providers';
 import { ElevenLabsAgentProvider } from '@/hooks/useElevenLabsAgent';

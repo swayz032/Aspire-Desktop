@@ -41,12 +41,16 @@ export async function getAuthorityQueue(accessToken?: string, suiteId?: string):
   }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (!accessToken) {
+  let token = accessToken;
+  if (!token) {
     const { data: { session } } = await supabase.auth.getSession();
-    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-  } else {
-    headers['Authorization'] = `Bearer ${accessToken}`;
+    token = session?.access_token;
   }
+
+  // Skip the request entirely if we don't have a token. Firing it
+  // anyway just produces a 401 in DevTools that confuses users.
+  if (!token) return [];
+  headers['Authorization'] = `Bearer ${token}`;
   if (suiteId) headers['X-Suite-Id'] = suiteId;
 
   const resp = await fetch('/api/authority-queue', { headers });
