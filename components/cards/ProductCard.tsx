@@ -229,8 +229,16 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
     onAction('call', record);
   }, [storePhone, onAction, record]);
 
-  // Horizontal hero -- single image-cover, tap opens ProductDetailModal.
-  // Uses thumbnails[6] (_1000.jpg) for higher resolution than the small thumbnail.
+  // Horizontal hero -- image-dominant pane with optional gallery nav.
+  // When the product has multiple images (gallery.length > 1), arrow buttons +
+  // dots + counter overlay the hero so the user can swipe between thumbnails
+  // without opening the detail modal. Tap on the image itself still opens
+  // ProductDetailModal — arrow presses don't bubble (RN Pressable consumes).
+  // Uses gallery[galleryIndex] when multi-image; falls back to thumbnails[6]
+  // (_1000.jpg high-res) when single-image so square photos stay sharp.
+  const horizontalActiveImage =
+    gallery.length > 1 ? gallery[galleryIndex] : (horizontalHeroImage || gallery[0] || '');
+
   const horizontalHeroContent = (
     <Pressable
       onPress={!isStoreSummary && productIdForEnrich ? handleDetails : undefined}
@@ -238,17 +246,17 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
       accessibilityRole={!isStoreSummary && productIdForEnrich ? 'button' : undefined}
       accessibilityLabel={
         !isStoreSummary && productIdForEnrich
-          ? `Open ${productName} details`
-          : `Photo of ${productName}`
+          ? `Open ${productName} details${gallery.length > 1 ? ` (image ${galleryIndex + 1} of ${gallery.length})` : ''}`
+          : `Photo of ${productName}${gallery.length > 1 ? ` (${galleryIndex + 1} of ${gallery.length})` : ''}`
       }
       testID="product-card-horizontal-hero"
     >
-      {horizontalHeroImage ? (
+      {horizontalActiveImage ? (
         <>
           <ImageSkeleton loaded={imageLoaded} />
           <Image
-            key={horizontalHeroImage}
-            source={{ uri: horizontalHeroImage }}
+            key={horizontalActiveImage}
+            source={{ uri: horizontalActiveImage }}
             style={StyleSheet.absoluteFillObject}
             // Wave B.5: contain (letterbox) so square product photos don't get
             // their tops/bottoms clipped on the wide horizontal hero pane. The
@@ -274,6 +282,49 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
             />
           </View>
         </LinearGradient>
+      )}
+
+      {/* Gallery nav — arrows + dots + counter when multiple images.
+          Each arrow is its own Pressable so RN consumes the touch and the
+          parent's "open details" handler doesn't fire. */}
+      {gallery.length > 1 && (
+        <>
+          <Pressable
+            onPress={handlePrevImage}
+            style={[styles.galleryArrow, styles.galleryArrowLeft]}
+            accessibilityRole="button"
+            accessibilityLabel="Previous image"
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-back" size={18} color={Colors.text.primary} />
+          </Pressable>
+          <Pressable
+            onPress={handleNextImage}
+            style={[styles.galleryArrow, styles.galleryArrowRight]}
+            accessibilityRole="button"
+            accessibilityLabel="Next image"
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-forward" size={18} color={Colors.text.primary} />
+          </Pressable>
+          <View
+            style={styles.galleryDots}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            {gallery.map((_, i) => (
+              <View
+                key={i}
+                style={[styles.galleryDot, i === galleryIndex && styles.galleryDotActive]}
+              />
+            ))}
+          </View>
+          <View style={styles.galleryCounter}>
+            <Text style={styles.galleryCounterText}>
+              {galleryIndex + 1} / {gallery.length}
+            </Text>
+          </View>
+        </>
       )}
 
       {!isStoreSummary && hasDiscount && (
