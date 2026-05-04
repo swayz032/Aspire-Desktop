@@ -80,6 +80,94 @@ function isWebRuntime(): boolean {
   return Platform.OS === 'web' && typeof window !== 'undefined';
 }
 
+/**
+ * Twilio Voice SDK loader.
+ *
+ * We CANNOT use `import('@twilio/voice-sdk')` here. The 2.x package ships
+ * an ES5 CommonJS build that does `exports.default = X` against `exports`,
+ * which Metro/Expo's bundler hands us as a frozen ESM namespace object.
+ * Result: `TypeError: Cannot set property default of #<Object> which has
+ * only a getter` — fatal, every call attempt.
+ *
+ * Workaround: load Twilio's pre-bundled UMD `dist/twilio.min.js` via a
+ * <script> tag at runtime. The UMD wrapper attaches `Twilio` (with
+ * `Device`, `Call`, etc.) onto `window`, sidestepping the bundler entirely.
+ *
+ * The CDN URL is jsdelivr's mirror of the npm package — same hash, same
+ * code, served with long-lived cache headers.
+ */
+const TWILIO_SDK_CDN =
+  'https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.2/dist/twilio.min.js';
+
+interface TwilioCallLike {
+  on: (event: string, cb: (...args: any[]) => void) => void;
+  disconnect: () => void;
+  mute: (m: boolean) => void;
+  isMuted?: () => boolean;
+  sendDigits: (d: string) => void;
+}
+
+interface TwilioDeviceLike {
+  on: (event: string, cb: (...args: any[]) => void) => void;
+  register: () => Promise<void>;
+  connect: (opts: { params: Record<string, string> }) => Promise<TwilioCallLike>;
+  destroy?: () => void;
+}
+
+interface TwilioGlobal {
+  Device: new (token: string, opts?: Record<string, unknown>) => TwilioDeviceLike;
+}
+
+let _twilioLoadPromise: Promise<TwilioGlobal> | null = null;
+
+function loadTwilioSDK(): Promise<TwilioGlobal> {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('Twilio Voice SDK requires a browser.'));
+  }
+  const w = window as unknown as { Twilio?: TwilioGlobal };
+  if (w.Twilio?.Device) {
+    return Promise.resolve(w.Twilio);
+  }
+  if (_twilioLoadPromise) return _twilioLoadPromise;
+
+  _twilioLoadPromise = new Promise<TwilioGlobal>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[data-twilio-voice-sdk]`,
+    );
+    const script = existing ?? document.createElement('script');
+    script.async = true;
+    script.dataset.twilioVoiceSdk = '1';
+    script.src = TWILIO_SDK_CDN;
+
+    const onLoad = (): void => {
+      const win = window as unknown as { Twilio?: TwilioGlobal };
+      if (win.Twilio?.Device) {
+        resolve(win.Twilio);
+      } else {
+        reject(
+          new Error(
+            'Twilio SDK loaded but window.Twilio.Device is not available.',
+          ),
+        );
+      }
+    };
+    const onError = (): void => {
+      _twilioLoadPromise = null; // allow retry
+      reject(new Error(`Failed to load Twilio Voice SDK from ${TWILIO_SDK_CDN}`));
+    };
+
+    script.addEventListener('load', onLoad, { once: true });
+    script.addEventListener('error', onError, { once: true });
+    if (!existing) {
+      document.head.appendChild(script);
+    } else if ((win as unknown as { Twilio?: TwilioGlobal }).Twilio?.Device) {
+      onLoad();
+    }
+  });
+
+  return _twilioLoadPromise;
+}
+
 export function useVoiceCall(opts: UseVoiceCallOptions): UseVoiceCallReturn {
   const [state, setState] = useState<VoiceCallState>(DEFAULT_STATE);
 
@@ -147,15 +235,15 @@ export function useVoiceCall(opts: UseVoiceCallOptions): UseVoiceCallReturn {
 
     (async () => {
       try {
-        // Dynamic import so the ~120KB SDK only loads when the Call Room
-        // route is actually entered (not on every page).
+        // Load the SDK via <script> tag — see loadTwilioSDK() comment for why
+        // dynamic import('@twilio/voice-sdk') breaks under Metro/Expo.
         // eslint-disable-next-line no-console
-        console.info('[useVoiceCall] importing @twilio/voice-sdk...');
-        const sdk = await import('@twilio/voice-sdk');
+        console.info('[useVoiceCall] loading Twilio Voice SDK from CDN...');
+        const Twilio = await loadTwilioSDK();
         if (cancelled) return;
         // eslint-disable-next-line no-console
         console.info('[useVoiceCall] SDK loaded, instantiating Device');
-        const Device = sdk.Device;
+        const Device = Twilio.Device;
         const device = new Device(opts.token!, {
           // Closer = fewer dropped packets on retried PSTN segments.
           closeProtection: true,
