@@ -427,6 +427,12 @@ app.use(helmet({
         "https://unpkg.com",
         "https://ipapi.co",
         "https://api.open-meteo.com",
+        // Twilio Voice JS SDK 2.x — signaling WebSocket, insights, and roaming
+        // discovery. Without these the Device.register() handshake throws
+        // UnknownError(31000) at the WSTransport layer, which is what users
+        // see as "call failed" on the calls.tsx page.
+        "https://*.twilio.com",
+        "wss://*.twilio.com",
       ],
       mediaSrc: ["'self'", "data:", "blob:", "https://zoom.us", "https://*.zoom.us"],
       frameSrc: ["'self'", "https://*.pandadoc.com", "https://*.stripe.com", "https://*.plaid.com", "https://zoom.us", "https://*.zoom.us"],
