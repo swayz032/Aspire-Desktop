@@ -186,7 +186,9 @@ describe('slimAdamRecord — payload size guard for Anam show_cards', () => {
     expect(slim.dimensions).toBeUndefined();
     expect(slim.weight).toBeUndefined();
     expect(slim.bullets).toBeUndefined();
-    expect(slim.description_short).toBeUndefined();
+    // description_short is KEPT (UI renders it as one-line product description).
+    // description_full is stripped.
+    expect(slim.description_short).toBe('Short desc');
     expect(slim.description_full).toBeUndefined();
     expect(slim.fulfillment_pickup).toBeUndefined();
     expect(slim.fulfillment_delivery).toBeUndefined();
@@ -194,7 +196,8 @@ describe('slimAdamRecord — payload size guard for Anam show_cards', () => {
     expect(slim.confidence).toBeUndefined();
     expect(slim.sku).toBeUndefined();
     expect(slim.product_id).toBeUndefined();
-    expect(slim.model).toBeUndefined();
+    // model is KEPT (UI shows "Brand · Model" line on product cards).
+    expect(slim.model).toBe('920 05');
     expect(slim.upc).toBeUndefined();
   });
 
@@ -226,20 +229,30 @@ describe('slimAdamRecord — payload size guard for Anam show_cards', () => {
     // (e.g. full description, thumbnails array) to slimAdamRecord that would
     // re-bloat the LLM payload. Original Adam responses with full thumbnails,
     // variants, and descriptions hit ~50KB+ for 15 records (session 73aee55d).
-    // Our slim version at 25 records is ~13KB — comfortably under any LLM
-    // context limit. 16KB is the regression ceiling: significantly under
-    // original bloat, with headroom for slightly longer URLs over time.
+    // Our slim version with full UI display fields at 25 records is ~18KB —
+    // still comfortably under any LLM context limit. 22KB is the regression
+    // ceiling: significantly under original bloat, with headroom for the full
+    // UI display field set (delivery_info, badges, description_short, etc.).
     const fakeRecord = {
       product_name: 'Behr Premium Plus 1 gal. Pure White Flat Interior Paint',
       brand: 'BEHR',
+      model: 'PR-1100',
       retailer: 'Home Depot',
       price: 29.98,
+      price_was: 34.98,
+      percentage_off: 14,
       currency: 'USD',
       availability: 'in_stock',
       availability_text: 'In stock',
       in_store_stock: 14,
+      pickup_store: 'Tallahassee',
+      pickup_quantity: 14,
       rating: 4.5,
       reviews: 1234,
+      delivery: 'Free delivery',
+      delivery_info: 'Free delivery',
+      badges: ['top rated', 'bestseller'],
+      description_short: '1 gal. premium interior latex paint with stain-blocking primer',
       image_url: 'https://images.thdstatic.com/productImages/abc-def-ghi/svn/white-paint-64_1000.jpg',
       thumbnail: 'https://images.thdstatic.com/productImages/abc-def-ghi/svn/white-paint-64_400.jpg',
       url: 'https://apionline.homedepot.com/p/Behr-Premium-Plus-1-gal-Pure-White-100100/100100',
@@ -247,9 +260,9 @@ describe('slimAdamRecord — payload size guard for Anam show_cards', () => {
     const slim = testingApi.slimAdamRecord(fakeRecord);
     const records = new Array(testingApi.RECORD_CAP).fill(slim);
     const sizeBytes = Buffer.byteLength(JSON.stringify(records), 'utf-8');
-    expect(sizeBytes).toBeLessThan(16 * 1024);
+    expect(sizeBytes).toBeLessThan(22 * 1024);
     // Also assert per-record stays bounded (catches single-record bloat).
-    expect(Buffer.byteLength(JSON.stringify(slim), 'utf-8')).toBeLessThan(700);
+    expect(Buffer.byteLength(JSON.stringify(slim), 'utf-8')).toBeLessThan(900);
   });
 });
 

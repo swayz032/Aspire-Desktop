@@ -242,35 +242,84 @@ function pickRecord(value: unknown): Record<string, any> {
 const RECORD_CAP = 25;
 
 // Whitelist of display-essential fields for an Adam result record. Strips
-// bloat (thumbnails arrays, variants, specifications, dimensions, weight,
-// verification_status, confidence, bullets, fulfillment_*) so the LLM-facing
-// payload stays small. Each slim record ≈ 100-180 bytes.
+// the heavy bloat (thumbnails ARRAYS, variants, specifications, dimensions,
+// weight, description_full, verification_status, confidence, fulfillment_*,
+// store_availability) but keeps every field the ProductCard / StoreSummary
+// UI components actually render. Each slim record ≈ 200-350 bytes.
 //
 // Law #9 (PII): only display-safe fields are surfaced — names, prices,
-// store info, public image URLs. No internal IDs, no fulfillment metadata,
-// no SKU enumeration that could fingerprint inventory.
+// public store info, public image URLs. No internal IDs, no SKU enumeration,
+// no fulfillment metadata that could fingerprint inventory.
+//
+// Field list maps to what components/cards/ProductCard.tsx + StoreDisambiguationCard.tsx
+// destructure. If you add a new display field to either component, add it here too.
 export function slimAdamRecord(r: any): Record<string, any> {
   if (!r || typeof r !== 'object') return {};
   const slim: Record<string, any> = {};
+
+  // Identity / classification
   if (r.card_kind) slim.card_kind = r.card_kind;
   if (r.retailer) slim.retailer = r.retailer;
   if (r.product_name) slim.product_name = r.product_name;
   if (r.store_name) slim.store_name = r.store_name;
   if (r.name) slim.name = r.name;
+  if (r.title) slim.title = r.title;
+
+  // Store address line — UI joins these as "{address}, {city}, {state} {postal_code}"
   if (r.address) slim.address = r.address;
   if (r.city) slim.city = r.city;
   if (r.state) slim.state = r.state;
+  if (r.postal_code) slim.postal_code = r.postal_code;
+
+  // Store contact (rendered in store card right panel)
+  if (r.phone) slim.phone = r.phone;
+  if (r.website) slim.website = r.website;
+
+  // Product brand / model line
   if (r.brand) slim.brand = r.brand;
+  if (r.model) slim.model = r.model;
+
+  // Price + discount
   if (typeof r.price === 'number') slim.price = r.price;
+  if (typeof r.price_was === 'number') slim.price_was = r.price_was;
+  if (typeof r.percentage_off === 'number') slim.percentage_off = r.percentage_off;
   if (r.currency) slim.currency = r.currency;
+
+  // Availability + stock
   if (r.availability) slim.availability = r.availability;
   if (r.availability_text) slim.availability_text = r.availability_text;
   if (typeof r.in_store_stock === 'number') slim.in_store_stock = r.in_store_stock;
+  if (r.pickup_store) slim.pickup_store = r.pickup_store;
+  if (typeof r.pickup_quantity === 'number') slim.pickup_quantity = r.pickup_quantity;
+
+  // Delivery + badges (rendered as chips on cards)
+  if (r.delivery !== undefined && r.delivery !== null && r.delivery !== '') {
+    // delivery can be string ("Free delivery") or short object — keep it.
+    slim.delivery = r.delivery;
+  }
+  if (r.delivery_info !== undefined && r.delivery_info !== null && r.delivery_info !== '') {
+    slim.delivery_info = r.delivery_info;
+  }
+  if (Array.isArray(r.badges) && r.badges.length > 0) {
+    // Cap at 4 badges — typically 1-2 (top rated, bestseller).
+    slim.badges = r.badges.slice(0, 4);
+  }
+
+  // Reviews
   if (typeof r.rating === 'number') slim.rating = r.rating;
   if (typeof r.reviews === 'number') slim.reviews = r.reviews;
+
+  // Short description (one-liner). description_full deliberately dropped.
+  if (typeof r.description_short === 'string' && r.description_short) {
+    slim.description_short = r.description_short.slice(0, 200);
+  }
+
+  // Images + click-through. ONE image_url + ONE thumbnail (drop the array).
   if (typeof r.image_url === 'string') slim.image_url = r.image_url;
   if (typeof r.thumbnail === 'string') slim.thumbnail = r.thumbnail;
   if (typeof r.url === 'string') slim.url = r.url;
+  if (typeof r.link === 'string') slim.link = r.link;
+
   return slim;
 }
 
