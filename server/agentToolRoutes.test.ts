@@ -155,49 +155,61 @@ describe('slimAdamRecord — payload size guard for Anam show_cards', () => {
     expect(slim.city).toBe('Tallahassee');
   });
 
-  it('strips bloat fields (thumbnails, variants, specifications, fulfillment)', () => {
+  it('keeps SerpAPI Home Depot display fields, strips only heavy bloat', () => {
     const slim = testingApi.slimAdamRecord({
       product_name: 'Paint',
       price: 10,
+      // Heavy bloat — must be stripped
       thumbnails: ['t1.jpg', 't2.jpg', 't3.jpg', 't4.jpg', 't5.jpg'],
       variants: [{ title: 'Red' }, { title: 'Blue' }, { title: 'Green' }],
-      specifications: { dimensions: '10x10x10', weight: '5lb' },
-      dimensions: {},
+      dimensions: { width: 10, height: 10 },
       weight: '5lb',
       bullets: ['feature 1', 'feature 2'],
-      description_short: 'Short desc',
-      description_full: 'Full long description that goes on and on...',
-      fulfillment_pickup: { available: true, store_id: '254' },
-      fulfillment_delivery: { available: true },
       verification_status: 'unverified',
       confidence: 0.85,
+      upc: '',
+      // SerpAPI display fields — must all be kept
+      description_short: 'Short desc',
+      description_full: 'Full long description that goes on and on with multiple sentences explaining the product features in detail',
+      specifications: { color: 'White', finish: 'Flat', coverage_sqft: 350, application: 'Interior', voc_compliant: true, base: 'Latex' },
+      fulfillment_pickup: { store_id: '254', store_name: 'Capital Circle Northeast', store_address: '3200 Capital Circle NE', quantity: 14, aisle: '12', bay: '003' },
+      fulfillment_delivery: { free: true, schedule_delivery: true, free_delivery_threshold: 45 },
       sku: '100141333',
       product_id: '100141333',
       model: '920 05',
-      upc: '',
+      aisle: '12',
+      bay: '003',
+      pickup_store_address: '3200 Capital Circle NE',
     });
-    // Allow-listed fields kept
+    // Display fields kept
     expect(slim.product_name).toBe('Paint');
     expect(slim.price).toBe(10);
-    // Bloat fields stripped
+    expect(slim.description_short).toBe('Short desc');
+    expect(slim.description_full).toBeDefined();
+    expect(slim.aisle).toBe('12');
+    expect(slim.bay).toBe('003');
+    expect(slim.sku).toBe('100141333');
+    expect(slim.product_id).toBe('100141333');
+    expect(slim.model).toBe('920 05');
+    // Specifications: top-5 entries kept (we have 6 input keys, expect 5 in output)
+    expect(slim.specifications).toBeDefined();
+    expect(Object.keys(slim.specifications).length).toBe(5);
+    // Fulfillment: kept with allow-listed inner fields
+    expect(slim.fulfillment_pickup).toBeDefined();
+    expect(slim.fulfillment_pickup.store_name).toBe('Capital Circle Northeast');
+    expect(slim.fulfillment_pickup.aisle).toBe('12');
+    expect(slim.fulfillment_pickup.quantity).toBe(14);
+    expect(slim.fulfillment_delivery).toBeDefined();
+    expect(slim.fulfillment_delivery.free).toBe(true);
+    expect(slim.pickup_store_address).toBe('3200 Capital Circle NE');
+    // Heavy bloat stripped
     expect(slim.thumbnails).toBeUndefined();
     expect(slim.variants).toBeUndefined();
-    expect(slim.specifications).toBeUndefined();
     expect(slim.dimensions).toBeUndefined();
     expect(slim.weight).toBeUndefined();
     expect(slim.bullets).toBeUndefined();
-    // description_short is KEPT (UI renders it as one-line product description).
-    // description_full is stripped.
-    expect(slim.description_short).toBe('Short desc');
-    expect(slim.description_full).toBeUndefined();
-    expect(slim.fulfillment_pickup).toBeUndefined();
-    expect(slim.fulfillment_delivery).toBeUndefined();
     expect(slim.verification_status).toBeUndefined();
     expect(slim.confidence).toBeUndefined();
-    expect(slim.sku).toBeUndefined();
-    expect(slim.product_id).toBeUndefined();
-    // model is KEPT (UI shows "Brand · Model" line on product cards).
-    expect(slim.model).toBe('920 05');
     expect(slim.upc).toBeUndefined();
   });
 
@@ -253,6 +265,15 @@ describe('slimAdamRecord — payload size guard for Anam show_cards', () => {
       delivery_info: 'Free delivery',
       badges: ['top rated', 'bestseller'],
       description_short: '1 gal. premium interior latex paint with stain-blocking primer',
+      description_full: '1 gallon premium interior latex paint with stain-blocking primer plus mildew resistance, washable finish, and one-coat coverage on most surfaces',
+      aisle: '12',
+      bay: '003',
+      sku: '100141333',
+      product_id: '100141333',
+      specifications: { color: 'White', finish: 'Flat', coverage_sqft: 350, application: 'Interior', base: 'Latex' },
+      fulfillment_pickup: { store_id: '254', store_name: 'Capital Circle Northeast', store_address: '3200 Capital Circle NE, Tallahassee FL 32308', quantity: 14, aisle: '12', bay: '003' },
+      fulfillment_delivery: { free: true, schedule_delivery: true },
+      pickup_store_address: '3200 Capital Circle NE, Tallahassee FL 32308',
       image_url: 'https://images.thdstatic.com/productImages/abc-def-ghi/svn/white-paint-64_1000.jpg',
       thumbnail: 'https://images.thdstatic.com/productImages/abc-def-ghi/svn/white-paint-64_400.jpg',
       url: 'https://apionline.homedepot.com/p/Behr-Premium-Plus-1-gal-Pure-White-100100/100100',
@@ -260,9 +281,13 @@ describe('slimAdamRecord — payload size guard for Anam show_cards', () => {
     const slim = testingApi.slimAdamRecord(fakeRecord);
     const records = new Array(testingApi.RECORD_CAP).fill(slim);
     const sizeBytes = Buffer.byteLength(JSON.stringify(records), 'utf-8');
-    expect(sizeBytes).toBeLessThan(22 * 1024);
-    // Also assert per-record stays bounded (catches single-record bloat).
-    expect(Buffer.byteLength(JSON.stringify(slim), 'utf-8')).toBeLessThan(900);
+    // Full SerpAPI display fields × 25 records × ~1480 bytes each ≈ 37KB.
+    // Original-bloat baseline was ~50KB+ for 15 records. 40KB regression
+    // ceiling — still well under any LLM context limit and bounded enough
+    // to catch future field-bloat (e.g. unbounded specs/descriptions).
+    expect(sizeBytes).toBeLessThan(40 * 1024);
+    // Per-record bounded — catches single-record bloat.
+    expect(Buffer.byteLength(JSON.stringify(slim), 'utf-8')).toBeLessThan(1500);
   });
 });
 

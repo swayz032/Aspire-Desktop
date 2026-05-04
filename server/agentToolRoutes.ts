@@ -242,10 +242,15 @@ function pickRecord(value: unknown): Record<string, any> {
 const RECORD_CAP = 25;
 
 // Whitelist of display-essential fields for an Adam result record. Strips
-// the heavy bloat (thumbnails ARRAYS, variants, specifications, dimensions,
-// weight, description_full, verification_status, confidence, fulfillment_*,
-// store_availability) but keeps every field the ProductCard / StoreSummary
-// UI components actually render. Each slim record ≈ 200-350 bytes.
+// only the truly heavy bloat (thumbnails ARRAYS, variants, dimensions,
+// weight, store_availability, verification_status, confidence) but keeps
+// every field the ProductCard / StoreSummary UI components actually render
+// — including aisle, bay, fulfillment_pickup, fulfillment_delivery,
+// specifications (top-5 keys), description_full (capped at 500 chars),
+// sku, product_id (which the UI uses for click-through and re-search).
+//
+// SerpAPI Home Depot returns ALL of these fields when called with
+// store_id + delivery_zip params. The user expects to see them on cards.
 //
 // Law #9 (PII): only display-safe fields are surfaced — names, prices,
 // public store info, public image URLs. No internal IDs, no SKU enumeration,
@@ -309,9 +314,61 @@ export function slimAdamRecord(r: any): Record<string, any> {
   if (typeof r.rating === 'number') slim.rating = r.rating;
   if (typeof r.reviews === 'number') slim.reviews = r.reviews;
 
-  // Short description (one-liner). description_full deliberately dropped.
+  // Short description (one-liner) + capped full description.
   if (typeof r.description_short === 'string' && r.description_short) {
     slim.description_short = r.description_short.slice(0, 200);
+  }
+  if (typeof r.description_full === 'string' && r.description_full) {
+    // Cap at 500 chars — UI shows expandable "Read more" for full descriptions.
+    slim.description_full = r.description_full.slice(0, 500);
+  }
+
+  // In-store location (Home Depot returns these when store_id is in the
+  // SerpAPI request — they're in the pickup object).
+  if (typeof r.aisle === 'string' && r.aisle) slim.aisle = r.aisle;
+  if (typeof r.bay === 'string' && r.bay) slim.bay = r.bay;
+
+  // Product identifiers — UI uses for "View details" navigation + dedup.
+  if (typeof r.sku === 'string' && r.sku) slim.sku = r.sku;
+  if (typeof r.product_id === 'string' && r.product_id) slim.product_id = r.product_id;
+
+  // Specifications: keep top 5 entries to avoid bloat. SerpAPI sometimes
+  // returns 30+ specs (color, material, brand, etc.) — top 5 is enough
+  // for the card's "Key specs" panel; full list comes from enrich_product.
+  if (r.specifications && typeof r.specifications === 'object' && !Array.isArray(r.specifications)) {
+    const entries = Object.entries(r.specifications).slice(0, 5);
+    if (entries.length > 0) {
+      slim.specifications = Object.fromEntries(entries);
+    }
+  }
+
+  // Fulfillment details — pickup + delivery objects from SerpAPI. Strip
+  // nested store_availability to keep size bounded; keep store_id, store_name,
+  // store_address, quantity, aisle, bay, schedule_delivery, free, etc.
+  const slimFulfillment = (f: any): Record<string, any> | undefined => {
+    if (!f || typeof f !== 'object' || Array.isArray(f)) return undefined;
+    const out: Record<string, any> = {};
+    for (const k of [
+      'store_id', 'store_name', 'store_address', 'quantity', 'aisle', 'bay',
+      'free', 'schedule_delivery', 'delivery_zip', 'free_delivery_threshold',
+      'date', 'window', 'method',
+    ]) {
+      const v = (f as Record<string, any>)[k];
+      if (v !== undefined && v !== null && v !== '') {
+        out[k] = v;
+      }
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  };
+  const slimPickup = slimFulfillment(r.fulfillment_pickup);
+  if (slimPickup) slim.fulfillment_pickup = slimPickup;
+  const slimDelivery = slimFulfillment(r.fulfillment_delivery);
+  if (slimDelivery) slim.fulfillment_delivery = slimDelivery;
+
+  // Pickup store address surfaced for "Available at: <store name> —
+  // <address>" rendering when store_summary is missing.
+  if (typeof r.pickup_store_address === 'string' && r.pickup_store_address) {
+    slim.pickup_store_address = r.pickup_store_address;
   }
 
   // Images + click-through. ONE image_url + ONE thumbnail (drop the array).
