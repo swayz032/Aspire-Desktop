@@ -24,6 +24,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { useSupabase } from '@/providers/SupabaseProvider';
 import { CallRoom } from '@/components/call-room/CallRoom';
+import { DoorOpeningTransition } from '@/components/call-room/DoorOpeningTransition';
 import type { CallState, ClientContext, VoiceState } from '@/components/call-room/types';
 import { useVoiceCall } from '@/lib/voice/useVoiceCall';
 
@@ -175,16 +176,21 @@ export default function CallRoomRoute(): React.ReactElement {
     <>
       {/* Hide the route header — the Call Room is full-bleed immersive. */}
       <Stack.Screen options={{ headerShown: false, title: '' }} />
-      <CallRoom
-        visible
-        callState={callState}
-        voiceState={voiceState}
-        onEnd={handleEnd}
-        onMute={() => voice.mute()}
-        onHold={() => voice.hold()}
-        onSendDigit={(d) => voice.sendDigits(d)}
-        errorBanner={voice.error}
-      />
+      {/* 3D door-opening reveal hides the CallRoom mount lag. The CallRoom
+          renders immediately behind the doors (~50ms hold lets it settle),
+          then the doors swing outward and unmount. Purely additive. */}
+      <DoorOpeningTransition>
+        <CallRoom
+          visible
+          callState={callState}
+          voiceState={voiceState}
+          onEnd={handleEnd}
+          onMute={() => voice.mute()}
+          onHold={() => voice.hold()}
+          onSendDigit={(d) => voice.sendDigits(d)}
+          errorBanner={voice.error}
+        />
+      </DoorOpeningTransition>
     </>
   );
 }

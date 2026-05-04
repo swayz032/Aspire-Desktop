@@ -160,7 +160,8 @@ function loadTwilioSDK(): Promise<TwilioGlobal> {
     script.addEventListener('error', onError, { once: true });
     if (!existing) {
       document.head.appendChild(script);
-    } else if ((win as unknown as { Twilio?: TwilioGlobal }).Twilio?.Device) {
+    } else if ((window as unknown as { Twilio?: TwilioGlobal }).Twilio?.Device) {
+      // Existing tag already loaded the SDK (e.g. previous Call Room session)
       onLoad();
     }
   });
