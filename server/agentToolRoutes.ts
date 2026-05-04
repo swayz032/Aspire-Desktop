@@ -1730,7 +1730,58 @@ router.post('/v1/tools/invoke', async (req: Request, res: Response) => {
     // invocation; the slim is a non-state-changing transform on the response.
     // Law #6 (tenant isolation): cache keyed by suite_id; reads enforce match.
     // Law #9 (PII): slimRecord whitelists display fields — no PII added.
+    // slimAdamRecord whitelists PRODUCT/STORE display fields. Property /
+    // landlord pack records have a different schema (normalized_address,
+    // living_sqft, year_built, beds, baths, owner_name, sale_history,
+    // foreclosure_records, etc.) — running them through the slim function
+    // strips every field and returns {} per record. Property packs are
+    // also typically smaller (1-10 records) so slimming is unnecessary.
+    // Skip slim for property/landlord artifact types — pass records through
+    // unchanged but still cache + tag with _card_cache_id for follow-up
+    // detail requests. May 4 user report: "fallback empty card" was
+    // partially this — property records were arriving as `[{}]`.
+    const responseArtifact = String((responseData as any)?.artifact_type || '').toLowerCase();
+    const isPropertyArtifact = (
+      responseArtifact === 'propertyfactpack' ||
+      responseArtifact === 'landlordpropertypack' ||
+      responseArtifact === 'rentcomppack' ||
+      responseArtifact === 'permitandrenovationpack' ||
+      responseArtifact === 'investmentopportunitypack' ||
+      responseArtifact === 'neighborhooddemandpack'
+    );
     if (
+      resolvedAgent === 'adam' &&
+      Array.isArray(responseData?.records) &&
+      responseData.records.length > 0 &&
+      isPropertyArtifact
+    ) {
+      // Property pack: cache full records, set markers, but DO NOT slim.
+      const cacheId = correlationId;
+      const cacheSuiteId = safeSuiteId;
+      const fullRecords: any[] = responseData.records;
+      cardRecordsCache.set(cacheId, {
+        records: fullRecords,
+        artifactType: responseData.artifact_type || '',
+        suiteId: cacheSuiteId,
+        timestamp: Date.now(),
+      });
+      latestCardCacheIdBySuite.set(cacheSuiteId, cacheId);
+      if (PROPERTY_ARTIFACT_TYPES.has(responseData.artifact_type || '')) {
+        maybeStoreLatestPropertyAddress(cacheSuiteId, fullRecords);
+      }
+      cleanCardCache();
+      logger.info('[AgentTool] Cached property records (no slim)', {
+        cacheId,
+        artifactType: responseArtifact,
+        recordCount: fullRecords.length,
+      });
+      responseData = {
+        ...responseData,
+        records: fullRecords,
+        _card_cache_id: cacheId,
+        _records_cached: true,
+      };
+    } else if (
       resolvedAgent === 'adam' &&
       Array.isArray(responseData?.records) &&
       responseData.records.length > 0
