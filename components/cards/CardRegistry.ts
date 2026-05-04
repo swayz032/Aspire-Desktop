@@ -49,14 +49,16 @@ const ORIENTATION_MAP: Record<string, CardOrientation> = {
   // StoreDisambiguation — vertical candidate picker
   StoreDisambiguation: 'vertical',
 
+  // Property packs — premium horizontal layout with Street View hero (matches ProductCard rectangle)
+  LandlordPropertyPack: 'horizontal',
+  PropertyFactPack: 'horizontal',
+  RentCompPack: 'horizontal',
+  PermitContextPack: 'horizontal',
+  NeighborhoodDemandBrief: 'horizontal',
+  ScreeningComplianceBrief: 'horizontal',
+  InvestmentOpportunityPack: 'horizontal',
+
   // Vertical — info-dense (default)
-  LandlordPropertyPack: 'vertical',
-  PropertyFactPack: 'vertical',
-  RentCompPack: 'vertical',
-  PermitContextPack: 'vertical',
-  NeighborhoodDemandBrief: 'vertical',
-  ScreeningComplianceBrief: 'vertical',
-  InvestmentOpportunityPack: 'vertical',
   VendorShortlist: 'vertical',
   ProspectList: 'vertical',
   CompetitorBrief: 'vertical',

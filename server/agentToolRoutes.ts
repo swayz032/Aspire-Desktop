@@ -287,7 +287,9 @@ export function slimAdamRecord(r: any): Record<string, any> {
   // Price + discount
   if (typeof r.price === 'number') slim.price = r.price;
   if (typeof r.price_was === 'number') slim.price_was = r.price_was;
+  if (typeof r.price_saving === 'number') slim.price_saving = r.price_saving;
   if (typeof r.percentage_off === 'number') slim.percentage_off = r.percentage_off;
+  if (typeof r.price_badge === 'string' && r.price_badge) slim.price_badge = r.price_badge;
   if (r.currency) slim.currency = r.currency;
 
   // Availability + stock
@@ -370,6 +372,10 @@ export function slimAdamRecord(r: any): Record<string, any> {
   if (typeof r.pickup_store_address === 'string' && r.pickup_store_address) {
     slim.pickup_store_address = r.pickup_store_address;
   }
+
+  // Store-summary specific fields — header card surfaces hours, distance, rating.
+  if (typeof r.open_now === 'boolean') slim.open_now = r.open_now;
+  if (typeof r.distance_miles === 'number') slim.distance_miles = r.distance_miles;
 
   // Images + click-through. ONE image_url + ONE thumbnail (drop the array).
   if (typeof r.image_url === 'string') slim.image_url = r.image_url;

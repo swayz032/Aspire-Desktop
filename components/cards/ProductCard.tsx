@@ -397,11 +397,47 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
   // CTAs at the bottom. NO scrolling. NO bullets/specs on card -- those live
   // in ProductDetailModal which opens on tap.
   if (isHorizontal) {
+    // Pull the rich SerpAPI fields the cards surface in the right pane.
+    const fulfillmentPickup =
+      (record.fulfillment_pickup && typeof record.fulfillment_pickup === 'object'
+        ? (record.fulfillment_pickup as Record<string, any>)
+        : {}) || {};
+    const fulfillmentDelivery =
+      (record.fulfillment_delivery && typeof record.fulfillment_delivery === 'object'
+        ? (record.fulfillment_delivery as Record<string, any>)
+        : {}) || {};
+    const pickupStoreName: string =
+      (typeof fulfillmentPickup.store_name === 'string' && fulfillmentPickup.store_name) ||
+      storeName ||
+      '';
+    const pickupQuantity: number | null =
+      typeof fulfillmentPickup.quantity === 'number'
+        ? fulfillmentPickup.quantity
+        : (typeof stockCount === 'number' ? stockCount : null);
+    const pickupDistance: number | null =
+      typeof fulfillmentPickup.distance === 'number' ? fulfillmentPickup.distance : null;
+    const freeShipToStore: boolean = fulfillmentPickup.free_ship_to_store === true;
+    const freeDelivery: boolean =
+      fulfillmentDelivery.free === true ||
+      (typeof deliveryLabel === 'string' && /free/i.test(deliveryLabel));
+    const priceSaving: number | null =
+      typeof record.price_saving === 'number' ? record.price_saving : null;
+    const priceBadge: string =
+      typeof record.price_badge === 'string' && record.price_badge
+        ? String(record.price_badge).replace(/-/g, ' ')
+        : '';
+    const distanceMiles: number | null =
+      typeof record.distance_miles === 'number' ? record.distance_miles : null;
+    const openNow: boolean | null =
+      typeof record.open_now === 'boolean' ? record.open_now : null;
+
     const horizontalActions = isStoreSummary ? (
       <>
         {storePhone ? (
           <ActionButton label="Call" icon="call-outline" onPress={handleStoreCall} variant="primary" />
-        ) : null}
+        ) : (
+          <ActionButton label="Details" icon="chevron-forward" onPress={handleDetails} variant="primary" />
+        )}
         {storeWebsite ? (
           <ActionButton label="Website" icon="open-outline" onPress={handleStoreWebsite} variant="secondary" />
         ) : null}
@@ -432,109 +468,230 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
           isActive={isActive}
           heroSlot={horizontalHeroContent}
           actionSlot={horizontalActions}
-          accessibilityLabel={`${productName} product card`}
+          accessibilityLabel={`${productName} ${isStoreSummary ? 'store' : 'product'} card`}
           enterDelay={enterDelay}
           orientation="horizontal"
         >
-          <View style={hStyles.stack}>
-            <Text
-              style={hStyles.title}
-              numberOfLines={2}
-              accessibilityRole="header"
-            >
-              {productName}
-            </Text>
-
-            {brand ? (
-              <Text style={hStyles.brand} numberOfLines={1}>
-                {brand}
+          {isStoreSummary ? (
+            <View style={hStyles.stack}>
+              <Text
+                style={hStyles.title}
+                numberOfLines={2}
+                accessibilityRole="header"
+              >
+                {productName}
               </Text>
-            ) : null}
 
-            {price != null && (
-              <View style={hStyles.priceRow}>
-                <Text style={hStyles.priceMain}>{fmtPrice(price)}</Text>
-                {price_was != null && hasDiscount && (
-                  <Text style={hStyles.priceWas}>{fmtPrice(price_was)}</Text>
-                )}
-              </View>
-            )}
-
-            {rating != null && (
-              <View style={hStyles.ratingRow}>
-                <Text style={hStyles.ratingStars}>{renderStars(rating)}</Text>
-                <Text style={hStyles.ratingDetail} numberOfLines={1}>
-                  {' '}
-                  {typeof rating === 'number' ? rating.toFixed(1) : rating}
-                  {reviews ? ` (${Number(reviews).toLocaleString('en-US')})` : ''}
+              {storeAddressLine ? (
+                <Text style={hStyles.brand} numberOfLines={2}>
+                  {storeAddressLine}
                 </Text>
-              </View>
-            )}
+              ) : null}
 
-            {badgeList.length > 0 && (
-              <View style={hStyles.badgeRow}>
-                {badgeList.slice(0, 2).map((b, i) => (
-                  <View key={i} style={hStyles.badge}>
-                    <Text style={hStyles.badgeText} numberOfLines={1}>
-                      {b}
+              {/* Hours / status + rating */}
+              {(openNow !== null || rating != null) && (
+                <View style={hStyles.statusRow}>
+                  {openNow !== null ? (
+                    <Text
+                      style={[
+                        hStyles.statusPill,
+                        {
+                          color: openNow ? Colors.semantic.success : Colors.semantic.error,
+                          backgroundColor: openNow
+                            ? Colors.semantic.successLight
+                            : Colors.semantic.errorLight,
+                        },
+                      ]}
+                    >
+                      {openNow ? 'Open now' : 'Closed'}
                     </Text>
-                  </View>
-                ))}
-              </View>
-            )}
+                  ) : null}
+                  {rating != null ? (
+                    <View style={hStyles.ratingInline}>
+                      <Text style={hStyles.ratingStars}>{renderStars(rating)}</Text>
+                      <Text style={hStyles.ratingDetail} numberOfLines={1}>
+                        {' '}{typeof rating === 'number' ? rating.toFixed(1) : rating}
+                        {reviews ? ` (${Number(reviews).toLocaleString('en-US')})` : ''}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              )}
 
-            {!isStoreSummary && typeof record.description_short === 'string' && record.description_short.trim() ? (
-              <Text style={hStyles.descShort} numberOfLines={2}>
-                {String(record.description_short).trim()}
+              {/* Contact rows */}
+              {storePhone ? (
+                <View style={hStyles.contactRow}>
+                  <Ionicons name="call-outline" size={14} color={Colors.text.muted} />
+                  <Text style={hStyles.contactText} numberOfLines={1}>
+                    {storePhone}
+                  </Text>
+                </View>
+              ) : null}
+              {storeWebsite ? (
+                <View style={hStyles.contactRow}>
+                  <Ionicons name="globe-outline" size={14} color={Colors.text.muted} />
+                  <Text style={hStyles.contactText} numberOfLines={1}>
+                    {String(storeWebsite).replace(/^https?:\/\//, '')}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={hStyles.stockSpacer} />
+
+              {distanceMiles != null ? (
+                <View style={hStyles.stockRow}>
+                  <Ionicons name="navigate-outline" size={14} color={Colors.text.tertiary} />
+                  <Text style={hStyles.stockText} numberOfLines={1}>
+                    {distanceMiles} mi away
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <View style={hStyles.stack}>
+              <Text
+                style={hStyles.title}
+                numberOfLines={2}
+                accessibilityRole="header"
+              >
+                {productName}
               </Text>
-            ) : null}
 
-            <View style={hStyles.stockSpacer} />
+              {brand || model ? (
+                <Text style={hStyles.brand} numberOfLines={1}>
+                  {brand || ''}
+                  {brand && model ? ' · ' : ''}
+                  {model ? `Model ${model}` : ''}
+                </Text>
+              ) : null}
 
-            {(stockCount != null && stockCount > 0 && storeName) ? (
-              <View style={hStyles.stockRow}>
-                <Ionicons
-                  name="location-outline"
-                  size={14}
-                  color={Colors.semantic.success}
-                />
-                <Text
-                  style={[hStyles.stockText, { color: Colors.semantic.success }]}
-                  numberOfLines={1}
-                >
-                  In stock at {storeName}
+              {price != null && (
+                <View style={hStyles.priceRow}>
+                  <Text style={hStyles.priceMain}>{fmtPrice(price)}</Text>
+                  {price_was != null && hasDiscount && (
+                    <Text style={hStyles.priceWas}>{fmtPrice(price_was)}</Text>
+                  )}
+                </View>
+              )}
+
+              {/* Save line — visible whenever we have a saving or a price-badge */}
+              {(priceSaving != null && priceSaving > 0) || priceBadge ? (
+                <View style={hStyles.saveRow}>
+                  {priceSaving != null && priceSaving > 0 ? (
+                    <Text style={hStyles.saveText}>
+                      Save {fmtPrice(priceSaving)}
+                      {hasDiscount ? ` (${Math.round(percentage_off!)}% off)` : ''}
+                    </Text>
+                  ) : null}
+                  {priceBadge ? (
+                    <View style={hStyles.priceBadgeChip}>
+                      <Text style={hStyles.priceBadgeText} numberOfLines={1}>
+                        {priceBadge}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {rating != null && (
+                <View style={hStyles.ratingRow}>
+                  <Text style={hStyles.ratingStars}>{renderStars(rating)}</Text>
+                  <Text style={hStyles.ratingDetail} numberOfLines={1}>
+                    {' '}
+                    {typeof rating === 'number' ? rating.toFixed(1) : rating}
+                    {reviews ? ` (${Number(reviews).toLocaleString('en-US')})` : ''}
+                  </Text>
+                </View>
+              )}
+
+              {badgeList.length > 0 && (
+                <View style={hStyles.badgeRow}>
+                  {badgeList.slice(0, 2).map((b, i) => (
+                    <View key={i} style={hStyles.badge}>
+                      <Text style={hStyles.badgeText} numberOfLines={1}>
+                        {b}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {typeof record.description_short === 'string' && record.description_short.trim() ? (
+                <Text style={hStyles.descShort} numberOfLines={2}>
+                  {String(record.description_short).trim()}
                 </Text>
-              </View>
-            ) : deliveryLabel ? (
-              <View style={hStyles.stockRow}>
-                <Ionicons
-                  name="car-outline"
-                  size={14}
-                  color={Colors.text.tertiary}
-                />
-                <Text style={hStyles.stockText} numberOfLines={1}>
-                  {deliveryLabel}
-                </Text>
-              </View>
-            ) : stockCount != null && stockCount === 0 ? (
-              <View style={hStyles.stockRow}>
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={14}
-                  color={Colors.semantic.error}
-                />
-                <Text
-                  style={[hStyles.stockText, { color: Colors.semantic.error }]}
-                  numberOfLines={1}
-                >
-                  Out of stock
-                </Text>
-              </View>
-            ) : null}
-          </View>
+              ) : null}
+
+              <View style={hStyles.stockSpacer} />
+
+              {/* Pickup line — store name + quantity + distance */}
+              {pickupQuantity != null && pickupQuantity > 0 && pickupStoreName ? (
+                <View style={hStyles.stockRow}>
+                  <Ionicons
+                    name="storefront-outline"
+                    size={14}
+                    color={Colors.semantic.success}
+                  />
+                  <Text
+                    style={[hStyles.stockText, { color: Colors.semantic.success }]}
+                    numberOfLines={1}
+                  >
+                    {pickupQuantity} in stock at {pickupStoreName}
+                    {pickupDistance != null && pickupDistance > 0
+                      ? ` · ${pickupDistance} mi`
+                      : ''}
+                  </Text>
+                </View>
+              ) : freeShipToStore ? (
+                <View style={hStyles.stockRow}>
+                  <Ionicons name="cube-outline" size={14} color={Colors.text.secondary} />
+                  <Text style={hStyles.stockText} numberOfLines={1}>
+                    Free ship to store
+                    {pickupStoreName ? ` · ${pickupStoreName}` : ''}
+                  </Text>
+                </View>
+              ) : pickupQuantity === 0 ? (
+                <View style={hStyles.stockRow}>
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={14}
+                    color={Colors.semantic.error}
+                  />
+                  <Text
+                    style={[hStyles.stockText, { color: Colors.semantic.error }]}
+                    numberOfLines={1}
+                  >
+                    Out of stock{pickupStoreName ? ` at ${pickupStoreName}` : ''}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Delivery line — secondary, always shown when available */}
+              {freeDelivery ? (
+                <View style={hStyles.stockRow}>
+                  <Ionicons name="car-outline" size={14} color={Colors.text.tertiary} />
+                  <Text style={hStyles.stockText} numberOfLines={1}>
+                    Free delivery
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Aisle / bay — when SerpAPI returns store-specific location */}
+              {(record.aisle || record.bay) ? (
+                <View style={hStyles.stockRow}>
+                  <Ionicons name="location-outline" size={14} color={Colors.text.tertiary} />
+                  <Text style={hStyles.stockText} numberOfLines={1}>
+                    {record.aisle ? `Aisle ${record.aisle}` : ''}
+                    {record.aisle && record.bay ? ' · ' : ''}
+                    {record.bay ? `Bay ${record.bay}` : ''}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          )}
         </BaseCard>
 
-        {productIdForEnrich ? (
+        {productIdForEnrich && !isStoreSummary ? (
           <ProductDetailModal
             visible={detailModalVisible}
             productId={productIdForEnrich}
@@ -1250,6 +1407,61 @@ const hStyles = StyleSheet.create({
   },
   stockText: {
     ...Typography.captionMedium,
+    color: Colors.text.secondary,
+    flexShrink: 1,
+  },
+  saveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: 2,
+    flexWrap: 'wrap',
+  },
+  saveText: {
+    ...Typography.smallMedium,
+    color: Colors.semantic.success,
+    fontWeight: '600',
+  },
+  priceBadgeChip: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    backgroundColor: Colors.accent.amberMedium,
+    borderRadius: BorderRadius.sm,
+  },
+  priceBadgeText: {
+    ...Typography.small,
+    color: Colors.accent.amber,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  statusPill: {
+    ...Typography.small,
+    fontWeight: '600',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+    overflow: 'hidden',
+  },
+  ratingInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  contactText: {
+    ...Typography.small,
     color: Colors.text.secondary,
     flexShrink: 1,
   },
