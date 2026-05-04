@@ -377,6 +377,16 @@ export function slimAdamRecord(r: any): Record<string, any> {
   if (typeof r.open_now === 'boolean') slim.open_now = r.open_now;
   if (typeof r.distance_miles === 'number') slim.distance_miles = r.distance_miles;
 
+  // Wave 2.0 SerpAPI fields — pricing unit, social proof, lazy-enrich URL.
+  // unit ("case", "package", "piece") renders as "$99.97 / case" on the price line.
+  if (typeof r.unit === 'string' && r.unit) slim.unit = r.unit;
+  // favorite count surfaces on the card as "❤ 10,293" social-proof chip.
+  if (typeof r.favorite === 'number' && r.favorite >= 0) slim.favorite = r.favorite;
+  // collection URL = e.g. "DEWALT 20V Collection" page, secondary CTA.
+  if (typeof r.collection === 'string' && r.collection) slim.collection = r.collection;
+  // serpapi_link = direct lazy-enrich URL preferred over rebuilt path.
+  if (typeof r.serpapi_link === 'string' && r.serpapi_link) slim.serpapi_link = r.serpapi_link;
+
   // Images + click-through. ONE image_url + ONE thumbnail (drop the array).
   if (typeof r.image_url === 'string') slim.image_url = r.image_url;
   if (typeof r.thumbnail === 'string') slim.thumbnail = r.thumbnail;

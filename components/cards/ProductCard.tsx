@@ -57,6 +57,10 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
     upc,
     model_number,
     store_availability,
+    // Wave 2.0 — pricing unit ("case", "package", "piece"), social proof, currency.
+    unit,
+    favorite,
+    currency,
   } = record;
 
   const extra = record.extra || {};
@@ -567,7 +571,10 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
 
               {price != null && (
                 <View style={hStyles.priceRow}>
-                  <Text style={hStyles.priceMain}>{fmtPrice(price)}</Text>
+                  <Text style={hStyles.priceMain}>
+                    {fmtPrice(price)}
+                    {unit ? <Text style={hStyles.priceUnit}> / {unit}</Text> : null}
+                  </Text>
                   {price_was != null && hasDiscount && (
                     <Text style={hStyles.priceWas}>{fmtPrice(price_was)}</Text>
                   )}
@@ -600,6 +607,9 @@ export function ProductCard({ record, onAction, isActive, enterDelay, orientatio
                     {' '}
                     {typeof rating === 'number' ? rating.toFixed(1) : rating}
                     {reviews ? ` (${Number(reviews).toLocaleString('en-US')})` : ''}
+                    {typeof favorite === 'number' && favorite > 0
+                      ? ` · ♥ ${Number(favorite).toLocaleString('en-US')}`
+                      : ''}
                   </Text>
                 </View>
               )}
@@ -1350,6 +1360,12 @@ const hStyles = StyleSheet.create({
     lineHeight: 26,
     color: Colors.semantic.success,
     letterSpacing: -0.4,
+  },
+  priceUnit: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.text.muted,
+    letterSpacing: 0,
   },
   priceWas: {
     ...Typography.caption,
