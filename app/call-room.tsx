@@ -24,7 +24,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { useSupabase } from '@/providers/SupabaseProvider';
 import { CallRoom } from '@/components/call-room/CallRoom';
-import { DoorOpeningTransition } from '@/components/call-room/DoorOpeningTransition';
+import { PortalReveal, type PortalOrigin } from '@/components/call-room/PortalReveal';
 import type { CallState, ClientContext, VoiceState } from '@/components/call-room/types';
 import { useVoiceCall } from '@/lib/voice/useVoiceCall';
 
@@ -41,6 +41,11 @@ interface CallRoomQuery {
   voiceToken?: string;
   /** E.164 caller_id Twilio will surface (the office's Aspire number). */
   callerId?: string;
+  /** Source button bounding rect (web only) for the portal-reveal morph. */
+  originX?: string;
+  originY?: string;
+  originW?: string;
+  originH?: string;
 }
 
 function buildCallState(query: CallRoomQuery): CallState {
@@ -85,8 +90,34 @@ export default function CallRoomRoute(): React.ReactElement {
       service: pick('service'),
       voiceToken: pick('voiceToken'),
       callerId: pick('callerId'),
+      originX: pick('originX'),
+      originY: pick('originY'),
+      originW: pick('originW'),
+      originH: pick('originH'),
     };
   }, [rawParams]);
+
+  // Parse the source-button rect for the portal-reveal morph. If any of the
+  // four values is missing or non-numeric, drop the rect entirely — the
+  // reveal falls back to a 200ms accent cross-fade on the next render. This
+  // is the path on direct-URL hits, refresh, and native.
+  const portalOrigin: PortalOrigin | null = useMemo(() => {
+    const x = Number(params.originX);
+    const y = Number(params.originY);
+    const w = Number(params.originW);
+    const h = Number(params.originH);
+    if (
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(w) ||
+      !Number.isFinite(h) ||
+      w <= 0 ||
+      h <= 0
+    ) {
+      return null;
+    }
+    return { x, y, w, h };
+  }, [params.originX, params.originY, params.originW, params.originH]);
 
   // ----- Live voice call --------------------------------------------------
   // We only auto-navigate back when the call ENDED CLEANLY (caller hung up
@@ -176,10 +207,13 @@ export default function CallRoomRoute(): React.ReactElement {
     <>
       {/* Hide the route header — the Call Room is full-bleed immersive. */}
       <Stack.Screen options={{ headerShown: false, title: '' }} />
-      {/* 3D door-opening reveal hides the CallRoom mount lag. The CallRoom
-          renders immediately behind the doors (~50ms hold lets it settle),
-          then the doors swing outward and unmount. Purely additive. */}
-      <DoorOpeningTransition>
+      {/* Portal-reveal: the source Call button's rect (captured by
+          /session/calls handleCall) morphs to fullscreen in the Aspire
+          accent, then fades — the user feels like they're entering THROUGH
+          the button. CallRoom mounts beneath the overlay so it's already
+          interactive when the accent fade completes. Direct-URL / refresh /
+          native fall back to a 200ms accent cross-fade. */}
+      <PortalReveal origin={portalOrigin}>
         <CallRoom
           visible
           callState={callState}
@@ -190,7 +224,7 @@ export default function CallRoomRoute(): React.ReactElement {
           onSendDigit={(d) => voice.sendDigits(d)}
           errorBanner={voice.error}
         />
-      </DoorOpeningTransition>
+      </PortalReveal>
     </>
   );
 }

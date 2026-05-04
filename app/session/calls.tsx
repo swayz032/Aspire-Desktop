@@ -576,6 +576,47 @@ function CallsScreen() {
   // it is NEVER allowed to block the call.
   // ---------------------------------------------------------------------------
 
+  // Refs on the two Call buttons (desktop + mobile-style fallback render
+  // paths). At click time we read getBoundingClientRect on web so the
+  // /call-room route can morph FROM that rect into the fullscreen Call
+  // Room — Apple-style container transform. Native leaves the rect blank
+  // and /call-room falls back to a 200ms accent cross-fade.
+  const callButtonRefDesktop = useRef<View>(null);
+  const callButtonRefMobile = useRef<View>(null);
+
+  /**
+   * Read the bounding rect of whichever Call button is currently mounted.
+   * Returns the four params already encoded for router.push, or an empty
+   * object on native / when neither ref has measured yet.
+   */
+  const captureOriginParams = useCallback((): {
+    originX?: string;
+    originY?: string;
+    originW?: string;
+    originH?: string;
+  } => {
+    if (Platform.OS !== 'web') return {};
+    // Either ref will be populated depending on which layout path rendered;
+    // try desktop first, fall back to the mobile-style ref.
+    const node =
+      (callButtonRefDesktop.current as unknown as HTMLElement | null) ??
+      (callButtonRefMobile.current as unknown as HTMLElement | null);
+    if (!node || typeof node.getBoundingClientRect !== 'function') return {};
+    try {
+      const r = node.getBoundingClientRect();
+      // Round to keep query strings tidy; subpixel precision isn't useful
+      // for a CSS transition target.
+      return {
+        originX: String(Math.round(r.left)),
+        originY: String(Math.round(r.top)),
+        originW: String(Math.round(r.width)),
+        originH: String(Math.round(r.height)),
+      };
+    } catch {
+      return {};
+    }
+  }, []);
+
   const handleCall = async () => {
     if (phoneNumber.length === 0) return;
     void resumeAudioContextFromGesture();
@@ -583,6 +624,10 @@ function CallsScreen() {
     setOutboundBlocked(false);
     setCallingName(null);
     setIsCalling(true);
+
+    // Snapshot the button rect BEFORE the await chain — once the user starts
+    // scrolling or React re-renders mid-mint, the rect can shift.
+    const origin = captureOriginParams();
 
     try {
       const cleaned = phoneNumber.replace(/\D/g, '');
@@ -655,6 +700,7 @@ function CallsScreen() {
           ...(auditCallId ? { callId: auditCallId } : {}),
           voiceToken,
           callerId: voiceCallerId,
+          ...origin,
         },
       } as never);
       // Local "calling" overlay state is no longer the primary UX; reset
@@ -733,6 +779,10 @@ function CallsScreen() {
         // Network error on audit hop — ignore.
       }
 
+      // Return-call rows don't expose a tracked button ref — the
+      // /call-room route gracefully falls back to a 200ms accent cross-fade
+      // when no origin rect is provided. (Adding per-row refs would require
+      // restructuring the FormattedCall list; not in scope for this change.)
       router.push({
         pathname: '/call-room',
         params: {
@@ -1163,6 +1213,7 @@ function CallsScreen() {
                     <View style={desktopStyles.callActions}>
                       <Animated.View style={{ transform: [{ scale: phoneNumber ? pulseAnim : 1 }] }}>
                         <TouchableOpacity
+                          ref={callButtonRefDesktop as unknown as React.RefObject<View>}
                           style={[desktopStyles.callButton, !phoneNumber && desktopStyles.callButtonDisabled]}
                           onPress={handleCall}
                           disabled={!phoneNumber}
@@ -1471,6 +1522,7 @@ function CallsScreen() {
           <View style={styles.callActions}>
             <Animated.View style={{ transform: [{ scale: phoneNumber ? pulseAnim : 1 }] }}>
               <TouchableOpacity
+                ref={callButtonRefMobile as unknown as React.RefObject<View>}
                 style={[styles.callButton, !phoneNumber && styles.callButtonDisabled]}
                 onPress={handleCall}
                 disabled={!phoneNumber}
