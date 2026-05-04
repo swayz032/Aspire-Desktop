@@ -3351,7 +3351,7 @@ router.post('/api/elevenlabs/stt', async (req: Request, res: Response) => {
     formData.append('file', new Blob([new Uint8Array(audioBuffer)], { type: 'audio/webm' }), 'audio.webm');
     formData.append('model_id', 'scribe_v2');
     formData.append('language_code', 'en');
-    formData.append('keyterms', JSON.stringify(['Aspire', 'Ava', 'Finn', 'Eli', 'Nora', 'Sarah', 'Quinn', 'Clara']));
+    formData.append('keyterms', JSON.stringify(['Aspire', 'Ava', 'Finn', 'Eli', 'Nora', 'Sarah', 'Tiffany', 'Quinn', 'Clara']));
 
     // Timeout: 30s for STT API call (prevents hanging on ElevenLabs stall)
     const sttAbort = new AbortController();
@@ -8585,6 +8585,21 @@ router.get('/api/v1/office-memory/:memoryId', async (req: Request, res: Response
 });
 
 // ─── Front Desk ───────────────────────────────────────────────────────────────
+
+// GET /api/v1/front-desk/personas — Green tier, read-only static registry.
+// No capability token required (no scope param). Cache for 5 minutes at the
+// proxy edge so the picker UI doesn't re-fetch on every tab switch.
+router.get('/api/v1/front-desk/personas', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  await proxyForward({
+    orchestratorPath: '/v1/front-desk/personas',
+    method: 'GET',
+    logTag: 'FrontDeskPersonas',
+    timeoutMs: 5_000,
+    req,
+    res,
+  });
+});
 
 router.get('/api/v1/front-desk/config', async (req: Request, res: Response) => {
   const officeIdQS = typeof req.query.office_id === 'string' ? `?office_id=${encodeURIComponent(req.query.office_id)}` : '';

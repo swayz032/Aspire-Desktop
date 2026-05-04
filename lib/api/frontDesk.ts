@@ -76,6 +76,13 @@ export type AfterHoursMode = 'take_message' | 'ask_callback_window' | 'try_trans
 export type BusyMode = 'take_message' | 'ask_callback_window' | 'try_transfer_then_message';
 export type ForwardingStatus = 'NOT_CONFIGURED' | 'PENDING' | 'VERIFIED' | 'LAST_TEST_FAILED';
 
+/**
+ * Receptionist persona slug. Drives EL agent attachment + UI display name on
+ * the Front Desk Setup page. Migration 109 adds the column with a CHECK
+ * constraint mirroring this union; expand both together when adding personas.
+ */
+export type ReceptionistPersonaSlug = 'sarah' | 'tiffany';
+
 export interface FrontDeskConfigRow {
   id: string;
   tenant_id: string;
@@ -93,6 +100,8 @@ export interface FrontDeskConfigRow {
   business_hours?: BusinessHoursWire | null;
   /** IANA tz, e.g. "America/Los_Angeles". Drives is_open_now eval. */
   timezone?: string | null;
+  /** Receptionist persona slug — added by migration 109. */
+  receptionist_persona?: ReceptionistPersonaSlug | null;
   forwarding_status?: ForwardingStatus | null;
   last_forwarding_test_at?: string | null;
   last_forwarding_test_result?: string | null;
@@ -180,6 +189,36 @@ export interface FrontDeskConfigPatchPartial {
   timezone?: string;
   /** Dedicated voicemail inbox — relayed by handler to suite_profiles. */
   voicemail_email?: string;
+  /**
+   * Switch the AI receptionist persona. When changed, the backend re-attaches
+   * the office's EL phone number to the new persona's agent (Yellow tier —
+   * server proxy mints `front_desk:config_save` capability token).
+   */
+  receptionist_persona?: ReceptionistPersonaSlug;
+}
+
+/**
+ * Receptionist persona registry entry — mirrors `services.receptionist_personas`
+ * on the backend. Keep field names aligned with the dataclass `to_dict()` output.
+ */
+export interface ReceptionistPersonaWire {
+  slug: ReceptionistPersonaSlug;
+  agent_id: string;
+  voice_id: string;
+  display_name: string;
+  role_label: string;
+  /** Static asset path served by Aspire-desktop, e.g. "/personas/sarah.png". */
+  headshot_url: string;
+  /** Static asset path served by Aspire-desktop, e.g. "/personas/sarah.mp3". */
+  preview_url: string;
+  accent_color: string;
+  description: string;
+}
+
+export interface ReceptionistPersonasResponse {
+  success: boolean;
+  default_persona: ReceptionistPersonaSlug;
+  personas: ReceptionistPersonaWire[];
 }
 
 export interface FrontDeskConfigPatchResponse {
@@ -231,6 +270,26 @@ interface FetchOpts {
   authenticatedFetch: FetchFn;
   officeId: string;
   signal?: AbortSignal;
+}
+
+/**
+ * Green tier — fetch the static receptionist persona registry. Cached by the
+ * caller (it never changes within a session). Does not require auth — backend
+ * GET /personas is read-only static data, but we route through the proxy for
+ * consistency with the rest of the Front Desk API surface.
+ */
+export async function fetchReceptionistPersonas(
+  opts: { authenticatedFetch: FetchFn; signal?: AbortSignal },
+): Promise<ReceptionistPersonasResponse> {
+  const url = `${API_BASE}${PROXY_PREFIX}/front-desk/personas`;
+  const resp = await opts.authenticatedFetch(url, {
+    method: 'GET',
+    signal: opts.signal,
+  });
+  return expectJson<ReceptionistPersonasResponse>(
+    resp,
+    'FRONT_DESK_PERSONAS_FAILED',
+  );
 }
 
 export async function fetchFrontDeskConfig(
