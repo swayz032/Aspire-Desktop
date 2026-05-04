@@ -248,13 +248,80 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             });
           }
 
+          // ── Mid-tool filler narration ──────────────────────────────────────
+          // Anam emits TOOL_CALL_STARTED when Ava decides to call a backend tool
+          // (invoke_adam, invoke_quinn, etc.). Long research calls (8-15s) leave
+          // the user staring at a silent avatar — a perceived hang. We schedule
+          // two staggered fillers via client.talk() that synthesize through Ava's
+          // voice/lip-sync without polluting the conversation history.
+          //
+          //   t = 6s  → first filler ("Just one more sec, almost there.")
+          //   t = 12s → second filler ("Still digging — hang tight.")
+          //
+          // Both timers are CANCELED the moment TOOL_CALL_COMPLETED or _FAILED
+          // fires. show_cards is excluded — it's a frontend display tool with
+          // no measurable wait. Filler pool rotates so back-to-back tool calls
+          // don't echo the same line twice.
+          var midToolTimers = [];
+          var lastFillerIdx = -1;
+          var FILLER_FAST_TOOLS = { 'show_cards': 1 };
+          var FILLER_POOL_FIRST = [
+            "Just one more sec, almost there.",
+            "Hang on, pulling that up.",
+            "One moment, still on it.",
+            "Almost done."
+          ];
+          var FILLER_POOL_SECOND = [
+            "Still digging — hang tight.",
+            "Just another sec, close now.",
+            "Pulling it together, almost there."
+          ];
+          function pickFiller(pool) {
+            if (!pool.length) return null;
+            var idx = Math.floor(Math.random() * pool.length);
+            // Avoid repeating the previous filler when possible.
+            if (pool.length > 1 && idx === lastFillerIdx) {
+              idx = (idx + 1) % pool.length;
+            }
+            lastFillerIdx = idx;
+            return pool[idx];
+          }
+          function clearMidToolTimers() {
+            for (var i = 0; i < midToolTimers.length; i++) {
+              try { clearTimeout(midToolTimers[i]); } catch (e) { /* noop */ }
+            }
+            midToolTimers = [];
+          }
+          function speakFiller(text) {
+            if (!text) return;
+            try {
+              if (typeof client.talk === 'function') {
+                client.talk(text);
+                post({ type: 'mid_tool_filler', payload: { text: text } });
+              }
+            } catch (e) {
+              // SDK or session closed — swallow; no observable side-effect.
+            }
+          }
+
           client.addListener(AnamEvent.TOOL_CALL_STARTED, (event) => {
-            post({ type: 'tool_call_started', payload: { toolName: event?.toolName, arguments: event?.arguments } });
+            var toolName = event?.toolName || '';
+            post({ type: 'tool_call_started', payload: { toolName: toolName, arguments: event?.arguments } });
+            // Reset any prior tool-call timers (defensive — shouldn't happen
+            // but back-to-back tools in one turn would otherwise leak).
+            clearMidToolTimers();
+            // Skip fast/display tools — only research tools wait on the network.
+            if (FILLER_FAST_TOOLS[toolName]) return;
+            var t1 = setTimeout(function () { speakFiller(pickFiller(FILLER_POOL_FIRST)); }, 6000);
+            var t2 = setTimeout(function () { speakFiller(pickFiller(FILLER_POOL_SECOND)); }, 12000);
+            midToolTimers = [t1, t2];
           });
           client.addListener(AnamEvent.TOOL_CALL_COMPLETED, (event) => {
+            clearMidToolTimers();
             post({ type: 'tool_call_completed', payload: { toolName: event?.toolName, executionTime: event?.executionTime } });
           });
           client.addListener(AnamEvent.TOOL_CALL_FAILED, (event) => {
+            clearMidToolTimers();
             post({ type: 'tool_call_failed', payload: { toolName: event?.toolName, errorMessage: event?.errorMessage } });
           });
           if (AnamEvent.CLIENT_TOOL_EVENT_RECEIVED) {
@@ -327,6 +394,7 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           });
 
           client.addListener(AnamEvent.CONNECTION_CLOSED, (code) => {
+            clearMidToolTimers();
             post({ type: 'closed', code });
           });
 
