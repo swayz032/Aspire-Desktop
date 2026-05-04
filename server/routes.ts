@@ -8075,6 +8075,120 @@ router.get('/v1/places/photo', handlePlacesPhotoProxy);
 // Alias kept for spec-compatibility per R5 wave 1 brief.
 router.get('/api/places/photo', handlePlacesPhotoProxy);
 
+// ─── Google Street View Static API proxy ─────────────────────────────────
+// Returns a street-level photograph of the supplied address as a JPEG so
+// PropertyCard can show the actual house view instead of a generic plan
+// thumbnail. Same security model as /v1/places/photo:
+//  - Server-side API key (Law #9 — no key on client)
+//  - Strict input whitelist (printable ASCII only, ≤200 chars)
+//  - Bounded image dimensions (max 640x640 — Street View Static API ceiling)
+//  - Caches at the CDN edge for 24h since street-level photos rarely
+//    change quickly
+// Spec: https://developers.google.com/maps/documentation/streetview/request-streetview
+async function handleStreetViewProxy(req: Request, res: Response): Promise<void> {
+  const address = typeof req.query.address === 'string' ? req.query.address.trim() : '';
+  const lat = typeof req.query.lat === 'string' ? req.query.lat.trim() : '';
+  const lng = typeof req.query.lng === 'string' ? req.query.lng.trim() : '';
+
+  // Whitelist: address must be printable ASCII (no control chars / unicode
+  // injection). Length cap keeps the upstream URL bounded.
+  const ADDRESS_RE = /^[A-Za-z0-9\s,.\-#'/]+$/;
+  if (address) {
+    if (address.length > 200 || !ADDRESS_RE.test(address)) {
+      res.status(400).json({ error: 'INVALID_ADDRESS', message: 'Address must be printable ASCII, ≤200 chars.' });
+      return;
+    }
+  } else if (lat && lng) {
+    const LATLNG_RE = /^-?\d{1,3}(\.\d{1,8})?$/;
+    if (!LATLNG_RE.test(lat) || !LATLNG_RE.test(lng)) {
+      res.status(400).json({ error: 'INVALID_COORDS', message: 'lat/lng must be numeric.' });
+      return;
+    }
+  } else {
+    res.status(400).json({ error: 'MISSING_LOCATION', message: 'Provide address OR lat+lng.' });
+    return;
+  }
+
+  // Street View Static API caps at 640×640. We default to 600×400 to match
+  // PropertyCard's hero aspect ratio.
+  const sizeW = Math.min(Math.max(parseInt(String(req.query.w || '600'), 10) || 600, 64), 640);
+  const sizeH = Math.min(Math.max(parseInt(String(req.query.h || '400'), 10) || 400, 64), 640);
+  // Optional camera params — fov 20-120, heading 0-360, pitch -90..90.
+  const fovRaw = parseInt(String(req.query.fov || '90'), 10);
+  const fov = Number.isFinite(fovRaw) ? Math.min(Math.max(fovRaw, 20), 120) : 90;
+
+  const apiKey = (process.env.GOOGLE_MAPS_API_KEY || '').trim();
+  if (!apiKey) {
+    logger.warn('[StreetView] GOOGLE_MAPS_API_KEY not configured');
+    res.status(503).json({ error: 'UPSTREAM_UNAVAILABLE', message: 'Street View service unavailable.' });
+    return;
+  }
+
+  const params = new URLSearchParams();
+  params.set('size', `${sizeW}x${sizeH}`);
+  if (address) params.set('location', address);
+  else params.set('location', `${lat},${lng}`);
+  params.set('fov', String(fov));
+  params.set('source', 'outdoor'); // exclude indoor panoramas
+  params.set('return_error_code', 'true'); // get 404 if no imagery instead of placeholder
+  params.set('key', apiKey);
+
+  const upstreamUrl = `https://maps.googleapis.com/maps/api/streetview?${params.toString()}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const upstream = await fetch(upstreamUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!upstream.ok) {
+      // Common case: 404 = no street view imagery for this address (rural,
+      // gated community, etc.). Surface as 404 so the client can swap in
+      // a graceful "no street view" placeholder.
+      logger.info('[StreetView] upstream non-2xx', { status: upstream.status });
+      res.status(upstream.status === 404 ? 404 : 502).json({
+        error: 'NO_IMAGERY',
+        message: 'No street view available for this location.',
+      });
+      return;
+    }
+
+    const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+    if (!contentType.startsWith('image/')) {
+      logger.warn('[StreetView] non-image content type', { contentType });
+      res.status(502).json({ error: 'UPSTREAM_BAD_CONTENT', message: 'Street view unavailable.' });
+      return;
+    }
+
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+    res.setHeader('Access-Control-Allow-Origin', 'https://www.aspireos.app');
+    res.setHeader('Vary', 'Origin');
+    res.status(200).send(buf);
+    return;
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    logger.warn('[StreetView] proxy error', {
+      isTimeout,
+      reason: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+    });
+    res.status(isTimeout ? 504 : 502).json({
+      error: 'UPSTREAM_FAILURE',
+      message: 'Street view unavailable.',
+    });
+    return;
+  }
+}
+
+router.get('/v1/places/streetview', handleStreetViewProxy);
+router.get('/api/places/streetview', handleStreetViewProxy);
+
 // ─── POST /api/tools/enrich-product ────────────────────────────────────────
 // Authenticated client proxy for the orchestrator's lazy product-enrichment
 // endpoint. Mints a short-lived (45s) capability token in the same canonical

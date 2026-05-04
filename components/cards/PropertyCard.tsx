@@ -6,18 +6,27 @@
  * record into multiple section cards so the user swipes through:
  *   Overview → Ownership → Mortgage → Valuation → Sale History → ...
  *
- * Each card has the same 200px hero with a section-specific gradient + icon,
- * the section label, and organized data rows below. Premium enterprise design.
+ * Two layouts share the same per-section data:
+ *   • Vertical (500x580): legacy hero-on-top + scrollable detail rows.
+ *     Section-tinted gradient hero with icon + scrim (preserved verbatim
+ *     so the BaseCard.fixed-height test contract continues to pass).
+ *   • Horizontal (880x440): premium ProductCard-aligned layout with a
+ *     Street View hero on the left and a 300px info stack on the right.
+ *     The right-side stack is section-aware: the "headline number" and
+ *     stats row vary by section while the chrome (title/sub/buttons)
+ *     stays locked to the ProductCard rhythm.
  */
 
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Platform, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '@/constants/tokens';
 import { safeOpenURL } from '@/lib/safeOpenURL';
 import { ActionButton } from './ActionButton';
 import { BaseCard } from './BaseCard';
+import { ImageSkeleton } from './ImageSkeleton';
 import type { CardProps } from './CardRegistry';
 import { fmtDollar, fmtSqft, fmtPercent } from './helpers';
 
@@ -119,7 +128,7 @@ function propTypeLabel(propType: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Section Renderers
+// Section Renderers (vertical layout — unchanged)
 // ---------------------------------------------------------------------------
 
 function OverviewSection({ r }: { r: Record<string, any> }) {
@@ -345,8 +354,245 @@ const SECTION_RENDERERS: Record<string, React.FC<{ r: Record<string, any> }>> = 
 };
 
 // ---------------------------------------------------------------------------
+// Horizontal layout — section-aware "headline" shape
+// ---------------------------------------------------------------------------
+
+/**
+ * Each section produces a different big-number / qualifier / stats triplet.
+ * Returning null means "skip this row" — the layout handles missing data
+ * gracefully so empty sections don't ship awkward whitespace.
+ */
+interface HorizontalHeadline {
+  bigValue: string | null;
+  bigQualifier: string | null;
+  /** Additional small qualifier underneath the big number (e.g. AVM range). */
+  bigSubline?: string | null;
+  /** Optional accent color for the big number. Defaults to success green. */
+  bigColor?: string;
+  /**
+   * Type of the big value. 'number' = price/percentage display weight (22px,
+   * green by default). 'text' = prose / name display weight (17px, primary
+   * color by default). The renderer uses this to pick the right type scale
+   * so the rhythm stays balanced regardless of content.
+   */
+  bigStyle?: 'number' | 'text';
+  /** Up to ~4 stat chips, in display order. */
+  stats: Array<{ icon: string; value: string; label: string } | null>;
+  /** Optional inline pill (small badge above the stats — e.g. AVM confidence). */
+  pill?: { label: string; variant?: 'default' | 'green' | 'amber' | 'red' } | null;
+  /** Optional bottom owner / footnote line — small text, muted. */
+  footnote?: string | null;
+}
+
+function buildHeadline(section: string, r: Record<string, any>): HorizontalHeadline {
+  switch (section) {
+    case 'mortgage': {
+      // Headline = lender name (the "who"). Money goes in stats so the story
+      // reads "Wells Fargo · 360mo · $1,420/mo" rather than leading with a
+      // dollar amount that competes with the address.
+      const lender = typeof r.mortgage_lender === 'string' && r.mortgage_lender.trim() ? r.mortgage_lender : null;
+      const ltvBadge = r.ltv_ratio != null
+        ? { label: `LTV ${r.ltv_ratio}%`, variant: r.ltv_ratio < 80 ? 'green' as const : r.ltv_ratio < 90 ? 'amber' as const : 'red' as const }
+        : null;
+      return {
+        bigValue: lender || (r.mortgage_amount ? fmtDollar(r.mortgage_amount) : null),
+        bigQualifier: lender ? 'Lender of Record' : 'Mortgage',
+        bigSubline: r.mortgage_date ? `Originated ${r.mortgage_date}` : null,
+        bigStyle: lender ? 'text' : 'number',
+        stats: [
+          r.mortgage_amount ? { icon: 'cash-outline', value: fmtDollar(r.mortgage_amount), label: 'Amount' } : null,
+          r.mortgage_term_months ? { icon: 'time-outline', value: `${r.mortgage_term_months}mo`, label: 'Term' } : null,
+          r.estimated_monthly_payment ? { icon: 'calendar-outline', value: fmtDollar(r.estimated_monthly_payment), label: '/mo' } : null,
+          r.available_equity ? { icon: 'trending-up-outline', value: fmtDollar(r.available_equity), label: 'Equity' } : null,
+        ],
+        pill: ltvBadge,
+        footnote: r.mortgage_loan_type ? `Loan type: ${r.mortgage_loan_type}` : null,
+      };
+    }
+
+    case 'valuation': {
+      const big = r.estimated_value || r.tax_market_value;
+      const range = (r.estimated_value_low && r.estimated_value_high)
+        ? `${fmtDollar(r.estimated_value_low)} — ${fmtDollar(r.estimated_value_high)}`
+        : null;
+      const confidence = r.avm_confidence_score ? `AVM Confidence ${r.avm_confidence_score}/100` : null;
+      return {
+        bigValue: big ? fmtDollar(big) : null,
+        bigQualifier: r.estimated_value ? 'AVM Estimate' : 'Tax Market Value',
+        bigSubline: range,
+        stats: [
+          r.tax_assessed_total ? { icon: 'document-text-outline', value: fmtDollar(r.tax_assessed_total), label: 'Assessed' } : null,
+          r.annual_tax_amount ? { icon: 'cash-outline', value: fmtDollar(r.annual_tax_amount), label: 'Tax/yr' } : null,
+          r.avm_price_per_sqft ? { icon: 'resize-outline', value: `${fmtDollar(r.avm_price_per_sqft)}`, label: '/sqft' } : null,
+        ],
+        pill: confidence ? { label: confidence } : null,
+        footnote: r.tax_year ? `Tax year ${r.tax_year}` : null,
+      };
+    }
+
+    case 'sale_history': {
+      // Headline = the event ("Sold Mar 2024"). Sale amount is the most
+      // relevant stat so it leads the chip row.
+      const headlineText = r.last_sale_date ? `Sold ${r.last_sale_date}` : (r.last_sale_amount ? fmtDollar(r.last_sale_amount) : null);
+      return {
+        bigValue: headlineText,
+        bigQualifier: 'Last Sale',
+        bigSubline: r.last_sale_type || null,
+        bigStyle: r.last_sale_date ? 'text' : 'number',
+        stats: [
+          r.last_sale_amount ? { icon: 'cash-outline', value: fmtDollar(r.last_sale_amount), label: 'Amount' } : null,
+          r.last_sale_price_per_sqft ? { icon: 'resize-outline', value: `${fmtDollar(r.last_sale_price_per_sqft)}`, label: '/sqft' } : null,
+          r.appreciation_pct != null ? { icon: 'trending-up-outline', value: fmtPercent(r.appreciation_pct), label: 'Appr.' } : null,
+          r.last_sale_cash_or_mortgage ? { icon: 'card-outline', value: String(r.last_sale_cash_or_mortgage), label: '' } : null,
+        ],
+        pill: r.quit_claim_flag ? { label: 'Quit Claim', variant: 'amber' } : null,
+        footnote: Array.isArray(r.sale_history) && r.sale_history.length > 1
+          ? `${r.sale_history.length} sales on record`
+          : null,
+      };
+    }
+
+    case 'ownership': {
+      const ownerType = r.owner_type === 'Y' ? 'Corporate' : r.owner_type ? 'Individual' : null;
+      const occupancy = r.absentee_owner_indicator != null
+        ? (r.absentee_owner_indicator ? 'Absentee Owner' : 'Owner Occupied')
+        : null;
+      const occVariant: 'amber' | 'green' | 'default' = r.absentee_owner_indicator
+        ? 'amber'
+        : r.absentee_owner_indicator === false
+          ? 'green'
+          : 'default';
+      return {
+        bigValue: typeof r.owner_name === 'string' && r.owner_name.trim() ? r.owner_name : null,
+        bigQualifier: 'Owner of Record',
+        bigSubline: ownerType,
+        bigStyle: 'text',
+        stats: [],
+        pill: occupancy ? { label: occupancy, variant: occVariant } : null,
+        footnote: r.mailing_address ? `Mailing: ${r.mailing_address}` : null,
+      };
+    }
+
+    case 'rental': {
+      const propertyValue = r.property_value || r.tax_market_value || r.estimated_value;
+      const yieldPct = (propertyValue && r.estimated_rent)
+        ? (r.estimated_rent * 12 / propertyValue) * 100
+        : null;
+      return {
+        bigValue: r.estimated_rent ? `${fmtDollar(r.estimated_rent)}/mo` : null,
+        bigQualifier: 'Estimated Rent',
+        bigSubline: (r.estimated_rent_low && r.estimated_rent_high)
+          ? `${fmtDollar(r.estimated_rent_low)} — ${fmtDollar(r.estimated_rent_high)}`
+          : null,
+        stats: [
+          yieldPct != null ? { icon: 'trending-up-outline', value: fmtPercent(yieldPct), label: 'Gross Yield' } : null,
+        ],
+        pill: null,
+      };
+    }
+
+    case 'permits': {
+      const permits = Array.isArray(r.permit_signals) ? r.permit_signals : [];
+      const totalValue = permits.reduce((sum: number, p: any) => sum + (Number(p.job_value) || 0), 0);
+      return {
+        // Permit count is a small integer — keep numeric weight so the
+        // count reads like a metric.
+        bigValue: permits.length > 0 ? String(permits.length) : null,
+        bigQualifier: permits.length === 1 ? 'Permit on Record' : 'Permits on Record',
+        bigStyle: 'number',
+        bigColor: Colors.text.primary,
+        bigSubline: r.major_improvements_year ? `Major work ${r.major_improvements_year}` : null,
+        stats: [
+          totalValue > 0 ? { icon: 'cash-outline', value: fmtDollar(totalValue), label: 'Total job value' } : null,
+        ],
+        pill: null,
+      };
+    }
+
+    case 'schools': {
+      const schools = Array.isArray(r.nearby_schools) ? r.nearby_schools : [];
+      const top = schools[0];
+      return {
+        bigValue: r.school_district_name || (top ? top.name : null),
+        bigQualifier: r.school_district_name ? 'School District' : (top ? 'Nearest School' : null),
+        bigStyle: 'text',
+        bigSubline: schools.length > 0
+          ? `${schools.length} nearby school${schools.length === 1 ? '' : 's'}`
+          : null,
+        stats: [
+          top?.rating ? { icon: 'school-outline', value: `${top.rating}/10`, label: top.name || 'Top school' } : null,
+        ],
+        pill: null,
+      };
+    }
+
+    case 'foreclosure': {
+      const stage = typeof r.foreclosure_stage === 'string' && r.foreclosure_stage !== 'none'
+        ? r.foreclosure_stage.toUpperCase()
+        : null;
+      const records = Array.isArray(r.foreclosure_records) ? r.foreclosure_records : [];
+      const next = records[0];
+      return {
+        bigValue: stage,
+        bigQualifier: 'Foreclosure Stage',
+        bigColor: Colors.semantic.error,
+        bigSubline: next?.auction_date_time ? `Auction ${next.auction_date_time}` : null,
+        stats: [
+          next?.opening_bid ? { icon: 'pricetag-outline', value: fmtDollar(next.opening_bid), label: 'Opening bid' } : null,
+          next?.original_loan_amount ? { icon: 'wallet-outline', value: fmtDollar(next.original_loan_amount), label: 'Original loan' } : null,
+        ],
+        pill: r.reo_flag ? { label: 'REO / Bank-Owned', variant: 'red' } : null,
+        footnote: next?.auction_location || null,
+      };
+    }
+
+    case 'overview':
+    default: {
+      const propertyValue = r.property_value || r.tax_market_value || r.estimated_value || r.last_sale_amount;
+      const valueSource = r.property_value_source === 'county_tax_assessment' ? 'Tax Assessed'
+        : r.property_value_source === 'avm_estimate' ? 'AVM Estimate'
+        : r.tax_market_value ? 'Tax Assessed'
+        : r.estimated_value ? 'AVM Estimate'
+        : r.last_sale_amount ? 'Last Sale'
+        : 'Estimated';
+      return {
+        bigValue: propertyValue != null ? fmtDollar(propertyValue) : null,
+        bigQualifier: valueSource,
+        stats: [
+          r.beds != null ? { icon: 'bed-outline', value: String(r.beds), label: r.beds === 1 ? 'Bed' : 'Beds' } : null,
+          r.baths != null ? { icon: 'water-outline', value: String(r.baths), label: r.baths === 1 ? 'Bath' : 'Baths' } : null,
+          r.living_sqft != null ? { icon: 'resize-outline', value: fmtSqft(r.living_sqft), label: '' } : null,
+          r.year_built != null ? { icon: 'calendar-outline', value: String(r.year_built), label: 'Built' } : null,
+        ],
+        pill: null,
+      };
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
+
+const STREETVIEW_BASE = 'https://www.aspireos.app/v1/places/streetview';
+
+/**
+ * Build the Street View proxy URL for a property. The proxy whitelist requires
+ * printable ASCII so we strip anything that doesn't match. Falls back to
+ * lat/lng if the address sanitises to empty.
+ */
+function buildStreetViewUrl(r: Record<string, any>): string | null {
+  const raw = (r.normalized_address || r.address || '') as string;
+  // Server whitelist: A-Z a-z 0-9 space , . - # ' /
+  const sanitised = String(raw).replace(/[^A-Za-z0-9\s,.\-#'/]/g, '').trim();
+  if (sanitised) {
+    return `${STREETVIEW_BASE}?address=${encodeURIComponent(sanitised)}&w=600&h=400`;
+  }
+  if (typeof r.latitude === 'number' && typeof r.longitude === 'number') {
+    return `${STREETVIEW_BASE}?lat=${r.latitude}&lng=${r.longitude}&w=600&h=400`;
+  }
+  return null;
+}
 
 export function PropertyCard({ record, onAction, isActive, enterDelay, orientation }: CardProps) {
   const r = record as Record<string, any>;
@@ -354,6 +600,7 @@ export function PropertyCard({ record, onAction, isActive, enterDelay, orientati
   const sectionLabel = (r._sectionLabel as string) || 'Property Overview';
   const address = r.normalized_address || r.address || 'Unknown Address';
   const config = HERO_CONFIG[section] || HERO_CONFIG.overview;
+  const isHorizontal = orientation === 'horizontal';
 
   const handleMap = useCallback(() => {
     const lat = r.latitude;
@@ -365,8 +612,12 @@ export function PropertyCard({ record, onAction, isActive, enterDelay, orientati
     onAction('visit', record);
   }, [r.latitude, r.longitude, address, onAction, record]);
 
-  // Hero: section-specific gradient + icon + label
-  const heroContent = (
+  const handleDetails = useCallback(() => {
+    onAction('details', record);
+  }, [onAction, record]);
+
+  // ── Vertical hero (legacy, unchanged for back-compat) ──────────────────
+  const verticalHero = (
     <LinearGradient
       colors={config.gradient}
       start={{ x: 0, y: 0 }}
@@ -386,29 +637,239 @@ export function PropertyCard({ record, onAction, isActive, enterDelay, orientati
     </LinearGradient>
   );
 
-  // Actions
-  const actionContent = (
-    <>
-      <ActionButton label="View on Map" icon="map-outline" onPress={handleMap} variant="primary" />
-    </>
-  );
+  // ── Horizontal layout (880x440) ────────────────────────────────────────
+  if (isHorizontal) {
+    return (
+      <BaseCard
+        safety={null}
+        isActive={isActive}
+        heroSlot={
+          <PropertyHorizontalHero
+            r={r}
+            sectionLabel={sectionLabel}
+            address={address}
+            config={config}
+            onPress={handleDetails}
+          />
+        }
+        actionSlot={
+          <>
+            <ActionButton
+              label="View details"
+              icon="chevron-forward"
+              onPress={handleDetails}
+              variant="primary"
+            />
+            <ActionButton
+              label="Open in Maps"
+              icon="map-outline"
+              onPress={handleMap}
+              variant="secondary"
+            />
+          </>
+        }
+        accessibilityLabel={`${sectionLabel} for ${address}`}
+        enterDelay={enterDelay}
+        orientation="horizontal"
+      >
+        <PropertyHorizontalStack r={r} section={section} address={address} />
+      </BaseCard>
+    );
+  }
 
-  // Render the section
+  // ── Vertical layout (legacy 500x580) ──────────────────────────────────
   const SectionRenderer = SECTION_RENDERERS[section] || OverviewSection;
-
   return (
     <BaseCard
       safety={null}
       isActive={isActive}
-      heroSlot={heroContent}
+      heroSlot={verticalHero}
       heroStyle={HERO_STYLE}
-      actionSlot={actionContent}
+      actionSlot={
+        <ActionButton label="View on Map" icon="map-outline" onPress={handleMap} variant="primary" />
+      }
       accessibilityLabel={`${sectionLabel} for ${address}`}
       enterDelay={enterDelay}
       orientation={orientation}
     >
       <SectionRenderer r={r} />
     </BaseCard>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Horizontal hero (Street View, with graceful fallback)
+// ---------------------------------------------------------------------------
+
+interface PropertyHorizontalHeroProps {
+  r: Record<string, any>;
+  sectionLabel: string;
+  address: string;
+  config: { icon: string; gradient: [string, string]; accent: string };
+  onPress: () => void;
+}
+
+function PropertyHorizontalHero({ r, sectionLabel, address, config, onPress }: PropertyHorizontalHeroProps) {
+  const streetViewUrl = buildStreetViewUrl(r);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  // Track whether Street View imagery is available. The proxy returns 404
+  // for addresses with no street-level photos (rural / gated). On error we
+  // swap to the section-tinted gradient hero so we never render a broken
+  // image icon.
+  const [streetViewFailed, setStreetViewFailed] = useState(false);
+
+  const showImage = !!streetViewUrl && !streetViewFailed;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={hh.pressable}
+      accessibilityRole="button"
+      accessibilityLabel={`Open details for ${address}`}
+      testID="property-card-horizontal-hero"
+    >
+      {showImage ? (
+        <>
+          <ImageSkeleton loaded={imageLoaded} />
+          <Image
+            key={streetViewUrl}
+            source={{ uri: streetViewUrl as string }}
+            style={StyleSheet.absoluteFillObject}
+            // Street View photos are wide landscape — cover crops cleanly
+            // to fill the 580x440 hero. (Product photos use `contain`
+            // because they're square and would lose tops/bottoms.)
+            contentFit="cover"
+            transition={200}
+            accessibilityLabel={`Street view of ${address}`}
+            onLoad={() => setImageLoaded(true)}
+            onError={() => setStreetViewFailed(true)}
+          />
+        </>
+      ) : (
+        <LinearGradient
+          colors={config.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        >
+          <View style={hh.fallbackInner}>
+            <Ionicons name={config.icon as any} size={56} color={rgba(config.accent, 0.32)} />
+            <Text style={hh.fallbackLabel} numberOfLines={1}>{address}</Text>
+          </View>
+        </LinearGradient>
+      )}
+
+      {/* Section pill — top-right, mirrors ProductCard's retailer pill.
+          We deliberately do NOT add a bottom-left address overlay here:
+          the address is already the right-pane title (single source of
+          truth), and stacking it twice would muddy the composition. */}
+      <View style={hh.sectionPill}>
+        <Text style={hh.sectionPillText} numberOfLines={1}>{sectionLabel}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Horizontal right-side info stack (section-aware)
+// ---------------------------------------------------------------------------
+
+interface PropertyHorizontalStackProps {
+  r: Record<string, any>;
+  section: string;
+  address: string;
+}
+
+function PropertyHorizontalStack({ r, section, address }: PropertyHorizontalStackProps) {
+  const headline = buildHeadline(section, r);
+
+  // City, state ZIP secondary line — falls back through several record shapes.
+  const subline =
+    [r.city, r.state, r.postal_code].filter(Boolean).join(', ')
+    || (typeof r.county === 'string' && r.county.trim() ? `${r.county} County` : '')
+    || (r.neighborhood as string | undefined)
+    || '';
+
+  // Owner footnote (only on non-ownership sections — ownership has the owner
+  // as its own headline already).
+  const ownerLine = section !== 'ownership' && typeof r.owner_name === 'string' && r.owner_name.trim()
+    ? `Owner: ${r.owner_name}`
+    : null;
+
+  const stats = (headline.stats || []).filter(Boolean) as Array<{ icon: string; value: string; label: string }>;
+  const visibleStats = stats.slice(0, 4);
+
+  const isTextHeadline = headline.bigStyle === 'text';
+  const bigColor = headline.bigColor
+    || (isTextHeadline ? Colors.text.primary : Colors.semantic.success);
+
+  return (
+    <View style={hStack.root}>
+      <Text
+        style={hStack.title}
+        numberOfLines={2}
+        accessibilityRole="header"
+      >
+        {address}
+      </Text>
+
+      {subline ? (
+        <Text style={hStack.subline} numberOfLines={1}>{subline}</Text>
+      ) : null}
+
+      {headline.bigValue ? (
+        <View style={hStack.headlineBlock}>
+          <Text
+            style={[
+              hStack.headlineValue,
+              { color: bigColor },
+              // Text headlines (owner, district, lender, sale-date) sit at
+              // a smaller scale because they're prose, not prices. Numeric
+              // headlines keep the 22px display weight.
+              isTextHeadline && hStack.headlineValueText,
+            ]}
+            numberOfLines={2}
+          >
+            {headline.bigValue}
+          </Text>
+          {headline.bigQualifier ? (
+            <Text style={hStack.headlineQualifier} numberOfLines={1}>{headline.bigQualifier}</Text>
+          ) : null}
+          {headline.bigSubline ? (
+            <Text style={hStack.headlineSubline} numberOfLines={1}>{headline.bigSubline}</Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {headline.pill ? (
+        <View style={hStack.pillRow}>
+          <Badge label={headline.pill.label} variant={headline.pill.variant || 'default'} />
+        </View>
+      ) : null}
+
+      {visibleStats.length > 0 ? (
+        <View style={hStack.statsRow}>
+          {visibleStats.map((stat, i) => (
+            <MetricChip key={`${stat.label}-${i}`} icon={stat.icon} value={stat.value} label={stat.label} />
+          ))}
+        </View>
+      ) : null}
+
+      {/* Spacer pushes footnote / owner line to the bottom, mirroring
+          ProductCard's stockSpacer flex:1 trick. */}
+      <View style={hStack.spacer} />
+
+      {headline.footnote ? (
+        <Text style={hStack.footnote} numberOfLines={1}>{headline.footnote}</Text>
+      ) : null}
+
+      {ownerLine ? (
+        <View style={hStack.ownerRow}>
+          <Ionicons name="person-outline" size={13} color={Colors.text.muted} />
+          <Text style={hStack.ownerText} numberOfLines={1}>{ownerLine}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -420,7 +881,7 @@ const HERO_HEIGHT = 200;
 const HERO_STYLE: ViewStyle = { height: HERO_HEIGHT, aspectRatio: undefined };
 
 const s = StyleSheet.create({
-  // Hero
+  // Hero (vertical legacy)
   heroInner: {
     flex: 1,
     alignItems: 'center',
@@ -463,7 +924,7 @@ const s = StyleSheet.create({
     letterSpacing: -0.2,
   },
 
-  // Value block
+  // Value block (vertical legacy)
   valueBlock: { marginBottom: Spacing.md },
   valueBig: { fontSize: 28, fontWeight: '800', color: Colors.text.primary, letterSpacing: -0.5 },
   valueSource: { fontSize: 12, color: Colors.text.muted, marginTop: 2, letterSpacing: 0.3 },
@@ -504,6 +965,133 @@ const s = StyleSheet.create({
 
   // Foreclosure
   fcRecord: { paddingVertical: Spacing.sm, marginLeft: Spacing.sm, borderLeftWidth: 2, borderLeftColor: Colors.semantic.error, paddingLeft: Spacing.sm, marginBottom: Spacing.xs },
+});
+
+// ── Horizontal hero (left pane: 580x440) ───────────────────────────────────
+const hh = StyleSheet.create({
+  pressable: {
+    flex: 1,
+    width: '100%' as unknown as number,
+    height: '100%' as unknown as number,
+    backgroundColor: Colors.background.elevated,
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'zoom-in' } as unknown as ViewStyle)
+      : {}),
+  },
+  fallbackInner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.md,
+  },
+  fallbackLabel: {
+    fontSize: 13,
+    color: Colors.text.muted,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  // Matches ProductCard.retailerPill 1:1 so a Property card sitting next to
+  // a Product card in the carousel has identical chrome.
+  sectionPill: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.md,
+    backgroundColor: Colors.surface.cardBorder,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    maxWidth: 200,
+  },
+  sectionPillText: {
+    ...Typography.small,
+    color: Colors.text.secondary,
+  },
+});
+
+// ── Horizontal right-side info stack (300x440) ─────────────────────────────
+// Locked to ProductCard's hStyles rhythm: title (17/700) → sub (small/tertiary)
+// → headline value (22/700 green) + qualifier → pill → stats row → spacer →
+// owner / footnote. Same 16px gutters, same vertical breathing.
+const hStack = StyleSheet.create({
+  root: {
+    flex: 1,
+    gap: 4,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 22,
+    color: Colors.text.primary,
+    letterSpacing: -0.2,
+  },
+  subline: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+    marginTop: 2,
+  },
+  headlineBlock: {
+    marginTop: Spacing.sm,
+  },
+  headlineValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    lineHeight: 26,
+    letterSpacing: -0.4,
+  },
+  /** When the headline is a name (owner / district) we drop the size to
+   *  match a 17px title-style scale — keeps the rhythm comfortable when
+   *  the value is long text rather than a number. */
+  headlineValueText: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  headlineQualifier: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    marginTop: 2,
+    letterSpacing: 0.2,
+  },
+  headlineSubline: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+    marginTop: 2,
+  },
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  spacer: {
+    flex: 1,
+    minHeight: Spacing.sm,
+  },
+  footnote: {
+    ...Typography.small,
+    color: Colors.text.muted,
+    marginTop: Spacing.xs,
+  },
+  ownerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  ownerText: {
+    ...Typography.small,
+    color: Colors.text.tertiary,
+    flexShrink: 1,
+  },
 });
 
 export default PropertyCard;
