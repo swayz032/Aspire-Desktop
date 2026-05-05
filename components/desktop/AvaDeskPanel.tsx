@@ -248,23 +248,38 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             });
           }
 
-          // ── Mid-tool filler narration ──────────────────────────────────────
-          // Anam emits TOOL_CALL_STARTED when Ava decides to call a backend tool
-          // (invoke_adam, invoke_quinn, etc.). Long research calls (8-15s) leave
-          // the user staring at a silent avatar — a perceived hang. We schedule
-          // two staggered fillers via client.talk() that synthesize through Ava's
-          // voice/lip-sync without polluting the conversation history.
+          // ── Tool-call narration: preamble + mid-tool fillers ───────────────
+          // Anam's LLM is non-deterministic about pre-tool acknowledgment even
+          // with a prompt rule — transcripts cc159970 (7:50:12) and 1e1cfe29
+          // (7:52:22) showed the model firing invoke_adam with zero spoken text,
+          // leaving the user staring at a silent avatar (a perceived hang).
           //
-          //   t = 6s  → first filler ("Just one more sec, almost there.")
-          //   t = 12s → second filler ("Still digging — hang tight.")
+          // Fix: deterministic client-side narration scheduled on the SDK's
+          // TOOL_CALL_STARTED event, routed through client.talk() so audio
+          // synthesizes through Ava's voice + lip-sync without polluting
+          // conversation history.
           //
-          // Both timers are CANCELED the moment TOOL_CALL_COMPLETED or _FAILED
-          // fires. show_cards is excluded — it's a frontend display tool with
-          // no measurable wait. Filler pool rotates so back-to-back tool calls
-          // don't echo the same line twice.
-          var midToolTimers = [];
-          var lastFillerIdx = -1;
-          var FILLER_FAST_TOOLS = { 'show_cards': 1 };
+          //   t = 0.4s  → preamble  ("Alright, let me take care of that.")
+          //               — SUPPRESSED if the LLM is already speaking (the
+          //                 prompt's natural preamble fired). Detected via
+          //                 MESSAGE_STREAM_EVENT_RECEIVED with role=persona
+          //                 within ~600ms of TOOL_CALL_STARTED. No double-talk.
+          //   t = 6s    → first mid-filler  ("Just one more sec, almost there.")
+          //   t = 12s   → second mid-filler ("Still digging — hang tight.")
+          //
+          // All timers are CANCELED on TOOL_CALL_COMPLETED or TOOL_CALL_FAILED.
+          // show_cards is excluded — it's a frontend display tool with no
+          // measurable wait. Pools rotate so consecutive tool calls don't echo
+          // the same line.
+          var midToolTimers: any[] = [];
+          var lastPersonaSpeechAt = 0;
+          var FILLER_FAST_TOOLS: Record<string, number> = { 'show_cards': 1 };
+          var PREAMBLE_POOL = [
+            "Alright, let me take care of that.",
+            "On it — one moment.",
+            "Pulling that up now.",
+            "Let me check that for you."
+          ];
           var FILLER_POOL_FIRST = [
             "Just one more sec, almost there.",
             "Hang on, pulling that up.",
@@ -276,51 +291,82 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             "Just another sec, close now.",
             "Pulling it together, almost there."
           ];
-          function pickFiller(pool) {
+          function pickFromPool(pool: string[], lastIdxRef: { idx: number }) {
             if (!pool.length) return null;
             var idx = Math.floor(Math.random() * pool.length);
-            // Avoid repeating the previous filler when possible.
-            if (pool.length > 1 && idx === lastFillerIdx) {
+            if (pool.length > 1 && idx === lastIdxRef.idx) {
               idx = (idx + 1) % pool.length;
             }
-            lastFillerIdx = idx;
+            lastIdxRef.idx = idx;
             return pool[idx];
           }
+          var preambleIdxRef = { idx: -1 };
+          var firstFillerIdxRef = { idx: -1 };
+          var secondFillerIdxRef = { idx: -1 };
           function clearMidToolTimers() {
             for (var i = 0; i < midToolTimers.length; i++) {
               try { clearTimeout(midToolTimers[i]); } catch (e) { /* noop */ }
             }
             midToolTimers = [];
           }
-          function speakFiller(text) {
+          function speakNarration(text: string | null, kind: 'preamble' | 'mid_first' | 'mid_second') {
             if (!text) return;
             try {
-              if (typeof client.talk === 'function') {
-                client.talk(text);
-                post({ type: 'mid_tool_filler', payload: { text: text } });
+              if (typeof (client as any).talk === 'function') {
+                (client as any).talk(text);
+                post({ type: kind === 'preamble' ? 'tool_preamble' : 'mid_tool_filler', payload: { text: text, kind: kind } });
               }
             } catch (e) {
               // SDK or session closed — swallow; no observable side-effect.
             }
           }
+          // Track persona speech so we can suppress the client preamble when
+          // the LLM is already covering the acknowledgment. We only update on
+          // non-empty persona content — empty events are stream keepalives.
+          if ((AnamEvent as any).MESSAGE_STREAM_EVENT_RECEIVED) {
+            client.addListener((AnamEvent as any).MESSAGE_STREAM_EVENT_RECEIVED, (msg: any) => {
+              try {
+                var role = msg?.role;
+                var content = msg?.content;
+                if (role === 'persona' && typeof content === 'string' && content.trim().length > 0) {
+                  lastPersonaSpeechAt = Date.now();
+                }
+              } catch (e) { /* noop */ }
+            });
+          }
 
-          client.addListener(AnamEvent.TOOL_CALL_STARTED, (event) => {
+          client.addListener(AnamEvent.TOOL_CALL_STARTED, (event: any) => {
             var toolName = event?.toolName || '';
             post({ type: 'tool_call_started', payload: { toolName: toolName, arguments: event?.arguments } });
-            // Reset any prior tool-call timers (defensive — shouldn't happen
-            // but back-to-back tools in one turn would otherwise leak).
+            // Reset any prior tool-call timers (defensive — back-to-back tools
+            // in one turn would otherwise leak).
             clearMidToolTimers();
             // Skip fast/display tools — only research tools wait on the network.
             if (FILLER_FAST_TOOLS[toolName]) return;
-            var t1 = setTimeout(function () { speakFiller(pickFiller(FILLER_POOL_FIRST)); }, 6000);
-            var t2 = setTimeout(function () { speakFiller(pickFiller(FILLER_POOL_SECOND)); }, 12000);
-            midToolTimers = [t1, t2];
+            var tStart = Date.now();
+            // Preamble fires at 400ms unless the LLM is already speaking.
+            // Suppression window: persona spoke within 600ms before TOOL_CALL_STARTED
+            // OR speaks during the 400ms wait. That covers both the "LLM emits
+            // contextual preamble then tool" pattern and the "LLM speaks
+            // simultaneously" pattern. No double-acknowledgment.
+            var tPreamble = setTimeout(function () {
+              var now = Date.now();
+              var personaSpokeRecently = (lastPersonaSpeechAt >= tStart - 600) && (lastPersonaSpeechAt <= now);
+              if (personaSpokeRecently) {
+                post({ type: 'tool_preamble_skipped', payload: { reason: 'persona_speaking', toolName: toolName } });
+                return;
+              }
+              speakNarration(pickFromPool(PREAMBLE_POOL, preambleIdxRef), 'preamble');
+            }, 400);
+            var t1 = setTimeout(function () { speakNarration(pickFromPool(FILLER_POOL_FIRST, firstFillerIdxRef), 'mid_first'); }, 6000);
+            var t2 = setTimeout(function () { speakNarration(pickFromPool(FILLER_POOL_SECOND, secondFillerIdxRef), 'mid_second'); }, 12000);
+            midToolTimers = [tPreamble, t1, t2];
           });
-          client.addListener(AnamEvent.TOOL_CALL_COMPLETED, (event) => {
+          client.addListener(AnamEvent.TOOL_CALL_COMPLETED, (event: any) => {
             clearMidToolTimers();
             post({ type: 'tool_call_completed', payload: { toolName: event?.toolName, executionTime: event?.executionTime } });
           });
-          client.addListener(AnamEvent.TOOL_CALL_FAILED, (event) => {
+          client.addListener(AnamEvent.TOOL_CALL_FAILED, (event: any) => {
             clearMidToolTimers();
             post({ type: 'tool_call_failed', payload: { toolName: event?.toolName, errorMessage: event?.errorMessage } });
           });
