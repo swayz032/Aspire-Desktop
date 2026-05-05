@@ -104,15 +104,21 @@ function ltvColor(ltv: number): string {
 
 // Section hero config: icon, gradient, accent color
 const HERO_CONFIG: Record<string, { icon: string; gradient: [string, string]; accent: string }> = {
-  overview:     { icon: 'home-outline',       gradient: ['#1a2744', '#0f1923'], accent: '#3B82F6' },
-  ownership:    { icon: 'person-outline',     gradient: ['#1a2744', '#1a1f2e'], accent: '#A78BFA' },
-  mortgage:     { icon: 'cash-outline',       gradient: ['#1a2a1a', '#0f1f14'], accent: '#10B981' },
-  valuation:    { icon: 'trending-up-outline', gradient: ['#2a2a1a', '#1f1a0f'], accent: '#F59E0B' },
-  sale_history: { icon: 'swap-horizontal-outline', gradient: ['#2a1a2a', '#1f0f1a'], accent: '#EC4899' },
-  rental:       { icon: 'key-outline',        gradient: ['#1a2a2a', '#0f1f1f'], accent: '#06B6D4' },
-  permits:      { icon: 'construct-outline',  gradient: ['#2a2a1a', '#1f1f0f'], accent: '#F97316' },
-  schools:      { icon: 'school-outline',     gradient: ['#1a1a2a', '#0f0f1f'], accent: '#6366F1' },
-  foreclosure:  { icon: 'warning-outline',    gradient: ['#2a1a1a', '#1f0f0f'], accent: '#EF4444' },
+  overview:             { icon: 'home-outline',             gradient: ['#1a2744', '#0f1923'], accent: '#3B82F6' },
+  ownership:            { icon: 'person-outline',           gradient: ['#1a2744', '#1a1f2e'], accent: '#A78BFA' },
+  mortgage:             { icon: 'cash-outline',             gradient: ['#1a2a1a', '#0f1f14'], accent: '#10B981' },
+  valuation:            { icon: 'trending-up-outline',      gradient: ['#2a2a1a', '#1f1a0f'], accent: '#F59E0B' },
+  avm_history:          { icon: 'stats-chart-outline',      gradient: ['#2a261a', '#1f1a0f'], accent: '#FBBF24' },
+  sale_history:         { icon: 'swap-horizontal-outline',  gradient: ['#2a1a2a', '#1f0f1a'], accent: '#EC4899' },
+  transaction_history:  { icon: 'receipt-outline',          gradient: ['#1a1a2e', '#0f0f1f'], accent: '#A78BFA' },
+  comps:                { icon: 'grid-outline',             gradient: ['#1a262a', '#0f1a1f'], accent: '#0EA5E9' },
+  rental:               { icon: 'key-outline',              gradient: ['#1a2a2a', '#0f1f1f'], accent: '#06B6D4' },
+  permits:              { icon: 'construct-outline',        gradient: ['#2a2a1a', '#1f1f0f'], accent: '#F97316' },
+  schools:              { icon: 'school-outline',           gradient: ['#1a1a2a', '#0f0f1f'], accent: '#6366F1' },
+  community:            { icon: 'people-outline',           gradient: ['#1a2a26', '#0f1f1a'], accent: '#22D3EE' },
+  poi:                  { icon: 'compass-outline',          gradient: ['#1a262e', '#0f1a23'], accent: '#38BDF8' },
+  salestrend:           { icon: 'analytics-outline',        gradient: ['#26261a', '#1f1f0f'], accent: '#FACC15' },
+  foreclosure:          { icon: 'warning-outline',          gradient: ['#2a1a1a', '#1f0f0f'], accent: '#EF4444' },
 };
 
 function propTypeLabel(propType: string): string {
@@ -340,16 +346,249 @@ function ForeclosureSection({ r }: { r: Record<string, any> }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// W3 — additional section renderers (avm_history, transaction_history, comps,
+// community, poi, salestrend). Each one paralleling the existing renderers'
+// shape (DataRow / MiniRow / Badge primitives, no novel layout).
+// ---------------------------------------------------------------------------
+
+function AvmHistorySection({ r }: { r: Record<string, any> }) {
+  const points = Array.isArray(r.avm_history) ? r.avm_history : [];
+  if (points.length === 0) {
+    return <DataRow label="AVM History" value="—" />;
+  }
+  const latest = points[0];
+  const oldest = points[points.length - 1];
+  const delta = latest?.value && oldest?.value
+    ? ((latest.value - oldest.value) / oldest.value) * 100
+    : null;
+  return (
+    <>
+      <DataRow label="Latest AVM" value={latest?.value ? fmtDollar(latest.value) : null} />
+      <DataRow label="Latest Date" value={latest?.date} />
+      <DataRow label="Confidence" value={latest?.confidence_score != null ? `${latest.confidence_score}/100` : null} />
+      {delta != null && (
+        <DataRow
+          label={`Δ since ${oldest?.date || 'first'}`}
+          value={fmtPercent(delta)}
+          color={delta >= 0 ? Colors.semantic.success : Colors.semantic.error}
+        />
+      )}
+      <SectionHeader title="Recent Snapshots" />
+      {points.slice(0, 8).map((pt: any, i: number) => (
+        <MiniRow
+          key={i}
+          left={pt.date || '—'}
+          right={pt.value ? fmtDollar(pt.value) : '—'}
+          sub={pt.value_low && pt.value_high ? `${fmtDollar(pt.value_low)} – ${fmtDollar(pt.value_high)}` : ''}
+        />
+      ))}
+    </>
+  );
+}
+
+function TransactionHistorySection({ r }: { r: Record<string, any> }) {
+  const events = Array.isArray(r.transaction_history) ? r.transaction_history : [];
+  if (events.length === 0) {
+    return <DataRow label="Transaction History" value="—" />;
+  }
+  return (
+    <>
+      <DataRow label="Total Events" value={events.length} />
+      <SectionHeader title="Recorded Timeline" />
+      {events.slice(0, 12).map((ev: any, i: number) => (
+        <View key={i} style={s.permitRow}>
+          <View style={s.permitHeader}>
+            <Text style={s.permitDate}>{ev.date || '—'}</Text>
+            {ev.type ? <Badge label={ev.type} /> : null}
+          </View>
+          {ev.amount != null ? <Text style={s.permitDesc}>{fmtDollar(ev.amount)}</Text> : null}
+          {ev.lender ? <Text style={s.permitType}>Lender: {ev.lender}</Text> : null}
+          {ev.transferor || ev.transferee ? (
+            <Text style={s.permitType} numberOfLines={2}>
+              {ev.transferor ? `From: ${ev.transferor}` : ''}
+              {ev.transferor && ev.transferee ? '  ·  ' : ''}
+              {ev.transferee ? `To: ${ev.transferee}` : ''}
+            </Text>
+          ) : null}
+          {ev.doc_number ? <Text style={s.permitType}>Doc # {ev.doc_number}</Text> : null}
+        </View>
+      ))}
+    </>
+  );
+}
+
+function CompsSection({ r }: { r: Record<string, any> }) {
+  const comps = Array.isArray(r.comps) ? r.comps : [];
+  if (comps.length === 0) {
+    return <DataRow label="Comparable Sales" value="—" />;
+  }
+  const totalSold = comps.filter((c: any) => c.last_sale_amount).length;
+  const avgSale = totalSold > 0
+    ? comps.filter((c: any) => c.last_sale_amount).reduce((sum: number, c: any) => sum + Number(c.last_sale_amount), 0) / totalSold
+    : null;
+  return (
+    <>
+      <DataRow label="Comp Count" value={comps.length} />
+      <DataRow label="Avg Sale Price" value={avgSale ? fmtDollar(avgSale) : null} />
+      <SectionHeader title="Nearby Comps" />
+      {comps.slice(0, 10).map((c: any, i: number) => (
+        <MiniRow
+          key={i}
+          left={c.address || '—'}
+          right={c.last_sale_amount ? fmtDollar(c.last_sale_amount) : '—'}
+          sub={[
+            c.distance_miles != null ? `${Number(c.distance_miles).toFixed(2)} mi` : '',
+            c.beds ? `${c.beds}bd` : '',
+            c.baths ? `${c.baths}ba` : '',
+            c.living_sqft ? `${c.living_sqft} sqft` : '',
+            c.last_sale_date || '',
+          ].filter(Boolean).join('  ·  ')}
+        />
+      ))}
+    </>
+  );
+}
+
+function CommunitySection({ r }: { r: Record<string, any> }) {
+  const c = (r.community || {}) as Record<string, any>;
+  const hasData = Object.values(c).some(v => v != null && v !== '');
+  if (!hasData) {
+    return <DataRow label="Community Data" value="—" />;
+  }
+  return (
+    <>
+      <DataRow label="Population" value={c.population != null ? Number(c.population).toLocaleString() : null} />
+      <DataRow label="Density" value={c.population_density_sq_mi ? `${Math.round(c.population_density_sq_mi)} per sq mi` : null} />
+      <DataRow label="Median Age" value={c.median_age != null ? Number(c.median_age).toFixed(1) : null} />
+      <DataRow label="Median Income" value={c.median_household_income ? fmtDollar(c.median_household_income) : null} />
+      <DataRow label="Median Home Value" value={c.median_home_value ? fmtDollar(c.median_home_value) : null} />
+      <SectionHeader title="Housing" />
+      <DataRow label="Owner Occupied" value={c.owner_occupied_pct != null ? fmtPercent(c.owner_occupied_pct) : null} />
+      <DataRow label="Renter Occupied" value={c.renter_occupied_pct != null ? fmtPercent(c.renter_occupied_pct) : null} />
+      <DataRow label="Vacancy Rate" value={c.vacancy_pct != null ? fmtPercent(c.vacancy_pct) : null} />
+      <SectionHeader title="Safety & Employment" />
+      <DataRow
+        label="Crime Index"
+        value={c.crime_index != null ? `${Math.round(c.crime_index)}/100` : null}
+        color={c.crime_index != null && c.crime_index > 50 ? Colors.semantic.warning : undefined}
+      />
+      <DataRow label="Violent Crime" value={c.violent_crime_index != null ? `${Math.round(c.violent_crime_index)}/100` : null} />
+      <DataRow label="Property Crime" value={c.property_crime_index != null ? `${Math.round(c.property_crime_index)}/100` : null} />
+      <DataRow label="Unemployment" value={c.unemployment_pct != null ? fmtPercent(c.unemployment_pct) : null} />
+      <SectionHeader title="Climate & Education" />
+      <DataRow label="Avg Temp" value={c.weather_avg_temp_f != null ? `${Number(c.weather_avg_temp_f).toFixed(0)}°F` : null} />
+      <DataRow label="Annual Rainfall" value={c.weather_avg_rainfall_in != null ? `${Number(c.weather_avg_rainfall_in).toFixed(1)}"` : null} />
+      <DataRow label="High School+" value={c.education_high_school_pct != null ? fmtPercent(c.education_high_school_pct) : null} />
+      <DataRow label="Bachelor's+" value={c.education_bachelors_pct != null ? fmtPercent(c.education_bachelors_pct) : null} />
+    </>
+  );
+}
+
+function PoiSection({ r }: { r: Record<string, any> }) {
+  const pois = Array.isArray(r.poi) ? r.poi : [];
+  if (pois.length === 0) {
+    return <DataRow label="Points of Interest" value="—" />;
+  }
+  // Group by category for a slightly more readable list.
+  const grouped: Record<string, any[]> = {};
+  for (const p of pois) {
+    const key = p.category || 'Other';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(p);
+  }
+  return (
+    <>
+      <DataRow label="POIs Within 5 mi" value={pois.length} />
+      {Object.entries(grouped).slice(0, 6).map(([cat, items]) => (
+        <View key={cat}>
+          <SectionHeader title={cat} />
+          {items.slice(0, 5).map((p: any, i: number) => (
+            <MiniRow
+              key={i}
+              left={p.name || '—'}
+              right={p.distance_miles != null ? `${Number(p.distance_miles).toFixed(2)} mi` : ''}
+              sub={[p.lob || p.industry || '', p.address || ''].filter(Boolean).join('  ·  ')}
+            />
+          ))}
+        </View>
+      ))}
+    </>
+  );
+}
+
+function SalesTrendSection({ r }: { r: Record<string, any> }) {
+  const t = (r.salestrend || {}) as Record<string, any>;
+  const monthly = Array.isArray(t.monthly) ? t.monthly : [];
+  const quarterly = Array.isArray(t.quarterly) ? t.quarterly : [];
+  const yearly = Array.isArray(t.yearly) ? t.yearly : [];
+  if (!t.latest_period && monthly.length === 0 && quarterly.length === 0 && yearly.length === 0) {
+    return <DataRow label="Sales Trend" value="—" />;
+  }
+  return (
+    <>
+      <DataRow label="Latest Period" value={t.latest_period} />
+      <DataRow label="Median Sale Price" value={t.latest_median_sale_price ? fmtDollar(t.latest_median_sale_price) : null} />
+      <DataRow label="Sales in Period" value={t.latest_sale_count} />
+      {monthly.length > 0 && (
+        <>
+          <SectionHeader title="Monthly (Last 12)" />
+          {monthly.slice(0, 12).map((m: any, i: number) => (
+            <MiniRow
+              key={i}
+              left={m.period || '—'}
+              right={m.median_sale_price ? fmtDollar(m.median_sale_price) : '—'}
+              sub={m.sale_count != null ? `${m.sale_count} sales` : ''}
+            />
+          ))}
+        </>
+      )}
+      {monthly.length === 0 && quarterly.length > 0 && (
+        <>
+          <SectionHeader title="Quarterly" />
+          {quarterly.slice(0, 8).map((q: any, i: number) => (
+            <MiniRow
+              key={i}
+              left={q.period || '—'}
+              right={q.median_sale_price ? fmtDollar(q.median_sale_price) : '—'}
+              sub={q.sale_count != null ? `${q.sale_count} sales` : ''}
+            />
+          ))}
+        </>
+      )}
+      {monthly.length === 0 && quarterly.length === 0 && yearly.length > 0 && (
+        <>
+          <SectionHeader title="Yearly" />
+          {yearly.map((y: any, i: number) => (
+            <MiniRow
+              key={i}
+              left={y.period || '—'}
+              right={y.median_sale_price ? fmtDollar(y.median_sale_price) : '—'}
+              sub={y.sale_count != null ? `${y.sale_count} sales` : ''}
+            />
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
 // Section key → renderer
 const SECTION_RENDERERS: Record<string, React.FC<{ r: Record<string, any> }>> = {
   overview: OverviewSection,
   ownership: OwnershipSection,
   mortgage: MortgageSection,
   valuation: ValuationSection,
+  avm_history: AvmHistorySection,
   sale_history: SaleHistorySection,
+  transaction_history: TransactionHistorySection,
+  comps: CompsSection,
   rental: RentalSection,
   permits: PermitsSection,
   schools: SchoolsSection,
+  community: CommunitySection,
+  poi: PoiSection,
+  salestrend: SalesTrendSection,
   foreclosure: ForeclosureSection,
 };
 
@@ -543,6 +782,127 @@ function buildHeadline(section: string, r: Record<string, any>): HorizontalHeadl
         ],
         pill: r.reo_flag ? { label: 'REO / Bank-Owned', variant: 'red' } : null,
         footnote: next?.auction_location || null,
+      };
+    }
+
+    case 'avm_history': {
+      const points = Array.isArray(r.avm_history) ? r.avm_history : [];
+      const latest = points[0] || {};
+      const oldest = points[points.length - 1] || {};
+      const delta = latest.value && oldest.value
+        ? ((latest.value - oldest.value) / oldest.value) * 100
+        : null;
+      return {
+        bigValue: latest.value ? fmtDollar(latest.value) : null,
+        bigQualifier: latest.date ? `AVM ${latest.date}` : 'Latest AVM',
+        bigSubline: oldest.date && oldest.date !== latest.date ? `Since ${oldest.date}` : null,
+        stats: [
+          delta != null ? {
+            icon: delta >= 0 ? 'trending-up-outline' : 'trending-down-outline',
+            value: fmtPercent(delta),
+            label: 'Δ',
+          } : null,
+          latest.confidence_score != null ? { icon: 'pulse-outline', value: `${latest.confidence_score}`, label: '/100' } : null,
+          { icon: 'list-outline', value: String(points.length), label: 'snapshots' },
+        ],
+        pill: null,
+        footnote: latest.value_low && latest.value_high
+          ? `${fmtDollar(latest.value_low)} – ${fmtDollar(latest.value_high)}`
+          : null,
+      };
+    }
+
+    case 'transaction_history': {
+      const events = Array.isArray(r.transaction_history) ? r.transaction_history : [];
+      const newest = events[0] || {};
+      return {
+        bigValue: events.length > 0 ? String(events.length) : null,
+        bigQualifier: events.length === 1 ? 'Recorded Event' : 'Recorded Events',
+        bigStyle: 'number',
+        bigColor: Colors.text.primary,
+        bigSubline: newest.date ? `Most recent: ${newest.date}` : null,
+        stats: [
+          newest.type ? { icon: 'pricetag-outline', value: String(newest.type), label: '' } : null,
+          newest.amount ? { icon: 'cash-outline', value: fmtDollar(newest.amount), label: '' } : null,
+          newest.lender ? { icon: 'business-outline', value: String(newest.lender).slice(0, 18), label: '' } : null,
+        ],
+        pill: null,
+      };
+    }
+
+    case 'comps': {
+      const comps = Array.isArray(r.comps) ? r.comps : [];
+      const sold = comps.filter((c: any) => c.last_sale_amount);
+      const avgSale = sold.length > 0
+        ? sold.reduce((sum: number, c: any) => sum + Number(c.last_sale_amount), 0) / sold.length
+        : null;
+      const minDist = comps.reduce((min: number, c: any) => {
+        const d = Number(c.distance_miles);
+        return Number.isFinite(d) && d < min ? d : min;
+      }, Infinity);
+      return {
+        bigValue: avgSale ? fmtDollar(avgSale) : (comps.length > 0 ? String(comps.length) : null),
+        bigQualifier: avgSale ? 'Avg Comp Sale' : 'Comparables',
+        bigSubline: comps.length > 0 ? `${comps.length} comps within ${Number.isFinite(minDist) ? minDist.toFixed(2) : '5.0'} mi` : null,
+        stats: [
+          { icon: 'grid-outline', value: String(comps.length), label: 'comps' },
+          comps[0]?.living_sqft ? { icon: 'resize-outline', value: fmtSqft(comps[0].living_sqft), label: '' } : null,
+        ],
+        pill: null,
+      };
+    }
+
+    case 'community': {
+      const c = (r.community || {}) as Record<string, any>;
+      return {
+        bigValue: c.median_household_income ? fmtDollar(c.median_household_income) : null,
+        bigQualifier: 'Median Income',
+        bigSubline: c.population != null ? `Pop. ${Number(c.population).toLocaleString()}` : null,
+        stats: [
+          c.crime_index != null ? { icon: 'shield-outline', value: `${Math.round(c.crime_index)}`, label: 'Crime /100' } : null,
+          c.unemployment_pct != null ? { icon: 'briefcase-outline', value: fmtPercent(c.unemployment_pct), label: 'Unemp.' } : null,
+          c.owner_occupied_pct != null ? { icon: 'home-outline', value: fmtPercent(c.owner_occupied_pct), label: 'Owner-occ.' } : null,
+          c.median_home_value ? { icon: 'cash-outline', value: fmtDollar(c.median_home_value), label: 'Median home' } : null,
+        ],
+        pill: c.crime_index != null
+          ? {
+              label: c.crime_index < 35 ? 'Low Crime' : c.crime_index < 65 ? 'Moderate' : 'Elevated',
+              variant: c.crime_index < 35 ? 'green' : c.crime_index < 65 ? 'amber' : 'red',
+            }
+          : null,
+      };
+    }
+
+    case 'poi': {
+      const pois = Array.isArray(r.poi) ? r.poi : [];
+      const closest = pois[0] || {};
+      const categories = new Set(pois.map((p: any) => p.category).filter(Boolean));
+      return {
+        bigValue: pois.length > 0 ? String(pois.length) : null,
+        bigQualifier: 'Nearby Points of Interest',
+        bigStyle: 'number',
+        bigColor: Colors.text.primary,
+        bigSubline: closest.name
+          ? `Closest: ${closest.name}${closest.distance_miles != null ? ` (${Number(closest.distance_miles).toFixed(2)} mi)` : ''}`
+          : null,
+        stats: [
+          { icon: 'apps-outline', value: String(categories.size), label: 'categories' },
+        ],
+        pill: null,
+      };
+    }
+
+    case 'salestrend': {
+      const t = (r.salestrend || {}) as Record<string, any>;
+      return {
+        bigValue: t.latest_median_sale_price ? fmtDollar(t.latest_median_sale_price) : null,
+        bigQualifier: 'Median Sale Price',
+        bigSubline: t.latest_period ? `Period: ${t.latest_period}` : null,
+        stats: [
+          t.latest_sale_count != null ? { icon: 'trending-up-outline', value: String(t.latest_sale_count), label: 'sales' } : null,
+          Array.isArray(t.monthly) && t.monthly.length > 0 ? { icon: 'calendar-outline', value: String(t.monthly.length), label: 'months' } : null,
+        ],
+        pill: null,
       };
     }
 
