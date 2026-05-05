@@ -230,14 +230,33 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           // version before 4.13.0 (2026-04-13) which appears to have
           // introduced the connection hang we're debugging. Bump this
           // version intentionally after testing.
-          console.log('[AvaIframe] start: importing Anam SDK 4.12.0…');
-          const sdk = await import('https://esm.sh/@anam-ai/js-sdk@4.12.0');
-          const types = await import('https://esm.sh/@anam-ai/js-sdk@4.12.0/dist/module/types');
+          console.log('[AvaIframe] start: importing Anam SDK 4.12.0 (self-hosted)…');
+          // Self-hosted same-origin bundle — built by scripts/build-anam-sdk.mjs,
+          // served by Express from public/vendor/anam/<version>/index.js with
+          // immutable caching. Removes esm.sh as a SPOF and tightens CSP.
+          // Version is path-pinned so cache invalidates atomically on bump.
+          const sdkImportTimeout = new Promise(function (_, reject) {
+            setTimeout(function () { reject(new Error('SDK_IMPORT_TIMEOUT')); }, 10000);
+          });
+          const sdk = await Promise.race([
+            import('/vendor/anam/4.12.0/index.js'),
+            sdkImportTimeout,
+          ]);
+          // The bundle re-exports AnamEvent and ConnectionClosedCode from the
+          // same module — no separate /types import needed (one fewer request,
+          // one fewer hang point).
+          const types = sdk;
           console.log('[AvaIframe] SDK loaded, sessionToken length:', (sessionToken || '').length);
+          // Aligned with Anam docs: createClient(sessionToken, options).
+          // voiceDetection here is the client-side override — server-side
+          // voiceDetectionOptions on the persona is the source of truth, but
+          // passing it here protects against a stale persona definition.
+          var clientOptions = {
+            sessionOptions: { videoQuality: 'high' },
+            voiceDetection: { endOfSpeechSensitivity: 0.7 },
+          };
           try {
-            client = sdk.createClient(sessionToken, {
-              sessionOptions: { videoQuality: 'high' },
-            });
+            client = sdk.createClient(sessionToken, clientOptions);
             console.log('[AvaIframe] client created with sessionOptions');
           } catch (e) {
             console.warn('[AvaIframe] createClient with sessionOptions failed, falling back to single-arg', e);
@@ -459,18 +478,50 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           client.addListener(AnamEvent.CONNECTION_CLOSED, (code) => {
             console.warn('[AvaIframe] CONNECTION_CLOSED', code);
             clearMidToolTimers();
-            post({ type: 'closed', code });
+            // Anam's ConnectionClosedCode is a numeric/string enum. Forward
+            // both the raw value and a human label so the parent can render
+            // the actual reason (auth failure, ICE failure, server kill, etc.)
+            // instead of a generic "Connect failed".
+            var closedLabel = '';
+            try {
+              if (types && types.ConnectionClosedCode) {
+                for (var k in types.ConnectionClosedCode) {
+                  if (types.ConnectionClosedCode[k] === code) { closedLabel = k; break; }
+                }
+              }
+            } catch (e) { /* noop */ }
+            post({ type: 'closed', code: code, codeLabel: closedLabel });
           });
 
           console.log('[AvaIframe] all listeners registered, calling streamToVideoElement…');
-          await client.streamToVideoElement('anam-video');
-          console.log('[AvaIframe] streamToVideoElement returned');
+          // Inner timeout: if Anam never reaches SESSION_READY/CONNECTION_ESTABLISHED
+          // and streamToVideoElement neither resolves nor throws, kill it at 25s
+          // (parent has a 40s outer timer — inner fires first with a real error).
+          var streamTimeoutId = null;
+          var streamTimeoutPromise = new Promise(function (_, reject) {
+            streamTimeoutId = setTimeout(function () {
+              reject(new Error('STREAM_TIMEOUT: streamToVideoElement did not resolve within 25s — likely WebRTC ICE failure, mic permission denied, or Anam media-server unreachable. Check connect-eu.anam.ai / connect-us.anam.ai reachability and TURN whitelist.'));
+            }, 25000);
+          });
+          try {
+            await Promise.race([
+              client.streamToVideoElement('anam-video'),
+              streamTimeoutPromise,
+            ]);
+            console.log('[AvaIframe] streamToVideoElement returned');
+          } finally {
+            if (streamTimeoutId) clearTimeout(streamTimeoutId);
+          }
         } catch (error) {
           console.error('[AvaIframe] bootstrap failed', error);
-          setStatus('Unable to start Ava video');
+          var msg = error instanceof Error ? error.message : 'Unable to start Ava video';
+          setStatus(msg.length > 80 ? msg.slice(0, 77) + '…' : msg);
           post({
             type: 'error',
-            message: error instanceof Error ? error.message : 'Unable to start Ava video',
+            message: msg,
+            stage: msg.indexOf('SDK_IMPORT_TIMEOUT') >= 0 ? 'sdk_import'
+                 : msg.indexOf('STREAM_TIMEOUT') >= 0 ? 'stream'
+                 : 'bootstrap',
           });
         }
       };
@@ -926,6 +977,11 @@ function AvaDeskPanelInner() {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      // 15s budget for the session-mint fetch. Without this, a stalled
+      // Supabase pooler or Anam token mint masquerades as "stuck connecting".
+      const fetchAbort = (typeof AbortSignal !== 'undefined' && (AbortSignal as any).timeout)
+        ? (AbortSignal as any).timeout(15000)
+        : undefined;
       const resp = await fetch('/api/anam/session', {
         method: 'POST',
         headers,
@@ -933,8 +989,16 @@ function AvaDeskPanelInner() {
           persona: 'ava',
           profile: avaProfileFallback,
         }),
+        signal: fetchAbort,
       });
-      if (!resp.ok) throw new Error(`Session failed: ${resp.status}`);
+      if (!resp.ok) {
+        let detail = '';
+        try {
+          const j = await resp.json();
+          detail = j?.error || j?.message || '';
+        } catch { /* non-JSON body */ }
+        throw new Error(`Session ${resp.status}${detail ? ': ' + detail : ''}`);
+      }
       const data = await resp.json();
       if (!data.sessionToken) throw new Error('No session token returned');
       setAnamSessionToken(data.sessionToken);
@@ -942,13 +1006,16 @@ function AvaDeskPanelInner() {
       connectionTimeouts.current.push(setTimeout(() => {
         setAnamSessionToken(null);
         setVideoState('idle');
-        setConnectionStatus('Connect failed');
+        setConnectionStatus('Connect failed: video did not start within 40s');
       }, 40000));
     } catch (err) {
       clearConnectionTimeouts();
       setAnamSessionToken(null);
       setVideoState('idle');
-      setConnectionStatus('Connect failed');
+      const reason = err instanceof Error
+        ? (err.name === 'TimeoutError' ? 'session mint timed out (15s)' : err.message)
+        : 'unknown error';
+      setConnectionStatus(`Connect failed: ${reason}`);
     }
   }, [avaProfileFallback, clearConnectionTimeouts, videoState, session?.access_token]);
 
@@ -968,14 +1035,17 @@ function AvaDeskPanelInner() {
         clearConnectionTimeouts();
         setAnamSessionToken(null);
         setVideoState('idle');
-        setConnectionStatus('Connect failed');
+        const stage = event.data.stage ? ` [${event.data.stage}]` : '';
+        const msg = event.data.message ? `: ${event.data.message}` : '';
+        setConnectionStatus(`Connect failed${stage}${msg}`.slice(0, 240));
         return;
       }
       if (event.data.type === 'closed') {
         clearConnectionTimeouts();
         setAnamSessionToken(null);
         setVideoState('idle');
-        setConnectionStatus('Session ended');
+        const label = event.data.codeLabel || event.data.code;
+        setConnectionStatus(label ? `Session ended (${label})` : 'Session ended');
         return;
       }
       if (event.data.type === 'show_cards') {

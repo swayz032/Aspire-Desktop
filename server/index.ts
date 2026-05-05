@@ -395,7 +395,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://esm.sh", "https://source.zoom.us", "https://zoom.us", "https://*.zoom.us"],
+      // esm.sh removed 2026-05-05: @anam-ai/js-sdk now self-hosted at
+      // /vendor/anam/<version>/index.js (built by scripts/build-anam-sdk.mjs).
+      // If any future feature needs esm.sh, prefer self-hosting via the same
+      // /vendor pattern instead of widening CSP.
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://cdn.plaid.com", "https://elevenlabs.io", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://source.zoom.us", "https://zoom.us", "https://*.zoom.us"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://source.zoom.us", "https://zoom.us"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: [
@@ -421,7 +425,6 @@ app.use(helmet({
         "https://api.deepgram.com",
         "wss://api.deepgram.com",
         "https://cdn.jsdelivr.net",
-        "https://esm.sh",
         "https://*.sentry.io",
         "https://*.ingest.sentry.io",
         "https://unpkg.com",
@@ -987,6 +990,63 @@ app.use('/assets', express.static(path.join(distPath, 'assets'), {
 app.use('/_expo', express.static(path.join(distPath, '_expo'), {
   maxAge: '1y',
   immutable: true,
+}));
+
+// Vendor SDK health endpoint — lightweight monitoring probe for the
+// self-hosted Anam SDK bundle. Returns version, size, mtime, sha256 so
+// external monitors (UptimeRobot, Better Stack, etc.) can detect:
+//   • a deploy that skipped the build:anam-sdk step (404 or missing file)
+//   • a corrupted bundle (sha256 mismatch vs known-good)
+//   • drift between the path version and what the iframe imports
+// Registered BEFORE the static handler so the static fallback can't
+// accidentally serve a 404 HTML page when the bundle is missing.
+app.get('/vendor/anam/_health', (req, res) => {
+  try {
+    const vendorAnamDir = path.join(publicPath, 'vendor', 'anam');
+    const fs = require('fs');
+    if (!fs.existsSync(vendorAnamDir)) {
+      return res.status(503).json({ ok: false, error: 'BUNDLE_MISSING', detail: 'public/vendor/anam not built — run `npm run build:anam-sdk`' });
+    }
+    const versions = fs.readdirSync(vendorAnamDir).filter((d: string) => /^\d+\.\d+\.\d+/.test(d));
+    if (versions.length === 0) {
+      return res.status(503).json({ ok: false, error: 'NO_VERSIONS', detail: 'no versioned bundles present' });
+    }
+    const bundles = versions.map((v: string) => {
+      const p = path.join(vendorAnamDir, v, 'index.js');
+      if (!fs.existsSync(p)) return { version: v, ok: false, error: 'INDEX_MISSING' };
+      const stat = fs.statSync(p);
+      const buf = fs.readFileSync(p);
+      const sha256 = require('crypto').createHash('sha256').update(buf).digest('hex');
+      return {
+        version: v,
+        ok: true,
+        sizeBytes: stat.size,
+        sizeKB: Math.round((stat.size / 1024) * 10) / 10,
+        mtime: stat.mtime.toISOString(),
+        sha256,
+        path: `/vendor/anam/${v}/index.js`,
+      };
+    });
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.json({ ok: bundles.every((b: any) => b.ok), bundles });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: 'HEALTH_CHECK_FAILED', detail: e?.message || String(e) });
+  }
+});
+
+// Vendored third-party SDKs (e.g., @anam-ai/js-sdk) — version-pinned in
+// the path (/vendor/<pkg>/<version>/index.js) so we can cache forever and
+// invalidate by bumping the version. Built by scripts/build-anam-sdk.mjs
+// during `npm run build` (Railway runs this on deploy).
+app.use('/vendor', express.static(path.join(publicPath, 'vendor'), {
+  maxAge: '1y',
+  immutable: true,
+  etag: false,
+  setHeaders: (res) => {
+    // Same-origin fetch — explicit CORP keeps it loadable from any
+    // COEP context (credentialless, require-corp, etc.) without surprises.
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  },
 }));
 
 // Non-hashed static files (favicon, public/)
