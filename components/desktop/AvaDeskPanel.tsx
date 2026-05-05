@@ -225,10 +225,14 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           // Pin the Anam SDK version. Previously was @latest which is a
           // moving target — if Anam ships a breaking change the iframe
           // silently hangs on streamToVideoElement with no console error.
-          // Bump this version intentionally after testing.
-          console.log('[AvaIframe] start: importing Anam SDK 4.13.0…');
-          const sdk = await import('https://esm.sh/@anam-ai/js-sdk@4.13.0');
-          const types = await import('https://esm.sh/@anam-ai/js-sdk@4.13.0/dist/module/types');
+          //
+          // Pinned to 4.12.0 (published 2026-03-18) — the last stable
+          // version before 4.13.0 (2026-04-13) which appears to have
+          // introduced the connection hang we're debugging. Bump this
+          // version intentionally after testing.
+          console.log('[AvaIframe] start: importing Anam SDK 4.12.0…');
+          const sdk = await import('https://esm.sh/@anam-ai/js-sdk@4.12.0');
+          const types = await import('https://esm.sh/@anam-ai/js-sdk@4.12.0/dist/module/types');
           console.log('[AvaIframe] SDK loaded, sessionToken length:', (sessionToken || '').length);
           try {
             client = sdk.createClient(sessionToken, {
