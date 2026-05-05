@@ -27,7 +27,7 @@
     "sentry:release:web": "node scripts/sentry-release.mjs web",
     "sync-agents": "node scripts/sync-elevenlabs-ava.mjs && node scripts/sync-elevenlabs-finn.mjs && node scripts/sync-elevenlabs-eli.mjs && node scripts/sync-elevenlabs-nora.mjs && node scripts/sync-elevenlabs-sarah-receptionist.mjs && node scripts/sync-elevenlabs-sarah-frontdesk.mjs && node scripts/sync-anam-ava-canonical.mjs && node scripts/sync-anam-finn.mjs",
     "sync-agent:ava": "node scripts/sync-elevenlabs-ava.mjs && node scripts/sync-anam-ava-canonical.mjs",
-    "upload-kb:ava-anam": "node scripts/upload_kb_docs_anam.mjs",
+    "check-anam-kb": "node scripts/check-anam-kb.mjs",
     "sync-agent:finn": "node scripts/sync-elevenlabs-finn.mjs && node scripts/sync-anam-finn.mjs",
     "sync-agent:eli": "node scripts/sync-elevenlabs-eli.mjs",
     "sync-agent:nora": "node scripts/sync-elevenlabs-nora.mjs",
