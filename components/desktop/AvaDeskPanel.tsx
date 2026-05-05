@@ -222,21 +222,26 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
 
       const start = async () => {
         try {
-          const sdk = await import('https://esm.sh/@anam-ai/js-sdk@latest');
-          const types = await import('https://esm.sh/@anam-ai/js-sdk@latest/dist/module/types');
-          // Round 7 B.1: opt into high-bitrate video via sessionOptions.
-          // Defensive: SDK is loaded from @anam-ai/js-sdk@latest CDN so the
-          // option SHOULD be supported, but feature-detect via try/catch and
-          // fall back to single-arg form if the SDK rejects the second arg.
+          // Pin the Anam SDK version. Previously was @latest which is a
+          // moving target — if Anam ships a breaking change the iframe
+          // silently hangs on streamToVideoElement with no console error.
+          // Bump this version intentionally after testing.
+          console.log('[AvaIframe] start: importing Anam SDK 4.13.0…');
+          const sdk = await import('https://esm.sh/@anam-ai/js-sdk@4.13.0');
+          const types = await import('https://esm.sh/@anam-ai/js-sdk@4.13.0/dist/module/types');
+          console.log('[AvaIframe] SDK loaded, sessionToken length:', (sessionToken || '').length);
           try {
             client = sdk.createClient(sessionToken, {
               sessionOptions: { videoQuality: 'high' },
             });
+            console.log('[AvaIframe] client created with sessionOptions');
           } catch (e) {
-            console.warn('[AvaDeskPanel] createClient with sessionOptions failed, falling back to single-arg', e);
+            console.warn('[AvaIframe] createClient with sessionOptions failed, falling back to single-arg', e);
             client = sdk.createClient(sessionToken);
+            console.log('[AvaIframe] client created without sessionOptions');
           }
           const AnamEvent = types.AnamEvent;
+          console.log('[AvaIframe] AnamEvent enum loaded, keys:', AnamEvent ? Object.keys(AnamEvent).length : 0);
 
           if (typeof client.registerToolCallHandler === 'function') {
             client.registerToolCallHandler('show_cards', {
@@ -386,6 +391,7 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           }
 
           client.addListener(AnamEvent.SESSION_READY, () => {
+            console.log('[AvaIframe] SESSION_READY fired');
             if (statusEl) statusEl.remove();
             post({ type: 'connected' });
             
@@ -436,22 +442,27 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           });
 
           client.addListener(AnamEvent.CONNECTION_ESTABLISHED, () => {
+            console.log('[AvaIframe] CONNECTION_ESTABLISHED fired');
             if (statusEl) statusEl.remove();
             post({ type: 'connected' });
           });
 
           client.addListener(AnamEvent.AUDIO_STREAM_STARTED, () => {
+            console.log('[AvaIframe] AUDIO_STREAM_STARTED fired');
             playAudio();
           });
 
           client.addListener(AnamEvent.CONNECTION_CLOSED, (code) => {
+            console.warn('[AvaIframe] CONNECTION_CLOSED', code);
             clearMidToolTimers();
             post({ type: 'closed', code });
           });
 
+          console.log('[AvaIframe] all listeners registered, calling streamToVideoElement…');
           await client.streamToVideoElement('anam-video');
+          console.log('[AvaIframe] streamToVideoElement returned');
         } catch (error) {
-          console.error('Ava video bootstrap failed', error);
+          console.error('[AvaIframe] bootstrap failed', error);
           setStatus('Unable to start Ava video');
           post({
             type: 'error',
