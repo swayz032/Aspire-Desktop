@@ -271,9 +271,14 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           // show_cards is excluded — it's a frontend display tool with no
           // measurable wait. Pools rotate so consecutive tool calls don't echo
           // the same line.
-          var midToolTimers: any[] = [];
+          // CRITICAL: this entire script runs as plain JavaScript inside an
+          // HTML <script type="module"> tag — it is NOT compiled by TypeScript.
+          // Any TS-only syntax (type annotations, `as` casts, generics) will
+          // throw "Unexpected token" at parse time and brick the spinner.
+          // Keep this block in pure JS.
+          var midToolTimers = [];
           var lastPersonaSpeechAt = 0;
-          var FILLER_FAST_TOOLS: Record<string, number> = { 'show_cards': 1 };
+          var FILLER_FAST_TOOLS = { 'show_cards': 1 };
           var PREAMBLE_POOL = [
             "Alright, let me take care of that.",
             "On it — one moment.",
@@ -291,7 +296,7 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             "Just another sec, close now.",
             "Pulling it together, almost there."
           ];
-          function pickFromPool(pool: string[], lastIdxRef: { idx: number }) {
+          function pickFromPool(pool, lastIdxRef) {
             if (!pool.length) return null;
             var idx = Math.floor(Math.random() * pool.length);
             if (pool.length > 1 && idx === lastIdxRef.idx) {
@@ -309,11 +314,11 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             }
             midToolTimers = [];
           }
-          function speakNarration(text: string | null, kind: 'preamble' | 'mid_first' | 'mid_second') {
+          function speakNarration(text, kind) {
             if (!text) return;
             try {
-              if (typeof (client as any).talk === 'function') {
-                (client as any).talk(text);
+              if (typeof client.talk === 'function') {
+                client.talk(text);
                 post({ type: kind === 'preamble' ? 'tool_preamble' : 'mid_tool_filler', payload: { text: text, kind: kind } });
               }
             } catch (e) {
@@ -323,11 +328,11 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           // Track persona speech so we can suppress the client preamble when
           // the LLM is already covering the acknowledgment. We only update on
           // non-empty persona content — empty events are stream keepalives.
-          if ((AnamEvent as any).MESSAGE_STREAM_EVENT_RECEIVED) {
-            client.addListener((AnamEvent as any).MESSAGE_STREAM_EVENT_RECEIVED, (msg: any) => {
+          if (AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED) {
+            client.addListener(AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED, function (msg) {
               try {
-                var role = msg?.role;
-                var content = msg?.content;
+                var role = msg && msg.role;
+                var content = msg && msg.content;
                 if (role === 'persona' && typeof content === 'string' && content.trim().length > 0) {
                   lastPersonaSpeechAt = Date.now();
                 }
@@ -335,9 +340,9 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             });
           }
 
-          client.addListener(AnamEvent.TOOL_CALL_STARTED, (event: any) => {
-            var toolName = event?.toolName || '';
-            post({ type: 'tool_call_started', payload: { toolName: toolName, arguments: event?.arguments } });
+          client.addListener(AnamEvent.TOOL_CALL_STARTED, function (event) {
+            var toolName = (event && event.toolName) || '';
+            post({ type: 'tool_call_started', payload: { toolName: toolName, arguments: event && event.arguments } });
             // Reset any prior tool-call timers (defensive — back-to-back tools
             // in one turn would otherwise leak).
             clearMidToolTimers();
@@ -362,13 +367,13 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
             var t2 = setTimeout(function () { speakNarration(pickFromPool(FILLER_POOL_SECOND, secondFillerIdxRef), 'mid_second'); }, 12000);
             midToolTimers = [tPreamble, t1, t2];
           });
-          client.addListener(AnamEvent.TOOL_CALL_COMPLETED, (event: any) => {
+          client.addListener(AnamEvent.TOOL_CALL_COMPLETED, function (event) {
             clearMidToolTimers();
-            post({ type: 'tool_call_completed', payload: { toolName: event?.toolName, executionTime: event?.executionTime } });
+            post({ type: 'tool_call_completed', payload: { toolName: event && event.toolName, executionTime: event && event.executionTime } });
           });
-          client.addListener(AnamEvent.TOOL_CALL_FAILED, (event: any) => {
+          client.addListener(AnamEvent.TOOL_CALL_FAILED, function (event) {
             clearMidToolTimers();
-            post({ type: 'tool_call_failed', payload: { toolName: event?.toolName, errorMessage: event?.errorMessage } });
+            post({ type: 'tool_call_failed', payload: { toolName: event && event.toolName, errorMessage: event && event.errorMessage } });
           });
           if (AnamEvent.CLIENT_TOOL_EVENT_RECEIVED) {
             client.addListener(AnamEvent.CLIENT_TOOL_EVENT_RECEIVED, (event) => {
