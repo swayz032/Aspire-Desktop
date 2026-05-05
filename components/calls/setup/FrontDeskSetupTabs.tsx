@@ -40,6 +40,7 @@ import { Colors, BorderRadius } from '@/constants/tokens';
 // ---------------------------------------------------------------------------
 
 export type FrontDeskTabId =
+  | 'receptionist'
   | 'public-number'
   | 'catch'
   | 'hours'
@@ -53,11 +54,16 @@ export interface FrontDeskTab {
 }
 
 export const FRONT_DESK_TABS: readonly FrontDeskTab[] = [
-  { id: 'public-number', step: 1, label: 'Public Number' },
-  { id: 'catch', step: 2, label: 'Catch Calls' },
-  { id: 'hours', step: 3, label: 'Hours' },
-  { id: 'routing', step: 4, label: 'Routing' },
-  { id: 'busy', step: 5, label: 'Busy Mode' },
+  // Receptionist persona picker (Sarah / Tiffany) is the first decision —
+  // it sets the voice + identity that answers every inbound call. Placing
+  // it ahead of Public Number means users "meet their receptionist" before
+  // configuring routing rules.
+  { id: 'receptionist', step: 1, label: 'Receptionist' },
+  { id: 'public-number', step: 2, label: 'Public Number' },
+  { id: 'catch', step: 3, label: 'Catch Calls' },
+  { id: 'hours', step: 4, label: 'Hours' },
+  { id: 'routing', step: 5, label: 'Routing' },
+  { id: 'busy', step: 6, label: 'Busy Mode' },
 ] as const;
 
 export interface FrontDeskSetupTabsProps {
@@ -123,6 +129,7 @@ export function FrontDeskSetupTabs({
   // Ref-based measurement of each tab so the underline tracks the active tab
   // even when label widths change (browser font-rendering, locale, etc.).
   const tabRefs = useRef<Record<FrontDeskTabId, View | null>>({
+    receptionist: null,
     'public-number': null,
     catch: null,
     hours: null,

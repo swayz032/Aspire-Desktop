@@ -215,6 +215,14 @@ export interface ForwardingVerification {
 // Aggregate config — full Front Desk Setup state
 // ---------------------------------------------------------------------------
 
+/**
+ * Receptionist persona slug — the chosen AI voice that answers inbound
+ * calls. Persisted on `front_desk_configs.receptionist_persona` (migration
+ * 109). UI display name + headshot + preview MP3 come from
+ * `lib/api/frontDesk.ts:fetchReceptionistPersonas` (the static registry).
+ */
+export type ReceptionistPersonaSlug = 'sarah' | 'tiffany';
+
 export interface FrontDeskConfig {
   publicNumber: PublicNumberConfig;
   catch: CatchConfig;
@@ -222,6 +230,8 @@ export interface FrontDeskConfig {
   routingContacts: RoutingContact[];
   busy: BusyConfig;
   forwarding?: ForwardingVerification;
+  /** Tenant's chosen receptionist persona slug. Defaults to 'sarah'. */
+  receptionistPersona: ReceptionistPersonaSlug;
   /** Last persisted version — used for optimistic concurrency */
   version: number;
 }

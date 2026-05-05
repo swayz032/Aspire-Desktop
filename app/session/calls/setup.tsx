@@ -30,6 +30,7 @@ import { useAuthFetch } from '@/lib/authenticatedFetch';
 import { useTenant } from '@/providers/TenantProvider';
 import {
   fetchFrontDeskConfig,
+  fetchReceptionistPersonas,
   patchFrontDeskConfig,
   createRoutingContact,
   updateRoutingContact,
@@ -37,6 +38,8 @@ import {
   triggerTestCall as apiTriggerTestCall,
   type FrontDeskConfigRow,
   type FrontDeskConfigPatchPartial,
+  type ReceptionistPersonaSlug as ApiReceptionistPersonaSlug,
+  type ReceptionistPersonaWire,
   type RoutingContactRow,
   type AspireNumberInfo,
   type AfterHoursMode as ApiAfterHoursMode,
@@ -50,6 +53,7 @@ import {
   FRONT_DESK_TABS,
   type FrontDeskTabId,
 } from '@/components/calls/setup/FrontDeskSetupTabs';
+import { ReceptionistSection } from '@/components/calls/setup/ReceptionistSection';
 import { PublicNumberSection } from '@/components/calls/setup/PublicNumberSection';
 import { CatchCallsSection } from '@/components/calls/setup/CatchCallsSection';
 import { BusinessHoursSection } from '@/components/calls/setup/BusinessHoursSection';
@@ -68,6 +72,7 @@ import type {
   BusyMode,
   AfterHoursMode,
   ForwardingVerification,
+  ReceptionistPersonaSlug,
   SarahStatus,
   SetupSummaryItem,
   CatchInterlockResult,
@@ -96,12 +101,18 @@ const DEFAULT_CONFIG: FrontDeskConfig = {
   routingContacts: [],
   busy: { mode: 'TAKE_MESSAGE' },
   forwarding: undefined,
+  receptionistPersona: 'sarah',
   version: 1,
 };
 
-const SARAH_DEFAULT: SarahStatus = {
+/**
+ * Persona-aware status rail data. The display name + headshot reflect the
+ * tenant's chosen persona on every render. Until the personas registry has
+ * loaded we fall back to "Receptionist" so the UI never shows the wrong name.
+ */
+const RECEPTIONIST_FALLBACK: SarahStatus = {
   active: true,
-  displayName: 'Sarah',
+  displayName: 'Receptionist',
   roleLabel: 'AI Front Desk Agent',
 };
 
@@ -222,6 +233,13 @@ function hydrateFromVersionedConfig(
       })
     : base.businessHours.days;
 
+  // Receptionist persona — defaults to 'sarah' for rows that predate
+  // migration 109 or for offices that haven't customized yet.
+  const receptionistPersona: ReceptionistPersonaSlug =
+    (row.receptionist_persona as ReceptionistPersonaSlug | null) === 'tiffany'
+      ? 'tiffany'
+      : 'sarah';
+
   return {
     ...base,
     publicNumber: {
@@ -240,6 +258,7 @@ function hydrateFromVersionedConfig(
     busy: { mode: BUSY_WIRE_TO_FE[row.busy_mode] ?? 'TAKE_MESSAGE' },
     routingContacts: (routingContacts ?? []).map(mapWireToContact),
     forwarding,
+    receptionistPersona,
     version: row.version_no ?? 1,
   };
 }
@@ -267,6 +286,7 @@ function buildPatchBody(config: FrontDeskConfig): FrontDeskConfigPatchPartial {
     busy_mode: BUSY_FE_TO_WIRE[config.busy.mode],
     pronunciation_override: config.businessHours.pronunciationOverride ?? '',
     business_hours: businessHoursWire,
+    receptionist_persona: config.receptionistPersona,
   };
   if (config.businessHours.timezone) {
     patch.timezone = config.businessHours.timezone;
@@ -345,6 +365,7 @@ function diffDirtyTabs(
 ): Set<FrontDeskTabId> {
   const dirty = new Set<FrontDeskTabId>();
   const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  if (current.receptionistPersona !== original.receptionistPersona) dirty.add('receptionist');
   if (!eq(current.publicNumber, original.publicNumber)) dirty.add('public-number');
   if (!eq(current.catch, original.catch)) dirty.add('catch');
   if (!eq(current.businessHours, original.businessHours)) dirty.add('hours');
@@ -364,13 +385,21 @@ function FrontDeskSetupContent() {
 
   const [config, setConfig] = useState<FrontDeskConfig>(DEFAULT_CONFIG);
   const [originalConfig, setOriginalConfig] = useState<FrontDeskConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<FrontDeskTabId>('public-number');
+  // Receptionist tab is the first decision a tenant makes — start there so
+  // brand-new offices see the persona picker on first visit.
+  const [activeTab, setActiveTab] = useState<FrontDeskTabId>('receptionist');
 
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [hydrationError, setHydrationError] = useState<string | null>(null);
   const [aspireNumber, setAspireNumber] = useState<AspireNumberInfo | null>(null);
+
+  // Receptionist persona registry — fetched once. Static data, safe to keep
+  // for the page lifetime. Loading/error UI lives inside ReceptionistSection.
+  const [personas, setPersonas] = useState<readonly ReceptionistPersonaWire[]>([]);
+  const [personasLoading, setPersonasLoading] = useState(true);
+  const [personasError, setPersonasError] = useState<string | null>(null);
 
   // §3.2 interlock — invalid tabs disable Save.
   const [catchInterlock, setCatchInterlock] = useState<CatchInterlockResult>({
@@ -413,6 +442,32 @@ function FrontDeskSetupContent() {
     };
   }, [authenticatedFetch, officeId]);
 
+  // ----- Fetch persona registry once on mount -------------------------
+  useEffect(() => {
+    let cancelled = false;
+    setPersonasLoading(true);
+    (async () => {
+      try {
+        const res = await fetchReceptionistPersonas({ authenticatedFetch });
+        if (cancelled) return;
+        setPersonas(res.personas ?? []);
+        setPersonasError(null);
+      } catch (err) {
+        if (cancelled) return;
+        setPersonasError(
+          err instanceof Error
+            ? err.message
+            : 'Could not load receptionist personas.',
+        );
+      } finally {
+        if (!cancelled) setPersonasLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedFetch]);
+
   // ----- Derived state -------------------------------------------------
   const dirtyTabs = useMemo(
     () => diffDirtyTabs(config, originalConfig),
@@ -427,6 +482,10 @@ function FrontDeskSetupContent() {
   const hasInvalid = invalidTabs.size > 0;
 
   // ----- Patchers ------------------------------------------------------
+  const updatePersona = useCallback((slug: ReceptionistPersonaSlug) => {
+    setConfig((prev) => ({ ...prev, receptionistPersona: slug }));
+  }, []);
+
   const updatePublicNumber = useCallback((p: Partial<PublicNumberConfig>) => {
     setConfig((prev) => ({ ...prev, publicNumber: { ...prev.publicNumber, ...p } }));
   }, []);
@@ -576,9 +635,39 @@ function FrontDeskSetupContent() {
   // ----- Right rail data ----------------------------------------------
   const summary = useMemo(() => buildSummary(config), [config]);
 
+  // Persona-aware status — driven by the chosen receptionist + registry.
+  // Falls back to `RECEPTIONIST_FALLBACK` until personas hydrate so the rail
+  // never flashes "Sarah" for a Tiffany tenant on first paint.
+  const selectedPersona = useMemo(
+    () => personas.find((p) => p.slug === config.receptionistPersona),
+    [personas, config.receptionistPersona],
+  );
+  const selectedPersonaStatus: SarahStatus = useMemo(
+    () =>
+      selectedPersona
+        ? {
+            active: true,
+            displayName: selectedPersona.display_name,
+            roleLabel: selectedPersona.role_label,
+          }
+        : RECEPTIONIST_FALLBACK,
+    [selectedPersona],
+  );
+
   // ----- Render the active tab body -----------------------------------
   const renderTabBody = (): React.ReactNode => {
     switch (activeTab) {
+      case 'receptionist':
+        return (
+          <ReceptionistSection
+            selectedSlug={config.receptionistPersona}
+            personas={personas}
+            isLoading={personasLoading}
+            error={personasError}
+            onChange={updatePersona}
+            enterIndex={0}
+          />
+        );
       case 'public-number':
         return (
           <PublicNumberSection
@@ -647,7 +736,7 @@ function FrontDeskSetupContent() {
         isSaving={isSaving}
         isTesting={isTesting}
         isDirty={isDirty && !hasInvalid}
-        sarahActive={SARAH_DEFAULT.active}
+        sarahActive={selectedPersonaStatus.active}
         saveDisabledReason={saveDisabledReason || undefined}
       />
 
@@ -676,12 +765,14 @@ function FrontDeskSetupContent() {
         <View style={styles.railCol}>
           <View style={styles.railSticky}>
             <SarahStatusRail
-              sarah={SARAH_DEFAULT}
+              sarah={selectedPersonaStatus}
               summary={summary}
               forwarding={config.forwarding}
               publicNumberMode={config.publicNumber.mode}
               publicNumberConfig={config.publicNumber}
               aspireNumber={aspireNumber}
+              headshotUrl={selectedPersona?.headshot_url}
+              accentColor={selectedPersona?.accent_color}
             />
           </View>
         </View>

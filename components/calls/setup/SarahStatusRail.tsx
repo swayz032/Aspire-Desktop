@@ -24,6 +24,7 @@ import {
   StyleSheet,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, BorderRadius } from '@/constants/tokens';
@@ -66,6 +67,17 @@ export interface SarahStatusRailProps {
    * from publicNumberConfig.selectedNumberId in some modes only.
    */
   aspireNumber?: AspireNumberInfo | null;
+  /**
+   * Persona-driven headshot URL — `/personas/<slug>.png` served as a static
+   * asset by Aspire-desktop. Optional; falls back to the generic person
+   * Ionicon when missing or when the image fails to load.
+   */
+  headshotUrl?: string;
+  /**
+   * Persona accent color (hex). Drives the active pill highlight + avatar
+   * ring when present so Sarah-vs-Tiffany are visually distinct in the rail.
+   */
+  accentColor?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,10 +92,17 @@ export function SarahStatusRail({
   publicNumberConfig,
   lastCallAt,
   aspireNumber,
+  headshotUrl,
+  accentColor,
 }: SarahStatusRailProps) {
   return (
     <View style={styles.rail}>
-      <SarahStatusCard sarah={sarah} lastCallAt={lastCallAt} />
+      <SarahStatusCard
+        sarah={sarah}
+        lastCallAt={lastCallAt}
+        headshotUrl={headshotUrl}
+        accentColor={accentColor}
+      />
 
       {/* Aspire number badge — appears in every PublicNumberMode (Pass 19 §2.5).
           The pill itself renders a "Set up →" CTA when no number is purchased. */}
@@ -141,26 +160,51 @@ function formatPhone(value?: string): string {
 function SarahStatusCard({
   sarah,
   lastCallAt,
+  headshotUrl,
+  accentColor,
 }: {
   sarah: SarahStatus;
   lastCallAt?: string;
+  headshotUrl?: string;
+  accentColor?: string;
 }) {
   const lastCallLabel = formatLastCall(lastCallAt);
+  const [headshotFailed, setHeadshotFailed] = React.useState(false);
+  const ringColor = accentColor || (Colors.accent.cyan as string);
+  const showHeadshot = !!headshotUrl && !headshotFailed;
 
   return (
     <View style={styles.card}>
       <Text style={styles.cardHead} accessibilityRole="header">
-        Sarah Status
+        {sarah.displayName ? `${sarah.displayName} Status` : 'Receptionist Status'}
       </Text>
 
       <View style={styles.identityRow}>
         <View
-          style={styles.avatar}
+          style={[
+            styles.avatar,
+            showHeadshot && styles.avatarImageWrap,
+            { borderColor: ringColor + '66' },
+          ]}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          <Ionicons name="person" size={22} color={Colors.accent.cyan} />
-          <View style={styles.avatarPing} />
+          {showHeadshot ? (
+            <Image
+              source={{ uri: headshotUrl }}
+              onError={() => setHeadshotFailed(true)}
+              style={styles.avatarImage}
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <Ionicons name="person" size={22} color={ringColor} />
+          )}
+          <View
+            style={[
+              styles.avatarPing,
+              accentColor ? { backgroundColor: ringColor } : null,
+            ]}
+          />
         </View>
 
         <View style={styles.identityCol}>
@@ -447,6 +491,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(59,130,246,0.32)',
     position: 'relative',
+  },
+  avatarImageWrap: {
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
   },
   avatarPing: {
     position: 'absolute',
