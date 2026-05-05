@@ -106,7 +106,7 @@ Expect `200` with `{ sessionToken: "..." }`. Anything else points to server/conf
 ## 4. Configuration reference
 
 ### Server (`server/routes.ts:5043`, `/api/anam/session`)
-- `voiceDetectionOptions` (lines 5144-5157): `endOfSpeechSensitivity: 0.7`, `silenceBeforeSkipTurnSeconds: 30` (Anam max), `silenceBeforeAutoEndTurnSeconds: 1.5`, `speechEnhancementLevel: 0.5`.
+- `voiceDetectionOptions` (lines 5144-5165): `endOfSpeechSensitivity: 0.7`, `silenceBeforeSkipTurnSeconds: 30` (Anam max), `silenceBeforeSessionEndSeconds: 300` (5 min idle before auto-end — sized for contractor step-away moments), `silenceBeforeAutoEndTurnSeconds: 1.5`, `speechEnhancementLevel: 0.5`.
 - `voiceGenerationOptions`: speed 1.05, stability 0.5, similarity 0.75.
 - `maxSessionLengthSeconds: 1800` (30 min hard cap).
 

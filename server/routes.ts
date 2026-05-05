@@ -5152,6 +5152,14 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
         // breathing room we can give the user before Anam takes a fill turn;
         // beyond that, the prompt rule has to govern Ava's behavior.
         silenceBeforeSkipTurnSeconds: 30,
+        // 2026-05-05: explicitly set the auto-session-end threshold instead
+        // of accepting Anam's default (undocumented). Aspire's ICP (field
+        // contractors) regularly step away mid-conversation — signing for
+        // deliveries, talking to clients on a job site, hands-busy moments.
+        // 300s (5 min) gives a generous resume window without leaving
+        // truly-abandoned sessions running indefinitely. The 30-minute
+        // maxSessionLengthSeconds is the absolute hard cap.
+        silenceBeforeSessionEndSeconds: 300,
         silenceBeforeAutoEndTurnSeconds: 1.5,
         speechEnhancementLevel: 0.5,
       },
@@ -5280,6 +5288,10 @@ When giving tax guidance, always include confidence level: "This is well-establi
       voiceDetectionOptions: {
         endOfSpeechSensitivity: 0.7,        // Moderately eager — faster response, minimal false triggers
         silenceBeforeSkipTurnSeconds: 8,
+        // Match Ava: 5-min idle window before Anam auto-ends the session.
+        // Finn sessions are typically focused finance reviews so 300s is
+        // generous, but the contractor-step-away rationale still applies.
+        silenceBeforeSessionEndSeconds: 300,
         silenceBeforeAutoEndTurnSeconds: 1.5, // Respond after 1.5s pause (was 6s — major latency win)
         speechEnhancementLevel: 0.5,         // Noise filtering for better STT accuracy
       },
