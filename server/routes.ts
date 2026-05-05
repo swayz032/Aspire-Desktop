@@ -33,6 +33,7 @@ const CANONICAL_ANAM_AVA_TOOL_NAMES = [
   'invoke_clara',
   'save_office_note',
   'show_cards',
+  'end_session',
 ] as const;
 const CANONICAL_ANAM_AVA_KNOWLEDGE_TOOL_NAMES = ['Knowledge_Ava', 'ava_knowledge_search'] as const;
 const DEFAULT_ANAM_AVA_AVATAR_ID = process.env.ANAM_AVA_AVATAR_ID?.trim() || '30fa96d0-26c4-4e55-94a0-517025942e18';
@@ -56,7 +57,8 @@ You are on a live video call.
 ## invoke_clara
 ## save_office_note
 ## Knowledge_Ava
-## show_cards`;
+## show_cards
+## end_session`;
 // Prompt is bundled INSIDE the Aspire-desktop deploy (server/prompts/) so it's
 // available in production. The backend sibling-repo path is kept as a fallback
 // for local dev where developers may have both repos checked out side-by-side.
@@ -312,6 +314,13 @@ function validateAnamAvaToolset(tools: AnamPersonaTool[]): string[] {
     if (name === 'show_cards') {
       if (!type.includes('client')) issues.push('Tool show_cards must be client tool');
       issues.push(...validateRequiredSchemaFields(name, parameters));
+      continue;
+    }
+    if (name === 'end_session') {
+      // end_session is a CLIENT-side tool with no parameters. Iframe handler
+      // posts to parent which calls handleEndSession (cleans up state +
+      // tears down the WebRTC stream after a short grace for goodbye TTS).
+      if (!type.includes('client')) issues.push('Tool end_session must be client tool');
       continue;
     }
     if (!type.includes('server') || subtype !== 'webhook') {

@@ -274,6 +274,23 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
                 return 'Cards displayed.';
               },
             });
+            // Voice-driven session end. Ava calls this when the user signals
+            // goodbye/hang up/end. The handler:
+            //   1. Notifies the parent immediately so UI state can flip.
+            //   2. Returns a confirmation string the LLM can lead with.
+            //   3. After a brief grace period (1.8s — enough for Anam's
+            //      sign-off TTS to render), tears down the WebRTC stream
+            //      via stopStreaming(). The parent's CONNECTION_CLOSED
+            //      handler will also fire, so handleEndSession is idempotent.
+            client.registerToolCallHandler('end_session', {
+              onStart: async () => {
+                post({ type: 'end_session_requested', payload: { reason: 'user_voice' } });
+                setTimeout(() => {
+                  try { client?.stopStreaming?.(); } catch (e) { /* already torn down */ }
+                }, 1800);
+                return 'Session ending. Goodbye.';
+              },
+            });
           }
 
           // ── Tool-call narration: preamble + mid-tool fillers ───────────────
@@ -1046,6 +1063,19 @@ function AvaDeskPanelInner() {
         setVideoState('idle');
         const label = event.data.codeLabel || event.data.code;
         setConnectionStatus(label ? `Session ended (${label})` : 'Session ended');
+        return;
+      }
+      // Voice-driven end_session: Ava called the client tool because the
+      // user signaled goodbye. The iframe has already scheduled its own
+      // stopStreaming() at +1.8s; we just flip UI state immediately so
+      // the user sees confirmation. handleEndSession is idempotent —
+      // the subsequent CONNECTION_CLOSED postMessage will be a no-op.
+      if (event.data.type === 'end_session_requested') {
+        trackInteraction('agent_disconnect', 'ava-desk-panel', { agent: 'ava', reason: event.data.payload?.reason || 'user_voice' });
+        clearConnectionTimeouts();
+        setAnamSessionToken(null);
+        setVideoState('idle');
+        setConnectionStatus('');
         return;
       }
       if (event.data.type === 'show_cards') {

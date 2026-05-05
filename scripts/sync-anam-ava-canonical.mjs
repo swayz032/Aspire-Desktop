@@ -188,6 +188,20 @@ function buildCanonicalTools() {
   return [
     {
       type: 'CLIENT',
+      name: 'end_session',
+      description:
+        "End the current video session when the user explicitly signals goodbye, end, hang up, we're done, or talk to you later. Always say a brief warm sign-off in the same turn before invoking this tool. Do NOT call this tool just because the user said 'thanks' — wait for an unambiguous goodbye.",
+      config: {
+        parameters: {
+          type: 'object',
+          strict: true,
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: 'CLIENT',
       name: 'show_cards',
       description:
         "Use this tool to render structured visual cards in the UI immediately after invoke_adam returns data. Map Adam response fields into artifact_type, records, and summary so the user can browse results on screen.",
@@ -568,6 +582,7 @@ async function main() {
 
   const managedNames = new Set([
     'show_cards',
+    'end_session',
     'ava_get_context',
     'save_office_note',
     'invoke_tec',
