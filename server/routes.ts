@@ -5313,19 +5313,37 @@ When giving tax guidance, always include confidence level: "This is well-establi
       },
     };
 
+    // Anam session-token API has TWO mutually-exclusive personaConfig
+    // shapes (per https://anam.ai/docs/api-reference/sessions/create-session-token.md):
+    //   1. EPHEMERAL: { name, avatarId, voiceId, llmId, systemPrompt, ... }
+    //      — NO toolIds field exists; passing toolIds is silently ignored,
+    //      and the resulting JWT carries no tool attachments. The SDK then
+    //      cannot load the session's tools and surfaces a 401 "failed to
+    //      load persona" downstream. This is what was happening for ALL
+    //      Ava sessions before the 2026-05-05 switch to stateful mode.
+    //   2. STATEFUL: { personaId } — references a stored persona by ID.
+    //      Tools, voice, avatar, prompt all come from the persona
+    //      definition. The canonical sync (`pnpm sync-agent:ava`) keeps
+    //      the persona's stored prompt + toolset in lock-step with this
+    //      repo's server/prompts/ava-anam-video-prompt.md.
+    //
+    // Empirical proof (scripts/test-anam-mint.mjs): minting in stateful
+    // mode produces a JWT with `type: "stateful"` and `personaId`;
+    // ephemeral + toolIds produces `type: "ephemeral"` with NO toolIds
+    // in the payload — confirming Anam strips the field on the server.
+    //
+    // All upstream validators (validateAnamAvaPromptAndConfig,
+    // fetchAnamPersonaToolsForValidation, fetchCanonicalAnamAvaToolIds)
+    // remain useful as drift detectors against the stored persona.
     const personaConfig = resolvedPersona === 'finn'
       ? FINN_CONFIG
-      : {
-          ...AVA_CONFIG,
-          ...(avaSessionToolIds.length > 0 ? { toolIds: avaSessionToolIds } : {}),
-        };
+      : { personaId: CANONICAL_ANAM_AVA_PERSONA_ID };
     const agent = resolvedPersona === 'finn' ? 'Finn' : 'Ava';
     if (resolvedPersona === 'ava') {
       logger.info('Ava session config prepared', {
-        llmId: (personaConfig as Record<string, unknown>).llmId,
-        avatarId: (personaConfig as Record<string, unknown>).avatarId,
-        voiceId: (personaConfig as Record<string, unknown>).voiceId,
-        toolCount: avaSessionToolIds.length,
+        mode: 'stateful',
+        personaId: CANONICAL_ANAM_AVA_PERSONA_ID,
+        canonicalToolCount: avaSessionToolIds.length,
         promptSource: avaPromptSource,
       });
     }
