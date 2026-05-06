@@ -555,11 +555,24 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
               </>
             )}
 
+            {/*
+              Chrome/Safari credential-manager autofill REQUIRES standard
+              autocomplete tokens + standard name attributes. The carousel
+              renders 3 ConsoleCards simultaneously; only the ACTIVE card's
+              inputs use real names ("email" / "password") and proper
+              autocomplete tokens ("username" / "current-password" /
+              "new-password"). Inactive cards keep autoComplete="off" +
+              unique names + data-lpignore so password managers don't try
+              to autofill 3 invisible forms at once.
+            */}
             <label style={lbl}>Email</label>
             <input type="email" placeholder="you@company.com" value={email}
               onChange={(e: any) => setEmail(e.target.value)}
               onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
-              autoComplete="off" name={`aspire-email-${consoleDef.id}`} data-lpignore="true"
+              autoComplete={isActive ? (mode === 'signup' ? 'email' : 'username') : 'off'}
+              name={isActive ? 'email' : `aspire-email-${consoleDef.id}`}
+              id={isActive ? 'aspire-login-email' : undefined}
+              {...(!isActive ? { 'data-lpignore': 'true' } : {})}
               disabled={loading} style={inp('email')} />
 
             <label style={lbl}>Password</label>
@@ -567,7 +580,10 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
               value={password} onChange={(e: any) => setPassword(e.target.value)}
               onFocus={() => setFocused('password')} onBlur={() => setFocused(null)}
               onKeyDown={(e: any) => e.key === 'Enter' && mode === 'signin' && handleSignIn()}
-              autoComplete="new-password" name={`aspire-pw-${consoleDef.id}`} data-lpignore="true"
+              autoComplete={isActive ? (mode === 'signup' ? 'new-password' : 'current-password') : 'new-password'}
+              name={isActive ? 'password' : `aspire-pw-${consoleDef.id}`}
+              id={isActive ? 'aspire-login-password' : undefined}
+              {...(!isActive ? { 'data-lpignore': 'true' } : {})}
               disabled={loading} style={inp('password')} />
 
             {mode === 'signup' && (
@@ -578,6 +594,8 @@ function ConsoleCard({ consoleDef, index, activeIndex, onSetActive }: CardProps)
                   onFocus={() => setFocused('confirm')} onBlur={() => setFocused(null)}
                   onKeyDown={(e: any) => e.key === 'Enter' && handleSignUp()}
                   autoComplete="new-password"
+                  name={isActive ? 'confirm-password' : `aspire-cpw-${consoleDef.id}`}
+                  id={isActive ? 'aspire-login-confirm-password' : undefined}
                   disabled={loading} style={inp('confirm')} />
               </>
             )}
