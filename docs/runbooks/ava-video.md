@@ -106,7 +106,7 @@ Expect `200` with `{ sessionToken: "..." }`. Anything else points to server/conf
 ## 4. Configuration reference
 
 ### Server (`server/routes.ts:5043`, `/api/anam/session`)
-- `voiceDetectionOptions` (lines 5144-5165): `endOfSpeechSensitivity: 0.7`, `silenceBeforeSkipTurnSeconds: 30` (Anam max), `silenceBeforeSessionEndSeconds: 300` (5 min idle before auto-end — sized for contractor step-away moments), `silenceBeforeAutoEndTurnSeconds: 1.5`, `speechEnhancementLevel: 0.5`.
+- `voiceDetectionOptions` (lines 5144-5165): `endOfSpeechSensitivity: 0.7`, `silenceBeforeSkipTurnSeconds: 30` (Anam max), `silenceBeforeSessionEndSeconds: 60` (Anam max — anything > 60 returns HTTP 400 "Number must be less than or equal to 60"), `silenceBeforeAutoEndTurnSeconds: 1.5`, `speechEnhancementLevel: 0.5`.
 - `voiceGenerationOptions`: speed 1.05, stability 0.5, similarity 0.75.
 - `maxSessionLengthSeconds: 1800` (30 min hard cap).
 
@@ -128,7 +128,7 @@ Expect `200` with `{ sessionToken: "..." }`. Anything else points to server/conf
 
 - **SDK 4.13.0 hangs `streamToVideoElement`.** Stay on 4.12.0 until Anam ships a fix.
 - **~~esm.sh is a moving target~~ — RESOLVED 2026-05-05.** SDK is now self-hosted at `/vendor/anam/<version>/index.js`. esm.sh removed from CSP. Bundle is 86 KB minified, version-pinned in the path for atomic cache invalidation.
-- **Anam `silenceBeforeSkipTurnSeconds` max is 30s.** Anything higher returns HTTP 400.
+- **Anam voiceDetectionOptions hard caps:** `silenceBeforeSkipTurnSeconds` max 30s, `silenceBeforeSessionEndSeconds` max 60s. Anything higher returns HTTP 400 ("Number must be less than or equal to N"). The error surfaces as a 502 from `/api/anam/session` upstream.
 
 ---
 
