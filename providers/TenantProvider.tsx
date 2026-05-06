@@ -184,6 +184,23 @@ export function TenantProvider({ children }: TenantProviderProps) {
       // tenant to load. Don't surface an error — admin UIs render a tenant
       // picker / overview instead of a per-suite dashboard.
       if (err instanceof NoSuiteScopeError) {
+        // Two reasons: 'admin' (real platform admin) vs 'pre_onboarding'
+        // (no metadata.suite_id AND no tenant_memberships rows). The
+        // 'pre_onboarding' branch can fire TRANSIENTLY during a Supabase
+        // TOKEN_REFRESHED race — the JWT is briefly in flight and the
+        // RLS-protected tenant_memberships query returns zero rows for a
+        // moment. If we already have a valid tenant in state (i.e. a prior
+        // load succeeded for this user), that means the user IS onboarded;
+        // treat this as transient and KEEP the current tenant rather than
+        // nuking it. Without this guard, the header silently flips to
+        // "Your Business / Suite Pending / Office Pending / U avatar"
+        // while the user is mid-workflow.
+        const isTransientRace = err.reason === 'pre_onboarding' && !!tenant?.suiteId;
+        if (isTransientRace) {
+          if (__DEV__) console.warn('[TenantProvider] NoSuiteScopeError(pre_onboarding) ignored — keeping existing tenant (transient refresh race)');
+          setError(null);
+          return;
+        }
         setError(null);
         setTenant(null);
         if (typeof window !== 'undefined') {
@@ -229,6 +246,15 @@ export function TenantProvider({ children }: TenantProviderProps) {
     }
   };
 
+  // 2026-05-06: stable user-id dep instead of full session reference. Supabase
+  // emits a NEW session reference on every TOKEN_REFRESHED event (which fires
+  // on idle-banner Continue, on authenticatedFetch's refresh-and-retry, and
+  // periodically by autoRefreshToken). Re-running loadTenant() on every
+  // refresh exposed a race where the RLS query for tenant_memberships
+  // briefly returned zero rows mid-refresh — triggering NoSuiteScopeError
+  // and wiping the header to "Your Business / Suite Pending". Only reload
+  // when the actual user changes.
+  const userId = session?.user?.id;
   useEffect(() => {
     // Wait for auth to finish loading before querying RLS-protected tables
     if (authLoading) return;
@@ -239,7 +265,8 @@ export function TenantProvider({ children }: TenantProviderProps) {
       return;
     }
     loadTenant();
-  }, [session, authLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, authLoading]);
 
   const value: TenantContextType = {
     tenant,
