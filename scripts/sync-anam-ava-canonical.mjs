@@ -162,6 +162,14 @@ function toolUrl(pathname) {
 
 function webhookTool(name, description, urlPath, properties, required = [], options = {}) {
   const additionalProperties = options.additionalProperties ?? true;
+  // 2026-05-06: Anam's "Protected tool turns" (disableInterruptions=true)
+  // suppresses user interruptions while the tool is in flight, preventing
+  // the re-fire pattern observed in transcript b3c25753 where Ava called
+  // invoke_adam, got interrupted mid-acknowledgment, and re-fired the tool
+  // instead of recovering. Default off; opt in per-tool via options.
+  // Only takes effect when awaitResponse:true (which all our webhook
+  // tools use). Reference: anam.ai/docs changelog 2026-04-20.
+  const disableInterruptions = options.disableInterruptions === true;
   return {
     type: 'SERVER_WEBHOOK',
     name,
@@ -173,6 +181,7 @@ function webhookTool(name, description, urlPath, properties, required = [], opti
         'x-aspire-tool-secret': TOOL_SECRET,
       },
       awaitResponse: true,
+      ...(disableInterruptions ? { disableInterruptions: true } : {}),
       parameters: {
         type: 'object',
         strict: true,
@@ -261,7 +270,7 @@ function buildCanonicalTools() {
         details: { type: 'string', description: 'Optional details and constraints' },
       },
       ['agent', 'task'],
-      { additionalProperties: false },
+      { additionalProperties: false, disableInterruptions: true },
     ),
     webhookTool(
       'invoke_adam',
@@ -302,7 +311,7 @@ function buildCanonicalTools() {
         },
       },
       ['agent', 'task', 'query'],
-      { additionalProperties: false },
+      { additionalProperties: false, disableInterruptions: true },
     ),
     webhookTool(
       'invoke_clara',
@@ -314,6 +323,7 @@ function buildCanonicalTools() {
         details: { type: 'string', description: 'Optional specifics' },
       },
       ['agent', 'task'],
+      { disableInterruptions: true },
     ),
     webhookTool(
       'invoke_quinn',
@@ -350,6 +360,7 @@ function buildCanonicalTools() {
         details: { type: 'string', description: 'Optional freeform invoice details.' },
       },
       ['agent', 'task'],
+      { disableInterruptions: true },
     ),
     webhookTool(
       'ava_request_approval',
