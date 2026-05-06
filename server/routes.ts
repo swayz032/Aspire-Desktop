@@ -5384,7 +5384,20 @@ When giving tax guidance, always include confidence level: "This is well-establi
           'Authorization': `Bearer ${ANAM_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ personaConfig: config }),
+        // 2026-05-06: sessionOptions.videoQuality: 'high' belongs HERE in the
+        // session-token request body — NOT in the client SDK's createClient()
+        // options where we'd been putting it for months. Per Anam docs
+        // (https://anam.ai/docs/api-reference/sessions/create-session-token.md):
+        //   sessionOptions.videoQuality enum: 'high' | 'auto'
+        //   "'high' pins highest bitrate, 'auto' enables adaptive bitrate"
+        // Putting it in createClient was a no-op — Anam's adaptive default
+        // ramps from low → high, which is why the video looked blurry on
+        // session start. Pinning to 'high' here keeps it at the maximum
+        // bitrate from frame 1.
+        body: JSON.stringify({
+          personaConfig: config,
+          sessionOptions: { videoQuality: 'high' },
+        }),
       });
       const rawText = await tokenResponse.text();
       return { tokenResponse, rawText };
