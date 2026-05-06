@@ -93,6 +93,11 @@ const PUBLIC_PATHS = [
   '/api/config/public',             // Public client config (Google Places key) — no secrets, referrer-restricted
   '/api/geolocation',               // Server-side geolocation proxy (ipapi.co blocks browser CORS)
   '/api/card-data/',                 // Card records cache — PII-stripped data, served in-memory, short TTL
+  '/api/anam/iframe-page',           // Anam Ava iframe HTML — self-auth via Anam JWT in query string
+                                      // (the iframe element loads via <iframe src=> which doesn't send
+                                      //  Supabase session cookies; the Anam JWT is what authorizes the
+                                      //  SDK's WebRTC connect downstream, so HTML alone has no value
+                                      //  without the matching token).
   // Places API requires auth to prevent quota exhaustion
 ];
 
