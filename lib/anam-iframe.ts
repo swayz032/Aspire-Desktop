@@ -166,7 +166,7 @@ function buildAvaVideoFrameDoc(sessionToken: string, profile: any) {
           // passing it here protects against a stale persona definition.
           var clientOptions = {
             sessionOptions: { videoQuality: 'high' },
-            voiceDetection: { endOfSpeechSensitivity: 0.7 },
+            voiceDetection: { endOfSpeechSensitivity: 0.4 },
           };
           try {
             client = sdk.createClient(sessionToken, clientOptions);

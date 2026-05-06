@@ -5189,23 +5189,21 @@ router.post('/api/anam/session', async (req: Request, res: Response) => {
       skipGreeting: false,
       maxSessionLengthSeconds: 1800,
       voiceDetectionOptions: {
-        endOfSpeechSensitivity: 0.7,
-        // Pass 3 / Wave 3 — push out Anam's silence-filler turn as far as
-        // the API permits. Anam rejects > 30s with HTTP 400 ("Number must
-        // be less than or equal to 30"), so 30s is the ceiling. The prior
-        // value of 8s caused Ava to fire "are you still there?" / "let me
-        // know if you need anything" mid-browse, which contradicts the
-        // BROWSE MODE — strict prompt rule (Wave 2.2). 30s is the maximum
-        // breathing room we can give the user before Anam takes a fill turn;
-        // beyond that, the prompt rule has to govern Ava's behavior.
+        // 2026-05-06: lowered from 0.7 → 0.4 after a session transcript
+        // showed Ava cutting in mid-sentence on a long property-address
+        // query. 0.4 = wait until reasonably confident user is done; 0
+        // = wait until fully confident; 1 = jump in early. 0.4 is the
+        // right balance for our ICP (contractors dictating addresses,
+        // names, line items — natural pauses common).
+        endOfSpeechSensitivity: 0.4,
         silenceBeforeSkipTurnSeconds: 30,
-        // 2026-05-05: Anam caps this at 60 seconds (HTTP 400 above 60).
-        // Use the maximum so contractors who step away briefly (signing for
-        // deliveries, hands-busy moments) get the most generous resume
-        // window the API permits. The 30-minute maxSessionLengthSeconds
-        // remains the absolute hard cap on session duration.
         silenceBeforeSessionEndSeconds: 60,
-        silenceBeforeAutoEndTurnSeconds: 1.5,
+        // 2026-05-06: raised from 1.5 → 2.5 for dictation tolerance.
+        // Users speaking long addresses ("1575 paul russell road
+        // apartment 4802 tallahassee florida 32301") have natural
+        // 2-second pauses. 1.5s caused Ava to treat mid-address pauses
+        // as turn-complete and fire invoke_adam with partial data.
+        silenceBeforeAutoEndTurnSeconds: 2.5,
         speechEnhancementLevel: 0.5,
       },
       voiceGenerationOptions: {
@@ -5331,11 +5329,10 @@ When giving tax guidance, always include confidence level: "This is well-establi
       avatarModel: 'cara-3',   // Latest model: sharper video, better lip sync
       maxSessionLengthSeconds: 1800,
       voiceDetectionOptions: {
-        endOfSpeechSensitivity: 0.7,        // Moderately eager — faster response, minimal false triggers
+        endOfSpeechSensitivity: 0.4,        // 2026-05-06: lowered to match Ava — was cutting in on number dictation
         silenceBeforeSkipTurnSeconds: 8,
-        // Match Ava: Anam caps at 60s. Use the maximum.
         silenceBeforeSessionEndSeconds: 60,
-        silenceBeforeAutoEndTurnSeconds: 1.5, // Respond after 1.5s pause (was 6s — major latency win)
+        silenceBeforeAutoEndTurnSeconds: 2.5, // 2026-05-06: dictation tolerance for amounts / dates
         speechEnhancementLevel: 0.5,         // Noise filtering for better STT accuracy
       },
       voiceGenerationOptions: {
